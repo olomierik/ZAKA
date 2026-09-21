@@ -46,7 +46,7 @@ export default function App() {
   // Push notifications for incoming transactions
   useNotifications(token, user !== null)
 
-  // Show splash for 3.6 s so all animations complete, then route to auth or home
+  // Show splash for 9 s so all animations + sound complete
   useEffect(() => {
     const timer = setTimeout(() => {
       const session = loadSession()
@@ -57,7 +57,7 @@ export default function App() {
       } else {
         setScreen('login')
       }
-    }, 3600)
+    }, 9000)
     return () => clearTimeout(timer)
   }, [])
 
