@@ -24,8 +24,14 @@ Deno.serve(async (req) => {
       const res = await fetch(`https://api.circle.com/v1/w3s/wallets/${walletId}/balances`, {
         headers: { Authorization: `Bearer ${apiKey}` },
       })
-      const data = await res.json() as { data?: { tokenBalances?: Array<{ token?: { symbol?: string }; amount?: string }> } }
-      const usdc = data?.data?.tokenBalances?.find((b) => b.token?.symbol?.toUpperCase() === 'USDC')?.amount ?? '0'
+      const data = await res.json() as { data?: { tokenBalances?: Array<{ token?: { symbol?: string; isNative?: boolean }; amount?: string }> } }
+      const balances = data?.data?.tokenBalances ?? []
+      // Arc Testnet returns USDC twice: native (isNative:true, no tokenAddress) and ERC-20.
+      // Use the ERC-20 entry for display; fall back to native if that's all there is.
+      // Both represent the same pool — show only one (the larger/ERC-20 entry).
+      const erc20 = balances.find((b) => b.token?.symbol?.toUpperCase() === 'USDC' && !b.token?.isNative)
+      const native = balances.find((b) => b.token?.symbol?.toUpperCase() === 'USDC' && b.token?.isNative)
+      const usdc = erc20?.amount ?? native?.amount ?? '0'
       return Response.json({ usdc }, { headers: corsHeaders })
     }
 

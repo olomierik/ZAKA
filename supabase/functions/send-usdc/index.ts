@@ -38,10 +38,22 @@ Deno.serve(async (req) => {
       const balRes = await fetch(`${CIRCLE_BASE}/wallets/${senderProfile.walletId}/balances`, {
         headers: { Authorization: `Bearer ${apiKey}` },
       })
-      const balData = await balRes.json() as { data?: { tokenBalances?: Array<{ token?: { symbol?: string; tokenAddress?: string }; amount?: string }> } }
-      const usdcToken = balData?.data?.tokenBalances?.find((b) => b.token?.symbol?.toUpperCase() === 'USDC')
-      if (!usdcToken?.token?.tokenAddress) {
+      const balData = await balRes.json() as { data?: { tokenBalances?: Array<{ token?: { symbol?: string; tokenAddress?: string; isNative?: boolean }; amount?: string }> } }
+      const balances = balData?.data?.tokenBalances ?? []
+
+      // Arc Testnet exposes USDC as both a native token (no tokenAddress) and an ERC-20.
+      // Transfers require a tokenAddress, so always prefer the ERC-20 entry.
+      const usdcToken = balances.find(
+        (b) => b.token?.symbol?.toUpperCase() === 'USDC' && b.token?.tokenAddress && !b.token?.isNative
+      ) ?? balances.find(
+        (b) => b.token?.symbol?.toUpperCase() === 'USDC' && b.token?.tokenAddress
+      )
+
+      if (!usdcToken) {
         return Response.json({ error: 'No USDC in wallet. Please deposit first.' }, { status: 400, headers: corsHeaders })
+      }
+      if (parseFloat(usdcToken.amount ?? '0') <= 0) {
+        return Response.json({ error: 'Insufficient USDC balance. Please deposit first.' }, { status: 400, headers: corsHeaders })
       }
 
       // Encrypt entity secret fresh for this request
