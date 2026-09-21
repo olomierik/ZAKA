@@ -13,12 +13,22 @@ const USE_EDGE = !!(import.meta.env.VITE_SUPABASE_URL as string | undefined)
 // ── edge function helper ──────────────────────────────────────────────────────
 
 async function callEdge<T>(fn: string, body: Record<string, unknown>, token?: string): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const headers: Record<string, string> = {}
   if (token) headers['Authorization'] = `Bearer ${token}`
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result = await supabase.functions.invoke(fn, { body, headers }) as { data: unknown; error: unknown }
-  if (result.error) throw new Error((result.error as { message?: string }).message ?? 'Edge function error')
-  return result.data as T
+  const result = await supabase.functions.invoke(fn, { body, headers }) as { data: T | null; error: { message?: string; context?: { json?: () => Promise<unknown> } } | null }
+  if (result.error) {
+    // Try to extract a message from the error body
+    let msg = result.error.message ?? 'Edge function error'
+    try {
+      if (result.error.context?.json) {
+        const body = await result.error.context.json() as { error?: string }
+        if (body?.error) msg = body.error
+      }
+    } catch { /* ignore */ }
+    throw new Error(msg)
+  }
+  if (!result.data) throw new Error('Empty response from server')
+  return result.data
 }
 
 // ── local server helper ───────────────────────────────────────────────────────
