@@ -3,7 +3,6 @@ import { motion } from 'framer-motion'
 import { ArrowLeft, Copy, Check, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import QRCode from 'qrcode'
-import { api } from '../lib/api'
 import type { ZakaUser } from '../types/zaka'
 
 interface Props {
@@ -26,42 +25,25 @@ const glass = {
   } as React.CSSProperties,
 }
 
-export default function ReceiveScreen({ user, token, onBack }: Props) {
-  const [depositAddress, setDepositAddress] = useState('')
-  const [network, setNetwork] = useState('')
-  const [loading, setLoading] = useState(true)
+export default function ReceiveScreen({ user, token: _token, onBack }: Props) {
+  // walletAddress is already on the user object from login — no network call needed
+  const depositAddress = user.walletAddress ?? ''
+  const network = 'Arc Testnet'
+  const loading = false
   const [copied, setCopied] = useState<'phone' | 'address' | null>(null)
   const [qrDataUrl, setQrDataUrl] = useState('')
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await api.getDepositAddress(token)
-        setDepositAddress(res.address)
-        setNetwork(res.network)
-      } catch {
-        toast.error('Could not load deposit address')
-      } finally {
-        setLoading(false)
-      }
-    }
-    void load()
-  }, [token])
-
-  // Generate QR once we have the address
+  // Generate QR as soon as address is known
   useEffect(() => {
     if (!depositAddress) return
-    const qrContent = `ethereum:${depositAddress}@5042002` // EIP-681 Arc Testnet
-    QRCode.toDataURL(qrContent, {
-      width: 280,
+    // Encode as plain address — most wallets scan this reliably
+    QRCode.toDataURL(depositAddress, {
+      width: 300,
       margin: 2,
       color: { dark: '#122d45', light: '#ffffff' },
       errorCorrectionLevel: 'M',
-    }).then(setQrDataUrl).catch(() => {
-      // fallback: raw address
-      void QRCode.toDataURL(depositAddress, { width: 280, margin: 2 }).then(setQrDataUrl)
-    })
+    }).then(setQrDataUrl).catch(console.error)
   }, [depositAddress])
 
   const copy = async (text: string, key: 'phone' | 'address') => {
