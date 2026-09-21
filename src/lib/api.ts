@@ -3,7 +3,6 @@
  * Calls Supabase Edge Functions when VITE_SUPABASE_URL is set,
  * otherwise falls back to the local Bun server at /api (dev only).
  */
-import { supabase } from './supabase'
 import type { ZakaUser, ZakaTransaction } from '../types/zaka'
 
 // ── routing ───────────────────────────────────────────────────────────────────
@@ -81,21 +80,10 @@ export const api = {
     return fetchServer('/wallet/balance', token)
   },
 
-  getDepositAddress: async (token: string): Promise<{ address: string; network: string }> => {
-    if (USE_EDGE) {
-      // Read directly from Supabase DB via auth
-      const { data: { user } } = await supabase.auth.getUser(token)
-      if (!user) throw new Error('Not authenticated')
-      const { data, error } = await supabase
-        .from('users')
-        .select('walletAddress')
-        .eq('id', user.id)
-        .single()
-      if (error) throw new Error(error.message)
-      const row = data as { walletAddress: string }
-      return { address: row.walletAddress, network: 'Arc Testnet' }
-    }
-    return fetchServer('/wallet/deposit-address', token)
+  getDepositAddress: async (_token: string): Promise<{ address: string; network: string }> => {
+    // walletAddress is already on the ZakaUser object — callers should use user.walletAddress directly.
+    // This stub is kept for backwards compatibility with the local Bun server fallback.
+    return fetchServer('/wallet/deposit-address', _token)
   },
 
   send: async (token: string, body: { toPhone?: string; toAddress?: string; amount: string; note?: string }): Promise<{ txId: string; status: string; recipient?: string; isZakaUser?: boolean }> => {
@@ -109,36 +97,19 @@ export const api = {
   },
 
   getTransactions: async (token: string): Promise<{ transactions: ZakaTransaction[] }> => {
-    if (USE_EDGE) {
-      const { data: { user } } = await supabase.auth.getUser(token)
-      if (!user) throw new Error('Not authenticated')
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('userId', user.id)
-        .order('createdAt', { ascending: false })
-        .limit(50)
-      if (error) throw new Error(error.message)
-      return { transactions: (data ?? []) as ZakaTransaction[] }
-    }
+    if (USE_EDGE) return callEdge<{ transactions: ZakaTransaction[] }>('get-transactions', {}, token)
     return fetchServer('/wallet/transactions', token)
   },
 
-  getUsers: async (token: string, query: string): Promise<{ users: Array<{ name: string; phone: string }> }> => {
-    if (query.length < 3) return { users: [] }
-    if (USE_EDGE) {
-      const { data: { user } } = await supabase.auth.getUser(token)
-      if (!user) throw new Error('Not authenticated')
-      const { data, error } = await supabase
-        .from('users')
-        .select('name, phone')
-        .neq('id', user.id)
-        .or(`phone.ilike.%${query}%,name.ilike.%${query}%`)
-        .limit(8)
-      if (error) throw new Error(error.message)
-      return { users: (data ?? []) as Array<{ name: string; phone: string }> }
-    }
+  getUsers: async (token: string, query: string): Promise<{ users: Array<{ name: string; phone: string; walletAddress?: string }> }> => {
+    if (query.length < 2) return { users: [] }
+    if (USE_EDGE) return callEdge<{ users: Array<{ name: string; phone: string; walletAddress?: string }> }>('search-users', { query }, token)
     return fetchServer(`/users/search?q=${encodeURIComponent(query)}`, token)
+  },
+
+  resolveWalletAddress: async (token: string, walletAddress: string): Promise<{ user: { name: string; phone: string } | null }> => {
+    if (USE_EDGE) return callEdge<{ user: { name: string; phone: string } | null }>('search-users', { walletAddress }, token)
+    return { user: null }
   },
 
   txStatus: async (token: string, txId: string): Promise<{ status: string; txHash?: string }> => {
