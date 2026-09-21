@@ -169,47 +169,45 @@ function playSplashSound() {
 }
 
 export default function SplashScreen() {
-  const [lettersLanded, setLettersLanded] = useState(false)
-  const [soundUnlocked, setSoundUnlocked] = useState(false)
+  const [lettersLanded, setLettersLanded]   = useState(false)
+  const [soundUnlocked, setSoundUnlocked]   = useState(false)
+  // Gate: show "Tap to Enter" overlay until first gesture — this is the
+  // earliest possible moment any browser allows audio. Once tapped we
+  // immediately play the sound AND start the animation timeline.
+  const [gateOpen, setGateOpen]             = useState(false)
   const { isDark: dark } = useTheme()
 
-  // Pre-create the AudioContext on mount (silent) so it's ready for resume()
+  // Pre-create AudioContext on mount (silent) so resume() works instantly on tap
   useEffect(() => { getCtx() }, [])
 
-  // Unlock + play on first user touch/click (required by iOS & Android autoplay policy)
-  const unlockAudio = () => {
-    if (soundUnlocked) return
-    setSoundUnlocked(true)
-    playSplashSound()
+  const enterApp = () => {
+    if (gateOpen) return
+    setGateOpen(true)
+    // Resume + play inside the gesture handler — satisfies every browser policy
+    const ctx = getCtx()
+    if (ctx) {
+      ctx.resume().then(() => {
+        setSoundUnlocked(true)
+        playSplashSound()
+      }).catch(() => {
+        setSoundUnlocked(true)
+        playSplashSound()
+      })
+    }
+    // Start the letter-land timer from this moment
+    setTimeout(() => setLettersLanded(true), 2400)
   }
 
+  // Desktop fallback: if AudioContext is already running (no gesture needed),
+  // open the gate automatically and play immediately
   useEffect(() => {
-    // Letters all land by ~2.3s
-    const t = setTimeout(() => setLettersLanded(true), 2400)
-
-    // Desktop browsers allow AudioContext without a gesture —
-    // try immediately. Mobile needs the tap handler below (unlockAudio).
-    const tryDesktop = () => {
-      const ctx = getCtx()
-      if (!ctx) return
-      if (ctx.state === 'running') {
-        playSplashSound()
-      } else {
-        // Chrome desktop sometimes starts suspended until a click
-        const onGesture = () => {
-          playSplashSound()
-          document.removeEventListener('click', onGesture)
-          document.removeEventListener('keydown', onGesture)
-        }
-        document.addEventListener('click', onGesture, { once: true })
-        document.addEventListener('keydown', onGesture, { once: true })
-        // Also try resume immediately — works on most desktop Chromium
-        ctx.resume().then(() => { if (!soundUnlocked) playSplashSound() }).catch(() => {})
-      }
+    const ctx = getCtx()
+    if (ctx && ctx.state === 'running') {
+      setGateOpen(true)
+      setSoundUnlocked(true)
+      playSplashSound()
+      setTimeout(() => setLettersLanded(true), 2400)
     }
-    tryDesktop()
-
-    return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -220,9 +218,62 @@ export default function SplashScreen() {
     <div
       className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden select-none"
       style={{ background: dark ? bgDark : bgLight }}
-      onClick={unlockAudio}
-      onTouchStart={unlockAudio}
+      onClick={enterApp}
+      onTouchStart={enterApp}
     >
+      {/* ── TAP-TO-ENTER GATE — shown before first gesture ── */}
+      <AnimatePresence>
+        {!gateOpen && (
+          <motion.div
+            key="gate"
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center cursor-pointer"
+            style={{ background: dark ? 'rgba(6,16,29,0.97)' : 'rgba(238,243,255,0.97)', backdropFilter: 'blur(12px)' }}
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0, scale: 1.04 }}
+            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {/* Logo */}
+            <motion.div
+              className="display font-black mb-8 text-center"
+              style={{ fontSize: 'clamp(64px,18vw,88px)', letterSpacing: '-0.06em',
+                background: 'linear-gradient(135deg, #5fbeff 0%, #af8ff4 50%, #7ef1b3 100%)',
+                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+                filter: 'drop-shadow(0 0 32px rgba(95,190,255,0.5))' }}
+              animate={{ scale: [1, 1.03, 1] }}
+              transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+            >ZAKA</motion.div>
+
+            {/* Pulsing tap target */}
+            <motion.div className="relative flex items-center justify-center"
+              animate={{ scale: [1, 1.06, 1] }}
+              transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}>
+              {/* Ripple rings */}
+              {[0, 0.4, 0.8].map((dl, i) => (
+                <motion.div key={i} className="absolute rounded-full"
+                  style={{ width: 80 + i * 36, height: 80 + i * 36,
+                    border: '1.5px solid rgba(95,190,255,0.35)', borderRadius: '50%' }}
+                  animate={{ opacity: [0.6, 0], scale: [0.85, 1.2] }}
+                  transition={{ duration: 1.6, delay: dl, repeat: Infinity, ease: 'easeOut' }}
+                />
+              ))}
+              <div className="relative z-10 flex size-16 items-center justify-center rounded-full"
+                style={{ background: 'linear-gradient(135deg, #5fbeff, #af8ff4)',
+                  boxShadow: '0 0 40px rgba(95,190,255,0.6)' }}>
+                <svg viewBox="0 0 24 24" fill="none" className="size-7 text-white" stroke="currentColor" strokeWidth={2.2}>
+                  <polygon points="5,3 19,12 5,21" fill="currentColor" />
+                </svg>
+              </div>
+            </motion.div>
+
+            <motion.p className="mt-7 text-sm font-semibold uppercase tracking-[0.22em]"
+              style={{ color: dark ? 'rgba(200,222,255,0.55)' : 'rgba(18,45,69,0.45)' }}
+              animate={{ opacity: [0.4, 1, 0.4] }}
+              transition={{ duration: 1.8, repeat: Infinity }}>
+              Tap to enter
+            </motion.p>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* ── Ambient blobs ── */}
       {[
         { w:580, h:580, t:'-14%', l:'-14%', c:'rgba(95,190,255,0.30)', bx:[0,26,0], by:[0,20,0], d:11 },
@@ -364,18 +415,18 @@ export default function SplashScreen() {
         </motion.div>
       </div>
 
-      {/* Tap-to-enable hint — shown only on touch devices before first tap */}
+      {/* Sound unlocked indicator — brief flash after gate tap */}
       <AnimatePresence>
-        {!soundUnlocked && (
+        {soundUnlocked && gateOpen && (
           <motion.p
             className="fixed bottom-8 text-[10px] font-semibold uppercase tracking-[0.22em] pointer-events-none"
-            style={{ color: dark ? 'rgba(200,222,255,0.28)' : 'rgba(18,45,69,0.22)' }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 0.8, 0.4] }}
+            style={{ color: dark ? 'rgba(200,222,255,0.35)' : 'rgba(18,45,69,0.28)' }}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: [0, 0.9, 0] }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 1.5, delay: 1.0, repeat: Infinity, repeatType: 'reverse' }}
+            transition={{ duration: 2.2, delay: 0.2 }}
           >
-            Tap anywhere for sound
+            ♪ Sound on
           </motion.p>
         )}
       </AnimatePresence>
