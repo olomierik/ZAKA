@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Copy, Check, QrCode } from 'lucide-react'
+import { ArrowLeft, Copy, Check, Download } from 'lucide-react'
 import { toast } from 'sonner'
+import QRCode from 'qrcode'
 import { api } from '../lib/api'
 import type { ZakaUser } from '../types/zaka'
 
@@ -30,9 +31,11 @@ export default function ReceiveScreen({ user, token, onBack }: Props) {
   const [network, setNetwork] = useState('')
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState<'phone' | 'address' | null>(null)
+  const [qrDataUrl, setQrDataUrl] = useState('')
+  const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
-    const fetch = async () => {
+    const load = async () => {
       try {
         const res = await api.getDepositAddress(token)
         setDepositAddress(res.address)
@@ -43,8 +46,23 @@ export default function ReceiveScreen({ user, token, onBack }: Props) {
         setLoading(false)
       }
     }
-    void fetch()
+    void load()
   }, [token])
+
+  // Generate QR once we have the address
+  useEffect(() => {
+    if (!depositAddress) return
+    const qrContent = `ethereum:${depositAddress}@5042002` // EIP-681 Arc Testnet
+    QRCode.toDataURL(qrContent, {
+      width: 280,
+      margin: 2,
+      color: { dark: '#122d45', light: '#ffffff' },
+      errorCorrectionLevel: 'M',
+    }).then(setQrDataUrl).catch(() => {
+      // fallback: raw address
+      void QRCode.toDataURL(depositAddress, { width: 280, margin: 2 }).then(setQrDataUrl)
+    })
+  }, [depositAddress])
 
   const copy = async (text: string, key: 'phone' | 'address') => {
     await navigator.clipboard.writeText(text)
@@ -53,11 +71,17 @@ export default function ReceiveScreen({ user, token, onBack }: Props) {
     setTimeout(() => setCopied(null), 2000)
   }
 
+  const downloadQR = () => {
+    if (!qrDataUrl) return
+    const a = document.createElement('a')
+    a.href = qrDataUrl
+    a.download = `zaka-${user.name.replace(/\s+/g, '-').toLowerCase()}-wallet-qr.png`
+    a.click()
+    toast.success('QR code downloaded')
+  }
+
   return (
-    <div
-      className="relative min-h-dvh overflow-x-hidden"
-      style={{ background: 'var(--bg-gradient)' }}
-    >
+    <div className="relative min-h-dvh overflow-x-hidden" style={{ background: 'var(--bg-gradient)' }}>
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div style={{ position: 'absolute', top: '5%', left: '10%', width: 260, height: 260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(26,128,71,0.14) 0%, transparent 70%)', filter: 'blur(55px)' }} />
       </div>
@@ -86,11 +110,11 @@ export default function ReceiveScreen({ user, token, onBack }: Props) {
               Share your ZAKA ID
             </p>
             <div className="flex items-center gap-4 mb-4">
-              <div className="flex size-14 items-center justify-center rounded-2xl text-xl font-bold text-white" style={{ background: 'var(--accent)' }}>
+              <div className="flex size-14 items-center justify-center rounded-2xl text-xl font-bold text-white shrink-0" style={{ background: 'var(--accent)' }}>
                 {user.name[0]}
               </div>
-              <div>
-                <p className="font-bold text-base" style={{ color: 'var(--ink)' }}>{user.name}</p>
+              <div className="min-w-0">
+                <p className="font-bold text-base truncate" style={{ color: 'var(--ink)' }}>{user.name}</p>
                 <p className="text-sm" style={{ color: 'var(--muted)' }}>{user.phone}</p>
               </div>
             </div>
@@ -101,52 +125,63 @@ export default function ReceiveScreen({ user, token, onBack }: Props) {
             >
               <span className="text-sm font-medium" style={{ color: 'var(--ink)' }}>{user.phone}</span>
               {copied === 'phone'
-                ? <Check className="size-4 text-green-600" />
-                : <Copy className="size-4" style={{ color: 'var(--subtle)' }} />
-              }
+                ? <Check className="size-4 text-green-600 shrink-0" />
+                : <Copy className="size-4 shrink-0" style={{ color: 'var(--subtle)' }} />}
             </button>
             <p className="mt-3 text-xs text-center" style={{ color: 'var(--subtle)' }}>
               Anyone on ZAKA can send money to your phone number
             </p>
           </section>
 
-          {/* On-chain deposit address */}
+          {/* QR code card */}
           <section className="rounded-3xl p-5" style={glass.card}>
-            <div className="flex items-center gap-2 mb-4">
-              <QrCode className="size-4" style={{ color: 'var(--accent)' }} />
+            <div className="flex items-center justify-between mb-4">
               <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
-                On-chain Deposit Address
+                Wallet QR Code
               </p>
+              {qrDataUrl && (
+                <button
+                  onClick={downloadQR}
+                  className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all hover:scale-[1.03] active:scale-[0.97]"
+                  style={{ background: 'rgba(18,45,69,0.07)', color: 'var(--ink-2)' }}
+                >
+                  <Download className="size-3.5" />
+                  Download
+                </button>
+              )}
             </div>
 
-            {loading ? (
-              <div className="h-12 rounded-2xl animate-pulse" style={{ background: 'rgba(18,45,69,0.07)' }} />
+            {loading || !qrDataUrl ? (
+              <div className="mx-auto h-56 w-56 rounded-2xl animate-pulse" style={{ background: 'rgba(18,45,69,0.07)' }} />
             ) : (
-              <>
-                <button
-                  onClick={() => void copy(depositAddress, 'address')}
-                  className="w-full flex items-center justify-between rounded-2xl px-4 py-3 transition-all hover:bg-black/5 active:scale-[0.98] mb-2"
-                  style={glass.inner}
-                >
-                  <span className="mono text-xs truncate pr-2" style={{ color: 'var(--ink)' }}>
-                    {depositAddress}
-                  </span>
-                  {copied === 'address'
-                    ? <Check className="size-4 text-green-600 shrink-0" />
-                    : <Copy className="size-4 shrink-0" style={{ color: 'var(--subtle)' }} />
-                  }
-                </button>
-                <p className="text-xs" style={{ color: 'var(--subtle)' }}>
-                  Network: <span className="font-semibold" style={{ color: 'var(--ink-2)' }}>{network || 'Arc Testnet'}</span> — USDC only
+              <div className="flex flex-col items-center gap-3">
+                <div className="rounded-2xl overflow-hidden p-3" style={{ background: 'white', boxShadow: '0 4px 20px rgba(18,45,69,0.10)' }}>
+                  <img src={qrDataUrl} alt="Wallet QR code" width={224} height={224} className="block" />
+                </div>
+                <p className="text-xs text-center" style={{ color: 'var(--subtle)' }}>
+                  Scan to send USDC to {user.name.split(' ')[0]}'s wallet
                 </p>
-              </>
+              </div>
             )}
 
-            <div className="mt-4 rounded-2xl p-3" style={{ background: 'rgba(26,128,71,0.07)', border: '1px solid rgba(26,128,71,0.15)' }}>
-              <p className="text-xs" style={{ color: 'var(--success)' }}>
-                Send USDC from any exchange or wallet to this address. It will appear in your ZAKA balance within minutes.
-              </p>
-            </div>
+            {/* Address row */}
+            {!loading && depositAddress && (
+              <button
+                onClick={() => void copy(depositAddress, 'address')}
+                className="mt-4 w-full flex items-center justify-between rounded-2xl px-4 py-3 transition-all hover:bg-black/5 active:scale-[0.98]"
+                style={glass.inner}
+              >
+                <span className="mono text-xs truncate pr-2 flex-1 text-left" style={{ color: 'var(--ink)' }}>
+                  {depositAddress}
+                </span>
+                {copied === 'address'
+                  ? <Check className="size-4 text-green-600 shrink-0" />
+                  : <Copy className="size-4 shrink-0" style={{ color: 'var(--subtle)' }} />}
+              </button>
+            )}
+            <p className="mt-2 text-xs" style={{ color: 'var(--subtle)' }}>
+              Network: <span className="font-semibold" style={{ color: 'var(--ink-2)' }}>{network || 'Arc Testnet'}</span> — USDC only
+            </p>
           </section>
 
           {/* Tips */}
@@ -154,18 +189,20 @@ export default function ReceiveScreen({ user, token, onBack }: Props) {
             <p className="text-xs font-bold mb-2" style={{ color: 'var(--ink)' }}>Tips</p>
             <ul className="space-y-1.5">
               {[
-                'Only send USDC to this address',
+                'Only send USDC on Arc Testnet to this address',
                 'Minimum deposit: 1 USDC',
                 'Deposits reflect within 1–3 minutes',
               ].map((tip) => (
                 <li key={tip} className="flex items-start gap-2 text-xs" style={{ color: 'var(--muted)' }}>
-                  <span className="mt-0.5 size-1.5 shrink-0 rounded-full" style={{ background: 'var(--accent)', marginTop: 5 }} />
+                  <span className="shrink-0 rounded-full" style={{ background: 'var(--accent)', width: 6, height: 6, marginTop: 5 }} />
                   {tip}
                 </li>
               ))}
             </ul>
           </section>
         </motion.div>
+        {/* hidden canvas used by qrcode lib */}
+        <canvas ref={canvasRef} className="hidden" />
       </div>
     </div>
   )

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { loadSession } from './lib/auth'
+import { useNotifications } from './hooks/useNotifications'
 import type { ZakaUser, AppScreen } from './types/zaka'
 
 import SplashScreen from './components/SplashScreen'
@@ -41,6 +42,9 @@ export default function App() {
   const [user, setUser] = useState<ZakaUser | null>(null)
   const [token, setToken] = useState<string>('')
   const [balance, setBalance] = useState('0.00')
+
+  // Push notifications for incoming transactions
+  useNotifications(token, user !== null)
 
   // Show splash for 3.6 s so all animations complete, then route to auth or home
   useEffect(() => {

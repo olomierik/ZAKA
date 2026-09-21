@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Search, Check, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../lib/api'
+import { normalisePhone } from '../lib/phone'
 import type { ZakaUser } from '../types/zaka'
 
 interface Props {
@@ -66,7 +67,7 @@ export default function SendScreen({ user: _user, token, onBack, onSuccess }: Pr
   const handleSend = async () => {
     setLoading(true)
     try {
-      const res = await api.send(token, { toPhone: phone, amount, note: note || undefined })
+      const res = await api.send(token, { toPhone: normalisePhone(phone), amount, note: note || undefined })
       setTxId(res.txId)
       setStep('success')
     } catch (err) {

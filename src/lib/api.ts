@@ -124,4 +124,14 @@ export const api = {
     if (USE_EDGE) return callEdge<{ status: string; txHash?: string }>('tx-status', { txId }, token)
     return fetchServer(`/wallet/tx/${txId}`, token)
   },
+
+  requestPinReset: async (email: string): Promise<{ message: string }> => {
+    if (USE_EDGE) return callEdge<{ message: string }>('reset-pin', { email })
+    return callServer('/auth/reset-pin', { email })
+  },
+
+  confirmPinReset: async (email: string, newPin: string, accessToken: string): Promise<{ message: string }> => {
+    if (USE_EDGE) return callEdge<{ message: string }>('reset-pin', { email, newPin, accessToken })
+    return callServer('/auth/reset-pin-confirm', { email, newPin, accessToken })
+  },
 }

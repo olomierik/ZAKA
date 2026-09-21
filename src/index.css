@@ -29,6 +29,24 @@ body {
   margin: 0;
   font-family: 'DM Sans', sans-serif;
   min-height: 100dvh;
+  /* Prevent iOS bounce / overscroll shake */
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+  /* Prevent text size adjust on orientation change */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Prevent tap highlight flicker on mobile */
+button, a, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Stable full-height container on iOS Safari */
+#root {
+  min-height: 100dvh;
+  overflow-x: hidden;
 }
 
 .display {
