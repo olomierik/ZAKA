@@ -51,127 +51,140 @@ function PulseRing({ targetSize, delay, color }: { targetSize: number; delay: nu
   )
 }
 
+// Shared AudioContext — created once so iOS resume() works
+let _ctx: AudioContext | null = null
+function getCtx(): AudioContext | null {
+  try {
+    const AC = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!AC) return null
+    if (!_ctx) _ctx = new AC()
+    return _ctx
+  } catch { return null }
+}
+
 // ── Web Audio: synthesised intro chord + sweep ──
 function playSplashSound() {
   try {
-    const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    if (!AudioCtx) return
-    const ctx = new AudioCtx()
+    const ctx = getCtx()
+    if (!ctx) return
 
-    const master = ctx.createGain()
-    master.gain.setValueAtTime(0, ctx.currentTime)
-    master.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.3)
-    master.gain.setValueAtTime(0.18, ctx.currentTime + 7.5)
-    master.gain.linearRampToValueAtTime(0, ctx.currentTime + 9.0)
-    master.connect(ctx.destination)
+    // iOS always starts context in 'suspended' — resume() must be called
+    // inside (or immediately after) a user-gesture handler.
+    const run = () => {
+      const now = ctx.currentTime
 
-    const reverb = ctx.createConvolver()
-    const rLen = ctx.sampleRate * 2.5
-    const rBuf = ctx.createBuffer(2, rLen, ctx.sampleRate)
-    for (let ch = 0; ch < 2; ch++) {
-      const d = rBuf.getChannelData(ch)
-      for (let i = 0; i < rLen; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / rLen, 2.4)
+      const master = ctx.createGain()
+      master.gain.setValueAtTime(0, now)
+      master.gain.linearRampToValueAtTime(0.20, now + 0.3)
+      master.gain.setValueAtTime(0.20, now + 7.5)
+      master.gain.linearRampToValueAtTime(0, now + 9.0)
+      master.connect(ctx.destination)
+
+      // Reverb impulse
+      const reverb = ctx.createConvolver()
+      const rLen = ctx.sampleRate * 2.5
+      const rBuf = ctx.createBuffer(2, rLen, ctx.sampleRate)
+      for (let ch = 0; ch < 2; ch++) {
+        const data = rBuf.getChannelData(ch)
+        for (let i = 0; i < rLen; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / rLen, 2.4)
+      }
+      reverb.buffer = rBuf
+      reverb.connect(master)
+
+      // E-minor-major7 chord arpeggios
+      const notes = [
+        { freq: 164.81, t: 0.0,  dur: 8.0, vol: 0.55 },
+        { freq: 246.94, t: 0.18, dur: 7.8, vol: 0.45 },
+        { freq: 329.63, t: 0.36, dur: 7.5, vol: 0.40 },
+        { freq: 392.00, t: 0.55, dur: 7.0, vol: 0.35 },
+        { freq: 493.88, t: 0.75, dur: 6.5, vol: 0.28 },
+        { freq: 659.26, t: 1.0,  dur: 5.5, vol: 0.22 },
+        { freq: 783.99, t: 1.3,  dur: 4.5, vol: 0.16 },
+      ]
+      notes.forEach(({ freq, t, dur, vol }) => {
+        const osc = ctx.createOscillator(); const g = ctx.createGain()
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(freq, now)
+        g.gain.setValueAtTime(0, now + t)
+        g.gain.linearRampToValueAtTime(vol, now + t + 0.25)
+        g.gain.setValueAtTime(vol * 0.7, now + t + dur * 0.6)
+        g.gain.linearRampToValueAtTime(0, now + t + dur)
+        osc.connect(g); g.connect(reverb)
+        osc.start(now + t); osc.stop(now + t + dur + 0.1)
+      })
+
+      // Bright triangle ping arpeggio when letters land
+      ;[{ freq: 1174.66, t: 2.0, dur: 1.2 }, { freq: 1318.51, t: 2.15, dur: 1.0 }, { freq: 1567.98, t: 2.30, dur: 0.9 }]
+        .forEach(({ freq, t, dur }) => {
+          const osc = ctx.createOscillator(); const g = ctx.createGain()
+          osc.type = 'triangle'
+          osc.frequency.setValueAtTime(freq, now + t)
+          g.gain.setValueAtTime(0, now + t)
+          g.gain.linearRampToValueAtTime(0.12, now + t + 0.04)
+          g.gain.exponentialRampToValueAtTime(0.0001, now + t + dur)
+          osc.connect(g); g.connect(master)
+          osc.start(now + t); osc.stop(now + t + dur + 0.05)
+        })
+
+      // Sawtooth whoosh on each letter drop
+      ZAKA_LETTERS.forEach(({ delay: ld }) => {
+        const osc = ctx.createOscillator()
+        const filt = ctx.createBiquadFilter(); const g = ctx.createGain()
+        osc.type = 'sawtooth'
+        osc.frequency.setValueAtTime(80, now + ld)
+        osc.frequency.exponentialRampToValueAtTime(600, now + ld + 0.4)
+        filt.type = 'bandpass'; filt.frequency.setValueAtTime(300, now + ld); filt.Q.value = 3
+        g.gain.setValueAtTime(0, now + ld)
+        g.gain.linearRampToValueAtTime(0.08, now + ld + 0.05)
+        g.gain.exponentialRampToValueAtTime(0.0001, now + ld + 0.45)
+        osc.connect(filt); filt.connect(g); g.connect(reverb)
+        osc.start(now + ld); osc.stop(now + ld + 0.5)
+      })
+
+      // Soft sine chime on each subtitle line
+      ;[3.2, 4.1, 5.0, 5.9].forEach((t, i) => {
+        const freq = [523.25, 587.33, 659.26, 783.99][i]
+        const osc = ctx.createOscillator(); const g = ctx.createGain()
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(freq, now + t)
+        g.gain.setValueAtTime(0, now + t)
+        g.gain.linearRampToValueAtTime(0.10, now + t + 0.05)
+        g.gain.exponentialRampToValueAtTime(0.0001, now + t + 1.2)
+        osc.connect(g); g.connect(reverb)
+        osc.start(now + t); osc.stop(now + t + 1.3)
+      })
+
+      setTimeout(() => { void ctx.close(); _ctx = null }, 10500)
+    } // end run()
+
+    // Resume handles iOS suspended state; on desktop ctx is already running
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(run).catch(() => { /* blocked */ })
+    } else {
+      run()
     }
-    reverb.buffer = rBuf
-    reverb.connect(master)
-
-    // Chord: E-minor-major7 spread — lush fintech feel
-    const notes = [
-      { freq: 164.81, t: 0.0,  dur: 8.0, vol: 0.55 },  // E3
-      { freq: 246.94, t: 0.18, dur: 7.8, vol: 0.45 },  // B3
-      { freq: 329.63, t: 0.36, dur: 7.5, vol: 0.40 },  // E4
-      { freq: 392.00, t: 0.55, dur: 7.0, vol: 0.35 },  // G4
-      { freq: 493.88, t: 0.75, dur: 6.5, vol: 0.28 },  // B4
-      { freq: 659.26, t: 1.0,  dur: 5.5, vol: 0.22 },  // E5  (high shimmer)
-      { freq: 783.99, t: 1.3,  dur: 4.5, vol: 0.16 },  // G5  (sparkle)
-    ]
-
-    notes.forEach(({ freq, t, dur, vol }) => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = 'sine'
-      osc.frequency.setValueAtTime(freq, ctx.currentTime)
-      gain.gain.setValueAtTime(0, ctx.currentTime + t)
-      gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + t + 0.25)
-      gain.gain.setValueAtTime(vol * 0.7, ctx.currentTime + t + dur * 0.6)
-      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + t + dur)
-      osc.connect(gain)
-      gain.connect(reverb)
-      osc.start(ctx.currentTime + t)
-      osc.stop(ctx.currentTime + t + dur + 0.1)
-    })
-
-    // Bright impact "ping" at letter-land moment (~2.0s) — arpeggio
-    const pings = [
-      { freq: 1174.66, t: 2.0, dur: 1.2 },  // D6
-      { freq: 1318.51, t: 2.15, dur: 1.0 }, // E6
-      { freq: 1567.98, t: 2.30, dur: 0.9 }, // G6
-    ]
-    pings.forEach(({ freq, t, dur }) => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = 'triangle'
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + t)
-      gain.gain.setValueAtTime(0, ctx.currentTime + t)
-      gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + t + 0.04)
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t + dur)
-      osc.connect(gain)
-      gain.connect(master)
-      osc.start(ctx.currentTime + t)
-      osc.stop(ctx.currentTime + t + dur + 0.05)
-    })
-
-    // Sweeping filter whoosh on each letter drop
-    ZAKA_LETTERS.forEach(({ delay: ld }) => {
-      const osc = ctx.createOscillator()
-      const filter = ctx.createBiquadFilter()
-      const gain = ctx.createGain()
-      osc.type = 'sawtooth'
-      osc.frequency.setValueAtTime(80, ctx.currentTime + ld)
-      osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + ld + 0.4)
-      filter.type = 'bandpass'
-      filter.frequency.setValueAtTime(300, ctx.currentTime + ld)
-      filter.Q.value = 3
-      gain.gain.setValueAtTime(0, ctx.currentTime + ld)
-      gain.gain.linearRampToValueAtTime(0.08, ctx.currentTime + ld + 0.05)
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + ld + 0.45)
-      osc.connect(filter)
-      filter.connect(gain)
-      gain.connect(reverb)
-      osc.start(ctx.currentTime + ld)
-      osc.stop(ctx.currentTime + ld + 0.5)
-    })
-
-    // Text-line soft chime at each subtitle beat
-    const chimes = [3.2, 4.1, 5.0, 5.9]
-    chimes.forEach((t, i) => {
-      const freq = [523.25, 587.33, 659.26, 783.99][i] // C5 D5 E5 G5
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = 'sine'
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + t)
-      gain.gain.setValueAtTime(0, ctx.currentTime + t)
-      gain.gain.linearRampToValueAtTime(0.10, ctx.currentTime + t + 0.05)
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t + 1.2)
-      osc.connect(gain)
-      gain.connect(reverb)
-      osc.start(ctx.currentTime + t)
-      osc.stop(ctx.currentTime + t + 1.3)
-    })
-
-    // Gently close context after 10 s
-    setTimeout(() => { void ctx.close() }, 10000)
   } catch {
-    // Audio blocked — silent fail, app works fine
+    // Silent fail — app works fine without sound
   }
 }
 
 export default function SplashScreen() {
   const [lettersLanded, setLettersLanded] = useState(false)
+  const [soundUnlocked, setSoundUnlocked] = useState(false)
   const { isDark: dark } = useTheme()
 
+  // Pre-create the AudioContext on mount (silent) so it's ready for resume()
+  useEffect(() => { getCtx() }, [])
+
+  // Unlock + play on first user touch/click (required by iOS & Android autoplay policy)
+  const unlockAudio = () => {
+    if (soundUnlocked) return
+    setSoundUnlocked(true)
+    playSplashSound()
+  }
+
   useEffect(() => {
-    // Try to play sound immediately (works if page loaded via user gesture)
+    // Desktop: try playing immediately (no gesture required on most desktop browsers)
     playSplashSound()
 
     // Letters all land by ~2.3s — sub-lines start at 3.2s
@@ -186,6 +199,8 @@ export default function SplashScreen() {
     <div
       className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden select-none"
       style={{ background: dark ? bgDark : bgLight }}
+      onClick={unlockAudio}
+      onTouchStart={unlockAudio}
     >
       {/* ── Ambient blobs ── */}
       {[
@@ -327,6 +342,22 @@ export default function SplashScreen() {
           </motion.p>
         </motion.div>
       </div>
+
+      {/* Tap-to-enable hint — shown only on touch devices before first tap */}
+      <AnimatePresence>
+        {!soundUnlocked && (
+          <motion.p
+            className="fixed bottom-8 text-[10px] font-semibold uppercase tracking-[0.22em] pointer-events-none"
+            style={{ color: dark ? 'rgba(200,222,255,0.28)' : 'rgba(18,45,69,0.22)' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0, 0.8, 0.4] }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.5, delay: 1.0, repeat: Infinity, repeatType: 'reverse' }}
+          >
+            Tap anywhere for sound
+          </motion.p>
+        )}
+      </AnimatePresence>
 
       {/* Bottom spectral sweep */}
       <motion.div
