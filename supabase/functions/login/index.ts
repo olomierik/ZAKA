@@ -36,7 +36,9 @@ Deno.serve(async (req) => {
     const userRow = profiles[0]
 
     const fakeEmail = `${phone.replace(/\D/g, '')}@zaka.app`
-    const session = await signIn(fakeEmail, pin)
+    // Must match the derived password used at registration
+    const authPassword = `zaka_${pin}_${phone.replace(/\D/g, '').slice(-4)}`
+    const session = await signIn(fakeEmail, authPassword)
     if (session.error) {
       return Response.json({ error: 'Invalid PIN' }, { status: 401, headers: CORS })
     }

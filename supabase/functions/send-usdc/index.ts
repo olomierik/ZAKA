@@ -1,10 +1,13 @@
-// Edge Function: send-usdc
+// Edge Function: send-usdc — transfers USDC between ZAKA users via Circle developer wallets
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { encryptEntitySecret } from '../_shared/circle.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
+
+const CIRCLE_BASE = 'https://api.circle.com/v1/w3s'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -18,7 +21,6 @@ Deno.serve(async (req) => {
     const { toPhone, amount, note } = await req.json() as { toPhone: string; amount: string; note?: string }
     if (!toPhone || !amount) return Response.json({ error: 'toPhone and amount required' }, { status: 400, headers: corsHeaders })
 
-    // Get sender + recipient profiles
     const { data: sender } = await supabase.from('users').select('*').eq('id', user.id).single()
     const { data: recipient } = await supabase.from('users').select('*').eq('phone', toPhone).maybeSingle()
     if (!recipient) return Response.json({ error: 'Recipient not found on ZAKA' }, { status: 404, headers: corsHeaders })
@@ -32,8 +34,8 @@ Deno.serve(async (req) => {
     let txHash: string | undefined
 
     if (apiKey && entitySecret && senderProfile && !senderProfile.walletId.startsWith('demo-')) {
-      // Get USDC token address
-      const balRes = await fetch(`https://api.circle.com/v1/w3s/wallets/${senderProfile.walletId}/balances`, {
+      // Get USDC token address from sender wallet
+      const balRes = await fetch(`${CIRCLE_BASE}/wallets/${senderProfile.walletId}/balances`, {
         headers: { Authorization: `Bearer ${apiKey}` },
       })
       const balData = await balRes.json() as { data?: { tokenBalances?: Array<{ token?: { symbol?: string; tokenAddress?: string }; amount?: string }> } }
@@ -42,21 +44,41 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'No USDC in wallet. Please deposit first.' }, { status: 400, headers: corsHeaders })
       }
 
-      const txRes = await fetch('https://api.circle.com/v1/w3s/developer/transactions/transfer', {
+      // Encrypt entity secret fresh for this request
+      const ciphertext = await encryptEntitySecret(entitySecret, apiKey)
+
+      const txRes = await fetch(`${CIRCLE_BASE}/developer/transactions/transfer`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          idempotencyKey: crypto.randomUUID(),
           walletId: senderProfile.walletId,
           tokenAddress: usdcToken.token.tokenAddress,
           destinationAddress: recipientProfile.walletAddress,
           amounts: [amount],
           fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
-          entitySecretCiphertext: entitySecret,
-          idempotencyKey: crypto.randomUUID(),
+          entitySecretCiphertext: ciphertext,
         }),
       })
-      const txData = await txRes.json() as { data?: { id?: string } }
-      circleTxId = txData?.data?.id ?? circleTxId
+      const txData = await txRes.json() as { data?: { id?: string }; message?: string }
+      if (!txData?.data?.id) {
+        console.error('[send-usdc] Circle tx error:', JSON.stringify(txData))
+        return Response.json({ error: txData.message ?? 'Transfer initiation failed' }, { status: 500, headers: corsHeaders })
+      }
+      circleTxId = txData.data.id
+
+      // Poll briefly for a terminal state (up to 20s)
+      const deadline = Date.now() + 20_000
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 2000))
+        const statusRes = await fetch(`${CIRCLE_BASE}/transactions/${circleTxId}`, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        })
+        const statusData = await statusRes.json() as { data?: { transaction?: { state?: string; txHash?: string } } }
+        const state = statusData?.data?.transaction?.state ?? ''
+        txHash = statusData?.data?.transaction?.txHash ?? undefined
+        if (['COMPLETE', 'FAILED', 'CANCELLED', 'DENIED'].includes(state)) break
+      }
     }
 
     const now = new Date().toISOString()
@@ -68,6 +90,7 @@ Deno.serve(async (req) => {
     return Response.json({ txId: circleTxId, status: 'complete' }, { headers: corsHeaders })
 
   } catch (e) {
+    console.error('[send-usdc]', e)
     return Response.json({ error: e instanceof Error ? e.message : 'Transfer failed' }, { status: 500, headers: corsHeaders })
   }
 })
