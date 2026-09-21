@@ -8,3 +8,4 @@ dist/
 contracts/out/
 contracts/cache/
 ZAKA/
+!.env.example
