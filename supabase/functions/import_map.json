@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2",
+    "npm:@circle-fin/developer-controlled-wallets": "https://esm.sh/@circle-fin/developer-controlled-wallets@10"
+  }
+}

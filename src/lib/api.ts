@@ -1,68 +1,88 @@
-// ZAKA API client — talks to the Express backend over /api proxy
+/**
+ * ZAKA API client — uses Supabase directly for data,
+ * and calls Supabase Edge Functions for Circle SDK operations.
+ */
+import { supabase } from './supabase'
+import type { ZakaUser, ZakaTransaction } from '../types/zaka'
 
-const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
+// ── helpers ───────────────────────────────────────────────────────────────────
 
-export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}/api${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  })
-  const data = await res.json() as Record<string, unknown>
-  if (!res.ok) throw new Error(typeof data['error'] === 'string' ? data['error'] : 'Request failed')
-  return data as T
+async function callEdge<T>(fn: string, body: Record<string, unknown>, token?: string): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = await supabase.functions.invoke(fn, { body, headers }) as { data: unknown; error: unknown }
+  if (result.error) throw new Error((result.error as { message?: string }).message ?? 'Edge function error')
+  return result.data as T
 }
 
+// ── auth ──────────────────────────────────────────────────────────────────────
+
 export const api = {
-  // Auth
-  register: (body: { name: string; phone: string; pin: string }) =>
-    apiFetch<{ user: import('../types/zaka').ZakaUser; token: string }>('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
+  register: async (body: { name: string; phone: string; pin: string }): Promise<{ user: ZakaUser; token: string }> => {
+    return callEdge<{ user: ZakaUser; token: string }>('register', body)
+  },
 
-  login: (body: { phone: string; pin: string }) =>
-    apiFetch<{ user: import('../types/zaka').ZakaUser; token: string }>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
+  login: async (body: { phone: string; pin: string }): Promise<{ user: ZakaUser; token: string }> => {
+    return callEdge<{ user: ZakaUser; token: string }>('login', body)
+  },
 
-  // Wallet
-  getBalance: (token: string) =>
-    apiFetch<{ usdc: string }>('/wallet/balance', {
-      headers: { Authorization: `Bearer ${token}` },
-    }),
+  // ── wallet ────────────────────────────────────────────────────────────────
 
-  getDepositAddress: (token: string) =>
-    apiFetch<{ address: string; network: string }>('/wallet/deposit-address', {
-      headers: { Authorization: `Bearer ${token}` },
-    }),
+  getBalance: async (token: string): Promise<{ usdc: string }> => {
+    return callEdge<{ usdc: string }>('get-balance', {}, token)
+  },
 
-  send: (token: string, body: { toPhone: string; amount: string; note?: string }) =>
-    apiFetch<{ txId: string; status: string }>('/wallet/send', {
-      method: 'POST',
-      body: JSON.stringify(body),
-      headers: { Authorization: `Bearer ${token}` },
-    }),
+  getDepositAddress: async (token: string): Promise<{ address: string; network: string }> => {
+    // Read wallet address directly from DB — no secret needed
+    const { data: { user } } = await supabase.auth.getUser(token)
+    if (!user) throw new Error('Not authenticated')
+    const { data, error } = await supabase
+      .from('users')
+      .select('walletAddress')
+      .eq('id', user.id)
+      .single()
+    if (error) throw new Error(error.message)
+    const row = data
+    return { address: row.walletAddress, network: 'Arc Testnet' }
+  },
 
-  withdraw: (token: string, body: { phone: string; amount: string; provider: string }) =>
-    apiFetch<{ reference: string; status: string; message: string }>('/wallet/withdraw', {
-      method: 'POST',
-      body: JSON.stringify(body),
-      headers: { Authorization: `Bearer ${token}` },
-    }),
+  send: async (token: string, body: { toPhone: string; amount: string; note?: string }): Promise<{ txId: string; status: string }> => {
+    return callEdge<{ txId: string; status: string }>('send-usdc', body, token)
+  },
 
-  getTransactions: (token: string) =>
-    apiFetch<{ transactions: import('../types/zaka').ZakaTransaction[] }>('/wallet/transactions', {
-      headers: { Authorization: `Bearer ${token}` },
-    }),
+  withdraw: async (token: string, body: { phone: string; amount: string; provider: string }): Promise<{ reference: string; status: string; message: string }> => {
+    return callEdge<{ reference: string; status: string; message: string }>('withdraw', body, token)
+  },
 
-  getUsers: (token: string, query: string) =>
-    apiFetch<{ users: Array<{ name: string; phone: string }> }>(`/users/search?q=${encodeURIComponent(query)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    }),
+  getTransactions: async (token: string): Promise<{ transactions: ZakaTransaction[] }> => {
+    const { data: { user } } = await supabase.auth.getUser(token)
+    if (!user) throw new Error('Not authenticated')
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('userId', user.id)
+      .order('createdAt', { ascending: false })
+      .limit(50)
+    if (error) throw new Error(error.message)
+    return { transactions: (data ?? []) as ZakaTransaction[] }
+  },
 
-  txStatus: (token: string, txId: string) =>
-    apiFetch<{ status: string; txHash?: string }>(`/wallet/tx/${txId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    }),
+  getUsers: async (token: string, query: string): Promise<{ users: Array<{ name: string; phone: string }> }> => {
+    if (query.length < 3) return { users: [] }
+    const { data: { user } } = await supabase.auth.getUser(token)
+    if (!user) throw new Error('Not authenticated')
+    const { data, error } = await supabase
+      .from('users')
+      .select('name, phone')
+      .neq('id', user.id)
+      .or(`phone.ilike.%${query}%,name.ilike.%${query}%`)
+      .limit(8)
+    if (error) throw new Error(error.message)
+    return { users: (data ?? []) }
+  },
+
+  txStatus: async (token: string, txId: string): Promise<{ status: string; txHash?: string }> => {
+    return callEdge<{ status: string; txHash?: string }>('tx-status', { txId }, token)
+  },
 }
