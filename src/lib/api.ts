@@ -15,20 +15,31 @@ const USE_EDGE = !!(import.meta.env.VITE_SUPABASE_URL as string | undefined)
 async function callEdge<T>(fn: string, body: Record<string, unknown>, token?: string): Promise<T> {
   const headers: Record<string, string> = {}
   if (token) headers['Authorization'] = `Bearer ${token}`
-  const result = await supabase.functions.invoke(fn, { body, headers }) as { data: T | null; error: { message?: string; context?: { json?: () => Promise<unknown> } } | null }
-  if (result.error) {
-    // Try to extract a message from the error body
-    let msg = result.error.message ?? 'Edge function error'
-    try {
-      if (result.error.context?.json) {
-        const body = await result.error.context.json() as { error?: string }
-        if (body?.error) msg = body.error
-      }
-    } catch { /* ignore */ }
-    throw new Error(msg)
+
+  // Use raw fetch so we always get the JSON body regardless of HTTP status
+  const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string) ?? ''
+  const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) ?? ''
+  const res = await fetch(`${supabaseUrl}/functions/v1/${fn}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': supabaseAnonKey,
+      ...headers,
+    },
+    body: JSON.stringify(body),
+  })
+
+  let json: unknown
+  try { json = await res.json() } catch { json = {} }
+
+  if (!res.ok) {
+    const errBody = json as { error?: string; message?: string }
+    throw new Error(errBody.error ?? errBody.message ?? `Server error ${res.status}`)
   }
-  if (!result.data) throw new Error('Empty response from server')
-  return result.data
+
+  const data = json as { error?: string } & T
+  if (data.error) throw new Error(data.error)
+  return data
 }
 
 // ── local server helper ───────────────────────────────────────────────────────
