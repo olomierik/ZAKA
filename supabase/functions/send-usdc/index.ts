@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
           tokenId: usdcToken.token.id,
           destinationAddress,
           amounts: [amount],
-          fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+          feeLevel: 'MEDIUM',
           entitySecretCiphertext: ciphertext,
         }),
       })
