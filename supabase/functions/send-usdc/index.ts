@@ -63,9 +63,35 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Invalid recipient. Provide a phone number or a valid 0x wallet address.' }, { status: 400, headers: corsHeaders })
     }
 
+    // ── KYC tier limits (monthly volume) ─────────────────────────────────────
+    // Tier 1 (phone only)      : $50,000 / month
+    // Tier 2 (phone + ID)      : $100,000 / month
+    // Tier 3 (KYB / business)  : unlimited
+    const KYC_MONTHLY_LIMITS: Record<number, number> = { 1: 50_000, 2: 100_000, 3: Infinity }
+    const senderTier: number = ((sender as Record<string,unknown>)?.kycTier as number) ?? 1
+    const monthlyLimit = KYC_MONTHLY_LIMITS[senderTier] ?? 50_000
+
+    // Sum all sends in the current calendar month
+    const monthStart = new Date()
+    monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0)
+    const { data: monthlySends } = await supabase
+      .from('transactions')
+      .select('amount')
+      .eq('userId', user.id)
+      .eq('type', 'send')
+      .gte('createdAt', monthStart.toISOString())
+    const monthlyVolume = (monthlySends ?? []).reduce((s, t) => s + parseFloat((t as {amount:string}).amount), 0)
+    const amountNum = parseFloat(amount)
+
+    if (monthlyLimit !== Infinity && monthlyVolume + amountNum > monthlyLimit) {
+      const remaining = Math.max(0, monthlyLimit - monthlyVolume)
+      return Response.json({
+        error: `Monthly send limit reached. Tier ${senderTier} allows $${monthlyLimit.toLocaleString()}/month. You have $${remaining.toFixed(2)} remaining this month. Upgrade your KYC tier for higher limits.`,
+      }, { status: 403, headers: corsHeaders })
+    }
+
     // ── Platform fee: 1% collected to ZAKA platform wallet ───────────────────
     const PLATFORM_WALLET = Deno.env.get('ZAKA_PLATFORM_WALLET_ADDRESS') ?? ''
-    const amountNum = parseFloat(amount)
     const platformFee = parseFloat((amountNum * 0.01).toFixed(6))   // 1%
     const sendAmount  = parseFloat((amountNum - platformFee).toFixed(6)) // 99% to recipient
 

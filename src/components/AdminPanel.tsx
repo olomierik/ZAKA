@@ -18,6 +18,13 @@ interface AdminStats {
   totalFeesCollected: string
 }
 
+// KYC tier config — single source of truth for the admin UI
+const KYC_TIERS: Record<number, { label: string; limit: string; color: string }> = {
+  1: { label: 'Tier 1', limit: '$50,000 / mo',  color: '#5fbeff' },
+  2: { label: 'Tier 2', limit: '$100,000 / mo', color: '#af8ff4' },
+  3: { label: 'Tier 3', limit: 'Unlimited',     color: '#7ef1b3' },
+}
+
 interface AdminUser {
   id: string
   name: string
@@ -25,6 +32,7 @@ interface AdminUser {
   email?: string
   walletAddress: string
   createdAt: string
+  kycTier?: number
   suspended?: boolean
   suspendReason?: string
 }
@@ -211,6 +219,15 @@ function UsersTab({ api }: { api: ReturnType<typeof useAdminApi> }) {
 
   useEffect(() => { load() }, [load])
 
+  const upgradeTier = async (u: AdminUser, tier: number) => {
+    try {
+      await api.call('set-tier', 'POST', { userId: u.id, tier })
+      toast.success(`${u.name} upgraded to Tier ${tier}`)
+      setSelected(s => s ? { ...s, kycTier: tier } : s)
+      load()
+    } catch (e) { toast.error((e as Error).message) }
+  }
+
   const suspend = async (u: AdminUser) => {
     try {
       await api.call('suspend', 'POST', { userId: u.id, reason: suspendReason })
@@ -254,6 +271,9 @@ function UsersTab({ api }: { api: ReturnType<typeof useAdminApi> }) {
               <p className="text-sm font-semibold text-white truncate">{u.name}</p>
               <p className="text-xs text-white/40 truncate">{u.phone}</p>
             </div>
+            {(() => { const t = KYC_TIERS[u.kycTier ?? 1]; return (
+              <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: t.color + '22', color: t.color }}>{t.label}</span>
+            )})()}
             {u.suspended && (
               <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase" style={{ background: 'rgba(240,92,107,0.18)', color: '#f05c6b' }}>suspended</span>
             )}
@@ -292,8 +312,29 @@ function UsersTab({ api }: { api: ReturnType<typeof useAdminApi> }) {
               </div>
               <div className="flex flex-col gap-3 text-xs" style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: '12px 14px' }}>
                 <div className="flex justify-between"><span className="text-white/40">Status</span><span className={selected.suspended ? 'text-red-400' : 'text-green-400'}>{selected.suspended ? 'Suspended' : 'Active'}</span></div>
+                <div className="flex justify-between"><span className="text-white/40">KYC Tier</span>
+                  {(() => { const t = KYC_TIERS[selected.kycTier ?? 1]; return <span className="font-bold" style={{ color: t.color }}>{t.label} — {t.limit}</span> })()}
+                </div>
                 <div className="flex justify-between"><span className="text-white/40">Joined</span><span className="text-white/70">{new Date(selected.createdAt).toLocaleDateString()}</span></div>
                 {selected.suspendReason && <div className="flex justify-between gap-4"><span className="text-white/40 shrink-0">Reason</span><span className="text-red-300 text-right">{selected.suspendReason}</span></div>}
+              </div>
+              {/* KYC Tier upgrade */}
+              <div className="flex flex-col gap-2">
+                <p className="text-[11px] font-semibold text-white/40 uppercase tracking-wider">Upgrade KYC Tier</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {([1,2,3] as const).map(tier => {
+                    const t = KYC_TIERS[tier]
+                    const isCurrent = (selected.kycTier ?? 1) === tier
+                    return (
+                      <button key={tier} disabled={isCurrent} onClick={() => upgradeTier(selected, tier)}
+                        className="rounded-xl py-2.5 flex flex-col items-center gap-0.5 text-xs font-bold transition-opacity disabled:opacity-40"
+                        style={{ background: t.color + (isCurrent ? '30' : '15'), color: t.color, border: `1px solid ${t.color}${isCurrent ? '60' : '30'}` }}>
+                        <span>{t.label}</span>
+                        <span className="text-[9px] font-medium opacity-70">{t.limit}</span>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
               {!selected.suspended ? (
                 <div className="flex flex-col gap-2">

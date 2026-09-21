@@ -20,8 +20,32 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'phone, amount, and provider required' }, { status: 400, headers: corsHeaders })
     }
 
-    // ── Platform fee: 1% withdrawal fee paid by withdrawer ───────────────────
+    // ── KYC tier limits (monthly withdrawal volume) ───────────────────────────
+    // Tier 1: $50,000/month  |  Tier 2: $100,000/month  |  Tier 3: unlimited
+    const { data: profile } = await supabase.from('users').select('kycTier').eq('id', user.id).single()
+    const KYC_MONTHLY_LIMITS: Record<number, number> = { 1: 50_000, 2: 100_000, 3: Infinity }
+    const userTier: number = ((profile as Record<string,unknown>)?.kycTier as number) ?? 1
+    const monthlyLimit = KYC_MONTHLY_LIMITS[userTier] ?? 50_000
+
+    const monthStart = new Date()
+    monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0)
+    const { data: monthlyWithdrawals } = await supabase
+      .from('transactions')
+      .select('amount')
+      .eq('userId', user.id)
+      .eq('type', 'withdraw')
+      .gte('createdAt', monthStart.toISOString())
+    const monthlyVolume = (monthlyWithdrawals ?? []).reduce((s, t) => s + parseFloat((t as {amount:string}).amount), 0)
     const amountNum = parseFloat(amount)
+
+    if (monthlyLimit !== Infinity && monthlyVolume + amountNum > monthlyLimit) {
+      const remaining = Math.max(0, monthlyLimit - monthlyVolume)
+      return Response.json({
+        error: `Monthly withdrawal limit reached. Tier ${userTier} allows $${monthlyLimit.toLocaleString()}/month. You have $${remaining.toFixed(2)} remaining. Upgrade your KYC tier for higher limits.`,
+      }, { status: 403, headers: corsHeaders })
+    }
+
+    // ── Platform fee: 1% withdrawal fee paid by withdrawer ───────────────────
     const withdrawalFee = parseFloat((amountNum * 0.01).toFixed(6))   // 1%
     const netAmount     = parseFloat((amountNum - withdrawalFee).toFixed(6)) // 99% delivered
 

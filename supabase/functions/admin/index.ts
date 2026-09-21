@@ -96,6 +96,17 @@ Deno.serve(async (req) => {
       return Response.json({ ok: true }, { headers: corsHeaders })
     }
 
+    // ── POST /admin?action=set-tier ───────────────────────────────────────────
+    // Tier 1: $50,000/mo (phone only)
+    // Tier 2: $100,000/mo (phone + ID verified)
+    // Tier 3: Unlimited (KYB / business)
+    if (req.method === 'POST' && action === 'set-tier') {
+      const { userId, tier } = await req.json() as { userId: string; tier: number }
+      if (![1, 2, 3].includes(tier)) return Response.json({ error: 'tier must be 1, 2, or 3' }, { status: 400, headers: corsHeaders })
+      await supabase.from('users').update({ kycTier: tier }).eq('id', userId)
+      return Response.json({ ok: true, tier }, { headers: corsHeaders })
+    }
+
     // ── POST /admin?action=retry ──────────────────────────────────────────────
     // Retry a failed transaction by re-submitting to Circle
     if (req.method === 'POST' && action === 'retry') {
