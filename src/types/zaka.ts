@@ -17,6 +17,12 @@ export interface ZakaTransaction {
   counterparty?: string
   counterpartyPhone?: string
   txHash?: string
+  circleTxId?: string
+  platformFee?: string
+  feeTxId?: string
+  adminNote?: string
+  resolvedAt?: string
+  retryAt?: string
   createdAt: string
   description?: string
 }
@@ -37,3 +43,5 @@ export type AppScreen =
   | 'withdraw'
   | 'history'
   | 'profile'
+
+

@@ -17,9 +17,13 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Toaster } from 'sonner'
 import App from './App'
+import AdminPanel from './components/AdminPanel'
 import { ThemeProvider } from './lib/theme'
 import { I18nProvider } from './lib/i18n'
 import './index.css'
+
+// Route /admin to the admin panel, everything else to the main app
+const isAdmin = window.location.pathname.startsWith('/admin')
 
 // Studio logo SVG
 const StudioLogo = () => (
@@ -66,9 +70,18 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>
       <I18nProvider>
-        <App />
-        <StudioWatermark />
-        <Toaster position="top-center" richColors />
+        {isAdmin ? (
+          <>
+            <AdminPanel />
+            <Toaster position="top-center" richColors />
+          </>
+        ) : (
+          <>
+            <App />
+            <StudioWatermark />
+            <Toaster position="top-center" richColors />
+          </>
+        )}
       </I18nProvider>
     </ThemeProvider>
   </StrictMode>,

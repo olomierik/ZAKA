@@ -63,10 +63,17 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Invalid recipient. Provide a phone number or a valid 0x wallet address.' }, { status: 400, headers: corsHeaders })
     }
 
+    // ── Platform fee: 1% collected to ZAKA platform wallet ───────────────────
+    const PLATFORM_WALLET = Deno.env.get('ZAKA_PLATFORM_WALLET_ADDRESS') ?? ''
+    const amountNum = parseFloat(amount)
+    const platformFee = parseFloat((amountNum * 0.01).toFixed(6))   // 1%
+    const sendAmount  = parseFloat((amountNum - platformFee).toFixed(6)) // 99% to recipient
+
     // ── Circle transfer ───────────────────────────────────────────────────────
     const apiKey = Deno.env.get('CIRCLE_DEVELOPER_CONTROLLED_API_KEY') ?? ''
     const entitySecret = Deno.env.get('CIRCLE_ENTITY_SECRET') ?? ''
     let circleTxId = 'demo-' + crypto.randomUUID()
+    let feeTxId: string | undefined
     let txHash: string | undefined
 
     if (apiKey && entitySecret && senderProfile && !senderProfile.walletId.startsWith('demo-')) {
@@ -88,14 +95,16 @@ Deno.serve(async (req) => {
       if (!usdcToken?.token?.id) {
         return Response.json({ error: 'No USDC in wallet. Please deposit first.' }, { status: 400, headers: corsHeaders })
       }
-      if (parseFloat(usdcToken.amount ?? '0') < parseFloat(amount)) {
+      // Check balance covers full amount (send + fee) — gas paid by sender via feeLevel
+      if (parseFloat(usdcToken.amount ?? '0') < amountNum) {
         return Response.json({
-          error: `Insufficient balance. You have ${parseFloat(usdcToken.amount ?? '0').toFixed(2)} USDC.`
+          error: `Insufficient balance. You have ${parseFloat(usdcToken.amount ?? '0').toFixed(2)} USDC (need ${amountNum.toFixed(2)} including 1% platform fee).`
         }, { status: 400, headers: corsHeaders })
       }
 
       const ciphertext = await encryptEntitySecret(entitySecret, apiKey)
 
+      // ── 1: Send 99% to recipient ─────────────────────────────────────────
       const txRes = await fetch(`${CIRCLE_BASE}/developer/transactions/transfer`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -104,8 +113,8 @@ Deno.serve(async (req) => {
           walletId: senderProfile.walletId,
           tokenId: usdcToken.token.id,
           destinationAddress,
-          amounts: [amount],
-          feeLevel: 'MEDIUM',
+          amounts: [sendAmount.toString()],
+          feeLevel: 'MEDIUM',   // gas paid by sender
           entitySecretCiphertext: ciphertext,
         }),
       })
@@ -116,7 +125,26 @@ Deno.serve(async (req) => {
       }
       circleTxId = txData.data.id
 
-      // Poll up to 20s for terminal state
+      // ── 2: Send 1% platform fee to ZAKA platform wallet ─────────────────
+      if (PLATFORM_WALLET && platformFee > 0) {
+        const feeRes = await fetch(`${CIRCLE_BASE}/developer/transactions/transfer`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            idempotencyKey: crypto.randomUUID(),
+            walletId: senderProfile.walletId,
+            tokenId: usdcToken.token.id,
+            destinationAddress: PLATFORM_WALLET,
+            amounts: [platformFee.toString()],
+            feeLevel: 'MEDIUM',
+            entitySecretCiphertext: await encryptEntitySecret(entitySecret, apiKey),
+          }),
+        })
+        const feeData = await feeRes.json() as { data?: { id?: string } }
+        feeTxId = feeData?.data?.id
+      }
+
+      // Poll up to 20s for main tx terminal state
       const deadline = Date.now() + 20_000
       while (Date.now() < deadline) {
         await new Promise(r => setTimeout(r, 2000))
@@ -130,11 +158,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── record transaction ────────────────────────────────────────────────────
+    // ── record transactions ───────────────────────────────────────────────────
     const now = new Date().toISOString()
     const inserts: object[] = [
       {
-        id: crypto.randomUUID(), userId: user.id, type: 'send', amount, status: 'complete',
+        id: crypto.randomUUID(), userId: user.id, type: 'send',
+        amount: sendAmount.toString(),
+        platformFee: platformFee.toString(),
+        feeTxId,
+        status: 'complete',
         counterparty: recipientCounterparty,
         counterpartyPhone: recipientPhone ?? destinationAddress,
         txHash, circleTxId, description: note, createdAt: now,
@@ -143,7 +175,10 @@ Deno.serve(async (req) => {
     // Only record a receive entry for ZAKA users (external wallets are unknown)
     if (recipientProfile?.id) {
       inserts.push({
-        id: crypto.randomUUID(), userId: recipientProfile.id, type: 'receive', amount, status: 'complete',
+        id: crypto.randomUUID(), userId: recipientProfile.id, type: 'receive',
+        amount: sendAmount.toString(),
+        platformFee: platformFee.toString(),
+        status: 'complete',
         counterparty: senderProfile?.name ?? 'ZAKA User',
         counterpartyPhone: senderProfile?.phone,
         txHash, circleTxId, description: note, createdAt: now,
@@ -155,6 +190,8 @@ Deno.serve(async (req) => {
       txId: circleTxId,
       status: 'complete',
       recipient: recipientCounterparty,
+      amountSent: sendAmount,
+      platformFee,
       isZakaUser: !!recipientProfile,
     }, { headers: corsHeaders })
 

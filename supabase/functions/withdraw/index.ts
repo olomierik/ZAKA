@@ -20,6 +20,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'phone, amount, and provider required' }, { status: 400, headers: corsHeaders })
     }
 
+    // ── Platform fee: 1% withdrawal fee paid by withdrawer ───────────────────
+    const amountNum = parseFloat(amount)
+    const withdrawalFee = parseFloat((amountNum * 0.01).toFixed(6))   // 1%
+    const netAmount     = parseFloat((amountNum - withdrawalFee).toFixed(6)) // 99% delivered
+
     // TODO: integrate Kotani Pay or Yellow Card API for real offramp
     const reference = 'ZK' + Date.now().toString(36).toUpperCase()
 
@@ -27,8 +32,9 @@ Deno.serve(async (req) => {
       id: crypto.randomUUID(),
       userId: user.id,
       type: 'withdraw',
-      amount,
-      status: 'complete',
+      amount: netAmount.toString(),
+      platformFee: withdrawalFee.toString(),
+      status: 'pending',
       description: `${provider} ${phone}`,
       createdAt: new Date().toISOString(),
     })
@@ -36,7 +42,9 @@ Deno.serve(async (req) => {
     return Response.json({
       reference,
       status: 'pending',
-      message: `Processing withdrawal to ${provider} ${phone}. Funds arrive in 1–5 minutes.`,
+      netAmount,
+      withdrawalFee,
+      message: `Processing withdrawal of ${netAmount.toFixed(2)} USDC to ${provider} ${phone} (${withdrawalFee.toFixed(2)} USDC withdrawal fee). Funds arrive in 1–5 minutes.`,
     }, { headers: corsHeaders })
 
   } catch (e) {
