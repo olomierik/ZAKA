@@ -22,8 +22,8 @@ const glass = {
     boxShadow: '0 8px 32px rgba(18,45,69,0.08), inset 0 1px 0 rgba(255,255,255,0.55)',
   } as React.CSSProperties,
   inner: {
-    background: 'rgba(255,255,255,0.5)',
-    border: '1px solid rgba(18,45,69,0.1)',
+    background: 'var(--input-bg)',
+    border: '1px solid var(--input-border)',
   } as React.CSSProperties,
 }
 

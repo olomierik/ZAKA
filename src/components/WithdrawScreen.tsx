@@ -22,8 +22,8 @@ const glass = {
     boxShadow: '0 8px 32px rgba(18,45,69,0.08), inset 0 1px 0 rgba(255,255,255,0.55)',
   } as React.CSSProperties,
   inner: {
-    background: 'rgba(255,255,255,0.5)',
-    border: '1px solid rgba(18,45,69,0.1)',
+    background: 'var(--input-bg)',
+    border: '1px solid var(--input-border)',
   } as React.CSSProperties,
 }
 
@@ -114,8 +114,8 @@ export default function WithdrawScreen({ user, token, balance, onBack, onSuccess
                       onClick={() => setProvider(p.id)}
                       className="flex items-center gap-2 rounded-2xl px-3 py-2.5 text-left transition-all hover:scale-[1.02] active:scale-[0.98]"
                       style={{
-                        background: provider === p.id ? 'rgba(18,45,69,0.08)' : 'rgba(255,255,255,0.5)',
-                        border: provider === p.id ? '1.5px solid var(--accent)' : '1px solid rgba(18,45,69,0.1)',
+                        background: provider === p.id ? 'var(--surface-muted)' : 'var(--input-bg)',
+                        border: provider === p.id ? '1.5px solid var(--accent)' : '1px solid var(--input-border)',
                       }}
                     >
                       <span className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>{p.label}</span>

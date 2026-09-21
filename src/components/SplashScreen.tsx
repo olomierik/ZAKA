@@ -184,12 +184,33 @@ export default function SplashScreen() {
   }
 
   useEffect(() => {
-    // Desktop: try playing immediately (no gesture required on most desktop browsers)
-    playSplashSound()
-
-    // Letters all land by ~2.3s — sub-lines start at 3.2s
+    // Letters all land by ~2.3s
     const t = setTimeout(() => setLettersLanded(true), 2400)
+
+    // Desktop browsers allow AudioContext without a gesture —
+    // try immediately. Mobile needs the tap handler below (unlockAudio).
+    const tryDesktop = () => {
+      const ctx = getCtx()
+      if (!ctx) return
+      if (ctx.state === 'running') {
+        playSplashSound()
+      } else {
+        // Chrome desktop sometimes starts suspended until a click
+        const onGesture = () => {
+          playSplashSound()
+          document.removeEventListener('click', onGesture)
+          document.removeEventListener('keydown', onGesture)
+        }
+        document.addEventListener('click', onGesture, { once: true })
+        document.addEventListener('keydown', onGesture, { once: true })
+        // Also try resume immediately — works on most desktop Chromium
+        ctx.resume().then(() => { if (!soundUnlocked) playSplashSound() }).catch(() => {})
+      }
+    }
+    tryDesktop()
+
     return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const bgLight = 'linear-gradient(160deg, #e6eeff 0%, #fdf8f5 45%, #ede8ff 100%)'

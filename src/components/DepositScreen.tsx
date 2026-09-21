@@ -20,8 +20,8 @@ const glass: React.CSSProperties = {
 }
 
 const glassInner: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.5)',
-  border: '1px solid rgba(18,45,69,0.1)',
+  background: 'var(--input-bg)',
+  border: '1px solid var(--input-border)',
 }
 
 const spectral = 'linear-gradient(90deg, #5fbeff, #af8ff4, #f05c6b, #ffcd83, #7ef1b3)'
@@ -104,8 +104,8 @@ export default function DepositScreen({ user: _user, token, onBack }: Props) {
                   className="w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{
                     ...glassInner,
-                    background: selectedMethod === m.id ? 'rgba(18,45,69,0.08)' : 'rgba(255,255,255,0.5)',
-                    border: selectedMethod === m.id ? '1.5px solid var(--accent)' : '1px solid rgba(18,45,69,0.1)',
+                    background: selectedMethod === m.id ? 'var(--surface-muted)' : 'var(--input-bg)',
+                    border: selectedMethod === m.id ? '1.5px solid var(--accent)' : '1px solid var(--input-border)',
                   }}
                 >
                   <div
