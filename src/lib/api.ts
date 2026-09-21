@@ -98,9 +98,9 @@ export const api = {
     return fetchServer('/wallet/deposit-address', token)
   },
 
-  send: async (token: string, body: { toPhone: string; amount: string; note?: string }): Promise<{ txId: string; status: string }> => {
-    if (USE_EDGE) return callEdge<{ txId: string; status: string }>('send-usdc', body, token)
-    return callServer('/wallet/send', body, token)
+  send: async (token: string, body: { toPhone?: string; toAddress?: string; amount: string; note?: string }): Promise<{ txId: string; status: string; recipient?: string; isZakaUser?: boolean }> => {
+    if (USE_EDGE) return callEdge<{ txId: string; status: string; recipient?: string; isZakaUser?: boolean }>('send-usdc', body, token)
+    return callServer('/wallet/send', body as Record<string, unknown>, token)
   },
 
   withdraw: async (token: string, body: { phone: string; amount: string; provider: string }): Promise<{ reference: string; status: string; message: string }> => {

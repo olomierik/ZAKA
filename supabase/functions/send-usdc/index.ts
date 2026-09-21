@@ -1,4 +1,4 @@
-// Edge Function: send-usdc — transfers USDC between ZAKA users via Circle developer wallets
+// Edge Function: send-usdc — transfers USDC between ZAKA users or to any wallet address
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { encryptEntitySecret } from '../_shared/circle.ts'
 
@@ -18,32 +18,67 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authErr } = await supabase.auth.getUser(token)
     if (authErr || !user) return Response.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders })
 
-    const { toPhone, amount, note } = await req.json() as { toPhone: string; amount: string; note?: string }
-    if (!toPhone || !amount) return Response.json({ error: 'toPhone and amount required' }, { status: 400, headers: corsHeaders })
+    // Accept toPhone (ZAKA user) OR toAddress (any 0x wallet) OR both
+    const { toPhone, toAddress, amount, note } = await req.json() as {
+      toPhone?: string
+      toAddress?: string
+      amount: string
+      note?: string
+    }
+    if (!amount) return Response.json({ error: 'amount required' }, { status: 400, headers: corsHeaders })
+    if (!toPhone && !toAddress) return Response.json({ error: 'toPhone or toAddress required' }, { status: 400, headers: corsHeaders })
 
+    // ── resolve sender ────────────────────────────────────────────────────────
     const { data: sender } = await supabase.from('users').select('*').eq('id', user.id).single()
-    const { data: recipient } = await supabase.from('users').select('*').eq('phone', toPhone).maybeSingle()
-    if (!recipient) return Response.json({ error: 'Recipient not found on ZAKA' }, { status: 404, headers: corsHeaders })
-
     const senderProfile = sender as { walletId: string; name: string; phone: string; walletAddress: string } | null
-    const recipientProfile = recipient as { id: string; walletId: string; name: string; phone: string; walletAddress: string }
 
+    // ── resolve recipient ─────────────────────────────────────────────────────
+    let destinationAddress: string
+    let recipientProfile: { id: string; walletId: string; name: string; phone: string; walletAddress: string } | null = null
+    let recipientCounterparty = 'External Wallet'
+    let recipientPhone: string | undefined
+
+    if (toAddress && /^0x[0-9a-fA-F]{40}$/.test(toAddress)) {
+      // Direct wallet address — check if it belongs to a ZAKA user first
+      const { data: zakaUser } = await supabase
+        .from('users')
+        .select('*')
+        .eq('walletAddress', toAddress)
+        .maybeSingle()
+      if (zakaUser) {
+        recipientProfile = zakaUser as typeof recipientProfile
+        recipientCounterparty = recipientProfile!.name
+        recipientPhone = recipientProfile!.phone
+      }
+      destinationAddress = toAddress
+    } else if (toPhone) {
+      // Phone number — must be a ZAKA user
+      const { data: zakaUser } = await supabase.from('users').select('*').eq('phone', toPhone).maybeSingle()
+      if (!zakaUser) return Response.json({ error: 'Recipient not found on ZAKA. Ask them to register first.' }, { status: 404, headers: corsHeaders })
+      recipientProfile = zakaUser as typeof recipientProfile
+      recipientCounterparty = recipientProfile!.name
+      recipientPhone = toPhone
+      destinationAddress = recipientProfile!.walletAddress
+    } else {
+      return Response.json({ error: 'Invalid recipient. Provide a phone number or a valid 0x wallet address.' }, { status: 400, headers: corsHeaders })
+    }
+
+    // ── Circle transfer ───────────────────────────────────────────────────────
     const apiKey = Deno.env.get('CIRCLE_DEVELOPER_CONTROLLED_API_KEY') ?? ''
     const entitySecret = Deno.env.get('CIRCLE_ENTITY_SECRET') ?? ''
     let circleTxId = 'demo-' + crypto.randomUUID()
     let txHash: string | undefined
 
     if (apiKey && entitySecret && senderProfile && !senderProfile.walletId.startsWith('demo-')) {
-      // Get USDC token address from sender wallet
       const balRes = await fetch(`${CIRCLE_BASE}/wallets/${senderProfile.walletId}/balances`, {
         headers: { Authorization: `Bearer ${apiKey}` },
       })
-      const balData = await balRes.json() as { data?: { tokenBalances?: Array<{ token?: { id?: string; symbol?: string; tokenAddress?: string; isNative?: boolean }; amount?: string }> } }
+      const balData = await balRes.json() as {
+        data?: { tokenBalances?: Array<{ token?: { id?: string; symbol?: string; isNative?: boolean }; amount?: string }> }
+      }
       const balances = balData?.data?.tokenBalances ?? []
 
-      // Arc Testnet returns USDC twice: native (isNative:true) and ERC-20.
-      // Circle transfer API needs tokenId, not tokenAddress.
-      // Prefer the ERC-20 entry (has tokenAddress) so we can also use tokenId reliably.
+      // Arc Testnet returns USDC twice (native + ERC-20). Prefer ERC-20 (non-native) for transfers.
       const usdcToken = balances.find(
         (b) => b.token?.symbol?.toUpperCase() === 'USDC' && !b.token?.isNative && b.token?.id
       ) ?? balances.find(
@@ -53,11 +88,12 @@ Deno.serve(async (req) => {
       if (!usdcToken?.token?.id) {
         return Response.json({ error: 'No USDC in wallet. Please deposit first.' }, { status: 400, headers: corsHeaders })
       }
-      if (parseFloat(usdcToken.amount ?? '0') <= 0) {
-        return Response.json({ error: 'Insufficient USDC balance. Please deposit first.' }, { status: 400, headers: corsHeaders })
+      if (parseFloat(usdcToken.amount ?? '0') < parseFloat(amount)) {
+        return Response.json({
+          error: `Insufficient balance. You have ${parseFloat(usdcToken.amount ?? '0').toFixed(2)} USDC.`
+        }, { status: 400, headers: corsHeaders })
       }
 
-      // Encrypt entity secret fresh for this request
       const ciphertext = await encryptEntitySecret(entitySecret, apiKey)
 
       const txRes = await fetch(`${CIRCLE_BASE}/developer/transactions/transfer`, {
@@ -67,20 +103,20 @@ Deno.serve(async (req) => {
           idempotencyKey: crypto.randomUUID(),
           walletId: senderProfile.walletId,
           tokenId: usdcToken.token.id,
-          destinationAddress: recipientProfile.walletAddress,
+          destinationAddress,
           amounts: [amount],
           fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
           entitySecretCiphertext: ciphertext,
         }),
       })
-      const txData = await txRes.json() as { data?: { id?: string }; message?: string }
+      const txData = await txRes.json() as { data?: { id?: string }; message?: string; errors?: unknown[] }
       if (!txData?.data?.id) {
         console.error('[send-usdc] Circle tx error:', JSON.stringify(txData))
         return Response.json({ error: txData.message ?? 'Transfer initiation failed' }, { status: 500, headers: corsHeaders })
       }
       circleTxId = txData.data.id
 
-      // Poll briefly for a terminal state (up to 20s)
+      // Poll up to 20s for terminal state
       const deadline = Date.now() + 20_000
       while (Date.now() < deadline) {
         await new Promise(r => setTimeout(r, 2000))
@@ -94,13 +130,33 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── record transaction ────────────────────────────────────────────────────
     const now = new Date().toISOString()
-    await supabase.from('transactions').insert([
-      { id: crypto.randomUUID(), userId: user.id, type: 'send', amount, status: 'complete', counterparty: recipientProfile.name, counterpartyPhone: toPhone, txHash, circleTxId, description: note, createdAt: now },
-      { id: crypto.randomUUID(), userId: recipientProfile.id, type: 'receive', amount, status: 'complete', counterparty: senderProfile?.name, counterpartyPhone: senderProfile?.phone, txHash, circleTxId, description: note, createdAt: now },
-    ])
+    const inserts: object[] = [
+      {
+        id: crypto.randomUUID(), userId: user.id, type: 'send', amount, status: 'complete',
+        counterparty: recipientCounterparty,
+        counterpartyPhone: recipientPhone ?? destinationAddress,
+        txHash, circleTxId, description: note, createdAt: now,
+      },
+    ]
+    // Only record a receive entry for ZAKA users (external wallets are unknown)
+    if (recipientProfile?.id) {
+      inserts.push({
+        id: crypto.randomUUID(), userId: recipientProfile.id, type: 'receive', amount, status: 'complete',
+        counterparty: senderProfile?.name ?? 'ZAKA User',
+        counterpartyPhone: senderProfile?.phone,
+        txHash, circleTxId, description: note, createdAt: now,
+      })
+    }
+    await supabase.from('transactions').insert(inserts)
 
-    return Response.json({ txId: circleTxId, status: 'complete' }, { headers: corsHeaders })
+    return Response.json({
+      txId: circleTxId,
+      status: 'complete',
+      recipient: recipientCounterparty,
+      isZakaUser: !!recipientProfile,
+    }, { headers: corsHeaders })
 
   } catch (e) {
     console.error('[send-usdc]', e)
