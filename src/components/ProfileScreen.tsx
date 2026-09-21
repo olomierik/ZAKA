@@ -180,25 +180,43 @@ export default function ProfileScreen({ user, onBack, onLogout }: Props) {
 
           {/* Menu */}
           <section className="rounded-3xl overflow-hidden" style={card}>
-            {[
-              { Icon: Shield, label: 'Security', sub: 'PIN & account protection' },
-              { Icon: Bell, label: 'Notifications', sub: 'Transaction alerts' },
-              { Icon: HelpCircle, label: 'Help & Support', sub: 'Contact us or read FAQs' },
-            ].map(({ Icon, label, sub }, i) => (
-              <button
-                key={label}
-                className="w-full flex items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-black/5"
-                style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}
-              >
-                <div className="flex size-9 items-center justify-center rounded-xl shrink-0" style={{ background: 'rgba(18,45,69,0.06)' }}>
-                  <Icon className="size-4" style={{ color: 'var(--ink-2)' }} />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>{label}</p>
-                  <p className="text-xs" style={{ color: 'var(--subtle)' }}>{sub}</p>
-                </div>
-                <ChevronRight className="size-4 shrink-0" style={{ color: 'var(--subtle)' }} />
-              </button>
+            {([
+              { Icon: Shield, label: 'Security', sub: 'PIN & account protection', href: null },
+              { Icon: Bell, label: 'Notifications', sub: 'Transaction alerts', href: null },
+              { Icon: HelpCircle, label: 'Help & Support', sub: 'support@zakaapp.com', href: 'mailto:support@zakaapp.com' },
+            ] as { Icon: React.ElementType; label: string; sub: string; href: string | null }[]).map(({ Icon, label, sub, href }, i) => (
+              href ? (
+                <a
+                  key={label}
+                  href={href}
+                  className="w-full flex items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-black/5"
+                  style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none', textDecoration: 'none' }}
+                >
+                  <div className="flex size-9 items-center justify-center rounded-xl shrink-0" style={{ background: 'rgba(18,45,69,0.06)' }}>
+                    <Icon className="size-4" style={{ color: 'var(--ink-2)' }} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>{label}</p>
+                    <p className="text-xs" style={{ color: 'var(--accent)' }}>{sub}</p>
+                  </div>
+                  <ChevronRight className="size-4 shrink-0" style={{ color: 'var(--subtle)' }} />
+                </a>
+              ) : (
+                <button
+                  key={label}
+                  className="w-full flex items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-black/5"
+                  style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}
+                >
+                  <div className="flex size-9 items-center justify-center rounded-xl shrink-0" style={{ background: 'rgba(18,45,69,0.06)' }}>
+                    <Icon className="size-4" style={{ color: 'var(--ink-2)' }} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>{label}</p>
+                    <p className="text-xs" style={{ color: 'var(--subtle)' }}>{sub}</p>
+                  </div>
+                  <ChevronRight className="size-4 shrink-0" style={{ color: 'var(--subtle)' }} />
+                </button>
+              )
             ))}
           </section>
 
