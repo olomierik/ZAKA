@@ -1,7 +1,9 @@
 // ZAKA API client — talks to the Express backend over /api proxy
 
+const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
+
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${BASE_URL}/api${path}`, {
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     ...options,
   })
