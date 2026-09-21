@@ -2,53 +2,74 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Arc Light (default) ─────────────────────────────────────────────────── */
 :root {
   --bg: #ffffff;
-  --bg-gradient: linear-gradient(180deg, #f9f9fc 0%, #fffcf7 52%, #fbf7f2 100%);
-  --surface: rgba(255, 255, 255, 0.72);
-  --surface-strong: rgba(255, 255, 255, 0.90);
-  --surface-muted: #f5f5f8;
+  --bg-gradient: linear-gradient(160deg, #eef3ff 0%, #fdf9f5 48%, #f3eeff 100%);
+  --surface: rgba(255, 255, 255, 0.78);
+  --surface-strong: rgba(255, 255, 255, 0.95);
+  --surface-muted: #f4f5f9;
   --ink: #122d45;
   --ink-2: #334155;
   --muted: #6b6580;
   --subtle: #8a849c;
-  --border: rgba(18, 45, 69, 0.12);
-  --border-strong: rgba(25, 53, 77, 0.50);
+  --border: rgba(18, 45, 69, 0.11);
+  --border-strong: rgba(25, 53, 77, 0.45);
   --accent: #122d45;
   --accent-hover: #1061a6;
   --focus: #85b1ed;
   --success: #1a8047;
   --danger: #ba2b4c;
+  --card-shadow: 0 8px 32px rgba(18,45,69,0.08), inset 0 1px 0 rgba(255,255,255,0.60);
+  --card-shadow-hover: 0 16px 48px rgba(18,45,69,0.13), inset 0 1px 0 rgba(255,255,255,0.70);
 }
 
-* {
-  box-sizing: border-box;
+/* ── Arc Dark ────────────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --bg: #0b1623;
+  --bg-gradient: linear-gradient(160deg, #0b1623 0%, #111d2e 55%, #0f1d30 100%);
+  --surface: rgba(255, 255, 255, 0.06);
+  --surface-strong: rgba(255, 255, 255, 0.10);
+  --surface-muted: #1a2740;
+  --ink: #f0f4fa;
+  --ink-2: #c8d8ee;
+  --muted: #8da3bf;
+  --subtle: #6a849e;
+  --border: rgba(255, 255, 255, 0.10);
+  --border-strong: rgba(180, 210, 255, 0.40);
+  --accent: #5ba3e8;
+  --accent-hover: #80beff;
+  --focus: #3b82c4;
+  --success: #4ade80;
+  --danger: #f87171;
+  --card-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.07);
+  --card-shadow-hover: 0 16px 48px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.10);
 }
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
   font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
   min-height: 100dvh;
-  /* Prevent iOS bounce / overscroll shake */
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
-  /* Prevent text size adjust on orientation change */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
-/* Prevent tap highlight flicker on mobile */
-button, a, [role="button"] {
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
-
-/* Stable full-height container on iOS Safari */
 #root {
   min-height: 100dvh;
   overflow-x: hidden;
 }
 
+/* ── Typography ──────────────────────────────────────────────────────────── */
 .display {
   font-family: 'Space Grotesk', sans-serif;
   letter-spacing: -0.03em;
@@ -58,7 +79,75 @@ button, a, [role="button"] {
   font-family: 'JetBrains Mono', Menlo, monospace;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar { width: 4px; }
+/* ── Tap / button UX ─────────────────────────────────────────────────────── */
+button, a, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(18,45,69,0.15); border-radius: 4px; }
+[data-theme="dark"] ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Premium card glass ──────────────────────────────────────────────────── */
+.glass-card {
+  background: var(--surface);
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  border: 1px solid var(--border);
+  box-shadow: var(--card-shadow);
+  transition: box-shadow 0.25s ease, transform 0.2s ease;
+}
+
+/* ── Spectral gradient ───────────────────────────────────────────────────── */
+.spectral { background: linear-gradient(90deg, #5fbeff, #af8ff4, #f05c6b, #ffcd83, #7ef1b3); }
+
+/* ── Keyframes ───────────────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes float-up {
+  0%   { opacity: 0; transform: translateY(0) scale(0); }
+  30%  { opacity: 0.9; }
+  100% { opacity: 0; transform: translateY(-52px) scale(0); }
+}
+
+@keyframes pulse-ring {
+  0%   { opacity: 0.6; transform: scale(0.55); }
+  100% { opacity: 0; transform: scale(1); }
+}
+
+@keyframes gradient-sweep {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes count-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Balance number animation ────────────────────────────────────────────── */
+.balance-enter {
+  animation: count-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── RTL support ─────────────────────────────────────────────────────────── */
+[dir="rtl"] .rtl-flip { transform: scaleX(-1); }

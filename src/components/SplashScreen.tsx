@@ -1,15 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useI18n } from '../lib/i18n'
+import { useTheme } from '../lib/theme'
 
 const SPECTRAL_H = 'linear-gradient(90deg, #5fbeff, #af8ff4, #f05c6b, #ffcd83, #7ef1b3)'
-
-// ── Tagline lines that rotate
-const LINES = [
-  'Send money instantly.',
-  'Zero hidden fees.',
-  'Works with M-Pesa.',
-  'Your money, your way.',
-]
 
 // ── Particles: scattered around center, float UP and fade
 const DOTS = [
@@ -70,16 +64,22 @@ function ProgressBar({ duration }: { duration: number }) {
 
 export default function SplashScreen() {
   const [taglineIdx, setTaglineIdx] = useState(0)
+  const { t } = useI18n()
+  const { isDark } = useTheme()
+  const LINES = [t.tagline0, t.tagline1, t.tagline2, t.tagline3]
 
   useEffect(() => {
     const id = setInterval(() => setTaglineIdx((i) => (i + 1) % LINES.length), 1800)
     return () => clearInterval(id)
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t])
 
   return (
     <div
       className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden select-none"
-      style={{ background: 'linear-gradient(160deg, #eef3ff 0%, #fdf9f5 50%, #f3eeff 100%)' }}
+      style={{ background: isDark
+        ? 'linear-gradient(160deg, #0b1623 0%, #111d2e 55%, #0f1d30 100%)'
+        : 'linear-gradient(160deg, #eef3ff 0%, #fdf9f5 50%, #f3eeff 100%)' }}
     >
       {/* ── Ambient blobs — large, blurred, gently drifting ── */}
       <motion.div
@@ -214,9 +214,9 @@ export default function SplashScreen() {
           <h1
             className="display text-6xl font-black"
             style={{
-              color: '#0d2540',
+              color: 'var(--ink)',
               letterSpacing: '-0.06em',
-              textShadow: '0 4px 24px rgba(18,45,69,0.12)',
+              textShadow: isDark ? '0 4px 32px rgba(91,163,232,0.25)' : '0 4px 24px rgba(18,45,69,0.12)',
             }}
           >
             ZAKA

@@ -17,6 +17,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Toaster } from 'sonner'
 import App from './App'
+import { ThemeProvider } from './lib/theme'
+import { I18nProvider } from './lib/i18n'
 import './index.css'
 
 // Studio logo SVG
@@ -62,9 +64,13 @@ const StudioWatermark = () => (
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
-    <StudioWatermark />
-    <Toaster position="top-center" />
+    <ThemeProvider>
+      <I18nProvider>
+        <App />
+        <StudioWatermark />
+        <Toaster position="top-center" richColors />
+      </I18nProvider>
+    </ThemeProvider>
   </StrictMode>,
 )
 
