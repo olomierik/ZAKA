@@ -38,18 +38,19 @@ Deno.serve(async (req) => {
       const balRes = await fetch(`${CIRCLE_BASE}/wallets/${senderProfile.walletId}/balances`, {
         headers: { Authorization: `Bearer ${apiKey}` },
       })
-      const balData = await balRes.json() as { data?: { tokenBalances?: Array<{ token?: { symbol?: string; tokenAddress?: string; isNative?: boolean }; amount?: string }> } }
+      const balData = await balRes.json() as { data?: { tokenBalances?: Array<{ token?: { id?: string; symbol?: string; tokenAddress?: string; isNative?: boolean }; amount?: string }> } }
       const balances = balData?.data?.tokenBalances ?? []
 
-      // Arc Testnet exposes USDC as both a native token (no tokenAddress) and an ERC-20.
-      // Transfers require a tokenAddress, so always prefer the ERC-20 entry.
+      // Arc Testnet returns USDC twice: native (isNative:true) and ERC-20.
+      // Circle transfer API needs tokenId, not tokenAddress.
+      // Prefer the ERC-20 entry (has tokenAddress) so we can also use tokenId reliably.
       const usdcToken = balances.find(
-        (b) => b.token?.symbol?.toUpperCase() === 'USDC' && b.token?.tokenAddress && !b.token?.isNative
+        (b) => b.token?.symbol?.toUpperCase() === 'USDC' && !b.token?.isNative && b.token?.id
       ) ?? balances.find(
-        (b) => b.token?.symbol?.toUpperCase() === 'USDC' && b.token?.tokenAddress
+        (b) => b.token?.symbol?.toUpperCase() === 'USDC' && b.token?.id
       )
 
-      if (!usdcToken) {
+      if (!usdcToken?.token?.id) {
         return Response.json({ error: 'No USDC in wallet. Please deposit first.' }, { status: 400, headers: corsHeaders })
       }
       if (parseFloat(usdcToken.amount ?? '0') <= 0) {
@@ -65,7 +66,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           idempotencyKey: crypto.randomUUID(),
           walletId: senderProfile.walletId,
-          tokenAddress: usdcToken.token.tokenAddress,
+          tokenId: usdcToken.token.id,
           destinationAddress: recipientProfile.walletAddress,
           amounts: [amount],
           fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
