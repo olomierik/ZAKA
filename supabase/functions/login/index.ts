@@ -1,59 +1,52 @@
-// Edge Function: login
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const corsHeaders = {
+// Edge Function: login — no external imports
+const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
+const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+async function signIn(email: string, password: string) {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: { 'apikey': SERVICE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+  return res.json()
+}
+
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
   try {
-    const { phone, pin } = await req.json() as { phone: string; pin: string }
+    const { phone, pin } = await req.json()
     if (!phone || !pin) {
-      return Response.json({ error: 'phone and pin required' }, { status: 400, headers: corsHeaders })
+      return Response.json({ error: 'phone and pin required' }, { status: 400, headers: CORS })
     }
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
-
-    // Look up user profile
-    const { data: profile, error: profileErr } = await supabase
-      .from('users')
-      .select('*')
-      .eq('phone', phone)
-      .maybeSingle()
-
-    if (profileErr || !profile) {
-      return Response.json({ error: 'Invalid phone or PIN' }, { status: 401, headers: corsHeaders })
+    // Get user profile
+    const profileRes = await fetch(`${SUPABASE_URL}/rest/v1/users?phone=eq.${encodeURIComponent(phone)}&select=*`, {
+      headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` },
+    })
+    const profiles = await profileRes.json()
+    if (!Array.isArray(profiles) || profiles.length === 0) {
+      return Response.json({ error: 'Phone not registered' }, { status: 400, headers: CORS })
     }
+    const userRow = profiles[0]
 
     const fakeEmail = `${phone.replace(/\D/g, '')}@zaka.app`
-    const { data: session, error: signInErr } = await supabase.auth.signInWithPassword({
-      email: fakeEmail,
-      password: pin,
-    })
-
-    if (signInErr || !session.session) {
-      return Response.json({ error: 'Invalid phone or PIN' }, { status: 401, headers: corsHeaders })
+    const session = await signIn(fakeEmail, pin)
+    if (session.error) {
+      return Response.json({ error: 'Invalid PIN' }, { status: 401, headers: CORS })
     }
 
     return Response.json({
-      user: {
-        id: profile.id as string,
-        name: profile.name as string,
-        phone: profile.phone as string,
-        walletId: profile.walletId as string,
-        walletAddress: profile.walletAddress as string,
-        createdAt: profile.createdAt as string,
-      },
-      token: session.session.access_token,
-    }, { headers: corsHeaders })
+      user: { id: userRow.id, name: userRow.name, phone: userRow.phone, walletId: userRow.walletId, walletAddress: userRow.walletAddress, createdAt: userRow.createdAt },
+      token: session.access_token ?? '',
+    }, { headers: CORS })
 
   } catch (e) {
-    return Response.json({ error: e instanceof Error ? e.message : 'Login failed' }, { status: 500, headers: corsHeaders })
+    return Response.json({ error: e instanceof Error ? e.message : 'Login failed' }, { status: 500, headers: CORS })
   }
 })
