@@ -9,6 +9,8 @@ import Bridge from './pages/Bridge'
 import TradingWalletPanel from './components/TradingWalletPanel'
 import { subscribeAll, deriveTradeInfo, type LiveTrade } from './api/arcRpc'
 import { getPairByAddress } from './api/dexscreener'
+import { subscribeLaunchpadTrades, type LaunchpadLiveTrade } from './api/launchpadRpc'
+import { getLaunchpadToken, LAUNCHPAD_ADDRESS } from './api/launchpad'
 import './arcdex.css'
 
 export type Page = { name: 'terminal' } | { name: 'token'; address: string; symbol?: string } | { name: 'portfolio' } | { name: 'launchpad' } | { name: 'swap' } | { name: 'bridge' }
@@ -68,6 +70,41 @@ export default function App() {
         if (!p) return
         const quoteIsToken0 = p.quoteToken.address.toLowerCase() < p.baseToken.address.toLowerCase()
         metaCache.set(trade.pairAddress, { symbol: p.baseToken.symbol, quoteIsToken0 })
+      })
+    })
+    return unsub
+  }, [])
+
+  // ArcLaunchpad trades don't come through the feed above — that one only
+  // listens for the generic Uniswap-style Swap event, and our own
+  // launchpad emits a completely different, custom Trade event. Every
+  // buy/sell across every launch gets merged into the same global feed
+  // here so "live trades on Arc" genuinely means every launchpad, not
+  // just external pools.
+  useEffect(() => {
+    if (LAUNCHPAD_ADDRESS.length !== 42) return
+    const symbolCache = new Map<string, string>()
+    const pending = new Set<string>()
+
+    const unsub = subscribeLaunchpadTrades(LAUNCHPAD_ADDRESS, (trade: LaunchpadLiveTrade) => {
+      const kind: 'buy' | 'sell' = trade.isBuy ? 'buy' : 'sell'
+      const push = (symbol: string) => {
+        setFeed(prev => [{
+          id: ++feedId, symbol, type: kind, amount: trade.usdcAmount, price: 0,
+          address: trade.token, ts: trade.timestamp,
+        }, ...prev].slice(0, 50))
+      }
+
+      const cached = symbolCache.get(trade.token.toLowerCase())
+      if (cached) { push(cached); return }
+
+      if (pending.has(trade.token.toLowerCase())) return
+      pending.add(trade.token.toLowerCase())
+      void getLaunchpadToken(trade.token as `0x${string}`).then(t => {
+        pending.delete(trade.token.toLowerCase())
+        if (!t) return
+        symbolCache.set(trade.token.toLowerCase(), t.symbol)
+        push(t.symbol)
       })
     })
     return unsub

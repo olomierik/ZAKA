@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getLaunchpadToken, getRecentTrades, getDevHoldingPct, LAUNCHPAD_ADDRESS, type LaunchpadToken, type CurveTrade } from '../api/launchpad'
+import { subscribeLaunchpadTrades } from '../api/launchpadRpc'
 import { ARC_EXPLORER } from '../api/arcRpc'
 import CurveSwapWidget from '../components/CurveSwapWidget'
 import CurveChart from '../components/CurveChart'
@@ -26,10 +27,34 @@ export default function CurveTokenPage({ address, navigate }: Props) {
       setToken(t); setLoading(false)
       if (t) void getDevHoldingPct(t.address, t.curve.creator).then(setDevPct)
     })
-    void getRecentTrades(address as `0x${string}`).then(setTrades)
   }, [address])
 
-  useEffect(() => { setLoading(true); load(); const iv = setInterval(load, 5000); return () => clearInterval(iv) }, [load])
+  // Curve state (price, bonding progress, reserves) isn't event-driven on
+  // its own, so it's still polled — but at a lighter interval now that
+  // trades themselves push live below, instead of the polling itself
+  // being the only source of "new trade" updates.
+  useEffect(() => { setLoading(true); load(); const iv = setInterval(load, 8000); return () => clearInterval(iv) }, [load])
+
+  // Trades: one historical fetch for backfill, then genuinely live via
+  // WebSocket — no more waiting on the next poll tick to see a new trade.
+  useEffect(() => {
+    setTrades([])
+    void getRecentTrades(address as `0x${string}`).then(setTrades)
+
+    const unsub = subscribeLaunchpadTrades(LAUNCHPAD_ADDRESS, live => {
+      if (live.token.toLowerCase() !== address.toLowerCase()) return
+      const trade: CurveTrade = {
+        trader: live.trader as `0x${string}`,
+        isBuy: live.isBuy,
+        usdcAmount: BigInt(Math.round(live.usdcAmount * 1e6)),
+        tokenAmount: BigInt(Math.round(live.tokenAmount * 1e18)),
+        blockNumber: BigInt(live.blockNumber),
+        txHash: live.txHash as `0x${string}`,
+      }
+      setTrades(prev => prev.some(t => t.txHash === trade.txHash) ? prev : [trade, ...prev].slice(0, 200))
+    })
+    return unsub
+  }, [address])
 
   if (loading && !token) return <div className="loading-state">Loading…</div>
   if (!token) return <div style={{ padding: 40, color: 'var(--text-muted)' }}>Token not found.</div>
