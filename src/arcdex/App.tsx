@@ -44,3 +44,4 @@ export default function App() {
     </WagmiProvider>
   )
 }
+// ARCDEX build 1790162282
