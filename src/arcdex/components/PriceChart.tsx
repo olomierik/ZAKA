@@ -1,13 +1,20 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createChart, type IChartApi, type ISeriesApi, type CandlestickData, CandlestickSeries } from 'lightweight-charts'
-import type { OhlcvCandle } from '../api/radardex'
+import { getOhlcv, type OhlcvCandle } from '../api/radardex'
 
-interface Props {
-  tokenAddress: string
-  candles:      OhlcvCandle[]
-}
+type Resolution = '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
+const RESOLUTIONS: { label: string; value: Resolution }[] = [
+  { label: '1m', value: '1m' }, { label: '5m', value: '5m' },
+  { label: '15m', value: '15m' }, { label: '1H', value: '1h' },
+  { label: '4H', value: '4h' }, { label: '1D', value: '1d' },
+]
 
-export default function PriceChart({ candles }: Props) {
+interface Props { tokenAddress: string; candles?: OhlcvCandle[] }
+
+export default function PriceChart({ tokenAddress }: Props) {
+  const [res, setRes] = useState<Resolution>('1h')
+  const [candles, setCandles] = useState<OhlcvCandle[]>([])
+  useEffect(() => { getOhlcv(tokenAddress, res).then(setCandles) }, [tokenAddress, res])
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef     = useRef<IChartApi | null>(null)
   const seriesRef    = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -51,6 +58,19 @@ export default function PriceChart({ candles }: Props) {
   }, [candles])
 
   return (
+    <>
+    <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+      {RESOLUTIONS.map(r => (
+        <button key={r.value} onClick={() => setRes(r.value)}
+          style={{ padding: '3px 10px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 600,
+            border: '1px solid', cursor: 'pointer',
+            borderColor: res === r.value ? 'var(--accent)' : 'var(--card-border)',
+            background: res === r.value ? 'rgba(59,130,246,0.15)' : 'transparent',
+            color: res === r.value ? 'var(--accent)' : 'var(--text-muted)' }}>
+          {r.label}
+        </button>
+      ))}
+    </div>
     <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden' }}>
       <div ref={containerRef} />
       {!candles.length && (
@@ -61,5 +81,6 @@ export default function PriceChart({ candles }: Props) {
         </div>
       )}
     </div>
+    </>
   )
 }

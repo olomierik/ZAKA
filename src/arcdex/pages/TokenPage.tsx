@@ -1,371 +1,192 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
-import { getToken, getTrades, getOhlcv, type ArcToken, type Trade, type OhlcvCandle, getLaunchpadColor } from '../api/radardex'
+import { useEffect, useState, useRef } from 'react'
+import { getPoolTrades, type GeckoPool, type GeckoTrade, LAUNCHPAD_COLORS } from '../api/gecko'
 import PriceChart from '../components/PriceChart'
-import SwapWidget from '../components/SwapWidget'
 import type { Page } from '../App'
 
-interface Props {
-  address:  string
-  navigate: (p: Page) => void
-}
+interface Props { address: string; navigate: (p: Page) => void }
 
-function fmt(n: number): string {
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`
-  if (n >= 1e3) return `$${(n / 1e3).toFixed(2)}K`
-  return `$${n.toFixed(4)}`
-}
+const EXPLORER = 'https://explorer.arc.io'
 
-function fmtPrice(p: number): string {
-  if (p === 0) return '$0'
-  if (p >= 1)  return `$${p.toFixed(4)}`
-  if (p >= 0.001) return `$${p.toFixed(6)}`
-  return `$${p.toExponential(3)}`
+function fmt(n: number | null | undefined, prefix = '') {
+  if (n == null || n === 0) return '—'
+  if (n >= 1e9) return `${prefix}${(n / 1e9).toFixed(2)}B`
+  if (n >= 1e6) return `${prefix}${(n / 1e6).toFixed(2)}M`
+  if (n >= 1e3) return `${prefix}${(n / 1e3).toFixed(2)}K`
+  return `${prefix}${n.toFixed(4)}`
 }
-
-function timeAgo(ts: number): string {
-  const s = Math.floor(Date.now() / 1000) - ts
-  if (s < 60)    return `${s}s ago`
-  if (s < 3600)  return `${Math.floor(s / 60)}m ago`
+function timeAgo(iso: string) {
+  if (!iso) return '—'
+  const s = (Date.now() - new Date(iso).getTime()) / 1000
+  if (s < 60) return `${Math.floor(s)}s ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`
   return `${Math.floor(s / 86400)}d ago`
 }
-
-function trunc(s: string, n = 6): string {
-  if (!s) return '—'
-  return `${s.slice(0, n)}…${s.slice(-4)}`
+function shortAddr(addr: string) {
+  if (!addr) return '—'
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`
 }
 
-type ResKey = '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
-const RES: ResKey[] = ['1m', '5m', '15m', '1h', '4h', '1d']
-
 export default function TokenPage({ address, navigate }: Props) {
-  const [token,    setToken]    = useState<ArcToken | null>(null)
-  const [trades,   setTrades]   = useState<Trade[]>([])
-  const [candles,  setCandles]  = useState<OhlcvCandle[]>([])
-  const [loading,  setLoading]  = useState(true)
-  const [res,      setRes]      = useState<ResKey>('1h')
-  const [newCount, setNewCount] = useState(0)
-  const prevTradeRef = useRef<string>('')
-  const timerRef     = useRef<ReturnType<typeof setInterval> | null>(null)
+  const network = 'arc'
+  const [pool, setPool] = useState<GeckoPool | null>(null)
+  const [trades, setTrades] = useState<GeckoTrade[]>([])
+  const [loading, setLoading] = useState(true)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const loadToken = useCallback(async () => {
-    const t = await getToken(address)
-    setToken(t)
-  }, [address])
-
-  const loadTrades = useCallback(async () => {
-    const tr = await getTrades(address, 50)
-    if (tr.length && tr[0]?.txHash !== prevTradeRef.current) {
-      if (prevTradeRef.current) {
-        const newOnes = tr.filter(t => t.txHash !== prevTradeRef.current).length
-        setNewCount(n => n + newOnes)
-      }
-      prevTradeRef.current = tr[0]?.txHash ?? ''
-    }
-    setTrades(tr)
-  }, [address])
-
-  const loadCandles = useCallback(async (r: ResKey) => {
-    const c = await getOhlcv(address, r, 200)
-    setCandles(c)
-  }, [address])
-
+  // fetch pool info from gecko pools endpoint
   useEffect(() => {
     setLoading(true)
-    setNewCount(0)
-    Promise.all([loadToken(), loadTrades(), loadCandles(res)]).finally(() => setLoading(false))
-  }, [address, loadToken, loadTrades, loadCandles, res])
+    const fetchPool = async () => {
+      try {
+        const res = await fetch(`/api/gecko?path=/networks/${network}/pools/${address}&include=dex`)
+        const d = await res.json() as { data: { id: string; attributes: Record<string, unknown>; relationships: Record<string, unknown> }; included: { id: string; type: string; attributes: { name: string } }[] }
+        const a = d.data.attributes
+        const dexRel = (d.data.relationships as Record<string, { data: { id: string } }>)?.dex?.data
+        const dexId = dexRel?.id ?? ''
+        const dexInfo = d.included?.find((i: { id: string }) => i.id === dexId)
+        const dexName = dexInfo?.attributes?.name ?? dexId
+        const pc = a.price_change_percentage as Record<string, string> ?? {}
+        const txnsH1 = (a.transactions as Record<string, { buys: number; sells: number; buyers: number; sellers: number }>)?.h1 ?? { buys: 0, sells: 0, buyers: 0, sellers: 0 }
+        setPool({
+          id: d.data.id,
+          address: a.address as string,
+          name: a.name as string,
+          dexId,
+          dexName,
+          baseSymbol: (a.name as string).split('/')[0].trim().replace(/[^A-Z0-9$]/gi, ''),
+          baseName: (a.name as string).split('/')[0].trim(),
+          baseAddress: '',
+          logoUrl: null,
+          priceUsd: parseFloat(a.base_token_price_usd as string ?? '0') || 0,
+          priceChange: { m5: parseFloat(pc.m5 ?? '0') || 0, h1: parseFloat(pc.h1 ?? '0') || 0, h6: parseFloat(pc.h6 ?? '0') || 0, h24: parseFloat(pc.h24 ?? '0') || 0 },
+          volumeH24: parseFloat((a.volume_usd as Record<string, string>)?.h24 ?? '0') || 0,
+          liquidityUsd: parseFloat((a.reserve_in_usd as string) ?? '0') || 0,
+          marketCapUsd: a.market_cap_usd ? parseFloat(a.market_cap_usd as string) : null,
+          fdvUsd: a.fdv_usd ? parseFloat(a.fdv_usd as string) : null,
+          txns: txnsH1,
+          poolCreatedAt: a.pool_created_at as string ?? '',
+          reserveUsd: parseFloat((a.reserve_in_usd as string) ?? '0') || 0,
+        })
+      } catch { /* use cached pool from router state */ }
+      setLoading(false)
+    }
+    void fetchPool()
+  }, [network, address])
 
-  // Poll trades every 10s for live updates
+  // load + poll trades every 10s
   useEffect(() => {
-    timerRef.current = setInterval(() => {
-      void loadTrades()
-      void loadToken()
-    }, 10_000)
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [loadTrades, loadToken])
+    const loadTrades = async () => {
+      try {
+        const t = await getPoolTrades(address)
+        setTrades(t)
+      } catch {}
+    }
+    void loadTrades()
+    pollRef.current = setInterval(() => { void loadTrades() }, 10_000)
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [address])
+
+  const lpColor = pool ? (LAUNCHPAD_COLORS[pool.dexName] ?? '#64748b') : '#64748b'
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
-      height: 300, color: 'var(--text-muted)' }}>Loading…</div>
-  )
-
-  if (!token) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', height: 300, gap: 16 }}>
-      <div style={{ color: 'var(--text-muted)' }}>Token not found</div>
-      <button onClick={() => navigate({ name: 'terminal' })}
-        style={{ padding: '8px 20px', borderRadius: 8, background: 'var(--accent)',
-          color: '#fff', border: 'none', cursor: 'pointer' }}>← Back</button>
+    <div className="token-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+      <div style={{ color: 'var(--text-muted)' }}>Loading…</div>
     </div>
   )
 
-  const lpColor = getLaunchpadColor(token.launchpad)
-  const chg     = token.priceChange24h
-  const pos     = chg >= 0
-
   return (
-    <div style={{ maxWidth: 1400, margin: '0 auto', padding: '20px 16px 40px' }}>
-
-      {/* Back */}
-      <button onClick={() => navigate({ name: 'terminal' })}
-        style={{ background: 'none', border: 'none', cursor: 'pointer',
-          color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: 16,
-          display: 'flex', alignItems: 'center', gap: 4 }}>
-        ← Terminal
-      </button>
-
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
-        {token.logoUrl ? (
-          <img src={token.logoUrl} width={52} height={52}
-            style={{ borderRadius: '50%', objectFit: 'cover' }}
-            onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} alt="" />
-        ) : (
-          <div style={{
-            width: 52, height: 52, borderRadius: '50%', flexShrink: 0,
-            background: `hsl(${parseInt(token.address.slice(2,4),16)*1.4}deg 60% 35%)`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 800, fontSize: '1.125rem', color: '#fff',
-          }}>{token.symbol.slice(0, 2)}</div>
+    <div className="token-page">
+      {/* header */}
+      <div className="token-page-header">
+        <button className="back-btn" onClick={() => navigate({ name: 'terminal' })}>← Back</button>
+        {pool && (
+          <>
+            <div className="card-logo-placeholder" style={{ width: 44, height: 44, fontSize: '0.85rem' }}>
+              {pool.baseSymbol.slice(0, 2)}
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '1.2rem' }}>{pool.baseName} <span style={{ color: 'var(--accent)' }}>${pool.baseSymbol}</span></div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                <span style={{ background: lpColor, color: '#fff', borderRadius: 6, padding: '2px 8px', fontSize: '0.65rem', fontWeight: 700 }}>{pool.dexName}</span>
+                &nbsp; Pool: <a href={`${EXPLORER}/address/${pool.address}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{shortAddr(pool.address)}</a>
+              </div>
+            </div>
+            <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: '1.3rem', fontWeight: 700 }}>
+                ${pool.priceUsd < 0.0001 ? pool.priceUsd.toExponential(3) : pool.priceUsd.toFixed(6)}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: pool.priceChange.h24 >= 0 ? 'var(--green)' : 'var(--red)', fontFamily: 'var(--mono)', fontWeight: 700 }}>
+                {pool.priceChange.h24 >= 0 ? '+' : ''}{pool.priceChange.h24.toFixed(2)}% 24h
+              </div>
+            </div>
+          </>
         )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
-            <h1 style={{ fontSize: '1.375rem', fontWeight: 800 }}>{token.symbol}</h1>
-            <span style={{ color: 'var(--text-muted)' }}>{token.name}</span>
-            <span className="lp-badge" style={{ color: lpColor, borderColor: `${lpColor}40`, background: `${lpColor}15` }}>
-              {token.launchpad}
-            </span>
-            {token.graduated && (
-              <span style={{ fontSize: '0.625rem', fontWeight: 600, padding: '2px 8px',
-                borderRadius: 999, background: 'rgba(34,197,94,0.15)', color: 'var(--green)',
-                border: '1px solid rgba(34,197,94,0.3)' }}>Graduated ✓</span>
-            )}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-            <span style={{ fontFamily: 'var(--mono)', fontSize: '1.5rem', fontWeight: 700 }}>
-              {fmtPrice(token.price)}
-            </span>
-            <span style={{ fontFamily: 'var(--mono)', fontSize: '1rem',
-              color: pos ? 'var(--green)' : 'var(--red)' }}>
-              {pos ? '+' : ''}{chg.toFixed(2)}%
-            </span>
-          </div>
-        </div>
-
-        {/* Stat cards */}
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {[
-            ['MCap',      fmt(token.marketCap)],
-            ['Vol 24h',   fmt(token.volume24h)],
-            ['Liquidity', fmt(token.liquidity)],
-            ['Holders',   token.holderCount.toLocaleString()],
-          ].map(([l, v]) => (
-            <div key={l} className="arc-card" style={{ padding: '10px 16px', textAlign: 'right', minWidth: 90 }}>
-              <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', textTransform: 'uppercase',
-                letterSpacing: '0.06em', marginBottom: 2 }}>{l}</div>
-              <div style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: '0.9375rem' }}>{v}</div>
-            </div>
-          ))}
-        </div>
       </div>
 
-      {/* Contract + links */}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>CA:</span>
-        <a href={`https://explorer.mainnet.arc.io/address/${token.address}`}
-          target="_blank" rel="noreferrer"
-          style={{ fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--accent)', textDecoration: 'none' }}>
-          {token.address}
-        </a>
-        {token.website  && <a href={token.website}  target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>🌐 Web</a>}
-        {token.twitter  && <a href={token.twitter}  target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>🐦 Twitter</a>}
-        {token.telegram && <a href={token.telegram} target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>✈️ TG</a>}
+      {/* stats */}
+      {pool && (
+        <div className="token-stats-grid">
+          <div className="stat-card"><div className="stat-label">Market Cap</div><div className="stat-val">{fmt(pool.marketCapUsd ?? pool.fdvUsd, '$')}</div></div>
+          <div className="stat-card"><div className="stat-label">24h Volume</div><div className="stat-val">{fmt(pool.volumeH24, '$')}</div></div>
+          <div className="stat-card"><div className="stat-label">Liquidity</div><div className="stat-val">{fmt(pool.liquidityUsd, '$')}</div></div>
+          <div className="stat-card"><div className="stat-label">FDV</div><div className="stat-val">{fmt(pool.fdvUsd, '$')}</div></div>
+          <div className="stat-card"><div className="stat-label">Buys (1h)</div><div className="stat-val" style={{ color: 'var(--green)' }}>{pool.txns.buys}</div></div>
+          <div className="stat-card"><div className="stat-label">Sells (1h)</div><div className="stat-val" style={{ color: 'var(--red)' }}>{pool.txns.sells}</div></div>
+          <div className="stat-card"><div className="stat-label">Buyers (1h)</div><div className="stat-val">{pool.txns.buyers}</div></div>
+          <div className="stat-card"><div className="stat-label">Pool Age</div><div className="stat-val">{timeAgo(pool.poolCreatedAt)}</div></div>
+        </div>
+      )}
+
+      {/* price chart */}
+      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, marginBottom: 10 }}>Price Chart</div>
+        <PriceChart tokenAddress={address} candles={[]} />
       </div>
 
-      {/* Main grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: 16 }}>
-
-        {/* Left */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
-
-          {/* Chart */}
-          <div className="arc-card" style={{ padding: 16 }}>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-              {RES.map(r => (
-                <button key={r} onClick={() => setRes(r)}
-                  style={{ padding: '4px 10px', borderRadius: 6, fontSize: '0.75rem', border: '1px solid',
-                    borderColor: res === r ? 'var(--accent)' : 'var(--card-border)',
-                    background: res === r ? 'rgba(59,130,246,0.15)' : 'transparent',
-                    color: res === r ? 'var(--accent)' : 'var(--text-muted)',
-                    cursor: 'pointer' }}>
-                  {r}
-                </button>
-              ))}
-            </div>
-            <PriceChart tokenAddress={token.address} candles={candles} />
-          </div>
-
-          {/* Trades — live */}
-          <div className="arc-card" style={{ overflow: 'hidden' }}>
-            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--card-border)',
-              display: 'flex', alignItems: 'center', gap: 10 }}>
-              <h3 style={{ fontWeight: 600, fontSize: '0.9375rem' }}>Live Transactions</h3>
-              <div className="pulse-dot" />
-              {newCount > 0 && (
-                <span style={{ background: 'var(--accent)', color: '#fff', borderRadius: 999,
-                  fontSize: '0.6875rem', padding: '1px 7px', fontWeight: 700 }}>
-                  +{newCount} new
-                </span>
+      {/* live trades */}
+      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <div style={{ fontWeight: 700 }}>Live Trades</div>
+          <div className="live-dot" />
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>auto-refresh 10s · {trades.length} txns</div>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="trades-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Amount USD</th>
+                <th>From</th>
+                <th>To</th>
+                <th>Wallet</th>
+                <th>Tx Hash</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trades.length === 0 && (
+                <tr><td colSpan={7} style={{ color: 'var(--text-muted)', padding: '20px', textAlign: 'center' }}>No recent trades</td></tr>
               )}
-              <span style={{ marginLeft: 'auto', fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
-                Updates every 10s
-              </span>
-            </div>
-            {trades.length === 0 ? (
-              <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-                No transactions yet
-              </div>
-            ) : (
-              <div className="table-scroll">
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--card-border)' }}>
-                      {['Type','Price','USD In','Tokens Out','Wallet','Tx','Time'].map(h => (
-                        <th key={h} style={{ padding: '8px 12px', textAlign: 'left',
-                          color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.6875rem',
-                          textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {trades.map(t => (
-                      <tr key={t.txHash || `${t.timestamp}-${t.maker}`}
-                        style={{ borderBottom: '1px solid rgba(30,48,80,0.4)',
-                          background: 'transparent', transition: 'background 0.1s' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-3)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                        <td style={{ padding: '10px 12px' }}>
-                          <span style={{
-                            color: t.type === 'buy' ? 'var(--green)' : 'var(--red)',
-                            fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase',
-                            background: t.type === 'buy' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-                            padding: '2px 8px', borderRadius: 4,
-                          }}>
-                            {t.type}
-                          </span>
-                        </td>
-                        <td style={{ padding: '10px 12px', fontFamily: 'var(--mono)', fontSize: '0.8125rem' }}>
-                          {fmtPrice(t.price)}
-                        </td>
-                        <td style={{ padding: '10px 12px', fontFamily: 'var(--mono)',
-                          color: t.type === 'buy' ? 'var(--green)' : 'var(--red)', fontSize: '0.8125rem' }}>
-                          ${t.amountIn.toFixed(2)}
-                        </td>
-                        <td style={{ padding: '10px 12px', fontFamily: 'var(--mono)', fontSize: '0.8125rem' }}>
-                          {t.amountOut > 0 ? t.amountOut.toFixed(2) : '—'}
-                        </td>
-                        <td style={{ padding: '10px 12px', fontFamily: 'var(--mono)', fontSize: '0.75rem' }}>
-                          {t.maker ? (
-                            <a href={`https://explorer.mainnet.arc.io/address/${t.maker}`}
-                              target="_blank" rel="noreferrer"
-                              style={{ color: 'var(--accent)', textDecoration: 'none' }}
-                              title={t.maker}>
-                              {trunc(t.maker)}
-                            </a>
-                          ) : '—'}
-                        </td>
-                        <td style={{ padding: '10px 12px', fontFamily: 'var(--mono)', fontSize: '0.75rem' }}>
-                          {t.txHash ? (
-                            <a href={`https://explorer.mainnet.arc.io/tx/${t.txHash}`}
-                              target="_blank" rel="noreferrer"
-                              style={{ color: 'var(--text-muted)', textDecoration: 'none' }}
-                              title={t.txHash}>
-                              {trunc(t.txHash, 6)}
-                            </a>
-                          ) : '—'}
-                        </td>
-                        <td style={{ padding: '10px 12px', color: 'var(--text-muted)',
-                          fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
-                          {t.timestamp ? timeAgo(t.timestamp) : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Token info */}
-          <div className="arc-card" style={{ padding: 16 }}>
-            <h3 style={{ fontWeight: 600, marginBottom: 14, fontSize: '0.9375rem' }}>Token Info</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 24px' }}>
-              {[
-                ['Launchpad', token.launchpad],
-                ['24h Buys',  token.buys24h.toLocaleString()],
-                ['24h Sells', token.sells24h.toLocaleString()],
-                ['Txns 24h',  token.txCount24h.toLocaleString()],
-                ['Quote',     token.quoteSymbol],
-                ['Verified',  token.verified ? '✓ Yes' : '✗ No'],
-                ['Bonding',   token.bondingProgress !== null ? `${token.bondingProgress.toFixed(1)}%` : 'N/A'],
-                ['B/S Ratio', token.sells24h > 0 ? (token.buys24h / token.sells24h).toFixed(2) : '∞'],
-              ].map(([k, v]) => (
-                <div key={k} style={{ display: 'flex', justifyContent: 'space-between',
-                  borderBottom: '1px solid rgba(30,48,80,0.5)', paddingBottom: 8 }}>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>{k}</span>
-                  <span style={{ fontFamily: 'var(--mono)', fontSize: '0.8125rem', fontWeight: 600 }}>{v}</span>
-                </div>
+              {trades.map((t, i) => (
+                <tr key={i} className={t.kind}>
+                  <td className={t.kind === 'buy' ? 'trade-buy' : 'trade-sell'}>
+                    {t.kind === 'buy' ? '▲ BUY' : '▼ SELL'}
+                  </td>
+                  <td className="trade-mono">${t.volumeUsd < 0.01 ? t.volumeUsd.toFixed(4) : fmt(t.volumeUsd)}</td>
+                  <td className="trade-mono" style={{ color: 'var(--text-muted)' }}>{parseFloat(t.fromAmount).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                  <td className="trade-mono" style={{ color: 'var(--text-muted)' }}>{parseFloat(t.toAmount).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                  <td className="trade-wallet">
+                    <a href={`${EXPLORER}/address/${t.txFrom}`} target="_blank" rel="noreferrer">{shortAddr(t.txFrom)}</a>
+                  </td>
+                  <td className="trade-wallet">
+                    <a href={`${EXPLORER}/tx/${t.txHash}`} target="_blank" rel="noreferrer">{shortAddr(t.txHash)}</a>
+                  </td>
+                  <td style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{timeAgo(t.timestamp)}</td>
+                </tr>
               ))}
-            </div>
-            {token.deployer && (
-              <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between',
-                borderBottom: '1px solid rgba(30,48,80,0.5)', paddingBottom: 8 }}>
-                <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>Deployer</span>
-                <a href={`https://explorer.mainnet.arc.io/address/${token.deployer}`}
-                  target="_blank" rel="noreferrer"
-                  style={{ fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--accent)', textDecoration: 'none' }}>
-                  {trunc(token.deployer, 8)}
-                </a>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right — swap */}
-        <div style={{ position: 'sticky', top: 76, alignSelf: 'start', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="arc-card" style={{ overflow: 'hidden' }}>
-            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--card-border)' }}>
-              <h3 style={{ fontWeight: 600, fontSize: '0.9375rem' }}>Swap</h3>
-            </div>
-            <SwapWidget token={token} />
-          </div>
-
-          {/* Price changes */}
-          <div className="arc-card" style={{ padding: 16 }}>
-            <h3 style={{ fontWeight: 600, marginBottom: 12, fontSize: '0.875rem' }}>Price Change</h3>
-            {[
-              ['5m',  token.priceChange5m],
-              ['1h',  token.priceChange1h],
-              ['24h', token.priceChange24h],
-            ].map(([label, val]) => {
-              const v = val as number
-              return (
-                <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between',
-                  marginBottom: 8, alignItems: 'center' }}>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>{label as string}</span>
-                  <span style={{ fontFamily: 'var(--mono)', fontWeight: 700,
-                    color: v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text-muted)',
-                    fontSize: '0.875rem' }}>
-                    {v > 0 ? '+' : ''}{v.toFixed(2)}%
-                  </span>
-                </div>
-              )
-            })}
-          </div>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

@@ -132,6 +132,15 @@
       "resolved": "18.3.7"
     },
     {
+      "name": "@types/react-router-dom",
+      "type": "direct",
+      "scopes": [
+        "prod"
+      ],
+      "requested": "^5.3.3",
+      "resolved": "5.3.3"
+    },
+    {
       "name": "@vitejs/plugin-react",
       "type": "direct",
       "scopes": [
@@ -265,6 +274,15 @@
       ],
       "requested": "^18.3.1",
       "resolved": "18.3.1"
+    },
+    {
+      "name": "react-router-dom",
+      "type": "direct",
+      "scopes": [
+        "prod"
+      ],
+      "requested": "^7.18.4",
+      "resolved": "7.18.4"
     },
     {
       "name": "sonner",
@@ -3675,6 +3693,14 @@
       "resolved": "1.0.9"
     },
     {
+      "name": "@types/history",
+      "type": "transitive",
+      "scopes": [
+        "prod"
+      ],
+      "resolved": "4.7.11"
+    },
+    {
       "name": "@types/lodash",
       "type": "transitive",
       "scopes": [
@@ -3697,6 +3723,14 @@
         "prod"
       ],
       "resolved": "15.7.15"
+    },
+    {
+      "name": "@types/react-router",
+      "type": "transitive",
+      "scopes": [
+        "prod"
+      ],
+      "resolved": "5.1.20"
     },
     {
       "name": "@types/trusted-types",
@@ -4849,6 +4883,14 @@
         "prod"
       ],
       "resolved": "2.0.0"
+    },
+    {
+      "name": "cookie",
+      "type": "transitive",
+      "scopes": [
+        "prod"
+      ],
+      "resolved": "1.1.1"
     },
     {
       "name": "cookie-es",
@@ -7243,6 +7285,14 @@
       "resolved": "0.17.0"
     },
     {
+      "name": "react-router",
+      "type": "transitive",
+      "scopes": [
+        "prod"
+      ],
+      "resolved": "7.18.4"
+    },
+    {
       "name": "react-transition-state",
       "type": "transitive",
       "scopes": [
@@ -7465,6 +7515,14 @@
         "prod"
       ],
       "resolved": "2.0.0"
+    },
+    {
+      "name": "set-cookie-parser",
+      "type": "transitive",
+      "scopes": [
+        "prod"
+      ],
+      "resolved": "2.7.2"
     },
     {
       "name": "set-function-length",

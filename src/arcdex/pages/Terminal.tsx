@@ -1,470 +1,354 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { getTokens, getPlatformStats, getLaunchpadColor, type ArcToken } from '../api/radardex'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import {
+  getTrendingPools, getNewPools, getAllPools, getPoolTrades,
+  type GeckoPool, type GeckoTrade, LAUNCHPAD_COLORS,
+} from '../api/gecko'
 import type { Page } from '../App'
-
-type Tab       = 'trending' | 'new' | 'graduated'
-type ViewMode  = 'grid' | 'list'
-type SortKey   = 'marketCap' | 'volume24h' | 'priceChange24h' | 'liquidity' | 'holderCount' | 'ageMs' | 'buys24h' | 'lastTrade'
-type QuoteFilter = 'all' | 'USDC' | 'EURC' | 'ARGUS' | 'XAUM' | 'cirBTC' | 'ARCASH' | 'WETH'
-
-const QUOTE_FILTERS: QuoteFilter[] = ['all', 'USDC', 'EURC', 'ARGUS', 'XAUM', 'cirBTC', 'ARCASH', 'WETH']
-const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: 'lastTrade',    label: 'Last trade' },
-  { key: 'marketCap',    label: 'Market cap' },
-  { key: 'volume24h',    label: 'Volume 24h' },
-  { key: 'priceChange24h', label: '24h change' },
-  { key: 'liquidity',    label: 'Liquidity' },
-  { key: 'holderCount',  label: 'Holders' },
-  { key: 'ageMs',        label: 'Newest' },
-  { key: 'buys24h',      label: 'Buy pressure' },
-]
-
-function fmt(n: number): string {
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`
-  if (n >= 1e3) return `$${(n / 1e3).toFixed(1)}K`
-  return `$${n.toFixed(2)}`
-}
-
-function age(ms: number): string {
-  const s = ms / 1000
-  if (s < 60)    return `${Math.floor(s)}s`
-  if (s < 3600)  return `${Math.floor(s / 60)}m`
-  if (s < 86400) return `${Math.floor(s / 3600)}h`
-  return `${Math.floor(s / 86400)}d`
-}
-
-function fmtPrice(p: number): string {
-  if (p === 0) return '$0'
-  if (p >= 1)  return `$${p.toFixed(4)}`
-  if (p >= 0.001) return `$${p.toFixed(6)}`
-  return `$${p.toExponential(2)}`
-}
-
-// Tiny sparkline SVG
-function Sparkline({ data, positive }: { data: number[]; positive: boolean }) {
-  if (!data.length) return null
-  const min = Math.min(...data)
-  const max = Math.max(...data)
-  const range = max - min || 1
-  const w = 80, h = 28
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * w
-    const y = h - ((v - min) / range) * h
-    return `${x},${y}`
-  }).join(' ')
-  const color = positive ? '#22c55e' : '#ef4444'
-  return (
-    <svg width={w} height={h} style={{ display: 'block' }}>
-      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-// Milestone / bonding progress bar
-function MilestoneBar({ pct }: { pct: number }) {
-  const clamped = Math.min(100, Math.max(0, pct))
-  return (
-    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3,
-      background: 'rgba(0,0,0,0.4)' }}>
-      <div style={{
-        height: '100%', width: `${clamped}%`,
-        background: clamped >= 100 ? '#22c55e' : 'linear-gradient(90deg,#7c3aed,#3b82f6)',
-        transition: 'width 0.3s ease',
-      }} />
-    </div>
-  )
-}
-
-interface CardProps {
-  token:    ArcToken
-  rank:     number
-  navigate: (p: Page) => void
-}
-
-function TokenCard({ token, rank, navigate }: CardProps) {
-  const chg  = token.priceChange24h
-  const pos  = chg >= 0
-  const lpColor = getLaunchpadColor(token.launchpad)
-  const bp   = token.bondingProgress ?? 0
-
-  return (
-    <div
-      className="token-card glow-hover"
-      onClick={() => navigate({ name: 'token', address: token.address })}
-    >
-      {/* Cover image / logo */}
-      <div className="token-card-cover">
-        {token.logoUrl ? (
-          <img src={token.logoUrl} alt={token.symbol}
-            onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-        ) : (
-          <div className="token-card-cover-fallback" style={{
-            background: `hsl(${parseInt(token.address.slice(2, 4), 16) * 1.4}deg 50% 25%)`,
-          }}>
-            <span>{token.symbol.slice(0, 3)}</span>
-          </div>
-        )}
-
-        {/* 24h badge */}
-        <div className={`chg-badge ${pos ? 'chg-pos' : 'chg-neg'}`}>
-          {pos ? '+' : ''}{chg.toFixed(1)}% 24h
-        </div>
-
-        {/* Rank */}
-        <div className="rank-badge">#{rank}</div>
-
-        {/* Milestone label */}
-        {!token.graduated && (
-          <div className="milestone-label">{bp.toFixed(1)}% of milestone</div>
-        )}
-        {token.graduated && (
-          <div className="milestone-label graduated">Graduated ✓</div>
-        )}
-
-        <MilestoneBar pct={bp} />
-      </div>
-
-      {/* Card body */}
-      <div className="token-card-body">
-        <div className="token-card-row">
-          <div>
-            <div className="token-card-name">{token.name.length > 18 ? token.name.slice(0, 16) + '…' : token.name}</div>
-            <div className="token-card-symbol">${token.symbol}</div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 2 }}>
-              Market cap
-            </div>
-            <div className="token-card-mcap">{fmt(token.marketCap)}</div>
-          </div>
-        </div>
-
-        {/* Creator / age */}
-        <div className="token-card-meta">
-          {token.deployer && (
-            <span className="token-deployer" title={token.deployer}>
-              <span className="lp-dot" style={{ background: lpColor }} />
-              {token.deployer.slice(0, 7)}…
-            </span>
-          )}
-          <span style={{ color: 'var(--text-muted)', fontSize: '0.6875rem' }}>
-            · {age(token.ageMs)} ago
-          </span>
-          <a
-            href={`https://explorer.mainnet.arc.io/address/${token.address}`}
-            target="_blank" rel="noreferrer"
-            onClick={e => e.stopPropagation()}
-            style={{ marginLeft: 'auto', color: 'var(--accent)', fontSize: '0.625rem', lineHeight: 1 }}
-          >
-            ↗
-          </a>
-        </div>
-
-        {/* Stats row */}
-        <div className="token-card-stats">
-          <span>Tax {token.txCount24h ? '–' : '–'}</span>
-          <span>
-            <svg width={10} height={10} viewBox="0 0 10 10" style={{ marginRight: 2 }}>
-              <circle cx={5} cy={5} r={4} fill="none" stroke="currentColor" strokeWidth={1.5} />
-              <path d="M5 2v3l2 1" stroke="currentColor" strokeWidth={1.2} fill="none" />
-            </svg>
-            {token.holderCount.toLocaleString()}
-          </span>
-          <span>Vol {fmt(token.volume24h)}</span>
-        </div>
-
-        {/* Sparkline */}
-        {token.spark.length > 1 && (
-          <div style={{ marginTop: 6 }}>
-            <Sparkline data={token.spark} positive={pos} />
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// List row (compact view)
-function TokenRow({ token, rank, navigate }: CardProps) {
-  const chg = token.priceChange24h
-  const pos = chg >= 0
-  return (
-    <tr
-      onClick={() => navigate({ name: 'token', address: token.address })}
-      className="token-list-row"
-    >
-      <td className="td-rank">{rank}</td>
-      <td className="td-token">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {token.logoUrl ? (
-            <img src={token.logoUrl} width={28} height={28}
-              style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
-              onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} alt="" />
-          ) : (
-            <div style={{
-              width: 28, height: 28, borderRadius: '50%', flexShrink: 0, display: 'flex',
-              alignItems: 'center', justifyContent: 'center', fontWeight: 700,
-              fontSize: '0.625rem', color: '#fff',
-              background: `hsl(${parseInt(token.address.slice(2,4),16)*1.4}deg 60% 40%)`,
-            }}>{token.symbol.slice(0,2)}</div>
-          )}
-          <div>
-            <div style={{ fontWeight: 600 }}>${token.symbol}</div>
-            <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>{token.name}</div>
-          </div>
-        </div>
-      </td>
-      <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '0.8125rem' }}>
-        {fmtPrice(token.price)}
-      </td>
-      <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'var(--mono)',
-        color: pos ? 'var(--green)' : 'var(--red)', fontSize: '0.8125rem' }}>
-        {pos ? '+' : ''}{chg.toFixed(2)}%
-      </td>
-      <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '0.8125rem' }}>
-        {fmt(token.marketCap)}
-      </td>
-      <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '0.8125rem' }}>
-        {fmt(token.volume24h)}
-      </td>
-      <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '0.8125rem' }}>
-        {fmt(token.liquidity)}
-      </td>
-      <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '0.8125rem' }}>
-        {token.holderCount.toLocaleString()}
-      </td>
-      <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '0.8125rem',
-        color: 'var(--text-muted)' }}>
-        {age(token.ageMs)}
-      </td>
-      <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '0.8125rem' }}>
-        <span style={{ color: 'var(--green)', marginRight: 4 }}>{token.buys24h}B</span>
-        <span style={{ color: 'var(--red)' }}>{token.sells24h}S</span>
-      </td>
-      <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-        {token.spark.length > 1 && <Sparkline data={token.spark} positive={pos} />}
-      </td>
-    </tr>
-  )
-}
 
 interface Props { navigate: (p: Page) => void }
 
-export default function Terminal({ navigate }: Props) {
-  const [tokens,      setTokens]      = useState<ArcToken[]>([])
-  const [loading,     setLoading]     = useState(true)
-  const [tab,         setTab]         = useState<Tab>('trending')
-  const [view,        setView]        = useState<ViewMode>('grid')
-  const [quoteFilter, setQuoteFilter] = useState<QuoteFilter>('all')
-  const [sortKey,     setSortKey]     = useState<SortKey>('lastTrade')
-  const [search,      setSearch]      = useState('')
-  const [stats, setStats]             = useState({ tokenCount: 0, volume24h: 0, marketCap: 0, liquidity: 0 })
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+// ── helpers ─────────────────────────────────────────────────────────
+function fmt(n: number | null | undefined, prefix = '') {
+  if (n == null || n === 0) return '—'
+  if (n >= 1e9) return `${prefix}${(n / 1e9).toFixed(2)}B`
+  if (n >= 1e6) return `${prefix}${(n / 1e6).toFixed(2)}M`
+  if (n >= 1e3) return `${prefix}${(n / 1e3).toFixed(2)}K`
+  return `${prefix}${n.toFixed(2)}`
+}
+function fmtPrice(n: number) {
+  if (n === 0) return '$0'
+  if (n >= 1) return `$${n.toFixed(4)}`
+  const s = n.toExponential(2)
+  return `$${s}`
+}
+function timeAgo(iso: string) {
+  if (!iso) return '—'
+  const s = (Date.now() - new Date(iso).getTime()) / 1000
+  if (s < 60) return `${Math.floor(s)}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m`
+  if (s < 86400) return `${Math.floor(s / 3600)}h`
+  return `${Math.floor(s / 86400)}d`
+}
+function launchpadColor(name: string) {
+  return LAUNCHPAD_COLORS[name] ?? '#64748b'
+}
 
-  const load = useCallback(async (force = false) => {
+// ── pop-up badge per card ────────────────────────────────────────────
+interface PopBadge { id: string; kind: 'buy' | 'sell'; amount: number }
+
+// live trade poller — one shared interval across all visible cards
+const tradeCache = new Map<string, GeckoTrade[]>()
+const tradeCallbacks = new Map<string, Set<(t: GeckoTrade) => void>>()
+
+function subscribePool(address: string, cb: (t: GeckoTrade) => void) {
+  if (!tradeCallbacks.has(address)) tradeCallbacks.set(address, new Set())
+  tradeCallbacks.get(address)!.add(cb)
+}
+function unsubscribePool(address: string, cb: (t: GeckoTrade) => void) {
+  tradeCallbacks.get(address)?.delete(cb)
+}
+async function pollPool(address: string) {
+  try {
+    const trades = await getPoolTrades(address)
+    const prev = tradeCache.get(address) ?? []
+    const prevIds = new Set(prev.map(t => t.txHash))
+    const newTrades = trades.filter(t => !prevIds.has(t.txHash))
+    tradeCache.set(address, trades)
+    const cbs = tradeCallbacks.get(address)
+    if (cbs) newTrades.forEach(t => cbs.forEach(cb => cb(t)))
+  } catch {}
+}
+
+// ── TokenCard ────────────────────────────────────────────────────────
+function TokenCard({ pool, onClick }: { pool: GeckoPool; onClick: () => void }) {
+  const [badges, setBadges] = useState<PopBadge[]>([])
+  const [recentTrades, setRecentTrades] = useState<GeckoTrade[]>([])
+  const [hovered, setHovered] = useState(false)
+
+  const handleTrade = useCallback((t: GeckoTrade) => {
+    const badge: PopBadge = { id: t.txHash, kind: t.kind, amount: t.volumeUsd }
+    setBadges(prev => [...prev.slice(-4), badge])
+    setRecentTrades(prev => [t, ...prev].slice(0, 5))
+    setTimeout(() => setBadges(prev => prev.filter(b => b.id !== badge.id)), 3200)
+  }, [])
+
+  useEffect(() => {
+    if (!pool.address) return
+    subscribePool(pool.address, handleTrade)
+    return () => unsubscribePool(pool.address, handleTrade)
+  }, [pool.address, handleTrade])
+
+  const pc = pool.priceChange.h24
+  const pcColor = pc >= 0 ? '#22c55e' : '#ef4444'
+  const lpColor = launchpadColor(pool.dexName)
+
+  return (
+    <div
+      className="token-card"
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{ position: 'relative', cursor: 'pointer' }}
+    >
+      {/* price change badge top-right */}
+      <div className="card-change-badge" style={{ color: pcColor, borderColor: pcColor }}>
+        {pc >= 0 ? '+' : ''}{pc.toFixed(1)}% 24h
+      </div>
+
+      {/* live pop-up buy/sell badges */}
+      <div className="card-popups">
+        {badges.map(b => (
+          <div key={b.id} className={`card-popup ${b.kind}`}>
+            {b.kind === 'buy' ? '▲' : '▼'} ${b.amount < 1 ? b.amount.toFixed(2) : fmt(b.amount, '')} {b.kind.toUpperCase()}
+          </div>
+        ))}
+      </div>
+
+      {/* token logo */}
+      <div className="card-logo-wrap">
+        {pool.logoUrl ? (
+          <img src={pool.logoUrl} alt={pool.baseSymbol} className="card-logo" />
+        ) : (
+          <div className="card-logo-placeholder">
+            {(pool.baseSymbol || '?').slice(0, 2).toUpperCase()}
+          </div>
+        )}
+        {/* launchpad badge */}
+        <div className="card-launchpad" style={{ background: lpColor }}>
+          {pool.dexName}
+        </div>
+      </div>
+
+      {/* name + market cap row */}
+      <div className="card-row" style={{ marginTop: 10 }}>
+        <div>
+          <div className="card-name">{pool.baseName}</div>
+          <div className="card-symbol">${pool.baseSymbol}</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div className="card-label">Market cap</div>
+          <div className="card-value">{fmt(pool.marketCapUsd ?? pool.fdvUsd, '$')}</div>
+        </div>
+      </div>
+
+      {/* price */}
+      <div className="card-price">{fmtPrice(pool.priceUsd)}</div>
+
+      {/* stats row */}
+      <div className="card-stats">
+        <span title="Liquidity">💧 {fmt(pool.liquidityUsd, '$')}</span>
+        <span title="24h Volume">📊 {fmt(pool.volumeH24, '$')}</span>
+        <span title="Created">{timeAgo(pool.poolCreatedAt)} ago</span>
+      </div>
+
+      {/* txn counts */}
+      <div className="card-txns">
+        <span className="buy-count">▲ {pool.txns.buys}B</span>
+        <span className="sell-count">▼ {pool.txns.sells}S</span>
+        <span className="buyers-count">{pool.txns.buyers} buyers</span>
+      </div>
+
+      {/* recent trade feed on hover */}
+      {hovered && recentTrades.length > 0 && (
+        <div className="card-trade-feed">
+          {recentTrades.map((t, i) => (
+            <div key={i} className={`feed-item ${t.kind}`}>
+              <span className="feed-kind">{t.kind === 'buy' ? '▲ BUY' : '▼ SELL'}</span>
+              <span className="feed-amount">${t.volumeUsd < 1 ? t.volumeUsd.toFixed(3) : fmt(t.volumeUsd)}</span>
+              <span className="feed-wallet">{t.txFrom.slice(0, 6)}…{t.txFrom.slice(-4)}</span>
+              <span className="feed-time">{timeAgo(t.timestamp)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main Terminal ────────────────────────────────────────────────────
+type Tab = 'trending' | 'new' | 'all'
+type SortKey = 'volume' | 'marketcap' | 'liquidity' | 'age' | 'txns'
+type LaunchpadFilter = 'all' | string
+
+const LAUNCHPADS = ['Argus', 'Minara.fun', 'RadarDex', 'Tolly', 'Warp', 'Archemist', 'o1 Launchpad', 'Uniswap V3', 'Uniswap V4']
+
+export default function Terminal({ navigate }: Props) {
+  const [tab, setTab] = useState<Tab>('trending')
+  const [pools, setPools] = useState<GeckoPool[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [sortKey, setSortKey] = useState<SortKey>('volume')
+  const [lpFilter, setLpFilter] = useState<LaunchpadFilter>('all')
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
+  const [lastUpdate, setLastUpdate] = useState(Date.now())
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const loaderRef = useRef<HTMLDivElement>(null)
+
+  // fetch pools for current tab
+  const fetchPools = useCallback(async (tab: Tab, pageNum: number, replace: boolean) => {
     try {
-      const [ts, st] = await Promise.all([getTokens(force), getPlatformStats()])
-      setTokens(ts)
-      setStats(st)
-      setLastRefresh(new Date())
+      let data: GeckoPool[] = []
+      if (tab === 'trending') data = await getTrendingPools(pageNum)
+      else if (tab === 'new')  data = await getNewPools(pageNum)
+      else                     data = await getAllPools(pageNum)
+      setPools(prev => replace ? data : [...prev, ...data])
+      setHasMore(data.length === 20)
+      setLastUpdate(Date.now())
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => { void load() }, [load])
-
+  // initial load + tab change
   useEffect(() => {
-    timerRef.current = setInterval(() => { void load(true) }, 15_000)
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [load])
+    setLoading(true)
+    setPools([])
+    setPage(1)
+    setHasMore(true)
+    void fetchPools(tab, 1, true)
+  }, [tab, fetchPools])
 
-  // Filter + sort
-  const visible = (() => {
-    let list = tokens
+  // auto-refresh every 15s
+  useEffect(() => {
+    if (pollRef.current) clearInterval(pollRef.current)
+    pollRef.current = setInterval(() => {
+      void fetchPools(tab, 1, true)
+      // also poll top 10 visible pools for live trades
+      setPools(prev => {
+        prev.slice(0, 10).forEach(p => { void pollPool(p.address) })
+        return prev
+      })
+    }, 15_000)
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [tab, fetchPools])
 
-    // Tab filter
-    if (tab === 'new')       list = list.filter(t => t.ageMs < 7 * 86400 * 1000)
-    if (tab === 'graduated') list = list.filter(t => t.graduated)
-    if (tab === 'trending')  list = list.filter(t => t.volume24h > 0 || t.txCount24h > 0)
+  // poll trades for visible pools every 10s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      pools.slice(0, 12).forEach(p => { void pollPool(p.address) })
+    }, 10_000)
+    return () => clearInterval(interval)
+  }, [pools])
 
-    // Quote filter
-    if (quoteFilter !== 'all')
-      list = list.filter(t => t.quoteSymbol.toUpperCase() === quoteFilter)
-
-    // Search
-    if (search) {
-      const q = search.toLowerCase()
-      list = list.filter(t =>
-        t.symbol.toLowerCase().includes(q) ||
-        t.name.toLowerCase().includes(q) ||
-        t.address.toLowerCase().includes(q),
-      )
-    }
-
-    // Sort
-    list = [...list].sort((a, b) => {
-      switch (sortKey) {
-        case 'lastTrade':    return b.txCount24h - a.txCount24h
-        case 'marketCap':    return b.marketCap  - a.marketCap
-        case 'volume24h':    return b.volume24h   - a.volume24h
-        case 'priceChange24h': return b.priceChange24h - a.priceChange24h
-        case 'liquidity':    return b.liquidity   - a.liquidity
-        case 'holderCount':  return b.holderCount - a.holderCount
-        case 'ageMs':        return a.ageMs - b.ageMs  // newest first
-        case 'buys24h':      return (b.buys24h - b.sells24h) - (a.buys24h - a.sells24h)
-        default:             return 0
+  // infinite scroll
+  useEffect(() => {
+    const el = loaderRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore && !loading) {
+        const next = page + 1
+        setPage(next)
+        void fetchPools(tab, next, false)
       }
+    }, { threshold: 0.1 })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [page, hasMore, loading, tab, fetchPools])
+
+  // filter + sort
+  const filtered = pools
+    .filter(p => {
+      if (lpFilter !== 'all' && p.dexName !== lpFilter) return false
+      if (search) {
+        const q = search.toLowerCase()
+        return p.baseSymbol.toLowerCase().includes(q) || p.baseName.toLowerCase().includes(q)
+      }
+      return true
+    })
+    .sort((a, b) => {
+      if (sortKey === 'volume')    return (b.volumeH24 ?? 0) - (a.volumeH24 ?? 0)
+      if (sortKey === 'marketcap') return ((b.marketCapUsd ?? b.fdvUsd ?? 0)) - ((a.marketCapUsd ?? a.fdvUsd ?? 0))
+      if (sortKey === 'liquidity') return (b.liquidityUsd ?? 0) - (a.liquidityUsd ?? 0)
+      if (sortKey === 'age')       return new Date(b.poolCreatedAt).getTime() - new Date(a.poolCreatedAt).getTime()
+      if (sortKey === 'txns')      return (b.txns.buys + b.txns.sells) - (a.txns.buys + a.txns.sells)
+      return 0
     })
 
-    return list
-  })()
+  const secs = Math.floor((Date.now() - lastUpdate) / 1000)
 
   return (
-    <div style={{ maxWidth: 1600, margin: '0 auto', padding: '0 16px 32px' }}>
-
-      {/* Stats bar */}
-      <div className="stats-bar">
-        <StatPill label="Tokens" value={stats.tokenCount > 0 ? stats.tokenCount.toLocaleString() : tokens.length.toLocaleString()} />
-        <StatPill label="24h Vol" value={fmt(stats.volume24h)} />
-        <StatPill label="Mcap"    value={fmt(stats.marketCap)} />
-        <StatPill label="Liq"     value={fmt(stats.liquidity)} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
-          <div className="pulse-dot" />
-          <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>
-            {lastRefresh ? `${lastRefresh.toLocaleTimeString()}` : 'Loading…'}
-          </span>
+    <div className="terminal-root">
+      {/* header */}
+      <div className="terminal-header">
+        <div className="terminal-title">
+          <span className="terminal-logo">⬡</span> ARC<span style={{ color: '#3b82f6' }}>DEX</span>
+          <span className="live-dot" />
+          <span className="live-label">LIVE · {secs}s ago</span>
         </div>
-      </div>
-
-      {/* Tabs + view toggle */}
-      <div className="tabs-row">
-        <div className="tabs">
-          {(['trending', 'new', 'graduated'] as Tab[]).map(t => (
-            <button key={t} className={`tab ${tab === t ? 'tab-active' : ''}`}
-              onClick={() => setTab(t)}>
-              {t === 'trending' && '🔥 '}
-              {t === 'new'      && '✨ '}
-              {t === 'graduated' && '🎓 '}
-              {t.charAt(0).toUpperCase() + t.slice(1)}
-            </button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto' }}>
-          {/* Sort dropdown */}
-          <select
-            value={sortKey}
-            onChange={e => setSortKey(e.target.value as SortKey)}
-            className="sort-select"
-          >
-            {SORT_OPTIONS.map(o => (
-              <option key={o.key} value={o.key}>{o.label}</option>
-            ))}
-          </select>
-          {/* View toggle */}
-          <div className="view-toggle">
-            <button className={view === 'grid' ? 'active' : ''} onClick={() => setView('grid')}
-              title="Grid view">
-              <svg width={16} height={16} viewBox="0 0 16 16" fill="currentColor">
-                <rect x="1" y="1" width="6" height="6" rx="1" />
-                <rect x="9" y="1" width="6" height="6" rx="1" />
-                <rect x="1" y="9" width="6" height="6" rx="1" />
-                <rect x="9" y="9" width="6" height="6" rx="1" />
-              </svg>
-            </button>
-            <button className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}
-              title="List view">
-              <svg width={16} height={16} viewBox="0 0 16 16" fill="currentColor">
-                <rect x="1" y="2" width="14" height="2" rx="1" />
-                <rect x="1" y="7" width="14" height="2" rx="1" />
-                <rect x="1" y="12" width="14" height="2" rx="1" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Quote pair filters */}
-      <div className="quote-filters">
-        {QUOTE_FILTERS.map(q => (
-          <button key={q}
-            className={`quote-btn ${quoteFilter === q ? 'quote-active' : ''}`}
-            onClick={() => setQuoteFilter(q)}>
-            {q === 'all' ? 'All pairs' : q}
-          </button>
-        ))}
-        {/* Search */}
         <input
-          placeholder="Search…"
+          className="terminal-search"
+          placeholder="Search token…"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="search-input"
         />
       </div>
 
-      {/* Content */}
-      {loading && (
-        <div className="loading-grid">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <div key={i} className="token-card skeleton" />
-          ))}
-        </div>
-      )}
+      {/* tabs */}
+      <div className="terminal-tabs">
+        {(['trending', 'new', 'all'] as Tab[]).map(t => (
+          <button key={t} className={`tab-btn${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>
+            {t === 'trending' ? '🔥 Trending' : t === 'new' ? '✨ New' : '🌐 All Pairs'}
+          </button>
+        ))}
+      </div>
 
-      {!loading && visible.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)' }}>
-          No tokens found
-        </div>
-      )}
+      {/* launchpad filter pills */}
+      <div className="lp-filter-row">
+        <button className={`lp-pill${lpFilter === 'all' ? ' active' : ''}`} onClick={() => setLpFilter('all')}>
+          All
+        </button>
+        {LAUNCHPADS.map(lp => (
+          <button
+            key={lp}
+            className={`lp-pill${lpFilter === lp ? ' active' : ''}`}
+            style={lpFilter === lp ? { background: launchpadColor(lp), borderColor: launchpadColor(lp), color: '#fff' } : { borderColor: launchpadColor(lp), color: launchpadColor(lp) }}
+            onClick={() => setLpFilter(lp === lpFilter ? 'all' : lp)}
+          >
+            {lp}
+          </button>
+        ))}
+      </div>
 
-      {!loading && visible.length > 0 && view === 'grid' && (
-        <div className="token-grid">
-          {visible.map((t, i) => (
-            <TokenCard key={t.address} token={t} rank={i + 1} navigate={navigate} />
-          ))}
-        </div>
-      )}
+      {/* sort bar */}
+      <div className="sort-bar">
+        <span className="sort-label">Sort:</span>
+        {([
+          ['volume',    'Volume 24h'],
+          ['marketcap', 'Market Cap'],
+          ['liquidity', 'Liquidity'],
+          ['age',       'Newest'],
+          ['txns',      'Transactions'],
+        ] as [SortKey, string][]).map(([key, label]) => (
+          <button
+            key={key}
+            className={`sort-btn${sortKey === key ? ' active' : ''}`}
+            onClick={() => setSortKey(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      {!loading && visible.length > 0 && view === 'list' && (
-        <div className="arc-card" style={{ overflow: 'hidden', marginTop: 8 }}>
-          <div className="table-scroll">
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--card-border)' }}>
-                  {['#','Token','Price','24h','MCap','Vol 24h','Liq','Holders','Age','B/S','Spark'].map(h => (
-                    <th key={h} style={{ padding: '10px 12px', textAlign: h === '#' || h === 'Token' ? 'left' : 'right',
-                      color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.6875rem',
-                      whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((t, i) => (
-                  <TokenRow key={t.address} token={t} rank={i + 1} navigate={navigate} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* token grid */}
+      <div className="token-grid" style={{ minHeight: '80vh' }}>
+        {loading && pools.length === 0
+          ? Array.from({ length: 12 }).map((_, i) => <div key={i} className="token-card skeleton" />)
+          : filtered.map(pool => (
+              <TokenCard
+                key={pool.id}
+                pool={pool}
+                onClick={() => navigate({ name: 'token', address: pool.address })}
+              />
+            ))
+        }
+      </div>
 
-      <p style={{ marginTop: 20, fontSize: '0.6875rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-        Live data from RadarDex API · All Arc launchpads · Refreshes every 15s · Not financial advice
-      </p>
-    </div>
-  )
-}
-
-function StatPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textTransform: 'uppercase',
-        letterSpacing: '0.06em' }}>{label}</span>
-      <span style={{ fontFamily: 'var(--mono)', fontSize: '0.8125rem', fontWeight: 700 }}>{value}</span>
+      {/* infinite scroll sentinel */}
+      <div ref={loaderRef} style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {loading && pools.length > 0 && <span className="loading-more">Loading more…</span>}
+        {!hasMore && pools.length > 0 && <span className="no-more">All pools loaded</span>}
+      </div>
     </div>
   )
 }

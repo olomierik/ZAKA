@@ -20,6 +20,16 @@
       "requirePath": "/tmp/bunx-1002-vercel@latest/node_modules/@vercel/node/dist/index",
       "apiVersion": 3,
       "use": "@vercel/node",
+      "src": "api/gecko.ts",
+      "config": {
+        "zeroConfig": true
+      }
+    },
+    {
+      "require": "@vercel/node",
+      "requirePath": "/tmp/bunx-1002-vercel@latest/node_modules/@vercel/node/dist/index",
+      "apiVersion": 3,
+      "use": "@vercel/node",
       "src": "api/radar.ts",
       "config": {
         "zeroConfig": true
