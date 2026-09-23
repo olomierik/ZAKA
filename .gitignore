@@ -1,5 +1,8 @@
 node_modules/
 dist/
+.vercel/output/
+.vercel/static-build/
+.vercel/node/
 .env
 .env.*
 .circle/
