@@ -81,43 +81,58 @@ async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
 
 // Fetch token list from RadarDex API
 async function fetchRadarTokens(): Promise<ArcToken[]> {
-  try {
-    const res = await fetch(`${RADAR_BASE}/v1/tokens?chain=arc&limit=200`, {
-      signal: AbortSignal.timeout(8000),
-    })
-    if (!res.ok) throw new Error(`RadarDex API ${res.status}`)
-    const data = await res.json() as { tokens?: RadarToken[] }
-    return (data.tokens ?? []).map(mapRadarToken)
-  } catch {
-    // Fallback: query V3 factory for all pools
-    return fetchOnChainTokens()
-  }
+  const res = await fetch(`${RADAR_BASE}/tokens?chain=arc&limit=200`, {
+    signal: AbortSignal.timeout(10000),
+  })
+  if (!res.ok) throw new Error(`RadarDex API ${res.status}`)
+  const data = await res.json() as { tokens?: RadarToken[] }
+  return (data.tokens ?? []).map(mapRadarToken)
 }
 
 interface RadarToken {
-  address: string; symbol: string; name: string; decimals: number
-  logoUrl?: string; price?: number; priceChange24h?: number
-  volume24h?: number; marketCap?: number; liquidity?: number
-  createdAt?: string; poolAddress?: string; txCount24h?: number
-  launchpad?: string
+  address:      string
+  symbol:       string
+  name:         string
+  decimals:     number
+  icon?:        string
+  price?:       number
+  change24h?:   number
+  volume24?:    number
+  mcap?:        number
+  liquidityUsdc?: number
+  firstSeen?:   number   // unix seconds
+  deployTs?:    number   // unix seconds
+  txns24?:      number
+  launchpad?:   string | null
+  pools?:       number
+  buys24?:      number
+  sells24?:     number
+  holderCount?: number
+  verified?:    boolean
 }
 
 function mapRadarToken(t: RadarToken): ArcToken {
+  const ageMs = t.deployTs
+    ? Date.now() - t.deployTs * 1000
+    : t.firstSeen
+      ? Date.now() - t.firstSeen * 1000
+      : 0
+
   return {
     address:        t.address,
     symbol:         t.symbol,
     name:           t.name,
     decimals:       t.decimals ?? 18,
-    logoUrl:        t.logoUrl ?? '',
+    logoUrl:        t.icon ?? '',
     price:          t.price ?? 0,
-    priceChange24h: t.priceChange24h ?? 0,
-    volume24h:      t.volume24h ?? 0,
-    marketCap:      t.marketCap ?? 0,
-    liquidity:      t.liquidity ?? 0,
-    ageMs:          t.createdAt ? Date.now() - new Date(t.createdAt).getTime() : 0,
+    priceChange24h: t.change24h ?? 0,
+    volume24h:      t.volume24 ?? 0,
+    marketCap:      t.mcap ?? 0,
+    liquidity:      t.liquidityUsdc ?? 0,
+    ageMs,
     launchpad:      t.launchpad ?? 'RadarDex',
-    poolAddress:    t.poolAddress ?? '',
-    txCount24h:     t.txCount24h ?? 0,
+    poolAddress:    '',
+    txCount24h:     t.txns24 ?? 0,
   }
 }
 
@@ -185,7 +200,7 @@ export async function getOhlcv(
 ): Promise<OhlcvCandle[]> {
   try {
     const res = await fetch(
-      `${RADAR_BASE}/v1/ohlcv?chain=arc&token=${tokenAddress}&resolution=${resolution}&limit=${limit}`,
+      `${RADAR_BASE}/candles?chain=arc&token=${tokenAddress}&resolution=${resolution}&limit=${limit}`,
       { signal: AbortSignal.timeout(8000) },
     )
     if (!res.ok) throw new Error('ohlcv failed')
