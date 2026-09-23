@@ -1,14 +1,23 @@
-# [App Name]
+# ZAKA + ARCDEX
 
 > Built with Arc Studio - money-powered apps in minutes
 
-This is the **project memory** - what Arc Studio remembers about building this app. It helps future agents (or humans) understand and extend the project.
+Two apps in this repo:
+- **ZAKA** — USDC mobile wallet for African markets (send, receive, withdraw to mobile money)
+- **ARCDEX** — DexScreener-style DEX terminal for Arc mainnet (token terminal, swap, portfolio)
 
 ---
 
-## What This App Does
+## Deployed Contracts
 
-[Brief description of what the app does and its primary use case]
+### ArcDexRouter
+- **Arc Testnet:** `0xefa4f596da0c2acfcba47b43389be26e96912516`
+  - Explorer: https://explorer.testnet.arc.io/address/0xefa4f596da0c2acfcba47b43389be26e96912516
+  - TX: `0x0e8f992af5eb26fd5a0e6ca49480381c78f24aac38435bd51f9041b5045c7198`
+- **Arc Mainnet:** deploy using `scripts/deploy-mainnet.sh` with your own wallet — bytecode is in `contracts/out/ArcDexRouter.sol/ArcDexRouter.json`
+  - Constructor args: `(0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45, 0x274262A0321A0701b0A46a3576e07aE881c286Bb, YOUR_OWNER_WALLET)`
+
+## What This App Does
 
 ## Tech Stack
 

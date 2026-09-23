@@ -5,6 +5,14 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
 export default defineConfig({
   plugins: [react(), nodePolyfills()],
+  build: {
+    rollupOptions: {
+      input: {
+        main:   path.resolve(__dirname, 'index.html'),
+        arcdex: path.resolve(__dirname, 'arcdex.html'),
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

@@ -1,0 +1,88 @@
+/* ARCDEX — Arc Mainnet DEX Terminal */
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg:          #060d18;
+    --bg-2:        #0b1628;
+    --bg-3:        #111d33;
+    --card:        #0f1e35;
+    --card-border: #1e3050;
+    --text:        #e2e8f0;
+    --text-muted:  #64748b;
+    --text-dim:    #94a3b8;
+    --accent:      #3b82f6;
+    --accent-glow: rgba(59,130,246,0.25);
+    --green:       #22c55e;
+    --red:         #ef4444;
+    --orange:      #f59e0b;
+    --mono:        'JetBrains Mono', monospace;
+    --sans:        'Space Grotesk', system-ui, sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    font-family:      var(--sans);
+    background-color: var(--bg);
+    color:            var(--text);
+    min-height:       100dvh;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  #root { min-height: 100dvh; display: flex; flex-direction: column; }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg-2); }
+::-webkit-scrollbar-thumb { background: var(--card-border); border-radius: 2px; }
+
+/* Cards */
+.arc-card {
+  background:   var(--card);
+  border:       1px solid var(--card-border);
+  border-radius: 12px;
+}
+
+/* Number formatting — monospace for prices */
+.mono { font-family: var(--mono); font-size: 0.8125rem; }
+
+/* Price change badges */
+.change-pos { color: var(--green); }
+.change-neg { color: var(--red); }
+.change-zero { color: var(--text-muted); }
+
+/* Launchpad badge */
+.lp-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 999px; font-size: 0.625rem;
+  font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  border: 1px solid;
+}
+
+/* Animated gradient glow on hover */
+.glow-hover {
+  transition: box-shadow 0.2s ease;
+}
+.glow-hover:hover {
+  box-shadow: 0 0 0 1px var(--accent), 0 0 20px var(--accent-glow);
+}
+
+/* Pulse dot */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+.pulse-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--green);
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+/* Scrollable table wrapper */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}

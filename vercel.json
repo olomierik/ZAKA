@@ -4,6 +4,7 @@
   "installCommand": "bun install",
   "framework": "vite",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/arcdex(.*)", "destination": "/arcdex.html" },
+    { "source": "/(.*)",       "destination": "/index.html"  }
   ]
 }
