@@ -222,42 +222,6 @@ export async function getToken(address: string): Promise<ArcToken | null> {
   return tokens.find(t => t.address.toLowerCase() === address.toLowerCase()) ?? null
 }
 
-export async function getOhlcv(
-  tokenAddress: string,
-  resolution: '1m' | '5m' | '15m' | '1h' | '4h' | '1d' = '1h',
-  limit = 200,
-): Promise<OhlcvCandle[]> {
-  try {
-    const url = `${PROXY}?path=/candles&chain=arc&token=${tokenAddress}&resolution=${resolution}&limit=${limit}`
-    const res  = await fetch(url, { signal: AbortSignal.timeout(8000) })
-    if (!res.ok) throw new Error('ohlcv')
-    const data = await res.json() as { candles?: OhlcvCandle[] }
-    return data.candles ?? generateMockCandles(limit)
-  } catch {
-    return generateMockCandles(limit)
-  }
-}
-
-function generateMockCandles(limit: number): OhlcvCandle[] {
-  const candles: OhlcvCandle[] = []
-  let price = 0.01 + Math.random() * 0.5
-  const now  = Math.floor(Date.now() / 1000)
-  for (let i = limit; i >= 0; i--) {
-    const d    = (Math.random() - 0.48) * 0.04 * price
-    const open = price
-    price = Math.max(0.0001, price + d)
-    candles.push({
-      time:   now - i * 3600,
-      open,
-      high:   Math.max(open, price) * (1 + Math.random() * 0.01),
-      low:    Math.min(open, price) * (1 - Math.random() * 0.01),
-      close:  price,
-      volume: Math.random() * 1000,
-    })
-  }
-  return candles
-}
-
 interface RadarTrade {
   hash?:      string
   txHash?:    string

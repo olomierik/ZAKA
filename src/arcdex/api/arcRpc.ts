@@ -75,9 +75,12 @@ function connect() {
       const amount0 = BigInt.asIntN(256, BigInt('0x' + data.slice(0, 64)))
       const amount1 = BigInt.asIntN(256, BigInt('0x' + data.slice(64, 128)))
 
-      // If amount0 < 0 → token0 out → sell token0 (buy quoteToken)
-      // Convention: positive amount = token flowing IN to pool
-      const kind: 'buy' | 'sell' = amount0 < 0n ? 'buy' : 'sell'
+      // `kind`/`volumeUsd` can't be determined from the raw log alone:
+      // token0 vs token1 is assigned by address sort order, not by which
+      // side is the quote (USDC) token, and that varies per pool. Callers
+      // that know the pair's quoteToken/baseToken addresses should use
+      // `deriveTradeInfo` below instead of trusting these placeholders.
+      const kind: 'buy' | 'sell' = 'buy'
 
       const trade: LiveTrade = {
         txHash:       log.transactionHash,
@@ -146,12 +149,22 @@ export function subscribePair(pairAddress: string, cb: TradeCallback): () => voi
   }
 }
 
-/** Estimate USD volume from raw amounts and current price.
- *  amount0 is the base token, amount1 is the quote token (USDC = 6 decimals).
- *  We use abs(amount1) / 1e6 as the USD value since USDC ≈ $1. */
-export function estimateUsd(amount1: bigint): number {
-  const abs = amount1 < 0n ? -amount1 : amount1
+/** Estimate USD volume straight from the quote-token leg (USDC, 6dp). */
+export function estimateUsd(quoteAmount: bigint): number {
+  const abs = quoteAmount < 0n ? -quoteAmount : quoteAmount
   return Number(abs) / 1e6
+}
+
+/** Correctly resolves kind ('buy'/'sell') and USD volume for a raw trade,
+ * given whether the pool's quote (USDC) token is token0 or token1 — that
+ * ordering is by contract address, not semantics, so it varies per pool
+ * and must come from known pair metadata (DexScreener/GeckoTerminal),
+ * not guessed. */
+export function deriveTradeInfo(trade: LiveTrade, quoteIsToken0: boolean): { kind: 'buy' | 'sell'; usd: number } {
+  const quoteAmount = quoteIsToken0 ? trade.amount0 : trade.amount1
+  // quoteAmount > 0 → USDC flowing IN to the pool → trader paid USDC → buy.
+  const kind: 'buy' | 'sell' = quoteAmount > 0n ? 'buy' : 'sell'
+  return { kind, usd: estimateUsd(quoteAmount) }
 }
 
 // generate unique ids for pending requests

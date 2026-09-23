@@ -1,8 +1,20 @@
 import { useEffect, useState } from 'react'
-import { getPairByAddress, getLaunchpad, type DexPair } from '../api/dexscreener'
-import { subscribePair, estimateUsd, ARC_EXPLORER, type LiveTrade } from '../api/arcRpc'
+import { getPairsByToken, getLaunchpad, type DexPair } from '../api/dexscreener'
+import { subscribePair, deriveTradeInfo, ARC_EXPLORER, type LiveTrade } from '../api/arcRpc'
+import { getToken, type ArcToken } from '../api/radardex'
+import { getCurve, LAUNCHPAD_ADDRESS } from '../api/launchpad'
 import PriceChart from '../components/PriceChart'
+import SwapWidget from '../components/SwapWidget'
+import CurveTokenPage from './CurveTokenPage'
 import type { Page } from '../App'
+
+// DexScreener's /tokens/{address} endpoint returns every pool for a token
+// (often across multiple launchpads). Pick the deepest pool as "the" pair —
+// that's the one with real volume/trades, and the one Swap events fire from.
+function pickDeepestPair(pairs: DexPair[]): DexPair | null {
+  if (pairs.length === 0) return null
+  return [...pairs].sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0))[0]
+}
 
 interface Props { address: string; navigate: (p: Page) => void }
 
@@ -32,26 +44,58 @@ export default function TokenPage({ address, navigate }: Props) {
   const [pair,   setPair]   = useState<DexPair | null>(null)
   const [trades, setTrades] = useState<LiveTrade[]>([])
   const [loading, setLoading] = useState(true)
+  const [radarToken, setRadarToken] = useState<ArcToken | null>(null)
+  const [isLaunchpadToken, setIsLaunchpadToken] = useState<boolean | null>(null)
 
-  // load pair data
+  // ArcLaunchpad tokens aren't real Uniswap pools (no external market to
+  // query), so they need a completely different page — check first, before
+  // touching any DexScreener/RadarDex APIs at all.
   useEffect(() => {
-    setLoading(true)
-    getPairByAddress(address).then(p => { setPair(p); setLoading(false) })
-    // refresh every 6s
-    const t = setInterval(() => getPairByAddress(address).then(p => { if (p) setPair(p) }), 6000)
-    return () => clearInterval(t)
+    setIsLaunchpadToken(null)
+    if (LAUNCHPAD_ADDRESS.length !== 42) { setIsLaunchpadToken(false); return }
+    let cancelled = false
+    void getCurve(address as `0x${string}`).then(c => { if (!cancelled) setIsLaunchpadToken(c !== null) })
+    return () => { cancelled = true }
   }, [address])
 
-  // subscribe to live trades via Arc RPC WebSocket
+  // decimals + a few extra fields (holders, launchpad name) aren't on
+  // DexScreener's payload — pull them from RadarDex for the swap widget.
+  useEffect(() => { if (isLaunchpadToken === false) void getToken(address).then(setRadarToken) }, [address, isLaunchpadToken])
+
+  // load pair data — `address` is the ERC20 token address, so resolve its
+  // pools via /tokens/{address} (NOT /pairs/{pairAddress} — that expects the
+  // pool address, which we don't have until after this call). Skipped
+  // entirely for launchpad tokens, which have no external pool to look up.
   useEffect(() => {
-    const unsub = subscribePair(address, trade => {
-      const usd = estimateUsd(trade.amount1)
-      setTrades(prev => [{ ...trade, volumeUsd: usd }, ...prev].slice(0, 200))
+    if (isLaunchpadToken !== false) return
+    setLoading(true)
+    setPair(null)
+    getPairsByToken(address).then(ps => { setPair(pickDeepestPair(ps)); setLoading(false) })
+    const t = setInterval(() => {
+      getPairsByToken(address).then(ps => { const p = pickDeepestPair(ps); if (p) setPair(p) })
+    }, 6000)
+    return () => clearInterval(t)
+  }, [address, isLaunchpadToken])
+
+  // subscribe to live trades via Arc RPC WebSocket — must use the POOL
+  // address (pair.pairAddress), since that's the contract that emits Swap
+  // events. The token address itself never emits Swap logs. Which raw
+  // amount (0 or 1) is USDC depends on token address sort order per pool,
+  // so it's resolved from the pair's own quoteToken/baseToken addresses.
+  useEffect(() => {
+    if (!pair?.pairAddress) return
+    const quoteIsToken0 = pair.quoteToken.address.toLowerCase() < pair.baseToken.address.toLowerCase()
+    const unsub = subscribePair(pair.pairAddress, trade => {
+      const { kind, usd } = deriveTradeInfo(trade, quoteIsToken0)
+      setTrades(prev => [{ ...trade, kind, volumeUsd: usd }, ...prev].slice(0, 200))
     })
     return unsub
-  }, [address])
+  }, [pair?.pairAddress])
 
   const lp = pair ? getLaunchpad(pair) : null
+
+  if (isLaunchpadToken === null) return <div className="loading-state">Loading…</div>
+  if (isLaunchpadToken) return <CurveTokenPage address={address} navigate={navigate} />
 
   return (
     <div className="token-page">
@@ -106,14 +150,16 @@ export default function TokenPage({ address, navigate }: Props) {
         </div>
       )}
 
-      {/* price chart */}
-      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, margin: '16px 16px 0', padding: 16 }}>
-        <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>PRICE CHART</div>
-        <PriceChart tokenAddress={address} />
-      </div>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', padding: '0 16px 16px' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* price chart */}
+          <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, marginTop: 16, padding: 16 }}>
+            <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>PRICE CHART</div>
+            <PriceChart poolAddress={pair?.pairAddress ?? null} />
+          </div>
 
       {/* live trades */}
-      <div style={{ margin: 16, background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ marginTop: 16, background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--card-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Live Trades</span>
           <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
@@ -166,6 +212,19 @@ export default function TokenPage({ address, navigate }: Props) {
             </table>
           </div>
         )}
+      </div>
+        </div>
+
+        {/* swap sidebar */}
+        <div style={{ width: 340, flexShrink: 0, marginTop: 16, background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, overflow: 'hidden' }}>
+          {radarToken ? (
+            <SwapWidget token={radarToken} />
+          ) : (
+            <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              Loading swap…
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

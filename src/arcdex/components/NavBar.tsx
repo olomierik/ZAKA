@@ -1,8 +1,34 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ConnectKitButton } from 'connectkit'
+import { getPlatformTokenStats, type PlatformTokenStats } from '../api/launchpad'
 import type { Page } from '../App'
 
 interface Props { page: Page; navigate: (p: Page) => void }
+
+function fmtCompact(n: number): string {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`
+  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`
+  return n.toFixed(2)
+}
+
+function BurnTicker() {
+  const [stats, setStats] = useState<PlatformTokenStats | null>(null)
+  useEffect(() => {
+    const load = () => void getPlatformTokenStats().then(setStats)
+    load()
+    const iv = setInterval(load, 15_000)
+    return () => clearInterval(iv)
+  }, [])
+  if (!stats) return null
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.67rem', fontFamily: 'var(--mono)' }}>
+      <span>🔥</span>
+      <span style={{ color: '#f59e0b', fontWeight: 700 }}>{fmtCompact(stats.burned)} {stats.symbol} burned</span>
+      <span style={{ color: 'var(--text-muted)' }}>({stats.burnedPct.toFixed(2)}%)</span>
+    </div>
+  )
+}
 
 export default function NavBar({ navigate }: Props) {
   const [search, setSearch] = useState('')
@@ -14,14 +40,16 @@ export default function NavBar({ navigate }: Props) {
         ARCDEX
       </button>
       <span className="navbar-badge">MAINNET</span>
+      <BurnTicker />
 
       {/* Nav links */}
       <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-        {(['Terminal','Swap','Scanner','Traders','Portfolio'] as const).map(label => (
+        {(['Terminal','Launchpad','Portfolio'] as const).map(label => (
           <button
             key={label}
             onClick={() => {
               if (label === 'Terminal') navigate({ name: 'terminal' })
+              if (label === 'Launchpad') navigate({ name: 'launchpad' })
               if (label === 'Portfolio') navigate({ name: 'portfolio' })
             }}
             style={{

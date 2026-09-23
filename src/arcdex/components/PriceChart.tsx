@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createChart, type IChartApi, type ISeriesApi, type CandlestickData, CandlestickSeries } from 'lightweight-charts'
-import { getOhlcv, type OhlcvCandle } from '../api/radardex'
+import { getPoolOhlcv, type OhlcvCandle } from '../api/gecko'
 
 type Resolution = '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
 const RESOLUTIONS: { label: string; value: Resolution }[] = [
@@ -9,12 +9,19 @@ const RESOLUTIONS: { label: string; value: Resolution }[] = [
   { label: '4H', value: '4h' }, { label: '1D', value: '1d' },
 ]
 
-interface Props { tokenAddress: string; candles?: OhlcvCandle[] }
+// `poolAddress` is the pair/pool contract, not the token — GeckoTerminal's
+// OHLCV API is keyed by pool. Pass null while it's still resolving.
+interface Props { poolAddress: string | null }
 
-export default function PriceChart({ tokenAddress }: Props) {
+export default function PriceChart({ poolAddress }: Props) {
   const [res, setRes] = useState<Resolution>('1h')
   const [candles, setCandles] = useState<OhlcvCandle[]>([])
-  useEffect(() => { getOhlcv(tokenAddress, res).then(setCandles) }, [tokenAddress, res])
+  useEffect(() => {
+    if (!poolAddress) { setCandles([]); return }
+    let cancelled = false
+    getPoolOhlcv(poolAddress, res).then(c => { if (!cancelled) setCandles(c) }).catch(() => { if (!cancelled) setCandles([]) })
+    return () => { cancelled = true }
+  }, [poolAddress, res])
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef     = useRef<IChartApi | null>(null)
   const seriesRef    = useRef<ISeriesApi<'Candlestick'> | null>(null)

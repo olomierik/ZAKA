@@ -162,6 +162,34 @@ export async function getPoolTrades(poolAddress: string): Promise<GeckoTrade[]> 
   })
 }
 
+export interface OhlcvCandle { time: number; open: number; high: number; low: number; close: number; volume: number }
+
+type ChartRes = '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
+
+// GeckoTerminal buckets OHLCV as {timeframe: day|hour|minute} + an `aggregate`
+// multiplier — map our chart-button resolutions onto that shape.
+const RES_TO_GECKO: Record<ChartRes, { timeframe: 'day' | 'hour' | 'minute'; aggregate: number }> = {
+  '1m':  { timeframe: 'minute', aggregate: 1 },
+  '5m':  { timeframe: 'minute', aggregate: 5 },
+  '15m': { timeframe: 'minute', aggregate: 15 },
+  '1h':  { timeframe: 'hour',   aggregate: 1 },
+  '4h':  { timeframe: 'hour',   aggregate: 4 },
+  '1d':  { timeframe: 'day',    aggregate: 1 },
+}
+
+export async function getPoolOhlcv(poolAddress: string, resolution: ChartRes, limit = 200): Promise<OhlcvCandle[]> {
+  const { timeframe, aggregate } = RES_TO_GECKO[resolution]
+  const d = await gecko<{ data?: { attributes?: { ohlcv_list?: [number, number, number, number, number, number][] } } }>(
+    `/networks/${NET}/pools/${poolAddress}/ohlcv/${timeframe}`,
+    { aggregate: String(aggregate), limit: String(limit) }
+  )
+  const rows = d.data?.attributes?.ohlcv_list ?? []
+  // GeckoTerminal returns newest-first; charts need ascending time order.
+  return rows
+    .map(([time, open, high, low, close, volume]) => ({ time, open, high, low, close, volume }))
+    .sort((a, b) => a.time - b.time)
+}
+
 export async function searchPools(query: string): Promise<GeckoPool[]> {
   const d = await gecko<{ data: { id: string; attributes: Record<string, unknown>; relationships: Record<string, unknown> }[]; included: { id: string; type: string; attributes: { name: string } }[] }>(
     `/search/pools`, { query, network: NET, include: 'dex' }

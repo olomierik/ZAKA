@@ -3,11 +3,13 @@ import NavBar from './components/NavBar'
 import Terminal from './pages/Terminal'
 import TokenPage from './pages/TokenPage'
 import Portfolio from './pages/Portfolio'
-import { getTrades } from './api/radardex'
-import type { Trade } from './api/radardex'
+import Launchpad from './pages/Launchpad'
+import TradingWalletPanel from './components/TradingWalletPanel'
+import { subscribeAll, deriveTradeInfo, type LiveTrade } from './api/arcRpc'
+import { getPairByAddress } from './api/dexscreener'
 import './arcdex.css'
 
-export type Page = { name: 'terminal' } | { name: 'token'; address: string; symbol?: string } | { name: 'portfolio' }
+export type Page = { name: 'terminal' } | { name: 'token'; address: string; symbol?: string } | { name: 'portfolio' } | { name: 'launchpad' }
 
 // ── live feed item ────────────────────────────────────────────────────
 interface FeedItem {
@@ -27,34 +29,45 @@ export default function App() {
   const feedTokens            = useRef<{ address: string; symbol: string }[]>([])
   const navigate = (p: Page) => setPage(p)
 
-  // register tokens for live feed
+  // Terminal registers its top-by-volume tokens here — currently unused for
+  // filtering (the feed below is network-wide), kept so a future "trending
+  // only" toggle can filter without touching Terminal.
   const registerFeedTokens = (tokens: { address: string; symbol: string }[]) => {
-    feedTokens.current = tokens.slice(0, 10) // top 10 by volume
+    feedTokens.current = tokens.slice(0, 10)
   }
 
-  // poll live trades for feed panel
+  // Live feed via Arc mainnet WebSocket — every Swap event on-chain, no
+  // dependency on any third-party REST API for the trade stream itself.
+  // Swap logs only carry the pool address and two unlabeled amounts (token0/
+  // token1 by address sort, not by base/quote role), so both the symbol AND
+  // which side is USDC have to be resolved via pair metadata before a trade
+  // can be shown — otherwise buy/sell and the dollar amount can come out
+  // backwards (token0 vs token1 varies per pool).
   useEffect(() => {
-    let cancelled = false
-    const poll = async () => {
-      if (feedTokens.current.length === 0) return
-      const token = feedTokens.current[Math.floor(Math.random() * Math.min(5, feedTokens.current.length))]
-      try {
-        const trades = await getTrades(token.address, 3)
-        if (cancelled) return
-        const items: FeedItem[] = trades.map(t => ({
-          id: ++feedId,
-          symbol: token.symbol,
-          type: t.type,
-          amount: t.amountIn,
-          price: t.price,
-          address: token.address,
-          ts: t.timestamp,
-        }))
-        setFeed(prev => [...items, ...prev].slice(0, 50))
-      } catch { /* skip */ }
-    }
-    const iv = setInterval(() => void poll(), 4000)
-    return () => { cancelled = true; clearInterval(iv) }
+    const metaCache = new Map<string, { symbol: string; quoteIsToken0: boolean }>()
+    const pending = new Set<string>()
+
+    const unsub = subscribeAll((trade: LiveTrade) => {
+      const meta = metaCache.get(trade.pairAddress)
+      if (meta) {
+        const { kind, usd } = deriveTradeInfo(trade, meta.quoteIsToken0)
+        setFeed(prev => [{
+          id: ++feedId, symbol: meta.symbol, type: kind, amount: usd, price: 0,
+          address: trade.pairAddress, ts: trade.timestamp,
+        }, ...prev].slice(0, 50))
+        return
+      }
+
+      if (pending.has(trade.pairAddress)) return // wait for the in-flight resolution, don't show a guess
+      pending.add(trade.pairAddress)
+      void getPairByAddress(trade.pairAddress).then(p => {
+        pending.delete(trade.pairAddress)
+        if (!p) return
+        const quoteIsToken0 = p.quoteToken.address.toLowerCase() < p.baseToken.address.toLowerCase()
+        metaCache.set(trade.pairAddress, { symbol: p.baseToken.symbol, quoteIsToken0 })
+      })
+    })
+    return unsub
   }, [])
 
   return (
@@ -100,7 +113,12 @@ export default function App() {
             </div>
             <div className="sidebar-label">EARN</div>
             <div className="sidebar-section">
-              <button className="sidebar-item disabled"><span className="sidebar-icon">◆</span> LAUNCHPAD</button>
+              <button
+                className={`sidebar-item${page.name === 'launchpad' ? ' active' : ''}`}
+                onClick={() => navigate({ name: 'launchpad' })}
+              >
+                <span className="sidebar-icon">◆</span> LAUNCHPAD
+              </button>
               <button className="sidebar-item disabled"><span className="sidebar-icon">◇</span> LOCKER</button>
               <button className="sidebar-item disabled"><span className="sidebar-icon">▣</span> MARKET</button>
               <button className="sidebar-item disabled"><span className="sidebar-icon">◈</span> ADVERTISE</button>
@@ -113,13 +131,15 @@ export default function App() {
 
         {/* main content */}
         <main className="main-content">
-          {page.name === 'terminal'  && <Terminal navigate={navigate} registerFeedTokens={registerFeedTokens} />}
-          {page.name === 'token'     && <TokenPage address={page.address} navigate={navigate} />}
-          {page.name === 'portfolio' && <Portfolio navigate={navigate} />}
+          {page.name === 'terminal'   && <Terminal navigate={navigate} registerFeedTokens={registerFeedTokens} />}
+          {page.name === 'token'      && <TokenPage address={page.address} navigate={navigate} />}
+          {page.name === 'portfolio'  && <Portfolio navigate={navigate} />}
+          {page.name === 'launchpad'  && <Launchpad navigate={navigate} />}
         </main>
 
         {/* right live feed */}
         <aside className="feed-panel">
+          <TradingWalletPanel />
           <div className="feed-header">
             <span className="pulse-dot" /> Arc feed
             <span className="feed-tab active">All</span>
@@ -139,11 +159,7 @@ export default function App() {
                       : item.amount.toFixed(2)
                   }
                 </div>
-                <div className="feed-price">${item.price < 0.001
-                  ? item.price.toExponential(2)
-                  : item.price.toPrecision(4)
-                }</div>
-                <div className="feed-ago">{Math.floor((Date.now() - item.ts * 1000) / 1000)}s ago</div>
+                <div className="feed-ago">{Math.max(0, Math.floor((Date.now() - item.ts) / 1000))}s ago</div>
               </div>
             ))}
           </div>
