@@ -81,7 +81,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', padding: '0 16px 16px' }}>
+      <div className="token-detail-grid">
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, marginTop: 16, padding: 16 }}>
             <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>PRICE CHART</div>
@@ -145,7 +145,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
           </div>
         </div>
 
-        <div style={{ width: 340, flexShrink: 0, marginTop: 16, background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div className="token-detail-swap" style={{ marginTop: 16, background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, overflow: 'hidden' }}>
           <CurveSwapWidget token={token} onTraded={load} />
         </div>
       </div>

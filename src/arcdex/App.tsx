@@ -26,8 +26,9 @@ let feedId = 0
 export default function App() {
   const [page, setPage]       = useState<Page>({ name: 'terminal' })
   const [feed, setFeed]       = useState<FeedItem[]>([])
+  const [navOpen, setNavOpen] = useState(false)
   const feedTokens            = useRef<{ address: string; symbol: string }[]>([])
-  const navigate = (p: Page) => setPage(p)
+  const navigate = (p: Page) => { setPage(p); setNavOpen(false) }
 
   // Terminal registers its top-by-volume tokens here — currently unused for
   // filtering (the feed below is network-wide), kept so a future "trending
@@ -73,12 +74,13 @@ export default function App() {
   return (
     <div className="app-shell">
       {/* ── ticker bar ── */}
-      <NavBar page={page} navigate={navigate} />
+      <NavBar page={page} navigate={navigate} onMenuClick={() => setNavOpen(o => !o)} />
 
       {/* ── body: sidebar + main + live feed ── */}
       <div className="app-body">
+        {navOpen && <div className="sidebar-backdrop" onClick={() => setNavOpen(false)} />}
         {/* left sidebar */}
-        <aside className="sidebar">
+        <aside className={`sidebar${navOpen ? ' sidebar-open' : ''}`}>
           <nav className="sidebar-nav">
             <div className="sidebar-section">
               <button

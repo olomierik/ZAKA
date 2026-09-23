@@ -157,6 +157,52 @@ export async function getRecentTrades(token: Address, fromBlock?: bigint): Promi
   })).reverse()
 }
 
+/** Maps our own launchpad tokens into the same shape RadarDex tokens use,
+ * so they can sit in the unified Terminal table as a real, first-party
+ * source — tagged 'ARCDEX' — instead of only existing on a separate page.
+ * Volume/tx/holder counts are derived from on-chain Trade logs directly
+ * (no indexer for our own contract), over the same lookback window
+ * `getRecentTrades` already uses. */
+export async function getAllLaunchpadTokensAsArcTokens(): Promise<import('./radardex').ArcToken[]> {
+  const tokens = await getAllLaunchpadTokens()
+  if (tokens.length === 0) return []
+
+  return Promise.all(tokens.map(async (t): Promise<import('./radardex').ArcToken> => {
+    const trades = await getRecentTrades(t.address).catch(() => [])
+    const volume = trades.reduce((s, tr) => s + Number(tr.usdcAmount) / 1e6, 0)
+    const buys = trades.filter(tr => tr.isBuy).length
+    const sells = trades.length - buys
+    const holderCount = new Set(trades.map(tr => tr.trader.toLowerCase())).size
+
+    return {
+      address: t.address,
+      symbol: t.symbol,
+      name: t.name,
+      decimals: 18,
+      logoUrl: '',
+      price: t.priceUsd,
+      priceChange5m: 0,
+      priceChange1h: 0,
+      priceChange24h: 0,
+      volume24h: volume,
+      marketCap: t.priceUsd * 1_000_000_000,
+      liquidity: Number(t.curve.rUsdc) / 1e6,
+      ageMs: Date.now() - t.curve.launchedAt * 1000,
+      launchpad: 'ARCDEX',
+      poolAddress: '',
+      txCount24h: trades.length,
+      holderCount,
+      buys24h: buys,
+      sells24h: sells,
+      verified: true,
+      graduated: t.curve.graduated,
+      bondingProgress: t.bondingProgress,
+      spark: [],
+      quoteSymbol: 'USDC',
+    }
+  }))
+}
+
 export interface CurveCandle { time: number; open: number; high: number; low: number; close: number; volume: number }
 
 const RESOLUTION_SECONDS: Record<'1m' | '5m' | '15m' | '1h' | '4h' | '1d', number> = {

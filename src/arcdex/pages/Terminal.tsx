@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react'
 import {
   getTokens, getLaunchpadColor,
   type ArcToken,
 } from '../api/radardex'
+import { getAllLaunchpadTokensAsArcTokens } from '../api/launchpad'
+import { curateTokens, type CuratedGroup } from '../lib/curate'
 import type { Page } from '../App'
 
 interface Props {
@@ -37,7 +39,7 @@ function fmtPct(n: number) {
 
 // ── source labels matching the screenshot ────────────────────────────
 const SOURCES = [
-  'All sources', 'ArcToolsPad', 'Uniswap V4', 'Stocks', 'Minara', 'Hopium',
+  'All sources', 'ARCDEX', 'ArcToolsPad', 'Uniswap V4', 'Stocks', 'Minara', 'Hopium',
   'Argus', 'Tolly', 'Warp', 'Archemist', 'RadarDex',
 ]
 
@@ -89,8 +91,12 @@ function TokenLogo({ src, symbol, size = 28 }: { src?: string; symbol: string; s
   )
 }
 
-interface RowProps { token: ArcToken; rank: number; onClick: () => void }
-function TokenRow({ token, rank, onClick }: RowProps) {
+interface RowProps {
+  token: ArcToken; rank: number; onClick: () => void
+  dupCount?: number; expanded?: boolean; onToggleExpand?: () => void
+  isDuplicateRow?: boolean
+}
+function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onToggleExpand, isDuplicateRow = false }: RowProps) {
   const lp      = token.launchpad
   const lpColor = getLaunchpadColor(lp)
   const ch24    = token.priceChange24h
@@ -101,18 +107,18 @@ function TokenRow({ token, rank, onClick }: RowProps) {
   ))
 
   return (
-    <tr className="token-row" onClick={onClick}>
+    <tr className={`token-row${isDuplicateRow ? ' duplicate-row' : ''}`} onClick={onClick}>
       {/* rank */}
       <td className="td-rank">
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{rank}</span>
+        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{isDuplicateRow ? '↳' : rank}</span>
       </td>
       {/* token */}
       <td className="td-token">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <TokenLogo src={token.logoUrl} symbol={token.symbol} />
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: isDuplicateRow ? 20 : 0 }}>
+          <TokenLogo src={token.logoUrl} symbol={token.symbol} size={isDuplicateRow ? 22 : 28} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 700, fontSize: '0.82rem', color: isDuplicateRow ? 'var(--text-muted)' : 'var(--text)' }}>
                 {token.symbol}
               </span>
               {token.verified && (
@@ -123,17 +129,30 @@ function TokenRow({ token, rank, onClick }: RowProps) {
               <span style={{ fontSize: '0.55rem', background: lpColor + '22', color: lpColor, border: `1px solid ${lpColor}44`, borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>
                 {lp}
               </span>
+              {isDuplicateRow && (
+                <span title="Another contract also uses this ticker — sorted below the highest-liquidity one." style={{ fontSize: '0.55rem', background: '#f59e0b18', color: 'var(--amber)', border: '1px solid #f59e0b44', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>
+                  ⚠ SAME TICKER
+                </span>
+              )}
+              {!isDuplicateRow && dupCount > 0 && (
+                <button
+                  onClick={e => { e.stopPropagation(); onToggleExpand?.() }}
+                  style={{ fontSize: '0.6rem', background: 'var(--bg-3)', color: 'var(--text-muted)', border: '1px solid var(--border-hi)', borderRadius: 3, padding: '1px 5px', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  {expanded ? '▾' : '▸'} +{dupCount} same ticker
+                </button>
+              )}
             </div>
-            <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span>{token.name.length > 18 ? token.name.slice(0,18)+'…' : token.name}</span>
-              <span style={{ fontFamily: 'var(--mono)', opacity: 0.6 }}>
+            <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: 1, display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{token.name}</span>
+              <span style={{ fontFamily: 'var(--mono)', opacity: 0.6, flexShrink: 0 }}>
                 {token.address.slice(0,6)}…{token.address.slice(-4)}
               </span>
               <a
                 href={`${ARC_EXPLORER}/address/${token.address}`}
                 target="_blank" rel="noopener noreferrer"
                 onClick={e => e.stopPropagation()}
-                style={{ color: 'var(--text-muted)', opacity: 0.5, textDecoration: 'none', fontSize: '0.6rem' }}
+                style={{ color: 'var(--text-muted)', opacity: 0.5, textDecoration: 'none', fontSize: '0.6rem', flexShrink: 0 }}
               >↗</a>
             </div>
           </div>
@@ -187,6 +206,47 @@ function TokenRow({ token, rank, onClick }: RowProps) {
   )
 }
 
+interface CardProps { token: ArcToken; dupCount?: number; onClick: () => void }
+function TokenCard({ token, dupCount = 0, onClick }: CardProps) {
+  const lp = token.launchpad
+  const lpColor = getLaunchpadColor(lp)
+  const ch24 = token.priceChange24h
+  return (
+    <div className="token-card" onClick={onClick}>
+      <div className="token-card-top">
+        <TokenLogo src={token.logoUrl} symbol={token.symbol} size={36} />
+        <div className="token-card-name">
+          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {token.symbol}
+          </div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {token.name} · {fmtAge(token.ageMs)}
+          </div>
+          <div className="token-card-badges">
+            {token.verified && (
+              <span style={{ fontSize: '0.58rem', background: '#1d4ed822', color: '#60a5fa', border: '1px solid #1d4ed844', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>✓ VERIFIED</span>
+            )}
+            <span style={{ fontSize: '0.58rem', background: lpColor + '22', color: lpColor, border: `1px solid ${lpColor}44`, borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>{lp}</span>
+            {dupCount > 0 && (
+              <span style={{ fontSize: '0.58rem', background: '#f59e0b18', color: 'var(--amber)', border: '1px solid #f59e0b44', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>+{dupCount} same ticker</span>
+            )}
+          </div>
+        </div>
+        <div className="token-card-price">
+          <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text)' }}>{fmt(token.marketCap, '$')}</div>
+          <div style={{ fontSize: '0.72rem', color: pctColor(ch24), fontWeight: 700 }}>{fmtPct(ch24)}</div>
+        </div>
+      </div>
+      <div className="token-card-stats">
+        <div className="token-card-stat"><span className="token-card-stat-label">Liq</span><span className="token-card-stat-value">{fmt(token.liquidity, '$')}</span></div>
+        <div className="token-card-stat"><span className="token-card-stat-label">Vol</span><span className="token-card-stat-value">{fmt(token.volume24h, '$')}</span></div>
+        <div className="token-card-stat"><span className="token-card-stat-label">Txns</span><span className="token-card-stat-value">{token.txCount24h.toLocaleString()}</span></div>
+        <div className="token-card-stat"><span className="token-card-stat-label">Holders</span><span className="token-card-stat-value">{token.holderCount > 0 ? token.holderCount.toLocaleString() : '—'}</span></div>
+      </div>
+    </div>
+  )
+}
+
 export default function Terminal({ navigate, registerFeedTokens }: Props) {
   const [tokens,   setTokens]   = useState<ArcToken[]>([])
   const [loading,  setLoading]  = useState(true)
@@ -200,10 +260,15 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   const [minMcap,  setMinMcap]  = useState('')
   const [maxMcap,  setMaxMcap]  = useState('')
   const [minVol,   setMinVol]   = useState('')
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const tickerRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
-    const data = await getTokens()
+    const [radar, ours] = await Promise.all([
+      getTokens(),
+      getAllLaunchpadTokensAsArcTokens().catch(() => []),
+    ])
+    const data = [...ours, ...radar]
     setTokens(data)
     setLoading(false)
     registerFeedTokens(
@@ -214,18 +279,24 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
 
   useEffect(() => { void load() }, [load])
   useEffect(() => {
-    const iv = setInterval(() => void getTokens(true).then(d => {
-      setTokens(d)
-      registerFeedTokens([...d].sort((a,b)=>b.volume24h-a.volume24h).slice(0,10).map(t=>({address:t.address,symbol:t.symbol})))
-    }), 15_000)
+    const iv = setInterval(() => void load(), 15_000)
     return () => clearInterval(iv)
-  }, [registerFeedTokens])
+  }, [load])
 
   // reset page on filter change
   useEffect(() => setPage(1), [source, viewTab, search, sortCol, sortAsc, minMcap, maxMcap, minVol])
 
-  // ── filter ────────────────────────────────────────────────────────
-  const filtered = tokens.filter(t => {
+  // ── curate: fold ticker-squatting duplicates behind an expand toggle,
+  // drop fully-dead placeholder entries — see lib/curate.ts ────────────
+  const curation = useMemo(() => curateTokens(tokens), [tokens])
+  const groupByPrimaryAddress = useMemo(() => {
+    const m = new Map<string, CuratedGroup>()
+    for (const g of curation.groups) m.set(g.primary.address, g)
+    return m
+  }, [curation])
+
+  // ── filter (runs against each group's primary token) ────────────────
+  const matchesFilters = useCallback((t: ArcToken) => {
     if (search) {
       const q = search.toLowerCase()
       if (!t.symbol.toLowerCase().includes(q) && !t.name.toLowerCase().includes(q) && !t.address.toLowerCase().includes(q)) return false
@@ -247,7 +318,9 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     if (maxMcap && t.marketCap > parseFloat(maxMcap)) return false
     if (minVol  && t.volume24h < parseFloat(minVol))  return false
     return true
-  })
+  }, [search, source, viewTab, minMcap, maxMcap, minVol])
+
+  const filtered = curation.groups.map(g => g.primary).filter(matchesFilters)
 
   // ── sort ──────────────────────────────────────────────────────────
   const sorted = [...filtered].sort((a, b) => {
@@ -361,7 +434,16 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
         ))}
         {totalPages > 5 && <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', padding: '0 4px' }}>…</span>}
         <button className="pg-btn" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>next →</button>
-        <span className="pg-info">{sorted.length.toLocaleString()} tokens · page {page}/{totalPages}</span>
+        <span className="pg-info">
+          {sorted.length.toLocaleString()} tokens · page {page}/{totalPages}
+          {(curation.hiddenDuplicateCount > 0 || curation.deadFilteredCount > 0) && (
+            <span title="Contracts reusing another token's ticker are folded into that token's row (expand with the ticker badge); listings with zero liquidity, volume, and holders are hidden entirely.">
+              {' · '}{curation.hiddenDuplicateCount > 0 && `${curation.hiddenDuplicateCount} same-ticker duplicates folded`}
+              {curation.hiddenDuplicateCount > 0 && curation.deadFilteredCount > 0 && ', '}
+              {curation.deadFilteredCount > 0 && `${curation.deadFilteredCount} dead listings hidden`}
+            </span>
+          )}
+        </span>
         <div style={{ marginLeft: 'auto' }}>
           <input
             className="filter-input" placeholder="🔍 Search…"
@@ -392,16 +474,56 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
               </tr>
             </thead>
             <tbody>
-              {pageItems.map((token, i) => (
-                <TokenRow
-                  key={token.address}
-                  token={token}
-                  rank={(page - 1) * PAGE_SIZE + i + 1}
-                  onClick={() => navigate({ name: 'token', address: token.address, symbol: token.symbol })}
-                />
-              ))}
+              {pageItems.map((token, i) => {
+                const group = groupByPrimaryAddress.get(token.address)
+                const dupCount = group?.duplicates.length ?? 0
+                const isExpanded = expanded.has(token.address)
+                const goTo = (addr: string, sym: string) => navigate({ name: 'token', address: addr, symbol: sym })
+                return (
+                  <Fragment key={token.address}>
+                    <TokenRow
+                      token={token}
+                      rank={(page - 1) * PAGE_SIZE + i + 1}
+                      onClick={() => goTo(token.address, token.symbol)}
+                      dupCount={dupCount}
+                      expanded={isExpanded}
+                      onToggleExpand={() => setExpanded(prev => {
+                        const next = new Set(prev)
+                        if (next.has(token.address)) next.delete(token.address); else next.add(token.address)
+                        return next
+                      })}
+                    />
+                    {isExpanded && group?.duplicates.map(dup => (
+                      <TokenRow
+                        key={dup.address}
+                        token={dup}
+                        rank={0}
+                        isDuplicateRow
+                        onClick={() => goTo(dup.address, dup.symbol)}
+                      />
+                    ))}
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
+        )}
+
+        {/* mobile card list — same data, CSS toggles which one is visible */}
+        {!loading && (
+          <div className="token-cards">
+            {pageItems.map(token => {
+              const group = groupByPrimaryAddress.get(token.address)
+              return (
+                <TokenCard
+                  key={token.address}
+                  token={token}
+                  dupCount={group?.duplicates.length ?? 0}
+                  onClick={() => navigate({ name: 'token', address: token.address, symbol: token.symbol })}
+                />
+              )
+            })}
+          </div>
         )}
       </div>
     </div>

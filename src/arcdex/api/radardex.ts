@@ -52,6 +52,7 @@ export interface Trade {
 
 export function getLaunchpadColor(lp: string): string {
   switch (lp?.toLowerCase()) {
+    case 'arcdex':     return '#3b82f6'
     case 'argus':      return '#7c3aed'
     case 'radardex':   return '#2563eb'
     case 'tolly':      return '#059669'

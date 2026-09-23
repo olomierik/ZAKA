@@ -3,7 +3,7 @@ import { ConnectKitButton } from 'connectkit'
 import { getPlatformTokenStats, type PlatformTokenStats } from '../api/launchpad'
 import type { Page } from '../App'
 
-interface Props { page: Page; navigate: (p: Page) => void }
+interface Props { page: Page; navigate: (p: Page) => void; onMenuClick: () => void }
 
 function fmtCompact(n: number): string {
   if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`
@@ -22,19 +22,30 @@ function BurnTicker() {
   }, [])
   if (!stats) return null
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.67rem', fontFamily: 'var(--mono)' }}>
+    <div className="navbar-burn-ticker">
       <span>🔥</span>
-      <span style={{ color: '#f59e0b', fontWeight: 700 }}>{fmtCompact(stats.burned)} {stats.symbol} burned</span>
+      <span style={{ color: 'var(--amber)', fontWeight: 700 }}>{fmtCompact(stats.burned)} {stats.symbol} burned</span>
       <span style={{ color: 'var(--text-muted)' }}>({stats.burnedPct.toFixed(2)}%)</span>
     </div>
   )
 }
 
-export default function NavBar({ navigate }: Props) {
+export default function NavBar({ page, navigate, onMenuClick }: Props) {
   const [search, setSearch] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+
+  const navLinks: { label: string; page: Page }[] = [
+    { label: 'Terminal',  page: { name: 'terminal' } },
+    { label: 'Launchpad', page: { name: 'launchpad' } },
+    { label: 'Portfolio', page: { name: 'portfolio' } },
+  ]
 
   return (
     <header className="top-navbar">
+      <button className="navbar-hamburger" onClick={onMenuClick} aria-label="Menu">
+        <span /><span /><span />
+      </button>
+
       {/* Logo */}
       <button className="navbar-logo" onClick={() => navigate({ name: 'terminal' })}>
         ARCDEX
@@ -43,45 +54,33 @@ export default function NavBar({ navigate }: Props) {
       <BurnTicker />
 
       {/* Nav links */}
-      <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-        {(['Terminal','Launchpad','Portfolio'] as const).map(label => (
+      <nav className="navbar-links">
+        {navLinks.map(({ label, page: p }) => (
           <button
             key={label}
-            onClick={() => {
-              if (label === 'Terminal') navigate({ name: 'terminal' })
-              if (label === 'Launchpad') navigate({ name: 'launchpad' })
-              if (label === 'Portfolio') navigate({ name: 'portfolio' })
-            }}
-            style={{
-              padding: '4px 10px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 600,
-              border: 'none', cursor: 'pointer', background: 'none',
-              color: 'var(--text-muted)', transition: 'color 0.12s',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text)')}
-            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+            className={`navbar-link${page.name === p.name ? ' active' : ''}`}
+            onClick={() => navigate(p)}
           >
             {label}
           </button>
         ))}
+      </nav>
+
+      {/* Search — always present on desktop, toggles open on mobile */}
+      <div className={`navbar-search-wrap${searchOpen ? ' open' : ''}`}>
+        <input
+          className="navbar-search"
+          value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search tokens, address…"
+        />
       </div>
+      <button className="navbar-search-toggle" onClick={() => setSearchOpen(o => !o)} aria-label="Search">
+        🔍
+      </button>
 
-      {/* Search */}
-      <input
-        value={search} onChange={e => setSearch(e.target.value)}
-        placeholder="Search tokens, address…"
-        style={{
-          flex: 1, maxWidth: 280,
-          background: 'var(--bg-3)', border: '1px solid var(--border)',
-          color: 'var(--text)', borderRadius: 6, padding: '5px 10px',
-          fontSize: '0.72rem', outline: 'none', fontFamily: 'var(--sans)',
-        }}
-        onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
-        onBlur={e  => (e.currentTarget.style.borderColor = 'var(--border)')}
-      />
-
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div className="navbar-right">
         {/* live dot */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <div className="navbar-live">
           <div className="pulse-dot" />
           <span style={{ fontSize: '0.67rem', color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>Arc Mainnet</span>
         </div>
