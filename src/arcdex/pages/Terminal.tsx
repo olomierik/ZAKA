@@ -44,10 +44,11 @@ const SOURCES = [
 ]
 
 // ── view tabs ─────────────────────────────────────────────────────────
-const VIEW_TABS = ['All', 'New pair', 'New <15m', 'Trending', 'Top volume', 'Alpha', 'Insider picks', 'Watchlist', 'Holdings']
-
-// ── time windows ─────────────────────────────────────────────────────
-const TIME_WINDOWS = ['1m', '5m', '1h', '6h', '24h', 'All']
+// Only tabs with real, distinct filtering behind them — 'Alpha', 'Insider
+// picks', 'Watchlist' and 'Holdings' implied personalization features
+// (saved watchlists, wallet-linked holdings, curated calls) this app
+// doesn't have, so they did nothing when clicked.
+const VIEW_TABS = ['All', 'New pair', 'New <15m', 'Trending', 'Top volume']
 
 // ── sort columns ─────────────────────────────────────────────────────
 type SortCol = 'mcap' | 'volume' | 'txns' | 'score' | 'age' | 'liq' | 'holders' | 'change'
@@ -252,7 +253,6 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   const [loading,  setLoading]  = useState(true)
   const [source,   setSource]   = useState('All sources')
   const [viewTab,  setViewTab]  = useState('Trending')
-  const [timeWin,  setTimeWin]  = useState('24h')
   const [sortCol,  setSortCol]  = useState<SortCol>('volume')
   const [sortAsc,  setSortAsc]  = useState(false)
   const [search,   setSearch]   = useState('')
@@ -410,18 +410,11 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
         <div className="view-tabs">
           {VIEW_TABS.map(t => (
             <button key={t} className={`view-tab${viewTab === t ? ' active' : ''}`} onClick={() => setViewTab(t)}>
-              {t === 'Trending' ? '⚡ Trending' : t === 'Alpha' ? '⚡ Alpha' : t === 'Insider picks' ? '◈ Insider picks' : t === 'Watchlist' ? '★ Watchlist' : t}
+              {t === 'Trending' ? '⚡ Trending' : t}
             </button>
           ))}
         </div>
         <div className="time-tabs">
-          {TIME_WINDOWS.map(tw => (
-            <button key={tw} className={`time-tab${timeWin === tw ? ' active' : ''}`} onClick={() => setTimeWin(tw)}>
-              {tw}
-            </button>
-          ))}
-          <button className="time-tab flash">flash on</button>
-          <button className="time-tab vol-btn">≥ $1K</button>
           <span className="live-badge">● live</span>
         </div>
       </div>

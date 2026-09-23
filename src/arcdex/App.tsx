@@ -89,29 +89,12 @@ export default function App() {
               >
                 <span className="sidebar-icon">◈</span> TERMINAL
               </button>
-              <button className="sidebar-item disabled">
-                <span className="sidebar-icon">⇄</span> SWAP
-              </button>
-              <button className="sidebar-item disabled">
-                <span className="sidebar-icon">◎</span> BUY ARCT
-              </button>
-              <button className="sidebar-item disabled">
-                <span className="sidebar-icon">◆</span> PREDICT
-              </button>
               <button
                 className={`sidebar-item${page.name === 'portfolio' ? ' active' : ''}`}
                 onClick={() => navigate({ name: 'portfolio' })}
               >
                 <span className="sidebar-icon">▤</span> PORTFOLIO
               </button>
-            </div>
-            <div className="sidebar-label">DISCOVER</div>
-            <div className="sidebar-section">
-              <button className="sidebar-item disabled"><span className="sidebar-icon">◉</span> SCANNER</button>
-              <button className="sidebar-item disabled"><span className="sidebar-icon">◈</span> INSIDERS</button>
-              <button className="sidebar-item disabled"><span className="sidebar-icon">◎</span> TRADERS</button>
-              <button className="sidebar-item disabled"><span className="sidebar-icon">●</span> INTEL</button>
-              <button className="sidebar-item disabled"><span className="sidebar-icon">⊞</span> API</button>
             </div>
             <div className="sidebar-label">EARN</div>
             <div className="sidebar-section">
@@ -121,12 +104,6 @@ export default function App() {
               >
                 <span className="sidebar-icon">◆</span> LAUNCHPAD
               </button>
-              <button className="sidebar-item disabled"><span className="sidebar-icon">◇</span> LOCKER</button>
-              <button className="sidebar-item disabled"><span className="sidebar-icon">▣</span> MARKET</button>
-              <button className="sidebar-item disabled"><span className="sidebar-icon">◈</span> ADVERTISE</button>
-              <button className="sidebar-item disabled"><span className="sidebar-icon">★</span> REWARDS</button>
-              <button className="sidebar-item disabled"><span className="sidebar-icon">↗</span> REFERRALS</button>
-              <button className="sidebar-item disabled"><span className="sidebar-icon">◎</span> PAY</button>
             </div>
           </nav>
         </aside>
@@ -144,8 +121,6 @@ export default function App() {
           <TradingWalletPanel />
           <div className="feed-header">
             <span className="pulse-dot" /> Arc feed
-            <span className="feed-tab active">All</span>
-            <span className="feed-tab">News</span>
           </div>
           <div className="feed-list">
             {feed.length === 0 ? (
