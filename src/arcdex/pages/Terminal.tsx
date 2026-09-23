@@ -1,340 +1,407 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  getTrendingPairs, getNewPools, getGraduatedPools,
-  getPairsBatch, getLaunchpad,
-  type DexPair,
-} from '../api/dexscreener'
-import { subscribeAll, estimateUsd, ARC_EXPLORER } from '../api/arcRpc'
+  getTokens, getLaunchpadColor,
+  type ArcToken,
+} from '../api/radardex'
 import type { Page } from '../App'
 
-interface Props { navigate: (p: Page) => void }
+interface Props {
+  navigate: (p: Page) => void
+  registerFeedTokens: (t: { address: string; symbol: string }[]) => void
+}
 
-// ── helpers ───────────────────────────────────────────────────────────
-function fmt(n: number | null | undefined, prefix = ''): string {
-  if (n == null || isNaN(n)) return '—'
+const ARC_EXPLORER = 'https://explorer.arc.io'
+
+// ── helpers ────────────────────────────────────────────────────────────
+function fmt(n: number, prefix = ''): string {
+  if (!n || isNaN(n)) return '—'
   if (n >= 1e9)  return `${prefix}${(n/1e9).toFixed(2)}B`
   if (n >= 1e6)  return `${prefix}${(n/1e6).toFixed(2)}M`
   if (n >= 1e3)  return `${prefix}${(n/1e3).toFixed(1)}K`
-  return `${prefix}${n.toFixed(2)}`
+  if (n >= 1)    return `${prefix}${n.toFixed(2)}`
+  return `${prefix}${n.toPrecision(3)}`
 }
-function age(createdAt: number): string {
-  const s = (Date.now() - createdAt) / 1000
-  if (s < 60)   return `${Math.floor(s)}s`
-  if (s < 3600) return `${Math.floor(s/60)}m`
-  if (s < 86400)return `${Math.floor(s/3600)}h`
+function fmtAge(ms: number): string {
+  const s = ms / 1000
+  if (s < 60)    return `${Math.floor(s)}s`
+  if (s < 3600)  return `${Math.floor(s/60)}m`
+  if (s < 86400) return `${Math.floor(s/3600)}h`
   return `${Math.floor(s/86400)}d`
 }
-function pct(n: number) {
-  const c = n > 0 ? '#22c55e' : n < 0 ? '#ef4444' : '#64748b'
-  return <span style={{ color: c, fontWeight: 700 }}>{n > 0 ? '+' : ''}{n.toFixed(1)}%</span>
+function pctColor(n: number) {
+  return n > 0 ? 'var(--green)' : n < 0 ? 'var(--red)' : 'var(--text-muted)'
+}
+function fmtPct(n: number) {
+  return `${n > 0 ? '+' : ''}${n.toFixed(1)}%`
 }
 
-// ── live trade popup ──────────────────────────────────────────────────
-interface Popup { id: number; pairAddress: string; kind: 'buy'|'sell'; usd: number }
-let popupId = 0
+// ── source labels matching the screenshot ────────────────────────────
+const SOURCES = [
+  'All sources', 'ArcToolsPad', 'Uniswap V4', 'Stocks', 'Minara', 'Hopium',
+  'Argus', 'Tolly', 'Warp', 'Archemist', 'RadarDex',
+]
 
-// ── token image with fallback ─────────────────────────────────────────
-function TokenImage({ src, symbol }: { src?: string; symbol: string }) {
-  const [err, setErr] = useState(false)
-  if (!src || err) {
-    return (
-      <div style={{
-        width: 56, height: 56, borderRadius: '50%',
-        background: 'linear-gradient(135deg,#1e3a5f,#0f1e30)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent)',
-        flexShrink: 0,
-      }}>
-        {symbol.slice(0, 3).toUpperCase()}
-      </div>
-    )
-  }
+// ── view tabs ─────────────────────────────────────────────────────────
+const VIEW_TABS = ['All', 'New pair', 'New <15m', 'Trending', 'Top volume', 'Alpha', 'Insider picks', 'Watchlist', 'Holdings']
+
+// ── time windows ─────────────────────────────────────────────────────
+const TIME_WINDOWS = ['1m', '5m', '1h', '6h', '24h', 'All']
+
+// ── sort columns ─────────────────────────────────────────────────────
+type SortCol = 'mcap' | 'volume' | 'txns' | 'score' | 'age' | 'liq' | 'holders' | 'change'
+
+const PAGE_SIZE = 50
+
+function ScoreBar({ score }: { score: number }) {
+  const pct = Math.min(100, Math.max(0, score))
+  const color = pct >= 80 ? 'var(--green)' : pct >= 60 ? '#f59e0b' : 'var(--red)'
   return (
-    <img
-      src={src} alt={symbol}
-      style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
-      onError={() => setErr(true)}
-    />
-  )
-}
-
-// ── token card ────────────────────────────────────────────────────────
-interface CardProps { pair: DexPair; popups: Popup[]; onClick: () => void }
-
-function TokenCard({ pair, popups, onClick }: CardProps) {
-  const lp    = getLaunchpad(pair)
-  const ch24  = pair.priceChange?.h24 ?? 0
-  const chColor = ch24 >= 0 ? '#22c55e' : '#ef4444'
-  const myPopups = popups.filter(p => p.pairAddress === pair.pairAddress.toLowerCase())
-
-  return (
-    <div className="token-card" onClick={onClick} style={{ cursor: 'pointer', position: 'relative', overflow: 'visible' }}>
-      {/* live popups */}
-      {myPopups.map(p => (
-        <div key={p.id} className={`trade-popup ${p.kind}`}>
-          {p.kind === 'buy' ? '▲' : '▼'} ${p.usd < 1 ? p.usd.toFixed(2) : fmt(p.usd, '')} {p.kind.toUpperCase()}
-        </div>
-      ))}
-
-      {/* price change badge */}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
       <div style={{
-        position: 'absolute', top: 10, right: 10,
-        background: ch24 >= 0 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-        color: chColor, fontSize: '0.7rem', fontWeight: 700,
-        padding: '2px 7px', borderRadius: 99,
-        border: `1px solid ${chColor}40`,
+        width: 36, height: 14, background: 'var(--bg-2)', borderRadius: 3,
+        overflow: 'hidden', border: '1px solid var(--border)',
       }}>
-        {ch24 >= 0 ? '+' : ''}{ch24.toFixed(1)}% 24h
+        <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width 0.3s' }} />
       </div>
-
-      {/* launchpad badge */}
-      <div style={{
-        position: 'absolute', top: 10, left: 10,
-        background: lp.color + '22', color: lp.color,
-        fontSize: '0.62rem', fontWeight: 700,
-        padding: '2px 6px', borderRadius: 99,
-        border: `1px solid ${lp.color}44`,
-        maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>
-        {lp.name}
-      </div>
-
-      {/* image */}
-      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 36, marginBottom: 10 }}>
-        <TokenImage src={pair.info?.imageUrl} symbol={pair.baseToken.symbol} />
-      </div>
-
-      {/* name + price */}
-      <div style={{ textAlign: 'center', marginBottom: 8 }}>
-        <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text)' }}>
-          ${pair.baseToken.symbol}
-        </div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
-          {pair.baseToken.name}
-        </div>
-        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--accent)', marginTop: 4 }}>
-          {pair.priceUsd ? `$${parseFloat(pair.priceUsd).toPrecision(4)}` : '—'}
-        </div>
-      </div>
-
-      {/* stats row */}
-      <div className="card-stats">
-        <div><span className="stat-label">MCap</span><span className="stat-val">{fmt(pair.marketCap ?? pair.fdv, '$')}</span></div>
-        <div><span className="stat-label">Vol 24h</span><span className="stat-val">{fmt(pair.volume?.h24, '$')}</span></div>
-        <div><span className="stat-label">Liq</span><span className="stat-val">{fmt(pair.liquidity?.usd, '$')}</span></div>
-      </div>
-      <div className="card-stats" style={{ marginTop: 4 }}>
-        <div><span className="stat-label">Buys</span><span className="stat-val" style={{ color: '#22c55e' }}>{pair.txns?.h24?.buys ?? '—'}</span></div>
-        <div><span className="stat-label">Sells</span><span className="stat-val" style={{ color: '#ef4444' }}>{pair.txns?.h24?.sells ?? '—'}</span></div>
-        <div><span className="stat-label">Age</span><span className="stat-val">{age(pair.pairCreatedAt)}</span></div>
-      </div>
-
-      {/* explorer link */}
-      <a
-        href={`${ARC_EXPLORER}/address/${pair.pairAddress}`}
-        target="_blank" rel="noopener noreferrer"
-        style={{ display: 'block', textAlign: 'center', marginTop: 8, fontSize: '0.65rem', color: 'var(--text-muted)', textDecoration: 'none' }}
-        onClick={e => e.stopPropagation()}
-      >
-        {pair.pairAddress.slice(0, 8)}…{pair.pairAddress.slice(-6)}
-      </a>
+      <span style={{ fontSize: '0.65rem', color, fontWeight: 700, fontFamily: 'var(--mono)' }}>{Math.round(pct)}</span>
     </div>
   )
 }
 
-// ── sort / filter types ───────────────────────────────────────────────
-type Tab = 'trending' | 'new' | 'graduated'
-type SortKey = 'volume' | 'mcap' | 'liquidity' | 'age' | 'txns'
+function TokenLogo({ src, symbol, size = 28 }: { src?: string; symbol: string; size?: number }) {
+  const [err, setErr] = useState(false)
+  const bg = `hsl(${(symbol.charCodeAt(0) * 17 + 180) % 360},60%,25%)`
+  if (!src || err) {
+    return (
+      <div style={{
+        width: size, height: size, borderRadius: '50%', background: bg,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: size * 0.35, fontWeight: 800, color: '#fff', flexShrink: 0,
+        border: '1px solid rgba(255,255,255,0.08)',
+      }}>
+        {symbol.slice(0, 2).toUpperCase()}
+      </div>
+    )
+  }
+  return (
+    <img src={src} alt={symbol} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+      onError={() => setErr(true)} />
+  )
+}
 
-const SORT_OPTIONS: { label: string; key: SortKey }[] = [
-  { label: 'Volume',    key: 'volume' },
-  { label: 'Mkt Cap',   key: 'mcap' },
-  { label: 'Liquidity', key: 'liquidity' },
-  { label: 'Newest',    key: 'age' },
-  { label: 'Txns',      key: 'txns' },
-]
-
-const LAUNCHPADS = ['All', 'Argus', 'Minara', 'RadarDex', 'Tolly', 'Warp', 'Archemist', 'o1', 'Uniswap V3', 'Uniswap V4']
-
-// ── main Terminal component ───────────────────────────────────────────
-export default function Terminal({ navigate }: Props) {
-  const [tab,       setTab]       = useState<Tab>('trending')
-  const [pairs,     setPairs]     = useState<DexPair[]>([])
-  const [loading,   setLoading]   = useState(true)
-  const [sortKey,   setSortKey]   = useState<SortKey>('volume')
-  const [lpFilter,  setLpFilter]  = useState('All')
-  const [search,    setSearch]    = useState('')
-  const [popups,    setPopups]    = useState<Popup[]>([])
-  const [lastUpdate, setLastUpdate] = useState(Date.now())
-  const pairsRef = useRef<DexPair[]>([])
-  pairsRef.current = pairs
-
-  // ── load pairs ──────────────────────────────────────────────────────
-  const load = useCallback(async () => {
-    setLoading(true)
-    let data: DexPair[] = []
-    if      (tab === 'trending')  data = await getTrendingPairs()
-    else if (tab === 'new')       data = await getNewPools()
-    else                          data = await getGraduatedPools()
-    setPairs(data)
-    setLastUpdate(Date.now())
-    setLoading(false)
-
-    // batch-refresh with DexScreener for images + up-to-date prices
-    const addrs = data.map(p => p.pairAddress)
-    if (addrs.length) {
-      const fresh = await getPairsBatch(addrs.slice(0, 60))
-      if (fresh.length) {
-        const map = new Map(fresh.map(p => [p.pairAddress.toLowerCase(), p]))
-        setPairs(prev => prev.map(p => {
-          const f = map.get(p.pairAddress.toLowerCase())
-          if (!f) return p
-          // merge: prefer DexScreener image, keep GT lifecycle fields
-          return { ...p, ...f, info: f.info?.imageUrl ? f.info : p.info }
-        }))
-      }
-    }
-  }, [tab])
-
-  useEffect(() => { void load() }, [load])
-
-  // refresh every 8 seconds
-  useEffect(() => {
-    const t = setInterval(() => void load(), 8000)
-    return () => clearInterval(t)
-  }, [load])
-
-  // ── real-time WebSocket trade popups ────────────────────────────────
-  useEffect(() => {
-    const unsub = subscribeAll(trade => {
-      const pairAddr = trade.pairAddress.toLowerCase()
-      const matchedPair = pairsRef.current.find(p => p.pairAddress.toLowerCase() === pairAddr)
-      const usd = matchedPair
-        ? estimateUsd(trade.amount1)
-        : estimateUsd(trade.amount1)
-
-      if (usd < 0.01) return  // ignore dust
-
-      const popup: Popup = { id: ++popupId, pairAddress: pairAddr, kind: trade.kind, usd }
-      setPopups(prev => [...prev.slice(-50), popup])  // keep last 50
-      setTimeout(() => {
-        setPopups(prev => prev.filter(p => p.id !== popup.id))
-      }, 3500)
-    })
-    return unsub
-  }, [])
-
-  // ── filter + sort ───────────────────────────────────────────────────
-  const displayed = pairs
-    .filter(p => {
-      if (search) {
-        const q = search.toLowerCase()
-        return p.baseToken.symbol.toLowerCase().includes(q) ||
-               p.baseToken.name.toLowerCase().includes(q)
-      }
-      return true
-    })
-    .filter(p => {
-      if (lpFilter === 'All') return true
-      return getLaunchpad(p).name.toLowerCase().startsWith(lpFilter.toLowerCase())
-    })
-    .sort((a, b) => {
-      if (sortKey === 'volume')    return (b.volume?.h24 ?? 0) - (a.volume?.h24 ?? 0)
-      if (sortKey === 'mcap')      return (b.marketCap ?? b.fdv ?? 0) - (a.marketCap ?? a.fdv ?? 0)
-      if (sortKey === 'liquidity') return (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0)
-      if (sortKey === 'age')       return (b.pairCreatedAt ?? 0) - (a.pairCreatedAt ?? 0)
-      if (sortKey === 'txns')      return ((b.txns?.h24?.buys ?? 0) + (b.txns?.h24?.sells ?? 0)) - ((a.txns?.h24?.buys ?? 0) + (a.txns?.h24?.sells ?? 0))
-      return 0
-    })
+interface RowProps { token: ArcToken; rank: number; onClick: () => void }
+function TokenRow({ token, rank, onClick }: RowProps) {
+  const lp      = token.launchpad
+  const lpColor = getLaunchpadColor(lp)
+  const ch24    = token.priceChange24h
+  const score   = Math.min(100, Math.max(0,
+    (token.holderCount > 0 ? Math.min(40, token.holderCount / 25) : 0) +
+    (token.volume24h > 0   ? Math.min(40, Math.log10(token.volume24h + 1) * 8) : 0) +
+    (token.txCount24h > 0  ? Math.min(20, token.txCount24h / 50) : 0)
+  ))
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
-
-      {/* ── top bar ── */}
-      <div style={{ padding: '12px 16px 0', borderBottom: '1px solid var(--card-border)' }}>
-        {/* tabs */}
-        <div style={{ display: 'flex', gap: 24, marginBottom: 12 }}>
-          {(['trending','new','graduated'] as Tab[]).map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0',
-              fontWeight: tab === t ? 800 : 500,
-              fontSize: '0.95rem',
-              color: tab === t ? 'var(--text)' : 'var(--text-muted)',
-              borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
-              textTransform: 'capitalize',
-            }}>
-              {t === 'trending' ? '🔥 Trending' : t === 'new' ? '✨ New' : '🎓 Graduated'}
-            </button>
-          ))}
-          <div style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-muted)', alignSelf: 'center' }}>
-            Live • {new Date(lastUpdate).toLocaleTimeString()}
+    <tr className="token-row" onClick={onClick}>
+      {/* rank */}
+      <td className="td-rank">
+        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{rank}</span>
+      </td>
+      {/* token */}
+      <td className="td-token">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <TokenLogo src={token.logoUrl} symbol={token.symbol} />
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text)' }}>
+                {token.symbol}
+              </span>
+              {token.verified && (
+                <span style={{ fontSize: '0.55rem', background: '#1d4ed822', color: '#60a5fa', border: '1px solid #1d4ed844', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>
+                  ✓ VERIFIED
+                </span>
+              )}
+              <span style={{ fontSize: '0.55rem', background: lpColor + '22', color: lpColor, border: `1px solid ${lpColor}44`, borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>
+                {lp}
+              </span>
+            </div>
+            <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span>{token.name.length > 18 ? token.name.slice(0,18)+'…' : token.name}</span>
+              <span style={{ fontFamily: 'var(--mono)', opacity: 0.6 }}>
+                {token.address.slice(0,6)}…{token.address.slice(-4)}
+              </span>
+              <a
+                href={`${ARC_EXPLORER}/address/${token.address}`}
+                target="_blank" rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                style={{ color: 'var(--text-muted)', opacity: 0.5, textDecoration: 'none', fontSize: '0.6rem' }}
+              >↗</a>
+            </div>
           </div>
         </div>
-
-        {/* launchpad filter pills */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-          {LAUNCHPADS.map(lp => (
-            <button key={lp} onClick={() => setLpFilter(lp)} style={{
-              padding: '3px 12px', borderRadius: 99, fontSize: '0.72rem', fontWeight: 600,
-              cursor: 'pointer', border: '1px solid',
-              borderColor: lpFilter === lp ? 'var(--accent)' : 'var(--card-border)',
-              background:  lpFilter === lp ? 'rgba(59,130,246,0.15)' : 'transparent',
-              color:       lpFilter === lp ? 'var(--accent)' : 'var(--text-muted)',
-            }}>
-              {lp}
-            </button>
-          ))}
+      </td>
+      {/* age */}
+      <td className="td-num">
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+          {fmtAge(token.ageMs)}
+        </span>
+      </td>
+      {/* mcap */}
+      <td className="td-num">
+        <div style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--text)' }}>{fmt(token.marketCap, '$')}</div>
+        <div style={{ fontSize: '0.65rem', color: pctColor(ch24) }}>{fmtPct(ch24)}</div>
+      </td>
+      {/* liquidity */}
+      <td className="td-num">
+        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text)' }}>{fmt(token.liquidity, '$')}</span>
+      </td>
+      {/* volume 24h */}
+      <td className="td-num">
+        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text)' }}>{fmt(token.volume24h, '$')}</span>
+      </td>
+      {/* txns */}
+      <td className="td-num">
+        <div style={{ fontSize: '0.75rem', color: 'var(--text)' }}>{token.txCount24h.toLocaleString()}</div>
+        <div style={{ fontSize: '0.63rem', color: 'var(--text-muted)' }}>
+          <span style={{ color: 'var(--green)' }}>{token.buys24h}</span>
+          {' / '}
+          <span style={{ color: 'var(--red)' }}>{token.sells24h}</span>
         </div>
+      </td>
+      {/* holders */}
+      <td className="td-num">
+        <span style={{ fontSize: '0.78rem', fontFamily: 'var(--mono)', color: 'var(--text)' }}>
+          {token.holderCount > 0 ? token.holderCount.toLocaleString() : '—'}
+        </span>
+      </td>
+      {/* score */}
+      <td className="td-num">
+        <ScoreBar score={score} />
+      </td>
+      {/* quote */}
+      <td className="td-num">
+        <span style={{ fontSize: '0.65rem', color: 'var(--accent)', background: 'var(--accent)18', borderRadius: 3, padding: '2px 5px', fontWeight: 700 }}>
+          {token.quoteSymbol}
+        </span>
+      </td>
+    </tr>
+  )
+}
 
-        {/* sort + search row */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input
-            placeholder="Search tokens…"
-            value={search} onChange={e => setSearch(e.target.value)}
-            style={{
-              background: 'var(--card-bg)', border: '1px solid var(--card-border)',
-              borderRadius: 8, padding: '5px 12px', color: 'var(--text)', fontSize: '0.8rem',
-              width: 180, outline: 'none',
-            }}
-          />
-          {SORT_OPTIONS.map(s => (
-            <button key={s.key} onClick={() => setSortKey(s.key)} style={{
-              padding: '3px 10px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 600,
-              cursor: 'pointer', border: '1px solid',
-              borderColor: sortKey === s.key ? 'var(--accent)' : 'var(--card-border)',
-              background:  sortKey === s.key ? 'rgba(59,130,246,0.15)' : 'transparent',
-              color:       sortKey === s.key ? 'var(--accent)' : 'var(--text-muted)',
-            }}>
-              {s.label}
-            </button>
+export default function Terminal({ navigate, registerFeedTokens }: Props) {
+  const [tokens,   setTokens]   = useState<ArcToken[]>([])
+  const [loading,  setLoading]  = useState(true)
+  const [source,   setSource]   = useState('All sources')
+  const [viewTab,  setViewTab]  = useState('Trending')
+  const [timeWin,  setTimeWin]  = useState('24h')
+  const [sortCol,  setSortCol]  = useState<SortCol>('volume')
+  const [sortAsc,  setSortAsc]  = useState(false)
+  const [search,   setSearch]   = useState('')
+  const [page,     setPage]     = useState(1)
+  const [minMcap,  setMinMcap]  = useState('')
+  const [maxMcap,  setMaxMcap]  = useState('')
+  const [minVol,   setMinVol]   = useState('')
+  const tickerRef = useRef<HTMLDivElement>(null)
+
+  const load = useCallback(async () => {
+    const data = await getTokens()
+    setTokens(data)
+    setLoading(false)
+    registerFeedTokens(
+      [...data].sort((a,b) => b.volume24h - a.volume24h).slice(0, 10)
+        .map(t => ({ address: t.address, symbol: t.symbol }))
+    )
+  }, [registerFeedTokens])
+
+  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    const iv = setInterval(() => void getTokens(true).then(d => {
+      setTokens(d)
+      registerFeedTokens([...d].sort((a,b)=>b.volume24h-a.volume24h).slice(0,10).map(t=>({address:t.address,symbol:t.symbol})))
+    }), 15_000)
+    return () => clearInterval(iv)
+  }, [registerFeedTokens])
+
+  // reset page on filter change
+  useEffect(() => setPage(1), [source, viewTab, search, sortCol, sortAsc, minMcap, maxMcap, minVol])
+
+  // ── filter ────────────────────────────────────────────────────────
+  const filtered = tokens.filter(t => {
+    if (search) {
+      const q = search.toLowerCase()
+      if (!t.symbol.toLowerCase().includes(q) && !t.name.toLowerCase().includes(q) && !t.address.toLowerCase().includes(q)) return false
+    }
+    if (source !== 'All sources') {
+      const lp = t.launchpad.toLowerCase()
+      const src = source.toLowerCase()
+      if (src === 'uniswap v4') { if (!lp.includes('uniswap') && !lp.includes('v4')) return false }
+      else if (!lp.includes(src.split(' ')[0])) return false
+    }
+    if (viewTab === 'New pair' || viewTab === 'New <15m') {
+      const maxAge = viewTab === 'New <15m' ? 15 * 60 * 1000 : 24 * 60 * 60 * 1000
+      if (t.ageMs > maxAge) return false
+    }
+    if (viewTab === 'Top volume') {
+      if (t.volume24h < 1000) return false
+    }
+    if (minMcap && t.marketCap < parseFloat(minMcap)) return false
+    if (maxMcap && t.marketCap > parseFloat(maxMcap)) return false
+    if (minVol  && t.volume24h < parseFloat(minVol))  return false
+    return true
+  })
+
+  // ── sort ──────────────────────────────────────────────────────────
+  const sorted = [...filtered].sort((a, b) => {
+    let diff = 0
+    if (sortCol === 'mcap')     diff = (b.marketCap ?? 0)    - (a.marketCap ?? 0)
+    if (sortCol === 'volume')   diff = (b.volume24h ?? 0)    - (a.volume24h ?? 0)
+    if (sortCol === 'liq')      diff = (b.liquidity ?? 0)    - (a.liquidity ?? 0)
+    if (sortCol === 'txns')     diff = (b.txCount24h ?? 0)   - (a.txCount24h ?? 0)
+    if (sortCol === 'holders')  diff = (b.holderCount ?? 0)  - (a.holderCount ?? 0)
+    if (sortCol === 'change')   diff = (b.priceChange24h??0) - (a.priceChange24h??0)
+    if (sortCol === 'age')      diff = a.ageMs - b.ageMs
+    if (sortCol === 'score') {
+      const scoreOf = (t: ArcToken) =>
+        Math.min(40, t.holderCount/25) + Math.min(40, Math.log10(t.volume24h+1)*8) + Math.min(20, t.txCount24h/50)
+      diff = scoreOf(b) - scoreOf(a)
+    }
+    return sortAsc ? -diff : diff
+  })
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
+  const pageItems  = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  function toggleSort(col: SortCol) {
+    if (sortCol === col) setSortAsc(p => !p)
+    else { setSortCol(col); setSortAsc(false) }
+  }
+  function SortTh({ col, label, align = 'right' }: { col: SortCol; label: string; align?: string }) {
+    const active = sortCol === col
+    return (
+      <th className="th-sort" style={{ textAlign: align as 'right' | 'left', cursor: 'pointer' }} onClick={() => toggleSort(col)}>
+        <span style={{ color: active ? 'var(--accent)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+          {label} {active ? (sortAsc ? '↑' : '↓') : ''}
+        </span>
+      </th>
+    )
+  }
+
+  // ── top ticker tokens ─────────────────────────────────────────────
+  const tickerTokens = tokens.slice(0, 20)
+
+  return (
+    <div className="terminal-shell">
+
+      {/* ── scrolling ticker ── */}
+      <div className="ticker-bar" ref={tickerRef}>
+        <div className="ticker-track">
+          {[...tickerTokens, ...tickerTokens].map((t, i) => (
+            <span key={i} className="ticker-item" onClick={() => navigate({ name: 'token', address: t.address, symbol: t.symbol })}>
+              <TokenLogo src={t.logoUrl} symbol={t.symbol} size={16} />
+              <span className="ticker-sym">{t.symbol}</span>
+              <span className="ticker-price">${t.price < 0.001 ? t.price.toExponential(2) : t.price.toPrecision(4)}</span>
+              <span className="ticker-chg" style={{ color: pctColor(t.priceChange24h) }}>
+                {fmtPct(t.priceChange24h)}
+              </span>
+            </span>
           ))}
-          <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-            {displayed.length} pairs
-          </span>
         </div>
       </div>
 
-      {/* ── card grid ── */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
-        {loading && pairs.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>
-            Loading Arc pairs…
-          </div>
-        ) : displayed.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>
-            No pairs found
-          </div>
+      {/* ── filter bar ── */}
+      <div className="filter-bar">
+        <div className="source-pills">
+          {SOURCES.map(s => (
+            <button key={s} className={`source-pill${source === s ? ' active' : ''}`} onClick={() => setSource(s)}>
+              {s === 'All sources' ? '◉ All sources' : s}
+            </button>
+          ))}
+        </div>
+        <div className="filter-controls">
+          <input className="filter-input" placeholder="min MC $" value={minMcap} onChange={e => setMinMcap(e.target.value)} style={{ width: 90 }} />
+          <input className="filter-input" placeholder="max MC $" value={maxMcap} onChange={e => setMaxMcap(e.target.value)} style={{ width: 90 }} />
+          <input className="filter-input" placeholder="min vol $" value={minVol}  onChange={e => setMinVol(e.target.value)}  style={{ width: 90 }} />
+        </div>
+      </div>
+
+      {/* ── sort dropdown + view tabs ── */}
+      <div className="view-bar">
+        <select className="sort-select" value={sortCol} onChange={e => setSortCol(e.target.value as SortCol)}>
+          <option value="volume">Sort: volume</option>
+          <option value="mcap">Sort: market cap</option>
+          <option value="txns">Sort: transactions</option>
+          <option value="holders">Sort: holders</option>
+          <option value="age">Sort: newest</option>
+          <option value="liq">Sort: liquidity</option>
+          <option value="score">Sort: score</option>
+        </select>
+        <div className="view-tabs">
+          {VIEW_TABS.map(t => (
+            <button key={t} className={`view-tab${viewTab === t ? ' active' : ''}`} onClick={() => setViewTab(t)}>
+              {t === 'Trending' ? '⚡ Trending' : t === 'Alpha' ? '⚡ Alpha' : t === 'Insider picks' ? '◈ Insider picks' : t === 'Watchlist' ? '★ Watchlist' : t}
+            </button>
+          ))}
+        </div>
+        <div className="time-tabs">
+          {TIME_WINDOWS.map(tw => (
+            <button key={tw} className={`time-tab${timeWin === tw ? ' active' : ''}`} onClick={() => setTimeWin(tw)}>
+              {tw}
+            </button>
+          ))}
+          <button className="time-tab flash">flash on</button>
+          <button className="time-tab vol-btn">≥ $1K</button>
+          <span className="live-badge">● live</span>
+        </div>
+      </div>
+
+      {/* ── pagination + search ── */}
+      <div className="pagination-bar">
+        <button className="pg-btn" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>← prev</button>
+        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => i + 1).map(n => (
+          <button key={n} className={`pg-btn${page === n ? ' active' : ''}`} onClick={() => setPage(n)}>{n}</button>
+        ))}
+        {totalPages > 5 && <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', padding: '0 4px' }}>…</span>}
+        <button className="pg-btn" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>next →</button>
+        <span className="pg-info">{sorted.length.toLocaleString()} tokens · page {page}/{totalPages}</span>
+        <div style={{ marginLeft: 'auto' }}>
+          <input
+            className="filter-input" placeholder="🔍 Search…"
+            value={search} onChange={e => setSearch(e.target.value)}
+            style={{ width: 160 }}
+          />
+        </div>
+      </div>
+
+      {/* ── table ── */}
+      <div className="table-scroll">
+        {loading && tokens.length === 0 ? (
+          <div className="loading-state">Loading Arc tokens…</div>
         ) : (
-          <div className="token-grid">
-            {displayed.map(pair => (
-              <TokenCard
-                key={pair.pairAddress}
-                pair={pair}
-                popups={popups}
-                onClick={() => navigate({ name: 'token', address: pair.pairAddress })}
-              />
-            ))}
-          </div>
+          <table className="token-table">
+            <thead>
+              <tr>
+                <th className="th-rank">#</th>
+                <th className="th-token" style={{ textAlign: 'left' }}>TOKEN / AGE ↕</th>
+                <SortTh col="age"     label="AGE"     align="right" />
+                <SortTh col="mcap"    label="MC $"    align="right" />
+                <SortTh col="liq"     label="LIQ"     align="right" />
+                <SortTh col="volume"  label="ALL VOL" align="right" />
+                <SortTh col="txns"    label="ALL TXS" align="right" />
+                <SortTh col="holders" label="HOLDERS" align="right" />
+                <SortTh col="score"   label="SCORE"   align="right" />
+                <th className="th-sort" style={{ textAlign: 'right' }}>QUOTE</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageItems.map((token, i) => (
+                <TokenRow
+                  key={token.address}
+                  token={token}
+                  rank={(page - 1) * PAGE_SIZE + i + 1}
+                  onClick={() => navigate({ name: 'token', address: token.address, symbol: token.symbol })}
+                />
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
     </div>
