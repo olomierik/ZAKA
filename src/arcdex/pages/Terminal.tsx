@@ -1,353 +1,341 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  getTrendingPools, getNewPools, getAllPools, getPoolTrades,
-  type GeckoPool, type GeckoTrade, LAUNCHPAD_COLORS,
-} from '../api/gecko'
+  getTrendingPairs, getNewPools, getGraduatedPools,
+  getPairsBatch, getLaunchpad,
+  type DexPair,
+} from '../api/dexscreener'
+import { subscribeAll, estimateUsd, ARC_EXPLORER } from '../api/arcRpc'
 import type { Page } from '../App'
 
 interface Props { navigate: (p: Page) => void }
 
-// ── helpers ─────────────────────────────────────────────────────────
-function fmt(n: number | null | undefined, prefix = '') {
-  if (n == null || n === 0) return '—'
-  if (n >= 1e9) return `${prefix}${(n / 1e9).toFixed(2)}B`
-  if (n >= 1e6) return `${prefix}${(n / 1e6).toFixed(2)}M`
-  if (n >= 1e3) return `${prefix}${(n / 1e3).toFixed(2)}K`
+// ── helpers ───────────────────────────────────────────────────────────
+function fmt(n: number | null | undefined, prefix = ''): string {
+  if (n == null || isNaN(n)) return '—'
+  if (n >= 1e9)  return `${prefix}${(n/1e9).toFixed(2)}B`
+  if (n >= 1e6)  return `${prefix}${(n/1e6).toFixed(2)}M`
+  if (n >= 1e3)  return `${prefix}${(n/1e3).toFixed(1)}K`
   return `${prefix}${n.toFixed(2)}`
 }
-function fmtPrice(n: number) {
-  if (n === 0) return '$0'
-  if (n >= 1) return `$${n.toFixed(4)}`
-  const s = n.toExponential(2)
-  return `$${s}`
+function age(createdAt: number): string {
+  const s = (Date.now() - createdAt) / 1000
+  if (s < 60)   return `${Math.floor(s)}s`
+  if (s < 3600) return `${Math.floor(s/60)}m`
+  if (s < 86400)return `${Math.floor(s/3600)}h`
+  return `${Math.floor(s/86400)}d`
 }
-function timeAgo(iso: string) {
-  if (!iso) return '—'
-  const s = (Date.now() - new Date(iso).getTime()) / 1000
-  if (s < 60) return `${Math.floor(s)}s`
-  if (s < 3600) return `${Math.floor(s / 60)}m`
-  if (s < 86400) return `${Math.floor(s / 3600)}h`
-  return `${Math.floor(s / 86400)}d`
-}
-function launchpadColor(name: string) {
-  return LAUNCHPAD_COLORS[name] ?? '#64748b'
+function pct(n: number) {
+  const c = n > 0 ? '#22c55e' : n < 0 ? '#ef4444' : '#64748b'
+  return <span style={{ color: c, fontWeight: 700 }}>{n > 0 ? '+' : ''}{n.toFixed(1)}%</span>
 }
 
-// ── pop-up badge per card ────────────────────────────────────────────
-interface PopBadge { id: string; kind: 'buy' | 'sell'; amount: number }
+// ── live trade popup ──────────────────────────────────────────────────
+interface Popup { id: number; pairAddress: string; kind: 'buy'|'sell'; usd: number }
+let popupId = 0
 
-// live trade poller — one shared interval across all visible cards
-const tradeCache = new Map<string, GeckoTrade[]>()
-const tradeCallbacks = new Map<string, Set<(t: GeckoTrade) => void>>()
-
-function subscribePool(address: string, cb: (t: GeckoTrade) => void) {
-  if (!tradeCallbacks.has(address)) tradeCallbacks.set(address, new Set())
-  tradeCallbacks.get(address)!.add(cb)
+// ── token image with fallback ─────────────────────────────────────────
+function TokenImage({ src, symbol }: { src?: string; symbol: string }) {
+  const [err, setErr] = useState(false)
+  if (!src || err) {
+    return (
+      <div style={{
+        width: 56, height: 56, borderRadius: '50%',
+        background: 'linear-gradient(135deg,#1e3a5f,#0f1e30)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent)',
+        flexShrink: 0,
+      }}>
+        {symbol.slice(0, 3).toUpperCase()}
+      </div>
+    )
+  }
+  return (
+    <img
+      src={src} alt={symbol}
+      style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+      onError={() => setErr(true)}
+    />
+  )
 }
-function unsubscribePool(address: string, cb: (t: GeckoTrade) => void) {
-  tradeCallbacks.get(address)?.delete(cb)
-}
-async function pollPool(address: string) {
-  try {
-    const trades = await getPoolTrades(address)
-    const prev = tradeCache.get(address) ?? []
-    const prevIds = new Set(prev.map(t => t.txHash))
-    const newTrades = trades.filter(t => !prevIds.has(t.txHash))
-    tradeCache.set(address, trades)
-    const cbs = tradeCallbacks.get(address)
-    if (cbs) newTrades.forEach(t => cbs.forEach(cb => cb(t)))
-  } catch {}
-}
 
-// ── TokenCard ────────────────────────────────────────────────────────
-function TokenCard({ pool, onClick }: { pool: GeckoPool; onClick: () => void }) {
-  const [badges, setBadges] = useState<PopBadge[]>([])
-  const [recentTrades, setRecentTrades] = useState<GeckoTrade[]>([])
-  const [hovered, setHovered] = useState(false)
+// ── token card ────────────────────────────────────────────────────────
+interface CardProps { pair: DexPair; popups: Popup[]; onClick: () => void }
 
-  const handleTrade = useCallback((t: GeckoTrade) => {
-    const badge: PopBadge = { id: t.txHash, kind: t.kind, amount: t.volumeUsd }
-    setBadges(prev => [...prev.slice(-4), badge])
-    setRecentTrades(prev => [t, ...prev].slice(0, 5))
-    setTimeout(() => setBadges(prev => prev.filter(b => b.id !== badge.id)), 3200)
-  }, [])
-
-  useEffect(() => {
-    if (!pool.address) return
-    subscribePool(pool.address, handleTrade)
-    return () => unsubscribePool(pool.address, handleTrade)
-  }, [pool.address, handleTrade])
-
-  const pc = pool.priceChange.h24
-  const pcColor = pc >= 0 ? '#22c55e' : '#ef4444'
-  const lpColor = launchpadColor(pool.dexName)
+function TokenCard({ pair, popups, onClick }: CardProps) {
+  const lp    = getLaunchpad(pair)
+  const ch24  = pair.priceChange?.h24 ?? 0
+  const chColor = ch24 >= 0 ? '#22c55e' : '#ef4444'
+  const myPopups = popups.filter(p => p.pairAddress === pair.pairAddress.toLowerCase())
 
   return (
-    <div
-      className="token-card"
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{ position: 'relative', cursor: 'pointer' }}
-    >
-      {/* price change badge top-right */}
-      <div className="card-change-badge" style={{ color: pcColor, borderColor: pcColor }}>
-        {pc >= 0 ? '+' : ''}{pc.toFixed(1)}% 24h
+    <div className="token-card" onClick={onClick} style={{ cursor: 'pointer', position: 'relative', overflow: 'visible' }}>
+      {/* live popups */}
+      {myPopups.map(p => (
+        <div key={p.id} className={`trade-popup ${p.kind}`}>
+          {p.kind === 'buy' ? '▲' : '▼'} ${p.usd < 1 ? p.usd.toFixed(2) : fmt(p.usd, '')} {p.kind.toUpperCase()}
+        </div>
+      ))}
+
+      {/* price change badge */}
+      <div style={{
+        position: 'absolute', top: 10, right: 10,
+        background: ch24 >= 0 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+        color: chColor, fontSize: '0.7rem', fontWeight: 700,
+        padding: '2px 7px', borderRadius: 99,
+        border: `1px solid ${chColor}40`,
+      }}>
+        {ch24 >= 0 ? '+' : ''}{ch24.toFixed(1)}% 24h
       </div>
 
-      {/* live pop-up buy/sell badges */}
-      <div className="card-popups">
-        {badges.map(b => (
-          <div key={b.id} className={`card-popup ${b.kind}`}>
-            {b.kind === 'buy' ? '▲' : '▼'} ${b.amount < 1 ? b.amount.toFixed(2) : fmt(b.amount, '')} {b.kind.toUpperCase()}
-          </div>
-        ))}
+      {/* launchpad badge */}
+      <div style={{
+        position: 'absolute', top: 10, left: 10,
+        background: lp.color + '22', color: lp.color,
+        fontSize: '0.62rem', fontWeight: 700,
+        padding: '2px 6px', borderRadius: 99,
+        border: `1px solid ${lp.color}44`,
+        maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
+        {lp.name}
       </div>
 
-      {/* token logo */}
-      <div className="card-logo-wrap">
-        {pool.logoUrl ? (
-          <img src={pool.logoUrl} alt={pool.baseSymbol} className="card-logo" />
-        ) : (
-          <div className="card-logo-placeholder">
-            {(pool.baseSymbol || '?').slice(0, 2).toUpperCase()}
-          </div>
-        )}
-        {/* launchpad badge */}
-        <div className="card-launchpad" style={{ background: lpColor }}>
-          {pool.dexName}
+      {/* image */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 36, marginBottom: 10 }}>
+        <TokenImage src={pair.info?.imageUrl} symbol={pair.baseToken.symbol} />
+      </div>
+
+      {/* name + price */}
+      <div style={{ textAlign: 'center', marginBottom: 8 }}>
+        <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text)' }}>
+          ${pair.baseToken.symbol}
+        </div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
+          {pair.baseToken.name}
+        </div>
+        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--accent)', marginTop: 4 }}>
+          {pair.priceUsd ? `$${parseFloat(pair.priceUsd).toPrecision(4)}` : '—'}
         </div>
       </div>
-
-      {/* name + market cap row */}
-      <div className="card-row" style={{ marginTop: 10 }}>
-        <div>
-          <div className="card-name">{pool.baseName}</div>
-          <div className="card-symbol">${pool.baseSymbol}</div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div className="card-label">Market cap</div>
-          <div className="card-value">{fmt(pool.marketCapUsd ?? pool.fdvUsd, '$')}</div>
-        </div>
-      </div>
-
-      {/* price */}
-      <div className="card-price">{fmtPrice(pool.priceUsd)}</div>
 
       {/* stats row */}
       <div className="card-stats">
-        <span title="Liquidity">💧 {fmt(pool.liquidityUsd, '$')}</span>
-        <span title="24h Volume">📊 {fmt(pool.volumeH24, '$')}</span>
-        <span title="Created">{timeAgo(pool.poolCreatedAt)} ago</span>
+        <div><span className="stat-label">MCap</span><span className="stat-val">{fmt(pair.marketCap ?? pair.fdv, '$')}</span></div>
+        <div><span className="stat-label">Vol 24h</span><span className="stat-val">{fmt(pair.volume?.h24, '$')}</span></div>
+        <div><span className="stat-label">Liq</span><span className="stat-val">{fmt(pair.liquidity?.usd, '$')}</span></div>
+      </div>
+      <div className="card-stats" style={{ marginTop: 4 }}>
+        <div><span className="stat-label">Buys</span><span className="stat-val" style={{ color: '#22c55e' }}>{pair.txns?.h24?.buys ?? '—'}</span></div>
+        <div><span className="stat-label">Sells</span><span className="stat-val" style={{ color: '#ef4444' }}>{pair.txns?.h24?.sells ?? '—'}</span></div>
+        <div><span className="stat-label">Age</span><span className="stat-val">{age(pair.pairCreatedAt)}</span></div>
       </div>
 
-      {/* txn counts */}
-      <div className="card-txns">
-        <span className="buy-count">▲ {pool.txns.buys}B</span>
-        <span className="sell-count">▼ {pool.txns.sells}S</span>
-        <span className="buyers-count">{pool.txns.buyers} buyers</span>
-      </div>
-
-      {/* recent trade feed on hover */}
-      {hovered && recentTrades.length > 0 && (
-        <div className="card-trade-feed">
-          {recentTrades.map((t, i) => (
-            <div key={i} className={`feed-item ${t.kind}`}>
-              <span className="feed-kind">{t.kind === 'buy' ? '▲ BUY' : '▼ SELL'}</span>
-              <span className="feed-amount">${t.volumeUsd < 1 ? t.volumeUsd.toFixed(3) : fmt(t.volumeUsd)}</span>
-              <span className="feed-wallet">{t.txFrom.slice(0, 6)}…{t.txFrom.slice(-4)}</span>
-              <span className="feed-time">{timeAgo(t.timestamp)}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* explorer link */}
+      <a
+        href={`${ARC_EXPLORER}/address/${pair.pairAddress}`}
+        target="_blank" rel="noopener noreferrer"
+        style={{ display: 'block', textAlign: 'center', marginTop: 8, fontSize: '0.65rem', color: 'var(--text-muted)', textDecoration: 'none' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {pair.pairAddress.slice(0, 8)}…{pair.pairAddress.slice(-6)}
+      </a>
     </div>
   )
 }
 
-// ── Main Terminal ────────────────────────────────────────────────────
-type Tab = 'trending' | 'new' | 'all'
-type SortKey = 'volume' | 'marketcap' | 'liquidity' | 'age' | 'txns'
-type LaunchpadFilter = 'all' | string
+// ── sort / filter types ───────────────────────────────────────────────
+type Tab = 'trending' | 'new' | 'graduated'
+type SortKey = 'volume' | 'mcap' | 'liquidity' | 'age' | 'txns'
 
-const LAUNCHPADS = ['Argus', 'Minara.fun', 'RadarDex', 'Tolly', 'Warp', 'Archemist', 'o1 Launchpad', 'Uniswap V3', 'Uniswap V4']
+const SORT_OPTIONS: { label: string; key: SortKey }[] = [
+  { label: 'Volume',    key: 'volume' },
+  { label: 'Mkt Cap',   key: 'mcap' },
+  { label: 'Liquidity', key: 'liquidity' },
+  { label: 'Newest',    key: 'age' },
+  { label: 'Txns',      key: 'txns' },
+]
 
+const LAUNCHPADS = ['All', 'Argus', 'Minara', 'RadarDex', 'Tolly', 'Warp', 'Archemist', 'o1', 'Uniswap V3', 'Uniswap V4']
+
+// ── main Terminal component ───────────────────────────────────────────
 export default function Terminal({ navigate }: Props) {
-  const [tab, setTab] = useState<Tab>('trending')
-  const [pools, setPools] = useState<GeckoPool[]>([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [sortKey, setSortKey] = useState<SortKey>('volume')
-  const [lpFilter, setLpFilter] = useState<LaunchpadFilter>('all')
-  const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(true)
+  const [tab,       setTab]       = useState<Tab>('trending')
+  const [pairs,     setPairs]     = useState<DexPair[]>([])
+  const [loading,   setLoading]   = useState(true)
+  const [sortKey,   setSortKey]   = useState<SortKey>('volume')
+  const [lpFilter,  setLpFilter]  = useState('All')
+  const [search,    setSearch]    = useState('')
+  const [popups,    setPopups]    = useState<Popup[]>([])
   const [lastUpdate, setLastUpdate] = useState(Date.now())
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const loaderRef = useRef<HTMLDivElement>(null)
+  const pairsRef = useRef<DexPair[]>([])
+  pairsRef.current = pairs
 
-  // fetch pools for current tab
-  const fetchPools = useCallback(async (tab: Tab, pageNum: number, replace: boolean) => {
-    try {
-      let data: GeckoPool[] = []
-      if (tab === 'trending') data = await getTrendingPools(pageNum)
-      else if (tab === 'new')  data = await getNewPools(pageNum)
-      else                     data = await getAllPools(pageNum)
-      setPools(prev => replace ? data : [...prev, ...data])
-      setHasMore(data.length === 20)
-      setLastUpdate(Date.now())
-    } finally {
-      setLoading(false)
+  // ── load pairs ──────────────────────────────────────────────────────
+  const load = useCallback(async () => {
+    setLoading(true)
+    let data: DexPair[] = []
+    if      (tab === 'trending')  data = await getTrendingPairs()
+    else if (tab === 'new')       data = await getNewPools()
+    else                          data = await getGraduatedPools()
+    setPairs(data)
+    setLastUpdate(Date.now())
+    setLoading(false)
+
+    // batch-refresh with DexScreener for images + up-to-date prices
+    const addrs = data.map(p => p.pairAddress)
+    if (addrs.length) {
+      const fresh = await getPairsBatch(addrs.slice(0, 60))
+      if (fresh.length) {
+        const map = new Map(fresh.map(p => [p.pairAddress.toLowerCase(), p]))
+        setPairs(prev => prev.map(p => {
+          const f = map.get(p.pairAddress.toLowerCase())
+          if (!f) return p
+          // merge: prefer DexScreener image, keep GT lifecycle fields
+          return { ...p, ...f, info: f.info?.imageUrl ? f.info : p.info }
+        }))
+      }
     }
+  }, [tab])
+
+  useEffect(() => { void load() }, [load])
+
+  // refresh every 8 seconds
+  useEffect(() => {
+    const t = setInterval(() => void load(), 8000)
+    return () => clearInterval(t)
+  }, [load])
+
+  // ── real-time WebSocket trade popups ────────────────────────────────
+  useEffect(() => {
+    const unsub = subscribeAll(trade => {
+      const pairAddr = trade.pairAddress.toLowerCase()
+      const matchedPair = pairsRef.current.find(p => p.pairAddress.toLowerCase() === pairAddr)
+      const usd = matchedPair
+        ? estimateUsd(trade.amount1)
+        : estimateUsd(trade.amount1)
+
+      if (usd < 0.01) return  // ignore dust
+
+      const popup: Popup = { id: ++popupId, pairAddress: pairAddr, kind: trade.kind, usd }
+      setPopups(prev => [...prev.slice(-50), popup])  // keep last 50
+      setTimeout(() => {
+        setPopups(prev => prev.filter(p => p.id !== popup.id))
+      }, 3500)
+    })
+    return unsub
   }, [])
 
-  // initial load + tab change
-  useEffect(() => {
-    setLoading(true)
-    setPools([])
-    setPage(1)
-    setHasMore(true)
-    void fetchPools(tab, 1, true)
-  }, [tab, fetchPools])
-
-  // auto-refresh every 15s
-  useEffect(() => {
-    if (pollRef.current) clearInterval(pollRef.current)
-    pollRef.current = setInterval(() => {
-      void fetchPools(tab, 1, true)
-      // also poll top 10 visible pools for live trades
-      setPools(prev => {
-        prev.slice(0, 10).forEach(p => { void pollPool(p.address) })
-        return prev
-      })
-    }, 15_000)
-    return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [tab, fetchPools])
-
-  // poll trades for visible pools every 10s
-  useEffect(() => {
-    const interval = setInterval(() => {
-      pools.slice(0, 12).forEach(p => { void pollPool(p.address) })
-    }, 10_000)
-    return () => clearInterval(interval)
-  }, [pools])
-
-  // infinite scroll
-  useEffect(() => {
-    const el = loaderRef.current
-    if (!el) return
-    const obs = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMore && !loading) {
-        const next = page + 1
-        setPage(next)
-        void fetchPools(tab, next, false)
-      }
-    }, { threshold: 0.1 })
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [page, hasMore, loading, tab, fetchPools])
-
-  // filter + sort
-  const filtered = pools
+  // ── filter + sort ───────────────────────────────────────────────────
+  const displayed = pairs
     .filter(p => {
-      if (lpFilter !== 'all' && p.dexName !== lpFilter) return false
       if (search) {
         const q = search.toLowerCase()
-        return p.baseSymbol.toLowerCase().includes(q) || p.baseName.toLowerCase().includes(q)
+        return p.baseToken.symbol.toLowerCase().includes(q) ||
+               p.baseToken.name.toLowerCase().includes(q)
       }
       return true
     })
+    .filter(p => {
+      if (lpFilter === 'All') return true
+      return getLaunchpad(p).name.toLowerCase().startsWith(lpFilter.toLowerCase())
+    })
     .sort((a, b) => {
-      if (sortKey === 'volume')    return (b.volumeH24 ?? 0) - (a.volumeH24 ?? 0)
-      if (sortKey === 'marketcap') return ((b.marketCapUsd ?? b.fdvUsd ?? 0)) - ((a.marketCapUsd ?? a.fdvUsd ?? 0))
-      if (sortKey === 'liquidity') return (b.liquidityUsd ?? 0) - (a.liquidityUsd ?? 0)
-      if (sortKey === 'age')       return new Date(b.poolCreatedAt).getTime() - new Date(a.poolCreatedAt).getTime()
-      if (sortKey === 'txns')      return (b.txns.buys + b.txns.sells) - (a.txns.buys + a.txns.sells)
+      if (sortKey === 'volume')    return (b.volume?.h24 ?? 0) - (a.volume?.h24 ?? 0)
+      if (sortKey === 'mcap')      return (b.marketCap ?? b.fdv ?? 0) - (a.marketCap ?? a.fdv ?? 0)
+      if (sortKey === 'liquidity') return (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0)
+      if (sortKey === 'age')       return (b.pairCreatedAt ?? 0) - (a.pairCreatedAt ?? 0)
+      if (sortKey === 'txns')      return ((b.txns?.h24?.buys ?? 0) + (b.txns?.h24?.sells ?? 0)) - ((a.txns?.h24?.buys ?? 0) + (a.txns?.h24?.sells ?? 0))
       return 0
     })
 
-  const secs = Math.floor((Date.now() - lastUpdate) / 1000)
-
   return (
-    <div className="terminal-root">
-      {/* header */}
-      <div className="terminal-header">
-        <div className="terminal-title">
-          <span className="terminal-logo">⬡</span> ARC<span style={{ color: '#3b82f6' }}>DEX</span>
-          <span className="live-dot" />
-          <span className="live-label">LIVE · {secs}s ago</span>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
+
+      {/* ── top bar ── */}
+      <div style={{ padding: '12px 16px 0', borderBottom: '1px solid var(--card-border)' }}>
+        {/* tabs */}
+        <div style={{ display: 'flex', gap: 24, marginBottom: 12 }}>
+          {(['trending','new','graduated'] as Tab[]).map(t => (
+            <button key={t} onClick={() => setTab(t)} style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0',
+              fontWeight: tab === t ? 800 : 500,
+              fontSize: '0.95rem',
+              color: tab === t ? 'var(--text)' : 'var(--text-muted)',
+              borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
+              textTransform: 'capitalize',
+            }}>
+              {t === 'trending' ? '🔥 Trending' : t === 'new' ? '✨ New' : '🎓 Graduated'}
+            </button>
+          ))}
+          <div style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-muted)', alignSelf: 'center' }}>
+            Live • {new Date(lastUpdate).toLocaleTimeString()}
+          </div>
         </div>
-        <input
-          className="terminal-search"
-          placeholder="Search token…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+
+        {/* launchpad filter pills */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          {LAUNCHPADS.map(lp => (
+            <button key={lp} onClick={() => setLpFilter(lp)} style={{
+              padding: '3px 12px', borderRadius: 99, fontSize: '0.72rem', fontWeight: 600,
+              cursor: 'pointer', border: '1px solid',
+              borderColor: lpFilter === lp ? 'var(--accent)' : 'var(--card-border)',
+              background:  lpFilter === lp ? 'rgba(59,130,246,0.15)' : 'transparent',
+              color:       lpFilter === lp ? 'var(--accent)' : 'var(--text-muted)',
+            }}>
+              {lp}
+            </button>
+          ))}
+        </div>
+
+        {/* sort + search row */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            placeholder="Search tokens…"
+            value={search} onChange={e => setSearch(e.target.value)}
+            style={{
+              background: 'var(--card-bg)', border: '1px solid var(--card-border)',
+              borderRadius: 8, padding: '5px 12px', color: 'var(--text)', fontSize: '0.8rem',
+              width: 180, outline: 'none',
+            }}
+          />
+          {SORT_OPTIONS.map(s => (
+            <button key={s.key} onClick={() => setSortKey(s.key)} style={{
+              padding: '3px 10px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 600,
+              cursor: 'pointer', border: '1px solid',
+              borderColor: sortKey === s.key ? 'var(--accent)' : 'var(--card-border)',
+              background:  sortKey === s.key ? 'rgba(59,130,246,0.15)' : 'transparent',
+              color:       sortKey === s.key ? 'var(--accent)' : 'var(--text-muted)',
+            }}>
+              {s.label}
+            </button>
+          ))}
+          <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+            {displayed.length} pairs
+          </span>
+        </div>
       </div>
 
-      {/* tabs */}
-      <div className="terminal-tabs">
-        {(['trending', 'new', 'all'] as Tab[]).map(t => (
-          <button key={t} className={`tab-btn${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>
-            {t === 'trending' ? '🔥 Trending' : t === 'new' ? '✨ New' : '🌐 All Pairs'}
-          </button>
-        ))}
-      </div>
-
-      {/* launchpad filter pills */}
-      <div className="lp-filter-row">
-        <button className={`lp-pill${lpFilter === 'all' ? ' active' : ''}`} onClick={() => setLpFilter('all')}>
-          All
-        </button>
-        {LAUNCHPADS.map(lp => (
-          <button
-            key={lp}
-            className={`lp-pill${lpFilter === lp ? ' active' : ''}`}
-            style={lpFilter === lp ? { background: launchpadColor(lp), borderColor: launchpadColor(lp), color: '#fff' } : { borderColor: launchpadColor(lp), color: launchpadColor(lp) }}
-            onClick={() => setLpFilter(lp === lpFilter ? 'all' : lp)}
-          >
-            {lp}
-          </button>
-        ))}
-      </div>
-
-      {/* sort bar */}
-      <div className="sort-bar">
-        <span className="sort-label">Sort:</span>
-        {([
-          ['volume',    'Volume 24h'],
-          ['marketcap', 'Market Cap'],
-          ['liquidity', 'Liquidity'],
-          ['age',       'Newest'],
-          ['txns',      'Transactions'],
-        ] as [SortKey, string][]).map(([key, label]) => (
-          <button
-            key={key}
-            className={`sort-btn${sortKey === key ? ' active' : ''}`}
-            onClick={() => setSortKey(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* token grid */}
-      <div className="token-grid" style={{ minHeight: '80vh' }}>
-        {loading && pools.length === 0
-          ? Array.from({ length: 12 }).map((_, i) => <div key={i} className="token-card skeleton" />)
-          : filtered.map(pool => (
+      {/* ── card grid ── */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
+        {loading && pairs.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>
+            Loading Arc pairs…
+          </div>
+        ) : displayed.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>
+            No pairs found
+          </div>
+        ) : (
+          <div className="token-grid">
+            {displayed.map(pair => (
               <TokenCard
-                key={pool.id}
-                pool={pool}
-                onClick={() => navigate({ name: 'token', address: pool.address })}
+                key={pair.pairAddress}
+                pair={pair}
+                popups={popups}
+                onClick={() => navigate({ name: 'token', address: pair.pairAddress })}
               />
-            ))
-        }
-      </div>
-
-      {/* infinite scroll sentinel */}
-      <div ref={loaderRef} style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {loading && pools.length > 0 && <span className="loading-more">Loading more…</span>}
-        {!hasMore && pools.length > 0 && <span className="no-more">All pools loaded</span>}
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
