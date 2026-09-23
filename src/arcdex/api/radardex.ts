@@ -1,26 +1,32 @@
 // ARCDEX — RadarDex + Arc launchpad API aggregator
-// Fetches token list, prices, OHLCV from RadarDex public API
-// and merges with on-chain data from Argus, ArcPad, Archemist, ArcToolsPad
+// All requests proxied through /api/radar to fix CORS
 
 export interface ArcToken {
-  address:     string
-  symbol:      string
-  name:        string
-  decimals:    number
-  logoUrl:     string
-  price:       number    // in USDC
-  priceChange24h: number // %
-  volume24h:   number    // USDC
-  marketCap:   number    // USDC
-  liquidity:   number    // USDC
-  ageMs:       number    // ms since launch
-  launchpad:   string    // 'RadarDex' | 'Argus' | 'ArcPad' | 'Archemist' | 'ArcToolsPad' | 'Unknown'
-  poolAddress: string
-  txCount24h:  number
+  address:        string
+  symbol:         string
+  name:           string
+  decimals:       number
+  logoUrl:        string
+  price:          number    // USDC
+  priceChange24h: number    // %
+  volume24h:      number    // USDC
+  marketCap:      number    // USDC
+  liquidity:      number    // USDC
+  ageMs:          number    // ms since deploy
+  launchpad:      string    // 'Argus' | 'RadarDex' | 'Tolly' | 'Warp' | 'Archemist' | ...
+  poolAddress:    string
+  txCount24h:     number
+  holderCount:    number
+  buys24h:        number
+  sells24h:       number
+  verified:       boolean
+  website?:       string
+  twitter?:       string
+  telegram?:      string
 }
 
 export interface OhlcvCandle {
-  time:   number  // unix seconds
+  time:   number
   open:   number
   high:   number
   low:    number
@@ -34,82 +40,69 @@ export interface Trade {
   amountIn:  number
   amountOut: number
   price:     number
-  timestamp: number  // unix seconds
+  timestamp: number
   maker:     string
 }
 
-// Launchpad registry — known factory/router addresses on Arc mainnet
-const LAUNCHPAD_MAP: Record<string, string> = {
-  '0xf0db7b58379503491d857db50ac9ece64c653918': 'RadarDex',
-  // Argus.world factory (derived from their contracts)
-  '0x1234567890abcdef1234567890abcdef12345678': 'Argus',
-  // ArcPad factory
-  '0xabcdef1234567890abcdef1234567890abcdef12': 'ArcPad',
-  // Archemist
-  '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef': 'Archemist',
-}
-
 export function getLaunchpadColor(lp: string): string {
-  switch (lp) {
-    case 'RadarDex':    return '#2563eb'
-    case 'Argus':       return '#7c3aed'
-    case 'ArcPad':      return '#059669'
-    case 'Archemist':   return '#d97706'
-    case 'ArcToolsPad': return '#e11d48'
+  switch (lp?.toLowerCase()) {
+    case 'argus':       return '#7c3aed'
+    case 'radardex':    return '#2563eb'
+    case 'tolly':       return '#059669'
+    case 'warp':        return '#f59e0b'
+    case 'archemist':   return '#d97706'
+    case 'arcpad':      return '#e11d48'
+    case 'minara':      return '#06b6d4'
+    case 'pegd':        return '#84cc16'
     default:            return '#475569'
   }
 }
 
-// Calls go through /api/radar proxy to avoid CORS on api.radardex.pro
-const RADAR_BASE = '/api/radar?path='
-const ARC_RPC    = 'https://rpc.mainnet.arc.io'
-const USDC_ADDR  = '0x3600000000000000000000000000000000000000'
+// Normalise launchpad label from RadarDex raw value
+function normaliseLaunchpad(raw: string | null | undefined): string {
+  if (!raw) return 'RadarDex'
+  const l = raw.toLowerCase().trim()
+  if (l.includes('argus'))    return 'Argus'
+  if (l.includes('tolly'))    return 'Tolly'
+  if (l.includes('warp'))     return 'Warp'
+  if (l.includes('archemist')) return 'Archemist'
+  if (l.includes('arcpad'))   return 'ArcPad'
+  if (l.includes('minara'))   return 'Minara'
+  if (l.includes('pegd'))     return 'PEGD'
+  return raw.trim() || 'RadarDex'
+}
+
+// Proxy base — all calls go to /api/radar?path=<path>&<other params>
+const PROXY = '/api/radar'
 
 let tokenCache: ArcToken[] | null = null
 let tokenCacheTs = 0
-const CACHE_TTL  = 30_000 // 30s
-
-async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
-  const res = await fetch(ARC_RPC, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-  })
-  const j = await res.json() as { result?: unknown; error?: { message: string } }
-  if (j.error) throw new Error(j.error.message)
-  return j.result
-}
-
-// Fetch token list from RadarDex API
-async function fetchRadarTokens(): Promise<ArcToken[]> {
-  const res = await fetch(`${RADAR_BASE}/tokens&chain=arc&limit=200`, {
-    signal: AbortSignal.timeout(10000),
-  })
-  if (!res.ok) throw new Error(`RadarDex API ${res.status}`)
-  const data = await res.json() as { tokens?: RadarToken[] }
-  return (data.tokens ?? []).map(mapRadarToken)
-}
+const CACHE_TTL = 30_000
 
 interface RadarToken {
-  address:      string
-  symbol:       string
-  name:         string
-  decimals:     number
-  icon?:        string
-  price?:       number
-  change24h?:   number
-  volume24?:    number
-  mcap?:        number
+  address:        string
+  symbol:         string
+  name:           string
+  decimals?:      number
+  icon?:          string
+  price?:         number
+  change24h?:     number
+  volume24?:      number
+  volume24hFixed?: number
+  mcap?:          number
   liquidityUsdc?: number
-  firstSeen?:   number   // unix seconds
-  deployTs?:    number   // unix seconds
-  txns24?:      number
-  launchpad?:   string | null
-  pools?:       number
-  buys24?:      number
-  sells24?:     number
-  holderCount?: number
-  verified?:    boolean
+  firstSeen?:     number
+  deployTs?:      number
+  txns24?:        number
+  launchpad?:     string | null
+  buys24?:        number
+  sells24?:       number
+  holderCount?:   number
+  verified?:      boolean
+  launched?:      boolean
+  website?:       string
+  twitter?:       string
+  telegram?:      string
 }
 
 function mapRadarToken(t: RadarToken): ArcToken {
@@ -127,73 +120,58 @@ function mapRadarToken(t: RadarToken): ArcToken {
     logoUrl:        t.icon ?? '',
     price:          t.price ?? 0,
     priceChange24h: t.change24h ?? 0,
-    volume24h:      t.volume24 ?? 0,
+    volume24h:      t.volume24hFixed ?? t.volume24 ?? 0,
     marketCap:      t.mcap ?? 0,
     liquidity:      t.liquidityUsdc ?? 0,
     ageMs,
-    launchpad:      t.launchpad ?? 'RadarDex',
+    launchpad:      normaliseLaunchpad(t.launchpad),
     poolAddress:    '',
     txCount24h:     t.txns24 ?? 0,
+    holderCount:    t.holderCount ?? 0,
+    buys24h:        t.buys24 ?? 0,
+    sells24h:       t.sells24 ?? 0,
+    verified:       t.verified ?? false,
+    website:        t.website,
+    twitter:        t.twitter,
+    telegram:       t.telegram,
   }
 }
 
-// On-chain fallback: query Uniswap V3 factory for USDC pools
-async function fetchOnChainTokens(): Promise<ArcToken[]> {
-  // V3 factory allPairsLength
-  const countHex = await rpcCall('eth_call', [
-    { to: '0xf0db7b58379503491d857db50ac9ece64c653918', data: '0x574f2ba3' }, // allPairsLength
-    'latest',
-  ]) as string
-  const count = parseInt(countHex, 16)
-  const limit = Math.min(count, 50)
+// Fetch ALL tokens — paginate in batches of 200 until exhausted
+async function fetchAllRadarTokens(): Promise<ArcToken[]> {
+  const all: ArcToken[] = []
+  let offset = 0
+  const batchSize = 200
 
-  const tokens: ArcToken[] = []
-  for (let i = 0; i < limit; i++) {
-    try {
-      // allPairs(i)
-      const idx = i.toString(16).padStart(64, '0')
-      const pairHex = await rpcCall('eth_call', [
-        { to: '0xf0db7b58379503491d857db50ac9ece64c653918', data: `0x1e3dd18b${idx}` },
-        'latest',
-      ]) as string
-      const pairAddr = `0x${pairHex.slice(-40)}`
-
-      // token0(), token1() from pair
-      const [t0h, t1h] = await Promise.all([
-        rpcCall('eth_call', [{ to: pairAddr, data: '0x0dfe1681' }, 'latest']) as Promise<string>,
-        rpcCall('eth_call', [{ to: pairAddr, data: '0xd21220a7' }, 'latest']) as Promise<string>,
-      ])
-      const t0 = `0x${t0h.slice(-40)}`
-      const t1 = `0x${t1h.slice(-40)}`
-      const tokenAddr = t0.toLowerCase() === USDC_ADDR.toLowerCase() ? t1 : t0
-
-      tokens.push({
-        address: tokenAddr, symbol: tokenAddr.slice(0, 6).toUpperCase(),
-        name: `Token ${tokenAddr.slice(0, 8)}`, decimals: 18, logoUrl: '',
-        price: 0, priceChange24h: 0, volume24h: 0, marketCap: 0, liquidity: 0,
-        ageMs: 0, launchpad: 'RadarDex', poolAddress: pairAddr, txCount24h: 0,
-      })
-    } catch { /* skip bad pair */ }
+  while (true) {
+    const url = `${PROXY}?path=/tokens&chain=arc&limit=${batchSize}&offset=${offset}`
+    const res = await fetch(url, { signal: AbortSignal.timeout(15000) })
+    if (!res.ok) break
+    const data = await res.json() as { tokens?: RadarToken[] }
+    const batch = data.tokens ?? []
+    all.push(...batch.map(mapRadarToken))
+    if (batch.length < batchSize) break   // last page
+    offset += batchSize
+    if (all.length >= 5000) break         // safety cap
   }
-  return tokens
+
+  return all
 }
 
 export async function getTokens(forceRefresh = false): Promise<ArcToken[]> {
   if (!forceRefresh && tokenCache && Date.now() - tokenCacheTs < CACHE_TTL) {
     return tokenCache
   }
-  const tokens = await fetchRadarTokens()
-  tokenCache  = tokens
-  tokenCacheTs = Date.now()
+  const tokens  = await fetchAllRadarTokens()
+  tokenCache    = tokens
+  tokenCacheTs  = Date.now()
   return tokens
 }
 
 export async function getToken(address: string): Promise<ArcToken | null> {
-  // Try single-token endpoint first (fast), fall back to full list scan
   try {
-    const res = await fetch(`${RADAR_BASE}/tokens&chain=arc&address=${address}`, {
-      signal: AbortSignal.timeout(6000),
-    })
+    const url = `${PROXY}?path=/tokens&chain=arc&address=${address}`
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) })
     if (res.ok) {
       const data = await res.json() as { tokens?: RadarToken[] }
       if (data.tokens?.[0]) return mapRadarToken(data.tokens[0])
@@ -203,17 +181,14 @@ export async function getToken(address: string): Promise<ArcToken | null> {
   return tokens.find(t => t.address.toLowerCase() === address.toLowerCase()) ?? null
 }
 
-// OHLCV candles — RadarDex API or synthesise from recent txs
 export async function getOhlcv(
   tokenAddress: string,
   resolution: '1m' | '5m' | '15m' | '1h' | '4h' | '1d' = '1h',
   limit = 200,
 ): Promise<OhlcvCandle[]> {
   try {
-    const res = await fetch(
-      `${RADAR_BASE}/candles&chain=arc&token=${tokenAddress}&resolution=${resolution}&limit=${limit}`,
-      { signal: AbortSignal.timeout(8000) },
-    )
+    const url = `${PROXY}?path=/candles&chain=arc&token=${tokenAddress}&resolution=${resolution}&limit=${limit}`
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
     if (!res.ok) throw new Error('ohlcv failed')
     const data = await res.json() as { candles?: OhlcvCandle[] }
     return data.candles ?? generateMockCandles(limit)
@@ -237,13 +212,10 @@ function generateMockCandles(limit: number): OhlcvCandle[] {
   return candles
 }
 
-// Recent trades for a token
 export async function getTrades(tokenAddress: string, limit = 30): Promise<Trade[]> {
   try {
-    const res = await fetch(
-      `${RADAR_BASE}/v1/trades&chain=arc&token=${tokenAddress}&limit=${limit}`,
-      { signal: AbortSignal.timeout(8000) },
-    )
+    const url = `${PROXY}?path=/v1/trades&chain=arc&token=${tokenAddress}&limit=${limit}`
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
     if (!res.ok) throw new Error('trades failed')
     const data = await res.json() as { trades?: Trade[] }
     return data.trades ?? []
@@ -252,11 +224,30 @@ export async function getTrades(tokenAddress: string, limit = 30): Promise<Trade
   }
 }
 
-// Aggregate stats for all launchpads
-export async function getPlatformStats() {
-  const tokens = await getTokens()
-  const totalVol   = tokens.reduce((s, t) => s + t.volume24h, 0)
-  const totalMcap  = tokens.reduce((s, t) => s + t.marketCap, 0)
-  const totalLiq   = tokens.reduce((s, t) => s + t.liquidity, 0)
-  return { tokenCount: tokens.length, volume24h: totalVol, marketCap: totalMcap, liquidity: totalLiq }
+export async function getPlatformStats(): Promise<{
+  tokenCount: number; volume24h: number; marketCap: number; liquidity: number
+}> {
+  try {
+    const url = `${PROXY}?path=/stats&chain=arc`
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) })
+    if (!res.ok) throw new Error('stats failed')
+    const d = await res.json() as {
+      tokenCount?: number; volume24h?: number; marketCap?: number; liquidity?: number
+    }
+    return {
+      tokenCount: d.tokenCount ?? 0,
+      volume24h:  d.volume24h  ?? 0,
+      marketCap:  d.marketCap  ?? 0,
+      liquidity:  d.liquidity  ?? 0,
+    }
+  } catch {
+    // Compute from cached tokens if stats endpoint fails
+    const tokens = tokenCache ?? []
+    return {
+      tokenCount: tokens.length,
+      volume24h:  tokens.reduce((s, t) => s + t.volume24h, 0),
+      marketCap:  tokens.reduce((s, t) => s + t.marketCap, 0),
+      liquidity:  tokens.reduce((s, t) => s + t.liquidity, 0),
+    }
+  }
 }

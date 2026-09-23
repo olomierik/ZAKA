@@ -3,7 +3,7 @@ import { getTokens, getPlatformStats, type ArcToken } from '../api/radardex'
 import TokenTable from '../components/TokenTable'
 import type { Page } from '../App'
 
-const LAUNCHPADS = ['', 'RadarDex', 'Argus', 'ArcPad', 'Archemist', 'ArcToolsPad']
+const LAUNCHPADS = ['', 'Argus', 'RadarDex', 'Tolly', 'Warp', 'Archemist', 'Minara', 'PEGD']
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
@@ -49,7 +49,7 @@ export default function Terminal({ navigate }: Props) {
 
   // Auto-refresh every 30s
   useEffect(() => {
-    const id = setInterval(() => loadTokens(true), 30_000)
+    const id = setInterval(() => loadTokens(true), 15_000)
     return () => clearInterval(id)
   }, [loadTokens])
 
@@ -129,8 +129,8 @@ export default function Terminal({ navigate }: Props) {
       </div>
 
       <p style={{ marginTop: 16, fontSize: '0.6875rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-        ARCDEX aggregates tokens from RadarDex, Argus, ArcPad, Archemist, and ArcToolsPad on Arc mainnet (chain 5042).
-        All swaps carry a 1% platform fee. Not financial advice.
+        Live data from RadarDex API. Tokens from Argus, RadarDex, Tolly, Warp, Archemist, Minara, PEGD and all Arc launchpads.
+        Refreshes every 15s. Not financial advice.
       </p>
     </div>
   )
