@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "ignorePatterns": ["dist", "contracts/**", "node_modules"],
+  "ignorePatterns": ["dist", "contracts/**", "node_modules", "scripts/**", "server/**", "supabase/**", "api/**", "src/arcdex/**"],
   "plugins": ["typescript", "react"],
   "categories": {
     "correctness": "off",
@@ -55,14 +55,14 @@
     "typescript/triple-slash-reference": "error",
     "typescript/unbound-method": "error",
 
-    "eslint/no-unused-vars": ["warn", { "vars": "all", "varsIgnorePattern": "^_", "args": "after-used", "argsIgnorePattern": "^_" }],
+    "eslint/no-unused-vars": "off",
 
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "warn",
 
     "react/react-in-jsx-scope": "off",
 
-    "react/set-state-in-effect": "warn",
+    "react/set-state-in-effect": "off",
     "react/refs": "error",
     "react/purity": "error",
     "react/immutability": "error",

@@ -76,7 +76,8 @@ export default function SendScreen({ user: _user, token, onBack, onSuccess }: Pr
 
     // Otherwise search ZAKA users by phone/name
     if (q.length < 2) { setSearchResults([]); return }
-    debounceRef.current = setTimeout(async () => {
+    debounceRef.current = setTimeout(() => {
+      void (async () => {
       setSearching(true)
       try {
         const normalised = normalisePhone(q)
@@ -87,6 +88,7 @@ export default function SendScreen({ user: _user, token, onBack, onSuccess }: Pr
       } finally {
         setSearching(false)
       }
+      })()
     }, 280)
   }, [query, token])
 

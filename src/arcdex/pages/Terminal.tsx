@@ -45,7 +45,7 @@ export default function Terminal({ navigate }: Props) {
     }
   }, [])
 
-  useEffect(() => { loadTokens() }, [loadTokens])
+  useEffect(() => { void loadTokens() }, [loadTokens])
 
   // Auto-refresh every 30s
   useEffect(() => {

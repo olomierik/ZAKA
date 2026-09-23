@@ -60,7 +60,8 @@ export function getLaunchpadColor(lp: string): string {
   }
 }
 
-const RADAR_BASE = 'https://api.radardex.pro'
+// Calls go through /api/radar proxy to avoid CORS on api.radardex.pro
+const RADAR_BASE = '/api/radar?path='
 const ARC_RPC    = 'https://rpc.mainnet.arc.io'
 const USDC_ADDR  = '0x3600000000000000000000000000000000000000'
 
@@ -81,7 +82,7 @@ async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
 
 // Fetch token list from RadarDex API
 async function fetchRadarTokens(): Promise<ArcToken[]> {
-  const res = await fetch(`${RADAR_BASE}/tokens?chain=arc&limit=200`, {
+  const res = await fetch(`${RADAR_BASE}/tokens&chain=arc&limit=200`, {
     signal: AbortSignal.timeout(10000),
   })
   if (!res.ok) throw new Error(`RadarDex API ${res.status}`)
@@ -188,6 +189,16 @@ export async function getTokens(forceRefresh = false): Promise<ArcToken[]> {
 }
 
 export async function getToken(address: string): Promise<ArcToken | null> {
+  // Try single-token endpoint first (fast), fall back to full list scan
+  try {
+    const res = await fetch(`${RADAR_BASE}/tokens&chain=arc&address=${address}`, {
+      signal: AbortSignal.timeout(6000),
+    })
+    if (res.ok) {
+      const data = await res.json() as { tokens?: RadarToken[] }
+      if (data.tokens?.[0]) return mapRadarToken(data.tokens[0])
+    }
+  } catch { /* fall through */ }
   const tokens = await getTokens()
   return tokens.find(t => t.address.toLowerCase() === address.toLowerCase()) ?? null
 }
@@ -200,7 +211,7 @@ export async function getOhlcv(
 ): Promise<OhlcvCandle[]> {
   try {
     const res = await fetch(
-      `${RADAR_BASE}/candles?chain=arc&token=${tokenAddress}&resolution=${resolution}&limit=${limit}`,
+      `${RADAR_BASE}/candles&chain=arc&token=${tokenAddress}&resolution=${resolution}&limit=${limit}`,
       { signal: AbortSignal.timeout(8000) },
     )
     if (!res.ok) throw new Error('ohlcv failed')
@@ -230,7 +241,7 @@ function generateMockCandles(limit: number): OhlcvCandle[] {
 export async function getTrades(tokenAddress: string, limit = 30): Promise<Trade[]> {
   try {
     const res = await fetch(
-      `${RADAR_BASE}/v1/trades?chain=arc&token=${tokenAddress}&limit=${limit}`,
+      `${RADAR_BASE}/v1/trades&chain=arc&token=${tokenAddress}&limit=${limit}`,
       { signal: AbortSignal.timeout(8000) },
     )
     if (!res.ok) throw new Error('trades failed')

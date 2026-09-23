@@ -71,7 +71,7 @@ function useAdminApi() {
       const err = await res.json().catch(() => ({ error: res.statusText })) as { error?: string }
       throw new Error(err.error ?? res.statusText)
     }
-    return res.json()
+    return res.json() as Promise<unknown>
   }, [secret])
 
   return { call }
@@ -122,12 +122,12 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
             placeholder="Admin secret"
             value={secret}
             onChange={e => setSecret(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && tryLogin()}
+            onKeyDown={e => { if (e.key === 'Enter') void tryLogin() }}
             className="w-full rounded-xl px-4 py-3 text-sm text-white outline-none"
             style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}
           />
           <button
-            onClick={tryLogin}
+            onClick={() => { void tryLogin() }}
             disabled={loading || !secret}
             className="w-full rounded-xl py-3 text-sm font-semibold text-white disabled:opacity-40 transition-opacity"
             style={{ background: 'linear-gradient(135deg,#1261a6,#0a3d6b)' }}
@@ -164,9 +164,9 @@ function Overview({ api }: { api: ReturnType<typeof useAdminApi> }) {
   const [failed, setFailed] = useState<AdminTx[]>([])
 
   useEffect(() => {
-    api.call('stats').then(setStats).catch(() => toast.error('Could not load stats'))
+    api.call('stats').then(d => setStats(d as AdminStats)).catch(() => toast.error('Could not load stats'))
     api.call('transactions', 'GET', undefined, '&status=failed&page=0')
-      .then((d: { transactions: AdminTx[] }) => setFailed(d.transactions ?? []))
+      .then(d => setFailed((d as { transactions: AdminTx[] }).transactions ?? []))
       .catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -212,8 +212,8 @@ function UsersTab({ api }: { api: ReturnType<typeof useAdminApi> }) {
   const load = useCallback(() => {
     setLoading(true)
     api.call('users', 'GET', undefined, `&page=${page}&q=${encodeURIComponent(q)}`)
-      .then((d: { users: AdminUser[] }) => setUsers(d.users ?? []))
-      .catch(e => toast.error(e.message))
+      .then(d => setUsers((d as { users: AdminUser[] }).users ?? []))
+      .catch(e => toast.error((e as Error).message))
       .finally(() => setLoading(false))
   }, [api, page, q])
 
@@ -326,7 +326,7 @@ function UsersTab({ api }: { api: ReturnType<typeof useAdminApi> }) {
                     const t = KYC_TIERS[tier]
                     const isCurrent = (selected.kycTier ?? 1) === tier
                     return (
-                      <button key={tier} disabled={isCurrent} onClick={() => upgradeTier(selected, tier)}
+                      <button key={tier} disabled={isCurrent} onClick={() => { void upgradeTier(selected, tier) }}
                         className="rounded-xl py-2.5 flex flex-col items-center gap-0.5 text-xs font-bold transition-opacity disabled:opacity-40"
                         style={{ background: t.color + (isCurrent ? '30' : '15'), color: t.color, border: `1px solid ${t.color}${isCurrent ? '60' : '30'}` }}>
                         <span>{t.label}</span>
@@ -342,14 +342,14 @@ function UsersTab({ api }: { api: ReturnType<typeof useAdminApi> }) {
                     style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(240,92,107,0.30)' }}
                     placeholder="Reason for suspension…" value={suspendReason}
                     onChange={e => setSuspendReason(e.target.value)} />
-                  <button onClick={() => suspend(selected)}
+                  <button onClick={() => { void suspend(selected) }}
                     className="w-full rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2"
                     style={{ background: 'rgba(240,92,107,0.15)', color: '#f05c6b', border: '1px solid rgba(240,92,107,0.30)' }}>
                     <Ban className="size-4" /> Suspend Account
                   </button>
                 </div>
               ) : (
-                <button onClick={() => unsuspend(selected)}
+                <button onClick={() => { void unsuspend(selected) }}
                   className="w-full rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2"
                   style={{ background: 'rgba(126,241,179,0.12)', color: '#7ef1b3', border: '1px solid rgba(126,241,179,0.25)' }}>
                   <CheckCircle className="size-4" /> Reinstate Account
@@ -376,8 +376,8 @@ function TransactionsTab({ api }: { api: ReturnType<typeof useAdminApi> }) {
   const load = useCallback(() => {
     setLoading(true)
     api.call('transactions', 'GET', undefined, `&page=${page}&status=${status}`)
-      .then((d: { transactions: AdminTx[] }) => setTxs(d.transactions ?? []))
-      .catch(e => toast.error(e.message))
+      .then(d => setTxs((d as { transactions: AdminTx[] }).transactions ?? []))
+      .catch(e => toast.error((e as Error).message))
       .finally(() => setLoading(false))
   }, [api, page, status])
 
@@ -390,7 +390,7 @@ function TransactionsTab({ api }: { api: ReturnType<typeof useAdminApi> }) {
     }
     try {
       const data = await api.call('tx', 'GET', undefined, `&id=${tx.circleTxId}`)
-      setCircleLog(data)
+      setCircleLog(data as object)
     } catch (e) { toast.error((e as Error).message) }
   }
 
@@ -500,7 +500,7 @@ function TransactionsTab({ api }: { api: ReturnType<typeof useAdminApi> }) {
               </div>
 
               {/* Circle log */}
-              <button onClick={() => viewCircleLog(selected)}
+              <button onClick={() => { void viewCircleLog(selected) }}
                 className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm text-white/60 transition-colors hover:bg-white/5"
                 style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
                 <Eye className="size-4" /> View Circle API log
@@ -515,7 +515,7 @@ function TransactionsTab({ api }: { api: ReturnType<typeof useAdminApi> }) {
               {/* Actions */}
               <div className="flex flex-col gap-2 pt-1">
                 {selected.status === 'failed' && (
-                  <button onClick={() => retry(selected)}
+                  <button onClick={() => { void retry(selected) }}
                     className="w-full rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2"
                     style={{ background: 'rgba(255,205,131,0.12)', color: '#ffcd83', border: '1px solid rgba(255,205,131,0.25)' }}>
                     <RotateCcw className="size-4" /> Retry Transaction
@@ -527,7 +527,7 @@ function TransactionsTab({ api }: { api: ReturnType<typeof useAdminApi> }) {
                       style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(126,241,179,0.25)' }}
                       placeholder="Resolution note (optional)…" value={resolveNote}
                       onChange={e => setResolveNote(e.target.value)} />
-                    <button onClick={() => resolve(selected)}
+                    <button onClick={() => { void resolve(selected) }}
                       className="w-full rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2"
                       style={{ background: 'rgba(126,241,179,0.12)', color: '#7ef1b3', border: '1px solid rgba(126,241,179,0.25)' }}>
                       <CheckCircle className="size-4" /> Mark as Resolved
