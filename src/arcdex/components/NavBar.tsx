@@ -36,6 +36,8 @@ export default function NavBar({ page, navigate, onMenuClick }: Props) {
 
   const navLinks: { label: string; page: Page }[] = [
     { label: 'Terminal',  page: { name: 'terminal' } },
+    { label: 'Swap',      page: { name: 'swap' } },
+    { label: 'Bridge',    page: { name: 'bridge' } },
     { label: 'Launchpad', page: { name: 'launchpad' } },
     { label: 'Portfolio', page: { name: 'portfolio' } },
   ]

@@ -4,12 +4,14 @@ import Terminal from './pages/Terminal'
 import TokenPage from './pages/TokenPage'
 import Portfolio from './pages/Portfolio'
 import Launchpad from './pages/Launchpad'
+import Swap from './pages/Swap'
+import Bridge from './pages/Bridge'
 import TradingWalletPanel from './components/TradingWalletPanel'
 import { subscribeAll, deriveTradeInfo, type LiveTrade } from './api/arcRpc'
 import { getPairByAddress } from './api/dexscreener'
 import './arcdex.css'
 
-export type Page = { name: 'terminal' } | { name: 'token'; address: string; symbol?: string } | { name: 'portfolio' } | { name: 'launchpad' }
+export type Page = { name: 'terminal' } | { name: 'token'; address: string; symbol?: string } | { name: 'portfolio' } | { name: 'launchpad' } | { name: 'swap' } | { name: 'bridge' }
 
 // ── live feed item ────────────────────────────────────────────────────
 interface FeedItem {
@@ -90,6 +92,18 @@ export default function App() {
                 <span className="sidebar-icon">◈</span> TERMINAL
               </button>
               <button
+                className={`sidebar-item${page.name === 'swap' ? ' active' : ''}`}
+                onClick={() => navigate({ name: 'swap' })}
+              >
+                <span className="sidebar-icon">⇄</span> SWAP
+              </button>
+              <button
+                className={`sidebar-item${page.name === 'bridge' ? ' active' : ''}`}
+                onClick={() => navigate({ name: 'bridge' })}
+              >
+                <span className="sidebar-icon">◎</span> BRIDGE
+              </button>
+              <button
                 className={`sidebar-item${page.name === 'portfolio' ? ' active' : ''}`}
                 onClick={() => navigate({ name: 'portfolio' })}
               >
@@ -114,6 +128,8 @@ export default function App() {
           {page.name === 'token'      && <TokenPage address={page.address} navigate={navigate} />}
           {page.name === 'portfolio'  && <Portfolio navigate={navigate} />}
           {page.name === 'launchpad'  && <Launchpad navigate={navigate} />}
+          {page.name === 'swap'       && <Swap navigate={navigate} />}
+          {page.name === 'bridge'     && <Bridge />}
         </main>
 
         {/* right live feed */}

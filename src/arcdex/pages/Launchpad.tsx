@@ -1,12 +1,15 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
 import { parseUnits } from 'viem'
 import { arc } from '../wagmi'
 import { getAllLaunchpadTokens, LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, type LaunchpadToken } from '../api/launchpad'
+import { subscribeLaunchpadTrades, type LaunchpadLiveTrade } from '../api/launchpadRpc'
 import { isUnlocked } from '../lib/embeddedWallet'
 import { quickBuyLaunchpad } from '../lib/quickTrade'
 import type { Page } from '../App'
+
+function short(addr: string) { return `${addr.slice(0, 6)}…${addr.slice(-4)}` }
 
 const USDC_ADDR = '0x3600000000000000000000000000000000000000' as const
 const ERC20_ABI = [
@@ -167,6 +170,49 @@ function LaunchCard({ token: t, navigate, onTraded }: { token: LaunchpadToken; n
   )
 }
 
+function LiveActivityFeed({ symbolByAddress }: { symbolByAddress: Map<string, string> }) {
+  const [trades, setTrades] = useState<LaunchpadLiveTrade[]>([])
+
+  useEffect(() => {
+    if (LAUNCHPAD_ADDRESS.length !== 42) return
+    const unsub = subscribeLaunchpadTrades(LAUNCHPAD_ADDRESS, t => setTrades(prev => [t, ...prev].slice(0, 30)))
+    return unsub
+  }, [])
+
+  return (
+    <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, marginBottom: 20, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--card-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span className="pulse-dot" />
+        <span style={{ fontWeight: 700, fontSize: '0.82rem' }}>Live activity</span>
+        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>real-time buys &amp; sells across every launch, straight from Arc RPC</span>
+      </div>
+      {trades.length === 0 ? (
+        <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.78rem' }}>Waiting for trades…</div>
+      ) : (
+        <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+          {trades.map((t, i) => (
+            <div key={t.txHash + i} style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '7px 16px', fontSize: '0.78rem',
+              borderBottom: '1px solid var(--border)', background: i === 0 ? (t.isBuy ? 'rgba(34,197,94,0.05)' : 'rgba(239,68,68,0.05)') : 'transparent',
+            }}>
+              <span style={{ background: t.isBuy ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: t.isBuy ? 'var(--green)' : 'var(--red)', fontWeight: 700, padding: '2px 7px', borderRadius: 4, fontSize: '0.68rem', width: 40, textAlign: 'center' }}>
+                {t.isBuy ? 'BUY' : 'SELL'}
+              </span>
+              <span style={{ fontWeight: 700, width: 70 }}>${symbolByAddress.get(t.token.toLowerCase()) ?? short(t.token)}</span>
+              <span style={{ color: 'var(--text-muted)', flex: 1 }}>{fmt(t.tokenAmount)} tokens</span>
+              <span style={{ fontWeight: 600 }}>${fmt(t.usdcAmount)}</span>
+              <a href={`${'https://explorer.arc.io'}/address/${t.trader}`} target="_blank" rel="noopener noreferrer"
+                style={{ color: 'var(--text-muted)', fontFamily: 'var(--mono)', textDecoration: 'none', width: 90, textAlign: 'right' }}>
+                {short(t.trader)}
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Launchpad({ navigate }: Props) {
   const [tokens, setTokens]   = useState<LaunchpadToken[]>([])
   const [loading, setLoading] = useState(true)
@@ -179,6 +225,8 @@ export default function Launchpad({ navigate }: Props) {
   }, [])
 
   useEffect(() => { load(); const iv = setInterval(load, 10_000); return () => clearInterval(iv) }, [load])
+
+  const symbolByAddress = useMemo(() => new Map(tokens.map(t => [t.address.toLowerCase(), t.symbol])), [tokens])
 
   if (LAUNCHPAD_ADDRESS.length !== 42) {
     return (
@@ -194,11 +242,13 @@ export default function Launchpad({ navigate }: Props) {
         <div>
           <h1 style={{ fontSize: '1.3rem', fontWeight: 800, margin: 0 }}>Launchpad</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 4 }}>
-            Bonding-curve launches on Arc mainnet · $5 to launch · 1% trade fee, 60% to creator
+            Bonding-curve launches on Arc mainnet · free to launch · 1% platform fee + up to 3% creator tax
           </p>
         </div>
         <CreateTokenForm onCreated={load} />
       </div>
+
+      <LiveActivityFeed symbolByAddress={symbolByAddress} />
 
       {loading ? (
         <div className="loading-state">Loading launches…</div>
