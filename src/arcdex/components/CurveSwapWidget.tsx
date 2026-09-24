@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
 import { parseUnits, formatUnits, maxUint256, type Address } from 'viem'
@@ -41,8 +41,19 @@ export default function CurveSwapWidget({ token, onTraded }: Props) {
     query: { enabled: !!address && LAUNCHPAD_ADDRESS.length === 42 },
   })
 
-  const { writeContract } = useWriteContract()
+  const { writeContract, error: writeError } = useWriteContract()
   const { data: receipt } = useWaitForTransactionReceipt({ hash: txHash as `0x${string}` | undefined })
+
+  // writeContract() is fire-and-forget — a rejected signature, a chain the
+  // wallet won't switch to, or an RPC error all surface here, async, not
+  // as a thrown exception at the call site. Without this, any of those
+  // leave the button stuck on "Approving…"/"Swapping…" forever with the
+  // wallet otherwise showing perfectly "connected".
+  useEffect(() => {
+    if (!writeError) return
+    setErrMsg(writeError.message.split('\n')[0].slice(0, 160))
+    setStep('error')
+  }, [writeError])
 
   const needsApprove = parsedIn > 0n && (allowance ?? 0n) < parsedIn
 

@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
 import { parseUnits, formatUnits, maxUint256 } from 'viem'
-import { arc } from 'wagmi/chains'
+import { arc } from '../wagmi'
 import type { ArcToken } from '../api/radardex'
 
 const USDC_ADDR    = '0x3600000000000000000000000000000000000000' as const
@@ -68,8 +68,18 @@ export default function SwapWidget({ token }: Props) {
     query: { enabled: !!address && !!import.meta.env.VITE_ARCDEX_ROUTER_ADDRESS },
   })
 
-  const { writeContract } = useWriteContract()
+  const { writeContract, error: writeError } = useWriteContract()
   const { data: receipt } = useWaitForTransactionReceipt({ hash: txHash as `0x${string}` | undefined })
+
+  // Async wallet/RPC failures (rejected signature, chain switch refused,
+  // etc.) surface on the hook's `error`, not as a thrown exception —
+  // without this, the button gets stuck on "Approving…"/"Swapping…"
+  // forever with no feedback, even though the wallet still shows connected.
+  useEffect(() => {
+    if (!writeError) return
+    setErrMsg(writeError.message.split('\n')[0].slice(0, 160))
+    setStep('error')
+  }, [writeError])
 
   const needsApprove = parsedIn > 0n && (allowance ?? 0n) < parsedIn
 

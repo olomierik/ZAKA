@@ -58,8 +58,19 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
     query: { enabled: !!address && LAUNCHPAD_ADDRESS.length === 42 && initialBuyWei > 0n },
   })
 
-  const { writeContract, data: txHash } = useWriteContract()
+  const { writeContract, data: txHash, error: writeError } = useWriteContract()
   const { data: receipt } = useWaitForTransactionReceipt({ hash: txHash })
+
+  // Async wallet/RPC failures (rejected signature, chain switch refused,
+  // etc.) land on the hook's `error`, not as a thrown exception at the
+  // writeContract() call site — without this, the button gets stuck on
+  // "Approving…"/"Launching…" forever with no feedback, even though the
+  // wallet still shows connected.
+  useEffect(() => {
+    if (!writeError) return
+    setError(writeError.message.split('\n')[0].slice(0, 160))
+    setStep('idle')
+  }, [writeError])
 
   // no flat creation fee — only the optional initial buy needs approval first
   const needsApprove = initialBuyWei > 0n && (allowance ?? 0n) < initialBuyWei

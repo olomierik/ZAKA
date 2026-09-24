@@ -6,7 +6,16 @@ import { defineChain } from 'viem'
 export const arc = defineChain({
   id: 5042,
   name: 'Arc',
-  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
+  // Arc's canonical registry entry (chainid.network's chains.json, chain
+  // 5042) declares 18 here — this is the wallet-level "wei" convention
+  // wallet_addEthereumChain/wallet_switchEthereumChain expect, distinct
+  // from the actual USDC ERC-20 contract's own 6 decimals (which every
+  // trade in this app already uses directly via parseUnits(amount, 6),
+  // not this field). Declaring 6 here caused MetaMask to silently
+  // miscalculate native/gas balance by 10^12x — the wallet reports
+  // "connected" fine, but then can't produce a valid signature because
+  // its own gas-balance check thinks the account is empty.
+  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
   rpcUrls: { default: { http: ['https://rpc.mainnet.arc.io'], webSocket: ['wss://rpc.mainnet.arc.io'] } },
   blockExplorers: { default: { name: 'Arc Explorer', url: 'https://explorer.arc.io' } },
 })
