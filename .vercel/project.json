@@ -1,16 +1,1 @@
-{
-  "projectId": "prj_Iqa6Fq1vC1O2OV6L7BQ5nuZ6hwVV",
-  "orgId": "team_bRUZHM02U0wM9ZuEd3EupPv1",
-  "projectName": "zaka_app",
-  "settings": {
-    "createdAt": 1789994998966,
-    "framework": "vite",
-    "devCommand": null,
-    "installCommand": "bun install",
-    "buildCommand": "bun run build",
-    "outputDirectory": "dist",
-    "rootDirectory": null,
-    "directoryListing": false,
-    "nodeVersion": "24.x"
-  }
-}
+{"projectId":"prj_cvHmYqjjLNXDMycZfQTbV4JKmkW2","orgId":"team_bRUZHM02U0wM9ZuEd3EupPv1","projectName":"app"}

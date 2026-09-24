@@ -73,17 +73,16 @@ Every Argus coin across all 8 Portals, live, the way argus.world does it: **Geck
 - The on-chain Portal reader in `src/arcdex/api/argus.ts` is kept only as a fallback if `/api/argus` fails entirely.
 
 
-## Hosting — TWO Vercel projects serve this repo
+## Hosting — arcdex.online only
 
-| Project | Serves | Builds from | Env source |
-|---|---|---|---|
-| `app` | **arcdex.online** (the public domain), `app-git-main-…` | GitHub `olomierik/ZAKA` `main`, automatically on every push | its own Vercel env vars **only** |
-| `zaka_app` | `zakaapp-drab.vercel.app` | `vercel --prod` from this folder (CLI) | Vercel env vars **plus the local `.env`**, which the CLI uploads and Vite reads during the build |
+**Every commit to `main` deploys to arcdex.online, and nowhere else** (owner decision, 2026-09-24).
 
-- **Any `VITE_*` var must be set on BOTH projects.** The GitHub-built `app` never sees `.env`, since it isn't committed. On 2026-09-24, arcdex.online had no env vars at all: Launchpad showed "contract not configured", and the swap router was missing too, while zakaapp-drab worked because of `.env`.
-- `app` production now has `VITE_ARC_LAUNCHPAD_ADDRESS`, `VITE_ARCDEX_SWAP_ROUTER_ADDRESS`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_WC_PROJECT_ID`.
-- Env changes only apply to new builds. Push to `main`, or run `vercel redeploy <latest app deployment url> --target production` from a directory linked with `vercel link --project app`.
-- To verify, fetch the live JS chunks and grep for the address. `vercel env pull` shows sensitive vars as empty.
+- **Project:** Vercel project `app` (`prj_cvHmYqjjLNXDMycZfQTbV4JKmkW2`), serving **arcdex.online** and `www.arcdex.online`. It builds automatically from GitHub `olomierik/ZAKA` `main`, so to ship you commit and push, then check the new `app` deployment (`vercel ls app`). Don't use `vercel --prod` for normal releases.
+- **Local link:** `.vercel/project.json` is linked to `app`, so any Vercel CLI command run here targets arcdex.online.
+- **Env vars:** only `app`'s Vercel settings are used. `.env` isn't committed, so GitHub builds never see it. `app` production has `VITE_ARC_LAUNCHPAD_ADDRESS`, `VITE_ARCDEX_SWAP_ROUTER_ADDRESS`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_WC_PROJECT_ID`. A new `VITE_*` var must be added there, and it only takes effect on the next build.
+  - To verify a var reached the site, fetch the live JS chunks and grep for the value. `vercel env pull` shows sensitive vars as empty.
+- **Retired project:** `zaka_app` (`zakaapp-drab.vercel.app`) is disconnected from GitHub. Its production deployment is only a 307 redirect of every path to the same path on arcdex.online. The source for that deployment isn't in this repo; it's just a `vercel.json` with `redirects`.
+  - History: until 2026-09-24, every push built **both** projects, and CLI deploys went to `zaka_app` with `.env` baked in. arcdex.online had no env vars, so the Launchpad showed "contract not configured".
 
 ## What This App Does
 
