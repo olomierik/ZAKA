@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import NavBar from './components/NavBar'
 import Terminal from './pages/Terminal'
 import TokenPage from './pages/TokenPage'
+import ArgusTokenPage from './pages/ArgusTokenPage'
 import Portfolio from './pages/Portfolio'
 import Launchpad from './pages/Launchpad'
 import Swap from './pages/Swap'
@@ -13,7 +14,7 @@ import { subscribeLaunchpadTrades, type LaunchpadLiveTrade } from './api/launchp
 import { getLaunchpadToken, LAUNCHPAD_ADDRESS } from './api/launchpad'
 import './arcdex.css'
 
-export type Page = { name: 'terminal' } | { name: 'token'; address: string; symbol?: string } | { name: 'portfolio' } | { name: 'launchpad' } | { name: 'swap' } | { name: 'bridge' }
+export type Page = { name: 'terminal' } | { name: 'token'; address: string; symbol?: string } | { name: 'argus'; address: string; pool: string } | { name: 'portfolio' } | { name: 'launchpad' } | { name: 'swap' } | { name: 'bridge' }
 
 // ── live feed item ────────────────────────────────────────────────────
 interface FeedItem {
@@ -37,9 +38,12 @@ export default function App() {
   // Terminal registers its top-by-volume tokens here — currently unused for
   // filtering (the feed below is network-wide), kept so a future "trending
   // only" toggle can filter without touching Terminal.
-  const registerFeedTokens = (tokens: { address: string; symbol: string }[]) => {
+  // Stable identity: Terminal's loader depends on it, and App re-renders on
+  // every feed trade — a fresh function each time would re-run Terminal's
+  // full reload on every trade on Arc.
+  const registerFeedTokens = useCallback((tokens: { address: string; symbol: string }[]) => {
     feedTokens.current = tokens.slice(0, 10)
-  }
+  }, [])
 
   // Live feed via Arc mainnet WebSocket — every Swap event on-chain, no
   // dependency on any third-party REST API for the trade stream itself.
@@ -163,6 +167,7 @@ export default function App() {
         <main className="main-content">
           {page.name === 'terminal'   && <Terminal navigate={navigate} registerFeedTokens={registerFeedTokens} />}
           {page.name === 'token'      && <TokenPage address={page.address} navigate={navigate} />}
+          {page.name === 'argus'      && <ArgusTokenPage key={page.address} address={page.address} pool={page.pool} navigate={navigate} />}
           {page.name === 'portfolio'  && <Portfolio navigate={navigate} />}
           {page.name === 'launchpad'  && <Launchpad navigate={navigate} />}
           {page.name === 'swap'       && <Swap navigate={navigate} />}

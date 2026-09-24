@@ -1,19 +1,21 @@
+import { GT_BASE, gtHeaders } from './_geckoterminal'
+
 export const config = { runtime: 'edge' }
 
 export default async function handler(req: Request) {
   const url = new URL(req.url)
   const path = url.searchParams.get('path') ?? ''
-  const upstream = `https://api.geckoterminal.com/api/v2${path}`
+  // Arc data only — this is a CDN-cached proxy for this app, not a general
+  // open relay to the upstream API.
+  if (!/^\/networks\/arc\/[A-Za-z0-9_/,.-]+$/.test(path) && path !== '/search/pools') {
+    return new Response(JSON.stringify({ error: 'bad path' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
+  }
+  const upstream = `${GT_BASE}${path}`
   const qs = new URLSearchParams()
   url.searchParams.forEach((v, k) => { if (k !== 'path') qs.set(k, v) })
   const full = qs.toString() ? `${upstream}?${qs}` : upstream
 
-  const res = await fetch(full, {
-    headers: {
-      Accept: 'application/json;version=20230302',
-      'User-Agent': 'ARCDEX/1.0',
-    },
-  })
+  const res = await fetch(full, { headers: gtHeaders() })
 
   const body = await res.text()
   return new Response(body, {
@@ -21,7 +23,8 @@ export default async function handler(req: Request) {
     headers: {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 's-maxage=10, stale-while-revalidate=20',
+      // Never cache an error (a 429 would be served to every visitor).
+      'Cache-Control': res.ok ? 's-maxage=10, stale-while-revalidate=20' : 'no-store',
     },
   })
 }

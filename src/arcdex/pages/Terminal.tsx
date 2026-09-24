@@ -5,6 +5,7 @@ import {
 } from '../api/radardex'
 import { getAllLaunchpadTokensAsArcTokens } from '../api/launchpad'
 import { getArgusTokens } from '../api/argus'
+import { getArgusMarket, argusPoolToArcToken } from '../api/argusMarket'
 import { curateTokens, type CuratedGroup } from '../lib/curate'
 import type { Page } from '../App'
 
@@ -14,6 +15,12 @@ interface Props {
 }
 
 const ARC_EXPLORER = 'https://explorer.arc.io'
+
+function openPage(t: ArcToken): Page {
+  return t.launchpad === 'Argus' && t.poolAddress
+    ? { name: 'argus', address: t.address, pool: t.poolAddress }
+    : { name: 'token', address: t.address, symbol: t.symbol }
+}
 
 // ── helpers ────────────────────────────────────────────────────────────
 function fmt(n: number, prefix = ''): string {
@@ -258,15 +265,20 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const tickerRef = useRef<HTMLDivElement>(null)
 
-  // Focused on ARCDEX's own launches plus Argus (Portal 8) rather than
-  // RadarDex's broad, unattributed multi-launchpad aggregate — see
-  // api/argus.ts for the integration's scope and known gaps.
-  const load = useCallback(async () => {
-    const [ours, argus] = await Promise.all([
-      getAllLaunchpadTokensAsArcTokens().catch(() => []),
-      getArgusTokens().catch(() => []),
-    ])
-    const data = [...ours, ...argus]
+  // Focused on ARCDEX's own launches plus Argus (every Portal) rather than
+  // RadarDex's broad, unattributed multi-launchpad aggregate.
+  const argusSeen = useRef(new Map<string, { t: ArcToken; seen: number }>())
+  const oursRef = useRef<ArcToken[]>([])
+
+  // Merge, don't replace: when GeckoTerminal throttles one refresh, the
+  // list comes back short — coins keep their last-known row until they've
+  // been missing for 10 minutes, instead of flickering out of the table.
+  const publish = useCallback((fresh: ArcToken[]) => {
+    const now = Date.now()
+    const seen = argusSeen.current
+    for (const t of fresh) seen.set(t.address.toLowerCase(), { t, seen: now })
+    for (const [k, v] of seen) if (now - v.seen > 10 * 60_000) seen.delete(k)
+    const data = [...oursRef.current, ...[...seen.values()].map(v => v.t)]
     setTokens(data)
     setLoading(false)
     registerFeedTokens(
@@ -274,6 +286,22 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
         .map(t => ({ address: t.address, symbol: t.symbol }))
     )
   }, [registerFeedTokens])
+
+  const load = useCallback(async () => {
+    // GeckoTerminal first (live, covers every Argus portal) — the server's
+    // cached copy, completed from this browser when it was throttled (the
+    // rest arrives via the callback). The on-chain reader is only a last
+    // resort: it's ~300 RPC calls per load against a rate-limited node.
+    const argusMarket = getArgusMarket(complete => publish(complete.map(argusPoolToArcToken)))
+      .then(pools => pools.map(argusPoolToArcToken))
+      .catch(() => getArgusTokens().catch(() => [] as ArcToken[]))
+    const [ours, fresh] = await Promise.all([
+      getAllLaunchpadTokensAsArcTokens().catch(() => []),
+      argusMarket,
+    ])
+    oursRef.current = ours
+    publish(fresh)
+  }, [publish])
 
   useEffect(() => { void load() }, [load])
   useEffect(() => {
@@ -378,7 +406,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
       <div className="ticker-bar" ref={tickerRef}>
         <div className="ticker-track">
           {[...tickerTokens, ...tickerTokens].map((t, i) => (
-            <span key={i} className="ticker-item" onClick={() => navigate({ name: 'token', address: t.address, symbol: t.symbol })}>
+            <span key={i} className="ticker-item" onClick={() => navigate(openPage(t))}>
               <TokenLogo src={t.logoUrl} symbol={t.symbol} size={16} />
               <span className="ticker-sym">{t.symbol}</span>
               <span className="ticker-price">${t.price < 0.001 ? t.price.toExponential(2) : t.price.toPrecision(4)}</span>
@@ -481,13 +509,13 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
                 const group = groupByPrimaryAddress.get(token.address)
                 const dupCount = group?.duplicates.length ?? 0
                 const isExpanded = expanded.has(token.address)
-                const goTo = (addr: string, sym: string) => navigate({ name: 'token', address: addr, symbol: sym })
+                const goTo = (t: ArcToken) => navigate(openPage(t))
                 return (
                   <Fragment key={token.address}>
                     <TokenRow
                       token={token}
                       rank={(page - 1) * PAGE_SIZE + i + 1}
-                      onClick={() => goTo(token.address, token.symbol)}
+                      onClick={() => goTo(token)}
                       dupCount={dupCount}
                       expanded={isExpanded}
                       onToggleExpand={() => setExpanded(prev => {
@@ -502,7 +530,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
                         token={dup}
                         rank={0}
                         isDuplicateRow
-                        onClick={() => goTo(dup.address, dup.symbol)}
+                        onClick={() => goTo(dup)}
                       />
                     ))}
                   </Fragment>
@@ -522,7 +550,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
                   key={token.address}
                   token={token}
                   dupCount={group?.duplicates.length ?? 0}
-                  onClick={() => navigate({ name: 'token', address: token.address, symbol: token.symbol })}
+                  onClick={() => navigate(openPage(token))}
                 />
               )
             })}

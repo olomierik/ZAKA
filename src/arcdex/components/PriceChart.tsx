@@ -16,11 +16,21 @@ interface Props { poolAddress: string | null }
 export default function PriceChart({ poolAddress }: Props) {
   const [res, setRes] = useState<Resolution>('1h')
   const [candles, setCandles] = useState<OhlcvCandle[]>([])
+  const needsFit = useRef(true)
   useEffect(() => {
+    needsFit.current = true
     if (!poolAddress) { setCandles([]); return }
     let cancelled = false
-    getPoolOhlcv(poolAddress, res).then(c => { if (!cancelled) setCandles(c) }).catch(() => { if (!cancelled) setCandles([]) })
-    return () => { cancelled = true }
+    const load = (initial: boolean) => getPoolOhlcv(poolAddress, res)
+      .then(c => { if (!cancelled) setCandles(c) })
+      // A failed refresh keeps the candles already drawn; only a failed
+      // first load clears them.
+      .catch(() => { if (!cancelled && initial) setCandles([]) })
+    void load(true)
+    // Keep the last candle moving — the gecko proxy caches for 10s, so this
+    // costs at most one upstream call per pool per 20s across all viewers.
+    const id = setInterval(() => { if (!document.hidden) void load(false) }, 20_000)
+    return () => { cancelled = true; clearInterval(id) }
   }, [poolAddress, res])
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef     = useRef<IChartApi | null>(null)
@@ -61,7 +71,9 @@ export default function PriceChart({ poolAddress }: Props) {
       time: c.time as never, open: c.open, high: c.high, low: c.low, close: c.close,
     }))
     seriesRef.current.setData(data)
-    chartRef.current?.timeScale().fitContent()
+    // Fit once per pool/resolution, not on every live refresh — otherwise
+    // the user's zoom/scroll would snap back every 20s.
+    if (needsFit.current) { chartRef.current?.timeScale().fitContent(); needsFit.current = false }
   }, [candles])
 
   return (

@@ -10,12 +10,17 @@ Two apps in this repo:
 
 ## Deployed Contracts
 
-### ArcDexRouter
-- **Arc Testnet:** `0xefa4f596da0c2acfcba47b43389be26e96912516`
-  - Explorer: https://explorer.testnet.arc.io/address/0xefa4f596da0c2acfcba47b43389be26e96912516
-  - TX: `0x0e8f992af5eb26fd5a0e6ca49480381c78f24aac38435bd51f9041b5045c7198`
-- **Arc Mainnet:** deploy using `scripts/deploy-mainnet.sh` with your own wallet — bytecode is in `contracts/out/ArcDexRouter.sol/ArcDexRouter.json`
-  - Constructor args: `(0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45, 0x274262A0321A0701b0A46a3576e07aE881c286Bb, YOUR_OWNER_WALLET)`
+### ArcDexSwapRouter — the mainnet swap router (1% platform fee)
+`contracts/ArcDexSwapRouter.sol`. Buys/sells any Argus coin (and $ARGUS) from the app, taking a 1% fee **in USDC** on every swap: off the input on buys, off the output on sells. Fee goes straight to `feeWallet` (default `0x274262A0321A0701b0A46a3576e07aE881c286Bb`), no accrual; `feeBps` is owner-adjustable but hard-capped on-chain at `MAX_FEE_BPS = 100`.
+- `swapExactInV4(PoolKey[] keys, tokenIn, amountIn, minAmountOut, deadline)`: 1–3 hop Uniswap v4 path, run inside `PoolManager.unlock`. USDC-quoted launches are 1 hop; ARGUS-quoted launches are 2 hops through the ARGUS/USDC v4 pool (`USDC, ARGUS, fee 9850, tickSpacing 99, no hook`).
+- `swapExactInV3(tokenIn, tokenOut, poolFee, amountIn, minAmountOut, deadline)`: via the real Arc SwapRouter02 at `0x53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77` (struct **without** `deadline`, selector `0x04e45aaf`).
+- Constructor: `(PoolManager 0x8366a39CC670B4001A1121B8F6A443A643e40951, SwapRouter02 0x53BF…6F77, USDC 0x3600…0000, feeWallet, owner)`.
+- **Deploy:** `PRIVATE_KEY=… OWNER=… scripts/deploy-swap-router.sh`, then set `VITE_ARCDEX_SWAP_ROUTER_ADDRESS` in `.env` and Vercel production and redeploy. Until it's set, the Argus swap widget renders disabled with "Trading opens once the ARCDEX swap router is deployed."
+- **Tests:** `forge test --match-contract ArcDexSwapRouterTest` (16 unit tests, incl. fuzz: fee ≤ 1%, router never retains funds).
+- **Real-pool simulation:** `forge build && node scripts/sim-swap-router.mjs`. It injects `contracts/test/sim/ArcDexRouterSimHarness.sol` via `eth_call` state overrides against Arc mainnet: real Argus hooks, real pools, no funds or keys. It checks buy, sell round trips and the 2-hop route, and that the fee wallet gets exactly 1%. A Foundry fork test can't be used: Arc USDC forwards transfers to a precompile at `0x1800…` that Foundry doesn't implement.
+
+### ArcDexRouter — RETIRED, do not deploy to mainnet
+The old `ArcDexRouter` (testnet `0xefa4f596da0c2acfcba47b43389be26e96912516`) points at `0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45`, which is **not** a swap router on Arc, and encodes the SwapRouter (v1) struct with `deadline`. Every mainnet swap through it would revert. `scripts/deploy-mainnet.sh` now just explains this and exits. Use ArcDexSwapRouter above.
 
 ### ArcLaunchpad
 Self-contained bonding-curve launchpad — no separate LaunchToken deploy needed, `createToken()` deploys each token itself. See `contracts/ArcLaunchpad.sol` for full design notes (why graduation doesn't migrate to an external Uniswap pool, why anti-snipe/anti-bundle are USDC-denominated not token-%-based).
@@ -41,11 +46,28 @@ Self-contained bonding-curve launchpad — no separate LaunchToken deploy needed
 - $25,000 real-USDC graduation threshold — a status flag only; the same curve prices every trade before and after it, so there's no migration step and no price discontinuity.
 - Once the platform's own token is launched through the UI and burns have started, set `VITE_ARC_PLATFORM_TOKEN_ADDRESS` to power the burn ticker.
 
-### ArcDexRouter swap fees — already live
-`ArcDexRouter.sol`'s `_collectFeeAndPrepareSwap` takes `feeBps` (1%, owner-adjustable but hard-capped on-chain at `MAX_FEE_BPS=100`) off every swap and sends it straight to `feeWallet`, set to `platformFeeWallet` at deploy. No code change was needed for this — it was already correct.
-
 ### Bridge fees — `src/arcdex/lib/bridgeKit.ts`
 Circle's Bridge Kit has a native mechanism for this (`kit.setCustomFeePolicy`), used instead of a hand-rolled side-transfer. `computeBridgeFee()`: 0.5% of the transfer, bounded to [$0.05, $50]. Bridge Kit adds this **on top of** the transfer amount (wallet debits `amount + fee`, shown in `Bridge.tsx` before signing) and auto-splits it 10% to Circle / 90% to `PLATFORM_FEE_WALLET` — that 10/90 split is Circle's own mechanic on `CustomFeePolicy`, not something this app controls. Only applies to USDC (Bridge Kit rejects a custom fee policy on non-USDC tokens), which is all this app bridges.
+
+## Argus integration (ARCDEX)
+
+Every Argus coin across all 8 Portals, live, the way argus.world does it: **GeckoTerminal is the primary data source; Arc RPC fills in only what GeckoTerminal doesn't carry.**
+
+- **Market list — `api/argus.ts` (edge).** Server-side aggregator of GeckoTerminal. Sources: $ARGUS's own pools, which also carry the ARGUS-quoted launches; the `argus` dex pools by 24h volume; and new pools. One row per token, its deepest pool. CDN-cached `s-maxage=60`; partial results (some calls throttled) are cached only 15s. It works to a 17s time budget, so a throttled upstream yields a shorter list, never a timeout.
+  - GeckoTerminal quirk: on `/tokens/{X}/pools`, `fdv_usd`/`market_cap_usd` describe **X**, not each pool's base. Those caps are dropped and refilled from `/tokens/multi/…`.
+  - The Terminal merges refreshes, so a short (throttled) list doesn't remove coins; a coin drops out after 10 minutes unseen.
+- **Token page — `src/arcdex/pages/ArgusTokenPage.tsx`**, opened for any Terminal row with `launchpad === 'Argus'`.
+  - From GeckoTerminal via `/api/gecko`: price and 5m/1h/6h/24h change, MC/FDV, liquidity, volume, buys/sells, holders, top-10 %, GT score, honeypot flag, banner, description and socials, and a candle chart refreshed every 20s.
+  - Live trades: GeckoTerminal history (with maker wallets) merged with swaps pushed over Arc's WebSocket (`src/arcdex/api/argusLive.ts`) the moment their block lands. The two are deduped by tx hash.
+  - From Arc RPC (`getArgusOnchain` in `src/arcdex/api/argusMarket.ts`): creator wallet, Portal #, hook, creator buy/sell tax, bonded. Each Portal is decoded with its own ABI.
+  - Portal 8 records have no creator, so its "Creator payout wallet" comes from the creator registry's `payoutOf`.
+- **Swap — `src/arcdex/components/ArgusSwapWidget.tsx`.**
+  - `buildSwapRoute` gets the v4 PoolKey from `PositionManager.poolKeys(bytes25)` and verifies `keccak(key) == poolId` before using it.
+  - Each trade approves the exact amount, runs `simulateContract` with the user's account for the real output, and sets min-out from the chosen slippage.
+- **Copycat tickers.** Argus launches are permissionless, and several use the `USDC` ticker. `copycatOf()` flags them in the Terminal ("⚠ Not real USDC") and with a banner on the token page.
+- **Upstream key (optional).** Set `COINGECKO_API_KEY` in Vercel to move both `/api/argus` and `/api/gecko` to CoinGecko's paid on-chain API: same data, dedicated rate limit (`api/_geckoterminal.ts`). Without it, the free GeckoTerminal API is shared by IP and can throttle under load.
+- The on-chain Portal reader in `src/arcdex/api/argus.ts` is kept only as a fallback if `/api/argus` fails entirely.
+
 
 ## What This App Does
 

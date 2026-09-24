@@ -1,4 +1,5 @@
-const BASE = '/api/gecko'
+import { gtGet } from './gtClient'
+
 const NET  = 'arc'
 
 export interface GeckoPool {
@@ -66,11 +67,9 @@ export const LAUNCHPAD_COLORS: Record<string, string> = {
   'PEGD':         '#8b5cf6',
 }
 
-async function gecko<T>(path: string, params?: Record<string, string>): Promise<T> {
-  const qs = new URLSearchParams({ path, ...params })
-  const res = await fetch(`${BASE}?${qs}`)
-  if (!res.ok) throw new Error(`gecko ${path} → ${res.status}`)
-  return res.json() as Promise<T>
+// Proxy first, direct-to-GeckoTerminal fallback when it's throttled.
+function gecko<T>(path: string, params?: Record<string, string>): Promise<T> {
+  return gtGet<T>(path, params)
 }
 
 function parsePool(pool: { id: string; attributes: Record<string, unknown>; relationships?: Record<string, unknown> }, dexMap: Record<string, { id: string; name: string }>): GeckoPool {
