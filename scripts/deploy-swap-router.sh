@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deploy ArcDexSwapRouter to Arc MAINNET (chain 5042).
+# Deploy ArcDexSwapRouter v2 (2% fee, 15% of it to referrers) to Arc MAINNET (chain 5042).
 # Run this yourself, in a real Git Bash window, with your own deployer key.
 # The key never needs to leave your machine — don't paste it anywhere else.
 #
@@ -26,7 +26,7 @@ fi
 OWNER=$(cast wallet address "$PRIVATE_KEY")
 echo "Deploying ArcDexSwapRouter to Arc mainnet"
 echo "  Owner (deployer): $OWNER"
-echo "  Fee wallet:       $FEE_WALLET   (receives 1% of every swap, in USDC)"
+echo "  Fee wallet:       $FEE_WALLET   (receives the 2% swap fee in USDC, minus 15% to referrers)"
 echo "  PoolManager:      $POOL_MANAGER"
 echo "  SwapRouter02:     $SWAP_ROUTER02"
 echo ""

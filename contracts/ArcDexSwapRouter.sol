@@ -51,14 +51,25 @@ interface ISwapRouter02 {
     function exactInputSingle(ExactInputSingleParams calldata params) external payable returns (uint256 amountOut);
 }
 
-/// @title ArcDexSwapRouter
+/// @title ArcDexSwapRouter (v2)
 /// @notice Routes swaps on Arc through Uniswap v4 (including Argus launch
 /// pools and their hooks, multi-hop via flash accounting) and Uniswap v3
-/// (legacy Argus pools), charging a platform fee capped at 1%.
+/// (legacy Argus pools), charging a platform fee hard-capped at 2%.
 ///
 /// The fee is always taken in USDC when USDC is on either side of the swap:
 /// from the input on a buy, from the output on a sell. On a swap with no
 /// USDC leg it comes off the output token.
+///
+/// Referrals: the first swap a wallet makes with a non-zero `referrer`
+/// binds that referrer to the wallet permanently. From then on
+/// `referralShareBps` of every fee that wallet pays goes straight to the
+/// referrer, the rest to `feeWallet` — both in the same transaction, no
+/// accrual. Self-referral is ignored. A referral transfer that fails (e.g.
+/// the referrer is blacklisted by the token) falls back to `feeWallet`, so
+/// a bound referrer can never make a user's swaps revert.
+///
+/// v2 changes from v1 (0xC519…6088): fee cap 1% -> 2% (default 2%),
+/// referrals, a `referrer` parameter on both swap functions, VERSION.
 contract ArcDexSwapRouter is Ownable2Step, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -81,9 +92,14 @@ contract ArcDexSwapRouter is Ownable2Step, Pausable, ReentrancyGuard {
     );
     event FeeWalletUpdated(address indexed oldWallet, address indexed newWallet);
     event FeeBpsUpdated(uint256 oldBps, uint256 newBps);
+    event ReferrerBound(address indexed user, address indexed referrer);
+    event ReferralPaid(address indexed referrer, address indexed user, address indexed token, uint256 amount);
+    event ReferralShareUpdated(uint256 oldBps, uint256 newBps);
 
+    uint256 public constant VERSION = 2;
     uint256 public constant BPS = 10_000;
-    uint256 public constant MAX_FEE_BPS = 100; // hard cap: 1%
+    uint256 public constant MAX_FEE_BPS = 200; // hard cap: 2%
+    uint256 public constant MAX_REFERRAL_SHARE_BPS = 5_000; // at most half of the fee
     uint256 public constant MAX_HOPS = 3;
 
     IPoolManager public immutable poolManager;
@@ -92,6 +108,10 @@ contract ArcDexSwapRouter is Ownable2Step, Pausable, ReentrancyGuard {
 
     address public feeWallet;
     uint256 public feeBps;
+    /// Share of each fee paid to the trader's referrer, in bps of the fee.
+    uint256 public referralShareBps;
+    /// Permanent per-wallet referrer, set on that wallet's first referred swap.
+    mapping(address => address) public referrerOf;
 
     constructor(address _poolManager, address _swapRouter02, address _usdc, address _feeWallet, address _owner)
         Ownable(_owner)
@@ -104,7 +124,8 @@ contract ArcDexSwapRouter is Ownable2Step, Pausable, ReentrancyGuard {
         swapRouter02 = ISwapRouter02(_swapRouter02);
         usdc = _usdc;
         feeWallet = _feeWallet;
-        feeBps = 100;
+        feeBps = 200;
+        referralShareBps = 1_500;
     }
 
     // ── v4 ────────────────────────────────────────────────────────────
@@ -113,16 +134,20 @@ contract ArcDexSwapRouter is Ownable2Step, Pausable, ReentrancyGuard {
     /// USDC → ARGUS → token for an Argus launch quoted in ARGUS.
     /// @param keys pools in hop order; the direction of each hop is derived
     /// from which side of the key matches the running currency.
+    /// @param referrer bound to the caller on their first referred swap;
+    /// ignored after that (pass address(0) when there is none).
     function swapExactInV4(
         PoolKey[] calldata keys,
         address tokenIn,
         uint256 amountIn,
         uint256 minAmountOut,
-        uint256 deadline
+        uint256 deadline,
+        address referrer
     ) external whenNotPaused nonReentrant returns (uint256 amountOut) {
         if (deadline < block.timestamp) revert DeadlineExpired();
         if (amountIn == 0) revert ZeroAmount();
         if (keys.length == 0 || keys.length > MAX_HOPS) revert InvalidPath();
+        _bindReferrer(referrer);
 
         bool[] memory zeroForOne = new bool[](keys.length);
         address cur = tokenIn;
@@ -212,11 +237,13 @@ contract ArcDexSwapRouter is Ownable2Step, Pausable, ReentrancyGuard {
         uint24 poolFee,
         uint256 amountIn,
         uint256 minAmountOut,
-        uint256 deadline
+        uint256 deadline,
+        address referrer
     ) external whenNotPaused nonReentrant returns (uint256 amountOut) {
         if (deadline < block.timestamp) revert DeadlineExpired();
         if (amountIn == 0) revert ZeroAmount();
         if (tokenIn == address(0) || tokenOut == address(0) || tokenIn == tokenOut) revert InvalidPath();
+        _bindReferrer(referrer);
 
         (uint256 swapIn, uint256 inputFee) = _pullAndTakeInputFee(tokenIn, amountIn);
 
@@ -255,7 +282,7 @@ contract ArcDexSwapRouter is Ownable2Step, Pausable, ReentrancyGuard {
 
         if (tokenIn == usdc && feeBps > 0) {
             inputFee = (received * feeBps) / BPS;
-            if (inputFee > 0) IERC20(tokenIn).safeTransfer(feeWallet, inputFee);
+            if (inputFee > 0) _distributeFee(tokenIn, inputFee);
         }
         swapIn = received - inputFee;
     }
@@ -275,7 +302,7 @@ contract ArcDexSwapRouter is Ownable2Step, Pausable, ReentrancyGuard {
         uint256 outputFee;
         if (inputFee == 0 && tokenIn != usdc && feeBps > 0) {
             outputFee = (grossOut * feeBps) / BPS;
-            if (outputFee > 0) IERC20(tokenOut).safeTransfer(feeWallet, outputFee);
+            if (outputFee > 0) _distributeFee(tokenOut, outputFee);
         }
 
         uint256 userBefore = IERC20(tokenOut).balanceOf(msg.sender);
@@ -294,6 +321,32 @@ contract ArcDexSwapRouter is Ownable2Step, Pausable, ReentrancyGuard {
         );
     }
 
+    function _bindReferrer(address referrer) internal {
+        if (referrer == address(0) || referrer == msg.sender || referrerOf[msg.sender] != address(0)) return;
+        referrerOf[msg.sender] = referrer;
+        emit ReferrerBound(msg.sender, referrer);
+    }
+
+    /// Splits a fee between the caller's referrer (if any) and feeWallet.
+    function _distributeFee(address token, uint256 fee) internal {
+        address ref = referrerOf[msg.sender];
+        uint256 cut;
+        if (ref != address(0) && referralShareBps > 0) {
+            cut = (fee * referralShareBps) / BPS;
+            if (cut > 0) {
+                if (_tryTransfer(token, ref, cut)) emit ReferralPaid(ref, msg.sender, token, cut);
+                else cut = 0; // referrer can't receive — the whole fee goes to feeWallet
+            }
+        }
+        IERC20(token).safeTransfer(feeWallet, fee - cut);
+    }
+
+    /// ERC-20 transfer that reports failure instead of reverting.
+    function _tryTransfer(address token, address to, uint256 amount) internal returns (bool) {
+        (bool ok, bytes memory ret) = token.call(abi.encodeCall(IERC20.transfer, (to, amount)));
+        return ok && (ret.length == 0 ? token.code.length > 0 : abi.decode(ret, (bool)));
+    }
+
     // ── admin ─────────────────────────────────────────────────────────
 
     function setFeeWallet(address newFeeWallet) external onlyOwner {
@@ -302,11 +355,18 @@ contract ArcDexSwapRouter is Ownable2Step, Pausable, ReentrancyGuard {
         feeWallet = newFeeWallet;
     }
 
-    /// @notice Can only lower or restore the fee — never above 1%.
+    /// @notice Can only lower or restore the fee — never above 2%.
     function setFeeBps(uint256 newFeeBps) external onlyOwner {
         if (newFeeBps > MAX_FEE_BPS) revert InvalidFeeBps();
         emit FeeBpsUpdated(feeBps, newFeeBps);
         feeBps = newFeeBps;
+    }
+
+    /// @notice Referrers' share of the fee, at most half of it.
+    function setReferralShareBps(uint256 newShareBps) external onlyOwner {
+        if (newShareBps > MAX_REFERRAL_SHARE_BPS) revert InvalidFeeBps();
+        emit ReferralShareUpdated(referralShareBps, newShareBps);
+        referralShareBps = newShareBps;
     }
 
     function pause() external onlyOwner {

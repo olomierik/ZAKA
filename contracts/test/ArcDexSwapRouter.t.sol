@@ -9,9 +9,15 @@ import {ArcDexSwapRouter, PoolKey, ISwapRouter02} from "../ArcDexSwapRouter.sol"
 
 contract MockToken is ERC20 {
     uint8 private immutable _dec;
+    mapping(address => bool) public blocked; // like USDC's blacklist
     constructor(string memory n, uint8 d) ERC20(n, n) { _dec = d; }
     function decimals() public view override returns (uint8) { return _dec; }
     function mint(address to, uint256 amt) external { _mint(to, amt); }
+    function setBlocked(address a, bool b) external { blocked[a] = b; }
+    function _update(address from, address to, uint256 value) internal override {
+        require(!blocked[to], "blocked");
+        super._update(from, to, value);
+    }
 }
 
 /// Stands in for SwapRouter02: pulls tokenIn, pays out `rate` tokenOut per
@@ -34,7 +40,10 @@ contract ArcDexSwapRouterTest is Test {
     address owner = makeAddr("owner");
     address feeWallet = makeAddr("feeWallet");
     address user = makeAddr("user");
+    address friend = makeAddr("friend");
+    address other = makeAddr("other");
     address poolManager = makeAddr("poolManager");
+    address constant NO_REF = address(0);
 
     function setUp() public {
         usdc = new MockToken("USDC", 6);
@@ -49,6 +58,11 @@ contract ArcDexSwapRouterTest is Test {
         vm.stopPrank();
     }
 
+    function _buy(uint256 amt, address ref) internal returns (uint256) {
+        vm.prank(user);
+        return router.swapExactInV3(address(usdc), address(meme), 10000, amt, 0, block.timestamp, ref);
+    }
+
     function test_constructor_rejectsZeroAddresses() public {
         vm.expectRevert(ArcDexSwapRouter.ZeroAddress.selector);
         new ArcDexSwapRouter(address(0), address(v3), address(usdc), feeWallet, owner);
@@ -56,16 +70,17 @@ contract ArcDexSwapRouterTest is Test {
         new ArcDexSwapRouter(poolManager, address(v3), address(usdc), address(0), owner);
     }
 
-    function test_defaultFeeIsOnePercent() public view {
-        assertEq(router.feeBps(), 100);
-        assertEq(router.MAX_FEE_BPS(), 100);
+    function test_defaults_twoPercentFee_fifteenPercentReferralShare() public view {
+        assertEq(router.VERSION(), 2);
+        assertEq(router.feeBps(), 200);
+        assertEq(router.MAX_FEE_BPS(), 200);
+        assertEq(router.referralShareBps(), 1_500);
     }
 
     function test_buy_feeTakenInUsdcFromInput() public {
-        vm.prank(user);
-        uint256 out = router.swapExactInV3(address(usdc), address(meme), 10000, 100e6, 0, block.timestamp);
-        assertEq(usdc.balanceOf(feeWallet), 1e6, "1% of 100 USDC");
-        assertEq(out, 99e6 * 2);
+        uint256 out = _buy(100e6, NO_REF);
+        assertEq(usdc.balanceOf(feeWallet), 2e6, "2% of 100 USDC");
+        assertEq(out, 98e6 * 2);
         assertEq(meme.balanceOf(feeWallet), 0);
         assertEq(usdc.balanceOf(address(router)), 0);
         assertEq(meme.balanceOf(address(router)), 0);
@@ -73,26 +88,95 @@ contract ArcDexSwapRouterTest is Test {
 
     function test_sell_feeTakenInUsdcFromOutput() public {
         vm.prank(user);
-        uint256 out = router.swapExactInV3(address(meme), address(usdc), 10000, 50e6, 0, block.timestamp);
-        // gross out = 100e6 USDC, fee 1% of that from the output side
-        assertEq(usdc.balanceOf(feeWallet), 1e6);
-        assertEq(out, 99e6);
+        uint256 out = router.swapExactInV3(address(meme), address(usdc), 10000, 50e6, 0, block.timestamp, NO_REF);
+        // gross out = 100e6 USDC, fee 2% of that from the output side
+        assertEq(usdc.balanceOf(feeWallet), 2e6);
+        assertEq(out, 98e6);
         assertEq(meme.balanceOf(feeWallet), 0, "no fee in the meme token");
     }
 
-    function test_feeCannotExceedOnePercent() public {
+    function test_feeCannotExceedTwoPercent() public {
         vm.prank(owner);
         vm.expectRevert(ArcDexSwapRouter.InvalidFeeBps.selector);
-        router.setFeeBps(101);
+        router.setFeeBps(201);
     }
 
     function test_ownerCanLowerFee_andZeroFeeTakesNothing() public {
         vm.prank(owner);
         router.setFeeBps(0);
-        vm.prank(user);
-        router.swapExactInV3(address(usdc), address(meme), 10000, 100e6, 0, block.timestamp);
+        _buy(100e6, friend);
         assertEq(usdc.balanceOf(feeWallet), 0);
+        assertEq(usdc.balanceOf(friend), 0);
     }
+
+    // ── referrals ─────────────────────────────────────────────────────
+
+    function test_referral_splitsFee_85_15() public {
+        _buy(100e6, friend);
+        // fee = 2 USDC → 0.30 to the referrer, 1.70 to the platform
+        assertEq(usdc.balanceOf(friend), 0.3e6);
+        assertEq(usdc.balanceOf(feeWallet), 1.7e6);
+        assertEq(router.referrerOf(user), friend);
+        assertEq(usdc.balanceOf(address(router)), 0);
+    }
+
+    function test_referral_isStickyAndPaysOnLaterTradesWithoutReferrer() public {
+        _buy(100e6, friend);
+        _buy(100e6, NO_REF); // no referrer passed — still paid to friend
+        _buy(100e6, other); // a different referrer can't take over
+        assertEq(router.referrerOf(user), friend);
+        assertEq(usdc.balanceOf(friend), 0.9e6);
+        assertEq(usdc.balanceOf(other), 0);
+        assertEq(usdc.balanceOf(feeWallet), 5.1e6);
+    }
+
+    function test_referral_paidOnSellsToo() public {
+        _buy(10e6, friend);
+        uint256 before = usdc.balanceOf(friend);
+        vm.prank(user);
+        router.swapExactInV3(address(meme), address(usdc), 10000, 50e6, 0, block.timestamp, NO_REF);
+        // sell gross = 100 USDC, fee 2 USDC, referrer 15% of it
+        assertEq(usdc.balanceOf(friend) - before, 0.3e6);
+    }
+
+    function test_referral_selfReferralIgnored() public {
+        _buy(100e6, user);
+        assertEq(router.referrerOf(user), address(0));
+        assertEq(usdc.balanceOf(feeWallet), 2e6);
+    }
+
+    function test_referral_blockedReferrerFallsBackToFeeWallet_neverReverts() public {
+        _buy(10e6, friend);
+        usdc.setBlocked(friend, true);
+        uint256 walletBefore = usdc.balanceOf(feeWallet);
+        _buy(100e6, NO_REF); // must not revert
+        assertEq(usdc.balanceOf(feeWallet) - walletBefore, 2e6, "whole fee to the platform");
+        assertEq(usdc.balanceOf(address(router)), 0);
+    }
+
+    function test_referralShare_ownerOnly_cappedAtHalf() public {
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
+        router.setReferralShareBps(1000);
+        vm.startPrank(owner);
+        vm.expectRevert(ArcDexSwapRouter.InvalidFeeBps.selector);
+        router.setReferralShareBps(5_001);
+        router.setReferralShareBps(5_000);
+        vm.stopPrank();
+        _buy(100e6, friend);
+        assertEq(usdc.balanceOf(friend), 1e6);
+        assertEq(usdc.balanceOf(feeWallet), 1e6);
+    }
+
+    function test_referral_emitsEvents() public {
+        vm.expectEmit(true, true, false, false, address(router));
+        emit ArcDexSwapRouter.ReferrerBound(user, friend);
+        vm.expectEmit(true, true, true, true, address(router));
+        emit ArcDexSwapRouter.ReferralPaid(friend, user, address(usdc), 0.3e6);
+        _buy(100e6, friend);
+    }
+
+    // ── guards ────────────────────────────────────────────────────────
 
     function test_onlyOwnerAdmin() public {
         vm.startPrank(user);
@@ -118,42 +202,42 @@ contract ArcDexSwapRouterTest is Test {
         router.pause();
         vm.prank(user);
         vm.expectRevert(Pausable.EnforcedPause.selector);
-        router.swapExactInV3(address(usdc), address(meme), 10000, 1e6, 0, block.timestamp);
+        router.swapExactInV3(address(usdc), address(meme), 10000, 1e6, 0, block.timestamp, NO_REF);
 
         PoolKey[] memory keys = new PoolKey[](1);
         keys[0] = PoolKey(address(usdc), address(meme), 10000, 200, address(0));
         vm.prank(user);
         vm.expectRevert(Pausable.EnforcedPause.selector);
-        router.swapExactInV4(keys, address(usdc), 1e6, 0, block.timestamp);
+        router.swapExactInV4(keys, address(usdc), 1e6, 0, block.timestamp, NO_REF);
     }
 
     function test_expiredDeadlineReverts() public {
         vm.warp(1000);
         vm.prank(user);
         vm.expectRevert(ArcDexSwapRouter.DeadlineExpired.selector);
-        router.swapExactInV3(address(usdc), address(meme), 10000, 1e6, 0, 999);
+        router.swapExactInV3(address(usdc), address(meme), 10000, 1e6, 0, 999, NO_REF);
     }
 
     function test_slippageGuard() public {
         vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(ArcDexSwapRouter.InsufficientOutput.selector, 99e6 * 2, 1e30));
-        router.swapExactInV3(address(usdc), address(meme), 10000, 100e6, 1e30, block.timestamp);
+        vm.expectRevert(abi.encodeWithSelector(ArcDexSwapRouter.InsufficientOutput.selector, 98e6 * 2, 1e30));
+        router.swapExactInV3(address(usdc), address(meme), 10000, 100e6, 1e30, block.timestamp, NO_REF);
     }
 
     function test_v4_rejectsBadPaths() public {
         PoolKey[] memory none = new PoolKey[](0);
         vm.startPrank(user);
         vm.expectRevert(ArcDexSwapRouter.InvalidPath.selector);
-        router.swapExactInV4(none, address(usdc), 1e6, 0, block.timestamp);
+        router.swapExactInV4(none, address(usdc), 1e6, 0, block.timestamp, NO_REF);
 
         PoolKey[] memory unrelated = new PoolKey[](1);
         unrelated[0] = PoolKey(address(meme), address(0xBEEF), 10000, 200, address(0));
         vm.expectRevert(ArcDexSwapRouter.InvalidPath.selector);
-        router.swapExactInV4(unrelated, address(usdc), 1e6, 0, block.timestamp);
+        router.swapExactInV4(unrelated, address(usdc), 1e6, 0, block.timestamp, NO_REF);
 
         PoolKey[] memory tooMany = new PoolKey[](4);
         vm.expectRevert(ArcDexSwapRouter.InvalidPath.selector);
-        router.swapExactInV4(tooMany, address(usdc), 1e6, 0, block.timestamp);
+        router.swapExactInV4(tooMany, address(usdc), 1e6, 0, block.timestamp, NO_REF);
         vm.stopPrank();
     }
 
@@ -165,7 +249,7 @@ contract ArcDexSwapRouterTest is Test {
     function test_zeroAmountReverts() public {
         vm.prank(user);
         vm.expectRevert(ArcDexSwapRouter.ZeroAmount.selector);
-        router.swapExactInV3(address(usdc), address(meme), 10000, 0, 0, block.timestamp);
+        router.swapExactInV3(address(usdc), address(meme), 10000, 0, 0, block.timestamp, NO_REF);
     }
 
     function test_rescueTokens_ownerOnly_sendsToOwner() public {
@@ -175,11 +259,12 @@ contract ArcDexSwapRouterTest is Test {
         assertEq(usdc.balanceOf(owner), 5e6);
     }
 
-    function testFuzz_feeNeverExceedsOnePercent(uint96 amountIn) public {
+    function testFuzz_feeNeverExceedsTwoPercent_andSplitsExactly(uint96 amountIn, bool referred) public {
         amountIn = uint96(bound(amountIn, 1, 500e6));
-        vm.prank(user);
-        router.swapExactInV3(address(usdc), address(meme), 10000, amountIn, 0, block.timestamp);
-        assertLe(usdc.balanceOf(feeWallet) * 100, uint256(amountIn));
+        _buy(amountIn, referred ? friend : NO_REF);
+        uint256 totalFee = usdc.balanceOf(feeWallet) + usdc.balanceOf(friend);
+        assertLe(totalFee * 50, uint256(amountIn), "total fee <= 2%");
+        assertEq(totalFee, (uint256(amountIn) * 200) / 10_000, "platform + referrer = the whole fee, nothing lost");
         assertEq(usdc.balanceOf(address(router)), 0);
     }
 }

@@ -21,6 +21,7 @@ contract ArcDexRouterSimHarness {
         uint256 amountOut;
         uint256 received; // this harness's actual balance gain
         uint256 feeWalletGain; // in USDC
+        uint256 referrerGain; // in USDC
         uint256 routerLeftIn;
         uint256 routerLeftOut;
     }
@@ -29,54 +30,73 @@ contract ArcDexRouterSimHarness {
         return new ArcDexSwapRouter(POOL_MANAGER, SWAP_ROUTER02, USDC, FEE_WALLET, address(this));
     }
 
-    function buyV4(PoolKey[] calldata keys, address tokenOut, uint256 usdcIn) external returns (Result memory r) {
+    function buyV4(PoolKey[] calldata keys, address tokenOut, uint256 usdcIn, address referrer)
+        external
+        returns (Result memory r)
+    {
         ArcDexSwapRouter router = _router();
-        r = _swapV4(router, keys, USDC, tokenOut, usdcIn);
+        r = _swapV4(router, keys, USDC, tokenOut, usdcIn, referrer);
     }
 
-    /// Buy then sell the whole position back — exercises fee-on-output.
-    function roundTripV4(PoolKey[] calldata keys, address token, uint256 usdcIn)
+    /// Buy then sell the whole position back — exercises fee-on-output, and
+    /// that the referrer bound on the buy keeps earning on the sell even
+    /// though the sell passes no referrer.
+    function roundTripV4(PoolKey[] calldata keys, address token, uint256 usdcIn, address referrer)
         external
         returns (Result memory buy, Result memory sell)
     {
         ArcDexSwapRouter router = _router();
-        buy = _swapV4(router, keys, USDC, token, usdcIn);
+        buy = _swapV4(router, keys, USDC, token, usdcIn, referrer);
         PoolKey[] memory rev = new PoolKey[](keys.length);
         for (uint256 i = 0; i < keys.length; i++) rev[i] = keys[keys.length - 1 - i];
-        sell = _swapV4Mem(router, rev, token, USDC, buy.received);
+        sell = _swapV4Mem(router, rev, token, USDC, buy.received, address(0));
     }
 
-    function buyV3(address tokenOut, uint24 fee, uint256 usdcIn) external returns (Result memory r) {
+    function buyV3(address tokenOut, uint24 fee, uint256 usdcIn, address referrer) external returns (Result memory r) {
         ArcDexSwapRouter router = _router();
         IERC20(USDC).approve(address(router), usdcIn);
         uint256 feeBefore = IERC20(USDC).balanceOf(FEE_WALLET);
+        uint256 refBefore = referrer == address(0) ? 0 : IERC20(USDC).balanceOf(referrer);
         uint256 outBefore = IERC20(tokenOut).balanceOf(address(this));
-        r.amountOut = router.swapExactInV3(USDC, tokenOut, fee, usdcIn, 1, block.timestamp + 60);
+        r.amountOut = router.swapExactInV3(USDC, tokenOut, fee, usdcIn, 1, block.timestamp + 60, referrer);
         r.received = IERC20(tokenOut).balanceOf(address(this)) - outBefore;
         r.feeWalletGain = IERC20(USDC).balanceOf(FEE_WALLET) - feeBefore;
+        if (referrer != address(0)) r.referrerGain = IERC20(USDC).balanceOf(referrer) - refBefore;
         r.routerLeftIn = IERC20(USDC).balanceOf(address(router));
         r.routerLeftOut = IERC20(tokenOut).balanceOf(address(router));
     }
 
-    function _swapV4(ArcDexSwapRouter router, PoolKey[] calldata keys, address tokenIn, address tokenOut, uint256 amountIn)
-        internal
-        returns (Result memory r)
-    {
+    function _swapV4(
+        ArcDexSwapRouter router,
+        PoolKey[] calldata keys,
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        address referrer
+    ) internal returns (Result memory r) {
         PoolKey[] memory m = new PoolKey[](keys.length);
         for (uint256 i = 0; i < keys.length; i++) m[i] = keys[i];
-        return _swapV4Mem(router, m, tokenIn, tokenOut, amountIn);
+        return _swapV4Mem(router, m, tokenIn, tokenOut, amountIn, referrer);
     }
 
-    function _swapV4Mem(ArcDexSwapRouter router, PoolKey[] memory keys, address tokenIn, address tokenOut, uint256 amountIn)
-        internal
-        returns (Result memory r)
-    {
+    function _swapV4Mem(
+        ArcDexSwapRouter router,
+        PoolKey[] memory keys,
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        address referrer
+    ) internal returns (Result memory r) {
         IERC20(tokenIn).approve(address(router), amountIn);
+        address boundRef = router.referrerOf(address(this));
+        address ref = boundRef != address(0) ? boundRef : referrer;
         uint256 feeBefore = IERC20(USDC).balanceOf(FEE_WALLET);
+        uint256 refBefore = ref == address(0) ? 0 : IERC20(USDC).balanceOf(ref);
         uint256 outBefore = IERC20(tokenOut).balanceOf(address(this));
-        r.amountOut = router.swapExactInV4(keys, tokenIn, amountIn, 1, block.timestamp + 60);
+        r.amountOut = router.swapExactInV4(keys, tokenIn, amountIn, 1, block.timestamp + 60, referrer);
         r.received = IERC20(tokenOut).balanceOf(address(this)) - outBefore;
         r.feeWalletGain = IERC20(USDC).balanceOf(FEE_WALLET) - feeBefore;
+        if (ref != address(0)) r.referrerGain = IERC20(USDC).balanceOf(ref) - refBefore;
         r.routerLeftIn = IERC20(tokenIn).balanceOf(address(router));
         r.routerLeftOut = IERC20(tokenOut).balanceOf(address(router));
     }

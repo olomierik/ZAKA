@@ -17,7 +17,11 @@ const HARNESS = '0x00000000000000000000000000000000000abcde'
 
 const USDC = '0x3600000000000000000000000000000000000000'
 const ARGUS = '0xeCe5cA8bf9220718E5727754026757512212cb3c'
-const FEE = 100n // bps
+const FEE = 200n // bps
+const REF_SHARE = 1_500n // bps of the fee
+const NO_REF = "0x0000000000000000000000000000000000000000"
+const REFERRER = "0x000000000000000000000000000000000000bEEF"
+const split = fee => { const cut = (fee * REF_SHARE) / 10_000n; return { cut, rest: fee - cut } }
 
 const key = (currency0, currency1, fee, tickSpacing, hooks) => ({ currency0, currency1, fee, tickSpacing, hooks })
 const KEYS = {
@@ -49,11 +53,18 @@ async function sim(functionName, args) {
   return decodeFunctionResult({ abi, functionName, data: res.data })
 }
 
-function checkBuy(label, r, usdcIn) {
-  console.log(`  ${label}: out=${r.amountOut} received=${r.received} fee=${r.feeWalletGain}`)
+function checkBuy(label, r, usdcIn, referred = false) {
+  console.log(`  ${label}: out=${r.amountOut} received=${r.received} fee=${r.feeWalletGain} referrer=${r.referrerGain}`)
   check(r.amountOut > 0n, 'tokens received')
   check(r.amountOut === r.received, 'reported amount matches actual balance gain')
-  check(r.feeWalletGain === (usdcIn * FEE) / 10_000n, `fee wallet got exactly 1% of ${usdcIn} USDC`)
+  const fee = (usdcIn * FEE) / 10_000n
+  if (referred) {
+    const { cut, rest } = split(fee)
+    check(r.referrerGain === cut, `referrer got exactly 15% of the 2% fee (${cut})`)
+    check(r.feeWalletGain === rest, `fee wallet got the other 85% (${rest})`)
+  } else {
+    check(r.feeWalletGain === fee, `fee wallet got exactly 2% of ${usdcIn} USDC`)
+  }
   check(r.routerLeftIn === 0n && r.routerLeftOut === 0n, 'router holds nothing afterwards')
 }
 
@@ -72,29 +83,29 @@ await run('PoolKeys hash to the real on-chain PoolIds', async () => {
 })
 
 await run('Buy ARGUS — v4 main pool (no hook), 100 USDC', async () => {
-  checkBuy('buy', await sim('buyV4', [[KEYS.argusMain], ARGUS, 100_000_000n]), 100_000_000n)
+  checkBuy('buy', await sim('buyV4', [[KEYS.argusMain], ARGUS, 100_000_000n, NO_REF]), 100_000_000n)
 })
 
 await run('Buy USDC-quoted Argus launch — through its tax hook, 20 USDC', async () => {
-  checkBuy('buy', await sim('buyV4', [[KEYS.usdcQuoted], KEYS.usdcQuoted.currency1, 20_000_000n]), 20_000_000n)
+  checkBuy('buy', await sim('buyV4', [[KEYS.usdcQuoted], KEYS.usdcQuoted.currency1, 20_000_000n, NO_REF]), 20_000_000n)
 })
 
 await run('Buy ARGUS-quoted Argus launch — 2 hops USDC→ARGUS→token, 20 USDC', async () => {
-  checkBuy('buy', await sim('buyV4', [[KEYS.argusMain, KEYS.argusQuoted], KEYS.argusQuoted.currency0, 20_000_000n]), 20_000_000n)
+  checkBuy('buy', await sim('buyV4', [[KEYS.argusMain, KEYS.argusQuoted], KEYS.argusQuoted.currency0, 20_000_000n, NO_REF]), 20_000_000n)
 })
 
 await run('Round trip USDC-quoted launch — sell fee comes out of USDC output', async () => {
-  const [buy, sell] = await sim('roundTripV4', [[KEYS.usdcQuoted], KEYS.usdcQuoted.currency1, 20_000_000n])
+  const [buy, sell] = await sim('roundTripV4', [[KEYS.usdcQuoted], KEYS.usdcQuoted.currency1, 20_000_000n, NO_REF])
   checkBuy('buy', buy, 20_000_000n)
   console.log(`  sell: usdcOut=${sell.amountOut} fee=${sell.feeWalletGain}`)
   check(sell.amountOut > 0n && sell.amountOut === sell.received, 'USDC received on sell')
   const gross = sell.amountOut + sell.feeWalletGain
-  check(sell.feeWalletGain === (gross * FEE) / 10_000n, 'sell fee is exactly 1% of gross USDC out')
+  check(sell.feeWalletGain === (gross * FEE) / 10_000n, 'sell fee is exactly 2% of gross USDC out')
   check(sell.routerLeftIn === 0n && sell.routerLeftOut === 0n, 'router holds nothing afterwards')
 })
 
 await run('Round trip ARGUS (a transfer-tax token) — v4 main pool, 50 USDC', async () => {
-  const [buy, sell] = await sim('roundTripV4', [[KEYS.argusMain], ARGUS, 50_000_000n])
+  const [buy, sell] = await sim('roundTripV4', [[KEYS.argusMain], ARGUS, 50_000_000n, NO_REF])
   checkBuy('buy', buy, 50_000_000n)
   console.log(`  sell: usdcOut=${sell.amountOut} fee=${sell.feeWalletGain}`)
   check(sell.amountOut > 0n && sell.amountOut === sell.received, 'USDC received on sell')
@@ -102,7 +113,22 @@ await run('Round trip ARGUS (a transfer-tax token) — v4 main pool, 50 USDC', a
 })
 
 await run('Buy ARGUS — legacy v3 pool via SwapRouter02, 50 USDC', async () => {
-  checkBuy('buy', await sim('buyV3', [ARGUS, 10000, 50_000_000n]), 50_000_000n)
+  checkBuy('buy', await sim('buyV3', [ARGUS, 10000, 50_000_000n, NO_REF]), 50_000_000n)
+})
+
+await run('Referred round trip — 2-hop ARGUS-quoted launch, 20 USDC: referrer bound on the buy, still paid on the sell', async () => {
+  const [buy, sell] = await sim('roundTripV4', [[KEYS.argusMain, KEYS.argusQuoted], KEYS.argusQuoted.currency0, 20_000_000n, REFERRER])
+  checkBuy('buy', buy, 20_000_000n, true)
+  console.log(`  sell: usdcOut=${sell.amountOut} fee=${sell.feeWalletGain} referrer=${sell.referrerGain}`)
+  const fee = sell.feeWalletGain + sell.referrerGain
+  const gross = sell.amountOut + fee
+  check(fee === (gross * FEE) / 10_000n, 'sell fee is exactly 2% of gross USDC out')
+  check(sell.referrerGain === split(fee).cut && sell.referrerGain > 0n, 'referrer still earns 15% on a later sell that passed no referrer')
+  check(sell.routerLeftIn === 0n && sell.routerLeftOut === 0n, 'router holds nothing afterwards')
+})
+
+await run('Referred v3 buy — legacy pool, 50 USDC', async () => {
+  checkBuy('buy', await sim('buyV3', [ARGUS, 10000, 50_000_000n, REFERRER]), 50_000_000n, true)
 })
 
 console.log(failures === 0 ? '\nALL CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`)
