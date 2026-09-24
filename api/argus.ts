@@ -56,12 +56,16 @@ export default async function handler(): Promise<Response> {
     headers: {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
-      // A complete list is shared for a minute (prices on a coin's own page
-      // refresh far faster: 15s poll + live WebSocket swaps). A partial one
-      // is held only briefly so a later refresh can complete it.
+      // A complete list is fresh for a minute (prices on a coin's own page
+      // refresh far faster: 15s poll + live WebSocket swaps); a partial one
+      // for 15s so a later refresh can complete it. Past that, the CDN
+      // keeps serving the last copy instantly while it rebuilds in the
+      // background — without the long stale window, a quiet site sends
+      // most first visitors into a cold rebuild (~10-17s when
+      // GeckoTerminal is throttling Vercel's IPs).
       'Cache-Control': partial
-        ? 'public, s-maxage=15, stale-while-revalidate=60'
-        : 'public, s-maxage=60, stale-while-revalidate=600',
+        ? 'public, s-maxage=15, stale-while-revalidate=3600'
+        : 'public, s-maxage=60, stale-while-revalidate=3600',
     },
   })
 }

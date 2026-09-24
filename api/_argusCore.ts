@@ -110,24 +110,41 @@ export function dedupe(all: ArgusPool[]): ArgusPool[] {
 }
 
 /** Sequential, not parallel: GeckoTerminal throttles bursts, and a partial
- * list beats a failed one. */
-export async function buildArgusMarket(gt: GtFetcher): Promise<ArgusPool[]> {
-  const results: ArgusPool[][] = []
+ * list beats a failed one. Most important first, and `onPartial` gets the
+ * list so far after each step — so a slow (throttled) build still shows
+ * the top coins within a call or two. */
+export async function buildArgusMarket(gt: GtFetcher, onPartial?: (pools: ArgusPool[]) => void): Promise<ArgusPool[]> {
+  const rows: ArgusPool[] = []
+  const emit = () => { if (onPartial && rows.length > 0) onPartial(dedupe(rows)) }
+  const volumePage = async (page: number) => {
+    rows.push(...normalize(await gt(`/networks/arc/dexes/argus/pools?page=${page}&sort=h24_volume_usd_desc&${INC}`)))
+    emit()
+  }
+
   // $ARGUS itself trades on plain Uniswap pools, not under GeckoTerminal's
   // "argus" dex — fetch its pools explicitly, and FIRST, so the platform
   // token is never the slice a rate limit drops. The same listing carries
   // the launches quoted in ARGUS rather than USDC, which rarely make the
-  // volume pages below.
+  // volume pages.
   const argusSide = (p: ArgusPool) => p.token.address === ARGUS_TOKEN || (p.dex === 'argus' && p.quote.address === ARGUS_TOKEN)
   const argusRows: ArgusPool[] = []
-  for (const page of [1, 2]) argusRows.push(...normalize(await gt(`/networks/arc/tokens/${ARGUS_TOKEN}/pools?page=${page}&${INC}`), undefined, ARGUS_TOKEN).filter(argusSide))
-  // Refill those rows' caps right away — they're the only rows whose caps
-  // GeckoTerminal reported for ARGUS instead of the coin itself.
-  await fillCaps(argusRows, gt)
-  results.push(argusRows)
-  for (let page = 1; page <= VOLUME_PAGES; page++) {
-    results.push(normalize(await gt(`/networks/arc/dexes/argus/pools?page=${page}&sort=h24_volume_usd_desc&${INC}`)))
+  const argusPage = async (page: number) => {
+    const r = normalize(await gt(`/networks/arc/tokens/${ARGUS_TOKEN}/pools?page=${page}&${INC}`), undefined, ARGUS_TOKEN).filter(argusSide)
+    argusRows.push(...r)
+    rows.push(...r)
   }
-  results.push(normalize(await gt(`/networks/arc/new_pools?page=1&${INC}`), 'argus'))
-  return dedupe(results.flat())
+
+  await argusPage(1)
+  emit()
+  await volumePage(1) // the top 20 by volume — the Terminal's first screen
+  await argusPage(2)
+  // Refill the ARGUS-listing rows' caps — they're the only rows whose caps
+  // GeckoTerminal reported for ARGUS instead of the coin itself. (Mutates
+  // the row objects in place, so rows already emitted pick it up too.)
+  await fillCaps(argusRows, gt)
+  emit()
+  for (let page = 2; page <= VOLUME_PAGES; page++) await volumePage(page)
+  rows.push(...normalize(await gt(`/networks/arc/new_pools?page=1&${INC}`), 'argus'))
+  emit()
+  return dedupe(rows)
 }

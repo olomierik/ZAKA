@@ -22,34 +22,85 @@ export type { ArgusPool }
 // refresh doesn't spend the visitor's GeckoTerminal quota every time.
 let localBuild: { at: number; pools: Promise<ArgusPool[]> } | null = null
 
-/** The Argus market list. Uses the server's CDN-cached copy; when that came
- * back incomplete (GeckoTerminal throttles Vercel's shared IPs), rebuilds
- * it from the visitor's own IP. If the server had some rows, they're
- * returned at once and the complete list arrives later via `onComplete`. */
-export async function getArgusMarket(onComplete?: (pools: ArgusPool[]) => void): Promise<ArgusPool[]> {
-  let server: ArgusPool[] = []
-  let partial = true
+// How long to wait on the server's copy before also building in-browser. A
+// CDN hit answers in ~1s; a cold rebuild can take 10-17s.
+const SERVER_WAIT_MS = 2_500
+let firstMarketCall = true
+
+interface ServerMarket { pools: ArgusPool[]; partial: boolean }
+
+async function fetchServerMarket(): Promise<ServerMarket | null> {
   try {
     const res = await fetch('/api/argus')
-    if (res.ok) {
-      const d = (await res.json()) as { pools?: ArgusPool[]; partial?: boolean }
-      server = d.pools ?? []
-      partial = d.partial === true
-    }
-  } catch { /* rebuild locally below */ }
-  if (!partial && server.length > 0) return server
+    if (!res.ok) return null
+    const d = (await res.json()) as { pools?: ArgusPool[]; partial?: boolean }
+    return { pools: d.pools ?? [], partial: d.partial === true }
+  } catch {
+    return null
+  }
+}
 
+/** @param onPartial only called when this call starts a new build (a build
+ * already in flight or finished within the last minute is reused as-is). */
+function localMarket(onPartial?: (pools: ArgusPool[]) => void): Promise<ArgusPool[]> {
   if (!localBuild || Date.now() - localBuild.at > 60_000) {
-    localBuild = { at: Date.now(), pools: buildArgusMarket(gtDirectFetcher).catch(() => []) }
+    localBuild = { at: Date.now(), pools: buildArgusMarket(gtDirectFetcher, onPartial).catch(() => []) }
   }
-  const merged = localBuild.pools.then(local => dedupe([...local, ...server]))
-  if (server.length > 0) {
-    if (onComplete) void merged.then(onComplete)
-    return server
+  return localBuild.pools
+}
+
+/** The Argus market list, as fast as it can be had. Uses the server's
+ * CDN-cached copy; when that's incomplete (GeckoTerminal throttles
+ * Vercel's shared IPs) or slow (a cold rebuild), also builds it from the
+ * visitor's own IP. Returns the first usable list; anything that lands
+ * later — the rest of a partial list, or the slower of two sources — is
+ * delivered merged via `onUpdate`. */
+export async function getArgusMarket(onUpdate?: (pools: ArgusPool[]) => void): Promise<ArgusPool[]> {
+  const server = fetchServerMarket()
+  // The first call picks up the response arcdex.html preloaded at page
+  // start, so its wait counts from page start: if a CDN hit would already
+  // have answered while the app bundle downloaded, this is a cold rebuild
+  // — don't wait any longer before building in-browser too.
+  const wait = firstMarketCall ? Math.max(300, SERVER_WAIT_MS - performance.now()) : SERVER_WAIT_MS
+  firstMarketCall = false
+  const quick = await Promise.race([server, new Promise<undefined>(r => setTimeout(r, wait))])
+
+  // Fast and complete — the common case once the CDN is warm.
+  if (quick && !quick.partial && quick.pools.length > 0) return quick.pools
+
+  // Otherwise build in-browser too. Its progress streams out as it goes —
+  // the first rows resolve `localFirst`, later ones go to `onUpdate` —
+  // always merged with whatever the server has delivered by then.
+  let serverRows: ArgusPool[] = quick?.pools ?? []
+  void server.then(s => { if (s && s.pools.length > 0) serverRows = s.pools })
+  let resolveLocalFirst: (p: ArgusPool[]) => void = () => {}
+  const localFirst = new Promise<ArgusPool[]>(r => { resolveLocalFirst = r })
+  let firstDone = false
+  const local = localMarket(partial => {
+    const merged = dedupe([...partial, ...serverRows])
+    if (!firstDone) { firstDone = true; resolveLocalFirst(merged) } else onUpdate?.(merged)
+  })
+
+  // Fast but incomplete: show it now; the in-browser build fills the rest.
+  if (quick && quick.pools.length > 0) {
+    firstDone = true
+    if (onUpdate) void local.then(l => onUpdate(dedupe([...l, ...serverRows])))
+    return quick.pools
   }
-  const pools = await merged
-  if (pools.length === 0) throw new Error('Argus market unavailable')
-  return pools
+
+  // Server slow or failed: take whichever produces rows first — the
+  // server's copy, or the in-browser build's first step — and hand over
+  // the merge of both once everything has landed.
+  const both = Promise.all([server, local]).then(([s, l]) => dedupe([...l, ...(s?.pools ?? [])]))
+  const first = await Promise.race([
+    localFirst,
+    local.then(l => (l.length > 0 ? l : both)),
+    server.then(s => (s && s.pools.length > 0 ? s.pools : both)),
+  ])
+  firstDone = true
+  if (onUpdate) void both.then(p => { if (p.length > 0) onUpdate(p) })
+  if (first.length === 0) throw new Error('Argus market unavailable')
+  return first
 }
 
 // Launches are permissionless, so some reuse a real asset's ticker (Argus

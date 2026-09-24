@@ -280,7 +280,9 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     for (const [k, v] of seen) if (now - v.seen > 10 * 60_000) seen.delete(k)
     const data = [...oursRef.current, ...[...seen.values()].map(v => v.t)]
     setTokens(data)
-    setLoading(false)
+    // Keep the loading state until there's something to show — the first
+    // source to land may be an empty one.
+    if (data.length > 0) setLoading(false)
     registerFeedTokens(
       [...data].sort((a,b) => b.volume24h - a.volume24h).slice(0, 10)
         .map(t => ({ address: t.address, symbol: t.symbol }))
@@ -288,19 +290,23 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   }, [registerFeedTokens])
 
   const load = useCallback(async () => {
-    // GeckoTerminal first (live, covers every Argus portal) — the server's
-    // cached copy, completed from this browser when it was throttled (the
-    // rest arrives via the callback). The on-chain reader is only a last
-    // resort: it's ~300 RPC calls per load against a rate-limited node.
-    const argusMarket = getArgusMarket(complete => publish(complete.map(argusPoolToArcToken)))
+    // Each source is shown the moment it lands — the Argus list (usually a
+    // ~1s CDN hit) doesn't wait on our own launchpad's on-chain reads, or
+    // vice versa.
+    //
+    // Argus: GeckoTerminal (live, every Portal) via getArgusMarket, whose
+    // callback delivers anything that completes later. The on-chain reader
+    // is only a last resort: ~300 RPC calls against a rate-limited node.
+    const argus = getArgusMarket(more => publish(more.map(argusPoolToArcToken)))
       .then(pools => pools.map(argusPoolToArcToken))
       .catch(() => getArgusTokens().catch(() => [] as ArcToken[]))
-    const [ours, fresh] = await Promise.all([
-      getAllLaunchpadTokensAsArcTokens().catch(() => []),
-      argusMarket,
-    ])
-    oursRef.current = ours
-    publish(fresh)
+      .then(fresh => publish(fresh))
+    // A failed read keeps the last known list rather than wiping it.
+    const ours = getAllLaunchpadTokensAsArcTokens()
+      .then(t => { oursRef.current = t; publish([]) })
+      .catch(() => {})
+    await Promise.all([argus, ours])
+    setLoading(false) // both done — even if everything came back empty
   }, [publish])
 
   useEffect(() => { void load() }, [load])

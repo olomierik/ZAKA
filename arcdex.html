@@ -11,6 +11,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!-- Start the Argus market list download immediately, in parallel with
+         the app bundle, instead of ~4s later once the app has booted. The
+         app's own fetch('/api/argus') picks up this preloaded response. -->
+    <link rel="preload" href="/api/argus" as="fetch" crossorigin="anonymous" />
+    <link rel="preconnect" href="https://api.geckoterminal.com" crossorigin="anonymous" />
   </head>
   <body>
     <div id="root"></div>

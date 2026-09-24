@@ -17,8 +17,12 @@ function withQuery(path: string, params: Record<string, string>) {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-// GeckoTerminal also has a burst limit: space direct calls out a little.
-const MIN_GAP_MS = 350
+// GeckoTerminal's free tier is ~30 calls/min per IP with only a small
+// burst allowance — measured in-browser, calls 350ms apart started failing
+// after ~4. Pacing at its sustained rate avoids the failure + 2s-retry
+// cycle, which was slower overall. (The market build streams its rows as
+// each call lands, so the first ones still show within a second or two.)
+const MIN_GAP_MS = 2_000
 let nextSlot = 0
 async function paced() {
   const now = Date.now()

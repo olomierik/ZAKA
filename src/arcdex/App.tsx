@@ -1,12 +1,15 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import NavBar from './components/NavBar'
 import Terminal from './pages/Terminal'
-import TokenPage from './pages/TokenPage'
-import ArgusTokenPage from './pages/ArgusTokenPage'
-import Portfolio from './pages/Portfolio'
-import Launchpad from './pages/Launchpad'
-import Swap from './pages/Swap'
-import Bridge from './pages/Bridge'
+// Everything but the Terminal loads on first visit to that page — they
+// pull in heavy libraries (Circle Bridge Kit, charting, launchpad flows)
+// that would otherwise all have to download before the coin list shows.
+const TokenPage      = lazy(() => import('./pages/TokenPage'))
+const ArgusTokenPage = lazy(() => import('./pages/ArgusTokenPage'))
+const Portfolio      = lazy(() => import('./pages/Portfolio'))
+const Launchpad      = lazy(() => import('./pages/Launchpad'))
+const Swap           = lazy(() => import('./pages/Swap'))
+const Bridge         = lazy(() => import('./pages/Bridge'))
 import TradingWalletPanel from './components/TradingWalletPanel'
 import { subscribeAll, deriveTradeInfo, type LiveTrade } from './api/arcRpc'
 import { getPairByAddress } from './api/dexscreener'
@@ -165,6 +168,7 @@ export default function App() {
 
         {/* main content */}
         <main className="main-content">
+          <Suspense fallback={<div className="loading-state">Loading…</div>}>
           {page.name === 'terminal'   && <Terminal navigate={navigate} registerFeedTokens={registerFeedTokens} />}
           {page.name === 'token'      && <TokenPage address={page.address} navigate={navigate} />}
           {page.name === 'argus'      && <ArgusTokenPage key={page.address} address={page.address} pool={page.pool} navigate={navigate} />}
@@ -172,6 +176,7 @@ export default function App() {
           {page.name === 'launchpad'  && <Launchpad navigate={navigate} />}
           {page.name === 'swap'       && <Swap navigate={navigate} />}
           {page.name === 'bridge'     && <Bridge />}
+          </Suspense>
         </main>
 
         {/* right live feed */}
