@@ -29,7 +29,7 @@ export default function Swap({ navigate }: Props) {
       </p>
 
       {!picked ? (
-        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, padding: 20 }}>
+        <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 20 }}>
           <input
             autoFocus
             placeholder="Search by symbol, name, or address…"
@@ -37,7 +37,7 @@ export default function Swap({ navigate }: Props) {
             onChange={e => setQuery(e.target.value)}
             style={{
               padding: '11px 13px', borderRadius: 8, fontSize: '0.9rem',
-              background: 'var(--bg-2)', border: '1px solid var(--card-border)', color: 'var(--text)',
+              background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)',
               outline: 'none', width: '100%', marginBottom: matches.length ? 10 : 0,
             }}
           />
@@ -62,12 +62,12 @@ export default function Swap({ navigate }: Props) {
           )}
         </div>
       ) : (
-        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px 0' }}>
             <button onClick={() => { setPicked(null); setQuery('') }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.78rem' }}>
               ← Choose a different token
             </button>
-            <button onClick={() => navigate({ name: 'token', address: picked.address, symbol: picked.symbol })} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.72rem' }}>
+            <button onClick={() => navigate({ name: 'token', address: picked.address, symbol: picked.symbol })} style={{ background: 'none', border: 'none', color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.72rem' }}>
               View chart →
             </button>
           </div>

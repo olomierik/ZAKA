@@ -147,7 +147,7 @@ export default function Portfolio({ navigate }: Props) {
               <div style={{ height: 3, borderRadius: 2, background: 'var(--bg-2)', overflow: 'hidden' }}>
                 <div style={{
                   height: '100%', borderRadius: 2, width: `${pct}%`,
-                  background: 'linear-gradient(90deg,var(--accent),#8b5cf6)',
+                  background: 'linear-gradient(90deg,var(--adx-accent),#8b5cf6)',
                   transition: 'width 0.4s ease',
                 }} />
               </div>

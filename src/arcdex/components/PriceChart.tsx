@@ -71,9 +71,9 @@ export default function PriceChart({ poolAddress }: Props) {
         <button key={r.value} onClick={() => setRes(r.value)}
           style={{ padding: '3px 10px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 600,
             border: '1px solid', cursor: 'pointer',
-            borderColor: res === r.value ? 'var(--accent)' : 'var(--card-border)',
+            borderColor: res === r.value ? 'var(--adx-accent)' : 'var(--adx-card-border)',
             background: res === r.value ? 'rgba(59,130,246,0.15)' : 'transparent',
-            color: res === r.value ? 'var(--accent)' : 'var(--text-muted)' }}>
+            color: res === r.value ? 'var(--adx-accent)' : 'var(--text-muted)' }}>
           {r.label}
         </button>
       ))}

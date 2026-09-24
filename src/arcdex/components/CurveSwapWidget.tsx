@@ -114,7 +114,7 @@ export default function CurveSwapWidget({ token, onTraded }: Props) {
 
   return (
     <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--card-border)', background: 'var(--bg-2)' }}>
+      <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--adx-card-border)', background: 'var(--bg-2)' }}>
         {(['buy', 'sell'] as const).map(m => (
           <button key={m} onClick={() => { setMode(m); setAmountIn('') }} style={{
             flex: 1, padding: '10px', fontSize: '0.875rem', fontWeight: 600, border: 'none', cursor: 'pointer',
@@ -141,17 +141,17 @@ export default function CurveSwapWidget({ token, onTraded }: Props) {
         </label>
         <input type="number" min="0" placeholder="0.00" value={amountIn} onChange={e => setAmountIn(e.target.value)}
           style={{ padding: '12px 14px', borderRadius: 8, fontSize: '1rem', fontFamily: 'var(--mono)',
-            background: 'var(--bg-2)', border: '1px solid var(--card-border)', color: 'var(--text)', outline: 'none', width: '100%' }} />
+            background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', outline: 'none', width: '100%' }} />
       </div>
 
       {estimated && (
-        <div style={{ padding: '12px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--card-border)',
+        <div style={{ padding: '12px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)',
           fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--orange)' }}>
             <span>Fee (1% + {(token.curve.creatorTaxBps / 100).toFixed(1)}% creator tax)</span>
             <span className="mono">{formatUnits(estimated.fee, 6)} USDC</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--card-border)', paddingTop: 6, color: 'var(--text)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--adx-card-border)', paddingTop: 6, color: 'var(--text)' }}>
             <span>You receive (~)</span>
             <span className="mono" style={{ color: 'var(--green)' }}>
               {formatUnits(estimated.out, estimated.decimals)} {mode === 'buy' ? token.symbol : 'USDC'}
@@ -175,7 +175,7 @@ export default function CurveSwapWidget({ token, onTraded }: Props) {
       {!isConnected ? (
         <ConnectKitButton.Custom>
           {({ show }) => (
-            <button onClick={show} style={{ padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700, background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>
+            <button onClick={show} style={{ padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>
               Connect Wallet
             </button>
           )}

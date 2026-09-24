@@ -7,7 +7,7 @@ import type { BridgeResult } from '@circle-fin/bridge-kit'
 
 const inputStyle: React.CSSProperties = {
   padding: '11px 13px', borderRadius: 8, fontSize: '0.9rem', fontFamily: 'var(--mono)',
-  background: 'var(--bg-2)', border: '1px solid var(--card-border)', color: 'var(--text)',
+  background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)',
   outline: 'none', width: '100%',
 }
 
@@ -51,10 +51,10 @@ export default function Bridge() {
         Move USDC from Arc to another chain via Circle's official Cross-Chain Transfer Protocol (CCTP v2) — native burn-and-mint, no wrapped tokens, no third-party bridge risk.
       </p>
 
-      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div>
           <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>From</label>
-          <div style={{ padding: '11px 13px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--card-border)', fontSize: '0.9rem', fontWeight: 700 }}>
+          <div style={{ padding: '11px 13px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', fontSize: '0.9rem', fontWeight: 700 }}>
             Arc Mainnet <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>· USDC</span>
           </div>
         </div>
@@ -79,7 +79,7 @@ export default function Bridge() {
         </div>
 
         {!!amount && parseFloat(amount) > 0 && (
-          <div style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--card-border)', fontSize: '0.76rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', fontSize: '0.76rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
               <span>Bridge fee ({(BRIDGE_FEE_BPS / 100).toFixed(2)}%)</span>
               <span>${computeBridgeFee(amount).toFixed(4)}</span>
@@ -98,7 +98,7 @@ export default function Bridge() {
         )}
 
         {result && (
-          <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--card-border)', fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ fontWeight: 700, color: result.state === 'success' ? 'var(--green)' : 'var(--amber)' }}>
               {result.state === 'success' ? '✓ Bridge complete' : `State: ${result.state}`}
             </div>
@@ -118,7 +118,7 @@ export default function Bridge() {
         {!isConnected ? (
           <ConnectKitButton.Custom>
             {({ show }) => (
-              <button onClick={show} style={{ padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700, background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>
+              <button onClick={show} style={{ padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>
                 Connect Wallet
               </button>
             )}
@@ -126,7 +126,7 @@ export default function Bridge() {
         ) : (
           <button onClick={handleBridge} disabled={!amount || status === 'bridging'} style={{
             padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700,
-            background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%',
+            background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%',
             opacity: (!amount || status === 'bridging') ? 0.5 : 1,
           }}>
             {status === 'bridging' ? 'Bridging… (waiting on Circle attestation)' : 'Bridge'}

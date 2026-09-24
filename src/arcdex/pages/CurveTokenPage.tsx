@@ -12,7 +12,7 @@ interface Props { address: string; navigate: (p: Page) => void }
 function short(addr: string) { return `${addr.slice(0, 6)}…${addr.slice(-4)}` }
 const socialLinkStyle: React.CSSProperties = {
   background: 'var(--bg-2)', color: 'var(--text-muted)', fontSize: '0.65rem', fontWeight: 700,
-  padding: '2px 8px', borderRadius: 99, border: '1px solid var(--card-border)', textDecoration: 'none',
+  padding: '2px 8px', borderRadius: 99, border: '1px solid var(--adx-card-border)', textDecoration: 'none',
 }
 function fmt(n: number, prefix = '') {
   if (!n || isNaN(n)) return '—'
@@ -124,7 +124,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--card-border)', fontSize: '0.8rem' }}>
+      <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', fontSize: '0.8rem' }}>
         {[
           ['Market Cap', `$${fmt(marketCap)}`, '#f97316'],
           ['Raised', `$${fmt(rUsdcUsd)}`, '#a855f7'],
@@ -141,13 +141,13 @@ export default function CurveTokenPage({ address, navigate }: Props) {
 
       <div className="token-detail-grid">
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, marginTop: 16, padding: 16 }}>
+          <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16, padding: 16 }}>
             <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>PRICE CHART</div>
             <CurveChart token={token.address} />
           </div>
 
           {!token.curve.graduated && (
-            <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, marginTop: 16, padding: 16 }}>
+            <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16, padding: 16 }}>
               <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>BONDING CURVE PROGRESS</div>
               <div style={{ height: 10, borderRadius: 5, background: 'var(--bg-2)', overflow: 'hidden' }}>
                 <div style={{ width: `${Math.min(100, token.bondingProgress)}%`, height: '100%', background: 'linear-gradient(90deg,#3b82f6,#22c55e)' }} />
@@ -158,7 +158,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
             </div>
           )}
 
-          <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, marginTop: 16, padding: 16 }}>
+          <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16, padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-muted)' }}>TRUST SIGNALS</span>
               {trust && (
@@ -187,8 +187,8 @@ export default function CurveTokenPage({ address, navigate }: Props) {
             )}
           </div>
 
-          <div style={{ marginTop: 16, background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--card-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ marginTop: 16, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Trades</span>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
                 <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#22c55e', marginRight: 5 }} />
@@ -201,7 +201,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
               <div style={{ overflowY: 'auto', maxHeight: 420 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                   <thead>
-                    <tr style={{ borderBottom: '1px solid var(--card-border)' }}>
+                    <tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
                       {['Type', 'USDC', 'Tokens', 'Trader', 'Tx'].map(h => (
                         <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.7rem' }}>{h}</th>
                       ))}
@@ -209,7 +209,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
                   </thead>
                   <tbody>
                     {trades.map((t, i) => (
-                      <tr key={t.txHash + i} style={{ borderBottom: '1px solid var(--card-border)' }}>
+                      <tr key={t.txHash + i} style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
                         <td style={{ padding: '8px 12px' }}>
                           <span style={{ background: t.isBuy ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: t.isBuy ? '#22c55e' : '#ef4444', fontWeight: 700, padding: '2px 8px', borderRadius: 4, fontSize: '0.72rem' }}>
                             {t.isBuy ? 'BUY' : 'SELL'}
@@ -218,7 +218,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
                         <td style={{ padding: '8px 12px', fontWeight: 600 }}>${fmt(Number(t.usdcAmount) / 1e6)}</td>
                         <td style={{ padding: '8px 12px' }}>{fmt(Number(t.tokenAmount) / 1e18)}</td>
                         <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>
-                          <a href={`${ARC_EXPLORER}/address/${t.trader}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none' }}>{short(t.trader)}</a>
+                          <a href={`${ARC_EXPLORER}/address/${t.trader}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--adx-accent)', textDecoration: 'none' }}>{short(t.trader)}</a>
                         </td>
                         <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>
                           <a href={`${ARC_EXPLORER}/tx/${t.txHash}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>{short(t.txHash)}</a>
@@ -232,7 +232,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
           </div>
         </div>
 
-        <div className="token-detail-swap" style={{ marginTop: 16, background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div className="token-detail-swap" style={{ marginTop: 16, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
           <CurveSwapWidget token={token} onTraded={load} />
         </div>
       </div>

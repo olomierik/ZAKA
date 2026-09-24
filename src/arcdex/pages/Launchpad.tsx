@@ -163,7 +163,7 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
     return (
       <button onClick={() => setOpen(true)} style={{
         padding: '10px 18px', borderRadius: 8, fontWeight: 700, fontSize: '0.85rem',
-        background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer',
+        background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer',
       }}>
         + Launch a token
       </button>
@@ -171,7 +171,7 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
   }
 
   return (
-    <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, padding: 20, marginBottom: 20, maxWidth: 440 }}>
+    <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 20, marginBottom: 20, maxWidth: 440 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <span style={{ fontWeight: 700 }}>Launch a token</span>
         <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
@@ -181,7 +181,7 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
           <label style={{
             width: 56, height: 56, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
             background: (imagePreview || imageUrl) ? `url(${imagePreview || imageUrl}) center/cover` : 'var(--bg-2)',
-            border: '1px dashed var(--card-border)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            border: '1px dashed var(--adx-card-border)', display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: '0.6rem', color: 'var(--text-muted)', textAlign: 'center',
           }}>
             {!imagePreview && !imageUrl && 'Logo'}
@@ -224,11 +224,11 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
 
 const inputStyle: React.CSSProperties = {
   padding: '10px 12px', borderRadius: 8, fontSize: '0.85rem', background: 'var(--bg-2)',
-  border: '1px solid var(--card-border)', color: 'var(--text)', outline: 'none', fontFamily: 'var(--sans)',
+  border: '1px solid var(--adx-card-border)', color: 'var(--text)', outline: 'none', fontFamily: 'var(--sans)',
 }
 const primaryBtnStyle: React.CSSProperties = {
   padding: '12px', borderRadius: 8, fontSize: '0.875rem', fontWeight: 700,
-  background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer',
+  background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer',
 }
 
 function LaunchCard({ token: t, navigate, onTraded }: { token: LaunchpadToken; navigate: (p: Page) => void; onTraded: () => void }) {
@@ -252,7 +252,7 @@ function LaunchCard({ token: t, navigate, onTraded }: { token: LaunchpadToken; n
 
   return (
     <div onClick={() => navigate({ name: 'token', address: t.address, symbol: t.symbol })}
-      style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, padding: 16, cursor: 'pointer' }}>
+      style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 16, cursor: 'pointer' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {img ? (
@@ -299,8 +299,8 @@ function LiveActivityFeed({ symbolByAddress }: { symbolByAddress: Map<string, st
   }, [])
 
   return (
-    <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, marginBottom: 20, overflow: 'hidden' }}>
-      <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--card-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginBottom: 20, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--adx-card-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
         <span className="pulse-dot" />
         <span style={{ fontWeight: 700, fontSize: '0.82rem' }}>Live activity</span>
         <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>real-time buys &amp; sells across every launch, straight from Arc RPC</span>
@@ -312,7 +312,7 @@ function LiveActivityFeed({ symbolByAddress }: { symbolByAddress: Map<string, st
           {trades.map((t, i) => (
             <div key={t.txHash + i} style={{
               display: 'flex', alignItems: 'center', gap: 10, padding: '7px 16px', fontSize: '0.78rem',
-              borderBottom: '1px solid var(--border)', background: i === 0 ? (t.isBuy ? 'rgba(34,197,94,0.05)' : 'rgba(239,68,68,0.05)') : 'transparent',
+              borderBottom: '1px solid var(--adx-border)', background: i === 0 ? (t.isBuy ? 'rgba(34,197,94,0.05)' : 'rgba(239,68,68,0.05)') : 'transparent',
             }}>
               <span style={{ background: t.isBuy ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: t.isBuy ? 'var(--green)' : 'var(--red)', fontWeight: 700, padding: '2px 7px', borderRadius: 4, fontSize: '0.68rem', width: 40, textAlign: 'center' }}>
                 {t.isBuy ? 'BUY' : 'SELL'}

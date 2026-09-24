@@ -56,7 +56,7 @@ function ScoreBar({ score }: { score: number }) {
     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
       <div style={{
         width: 36, height: 14, background: 'var(--bg-2)', borderRadius: 3,
-        overflow: 'hidden', border: '1px solid var(--border)',
+        overflow: 'hidden', border: '1px solid var(--adx-border)',
       }}>
         <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width 0.3s' }} />
       </div>
@@ -193,7 +193,7 @@ function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onTogg
       </td>
       {/* quote */}
       <td className="td-num">
-        <span style={{ fontSize: '0.65rem', color: 'var(--accent)', background: 'var(--accent)18', borderRadius: 3, padding: '2px 5px', fontWeight: 700 }}>
+        <span style={{ fontSize: '0.65rem', color: 'var(--adx-accent)', background: 'var(--adx-accent)18', borderRadius: 3, padding: '2px 5px', fontWeight: 700 }}>
           {token.quoteSymbol}
         </span>
       </td>
@@ -357,7 +357,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     const active = sortCol === col
     return (
       <th className="th-sort" style={{ textAlign: align as 'right' | 'left', cursor: 'pointer' }} onClick={() => toggleSort(col)}>
-        <span style={{ color: active ? 'var(--accent)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+        <span style={{ color: active ? 'var(--adx-accent)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
           {label} {active ? (sortAsc ? '↑' : '↓') : ''}
         </span>
       </th>

@@ -77,15 +77,15 @@ export default function TradingWalletPanel() {
 
   const inputStyle: React.CSSProperties = {
     padding: '9px 10px', borderRadius: 7, fontSize: '0.8rem', background: 'var(--bg-2)',
-    border: '1px solid var(--card-border)', color: 'var(--text)', outline: 'none', width: '100%',
+    border: '1px solid var(--adx-card-border)', color: 'var(--text)', outline: 'none', width: '100%',
   }
   const btnStyle: React.CSSProperties = {
     padding: '9px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 700,
-    background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%',
+    background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%',
   }
 
   return (
-    <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, padding: 14, marginBottom: 12 }}>
+    <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 14, marginBottom: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <span style={{ fontWeight: 700, fontSize: '0.82rem' }}>Trading wallet</span>
         {view === 'unlocked' && <button onClick={doLock} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.68rem' }}>Lock</button>}
@@ -98,7 +98,7 @@ export default function TradingWalletPanel() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <span style={{ fontFamily: 'var(--mono)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>{short(address)}</span>
             <button onClick={() => { void navigator.clipboard.writeText(address); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
-              style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.68rem' }}>
+              style={{ background: 'none', border: 'none', color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.68rem' }}>
               {copied ? 'Copied' : 'Copy'}
             </button>
           </div>
@@ -110,7 +110,7 @@ export default function TradingWalletPanel() {
             Deposit USDC on Arc mainnet to this address to trade with one click from the terminal.
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => setView('export')} style={{ ...btnStyle, background: 'var(--bg-2)', color: 'var(--text)', border: '1px solid var(--card-border)' }}>Export key</button>
+            <button onClick={() => setView('export')} style={{ ...btnStyle, background: 'var(--bg-2)', color: 'var(--text)', border: '1px solid var(--adx-card-border)' }}>Export key</button>
             <button onClick={doDelete} style={{ ...btnStyle, background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }}>Delete</button>
           </div>
         </div>
@@ -132,7 +132,7 @@ export default function TradingWalletPanel() {
           <input type="password" placeholder="New passcode (min 6 chars)" value={passcode} onChange={e => setPasscode(e.target.value)} style={inputStyle} />
           <input type="password" placeholder="Confirm passcode" value={passcode2} onChange={e => setPasscode2(e.target.value)} style={inputStyle} />
           <button onClick={doCreate} style={btnStyle}>Create wallet</button>
-          <button onClick={() => { setView('import'); setError('') }} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '0.68rem', cursor: 'pointer' }}>Import existing key</button>
+          <button onClick={() => { setView('import'); setError('') }} style={{ background: 'none', border: 'none', color: 'var(--adx-accent)', fontSize: '0.68rem', cursor: 'pointer' }}>Import existing key</button>
         </div>
       )}
 

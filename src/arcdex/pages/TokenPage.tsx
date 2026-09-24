@@ -133,7 +133,7 @@ export default function TokenPage({ address, navigate }: Props) {
 
       {/* stats bar */}
       {pair && (
-        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--card-border)', fontSize: '0.8rem' }}>
+        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', fontSize: '0.8rem' }}>
           {[
             ['24h Change', `${pair.priceChange?.h24 >= 0 ? '+' : ''}${pair.priceChange?.h24?.toFixed(2) ?? 0}%`, pair.priceChange?.h24 >= 0 ? '#22c55e' : '#ef4444'],
             ['24h Volume', fmt(pair.volume?.h24, '$'), '#3b82f6'],
@@ -153,14 +153,14 @@ export default function TokenPage({ address, navigate }: Props) {
       <div className="token-detail-grid">
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* price chart */}
-          <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, marginTop: 16, padding: 16 }}>
+          <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16, padding: 16 }}>
             <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>PRICE CHART</div>
             <PriceChart poolAddress={pair?.pairAddress ?? null} />
           </div>
 
       {/* live trades */}
-      <div style={{ marginTop: 16, background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--card-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ marginTop: 16, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Live Trades</span>
           <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
             <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#22c55e', marginRight: 5, animation: 'pulse 1.5s infinite' }} />
@@ -176,7 +176,7 @@ export default function TokenPage({ address, navigate }: Props) {
           <div style={{ overflowY: 'auto', maxHeight: 420 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--card-border)' }}>
+                <tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
                   {['Type', 'USD Value', 'Wallet', 'Tx Hash', 'Time'].map(h => (
                     <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.7rem', letterSpacing: '0.05em' }}>{h}</th>
                   ))}
@@ -184,7 +184,7 @@ export default function TokenPage({ address, navigate }: Props) {
               </thead>
               <tbody>
                 {trades.map((t, i) => (
-                  <tr key={t.txHash + i} style={{ borderBottom: '1px solid var(--card-border)', background: i === 0 ? (t.kind === 'buy' ? 'rgba(34,197,94,0.04)' : 'rgba(239,68,68,0.04)') : 'transparent' }}>
+                  <tr key={t.txHash + i} style={{ borderBottom: '1px solid var(--adx-card-border)', background: i === 0 ? (t.kind === 'buy' ? 'rgba(34,197,94,0.04)' : 'rgba(239,68,68,0.04)') : 'transparent' }}>
                     <td style={{ padding: '8px 12px' }}>
                       <span style={{ background: t.kind === 'buy' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: t.kind === 'buy' ? '#22c55e' : '#ef4444', fontWeight: 700, padding: '2px 8px', borderRadius: 4, fontSize: '0.72rem' }}>
                         {t.kind.toUpperCase()}
@@ -195,7 +195,7 @@ export default function TokenPage({ address, navigate }: Props) {
                     </td>
                     <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>
                       <a href={`${ARC_EXPLORER}/address/${t.walletAddress}`} target="_blank" rel="noopener noreferrer"
-                        style={{ color: 'var(--accent)', textDecoration: 'none' }}>
+                        style={{ color: 'var(--adx-accent)', textDecoration: 'none' }}>
                         {short(t.walletAddress)}
                       </a>
                     </td>
@@ -216,7 +216,7 @@ export default function TokenPage({ address, navigate }: Props) {
         </div>
 
         {/* swap sidebar */}
-        <div className="token-detail-swap" style={{ marginTop: 16, background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div className="token-detail-swap" style={{ marginTop: 16, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
           {radarToken ? (
             <SwapWidget token={radarToken} />
           ) : (

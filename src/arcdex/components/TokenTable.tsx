@@ -61,7 +61,7 @@ export default function TokenTable({ tokens, loading, navigate, filter, launchpa
     <div className="table-scroll">
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
         <thead>
-          <tr style={{ borderBottom: '1px solid var(--card-border)' }}>
+          <tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
             <th style={{ padding: '10px 16px', textAlign: 'left', color: 'var(--text-muted)',
               fontWeight: 500, fontSize: '0.75rem', whiteSpace: 'nowrap' }}>#</th>
             <th style={{ padding: '10px 8px', textAlign: 'left', color: 'var(--text-muted)',
@@ -74,7 +74,7 @@ export default function TokenTable({ tokens, loading, navigate, filter, launchpa
                 onClick={() => toggleSort(h.key)}
                 style={{
                   padding: '10px 16px', textAlign: (h.align ?? 'right') as 'right' | 'left',
-                  color: sort === h.key ? 'var(--accent)' : 'var(--text-muted)',
+                  color: sort === h.key ? 'var(--adx-accent)' : 'var(--text-muted)',
                   fontWeight: 500, fontSize: '0.75rem', cursor: 'pointer',
                   userSelect: 'none', whiteSpace: 'nowrap',
                 }}

@@ -136,7 +136,7 @@ export default function SwapWidget({ token }: Props) {
     <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {/* Mode toggle */}
       <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden',
-        border: '1px solid var(--card-border)', background: 'var(--bg-2)' }}>
+        border: '1px solid var(--adx-card-border)', background: 'var(--bg-2)' }}>
         {(['buy', 'sell'] as const).map(m => (
           <button key={m} onClick={() => setMode(m)} style={{
             flex: 1, padding: '10px', fontSize: '0.875rem', fontWeight: 600,
@@ -160,7 +160,7 @@ export default function SwapWidget({ token }: Props) {
           onChange={e => setAmountIn(e.target.value)}
           style={{
             padding: '12px 14px', borderRadius: 8, fontSize: '1rem', fontFamily: 'var(--mono)',
-            background: 'var(--bg-2)', border: '1px solid var(--card-border)',
+            background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)',
             color: 'var(--text)', outline: 'none', width: '100%',
           }}
         />
@@ -169,7 +169,7 @@ export default function SwapWidget({ token }: Props) {
       {/* Fee breakdown */}
       {parsedIn > 0n && (
         <div style={{ padding: '12px', borderRadius: 8, background: 'var(--bg-2)',
-          border: '1px solid var(--card-border)', fontSize: '0.8125rem', display: 'flex',
+          border: '1px solid var(--adx-card-border)', fontSize: '0.8125rem', display: 'flex',
           flexDirection: 'column', gap: '6px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
             <span>Amount in</span>
@@ -180,7 +180,7 @@ export default function SwapWidget({ token }: Props) {
             <span className="mono">{formatUnits(platformFee, decimalsIn)} {mode === 'buy' ? 'USDC' : token.symbol}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between',
-            borderTop: '1px solid var(--card-border)', paddingTop: 6, color: 'var(--text)' }}>
+            borderTop: '1px solid var(--adx-card-border)', paddingTop: 6, color: 'var(--text)' }}>
             <span>You receive (~)</span>
             <span className="mono" style={{ color: 'var(--green)' }}>{estimated} {mode === 'buy' ? token.symbol : 'USDC'}</span>
           </div>
@@ -201,7 +201,7 @@ export default function SwapWidget({ token }: Props) {
           border: '1px solid rgba(34,197,94,0.3)', color: '#86efac', fontSize: '0.8125rem' }}>
           Swap confirmed!{' '}
           <a href={`https://explorer.mainnet.arc.io/tx/${txHash}`} target="_blank" rel="noreferrer"
-            style={{ color: 'var(--accent)' }}>View on explorer ↗</a>
+            style={{ color: 'var(--adx-accent)' }}>View on explorer ↗</a>
         </div>
       )}
 
@@ -211,7 +211,7 @@ export default function SwapWidget({ token }: Props) {
           {({ show }) => (
             <button onClick={show} style={{
               padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700,
-              background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer',
+              background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer',
               width: '100%',
             }}>
               Connect Wallet

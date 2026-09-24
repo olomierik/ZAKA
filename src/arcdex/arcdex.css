@@ -1,23 +1,35 @@
 /* ── ARCDEX – ArcTools-inspired dark terminal theme ───────────────── */
 
+/* Prefixed --adx- on every token that would otherwise collide with
+   src/index.css (ZAKA's stylesheet, also loaded globally by main.tsx on
+   every page — both files declare bare custom properties on :root, and
+   whichever one's bundle happens to load last silently wins for BOTH
+   apps at once). Confirmed live: --bg/--border/--accent/--card-bg/
+   --card-border were all colliding, with ZAKA's near-opaque-WHITE
+   --card-bg (rgba(255,255,255,0.82), meant for its light theme) beating
+   this file's dark one on every card across the app — light text sitting
+   on an accidentally-white card background is exactly "text is faded/
+   invisible". Names with no equivalent in index.css (--bg-2/3/4, --text,
+   --text-muted, --green, --red, --amber, --sans, --mono, etc.) can't
+   collide and are left as-is. */
 :root {
-  --bg:          #060d18;
-  --bg-2:        #0b1525;
-  --bg-3:        #111e30;
-  --bg-4:        #162236;
-  --border:      rgba(255,255,255,0.08);
-  --border-hi:   rgba(255,255,255,0.16);
-  --text:        #eef3fa;
-  --text-muted:  #86a2c2;
-  --accent:      #3b82f6;
-  --accent-dim:  rgba(59,130,246,0.15);
-  --green:       #22c55e;
-  --red:         #ef4444;
-  --amber:       #f59e0b;
-  --card-bg:     #0b1525;
-  --card-border: rgba(255,255,255,0.08);
-  --sans:        'Inter', system-ui, sans-serif;
-  --mono:        'JetBrains Mono', 'Fira Code', monospace;
+  --adx-bg:          #060d18;
+  --bg-2:            #0b1525;
+  --bg-3:            #111e30;
+  --bg-4:            #162236;
+  --adx-border:      rgba(255,255,255,0.08);
+  --border-hi:       rgba(255,255,255,0.16);
+  --text:            #eef3fa;
+  --text-muted:      #86a2c2;
+  --adx-accent:      #3b82f6;
+  --accent-dim:      rgba(59,130,246,0.15);
+  --green:           #22c55e;
+  --red:             #ef4444;
+  --amber:           #f59e0b;
+  --adx-card-bg:     #0b1525;
+  --adx-card-border: rgba(255,255,255,0.08);
+  --sans:            'Inter', system-ui, sans-serif;
+  --mono:            'JetBrains Mono', 'Fira Code', monospace;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -31,8 +43,16 @@ html, body, #root { height: 100%; }
    colors even though computed styles report full brightness/opacity. */
 html { color-scheme: dark; }
 
-body {
-  background: var(--bg);
+/* `html body` (specificity 0,0,2) rather than plain `body` (0,0,1) —
+   index.css also declares a plain `body {...}` rule for its own app, and
+   with equal specificity the LAST-LOADED stylesheet wins regardless of
+   which one is "correct" for the page actually being rendered. Renaming
+   the colliding --adx-bg variable above fixed every element that reads
+   it, but body's own background/color is a direct rule collision, not a
+   variable one — this makes ours win outright rather than depending on
+   bundle/import order. */
+html body {
+  background: var(--adx-bg);
   color: var(--text);
   font-family: var(--sans);
   font-size: 13px;
@@ -61,7 +81,7 @@ body {
   width: 158px;
   flex-shrink: 0;
   background: var(--bg-2);
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--adx-border);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -89,7 +109,7 @@ body {
   border-left: 2px solid transparent;
 }
 .sidebar-item:hover { background: var(--bg-3); color: var(--text); }
-.sidebar-item.active { background: var(--accent-dim); color: var(--accent); border-left-color: var(--accent); }
+.sidebar-item.active { background: var(--accent-dim); color: var(--adx-accent); border-left-color: var(--adx-accent); }
 .sidebar-item.disabled { opacity: 0.4; cursor: not-allowed; }
 .sidebar-icon { font-size: 0.75rem; width: 14px; text-align: center; flex-shrink: 0; }
 
@@ -107,7 +127,7 @@ body {
   width: 240px;
   flex-shrink: 0;
   background: var(--bg-2);
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--adx-border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -115,7 +135,7 @@ body {
 .feed-header {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--adx-border);
   font-size: 0.75rem; font-weight: 700; color: var(--text);
   flex-shrink: 0;
 }
@@ -123,14 +143,14 @@ body {
   padding: 2px 8px; border-radius: 4px; font-size: 0.67rem; font-weight: 600;
   color: var(--text-muted); cursor: pointer;
 }
-.feed-tab.active { background: var(--accent-dim); color: var(--accent); }
+.feed-tab.active { background: var(--accent-dim); color: var(--adx-accent); }
 .feed-list { flex: 1; overflow-y: auto; }
 .feed-empty { padding: 20px 12px; font-size: 0.72rem; color: var(--text-muted); }
 .feed-item {
   display: grid; grid-template-columns: 1fr auto;
   grid-template-rows: auto auto;
   gap: 1px 6px; padding: 7px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--adx-border);
   cursor: pointer; transition: background 0.1s;
 }
 .feed-item:hover { background: var(--bg-3); }
@@ -146,7 +166,7 @@ body {
   display: flex; align-items: center;
   height: 48px; padding: 0 16px;
   background: var(--bg-2);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--adx-border);
   gap: 14px; flex-shrink: 0; z-index: 50;
 }
 .navbar-logo {
@@ -184,20 +204,20 @@ body {
   white-space: nowrap;
 }
 .navbar-link:hover { color: var(--text); background: var(--bg-3); }
-.navbar-link.active { color: var(--accent); background: var(--accent-dim); }
+.navbar-link.active { color: var(--adx-accent); background: var(--accent-dim); }
 
 .navbar-search-wrap { flex: 1; min-width: 100px; max-width: 320px; }
 .navbar-search {
   width: 100%;
-  background: var(--bg-3); border: 1px solid var(--border);
+  background: var(--bg-3); border: 1px solid var(--adx-border);
   color: var(--text); border-radius: 7px; padding: 7px 11px;
   font-size: 0.78rem; outline: none; font-family: var(--sans);
 }
 .navbar-search::placeholder { color: var(--text-muted); }
-.navbar-search:focus { border-color: var(--accent); }
+.navbar-search:focus { border-color: var(--adx-accent); }
 .navbar-search-toggle {
   display: none;
-  background: var(--bg-3); border: 1px solid var(--border); border-radius: 7px;
+  background: var(--bg-3); border: 1px solid var(--adx-border); border-radius: 7px;
   width: 32px; height: 32px; cursor: pointer; font-size: 0.85rem; flex-shrink: 0;
 }
 
@@ -209,7 +229,7 @@ body {
 /* ── ticker bar ──────────────────────────────────────────────────── */
 .ticker-bar {
   height: 32px; overflow: hidden; background: var(--bg-2);
-  border-bottom: 1px solid var(--border); flex-shrink: 0;
+  border-bottom: 1px solid var(--adx-border); flex-shrink: 0;
   display: flex; align-items: center;
 }
 .ticker-track {
@@ -225,7 +245,7 @@ body {
 .ticker-item {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 0 14px; cursor: pointer; height: 32px;
-  border-right: 1px solid var(--border); flex-shrink: 0;
+  border-right: 1px solid var(--adx-border); flex-shrink: 0;
   transition: background 0.1s;
 }
 .ticker-item:hover { background: var(--bg-3); }
@@ -241,36 +261,36 @@ body {
 /* ── source filter pills ─────────────────────────────────────────── */
 .filter-bar {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  padding: 8px 12px; border-bottom: 1px solid var(--border);
-  background: var(--bg); flex-shrink: 0;
+  padding: 8px 12px; border-bottom: 1px solid var(--adx-border);
+  background: var(--adx-bg); flex-shrink: 0;
 }
 .source-pills { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
 .source-pill {
   padding: 3px 11px; border-radius: 99px; font-size: 0.68rem; font-weight: 600;
-  border: 1px solid var(--border); background: transparent; color: var(--text-muted);
+  border: 1px solid var(--adx-border); background: transparent; color: var(--text-muted);
   cursor: pointer; transition: all 0.12s; white-space: nowrap;
 }
 .source-pill:hover { border-color: var(--border-hi); color: var(--text); }
-.source-pill.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+.source-pill.active { border-color: var(--adx-accent); background: var(--accent-dim); color: var(--adx-accent); }
 
 .filter-controls { display: flex; gap: 6px; align-items: center; }
 .filter-input {
-  background: var(--bg-3); border: 1px solid var(--border);
+  background: var(--bg-3); border: 1px solid var(--adx-border);
   color: var(--text); border-radius: 5px; padding: 4px 8px;
   font-size: 0.68rem; outline: none; font-family: var(--sans);
 }
 .filter-input::placeholder { color: var(--text-muted); }
-.filter-input:focus { border-color: var(--accent); }
+.filter-input:focus { border-color: var(--adx-accent); }
 
 /* ── view tabs ───────────────────────────────────────────────────── */
 .view-bar {
   display: flex; align-items: center; gap: 0;
-  padding: 0 12px; border-bottom: 1px solid var(--border);
-  background: var(--bg); flex-shrink: 0; flex-wrap: wrap;
+  padding: 0 12px; border-bottom: 1px solid var(--adx-border);
+  background: var(--adx-bg); flex-shrink: 0; flex-wrap: wrap;
   min-height: 38px;
 }
 .sort-select {
-  background: var(--bg-3); border: 1px solid var(--border);
+  background: var(--bg-3); border: 1px solid var(--adx-border);
   color: var(--text); border-radius: 5px; padding: 4px 8px;
   font-size: 0.7rem; outline: none; cursor: pointer; margin-right: 8px;
   font-family: var(--sans);
@@ -283,7 +303,7 @@ body {
   transition: all 0.12s; white-space: nowrap;
 }
 .view-tab:hover { color: var(--text); }
-.view-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.view-tab.active { color: var(--adx-accent); border-bottom-color: var(--adx-accent); }
 
 .time-tabs { display: flex; gap: 2px; margin-left: auto; align-items: center; }
 .time-tab {
@@ -309,16 +329,16 @@ body {
 /* ── pagination ──────────────────────────────────────────────────── */
 .pagination-bar {
   display: flex; align-items: center; gap: 4px;
-  padding: 6px 12px; border-bottom: 1px solid var(--border);
-  background: var(--bg); flex-shrink: 0;
+  padding: 6px 12px; border-bottom: 1px solid var(--adx-border);
+  background: var(--adx-bg); flex-shrink: 0;
 }
 .pg-btn {
   padding: 3px 10px; border-radius: 4px; font-size: 0.68rem; font-weight: 600;
-  background: var(--bg-3); border: 1px solid var(--border); color: var(--text-muted);
+  background: var(--bg-3); border: 1px solid var(--adx-border); color: var(--text-muted);
   cursor: pointer; transition: all 0.12s;
 }
-.pg-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.pg-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.pg-btn:hover:not(:disabled) { border-color: var(--adx-accent); color: var(--adx-accent); }
+.pg-btn.active { background: var(--accent-dim); border-color: var(--adx-accent); color: var(--adx-accent); }
 .pg-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .pg-info { font-size: 0.68rem; color: var(--text-muted); margin-left: 6px; white-space: nowrap; }
 
@@ -356,7 +376,7 @@ body {
 }
 
 .token-row {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--adx-border);
   cursor: pointer; transition: background 0.1s;
 }
 .token-row:hover { background: var(--bg-3); }
@@ -369,7 +389,7 @@ body {
 .token-cards { display: none; }
 .token-card {
   display: flex; flex-direction: column; gap: 8px;
-  padding: 12px 14px; border-bottom: 1px solid var(--border);
+  padding: 12px 14px; border-bottom: 1px solid var(--adx-border);
   cursor: pointer; transition: background 0.1s;
 }
 .token-card:active { background: var(--bg-3); }
@@ -379,7 +399,7 @@ body {
 .token-card-price { text-align: right; flex-shrink: 0; }
 .token-card-stats {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
-  padding-top: 8px; border-top: 1px solid var(--border);
+  padding-top: 8px; border-top: 1px solid var(--adx-border);
 }
 .token-card-stat { display: flex; flex-direction: column; gap: 1px; }
 .token-card-stat-label { font-size: 0.6rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -392,12 +412,12 @@ body {
 .token-page { height: 100%; overflow-y: auto; }
 .token-page-header {
   display: flex; align-items: center; gap: 16px;
-  padding: 14px 16px; border-bottom: 1px solid var(--border);
+  padding: 14px 16px; border-bottom: 1px solid var(--adx-border);
   background: var(--bg-2); flex-wrap: wrap;
 }
 .back-btn {
   padding: 6px 12px; border-radius: 7px; font-size: 0.78rem; font-weight: 600;
-  background: var(--bg-3); border: 1px solid var(--border); color: var(--text-muted);
+  background: var(--bg-3); border: 1px solid var(--adx-border); color: var(--text-muted);
   cursor: pointer; transition: all 0.12s; flex-shrink: 0;
 }
 .back-btn:hover { color: var(--text); border-color: var(--border-hi); }
@@ -467,7 +487,7 @@ body {
 @media (max-width: 600px) {
   .navbar-search-wrap {
     display: none; position: absolute; top: 48px; left: 0; right: 0;
-    padding: 8px 10px; background: var(--bg-2); border-bottom: 1px solid var(--border);
+    padding: 8px 10px; background: var(--bg-2); border-bottom: 1px solid var(--adx-border);
     max-width: none; z-index: 80;
   }
   .navbar-search-wrap.open { display: block; }
