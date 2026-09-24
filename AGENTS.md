@@ -10,7 +10,9 @@ Two apps in this repo:
 
 ## Deployed Contracts
 
-### ArcDexSwapRouter — the mainnet swap router (1% platform fee)
+### ArcDexSwapRouter — the mainnet swap router
+**v2 (2% fee, 15% of it to referrers, sticky on-chain referrer) is built and tested but NOT yet deployed.** The owner deploys it with `scripts/deploy-swap-router.sh`, then `VITE_ARCDEX_SWAP_ROUTER_ADDRESS` is updated on Vercel project `app`. The frontend detects v1 or v2 on-chain, so nothing else changes. v1 details below.
+
 - **Status: LIVE on Arc mainnet** at `0xC519B929981f5375D67Ab3930fFB100f0a606088` ([explorer](https://explorer.arc.io/address/0xC519B929981f5375D67Ab3930fFB100f0a606088)). Owner `0x414B6Be4CF906739FbF7D49165beCa5F4CeEC3dA` (same deploy-only wallet as ArcLaunchpad), `feeWallet` `0x274262A0321A0701b0A46a3576e07aE881c286Bb`, `feeBps` 100, not paused. After deploy, the on-chain runtime bytecode was verified identical to the tested build, apart from its immutables. Every config getter was read back. `VITE_ARCDEX_SWAP_ROUTER_ADDRESS` is set in `.env` and Vercel production. Vercel stores it as *sensitive*, so `vercel env pull` shows it empty; check the deployed bundle instead.
 
 `contracts/ArcDexSwapRouter.sol`. Buys/sells any Argus coin (and $ARGUS) from the app, taking a 1% fee **in USDC** on every swap: off the input on buys, off the output on sells. Fee goes straight to `feeWallet` (default `0x274262A0321A0701b0A46a3576e07aE881c286Bb`), no accrual; `feeBps` is owner-adjustable but hard-capped on-chain at `MAX_FEE_BPS = 100`.
@@ -72,6 +74,39 @@ Every Argus coin across all 8 Portals, live, the way argus.world does it: **Geck
 - **Upstream key (optional).** Set `COINGECKO_API_KEY` in Vercel to move both `/api/argus` and `/api/gecko` to CoinGecko's paid on-chain API: same data, dedicated rate limit (`api/_geckoterminal.ts`). Without it, the free GeckoTerminal API is shared by IP and can throttle under load.
 - The on-chain Portal reader in `src/arcdex/api/argus.ts` is kept only as a fallback if `/api/argus` fails entirely.
 
+
+## Social trading layer (fomo.family-style) — ARCDEX
+
+ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB, Monad, Robinhood Chain, Ethereum) has no Arc support, so that's our gap. Owner decisions (2026-09-25): wallet = account; **2% platform fee, 15% of it to referrers**; onboarding via the in-browser trading wallet plus USDC deposits.
+
+**Identity.** `src/arcdex/lib/identity.ts` `useTrader()` returns the unlocked in-browser trading wallet (one-tap, no pop-ups), or else the connected wallet. Profiles, trades and referrals all belong to that address. `embeddedWallet.ts` fires `WALLET_EVENT` on unlock and lock.
+
+**Database** (`supabase/migrations/20260925000000_arcdex_social.sql`, run by the owner in the Supabase SQL editor). `arcdex_*` tables hold profiles, follows, theses (+likes), and the indexed router trades, referrals and payouts, plus SQL functions for the leaderboard (realized PnL), trader positions and referral stats.
+- **Security:** public-read RLS; no client write policies.
+- **Verified on PGlite:** safe to re-run, PnL math correct, constraints enforced, anonymous writes blocked.
+
+**Server (Vercel `api/`).**
+- `/api/session`: wallet signs a sign-in message (EOA + ERC-1271/6492) and gets a 30-day HMAC token. Needs `ARCDEX_SESSION_SECRET`, which is set. Tests: `bun scripts/test-session.ts`.
+- `/api/social`: profile, follow, thesis and like writes for the token's own address only; 20 theses/day.
+- `/api/index-trades`: idempotent, throttled indexer of router `Swapped`/`ReferrerBound`/`ReferralPaid` events (v1 from block 22548761, plus the current router) into Supabase. Pages call it opportunistically. Tests: `bun scripts/test-index-decode.ts`.
+- Writes and the indexer need `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`) in Vercel. The owner sets it; until then they return 503 and the UI shows empty states.
+
+**Client.**
+- `src/arcdex/api/social.ts`: reads via the Supabase anon key; writes via `/api/social`, signing in automatically.
+- Pages: `TraderPage` (profile, follow, positions with live PnL, top trades, theses), `LeaderboardPage`, `FeedPage` (everyone/following), `RewardsPage` (invite link, referral earnings).
+- On a coin page:
+  - chart trader avatars (`PriceChart` `trades` prop, with the overlay above the canvases);
+  - `TokenSocialTabs` (Trades / Top traders / Thesis);
+  - `SafetyPanel` (dev sold, dev %, top-10, tax, honeypot, thin liquidity);
+  - `PositionCard` (PnL and share card).
+- `ArgusSwapWidget`:
+  - reads `VERSION`/`feeBps`/`referralShareBps` from the chain (`lib/routerInfo.ts`); v1 and v2 ABIs;
+  - passes the referrer on v2;
+  - $5–$100 quick buys; a price-impact warning at 5% and confirmation required at 15%;
+  - one-tap trades via the trading wallet; a Share card after each trade.
+- Referrals:
+  - `lib/referral.ts` captures `?ref=<username|address>` first-touch, and loads Supabase lazily.
+  - The router binds the referrer on-chain on the first referred swap.
 
 ## Hosting — arcdex.online only
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Address } from 'viem'
 import {
   getArgusTokenPools, getArgusTokenInfo, getArgusTrades, getArgusOnchain, buildSwapRoute, copycatOf,
@@ -6,8 +6,13 @@ import {
 } from '../api/argusMarket'
 import { subscribePoolSwaps, type LiveSwap } from '../api/argusLive'
 import { ARC_EXPLORER } from '../api/arcRpc'
-import PriceChart from '../components/PriceChart'
+import PriceChart, { type ChartTrade } from '../components/PriceChart'
 import ArgusSwapWidget from '../components/ArgusSwapWidget'
+import TokenSocialTabs, { Who, type TradeRow } from '../components/TokenSocialTabs'
+import SafetyPanel from '../components/SafetyPanel'
+import PositionCard from '../components/PositionCard'
+import { getProfiles, type Profile } from '../api/social'
+import { useTrader } from '../lib/identity'
 import type { Page } from '../App'
 
 // Full page for one Argus launch. Live market data (price, volume,
@@ -19,15 +24,8 @@ import type { Page } from '../App'
 
 interface Props { address: string; pool: string; navigate: (p: Page) => void }
 
-interface Row {
-  txHash: string
-  maker: string | null
-  kind: 'buy' | 'sell'
-  usd: number
-  tokenAmount: number
-  timestamp: number
-  live: boolean // pushed from the chain, not yet indexed by GeckoTerminal
-}
+// live = pushed from the chain, not yet indexed by GeckoTerminal
+type Row = TradeRow
 
 const card: React.CSSProperties = { background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16 }
 const cardHead: React.CSSProperties = { padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 700, fontSize: '0.85rem' }
@@ -88,6 +86,22 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   const [live, setLive] = useState<LiveSwap[]>([])
   const [tradesLoaded, setTradesLoaded] = useState(false)
   const [, tick] = useState(0)
+  const trader = useTrader()
+  const me = trader.address?.toLowerCase() ?? null
+  const [profiles, setProfiles] = useState<Map<string, Profile>>(new Map())
+  const [positionUsd, setPositionUsd] = useState<number | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const requested = useRef(new Set<string>())
+
+  // Usernames/avatars for everyone shown on the page, fetched once each.
+  const needProfiles = useCallback((addresses: string[]) => {
+    const fresh = [...new Set(addresses.map(a => a.toLowerCase()))].filter(a => !requested.current.has(a))
+    if (fresh.length === 0) return
+    fresh.forEach(a => requested.current.add(a))
+    void getProfiles(fresh).then(found => {
+      if (found.size) setProfiles(prev => { const n = new Map(prev); found.forEach((p, a) => n.set(a, p)); return n })
+    }).catch(() => {})
+  }, [])
 
   // The pool the Terminal row pointed at, if it's still one of this
   // token's tradable pools; otherwise its deepest.
@@ -158,6 +172,24 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     const indexed: Row[] = trades.map(t => ({ ...t, live: false }))
     return [...pushed, ...indexed].sort((a, b) => b.timestamp - a.timestamp).slice(0, 100)
   }, [trades, live, active])
+
+  useEffect(() => { needProfiles(rows.flatMap(r => (r.maker ? [r.maker] : []))) }, [rows, needProfiles])
+  useEffect(() => { if (chain?.creator) needProfiles([chain.creator]) }, [chain?.creator, needProfiles])
+
+  // Every recent trade as its trader's avatar on the chart.
+  const chartTrades: ChartTrade[] = useMemo(() => rows.flatMap(r => {
+    const price = r.tokenAmount > 0 ? r.usd / r.tokenAmount : 0
+    if (!price) return []
+    const p = r.maker ? profiles.get(r.maker.toLowerCase()) : undefined
+    const who = p?.username ? `@${p.username}` : r.maker ? `${r.maker.slice(0, 6)}…${r.maker.slice(-4)}` : 'Someone'
+    return [{
+      id: r.txHash + r.kind + r.tokenAmount, time: r.timestamp, priceUsd: price, usd: r.usd, kind: r.kind, maker: r.maker,
+      avatarUrl: p?.avatar_url ?? null, mine: !!me && r.maker?.toLowerCase() === me,
+      label: `${who} ${r.kind === 'buy' ? 'bought' : 'sold'} $${r.usd >= 1000 ? (r.usd / 1000).toFixed(1) + 'K' : r.usd.toFixed(2)}`,
+    }]
+  }), [rows, profiles, me])
+
+  const onTraded = useCallback(() => { void loadTrades(); setRefreshKey(k => k + 1) }, [loadTrades])
 
   const symbol = active?.token.symbol || info?.symbol || '…'
   const name = active?.token.name || info?.name || ''
@@ -233,62 +265,30 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ ...card, padding: 16 }}>
             <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>PRICE CHART · USD</div>
-            <PriceChart poolAddress={activePool} />
+            <PriceChart poolAddress={activePool} trades={chartTrades} onTraderClick={a => navigate({ name: 'trader', address: a })} />
           </div>
 
-          <div style={{ ...card, overflow: 'hidden' }}>
-            <div style={cardHead}>
-              <span>Live Trades</span>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-                <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#22c55e', marginRight: 5, animation: 'pulse 1.5s infinite' }} />
-                Arc RPC push + GeckoTerminal
-              </span>
-            </div>
-            {rows.length === 0 ? (
-              <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                {tradesLoaded ? 'No recent trades on this pool — new ones appear here instantly.' : 'Loading trades…'}
-              </div>
-            ) : (
-              <div style={{ overflow: 'auto', maxHeight: 460 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', minWidth: 520 }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
-                      {['Age', 'Type', 'USD', symbol, 'Maker', 'Tx'].map(h => (
-                        <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.7rem', letterSpacing: '0.05em' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map(t => {
-                      const c = t.kind === 'buy' ? 'var(--green)' : 'var(--red)'
-                      return (
-                        <tr key={t.txHash + t.kind + t.tokenAmount} style={{ borderBottom: '1px solid var(--adx-card-border)', background: t.live ? 'rgba(59,130,246,0.06)' : 'transparent' }}>
-                          <td style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>{ago(t.timestamp)}</td>
-                          <td style={{ padding: '8px 12px', color: c, fontWeight: 700 }}>{t.kind.toUpperCase()}</td>
-                          <td style={{ padding: '8px 12px', color: c, fontFamily: 'var(--mono)' }}>{t.usd < 0.01 ? '<$0.01' : `$${fmt(t.usd)}`}</td>
-                          <td style={{ padding: '8px 12px', fontFamily: 'var(--mono)' }}>{fmt(t.tokenAmount)}</td>
-                          <td style={{ padding: '8px 12px' }}>{t.maker ? <Addr a={t.maker} /> : <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>just now…</span>}</td>
-                          <td style={{ padding: '8px 12px' }}><Addr a={t.txHash} kind="tx" /></td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <TokenSocialTabs token={address} symbol={symbol} rows={rows} tradesLoaded={tradesLoaded} profiles={profiles}
+            trader={trader} positionUsd={positionUsd} creator={chain?.creator ?? null} navigate={navigate} onProfilesNeeded={needProfiles} />
         </div>
 
         <div className="token-detail-swap">
           <div style={{ ...card, overflow: 'hidden' }}>
-            <ArgusSwapWidget token={address as Address} symbol={symbol} priceUsd={priceUsd} route={route} routeLoading={routeLoading} onTraded={() => void loadTrades()} />
+            <ArgusSwapWidget token={address as Address} symbol={symbol} tokenImage={image} priceUsd={priceUsd}
+              marketCapUsd={active?.marketCapUsd ?? active?.fdvUsd ?? null} route={route} routeLoading={routeLoading}
+              buyTaxBps={chain?.buyTaxBps} sellTaxBps={chain?.sellTaxBps} onTraded={onTraded} />
           </div>
+
+          <PositionCard token={address} symbol={symbol} image={image} priceUsd={priceUsd} trader={trader} rows={rows}
+            refreshKey={refreshKey} onPositionUsd={setPositionUsd} />
+
+          <SafetyPanel token={address} info={info} chain={chain} liquidityUsd={active?.liquidityUsd ?? null} rows={rows} />
 
           <div style={card}>
             <div style={cardHead}>Token details</div>
             <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10, fontSize: '0.78rem' }}>
               <Detail label="Contract"><Addr a={address} /></Detail>
-              <Detail label={chain?.creatorLabel ?? 'Creator'}>{chain?.creator ? <Addr a={chain.creator} /> : chain ? '—' : '…'}</Detail>
+              <Detail label={chain?.creatorLabel ?? 'Creator'}>{chain?.creator ? <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}><Who address={chain.creator} profiles={profiles} navigate={navigate} /><Addr a={chain.creator} /></span> : chain ? '—' : '…'}</Detail>
               <Detail label="Pool"><span title={activePool} style={{ fontFamily: 'var(--mono)' }}>{short(activePool)}</span></Detail>
               <Detail label="Launched on">{chain?.portal ? `Argus Portal ${chain.portal}` : chain ? 'Argus' : '…'}</Detail>
               {chain?.hook && <Detail label="Hook"><Addr a={chain.hook} /></Detail>}

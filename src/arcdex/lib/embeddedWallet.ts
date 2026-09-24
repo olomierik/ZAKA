@@ -71,6 +71,12 @@ async function decryptPrivateKey(blob: EncryptedBlob, passcode: string): Promise
 
 // ── public API ────────────────────────────────────────────────────────
 
+/** Fired on window whenever the wallet is created, imported, unlocked,
+ * locked or deleted, so UI that depends on it (identity, one-tap trading)
+ * can re-read isUnlocked()/currentAddress(). */
+export const WALLET_EVENT = 'arcdex:embedded-wallet'
+const changed = () => { try { window.dispatchEvent(new Event(WALLET_EVENT)) } catch { /* non-browser */ } }
+
 export function hasStoredWallet(): boolean {
   try { return localStorage.getItem(STORAGE_KEY) !== null } catch { return false }
 }
@@ -87,6 +93,7 @@ export async function createWallet(passcode: string): Promise<`0x${string}`> {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(blob))
   unlockedPrivateKey = pk
   unlockedAccount = privateKeyToAccount(pk)
+  changed()
   return unlockedAccount.address
 }
 
@@ -99,6 +106,7 @@ export async function importPrivateKey(privateKey: string, passcode: string): Pr
   localStorage.setItem(STORAGE_KEY, JSON.stringify(blob))
   unlockedPrivateKey = pk
   unlockedAccount = account
+  changed()
   return account.address
 }
 
@@ -115,6 +123,7 @@ export async function unlock(passcode: string): Promise<`0x${string}`> {
   }
   unlockedPrivateKey = pk
   unlockedAccount = privateKeyToAccount(pk)
+  changed()
   return unlockedAccount.address
 }
 
@@ -122,6 +131,7 @@ export async function unlock(passcode: string): Promise<`0x${string}`> {
 export function lock(): void {
   unlockedPrivateKey = null
   unlockedAccount = null
+  changed()
 }
 
 /** Re-enter passcode to reveal the raw key for export/backup. Never logged. */

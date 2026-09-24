@@ -35,11 +35,12 @@ export default function NavBar({ page, navigate, onMenuClick }: Props) {
   const [searchOpen, setSearchOpen] = useState(false)
 
   const navLinks: { label: string; page: Page }[] = [
-    { label: 'Terminal',  page: { name: 'terminal' } },
-    { label: 'Swap',      page: { name: 'swap' } },
-    { label: 'Bridge',    page: { name: 'bridge' } },
-    { label: 'Launchpad', page: { name: 'launchpad' } },
-    { label: 'Portfolio', page: { name: 'portfolio' } },
+    { label: 'Terminal',    page: { name: 'terminal' } },
+    { label: 'Feed',        page: { name: 'feed' } },
+    { label: 'Leaderboard', page: { name: 'leaderboard' } },
+    { label: 'Earn',        page: { name: 'rewards' } },
+    { label: 'Launchpad',   page: { name: 'launchpad' } },
+    { label: 'Portfolio',   page: { name: 'portfolio' } },
   ]
 
   return (

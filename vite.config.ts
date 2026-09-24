@@ -50,6 +50,10 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
+        // api/_*.ts are shared modules the frontend also imports (e.g.
+        // _argusCore.ts) — let Vite serve those source files itself instead
+        // of forwarding them to the local API server.
+        bypass: (req) => (/^\/api\/_[\w-]+\.ts(\?|$)/.test(req.url ?? '') ? req.url : undefined),
       },
     },
   },

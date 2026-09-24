@@ -10,14 +10,23 @@ const Portfolio      = lazy(() => import('./pages/Portfolio'))
 const Launchpad      = lazy(() => import('./pages/Launchpad'))
 const Swap           = lazy(() => import('./pages/Swap'))
 const Bridge         = lazy(() => import('./pages/Bridge'))
+const TraderPage     = lazy(() => import('./pages/TraderPage'))
+const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'))
+const FeedPage       = lazy(() => import('./pages/FeedPage'))
+const RewardsPage    = lazy(() => import('./pages/RewardsPage'))
 import TradingWalletPanel from './components/TradingWalletPanel'
 import { subscribeAll, deriveTradeInfo, type LiveTrade } from './api/arcRpc'
 import { getPairByAddress } from './api/dexscreener'
 import { subscribeLaunchpadTrades, type LaunchpadLiveTrade } from './api/launchpadRpc'
 import { getLaunchpadToken, LAUNCHPAD_ADDRESS } from './api/launchpad'
+import { captureReferral } from './lib/referral'
+import { useTrader } from './lib/identity'
 import './arcdex.css'
 
-export type Page = { name: 'terminal' } | { name: 'token'; address: string; symbol?: string } | { name: 'argus'; address: string; pool: string } | { name: 'portfolio' } | { name: 'launchpad' } | { name: 'swap' } | { name: 'bridge' }
+// Remember ?ref= before anything renders (first-touch attribution).
+captureReferral()
+
+export type Page = { name: 'terminal' } | { name: 'token'; address: string; symbol?: string } | { name: 'argus'; address: string; pool: string } | { name: 'trader'; address: string } | { name: 'leaderboard' } | { name: 'feed' } | { name: 'rewards' } | { name: 'portfolio' } | { name: 'launchpad' } | { name: 'swap' } | { name: 'bridge' }
 
 // ── live feed item ────────────────────────────────────────────────────
 interface FeedItem {
@@ -36,7 +45,8 @@ export default function App() {
   const [feed, setFeed]       = useState<FeedItem[]>([])
   const [navOpen, setNavOpen] = useState(false)
   const feedTokens            = useRef<{ address: string; symbol: string }[]>([])
-  const navigate = (p: Page) => { setPage(p); setNavOpen(false) }
+  const navigate = (p: Page) => { setPage(p); setNavOpen(false); window.scrollTo({ top: 0 }) }
+  const me = useTrader().address
 
   // Terminal registers its top-by-volume tokens here — currently unused for
   // filtering (the feed below is network-wide), kept so a future "trending
@@ -154,6 +164,23 @@ export default function App() {
                 <span className="sidebar-icon">▤</span> PORTFOLIO
               </button>
             </div>
+            <div className="sidebar-label">SOCIAL</div>
+            <div className="sidebar-section">
+              <button className={`sidebar-item${page.name === 'feed' ? ' active' : ''}`} onClick={() => navigate({ name: 'feed' })}>
+                <span className="sidebar-icon">◉</span> FEED
+              </button>
+              <button className={`sidebar-item${page.name === 'leaderboard' ? ' active' : ''}`} onClick={() => navigate({ name: 'leaderboard' })}>
+                <span className="sidebar-icon">♛</span> LEADERBOARD
+              </button>
+              <button className={`sidebar-item${page.name === 'rewards' ? ' active' : ''}`} onClick={() => navigate({ name: 'rewards' })}>
+                <span className="sidebar-icon">✦</span> INVITE & EARN
+              </button>
+              {me && (
+                <button className={`sidebar-item${page.name === 'trader' && page.address.toLowerCase() === me.toLowerCase() ? ' active' : ''}`} onClick={() => navigate({ name: 'trader', address: me })}>
+                  <span className="sidebar-icon">☺</span> MY PROFILE
+                </button>
+              )}
+            </div>
             <div className="sidebar-label">EARN</div>
             <div className="sidebar-section">
               <button
@@ -176,6 +203,10 @@ export default function App() {
           {page.name === 'launchpad'  && <Launchpad navigate={navigate} />}
           {page.name === 'swap'       && <Swap navigate={navigate} />}
           {page.name === 'bridge'     && <Bridge />}
+          {page.name === 'trader'     && <TraderPage key={page.address} address={page.address} navigate={navigate} />}
+          {page.name === 'leaderboard' && <LeaderboardPage navigate={navigate} />}
+          {page.name === 'feed'       && <FeedPage navigate={navigate} />}
+          {page.name === 'rewards'    && <RewardsPage navigate={navigate} />}
           </Suspense>
         </main>
 

@@ -1,13 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useWriteContract } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
-import { parseUnits, formatUnits, type Address } from 'viem'
+import { parseUnits, formatUnits, type Address, type Hex } from 'viem'
 import { arc } from '../wagmi'
 import { client } from '../api/launchpad'
 import { USDC_ADDRESS, type SwapRoute } from '../api/argusMarket'
+import { useTrader, shortAddr } from '../lib/identity'
+import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
+import { SWAP_ROUTER_ADDRESS, routerConfigured, useRouterInfo, pct, type RouterInfo } from '../lib/routerInfo'
+import { referrerFor, referralLink } from '../lib/referral'
+import { getProfile, triggerIndex } from '../api/social'
+import ShareCardModal from './ShareCardModal'
+import type { CardData } from '../lib/shareCard'
 
-export const SWAP_ROUTER_ADDRESS = String(import.meta.env.VITE_ARCDEX_SWAP_ROUTER_ADDRESS ?? '').trim() as Address
-const routerReady = /^0x[0-9a-fA-F]{40}$/.test(SWAP_ROUTER_ADDRESS)
+export { SWAP_ROUTER_ADDRESS }
 
 const ERC20_ABI = [
   { name: 'allowance', type: 'function', stateMutability: 'view', inputs: [{ name: 'o', type: 'address' }, { name: 's', type: 'address' }], outputs: [{ type: 'uint256' }] },
@@ -15,130 +21,204 @@ const ERC20_ABI = [
   { name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 's', type: 'address' }, { name: 'a', type: 'uint256' }], outputs: [{ type: 'bool' }] },
 ] as const
 
-const POOLKEY = { type: 'tuple', components: [
+const KEY = [
   { name: 'currency0', type: 'address' }, { name: 'currency1', type: 'address' },
   { name: 'fee', type: 'uint24' }, { name: 'tickSpacing', type: 'int24' }, { name: 'hooks', type: 'address' },
-] } as const
-
-const ROUTER_ABI = [
-  { name: 'swapExactInV4', type: 'function', stateMutability: 'nonpayable',
-    inputs: [{ name: 'keys', type: 'tuple[]', components: POOLKEY.components }, { name: 'tokenIn', type: 'address' }, { name: 'amountIn', type: 'uint256' }, { name: 'minAmountOut', type: 'uint256' }, { name: 'deadline', type: 'uint256' }],
-    outputs: [{ name: 'amountOut', type: 'uint256' }] },
-  { name: 'swapExactInV3', type: 'function', stateMutability: 'nonpayable',
-    inputs: [{ name: 'tokenIn', type: 'address' }, { name: 'tokenOut', type: 'address' }, { name: 'poolFee', type: 'uint24' }, { name: 'amountIn', type: 'uint256' }, { name: 'minAmountOut', type: 'uint256' }, { name: 'deadline', type: 'uint256' }],
-    outputs: [{ name: 'amountOut', type: 'uint256' }] },
 ] as const
+const OUT = [{ name: 'amountOut', type: 'uint256' }] as const
+const V4_IN = [{ name: 'keys', type: 'tuple[]', components: KEY }, { name: 'tokenIn', type: 'address' }, { name: 'amountIn', type: 'uint256' }, { name: 'minAmountOut', type: 'uint256' }, { name: 'deadline', type: 'uint256' }] as const
+const V3_IN = [{ name: 'tokenIn', type: 'address' }, { name: 'tokenOut', type: 'address' }, { name: 'poolFee', type: 'uint24' }, { name: 'amountIn', type: 'uint256' }, { name: 'minAmountOut', type: 'uint256' }, { name: 'deadline', type: 'uint256' }] as const
+const REF = { name: 'referrer', type: 'address' } as const
+
+// v1 and v2 differ only by v2's trailing `referrer` argument.
+const ROUTER_V1 = [
+  { name: 'swapExactInV4', type: 'function', stateMutability: 'nonpayable', inputs: V4_IN, outputs: OUT },
+  { name: 'swapExactInV3', type: 'function', stateMutability: 'nonpayable', inputs: V3_IN, outputs: OUT },
+] as const
+const ROUTER_V2 = [
+  { name: 'swapExactInV4', type: 'function', stateMutability: 'nonpayable', inputs: [...V4_IN, REF], outputs: OUT },
+  { name: 'swapExactInV3', type: 'function', stateMutability: 'nonpayable', inputs: [...V3_IN, REF], outputs: OUT },
+] as const
+
+const WARN_IMPACT = 5
+const CONFIRM_IMPACT = 15
 
 interface Props {
   token: Address
   symbol: string
+  tokenImage?: string | null
   priceUsd: number
+  marketCapUsd?: number | null
   route: SwapRoute | null
   routeLoading: boolean
+  buyTaxBps?: number | null
+  sellTaxBps?: number | null
   onTraded?: () => void
 }
 
 type Step = 'idle' | 'approving' | 'quoting' | 'swapping' | 'done' | 'error'
 
-export default function ArgusSwapWidget({ token, symbol, priceUsd, route, routeLoading, onTraded }: Props) {
-  const { address, isConnected } = useAccount()
+const fmtUsd = (n: number) => n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(2)}`
+const fmtTok = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toFixed(2)
+
+export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, marketCapUsd, route, routeLoading, buyTaxBps, sellTaxBps, onTraded }: Props) {
+  const trader = useTrader()
+  const me = trader.address
+  const info = useRouterInfo()
+  const { writeContractAsync } = useWriteContract()
+
   const [mode, setMode] = useState<'buy' | 'sell'>('buy')
   const [amount, setAmount] = useState('')
   const [slippage, setSlippage] = useState(3)
   const [step, setStep] = useState<Step>('idle')
   const [msg, setMsg] = useState('')
+  const [balance, setBalance] = useState<bigint | null>(null)
+  const [allowance, setAllowance] = useState<bigint>(0n)
+  const [impact, setImpact] = useState<number | null>(null)
+  const [riskOk, setRiskOk] = useState(false)
+  const [share, setShare] = useState<{ card: CardData; text: string } | null>(null)
+  const [lastTrade, setLastTrade] = useState<{ kind: 'buy' | 'sell'; usd: number; tokens: number } | null>(null)
 
   const tokenIn = mode === 'buy' ? USDC_ADDRESS : token
-  const tokenOut = mode === 'buy' ? token : USDC_ADDRESS
   const decIn = mode === 'buy' ? 6 : 18
-  const decOut = mode === 'buy' ? 18 : 6
   const amountIn = useMemo(() => { try { return amount ? parseUnits(amount, decIn) : 0n } catch { return 0n } }, [amount, decIn])
+  const feeBps = info?.feeBps ?? 0
+  const taxBps = (mode === 'buy' ? buyTaxBps : sellTaxBps) ?? 0
 
-  const { data: balance, refetch: refetchBal } = useReadContract({
-    address: tokenIn, abi: ERC20_ABI, functionName: 'balanceOf', args: [address!], chainId: arc.id,
-    query: { enabled: !!address },
-  })
-  const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address: tokenIn, abi: ERC20_ABI, functionName: 'allowance', args: [address!, SWAP_ROUTER_ADDRESS], chainId: arc.id,
-    query: { enabled: !!address && routerReady },
-  })
-
-  const { writeContract, data: txHash, error: writeError, reset } = useWriteContract()
-  const { data: receipt } = useWaitForTransactionReceipt({ hash: txHash })
-
+  // Balance + allowance for whichever wallet is trading (works for both the
+  // trading wallet and an external one — no wagmi hooks tied to one).
+  const refresh = useCallback(async () => {
+    if (!me || !routerConfigured) { setBalance(null); setAllowance(0n); return }
+    const [b, a] = await Promise.all([
+      client.readContract({ address: tokenIn, abi: ERC20_ABI, functionName: 'balanceOf', args: [me] }),
+      client.readContract({ address: tokenIn, abi: ERC20_ABI, functionName: 'allowance', args: [me, SWAP_ROUTER_ADDRESS] }),
+    ]).catch(() => [null, 0n] as const)
+    setBalance(b); setAllowance(a ?? 0n)
+  }, [me, tokenIn])
   useEffect(() => {
-    if (!writeError) return
-    setMsg(writeError.message.split('\n')[0].slice(0, 160))
-    setStep('error')
-  }, [writeError])
+    void refresh()
+    const id = setInterval(() => { if (!document.hidden) void refresh() }, 12_000)
+    return () => clearInterval(id)
+  }, [refresh])
 
-  useEffect(() => {
-    if (!receipt) return
-    if (step === 'approving') { void refetchAllowance(); setStep('idle'); setMsg('Approved — now confirm the swap.'); reset() }
-    else if (step === 'swapping') { setStep('done'); setMsg('Swap confirmed.'); setAmount(''); void refetchBal(); onTraded?.(); reset() }
-  }, [receipt]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setImpact(null); setRiskOk(false) }, [amount, mode])
 
-  // Rough pre-trade estimate from the market price, net of our 1% fee.
-  // The exact figure (pool fee, hook tax, price impact) comes from
-  // simulating the real transaction right before it's sent.
+  // Pre-trade estimate from the market price, net of the platform fee and
+  // the coin's creator tax. The exact figure comes from simulating the
+  // real transaction just before it's sent.
+  const net = (1 - feeBps / 10_000) * (1 - taxBps / 10_000)
   const estimate = amountIn > 0n && priceUsd > 0
-    ? mode === 'buy'
-      ? (Number(formatUnits(amountIn, 6)) * 0.99) / priceUsd
-      : Number(formatUnits(amountIn, 18)) * priceUsd * 0.99
+    ? mode === 'buy' ? (Number(formatUnits(amountIn, 6)) * net) / priceUsd : Number(formatUnits(amountIn, 18)) * priceUsd * net
     : 0
 
-  const needsApprove = routerReady && amountIn > 0n && (allowance ?? 0n) < amountIn
-  const insufficient = balance !== undefined && amountIn > balance
+  const insufficient = balance !== null && amountIn > balance
+  const needsApprove = amountIn > 0n && allowance < amountIn
 
-  function buildCall(minOut: bigint) {
+  function callFor(r: RouterInfo, minOut: bigint, referrer: Address) {
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
     if (!route) throw new Error('No route')
+    const abi = r.version === 2 ? ROUTER_V2 : ROUTER_V1
+    const tail = r.version === 2 ? [referrer] : []
     if (route.kind === 'v4') {
       const keys = mode === 'buy' ? route.buyKeys : route.sellKeys
-      return { functionName: 'swapExactInV4' as const, args: [keys, tokenIn, amountIn, minOut, deadline] as const }
+      return { abi, functionName: 'swapExactInV4' as const, args: [keys, tokenIn, amountIn, minOut, deadline, ...tail] }
     }
-    return { functionName: 'swapExactInV3' as const, args: [tokenIn, tokenOut, route.fee, amountIn, minOut, deadline] as const }
+    const tokenOut = mode === 'buy' ? token : USDC_ADDRESS
+    return { abi, functionName: 'swapExactInV3' as const, args: [tokenIn, tokenOut, route.fee, amountIn, minOut, deadline, ...tail] }
+  }
+
+  async function send(req: { address: Address; abi: unknown; functionName: string; args: unknown[] }): Promise<Hex> {
+    if (trader.kind === 'trading-wallet') {
+      // One-tap: the in-browser trading wallet signs directly, no pop-up.
+      return getEmbeddedWalletClient().writeContract(req as never)
+    }
+    return writeContractAsync({ ...req, chainId: arc.id } as never)
   }
 
   async function submit() {
-    if (!address || amountIn === 0n || !route || !routerReady) return
+    if (!me || !info || !route || amountIn === 0n) return
     setMsg('')
-    if (needsApprove) {
-      setStep('approving')
-      // Exact amount, not unlimited — the router never needs more than
-      // this trade.
-      writeContract({ address: tokenIn, abi: ERC20_ABI, functionName: 'approve', args: [SWAP_ROUTER_ADDRESS, amountIn], chainId: arc.id })
-      return
-    }
     try {
+      if (needsApprove) {
+        setStep('approving')
+        // Exact amount only — the router never needs more than this trade.
+        const h = await send({ address: tokenIn, abi: ERC20_ABI, functionName: 'approve', args: [SWAP_ROUTER_ADDRESS, amountIn] })
+        const rc = await client.waitForTransactionReceipt({ hash: h })
+        if (rc.status !== 'success') throw new Error('Approval failed')
+        setAllowance(amountIn)
+      }
+
       setStep('quoting')
-      // Simulate the exact transaction first: this is the real output
-      // after pool fees, the launch's own tax hook and price impact, and
-      // it catches a trade that would revert before the wallet signs it.
-      const sim = buildCall(1n)
-      const { result } = await client.simulateContract({
-        address: SWAP_ROUTER_ADDRESS, abi: ROUTER_ABI, functionName: sim.functionName,
-        args: sim.args as never, account: address,
-      })
+      const referrer = info.version === 2 ? await referrerFor(me) : ('0x0000000000000000000000000000000000000000' as Address)
+      // Simulate the exact transaction: the real output after pool fees,
+      // the coin's tax hook and price impact — and it catches a trade that
+      // would revert before anything is signed.
+      const sim = callFor(info, 1n, referrer)
+      const { result } = await client.simulateContract({ address: SWAP_ROUTER_ADDRESS, abi: sim.abi, functionName: sim.functionName, args: sim.args, account: me } as never)
       const out = result as bigint
+
+      // Price impact vs. the market price (after fee and tax, so it's the
+      // cost of size alone).
+      const outNum = Number(formatUnits(out, mode === 'buy' ? 18 : 6))
+      const imp = estimate > 0 ? Math.max(0, (1 - outNum / estimate) * 100) : 0
+      setImpact(imp)
+      if (imp >= CONFIRM_IMPACT && !riskOk) {
+        setStep('idle')
+        setMsg(`This trade moves the price ${imp.toFixed(1)}% — you'd get ${mode === 'buy' ? fmtTok(outNum) + ' ' + symbol : fmtUsd(outNum)}. Tick the box to confirm, or trade a smaller amount.`)
+        return
+      }
+
       const minOut = (out * BigInt(Math.round((100 - slippage) * 100))) / 10_000n
-      const call = buildCall(minOut)
       setStep('swapping')
-      writeContract({ address: SWAP_ROUTER_ADDRESS, abi: ROUTER_ABI, functionName: call.functionName, args: call.args as never, chainId: arc.id })
+      const call = callFor(info, minOut, referrer)
+      const h = await send({ address: SWAP_ROUTER_ADDRESS, abi: call.abi, functionName: call.functionName, args: call.args })
+      const rc = await client.waitForTransactionReceipt({ hash: h })
+      if (rc.status !== 'success') throw new Error('Swap reverted')
+
+      const usd = mode === 'buy' ? Number(formatUnits(amountIn, 6)) : outNum
+      const tokens = mode === 'buy' ? outNum : Number(formatUnits(amountIn, 18))
+      setLastTrade({ kind: mode, usd, tokens })
+      setStep('done')
+      setMsg(mode === 'buy' ? `Bought ${fmtTok(tokens)} ${symbol} for ${fmtUsd(usd)}` : `Sold ${fmtTok(tokens)} ${symbol} for ${fmtUsd(usd)}`)
+      setAmount('')
+      setAllowance(a => (a >= amountIn ? a - amountIn : 0n))
+      void refresh()
+      triggerIndex(true)
+      onTraded?.()
     } catch (e) {
-      const m = e instanceof Error ? (e as { shortMessage?: string }).shortMessage ?? e.message : String(e)
-      setMsg(`Trade would fail: ${m}`.slice(0, 200))
+      const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
       setStep('error')
+      setMsg(/rejected|denied/i.test(m) ? 'You cancelled the transaction.' : `Trade failed: ${m}`.slice(0, 220))
     }
+  }
+
+  async function openShare() {
+    if (!lastTrade || !me) return
+    const profile = await getProfile(me).catch(() => null)
+    const link = referralLink(me, profile)
+    const mc = marketCapUsd ? ` at ${fmtUsd(marketCapUsd)} market cap` : ''
+    setShare({
+      text: `Just ${lastTrade.kind === 'buy' ? 'aped into' : 'took profit on'} $${symbol}${mc} on ARCDEX ⚡ Trade Arc memecoins with me:`,
+      card: {
+        symbol, tokenImage: tokenImage ?? null,
+        headline: lastTrade.kind === 'buy' ? 'BOUGHT' : 'SOLD',
+        headlineColor: lastTrade.kind === 'buy' ? '#22c55e' : '#f59e0b',
+        lines: [`${fmtUsd(lastTrade.usd)} of $${symbol}`, mc ? mc.trim() : `${fmtTok(lastTrade.tokens)} tokens`, 'on Arc · arcdex.online'],
+        trader: profile?.username ? `@${profile.username}` : shortAddr(me),
+        traderAddress: me,
+        link,
+      },
+    })
   }
 
   const busy = step === 'approving' || step === 'quoting' || step === 'swapping'
   const routeText = route?.kind === 'v4' && route.via === 'ARGUS'
     ? (mode === 'buy' ? `USDC → ARGUS → ${symbol}` : `${symbol} → ARGUS → USDC`)
     : (mode === 'buy' ? `USDC → ${symbol}` : `${symbol} → USDC`)
+  const needsRiskTick = impact !== null && impact >= CONFIRM_IMPACT
 
   return (
-    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--adx-card-border)', background: 'var(--bg-2)' }}>
         {(['buy', 'sell'] as const).map(m => (
           <button key={m} onClick={() => { setMode(m); setAmount(''); setStep('idle'); setMsg('') }} style={{
@@ -152,27 +232,29 @@ export default function ArgusSwapWidget({ token, symbol, priceUsd, route, routeL
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 6 }}>
           <span>{mode === 'buy' ? 'You pay (USDC)' : `You sell (${symbol})`}</span>
-          {balance !== undefined && (
+          {balance !== null && (
             <button onClick={() => setAmount(formatUnits(balance, decIn))} style={{ background: 'none', border: 'none', color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.72rem' }}>
-              Balance: {Number(formatUnits(balance, decIn)).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+              {mode === 'buy' ? 'Cash' : 'Holding'}: {mode === 'buy' ? fmtUsd(Number(formatUnits(balance, 6))) : fmtTok(Number(formatUnits(balance, 18)))}
             </button>
           )}
         </div>
-        <input type="number" min="0" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)}
-          style={{ width: '100%', padding: '12px 14px', borderRadius: 8, fontSize: '1rem', fontFamily: 'var(--mono)', background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', outline: 'none' }} />
-        {mode === 'buy' && (
-          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            {[5, 10, 25, 100].map(v => (
-              <button key={v} onClick={() => setAmount(String(v))} style={{ flex: 1, padding: '6px 0', borderRadius: 6, fontSize: '0.75rem', background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', cursor: 'pointer' }}>${v}</button>
-            ))}
-          </div>
-        )}
+        <input type="number" min="0" inputMode="decimal" placeholder={mode === 'buy' ? '$0' : '0'} value={amount} onChange={e => setAmount(e.target.value)}
+          style={{ width: '100%', padding: '12px 14px', borderRadius: 8, fontSize: '1.05rem', fontFamily: 'var(--mono)', background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', outline: 'none' }} />
+        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          {mode === 'buy'
+            ? [5, 10, 25, 100].map(v => <Chip key={v} onClick={() => setAmount(String(v))}>${v}</Chip>)
+            : [25, 50, 100].map(p => <Chip key={p} onClick={() => balance !== null && setAmount(formatUnits((balance * BigInt(p)) / 100n, 18))}>{p === 100 ? 'Max' : `${p}%`}</Chip>)}
+        </div>
       </div>
 
       <div style={{ padding: 12, borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <Row label="You receive (est.)" value={estimate > 0 ? `${estimate.toLocaleString(undefined, { maximumFractionDigits: decOut === 6 ? 2 : 0 })} ${mode === 'buy' ? symbol : 'USDC'}` : '—'} />
+        <Row label="You receive (est.)" value={estimate > 0 ? (mode === 'buy' ? `${fmtTok(estimate)} ${symbol}` : fmtUsd(estimate)) : '—'} />
         <Row label="Route" value={routeLoading ? 'Finding route…' : route ? routeText : 'No routable pool'} />
-        <Row label="Platform fee" value="1% (in USDC)" />
+        <Row label="Platform fee" value={info ? `${pct(info.feeBps)} (in USDC)` : '…'} />
+        <Row label="Creator tax" value={taxBps ? pct(taxBps) : '0%'} />
+        {impact !== null && (
+          <Row label="Price impact" value={`${impact.toFixed(2)}%`} color={impact >= CONFIRM_IMPACT ? 'var(--red)' : impact >= WARN_IMPACT ? 'var(--amber)' : undefined} />
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ color: 'var(--text-muted)' }}>Max slippage</span>
           <div style={{ display: 'flex', gap: 4 }}>
@@ -183,47 +265,75 @@ export default function ArgusSwapWidget({ token, symbol, priceUsd, route, routeL
         </div>
       </div>
 
-      {msg && (
-        <div style={{ padding: '10px 12px', borderRadius: 8, fontSize: '0.78rem',
-          background: step === 'error' ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)',
-          border: `1px solid ${step === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'}`,
-          color: step === 'error' ? '#fca5a5' : '#86efac' }}>{msg}</div>
+      {needsRiskTick && (
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '0.76rem', color: '#fcd34d', cursor: 'pointer' }}>
+          <input type="checkbox" checked={riskOk} onChange={e => setRiskOk(e.target.checked)} style={{ marginTop: 2 }} />
+          I understand this trade moves the price {impact!.toFixed(1)}% and I'll get less than the market price.
+        </label>
       )}
 
-      {!routerReady ? (
-        <div style={{ padding: 12, borderRadius: 8, fontSize: '0.78rem', background: 'var(--bg-2)', border: '1px dashed var(--adx-card-border)', color: 'var(--text-muted)', textAlign: 'center' }}>
-          Trading opens once the ARCDEX swap router is deployed.
+      {msg && (
+        <div style={{ padding: '10px 12px', borderRadius: 8, fontSize: '0.78rem',
+          background: step === 'error' ? 'rgba(239,68,68,0.1)' : step === 'done' ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
+          border: `1px solid ${step === 'error' ? 'rgba(239,68,68,0.3)' : step === 'done' ? 'rgba(34,197,94,0.3)' : 'rgba(245,158,11,0.35)'}`,
+          color: step === 'error' ? '#fca5a5' : step === 'done' ? '#86efac' : '#fcd34d', display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+          <span>{msg}</span>
+          {step === 'done' && lastTrade && <button onClick={() => void openShare()} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--green)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>Share</button>}
         </div>
-      ) : !isConnected ? (
-        <ConnectKitButton.Custom>
-          {({ show }) => <button onClick={show} style={btn('var(--adx-accent)')}>Connect Wallet</button>}
-        </ConnectKitButton.Custom>
+      )}
+
+      {!routerConfigured ? (
+        <Note>Trading opens once the ARCDEX swap router is deployed.</Note>
+      ) : !me ? (
+        <>
+          <ConnectKitButton.Custom>
+            {({ show }) => <button onClick={show} style={btn('var(--adx-accent)')}>Connect Wallet</button>}
+          </ConnectKitButton.Custom>
+          <Note>Or unlock your <b>trading wallet</b> (right panel) for one-tap trades with no pop-ups.</Note>
+        </>
       ) : (
-        <button onClick={() => void submit()} disabled={busy || amountIn === 0n || !route || insufficient}
-          style={{ ...btn(needsApprove ? 'var(--amber)' : mode === 'buy' ? 'var(--green)' : 'var(--red)'), opacity: busy || amountIn === 0n || !route || insufficient ? 0.5 : 1 }}>
+        <button onClick={() => void submit()} disabled={busy || amountIn === 0n || !route || insufficient || !info || (needsRiskTick && !riskOk)}
+          style={{ ...btn(needsApprove ? 'var(--amber)' : mode === 'buy' ? 'var(--green)' : 'var(--red)'), opacity: busy || amountIn === 0n || !route || insufficient || !info || (needsRiskTick && !riskOk) ? 0.5 : 1 }}>
           {insufficient ? 'Insufficient balance'
             : step === 'approving' ? 'Approving…'
             : step === 'quoting' ? 'Checking trade…'
-            : step === 'swapping' ? 'Swapping…'
-            : needsApprove ? `Approve ${mode === 'buy' ? 'USDC' : symbol}`
+            : step === 'swapping' ? (mode === 'buy' ? 'Buying…' : 'Selling…')
+            : needsApprove ? `Approve & ${mode === 'buy' ? 'buy' : 'sell'}`
             : `${mode === 'buy' ? 'Buy' : 'Sell'} ${symbol}`}
         </button>
       )}
 
+      {me && (
+        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+          Trading as {trader.kind === 'trading-wallet' ? '⚡ trading wallet' : 'wallet'} <span style={{ fontFamily: 'var(--mono)' }}>{shortAddr(me)}</span>
+          {trader.kind === 'trading-wallet' ? ' · one-tap, no pop-ups' : ''}
+        </div>
+      )}
+
       <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5, margin: 0 }}>
-        Every trade is simulated before your wallet signs it. The token's own launch tax (set by its creator on Argus) applies on top of the 1% platform fee.
+        Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.
       </p>
+
+      {share && <ShareCardModal card={share.card} text={share.text} referralsLive={info?.version === 2} onClose={() => setShare(null)} />}
     </div>
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
       <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-      <span style={{ fontFamily: 'var(--mono)', textAlign: 'right' }}>{value}</span>
+      <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', color }}>{value}</span>
     </div>
   )
+}
+
+function Chip({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  return <button onClick={onClick} style={{ flex: 1, padding: '6px 0', borderRadius: 6, fontSize: '0.78rem', fontWeight: 600, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', cursor: 'pointer' }}>{children}</button>
+}
+
+function Note({ children }: { children: React.ReactNode }) {
+  return <div style={{ padding: 10, borderRadius: 8, fontSize: '0.76rem', background: 'var(--bg-2)', border: '1px dashed var(--adx-card-border)', color: 'var(--text-muted)', textAlign: 'center' }}>{children}</div>
 }
 
 function btn(bg: string): React.CSSProperties {
