@@ -33,6 +33,28 @@ echo ""
 
 forge build
 
+# Gas on Arc is paid in USDC (native balance, 18 decimals). The deploy is
+# ~1.7M gas — check the wallet can cover it (with 2x headroom) before
+# sending anything.
+BYTECODE=$(forge inspect contracts/ArcDexSwapRouter.sol:ArcDexSwapRouter bytecode)
+CTOR=$(cast abi-encode "c(address,address,address,address,address)" "$POOL_MANAGER" "$SWAP_ROUTER02" "$USDC" "$FEE_WALLET" "$OWNER")
+GAS=$(cast estimate --rpc-url "$RPC_URL" --from "$OWNER" --create "${BYTECODE}${CTOR#0x}")
+GAS_PRICE=$(cast gas-price --rpc-url "$RPC_URL")
+BALANCE=$(cast balance "$OWNER" --rpc-url "$RPC_URL")
+NEED=$(( GAS * GAS_PRICE * 2 ))
+echo "  Est. cost:        $(cast to-unit $(( GAS * GAS_PRICE )) ether) USDC   (wallet has $(cast to-unit "$BALANCE" ether) USDC)"
+# (A balance of 19+ digits is >= 1 USDC, far above NEED — skip the integer
+# compare there so bash's 64-bit arithmetic can't overflow.)
+if [ ${#BALANCE} -le 18 ] && [ "$BALANCE" -lt "$NEED" ]; then
+  echo "Error: $OWNER needs at least $(cast to-unit "$NEED" ether) USDC on Arc for gas — send some and re-run." >&2
+  exit 1
+fi
+
+if [ -t 0 ]; then
+  read -r -p "Deploy from $OWNER? [y/N] " ok
+  [ "$ok" = "y" ] || [ "$ok" = "Y" ] || { echo "Aborted."; exit 1; }
+fi
+
 forge create \
   --rpc-url "$RPC_URL" \
   --private-key "$PRIVATE_KEY" \
