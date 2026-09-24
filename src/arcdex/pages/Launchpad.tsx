@@ -7,6 +7,7 @@ import { getAllLaunchpadTokens, LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, type Launchpad
 import { subscribeLaunchpadTrades, type LaunchpadLiveTrade } from '../api/launchpadRpc'
 import { isUnlocked } from '../lib/embeddedWallet'
 import { quickBuyLaunchpad } from '../lib/quickTrade'
+import { uploadTokenImage, uploadTokenMetadata, isMediaUploadConfigured } from '../lib/mediaUpload'
 import type { Page } from '../App'
 
 function short(addr: string) { return `${addr.slice(0, 6)}…${addr.slice(-4)}` }
@@ -36,9 +37,16 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
   const [name, setName]           = useState('')
   const [symbol, setSymbol]       = useState('')
   const [description, setDescription] = useState('')
+  const [website, setWebsite]     = useState('')
+  const [twitter, setTwitter]     = useState('')
+  const [telegram, setTelegram]   = useState('')
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState('')
   const [initialBuy, setInitialBuy]   = useState('')
   const [taxPct, setTaxPct]           = useState('3') // 0-3%, fixed forever once launched
-  const [step, setStep] = useState<'idle' | 'approving' | 'creating'>('idle')
+  const [step, setStep] = useState<'idle' | 'uploading' | 'approving' | 'creating'>('idle')
+  const [error, setError] = useState('')
+  const [pendingMetadataURI, setPendingMetadataURI] = useState<string | null>(null)
 
   const initialBuyWei = initialBuy ? (() => { try { return parseUnits(initialBuy, 6) } catch { return 0n } })() : 0n
   const taxBps = Math.max(0, Math.min(300, Math.round(Number(taxPct || 0) * 100)))
@@ -55,11 +63,17 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
   // no flat creation fee — only the optional initial buy needs approval first
   const needsApprove = initialBuyWei > 0n && (allowance ?? 0n) < initialBuyWei
 
-  function fireCreate() {
+  function resetForm() {
+    setOpen(false); setName(''); setSymbol(''); setDescription('')
+    setWebsite(''); setTwitter(''); setTelegram('')
+    setImageFile(null); setImagePreview(''); setInitialBuy(''); setStep('idle'); setPendingMetadataURI(null)
+  }
+
+  function fireCreate(metadataURI: string) {
     setStep('creating')
     writeContract({
       address: LAUNCHPAD_ADDRESS, abi: LAUNCHPAD_ABI, functionName: 'createToken',
-      args: [name, symbol, description, BigInt(taxBps), initialBuyWei], chainId: arc.id,
+      args: [name, symbol, metadataURI, BigInt(taxBps), initialBuyWei], chainId: arc.id,
     })
   }
 
@@ -73,21 +87,50 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
   // when it confirms during the 'creating' step.
   useEffect(() => {
     if (!receipt) return
-    if (step === 'approving') { fireCreate(); return }
-    if (step === 'creating') {
-      onCreated(); setOpen(false); setName(''); setSymbol(''); setDescription(''); setInitialBuy(''); setStep('idle')
-    }
+    if (step === 'approving') { fireCreate(pendingMetadataURI ?? ''); return }
+    if (step === 'creating') { onCreated(); resetForm() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receipt])
 
-  function submit() {
+  function pickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImageFile(file)
+    setImagePreview(URL.createObjectURL(file))
+  }
+
+  async function submit() {
     if (!name || !symbol || LAUNCHPAD_ADDRESS.length !== 42) return
+    setError('')
+
+    // Build off-chain metadata (image/socials/description) only if the
+    // creator actually filled something in — a bare launch with none of
+    // that still works exactly as before, no upload step at all.
+    const hasExtras = !!(imageFile || description || website || twitter || telegram)
+    let metadataURI = ''
+    if (hasExtras) {
+      if (!isMediaUploadConfigured()) { setError('Image/social upload is not configured yet — launch without them, or add them later.'); return }
+      setStep('uploading')
+      try {
+        const imageUrl = imageFile ? await uploadTokenImage(imageFile) : undefined
+        metadataURI = await uploadTokenMetadata({
+          name, symbol, description: description || undefined, image: imageUrl,
+          website: website || undefined, twitter: twitter || undefined, telegram: telegram || undefined,
+        })
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Upload failed')
+        setStep('idle')
+        return
+      }
+    }
+    setPendingMetadataURI(metadataURI)
+
     if (needsApprove) {
       setStep('approving')
       writeContract({ address: USDC_ADDR, abi: ERC20_ABI, functionName: 'approve', args: [LAUNCHPAD_ADDRESS, initialBuyWei], chainId: arc.id })
       return
     }
-    fireCreate()
+    fireCreate(metadataURI)
   }
 
   if (!open) {
@@ -108,9 +151,24 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
         <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <label style={{
+            width: 56, height: 56, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
+            background: imagePreview ? `url(${imagePreview}) center/cover` : 'var(--bg-2)',
+            border: '1px dashed var(--card-border)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '0.6rem', color: 'var(--text-muted)', textAlign: 'center',
+          }}>
+            {!imagePreview && 'Logo'}
+            <input type="file" accept="image/*" onChange={pickImage} style={{ display: 'none' }} />
+          </label>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Optional token logo — PNG/JPG/GIF/WebP, under 2MB.</div>
+        </div>
         <input placeholder="Token name" value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
         <input placeholder="Symbol (e.g. MOON)" value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase().slice(0, 12))} style={inputStyle} />
-        <textarea placeholder="Description / metadata URI (optional)" value={description} onChange={e => setDescription(e.target.value)} style={{ ...inputStyle, minHeight: 60, resize: 'vertical' as const }} />
+        <textarea placeholder="Description (optional)" value={description} onChange={e => setDescription(e.target.value)} style={{ ...inputStyle, minHeight: 60, resize: 'vertical' as const }} />
+        <input placeholder="Website (optional)" value={website} onChange={e => setWebsite(e.target.value)} style={inputStyle} />
+        <input placeholder="X / Twitter (optional)" value={twitter} onChange={e => setTwitter(e.target.value)} style={inputStyle} />
+        <input placeholder="Telegram (optional)" value={telegram} onChange={e => setTelegram(e.target.value)} style={inputStyle} />
         <input type="number" min="0" placeholder="Initial buy in USDC (optional)" value={initialBuy} onChange={e => setInitialBuy(e.target.value)} style={inputStyle} />
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Your creator tax — fixed forever once launched, max 3%</span>
@@ -120,13 +178,14 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
           Free to launch{initialBuy ? ` + $${initialBuy} initial buy` : ''}. 1B fixed supply — 5% to the platform, 95% into the curve, no team pre-mine.
           Every trade also pays a flat 1% platform fee on top of your {taxPct || 0}% tax. You keep 60% of your tax ({((taxBps * 0.6) / 100).toFixed(2)}% of every trade), forever.
         </div>
+        {error && <div style={{ fontSize: '0.72rem', color: '#ef4444' }}>{error}</div>}
         {!isConnected ? (
           <ConnectKitButton.Custom>
             {({ show }) => <button onClick={show} style={primaryBtnStyle}>Connect Wallet</button>}
           </ConnectKitButton.Custom>
         ) : (
-          <button onClick={submit} disabled={!name || !symbol || step !== 'idle'} style={{ ...primaryBtnStyle, opacity: (!name || !symbol) ? 0.5 : 1 }}>
-            {step === 'approving' ? 'Approving USDC…' : step === 'creating' ? 'Launching…' : needsApprove ? 'Approve USDC' : 'Launch token'}
+          <button onClick={() => void submit()} disabled={!name || !symbol || step !== 'idle'} style={{ ...primaryBtnStyle, opacity: (!name || !symbol) ? 0.5 : 1 }}>
+            {step === 'uploading' ? 'Uploading…' : step === 'approving' ? 'Approving USDC…' : step === 'creating' ? 'Launching…' : needsApprove ? 'Approve USDC' : 'Launch token'}
           </button>
         )}
       </div>
@@ -160,11 +219,23 @@ function LaunchCard({ token: t, navigate, onTraded }: { token: LaunchpadToken; n
     } finally { setBuying(false) }
   }
 
+  const img = t.metadata?.image
+
   return (
     <div onClick={() => navigate({ name: 'token', address: t.address, symbol: t.symbol })}
       style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, padding: 16, cursor: 'pointer' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <span style={{ fontWeight: 700 }}>${t.symbol}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {img ? (
+            <img src={img} alt="" width={24} height={24} style={{ borderRadius: '50%', objectFit: 'cover' }}
+              onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+          ) : (
+            <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.55rem', fontWeight: 700, flexShrink: 0 }}>
+              {t.symbol.slice(0, 2).toUpperCase()}
+            </div>
+          )}
+          <span style={{ fontWeight: 700 }}>${t.symbol}</span>
+        </div>
         {t.curve.graduated && (
           <span style={{ fontSize: '0.62rem', background: '#22c55e22', color: '#22c55e', border: '1px solid #22c55e44', borderRadius: 4, padding: '2px 6px', fontWeight: 700 }}>✓ GRADUATED</span>
         )}

@@ -9,6 +9,10 @@ import type { Page } from '../App'
 interface Props { address: string; navigate: (p: Page) => void }
 
 function short(addr: string) { return `${addr.slice(0, 6)}…${addr.slice(-4)}` }
+const socialLinkStyle: React.CSSProperties = {
+  background: 'var(--bg-2)', color: 'var(--text-muted)', fontSize: '0.65rem', fontWeight: 700,
+  padding: '2px 8px', borderRadius: 99, border: '1px solid var(--card-border)', textDecoration: 'none',
+}
 function fmt(n: number, prefix = '') {
   if (!n || isNaN(n)) return '—'
   if (n >= 1e6) return `${prefix}${(n / 1e6).toFixed(2)}M`
@@ -67,16 +71,22 @@ export default function CurveTokenPage({ address, navigate }: Props) {
       <div className="token-page-header">
         <button className="back-btn" onClick={() => navigate({ name: 'terminal' })}>← Back</button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg,#1e3a5f,#0f1e30)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#3b82f6' }}>
-            {token.symbol.slice(0, 3)}
-          </div>
+          {token.metadata?.image ? (
+            <img src={token.metadata.image} alt="" width={44} height={44}
+              style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+              onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+          ) : (
+            <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg,#1e3a5f,#0f1e30)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#3b82f6', flexShrink: 0 }}>
+              {token.symbol.slice(0, 3)}
+            </div>
+          )}
           <div>
             <div style={{ fontWeight: 800, fontSize: '1.2rem' }}>
               ${token.symbol}
               <span style={{ marginLeft: 8, fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-muted)' }}>{token.name}</span>
             </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 700, fontSize: '1.05rem', color: '#3b82f6' }}>${fmt(token.priceUsd)}</span>
               <span style={{ background: '#7c3aed22', color: '#a78bfa', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: '1px solid #7c3aed44' }}>
                 ARCDEX Launchpad
@@ -85,6 +95,15 @@ export default function CurveTokenPage({ address, navigate }: Props) {
                 <span style={{ background: '#22c55e22', color: '#22c55e', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: '1px solid #22c55e44' }}>
                   ✓ Graduated
                 </span>
+              )}
+              {token.metadata?.website && (
+                <a href={token.metadata.website} target="_blank" rel="noopener noreferrer" style={socialLinkStyle}>🌐 Website</a>
+              )}
+              {token.metadata?.twitter && (
+                <a href={token.metadata.twitter} target="_blank" rel="noopener noreferrer" style={socialLinkStyle}>𝕏</a>
+              )}
+              {token.metadata?.telegram && (
+                <a href={token.metadata.telegram} target="_blank" rel="noopener noreferrer" style={socialLinkStyle}>✈ Telegram</a>
               )}
             </div>
           </div>

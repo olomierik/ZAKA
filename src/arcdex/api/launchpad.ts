@@ -70,6 +70,7 @@ export interface LaunchpadToken {
   curve: CurveState
   priceUsd: number
   bondingProgress: number // 0-100
+  metadata?: import('../lib/mediaUpload').TokenMetadata | null
 }
 
 const GRADUATION_THRESHOLD_USDC = 25_000_000_000n
@@ -95,7 +96,17 @@ export function bondingProgressFromCurve(c: CurveState): number {
   return Math.min(100, (Number(c.rUsdc) / Number(GRADUATION_THRESHOLD_USDC)) * 100)
 }
 
-export async function getAllLaunchpadTokens(): Promise<LaunchpadToken[]> {
+/** Metadata (image/website/twitter/telegram) is off-chain — the contract
+ * only ever emits a metadataURI once, at creation. Resolving it costs an
+ * event-log query plus a JSON fetch, so this is optional per-call and
+ * always cached after the first resolution. */
+async function resolveMetadata(token: Address): Promise<import('../lib/mediaUpload').TokenMetadata | null> {
+  const { fetchTokenMetadata } = await import('../lib/mediaUpload')
+  const uri = await getTokenMetadataUri(token).catch(() => '')
+  return uri ? fetchTokenMetadata(uri) : null
+}
+
+export async function getAllLaunchpadTokens(includeMetadata = true): Promise<LaunchpadToken[]> {
   if (!isConfigured()) return []
   const total = await client.readContract({ address: LAUNCHPAD_ADDRESS, abi: LAUNCHPAD_ABI, functionName: 'tokenCount' })
   if (total === 0n) return []
@@ -105,13 +116,14 @@ export async function getAllLaunchpadTokens(): Promise<LaunchpadToken[]> {
 
   const results = await Promise.all(addrs.map(async (addr): Promise<LaunchpadToken | null> => {
     try {
-      const [curve, name, symbol] = await Promise.all([
+      const [curve, name, symbol, metadata] = await Promise.all([
         getCurve(addr),
         client.readContract({ address: addr, abi: ERC20_META_ABI, functionName: 'name' }),
         client.readContract({ address: addr, abi: ERC20_META_ABI, functionName: 'symbol' }),
+        includeMetadata ? resolveMetadata(addr).catch(() => null) : Promise.resolve(undefined),
       ])
       if (!curve) return null
-      return { address: addr, name, symbol, curve, priceUsd: priceFromCurve(curve), bondingProgress: bondingProgressFromCurve(curve) }
+      return { address: addr, name, symbol, curve, priceUsd: priceFromCurve(curve), bondingProgress: bondingProgressFromCurve(curve), metadata }
     } catch { return null }
   }))
   return results.filter((t): t is LaunchpadToken => t !== null)
@@ -120,11 +132,37 @@ export async function getAllLaunchpadTokens(): Promise<LaunchpadToken[]> {
 export async function getLaunchpadToken(address: Address): Promise<LaunchpadToken | null> {
   const curve = await getCurve(address)
   if (!curve) return null
-  const [name, symbol] = await Promise.all([
+  const [name, symbol, metadata] = await Promise.all([
     client.readContract({ address, abi: ERC20_META_ABI, functionName: 'name' }),
     client.readContract({ address, abi: ERC20_META_ABI, functionName: 'symbol' }),
+    resolveMetadata(address).catch(() => null),
   ])
-  return { address, name, symbol, curve, priceUsd: priceFromCurve(curve), bondingProgress: bondingProgressFromCurve(curve) }
+  return { address, name, symbol, curve, priceUsd: priceFromCurve(curve), bondingProgress: bondingProgressFromCurve(curve), metadata }
+}
+
+// token address (lowercase) => metadataURI, cached forever — TokenLaunched
+// fires exactly once per token and never changes.
+const metadataUriCache = new Map<string, string>()
+
+/** Reads a token's `metadataURI` back from its one-time TokenLaunched
+ * event log — the contract itself only emits this, it isn't stored in
+ * state, so there's no direct view function for it. */
+export async function getTokenMetadataUri(token: Address): Promise<string> {
+  const key = token.toLowerCase()
+  const cached = metadataUriCache.get(key)
+  if (cached !== undefined) return cached
+  if (!isConfigured()) return ''
+
+  const logs = await client.getLogs({
+    address: LAUNCHPAD_ADDRESS,
+    event: LAUNCHPAD_ABI.find(e => e.type === 'event' && e.name === 'TokenLaunched')!,
+    args: { token },
+    fromBlock: 0n,
+    toBlock: 'latest',
+  })
+  const uri = (logs[0]?.args as { metadataURI?: string } | undefined)?.metadataURI ?? ''
+  metadataUriCache.set(key, uri)
+  return uri
 }
 
 export interface CurveTrade {
@@ -164,11 +202,12 @@ export async function getRecentTrades(token: Address, fromBlock?: bigint): Promi
  * (no indexer for our own contract), over the same lookback window
  * `getRecentTrades` already uses. */
 export async function getAllLaunchpadTokensAsArcTokens(): Promise<import('./radardex').ArcToken[]> {
-  const tokens = await getAllLaunchpadTokens()
+  const tokens = await getAllLaunchpadTokens() // already resolves metadata per token
   if (tokens.length === 0) return []
 
   return Promise.all(tokens.map(async (t): Promise<import('./radardex').ArcToken> => {
     const trades = await getRecentTrades(t.address).catch(() => [])
+    const meta = t.metadata
     const volume = trades.reduce((s, tr) => s + Number(tr.usdcAmount) / 1e6, 0)
     const buys = trades.filter(tr => tr.isBuy).length
     const sells = trades.length - buys
@@ -179,7 +218,7 @@ export async function getAllLaunchpadTokensAsArcTokens(): Promise<import('./rada
       symbol: t.symbol,
       name: t.name,
       decimals: 18,
-      logoUrl: '',
+      logoUrl: meta?.image ?? '',
       price: t.priceUsd,
       priceChange5m: 0,
       priceChange1h: 0,
@@ -198,6 +237,10 @@ export async function getAllLaunchpadTokensAsArcTokens(): Promise<import('./rada
       graduated: t.curve.graduated,
       bondingProgress: t.bondingProgress,
       spark: [],
+      website: meta?.website,
+      twitter: meta?.twitter,
+      telegram: meta?.telegram,
+      deployer: t.curve.creator,
       quoteSymbol: 'USDC',
     }
   }))
