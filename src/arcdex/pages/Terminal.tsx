@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react'
 import {
-  getTokens, getLaunchpadColor,
+  getLaunchpadColor,
   type ArcToken,
 } from '../api/radardex'
 import { getAllLaunchpadTokensAsArcTokens } from '../api/launchpad'
+import { getArgusTokens } from '../api/argus'
 import { curateTokens, type CuratedGroup } from '../lib/curate'
 import type { Page } from '../App'
 
@@ -257,12 +258,15 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const tickerRef = useRef<HTMLDivElement>(null)
 
+  // Focused on ARCDEX's own launches plus Argus (Portal 8) rather than
+  // RadarDex's broad, unattributed multi-launchpad aggregate — see
+  // api/argus.ts for the integration's scope and known gaps.
   const load = useCallback(async () => {
-    const [radar, ours] = await Promise.all([
-      getTokens(),
+    const [ours, argus] = await Promise.all([
       getAllLaunchpadTokensAsArcTokens().catch(() => []),
+      getArgusTokens().catch(() => []),
     ])
-    const data = [...ours, ...radar]
+    const data = [...ours, ...argus]
     setTokens(data)
     setLoading(false)
     registerFeedTokens(
