@@ -49,7 +49,8 @@ export default function NavBar({ page, navigate, onMenuClick }: Props) {
       </button>
 
       {/* Logo */}
-      <button className="navbar-logo" onClick={() => navigate({ name: 'terminal' })}>
+      <button className="navbar-logo" onClick={() => navigate({ name: 'terminal' })} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <img src="/arcdex-logo.svg" alt="" width={24} height={24} style={{ borderRadius: 6, flexShrink: 0 }} />
         ARCDEX
       </button>
       <span className="navbar-badge">MAINNET</span>

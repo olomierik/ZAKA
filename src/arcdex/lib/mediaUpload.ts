@@ -62,6 +62,20 @@ export async function uploadTokenMetadata(meta: TokenMetadata): Promise<string> 
   return uploadObject(`metadata/${randomFilename('json')}`, blob, 'application/json')
 }
 
+/** Encodes the metadata directly into the URI itself — no storage bucket
+ * needed at all. `fetch()` resolves `data:` URIs natively, so
+ * `fetchTokenMetadata` reads this back exactly like a hosted file, with
+ * no code path difference. Used when Supabase Storage isn't configured
+ * (or its bucket hasn't been created yet), so a creator can still attach
+ * an image/socials by pasting a direct image URL instead of uploading a
+ * file — same on-chain shape (`metadataURI` string), the encoding is
+ * just inline rather than hosted. */
+export function buildInlineMetadataURI(meta: TokenMetadata): string {
+  const json = JSON.stringify(meta)
+  const base64 = btoa(unescape(encodeURIComponent(json))) // UTF-8 safe base64
+  return `data:application/json;base64,${base64}`
+}
+
 const metadataCache = new Map<string, TokenMetadata | null>()
 
 /** Fetches and caches a token's metadata JSON from its metadataURI. Never

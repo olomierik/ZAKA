@@ -7,7 +7,7 @@ import { getAllLaunchpadTokens, LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, type Launchpad
 import { subscribeLaunchpadTrades, type LaunchpadLiveTrade } from '../api/launchpadRpc'
 import { isUnlocked } from '../lib/embeddedWallet'
 import { quickBuyLaunchpad } from '../lib/quickTrade'
-import { uploadTokenImage, uploadTokenMetadata, isMediaUploadConfigured } from '../lib/mediaUpload'
+import { uploadTokenImage, uploadTokenMetadata, buildInlineMetadataURI, isMediaUploadConfigured } from '../lib/mediaUpload'
 import type { Page } from '../App'
 
 function short(addr: string) { return `${addr.slice(0, 6)}…${addr.slice(-4)}` }
@@ -42,6 +42,7 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
   const [telegram, setTelegram]   = useState('')
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState('')
+  const [imageUrl, setImageUrl] = useState('') // fallback when Storage isn't set up — paste a direct link instead
   const [initialBuy, setInitialBuy]   = useState('')
   const [taxPct, setTaxPct]           = useState('3') // 0-3%, fixed forever once launched
   const [step, setStep] = useState<'idle' | 'uploading' | 'approving' | 'creating'>('idle')
@@ -66,7 +67,7 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
   function resetForm() {
     setOpen(false); setName(''); setSymbol(''); setDescription('')
     setWebsite(''); setTwitter(''); setTelegram('')
-    setImageFile(null); setImagePreview(''); setInitialBuy(''); setStep('idle'); setPendingMetadataURI(null)
+    setImageFile(null); setImagePreview(''); setImageUrl(''); setInitialBuy(''); setStep('idle'); setPendingMetadataURI(null)
   }
 
   function fireCreate(metadataURI: string) {
@@ -97,6 +98,7 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
     if (!file) return
     setImageFile(file)
     setImagePreview(URL.createObjectURL(file))
+    setImageUrl('')
   }
 
   async function submit() {
@@ -106,21 +108,34 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
     // Build off-chain metadata (image/socials/description) only if the
     // creator actually filled something in — a bare launch with none of
     // that still works exactly as before, no upload step at all.
-    const hasExtras = !!(imageFile || description || website || twitter || telegram)
+    const hasExtras = !!(imageFile || imageUrl || description || website || twitter || telegram)
     let metadataURI = ''
     if (hasExtras) {
-      if (!isMediaUploadConfigured()) { setError('Image/social upload is not configured yet — launch without them, or add them later.'); return }
       setStep('uploading')
+      const meta = {
+        name, symbol, description: description || undefined,
+        website: website || undefined, twitter: twitter || undefined, telegram: telegram || undefined,
+      }
       try {
-        const imageUrl = imageFile ? await uploadTokenImage(imageFile) : undefined
-        metadataURI = await uploadTokenMetadata({
-          name, symbol, description: description || undefined, image: imageUrl,
-          website: website || undefined, twitter: twitter || undefined, telegram: telegram || undefined,
-        })
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Upload failed')
-        setStep('idle')
-        return
+        // Try Storage first (env configured doesn't guarantee the bucket
+        // actually exists — that only surfaces as a failed request), and
+        // fall back to inlining the metadata as a data: URI, which needs
+        // no hosting at all. A picked file can't be inlined without an
+        // upload path, so if the file upload itself fails, surface that
+        // clearly rather than silently dropping the image.
+        if (isMediaUploadConfigured()) {
+          const uploadedImage = imageFile ? await uploadTokenImage(imageFile) : (imageUrl || undefined)
+          metadataURI = await uploadTokenMetadata({ ...meta, image: uploadedImage })
+        } else {
+          metadataURI = buildInlineMetadataURI({ ...meta, image: imageUrl || undefined })
+        }
+      } catch {
+        if (imageFile && !imageUrl) {
+          setError('Image upload failed (storage not set up yet) — paste a direct image URL instead, or launch without an image.')
+          setStep('idle')
+          return
+        }
+        metadataURI = buildInlineMetadataURI({ ...meta, image: imageUrl || undefined })
       }
     }
     setPendingMetadataURI(metadataURI)
@@ -154,15 +169,18 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <label style={{
             width: 56, height: 56, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
-            background: imagePreview ? `url(${imagePreview}) center/cover` : 'var(--bg-2)',
+            background: (imagePreview || imageUrl) ? `url(${imagePreview || imageUrl}) center/cover` : 'var(--bg-2)',
             border: '1px dashed var(--card-border)', display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: '0.6rem', color: 'var(--text-muted)', textAlign: 'center',
           }}>
-            {!imagePreview && 'Logo'}
+            {!imagePreview && !imageUrl && 'Logo'}
             <input type="file" accept="image/*" onChange={pickImage} style={{ display: 'none' }} />
           </label>
           <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Optional token logo — PNG/JPG/GIF/WebP, under 2MB.</div>
         </div>
+        <input placeholder="…or paste a direct image URL instead" value={imageUrl}
+          onChange={e => { setImageUrl(e.target.value); if (e.target.value) { setImageFile(null); setImagePreview('') } }}
+          style={inputStyle} />
         <input placeholder="Token name" value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
         <input placeholder="Symbol (e.g. MOON)" value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase().slice(0, 12))} style={inputStyle} />
         <textarea placeholder="Description (optional)" value={description} onChange={e => setDescription(e.target.value)} style={{ ...inputStyle, minHeight: 60, resize: 'vertical' as const }} />
