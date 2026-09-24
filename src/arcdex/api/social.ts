@@ -28,6 +28,7 @@ export interface Profile {
   avatar_url: string | null
   bio: string | null
   x_handle: string | null
+  banner_url?: string | null
   created_at?: string
 }
 
@@ -195,6 +196,26 @@ export async function getReferralStats(address: string): Promise<ReferralStats> 
   return { referred_users: num(r?.referred_users), earned_usdc: num(r?.earned_usdc), payouts: num(r?.payouts) }
 }
 
+export interface ReferralPayout { tx_hash: string; log_index: number; user_address: string; token: string; amount: number; block_time: string }
+export interface ReferredUser { user_address: string; block_time: string }
+
+/** Every referral payout to this referrer, newest first (router ReferralPaid events). */
+export async function getReferralPayouts(referrer: string, limit = 100): Promise<ReferralPayout[]> {
+  const c = client()
+  if (!c) return []
+  const { data } = await c.from('arcdex_referral_payouts').select('tx_hash, log_index, user_address, token, amount, block_time')
+    .eq('referrer', lc(referrer)).order('block_time', { ascending: false }).limit(limit)
+  return ((data ?? []) as ReferralPayout[]).map(r => ({ ...r, amount: num(r.amount) }))
+}
+
+/** Wallets bound to this referrer on-chain, newest first. */
+export async function getReferredUsers(referrer: string, limit = 200): Promise<ReferredUser[]> {
+  const c = client()
+  if (!c) return []
+  const { data } = await c.from('arcdex_referrals').select('user_address, block_time').eq('referrer', lc(referrer)).order('block_time', { ascending: false }).limit(limit)
+  return (data ?? []) as ReferredUser[]
+}
+
 let lastIndexCall = 0
 /** Nudge the server to pull the latest router events into Supabase. Cheap
  * and idempotent; throttled here and on the server. */
@@ -272,4 +293,119 @@ export async function socialWrite<T = unknown>(trader: Trader, action: string, p
     return j
   }
   throw new Error('Sign-in failed')
+}
+
+// ── v2: holders, most held, stats, history, feed events, clans ───────
+
+export interface HolderRow extends PositionRow { trader: string; first_buy: string | null }
+export interface MostHeldRow { token: string; holders: number; invested_usdc: number }
+export interface TraderStats { realized_pnl: number; volume_usdc: number; trades: number; avg_hold_seconds: number | null; first_trade: string | null }
+export interface PnlPoint { t: string; pnl: number; cumulative: number }
+export interface ClosedPosition { trader: string; token: string; bought_usdc: number; sold_usdc: number; pnl: number; closed_at: string }
+export interface MultiBuy { token: string; buyers: number; usdc: number; traders: string[]; last_buy: string }
+export interface Clan { id: string; slug: string; name: string; motto: string | null; avatar_url: string | null; banner_url: string | null; owner: string; created_at: string }
+export interface ClanRank { clan_id: string; slug: string; name: string; avatar_url: string | null; members: number; realized_pnl: number; volume_usdc: number }
+export interface ClanMember { member: string; role: 'owner' | 'member'; joined_at: string; realized_pnl: number; volume_usdc: number }
+export interface ClanHolding { token: string; members: number; holders: string[]; bought_usdc: number; bought_tok: number; sold_usdc: number; sold_tok: number }
+export interface TransferNote { tx_hash: string; sender: string; recipient: string; amount: number; note: string | null; created_at: string }
+
+async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T[]> {
+  const c = client()
+  if (!c) return []
+  const { data } = await c.rpc(fn, args)
+  return ((Array.isArray(data) ? data : data ? [data] : []) as T[])
+}
+const nums = <T extends object>(r: T, keys: (keyof T)[]): T => {
+  const o = { ...r } as Record<string, unknown>
+  for (const k of keys) if (o[k as string] != null) o[k as string] = Number(o[k as string])
+  return o as T
+}
+export const periodSince = since
+
+export async function getTokenHolders(token: string): Promise<HolderRow[]> {
+  return (await rpc<HolderRow>('arcdex_token_holders', { p_token: lc(token), p_limit: 300 }))
+    .map(r => nums(r, ['bought_usdc', 'bought_tok', 'sold_usdc', 'sold_tok', 'trades']))
+}
+
+export async function getMostHeld(limit = 50): Promise<MostHeldRow[]> {
+  return (await rpc<MostHeldRow>('arcdex_most_held', { p_limit: limit })).map(r => nums(r, ['holders', 'invested_usdc']))
+}
+
+export async function getTraderStats(address: string, period: Period = 'all'): Promise<TraderStats> {
+  const r = (await rpc<TraderStats>('arcdex_trader_stats', { p_trader: lc(address), p_since: since(period) }))[0]
+  return r ? nums(r, ['realized_pnl', 'volume_usdc', 'trades', 'avg_hold_seconds']) : { realized_pnl: 0, volume_usdc: 0, trades: 0, avg_hold_seconds: null, first_trade: null }
+}
+
+export async function getPnlHistory(address: string): Promise<PnlPoint[]> {
+  return (await rpc<PnlPoint>('arcdex_pnl_history', { p_trader: lc(address) })).map(r => nums(r, ['pnl', 'cumulative']))
+}
+
+export async function getClosedPositions(sinceIso: string, limit = 50): Promise<ClosedPosition[]> {
+  return (await rpc<ClosedPosition>('arcdex_closed_positions', { p_since: sinceIso, p_limit: limit })).map(r => nums(r, ['bought_usdc', 'sold_usdc', 'pnl']))
+}
+
+export async function getMultiBuys(sinceIso: string, min = 3): Promise<MultiBuy[]> {
+  return (await rpc<MultiBuy>('arcdex_multi_buys', { p_since: sinceIso, p_min: min })).map(r => nums(r, ['buyers', 'usdc']))
+}
+
+export async function getNewProfiles(limit = 20): Promise<Profile[]> {
+  const c = client()
+  if (!c) return []
+  const { data } = await c.from('arcdex_profiles').select('*').order('created_at', { ascending: false }).limit(limit)
+  return (data ?? []) as Profile[]
+}
+
+export async function getMutuals(me: string, them: string): Promise<string[]> {
+  const c = client()
+  if (!c) return []
+  const [mine, theirs] = await Promise.all([
+    c.from('arcdex_follows').select('following').eq('follower', lc(me)).limit(1000),
+    c.from('arcdex_follows').select('follower').eq('following', lc(them)).limit(1000),
+  ])
+  const iFollow = new Set((mine.data ?? []).map(r => r.following as string))
+  return (theirs.data ?? []).map(r => r.follower as string).filter(a => iFollow.has(a))
+}
+
+export async function getClanLeaderboard(period: Period, limit = 50): Promise<ClanRank[]> {
+  return (await rpc<ClanRank>('arcdex_clan_leaderboard', { p_since: since(period), p_limit: limit })).map(r => nums(r, ['members', 'realized_pnl', 'volume_usdc']))
+}
+
+export async function getClan(slugOrId: string): Promise<Clan | null> {
+  const c = client()
+  if (!c) return null
+  const col = /^[0-9a-f-]{36}$/.test(slugOrId) ? 'id' : 'slug'
+  const { data } = await c.from('arcdex_clans').select('*').eq(col, slugOrId.toLowerCase()).maybeSingle()
+  return (data as Clan | null) ?? null
+}
+
+export async function getClanOf(address: string): Promise<{ clan: Clan; role: string } | null> {
+  const c = client()
+  if (!c) return null
+  const { data } = await c.from('arcdex_clan_members').select('role, arcdex_clans(*)').eq('member', lc(address)).maybeSingle()
+  const row = data as { role: string; arcdex_clans: Clan | null } | null
+  return row?.arcdex_clans ? { clan: row.arcdex_clans, role: row.role } : null
+}
+
+export async function getClanMembers(clanId: string, period: Period): Promise<ClanMember[]> {
+  return (await rpc<ClanMember>('arcdex_clan_members_pnl', { p_clan: clanId, p_since: since(period) })).map(r => nums(r, ['realized_pnl', 'volume_usdc']))
+}
+
+export async function getClanHoldings(clanId: string): Promise<ClanHolding[]> {
+  return (await rpc<ClanHolding>('arcdex_clan_holdings', { p_clan: clanId })).map(r => nums(r, ['members', 'bought_usdc', 'bought_tok', 'sold_usdc', 'sold_tok']))
+}
+
+export async function searchClans(q: string, limit = 6): Promise<Clan[]> {
+  const c = client()
+  const s = q.trim()
+  if (!c || s.length < 2) return []
+  const { data } = await c.from('arcdex_clans').select('*').ilike('name', `%${s.replace(/[%_]/g, '')}%`).limit(limit)
+  return (data ?? []) as Clan[]
+}
+
+export async function getTransferNotes(address: string, limit = 50): Promise<TransferNote[]> {
+  const c = client()
+  if (!c) return []
+  const a = lc(address)
+  const { data } = await c.from('arcdex_transfer_notes').select('*').or(`sender.eq.${a},recipient.eq.${a}`).order('created_at', { ascending: false }).limit(limit)
+  return ((data ?? []) as TransferNote[]).map(t => ({ ...t, amount: Number(t.amount) }))
 }

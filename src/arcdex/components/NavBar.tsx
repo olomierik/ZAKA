@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { ConnectKitButton } from 'connectkit'
+import AccountMenu from './AccountMenu'
+import SearchBox from './SearchBox'
 import { getPlatformTokenStats, type PlatformTokenStats } from '../api/launchpad'
 import type { Page } from '../App'
 
@@ -31,14 +32,14 @@ function BurnTicker() {
 }
 
 export default function NavBar({ page, navigate, onMenuClick }: Props) {
-  const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
 
   const navLinks: { label: string; page: Page }[] = [
     { label: 'Terminal',    page: { name: 'terminal' } },
     { label: 'Feed',        page: { name: 'feed' } },
     { label: 'Leaderboard', page: { name: 'leaderboard' } },
-    { label: 'Earn',        page: { name: 'rewards' } },
+    { label: 'Clans',       page: { name: 'clans' } },
+    { label: 'Rewards',     page: { name: 'rewards' } },
     { label: 'Launchpad',   page: { name: 'launchpad' } },
     { label: 'Portfolio',   page: { name: 'portfolio' } },
   ]
@@ -70,14 +71,8 @@ export default function NavBar({ page, navigate, onMenuClick }: Props) {
         ))}
       </nav>
 
-      {/* Search — always present on desktop, toggles open on mobile */}
-      <div className={`navbar-search-wrap${searchOpen ? ' open' : ''}`}>
-        <input
-          className="navbar-search"
-          value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search tokens, address…"
-        />
-      </div>
+      {/* Search — tokens, traders, clans ("/" to focus) */}
+      <SearchBox navigate={navigate} mobileOpen={searchOpen} />
       <button className="navbar-search-toggle" onClick={() => setSearchOpen(o => !o)} aria-label="Search">
         🔍
       </button>
@@ -88,7 +83,7 @@ export default function NavBar({ page, navigate, onMenuClick }: Props) {
           <div className="pulse-dot" />
           <span style={{ fontSize: '0.67rem', color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>Arc Mainnet</span>
         </div>
-        <ConnectKitButton />
+        <AccountMenu navigate={navigate} />
       </div>
     </header>
   )

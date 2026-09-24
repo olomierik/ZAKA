@@ -5,6 +5,7 @@
 
 import { GT_BASE, gtHeaders } from './_geckoterminal'
 import { buildArgusMarket, type GtList } from './_argusCore'
+import { bondedFlags } from './_argusBonded'
 
 export const config = { runtime: 'edge' }
 
@@ -42,6 +43,16 @@ export default async function handler(): Promise<Response> {
   const deadline = Date.now() + BUDGET_MS
   const failures: Failure[] = []
   const pools = await buildArgusMarket(path => gtBudgeted(path, deadline, failures))
+
+  // Graduated vs still-bonding, for the Graduated / Bonding lists. Capped
+  // at 5s so a slow RPC can never hold up the market list itself.
+  try {
+    const flags = await Promise.race([
+      bondedFlags(pools.map(p => p.token.address)),
+      new Promise<Map<string, boolean>>((_, rej) => setTimeout(() => rej(new Error('timeout')), 5_000)),
+    ])
+    for (const p of pools) p.bonded = flags.has(p.token.address) ? flags.get(p.token.address)! : null
+  } catch { /* flags stay absent this round */ }
 
   if (pools.length === 0) {
     return new Response(JSON.stringify({ error: 'GeckoTerminal unavailable', failures }), {

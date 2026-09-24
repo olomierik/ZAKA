@@ -60,6 +60,8 @@ export default function PositionCard({ token, symbol, image, priceUsd, trader, r
   const pnl = basis && value !== null ? value + basis.sold - basis.bought : null
   const pnlPct = pnl !== null && basis && basis.bought > 0 ? (pnl / basis.bought) * 100 : null
   const up = (pnl ?? 0) >= 0
+  // Sold out (dust left): fomo lists it under Closed, with realized PnL.
+  const closed = value !== null && value < 0.01
 
   async function openShare() {
     if (!me || pnlPct === null || pnl === null || !basis) return
@@ -82,14 +84,16 @@ export default function PositionCard({ token, symbol, image, priceUsd, trader, r
   return (
     <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16 }}>
       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 700, fontSize: '0.85rem' }}>
-        <span>Your position</span>
+        <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>Your position
+          <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: closed ? 'rgba(148,163,184,0.15)' : 'rgba(34,197,94,0.15)', color: closed ? 'var(--text-muted)' : 'var(--green)' }}>{closed ? 'Closed' : 'Open'}</span>
+        </span>
         {pnlPct !== null && <button onClick={() => void openShare()} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: up ? 'var(--green)' : 'var(--adx-accent)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>Share PnL</button>}
       </div>
       <div style={{ padding: '12px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: '0.8rem' }}>
         <Stat label="Value" value={value !== null ? money(value) : '—'} />
         <Stat label="Holding" value={`${bal >= 1e6 ? (bal / 1e6).toFixed(2) + 'M' : bal >= 1e3 ? (bal / 1e3).toFixed(1) + 'K' : bal.toFixed(2)} ${symbol}`} />
         {basis && <Stat label="Invested" value={money(basis.bought)} />}
-        {pnl !== null && <Stat label="PnL" value={`${up ? '+' : ''}${money(pnl)}${pnlPct !== null ? ` (${up ? '+' : ''}${pnlPct.toFixed(1)}%)` : ''}`} color={up ? 'var(--green)' : 'var(--red)'} />}
+        {pnl !== null && <Stat label={closed ? 'Realized PnL' : 'PnL'} value={`${up ? '+' : ''}${money(pnl)}${pnlPct !== null ? ` (${up ? '+' : ''}${pnlPct.toFixed(1)}%)` : ''}`} color={up ? 'var(--green)' : 'var(--red)'} />}
       </div>
       {basis?.source === 'recent' && <div style={{ padding: '0 16px 12px', fontSize: '0.68rem', color: 'var(--text-muted)' }}>Cost basis from your recent trades on this pool.</div>}
       {share && <ShareCardModal card={share.card} text={share.text} referralsLive={info?.version === 2} onClose={() => setShare(null)} />}

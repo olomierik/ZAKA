@@ -10,15 +10,15 @@ const RESOLUTIONS: { label: string; value: Resolution }[] = [
   { label: '4H', value: '4h' }, { label: '1D', value: '1d' },
 ]
 const RES_SECONDS: Record<Resolution, number> = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14_400, '1d': 86_400 }
-const MIN_SIZES = [0, 10, 100] as const
+const MIN_SIZES = [0, 10, 100, 1000] as const
 
-/** A trade drawn on the chart as its trader's avatar (fomo-style). */
+/** A trade (or thesis) drawn on the chart as the trader's avatar (fomo-style). */
 export interface ChartTrade {
   id: string
   time: number // ms
   priceUsd: number
   usd: number
-  kind: 'buy' | 'sell'
+  kind: 'buy' | 'sell' | 'thesis'
   maker: string | null
   avatarUrl?: string | null
   label?: string // tooltip, e.g. "@name bought $120"
@@ -30,18 +30,31 @@ export interface ChartTrade {
 interface Props {
   poolAddress: string | null
   trades?: ChartTrade[]
+  thesisMarks?: ChartTrade[]
+  friends?: Set<string>
+  supply?: number | null // tokens in circulation, for the Price ⇄ MCap switch
+  symbol?: string
   onTraderClick?: (address: string) => void
 }
 
 interface Bubble { t: ChartTrade; x: number; y: number; size: number }
 
-export default function PriceChart({ poolAddress, trades, onTraderClick }: Props) {
+// Price axis: 2 decimals for $1+ coins, 4 significant digits for micro-caps.
+const fmtPrice = (v: number) => v >= 1000 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v === 0 ? '0' : v.toPrecision(4)
+
+export default function PriceChart({ poolAddress, trades, thesisMarks, friends, supply, symbol, onTraderClick }: Props) {
   const [res, setRes] = useState<Resolution>('1h')
   const [candles, setCandles] = useState<OhlcvCandle[]>([])
+  const [mode, setMode] = useState<'price' | 'mcap'>('price')
   const [showBubbles, setShowBubbles] = useState(true)
+  const [showMine, setShowMine] = useState(true)
+  const [showThesis, setShowThesis] = useState(true)
+  const [friendsOnly, setFriendsOnly] = useState(false)
   const [minSize, setMinSize] = useState<(typeof MIN_SIZES)[number]>(0)
   const [bubbles, setBubbles] = useState<Bubble[]>([])
+  const [isFull, setIsFull] = useState(false)
   const needsFit = useRef(true)
+  const scale = mode === 'mcap' && supply ? supply : 1
 
   useEffect(() => {
     needsFit.current = true
@@ -58,7 +71,14 @@ export default function PriceChart({ poolAddress, trades, onTraderClick }: Props
     const id = setInterval(() => { if (!document.hidden) void load(false) }, 20_000)
     return () => { cancelled = true; clearInterval(id) }
   }, [poolAddress, res])
+  useEffect(() => { needsFit.current = true }, [mode])
+  useEffect(() => {
+    const onFs = () => setIsFull(!!document.fullscreenElement && document.fullscreenElement === wrapRef.current)
+    document.addEventListener('fullscreenchange', onFs)
+    return () => document.removeEventListener('fullscreenchange', onFs)
+  }, [])
 
+  const wrapRef      = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef     = useRef<IChartApi | null>(null)
   const seriesRef    = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -70,26 +90,29 @@ export default function PriceChart({ poolAddress, trades, onTraderClick }: Props
     cancelAnimationFrame(frame.current)
     frame.current = requestAnimationFrame(() => {
       const chart = chartRef.current, series = seriesRef.current, el = containerRef.current
-      if (!chart || !series || !el || !trades?.length || !showBubbles || !candles.length) { setBubbles([]); return }
+      const all = [...(showBubbles ? trades ?? [] : []), ...(showThesis ? thesisMarks ?? [] : [])]
+      if (!chart || !series || !el || !all.length || !candles.length) { setBubbles([]); return }
       const step = RES_SECONDS[res]
       const first = candles[0].time, last = candles[candles.length - 1].time
       const paneW = el.clientWidth - chart.priceScale('right').width()
-      const paneH = 340 - chart.timeScale().height()
+      const paneH = el.clientHeight - chart.timeScale().height()
       const out: Bubble[] = []
-      for (const t of trades) {
-        if (t.usd < minSize || !t.priceUsd) continue
+      for (const t of all) {
+        if (t.kind !== 'thesis' && t.usd < minSize) continue
+        if (friendsOnly && t.kind !== 'thesis' && !(t.mine || (t.maker && friends?.has(t.maker.toLowerCase())))) continue
+        if (!t.priceUsd) continue
         const bucket = Math.floor(t.time / 1000 / step) * step
         if (bucket < first || bucket > last) continue
         const x = chart.timeScale().timeToCoordinate(bucket as never)
-        const y = series.priceToCoordinate(t.priceUsd)
+        const y = series.priceToCoordinate(t.priceUsd * scale)
         if (x === null || y === null || x < 0 || x > paneW || y < 0 || y > paneH) continue
-        const size = Math.max(16, Math.min(34, 12 + Math.log10(Math.max(1, t.usd)) * 6))
+        const size = t.kind === 'thesis' ? 26 : Math.max(16, Math.min(34, 12 + Math.log10(Math.max(1, t.usd)) * 6))
         out.push({ t, x, y, size })
       }
       // Big trades on top; cap the count so a busy coin stays readable.
-      setBubbles(out.sort((a, b) => a.t.usd - b.t.usd).slice(-160))
+      setBubbles(out.sort((a, b) => a.t.usd - b.t.usd).slice(-180))
     })
-  }, [trades, showBubbles, minSize, candles, res])
+  }, [trades, thesisMarks, showBubbles, showThesis, friendsOnly, friends, minSize, candles, res, scale])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -103,7 +126,7 @@ export default function PriceChart({ poolAddress, trades, onTraderClick }: Props
       rightPriceScale: { borderColor: '#1e3050' },
       timeScale: { borderColor: '#1e3050', timeVisible: true },
       width:  containerRef.current.clientWidth,
-      height: 340,
+      height: containerRef.current.clientHeight || 340,
     })
     const series = chart.addSeries(CandlestickSeries, {
       upColor: '#22c55e', downColor: '#ef4444',
@@ -114,7 +137,7 @@ export default function PriceChart({ poolAddress, trades, onTraderClick }: Props
     seriesRef.current = series
 
     const ro = new ResizeObserver(() => {
-      if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth })
+      if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight || 340 })
     })
     ro.observe(containerRef.current)
     return () => { ro.disconnect(); chart.remove(); chartRef.current = null; seriesRef.current = null }
@@ -137,14 +160,31 @@ export default function PriceChart({ poolAddress, trades, onTraderClick }: Props
   useEffect(() => {
     if (!seriesRef.current || !candles.length) return
     const data: CandlestickData[] = candles.map(c => ({
-      time: c.time as never, open: c.open, high: c.high, low: c.low, close: c.close,
+      time: c.time as never, open: c.open * scale, high: c.high * scale, low: c.low * scale, close: c.close * scale,
     }))
+    seriesRef.current.applyOptions({ priceFormat: scale > 1 ? { type: 'custom', formatter: (v: number) => v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(1)}K` : `$${v.toFixed(0)}`, minMove: 1 } : { type: 'custom', formatter: fmtPrice, minMove: 1e-12 } })
     seriesRef.current.setData(data)
-    // Fit once per pool/resolution, not on every live refresh — otherwise
-    // the user's zoom/scroll would snap back every 20s.
+    // Fit once per pool/resolution/mode, not on every live refresh —
+    // otherwise the user's zoom/scroll would snap back every 20s.
     if (needsFit.current) { chartRef.current?.timeScale().fitContent(); needsFit.current = false }
     layout()
-  }, [candles, layout])
+  }, [candles, layout, scale])
+
+  function screenshot() {
+    const chart = chartRef.current
+    if (!chart) return
+    const canvas = chart.takeScreenshot()
+    const a = document.createElement('a')
+    a.href = canvas.toDataURL('image/png')
+    a.download = `${symbol ?? 'chart'}-${res}-${mode}.png`
+    a.click()
+  }
+  function fullscreen() {
+    const el = wrapRef.current
+    if (!el) return
+    if (document.fullscreenElement) void document.exitFullscreen()
+    else void el.requestFullscreen?.()
+  }
 
   const pill = (active: boolean): React.CSSProperties => ({
     padding: '3px 10px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 600, border: '1px solid', cursor: 'pointer',
@@ -152,44 +192,42 @@ export default function PriceChart({ poolAddress, trades, onTraderClick }: Props
     background: active ? 'rgba(59,130,246,0.15)' : 'transparent',
     color: active ? 'var(--adx-accent)' : 'var(--text-muted)',
   })
+  const check = (on: boolean, set: (v: boolean) => void, label: string) => (
+    <label style={{ display: 'inline-flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}><input type="checkbox" checked={on} onChange={e => set(e.target.checked)} />{label}</label>
+  )
 
   return (
-    <>
+    <div ref={wrapRef} style={{ background: isFull ? '#0b1628' : undefined, display: 'flex', flexDirection: 'column', height: isFull ? '100%' : undefined, padding: isFull ? 16 : 0 }}>
     <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
       {RESOLUTIONS.map(r => (
         <button key={r.value} onClick={() => setRes(r.value)} style={pill(res === r.value)}>{r.label}</button>
       ))}
-      {trades && (
-        <>
-          <span style={{ flex: 1 }} />
-          <button onClick={() => setShowBubbles(s => !s)} style={pill(showBubbles)} title="Show each trade as the trader's avatar">Traders</button>
-          {showBubbles && MIN_SIZES.map(m => (
-            <button key={m} onClick={() => setMinSize(m)} style={pill(minSize === m)}>{m === 0 ? 'All' : `>$${m}`}</button>
-          ))}
-        </>
-      )}
+      <span style={{ flex: 1 }} />
+      {supply ? (
+        <span style={{ display: 'inline-flex', border: '1px solid var(--adx-card-border)', borderRadius: 6, overflow: 'hidden' }}>
+          {(['price', 'mcap'] as const).map(m => <button key={m} onClick={() => setMode(m)} style={{ ...pill(mode === m), border: 'none', borderRadius: 0 }}>{m === 'price' ? 'Price' : 'MCap'}</button>)}
+        </span>
+      ) : null}
+      <button onClick={screenshot} style={pill(false)} title="Save chart image">📷</button>
+      <button onClick={fullscreen} style={pill(false)} title="Fullscreen">⛶</button>
     </div>
-    <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden' }}>
-      <div ref={containerRef} />
+    <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', flex: 1 }}>
+      <div ref={containerRef} style={{ height: isFull ? 'calc(100vh - 120px)' : 340 }} />
       {bubbles.length > 0 && (
         // zIndex: the chart library layers its canvases with z-index 1–2,
         // which would otherwise paint over these avatars.
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }}>
           {bubbles.map(({ t, x, y, size }) => (
-            <img
-              key={t.id}
-              src={t.avatarUrl || (t.maker ? identiconUrl(t.maker) : identiconUrl(t.id))}
-              alt=""
-              title={t.label}
-              onClick={() => t.maker && onTraderClick?.(t.maker)}
-              style={{
-                position: 'absolute', left: x - size / 2, top: y - size / 2, width: size, height: size,
-                borderRadius: '50%', objectFit: 'cover', pointerEvents: 'auto', cursor: t.maker && onTraderClick ? 'pointer' : 'default',
-                border: `2px solid ${t.mine ? '#facc15' : t.kind === 'buy' ? '#22c55e' : '#ef4444'}`,
-                boxShadow: t.mine ? '0 0 0 3px rgba(250,204,21,0.35)' : '0 1px 4px rgba(0,0,0,0.5)',
-                background: '#0b1628',
-              }}
-            />
+            <div key={t.id} title={t.label} onClick={() => t.maker && onTraderClick?.(t.maker)}
+              style={{ position: 'absolute', left: x - size / 2, top: y - size / 2, width: size, height: size, pointerEvents: 'auto', cursor: t.maker && onTraderClick ? 'pointer' : 'default' }}>
+              <img src={t.avatarUrl || (t.maker ? identiconUrl(t.maker) : identiconUrl(t.id))} alt=""
+                style={{
+                  width: size, height: size, borderRadius: '50%', objectFit: 'cover', background: '#0b1628',
+                  border: `2px solid ${t.kind === 'thesis' ? '#60a5fa' : t.mine && showMine ? '#facc15' : t.kind === 'buy' ? '#22c55e' : '#ef4444'}`,
+                  boxShadow: t.mine && showMine ? '0 0 0 3px rgba(250,204,21,0.35)' : '0 1px 4px rgba(0,0,0,0.5)',
+                }} />
+              {t.kind === 'thesis' && <span style={{ position: 'absolute', right: -6, top: -8, fontSize: 12 }}>💬</span>}
+            </div>
           ))}
         </div>
       )}
@@ -201,6 +239,20 @@ export default function PriceChart({ poolAddress, trades, onTraderClick }: Props
         </div>
       )}
     </div>
-    </>
+    {(trades || thesisMarks) && (
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginTop: 10, fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+        <b style={{ color: 'var(--text)' }}>Chart overlays</b>
+        {check(showBubbles, setShowBubbles, 'Trades')}
+        {check(showMine, setShowMine, 'My swaps')}
+        {thesisMarks && check(showThesis, setShowThesis, 'Thesis')}
+        {friends && check(friendsOnly, setFriendsOnly, 'Friends only')}
+        <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>Min size
+          <select value={minSize} onChange={e => setMinSize(Number(e.target.value) as (typeof MIN_SIZES)[number])} className="disc-select">
+            {MIN_SIZES.map(m => <option key={m} value={m}>{m === 0 ? 'All' : `>$${m >= 1000 ? '1K' : m}`}</option>)}
+          </select>
+        </span>
+      </div>
+    )}
+    </div>
   )
 }

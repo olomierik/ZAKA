@@ -348,3 +348,39 @@ export async function getDevHoldingPct(token: Address, creator: Address): Promis
   ])
   return supply > 0n ? (Number(bal) / Number(supply)) * 100 : 0
 }
+
+export interface CreatorReward { token: Address; symbol: string; creatorTaxBps: number; earnedUsdc: number; trades: number; volumeUsdc: number; windowCapped: boolean }
+
+const LOG_SPAN = 9_000n     // Arc RPC's max getLogs range
+const MAX_SPANS = 60        // ~3 days of blocks, scanned 6 at a time
+
+/** Creator rewards (fomo's "Creator rewards" tab) for coins `creator`
+ * launched on ArcLaunchpad: 60% of each coin's creator tax, paid in USDC
+ * on every trade. Rebuilt from the launchpad's own Trade events, so it
+ * matches what the contract actually paid (to within rounding). */
+export async function getCreatorRewards(creator: string): Promise<CreatorReward[]> {
+  if (!isConfigured()) return []
+  const mine = (await getAllLaunchpadTokens(false)).filter(t => t.curve.creator.toLowerCase() === creator.toLowerCase())
+  if (!mine.length) return []
+  const latest = await client.getBlockNumber()
+  const tradeEvent = LAUNCHPAD_ABI.find(e => e.type === 'event' && e.name === 'Trade')!
+  return Promise.all(mine.map(async t => {
+    const launch = (await getLaunchBlock(t.address).catch(() => null)) ?? 0n
+    const spans: [bigint, bigint][] = []
+    for (let to = latest; to >= launch && spans.length < MAX_SPANS; to -= LOG_SPAN) spans.push([to - LOG_SPAN + 1n > launch ? to - LOG_SPAN + 1n : launch, to])
+    let earned = 0, volume = 0, trades = 0
+    for (let i = 0; i < spans.length; i += 6) {
+      const batch = await Promise.all(spans.slice(i, i + 6).map(([fromBlock, toBlock]) =>
+        client.getLogs({ address: LAUNCHPAD_ADDRESS, event: tradeEvent, args: { token: t.address }, fromBlock, toBlock }).catch(() => [])))
+      for (const l of batch.flat()) {
+        const a = l.args as { isBuy: boolean; usdcAmount: bigint; totalFee: bigint }
+        const gross = Number(a.isBuy ? a.usdcAmount : a.usdcAmount + a.totalFee) / 1e6
+        earned += (gross * t.curve.creatorTaxBps / 10_000) * 0.6
+        volume += gross
+        trades++
+      }
+    }
+    const capped = spans.length === MAX_SPANS && spans[spans.length - 1][0] > launch
+    return { token: t.address, symbol: t.symbol, creatorTaxBps: t.curve.creatorTaxBps, earnedUsdc: earned, trades, volumeUsdc: volume, windowCapped: capped }
+  }))
+}

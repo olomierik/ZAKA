@@ -16,8 +16,11 @@ const ZERO = '0x0000000000000000000000000000000000000000'
 export function captureReferral(): void {
   try {
     const url = new URL(window.location.href)
-    const ref = url.searchParams.get('ref')?.trim()
+    // Short links arcdex.online/r/<name> as well as ?ref=<name>.
+    const short = url.pathname.match(/^\/r\/([^/?#]+)/)
+    const ref = (short ? decodeURIComponent(short[1]) : url.searchParams.get('ref'))?.trim()
     if (!ref) return
+    if (short) url.pathname = '/'
     const valid = /^0x[0-9a-fA-F]{40}$/.test(ref) || /^@?[a-zA-Z0-9_]{3,20}$/.test(ref)
     if (valid && !localStorage.getItem(KEY)) localStorage.setItem(KEY, ref.toLowerCase().replace(/^@/, ''))
     // Tidy the address bar so the link isn't copied around with ?ref=.
@@ -51,5 +54,5 @@ export async function referrerFor(self: string): Promise<`0x${string}`> {
 }
 
 export function referralLink(address: string, profile?: Profile | null): string {
-  return `https://arcdex.online/?ref=${profile?.username ?? address.toLowerCase()}`
+  return `https://arcdex.online/r/${profile?.username ?? address.toLowerCase()}`
 }

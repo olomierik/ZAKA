@@ -8,6 +8,7 @@ import { getArgusTokens } from '../api/argus'
 import { getArgusMarket, argusPoolToArcToken } from '../api/argusMarket'
 import { curateTokens, type CuratedGroup } from '../lib/curate'
 import type { Page } from '../App'
+import { toggleWatch, usePrefs } from '../lib/prefs'
 
 interface Props {
   navigate: (p: Page) => void
@@ -103,6 +104,7 @@ function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onTogg
   const lp      = token.launchpad
   const lpColor = getLaunchpadColor(lp)
   const ch24    = token.priceChange24h
+  const starred = usePrefs().watchlist.includes(token.address.toLowerCase())
   const score   = Math.min(100, Math.max(0,
     (token.holderCount > 0 ? Math.min(40, token.holderCount / 25) : 0) +
     (token.volume24h > 0   ? Math.min(40, Math.log10(token.volume24h + 1) * 8) : 0) +
@@ -113,7 +115,10 @@ function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onTogg
     <tr className={`token-row${isDuplicateRow ? ' duplicate-row' : ''}`} onClick={onClick}>
       {/* rank */}
       <td className="td-rank">
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{isDuplicateRow ? '↳' : rank}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          {!isDuplicateRow && <button className={`row-star${starred ? ' on' : ''}`} title={starred ? 'Remove from watchlist' : 'Add to watchlist'} onClick={e => { e.stopPropagation(); toggleWatch(token.address) }}>{starred ? '★' : '☆'}</button>}
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{isDuplicateRow ? '↳' : rank}</span>
+        </span>
       </td>
       {/* token */}
       <td className="td-token">

@@ -2,11 +2,12 @@
 // using two throwaway wallets generated here. Every write is undone at the
 // end (unfollow, unlike, delete thesis), so it leaves no data behind.
 //   bun scripts/test-social-live.ts [https://arcdex.online]
+import { readFileSync } from 'node:fs'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 
 const BASE = process.argv[2] ?? 'https://arcdex.online'
 const ARGUS = '0xece5ca8bf9220718e5727754026757512212cb3c'
-const env = await Bun.file(new URL('../.env', import.meta.url)).text()
+const env = readFileSync(new URL('../.env', import.meta.url), 'utf8')
 const SB_URL = env.match(/^VITE_SUPABASE_URL=(.*)$/m)![1].trim()
 const SB_KEY = env.match(/^VITE_SUPABASE_ANON_KEY=(.*)$/m)![1].trim()
 

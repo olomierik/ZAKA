@@ -12,6 +12,7 @@ import { referrerFor, referralLink } from '../lib/referral'
 import { getProfile, triggerIndex } from '../api/social'
 import ShareCardModal from './ShareCardModal'
 import type { CardData } from '../lib/shareCard'
+import { setPrefs, usePrefs } from '../lib/prefs'
 
 export { SWAP_ROUTER_ADDRESS }
 
@@ -54,6 +55,7 @@ interface Props {
   buyTaxBps?: number | null
   sellTaxBps?: number | null
   onTraded?: () => void
+  unverified?: boolean
 }
 
 type Step = 'idle' | 'approving' | 'quoting' | 'swapping' | 'done' | 'error'
@@ -61,7 +63,7 @@ type Step = 'idle' | 'approving' | 'quoting' | 'swapping' | 'done' | 'error'
 const fmtUsd = (n: number) => n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(2)}`
 const fmtTok = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toFixed(2)
 
-export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, marketCapUsd, route, routeLoading, buyTaxBps, sellTaxBps, onTraded }: Props) {
+export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, marketCapUsd, route, routeLoading, buyTaxBps, sellTaxBps, onTraded, unverified }: Props) {
   const trader = useTrader()
   const me = trader.address
   const info = useRouterInfo()
@@ -78,6 +80,16 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
   const [riskOk, setRiskOk] = useState(false)
   const [share, setShare] = useState<{ card: CardData; text: string } | null>(null)
   const [lastTrade, setLastTrade] = useState<{ kind: 'buy' | 'sell'; usd: number; tokens: number } | null>(null)
+  // Quick-trade presets (fomo's pencil): buy in USDC, sell in % of holding.
+  const prefs = usePrefs()
+  const [editing, setEditing] = useState<string[] | null>(null)
+  const presets = mode === 'buy' ? prefs.buyPresets : prefs.sellPresets
+  const savePresets = () => {
+    if (!editing) return
+    const vals = editing.map(v => Number(v)).filter(v => Number.isFinite(v) && v > 0).map(v => mode === 'sell' ? Math.min(100, v) : v)
+    if (vals.length) setPrefs(mode === 'buy' ? { buyPresets: vals } : { sellPresets: vals })
+    setEditing(null)
+  }
 
   const tokenIn = mode === 'buy' ? USDC_ADDRESS : token
   const decIn = mode === 'buy' ? 6 : 18
@@ -221,7 +233,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
     <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--adx-card-border)', background: 'var(--bg-2)' }}>
         {(['buy', 'sell'] as const).map(m => (
-          <button key={m} onClick={() => { setMode(m); setAmount(''); setStep('idle'); setMsg('') }} style={{
+          <button key={m} onClick={() => { setMode(m); setAmount(''); setStep('idle'); setMsg(''); setEditing(null) }} style={{
             flex: 1, padding: 10, fontSize: '0.875rem', fontWeight: 700, border: 'none', cursor: 'pointer',
             background: mode === m ? (m === 'buy' ? 'var(--green)' : 'var(--red)') : 'transparent',
             color: mode === m ? '#fff' : 'var(--text-muted)',
@@ -240,10 +252,24 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         </div>
         <input type="number" min="0" inputMode="decimal" placeholder={mode === 'buy' ? '$0' : '0'} value={amount} onChange={e => setAmount(e.target.value)}
           style={{ width: '100%', padding: '12px 14px', borderRadius: 8, fontSize: '1.05rem', fontFamily: 'var(--mono)', background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', outline: 'none' }} />
-        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-          {mode === 'buy'
-            ? [5, 10, 25, 100].map(v => <Chip key={v} onClick={() => setAmount(String(v))}>${v}</Chip>)
-            : [25, 50, 100].map(p => <Chip key={p} onClick={() => balance !== null && setAmount(formatUnits((balance * BigInt(p)) / 100n, 18))}>{p === 100 ? 'Max' : `${p}%`}</Chip>)}
+        <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
+          {editing ? (
+            <>
+              {editing.map((v, i) => (
+                <input key={i} value={v} inputMode="decimal" onChange={e => setEditing(ed => ed && ed.map((x, j) => j === i ? e.target.value : x))}
+                  onKeyDown={e => { if (e.key === 'Enter') savePresets() }}
+                  style={{ flex: 1, minWidth: 0, padding: '6px 4px', borderRadius: 6, fontSize: '0.78rem', textAlign: 'center', fontFamily: 'var(--mono)', background: 'var(--bg-2)', border: '1px solid var(--adx-accent)', color: 'var(--text)' }} />
+              ))}
+              <button title="Save presets" onClick={savePresets} style={pencil}>✓</button>
+            </>
+          ) : (
+            <>
+              {mode === 'buy'
+                ? presets.map(v => <Chip key={v} onClick={() => setAmount(String(v))}>${v}</Chip>)
+                : presets.map(p => <Chip key={p} onClick={() => balance !== null && setAmount(formatUnits((balance * BigInt(Math.round(p * 100))) / 10_000n, 18))}>{p >= 100 ? 'Max' : `${p}%`}</Chip>)}
+              <button title={`Edit quick ${mode} presets`} onClick={() => setEditing(presets.map(String))} style={pencil}>✎</button>
+            </>
+          )}
         </div>
       </div>
 
@@ -310,6 +336,10 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         </div>
       )}
 
+      {unverified && (
+        <div style={{ fontSize: '0.7rem', color: '#fcd34d', textAlign: 'center' }}>⚠ Unverified token — anyone can launch a coin with any name. Check the contract before trading.</div>
+      )}
+
       <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5, margin: 0 }}>
         Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.
       </p>
@@ -331,6 +361,8 @@ function Row({ label, value, color }: { label: string; value: string; color?: st
 function Chip({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   return <button onClick={onClick} style={{ flex: 1, padding: '6px 0', borderRadius: 6, fontSize: '0.78rem', fontWeight: 600, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', cursor: 'pointer' }}>{children}</button>
 }
+
+const pencil: React.CSSProperties = { padding: '5px 8px', borderRadius: 6, fontSize: '0.78rem', background: 'transparent', border: '1px solid var(--adx-card-border)', color: 'var(--text-muted)', cursor: 'pointer' }
 
 function Note({ children }: { children: React.ReactNode }) {
   return <div style={{ padding: 10, borderRadius: 8, fontSize: '0.76rem', background: 'var(--bg-2)', border: '1px dashed var(--adx-card-border)', color: 'var(--text-muted)', textAlign: 'center' }}>{children}</div>

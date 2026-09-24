@@ -30,6 +30,8 @@ export interface ArgusPool {
   fdvUsd: number | null
   txns24h: { buys: number; sells: number }
   createdAt: string | null
+  /** Argus launch graduated from its curve (null/absent = unknown or not an Argus launch) */
+  bonded?: boolean | null
 }
 
 const num = (v: unknown) => {

@@ -113,8 +113,62 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
   - $5–$100 quick buys; a price-impact warning at 5% and confirmation required at 15%;
   - one-tap trades via the trading wallet; a Share card after each trade.
 - Referrals:
-  - `lib/referral.ts` captures `?ref=<username|address>` first-touch, and loads Supabase lazily.
+  - `lib/referral.ts` captures `/r/<name>` and `?ref=<username|address>` first-touch, and loads Supabase lazily. `referralLink()` returns `https://arcdex.online/r/<username|address>`.
   - The router binds the referrer on-chain on the first referred swap.
+
+**fomo parity build (2026-09-25).** fomo.family was toured feature by feature (read-only, in Chrome) and rebuilt for Arc.
+- **Database v2:** `supabase/migrations/20260925120000_arcdex_social_v2.sql` (tested on PGlite). **The owner must run it in the Supabase SQL editor.** Until then, the Holders tab, clans, most-held, trader stats, PnL chart, closed positions, multi-buys and transfer notes are empty. The rest of the app keeps working.
+  - Adds `banner_url` on profiles, `arcdex_clans`, `arcdex_clan_members` (one clan per wallet) and `arcdex_transfer_notes`.
+  - Adds the view `arcdex_positions_v`.
+  - Adds these functions: `arcdex_token_holders`, `_most_held`, `_trader_stats`, `_pnl_history`, `_closed_positions`, `_multi_buys`, `_clan_leaderboard`, `_clan_members_pnl`, `_clan_holdings`.
+  - `ProfileEditor` sends `banner_url` only when it changes, so profile saves keep working before the migration.
+- **Server:** `/api/social` adds `clan.create/join/leave/update` and `transfer.note`. A transfer note must match an on-chain USDC `Transfer` from the signed-in wallet in that transaction's receipt. `/api/argus` attaches `bonded` flags (`api/_argusBonded.ts`, two multicalls).
+- **Routing:** `lib/router.ts` provides real URLs, rewritten to the SPA by `vercel.json`:
+  - `/token/:addr?pool=`, `/profile/:addr|username`
+  - `/clans`, `/clans/:slug`
+  - `/leaderboard`, `/feed`, `/alerts`, `/rewards`, `/transfers`
+  - `/portfolio`, `/launchpad`, `/swap`, `/bridge`
+- **Prefs:** `lib/prefs.ts`, stored in localStorage under `arcdex:prefs:v1`. Covers quick-trade buy/sell presets, blur balances, watchlist, recents, alert sound and minimum size, and discovery panel layout.
+- **Shell (`App.tsx`):**
+  - Left `DiscoveryPanel` with these tabs:
+    - Alerts: following/everyone, min size, sound, grouped multi-trader buys.
+    - Tokens: Watchlist, Crypto, Trending, Most held, Graduated, Bonding.
+    - Leaderboard: clans, traders, your rank.
+    - Feed.
+    - The panel can be split into 2 columns or collapsed.
+  - Right rail: trading wallet, "Follow top traders", "Discover clans".
+  - Bottom `TickerBar`: blue chips and Arc status.
+  - `SearchBox`: recents, All/Tokens/Users/Clans, inline Follow, "/" to focus.
+  - `AccountMenu`: cash, Deposit, profile, Settings (presets, blur, sound), Transfers, Rewards, Clans.
+- **Coin page (`ArgusTokenPage`):**
+  - Header: watchlist star, copy CA, website, X, and search on X. The tab title reads `$MC | SYMBOL | ARCDEX`. The badge says ARGUS only for real Argus launches.
+  - `PriceChart`:
+    - Price/MCap switch, screenshot, fullscreen.
+    - Overlays: Trades, My swaps, Thesis marks, Friends only, Min size.
+  - `TokenSocialTabs`:
+    - Holders: position, PnL, avg entry MC, hold time, thesis.
+    - Swaps: MC at trade, min size.
+    - Thesis: threads, live position.
+    - Top traders.
+  - `AboutPanel`: 5M/1H/6H/24H, buys vs sells, volume, buyers vs sellers, links, View more.
+  - `PositionCard`: Open/Closed.
+  - Swap widget: editable presets (✎) and an "Unverified token" note.
+- **Profile (`TraderPage` + `PnlChart`):**
+  - Identity: banner, mutuals, clan badge, avg hold, trades, joined date.
+  - Share, 𝕏, Send cash (`CashModals`), Follow/Edit.
+  - Top 5 trades; PnL chart for 24H/7D/30D/All; realized PnL and volume for the chosen period.
+  - Own page: cash with Deposit/Withdraw.
+  - Positions: Open/Closed, sort, show dust. Pinned most-liked thesis. Swaps: All/Buys/Sells.
+- **Other pages:**
+  - Rewards: total earned, this week, `/r/` link. Tabs:
+    - Referrals: each referred wallet and what they've paid you.
+    - Creator rewards: `getCreatorRewards()` rebuilds 60% of the creator tax from ArcLaunchpad `Trade` logs, capped at the last ~3 days.
+    - History: payouts.
+  - Leaderboard: Traders/Clans, share your rank.
+  - Clans: list and create, clan page (profit, top 3 coins, holdings, members/feed/thesis, Follow all).
+  - Transfers: USDC in/out with notes.
+  - Alerts.
+- **Not built, by design:** card deposits ("coming soon", as on fomo), MFA and languages (English only), and fomo's own token rewards.
 
 ## Hosting — arcdex.online only
 

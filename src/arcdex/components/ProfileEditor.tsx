@@ -10,6 +10,7 @@ export default function ProfileEditor({ trader, profile, onSaved, onClose }: { t
   const [username, setUsername] = useState(profile?.username ?? '')
   const [displayName, setDisplayName] = useState(profile?.display_name ?? '')
   const [avatar, setAvatar] = useState(profile?.avatar_url ?? '')
+  const [banner, setBanner] = useState(profile?.banner_url ?? '')
   const [bio, setBio] = useState(profile?.bio ?? '')
   const [x, setX] = useState(profile?.x_handle ?? '')
   const [saving, setSaving] = useState(false)
@@ -18,7 +19,9 @@ export default function ProfileEditor({ trader, profile, onSaved, onClose }: { t
   async function save() {
     setSaving(true); setErr('')
     try {
-      const r = await socialWrite<{ profile: Profile }>(trader, 'profile', { username, display_name: displayName, avatar_url: avatar, bio, x_handle: x })
+      const r = await socialWrite<{ profile: Profile }>(trader, 'profile', { username, display_name: displayName, avatar_url: avatar, bio, x_handle: x,
+        // Only when changed: older databases may not have the column yet.
+        ...(banner !== (profile?.banner_url ?? '') ? { banner_url: banner } : {}) })
       onSaved(r.profile)
       onClose()
     } catch (e) {
@@ -39,6 +42,7 @@ export default function ProfileEditor({ trader, profile, onSaved, onClose }: { t
           <input value={username} onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} maxLength={20} placeholder="satoshi" style={input} /></div>
         <div><span style={label}>Display name</span><input value={displayName} onChange={e => setDisplayName(e.target.value)} maxLength={40} style={input} /></div>
         <div><span style={label}>Profile picture URL (https://…)</span><input value={avatar} onChange={e => setAvatar(e.target.value.trim())} maxLength={500} placeholder="https://…" style={input} /></div>
+        <div><span style={label}>Banner image URL (https://…, wide)</span><input value={banner} onChange={e => setBanner(e.target.value.trim())} maxLength={500} placeholder="https://…" style={input} /></div>
         <div><span style={label}>Bio</span><textarea value={bio} onChange={e => setBio(e.target.value)} maxLength={160} rows={2} style={{ ...input, resize: 'vertical', fontFamily: 'inherit' }} /></div>
         <div><span style={label}>X handle</span><input value={x} onChange={e => setX(e.target.value.replace(/^@/, '').replace(/[^A-Za-z0-9_]/g, ''))} maxLength={15} placeholder="handle" style={input} /></div>
         {err && <div style={{ fontSize: '0.78rem', color: '#fca5a5' }}>{err}</div>}

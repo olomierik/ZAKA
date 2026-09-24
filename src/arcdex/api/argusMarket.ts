@@ -109,6 +109,9 @@ export async function getArgusMarket(onUpdate?: (pools: ArgusPool[]) => void): P
 const RESERVED_SYMBOLS: Record<string, string> = {
   USDC: USDC_ADDRESS.toLowerCase(),
   ARGUS: ARGUS_TOKEN.toLowerCase(),
+  // The real bridged assets on Arc (see BLUE_CHIPS in lib/tokenMeta).
+  WETH: '0x93ffd195481e8c08eb25a158689e4d9e61313111',
+  EURC: '0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1',
 }
 // Assets that are never an Argus launch — any Argus token using one of
 // these tickers is a copycat by definition.
