@@ -73,6 +73,18 @@ Every Argus coin across all 8 Portals, live, the way argus.world does it: **Geck
 - The on-chain Portal reader in `src/arcdex/api/argus.ts` is kept only as a fallback if `/api/argus` fails entirely.
 
 
+## Hosting — TWO Vercel projects serve this repo
+
+| Project | Serves | Builds from | Env source |
+|---|---|---|---|
+| `app` | **arcdex.online** (the public domain), `app-git-main-…` | GitHub `olomierik/ZAKA` `main`, automatically on every push | its own Vercel env vars **only** |
+| `zaka_app` | `zakaapp-drab.vercel.app` | `vercel --prod` from this folder (CLI) | Vercel env vars **plus the local `.env`**, which the CLI uploads and Vite reads during the build |
+
+- **Any `VITE_*` var must be set on BOTH projects.** The GitHub-built `app` never sees `.env`, since it isn't committed. On 2026-09-24, arcdex.online had no env vars at all: Launchpad showed "contract not configured", and the swap router was missing too, while zakaapp-drab worked because of `.env`.
+- `app` production now has `VITE_ARC_LAUNCHPAD_ADDRESS`, `VITE_ARCDEX_SWAP_ROUTER_ADDRESS`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_WC_PROJECT_ID`.
+- Env changes only apply to new builds. Push to `main`, or run `vercel redeploy <latest app deployment url> --target production` from a directory linked with `vercel link --project app`.
+- To verify, fetch the live JS chunks and grep for the address. `vercel env pull` shows sensitive vars as empty.
+
 ## What This App Does
 
 ## Tech Stack
