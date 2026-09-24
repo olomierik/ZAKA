@@ -24,6 +24,13 @@
 
 html, body, #root { height: 100%; }
 
+/* This app has no light theme at all — every color is hand-picked for a
+   dark background. Without declaring that, some WebKit/Chromium builds
+   fall back to guessing at the OS's light/dark preference for anything
+   they treat as a "native" surface, which can visually mute plain text
+   colors even though computed styles report full brightness/opacity. */
+html { color-scheme: dark; }
+
 body {
   background: var(--bg);
   color: var(--text);
@@ -31,6 +38,8 @@ body {
   font-size: 13px;
   line-height: 1.4;
   overflow: hidden; /* app shell controls scroll */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ── app shell ───────────────────────────────────────────────────── */

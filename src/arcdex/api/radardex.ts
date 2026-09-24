@@ -94,6 +94,7 @@ const PROXY = '/api/radar'
 
 let tokenCache: ArcToken[] | null = null
 let tokenCacheTs = 0
+let cacheGeneration = 0
 const CACHE_TTL = 15_000
 
 interface RadarToken {
@@ -182,21 +183,43 @@ function mapRadarToken(t: RadarToken): ArcToken {
   }
 }
 
+/** Merges a new batch into the cache keyed by address (case-insensitive)
+ * — RadarDex's /tokens pagination isn't guaranteed stable-sorted, so the
+ * same contract can legitimately reappear across different offset pages
+ * within a single, well-behaved fetch loop (confirmed live: duplicate
+ * counts kept climbing even after the generation guard below eliminated
+ * cross-poll overlap). Deduplicating at the merge point fixes the
+ * symptom regardless of which side — ours or upstream — produces the
+ * repeat, and is correct either way since an address is a token's true
+ * unique identity (unlike its ticker, which collides by design). */
+function mergeTokens(existing: ArcToken[], incoming: ArcToken[]): ArcToken[] {
+  const byAddress = new Map(existing.map(t => [t.address.toLowerCase(), t]))
+  for (const t of incoming) byAddress.set(t.address.toLowerCase(), t)
+  return [...byAddress.values()]
+}
+
 // Fetch first batch quickly (200), then load rest in background
 export async function getTokens(forceRefresh = false): Promise<ArcToken[]> {
   if (!forceRefresh && tokenCache && Date.now() - tokenCacheTs < CACHE_TTL) {
     return tokenCache
   }
 
-  // First batch — fast
+  // Bump the generation before awaiting anything, so any background
+  // pagination loop still running from a PRIOR call (its CACHE_TTL and
+  // Terminal's poll interval are both 15s, so overlap is the common case,
+  // not an edge case) sees a mismatch and stops appending. Without this,
+  // every poll spawned a new 25-batch loop that never got cancelled, and
+  // all of them kept appending to the same shared array.
+  const myGeneration = ++cacheGeneration
+
   const first = await fetchBatch(0, 200)
-  tokenCache   = first
+  if (myGeneration !== cacheGeneration) return tokenCache ?? first // superseded mid-fetch
+  tokenCache   = mergeTokens([], first)
   tokenCacheTs = Date.now()
 
-  // Continue loading rest in background without blocking UI
-  void fetchRemainingInBackground(200)
+  void fetchRemainingInBackground(200, myGeneration)
 
-  return first
+  return tokenCache
 }
 
 async function fetchBatch(offset: number, limit: number): Promise<ArcToken[]> {
@@ -207,17 +230,24 @@ async function fetchBatch(offset: number, limit: number): Promise<ArcToken[]> {
   return (data.tokens ?? []).map(mapRadarToken)
 }
 
-async function fetchRemainingInBackground(startOffset: number): Promise<void> {
+async function fetchRemainingInBackground(startOffset: number, generation: number): Promise<void> {
   let offset = startOffset
-  while (true) {
+  let sawNewAddress = true
+  // Cap by page count, not just offset — with duplicate-heavy upstream
+  // pages, 25 fetches of 200 rows each can still land far short of 5000
+  // *unique* tokens, which previously left real data unfetched.
+  for (let page = 0; page < 40 && sawNewAddress; page++) {
+    if (generation !== cacheGeneration) return // a newer getTokens() call has taken over
     try {
       const batch = await fetchBatch(offset, 200)
+      if (generation !== cacheGeneration) return // re-check post-await — a newer call may have started mid-fetch
       if (batch.length === 0) break
-      tokenCache   = [...(tokenCache ?? []), ...batch]
+      const before = tokenCache?.length ?? 0
+      tokenCache   = mergeTokens(tokenCache ?? [], batch)
       tokenCacheTs = Date.now()
+      sawNewAddress = tokenCache.length > before
       if (batch.length < 200) break
       offset += 200
-      if (offset >= 5000) break
     } catch { break }
   }
 }
