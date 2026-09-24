@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAccount } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
 import type { EIP1193Provider } from 'viem'
-import { kit, getBridgeAdapter, BRIDGE_DESTINATIONS } from '../lib/bridgeKit'
+import { kit, getBridgeAdapter, BRIDGE_DESTINATIONS, computeBridgeFee, BRIDGE_FEE_BPS } from '../lib/bridgeKit'
 import type { BridgeResult } from '@circle-fin/bridge-kit'
 
 const inputStyle: React.CSSProperties = {
@@ -78,6 +78,19 @@ export default function Bridge() {
           <input placeholder={address ?? '0x…'} value={recipient} onChange={e => setRecipient(e.target.value)} style={inputStyle} />
         </div>
 
+        {!!amount && parseFloat(amount) > 0 && (
+          <div style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--card-border)', fontSize: '0.76rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
+              <span>Bridge fee ({(BRIDGE_FEE_BPS / 100).toFixed(2)}%)</span>
+              <span>${computeBridgeFee(amount).toFixed(4)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+              <span>Total debited from your wallet</span>
+              <span>${(parseFloat(amount) + computeBridgeFee(amount)).toFixed(4)}</span>
+            </div>
+          </div>
+        )}
+
         {status === 'error' && errMsg && (
           <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5', fontSize: '0.8rem' }}>
             {errMsg}
@@ -121,7 +134,7 @@ export default function Bridge() {
         )}
 
         <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5 }}>
-          One signature: you approve + burn USDC on Arc, Circle's relayer mints it on {BRIDGE_DESTINATIONS.find(d => d.chain === destination)?.label} automatically — usually under a minute for supported chains, no network switch needed.
+          One signature: you approve + burn USDC on Arc, Circle's relayer mints it on {BRIDGE_DESTINATIONS.find(d => d.chain === destination)?.label} automatically — usually under a minute for supported chains, no network switch needed. A {(BRIDGE_FEE_BPS / 100).toFixed(2)}% platform fee (min $0.05, max $50) is added on top and charged separately from your transfer amount, which arrives in full minus only Circle's own protocol fee.
         </p>
       </div>
     </div>

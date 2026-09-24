@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getLaunchpadToken, getRecentTrades, getDevHoldingPct, LAUNCHPAD_ADDRESS, type LaunchpadToken, type CurveTrade } from '../api/launchpad'
 import { subscribeLaunchpadTrades } from '../api/launchpadRpc'
+import { computeTrustReport, type TrustReport } from '../api/trustScore'
 import { ARC_EXPLORER } from '../api/arcRpc'
 import CurveSwapWidget from '../components/CurveSwapWidget'
 import CurveChart from '../components/CurveChart'
@@ -25,11 +26,24 @@ export default function CurveTokenPage({ address, navigate }: Props) {
   const [trades, setTrades] = useState<CurveTrade[]>([])
   const [loading, setLoading] = useState(true)
   const [devPct, setDevPct] = useState<number | null>(null)
+  const [trust, setTrust] = useState<TrustReport | null>(null)
+  const [trustLoading, setTrustLoading] = useState(false)
 
   const load = useCallback(() => {
     void getLaunchpadToken(address as `0x${string}`).then(t => {
       setToken(t); setLoading(false)
       if (t) void getDevHoldingPct(t.address, t.curve.creator).then(setDevPct)
+    })
+  }, [address])
+
+  // Trust report is a heavier scan (walks early buyers' funding history) —
+  // computed once per token visit, not on the 8s poll interval.
+  useEffect(() => {
+    setTrust(null)
+    void getLaunchpadToken(address as `0x${string}`).then(t => {
+      if (!t) return
+      setTrustLoading(true)
+      computeTrustReport(t.address, t.curve).then(setTrust).finally(() => setTrustLoading(false))
     })
   }, [address])
 
@@ -143,6 +157,35 @@ export default function CurveTokenPage({ address, navigate }: Props) {
               </div>
             </div>
           )}
+
+          <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, marginTop: 16, padding: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-muted)' }}>TRUST SIGNALS</span>
+              {trust && (
+                <span style={{
+                  fontWeight: 800, fontSize: '0.9rem', padding: '2px 10px', borderRadius: 99,
+                  color: trust.score >= 75 ? '#22c55e' : trust.score >= 40 ? '#f59e0b' : '#ef4444',
+                  background: trust.score >= 75 ? '#22c55e22' : trust.score >= 40 ? '#f59e0b22' : '#ef444422',
+                }}>
+                  {trust.score}/100
+                </span>
+              )}
+            </div>
+            {trustLoading && !trust ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Scanning early-buyer funding history…</div>
+            ) : trust ? (
+              <>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {trust.flags.map((f, i) => <li key={i}>{f}</li>)}
+                </ul>
+                <div style={{ marginTop: 10, fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.5, opacity: 0.85 }}>
+                  Based on {trust.earlyBuyerCount} early buyer wallet(s)' public on-chain USDC funding history — a heuristic signal, not proof. Every token on this launchpad already gets the same on-chain floor regardless of this score: $2k/tx buy cap for 10 minutes after launch, $5k/block cap across all wallets, no contract-mediated bots, and no owner withdrawal path for real reserves.
+                </div>
+              </>
+            ) : (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Not enough trade history yet.</div>
+            )}
+          </div>
 
           <div style={{ marginTop: 16, background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, overflow: 'hidden' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--card-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

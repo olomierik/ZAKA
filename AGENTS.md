@@ -41,6 +41,12 @@ Self-contained bonding-curve launchpad — no separate LaunchToken deploy needed
 - $25,000 real-USDC graduation threshold — a status flag only; the same curve prices every trade before and after it, so there's no migration step and no price discontinuity.
 - Once the platform's own token is launched through the UI and burns have started, set `VITE_ARC_PLATFORM_TOKEN_ADDRESS` to power the burn ticker.
 
+### ArcDexRouter swap fees — already live
+`ArcDexRouter.sol`'s `_collectFeeAndPrepareSwap` takes `feeBps` (1%, owner-adjustable but hard-capped on-chain at `MAX_FEE_BPS=100`) off every swap and sends it straight to `feeWallet`, set to `platformFeeWallet` at deploy. No code change was needed for this — it was already correct.
+
+### Bridge fees — `src/arcdex/lib/bridgeKit.ts`
+Circle's Bridge Kit has a native mechanism for this (`kit.setCustomFeePolicy`), used instead of a hand-rolled side-transfer. `computeBridgeFee()`: 0.5% of the transfer, bounded to [$0.05, $50]. Bridge Kit adds this **on top of** the transfer amount (wallet debits `amount + fee`, shown in `Bridge.tsx` before signing) and auto-splits it 10% to Circle / 90% to `PLATFORM_FEE_WALLET` — that 10/90 split is Circle's own mechanic on `CustomFeePolicy`, not something this app controls. Only applies to USDC (Bridge Kit rejects a custom fee policy on non-USDC tokens), which is all this app bridges.
+
 ## What This App Does
 
 ## Tech Stack

@@ -140,18 +140,15 @@ export async function getLaunchpadToken(address: Address): Promise<LaunchpadToke
   return { address, name, symbol, curve, priceUsd: priceFromCurve(curve), bondingProgress: bondingProgressFromCurve(curve), metadata }
 }
 
-// token address (lowercase) => metadataURI, cached forever — TokenLaunched
-// fires exactly once per token and never changes.
-const metadataUriCache = new Map<string, string>()
+// token address (lowercase) => its one-time TokenLaunched log, cached
+// forever — the event fires exactly once per token and never changes.
+const launchLogCache = new Map<string, { metadataURI: string; blockNumber: bigint } | null>()
 
-/** Reads a token's `metadataURI` back from its one-time TokenLaunched
- * event log — the contract itself only emits this, it isn't stored in
- * state, so there's no direct view function for it. */
-export async function getTokenMetadataUri(token: Address): Promise<string> {
+async function fetchTokenLaunchedLog(token: Address) {
   const key = token.toLowerCase()
-  const cached = metadataUriCache.get(key)
+  const cached = launchLogCache.get(key)
   if (cached !== undefined) return cached
-  if (!isConfigured()) return ''
+  if (!isConfigured()) { launchLogCache.set(key, null); return null }
 
   const logs = await client.getLogs({
     address: LAUNCHPAD_ADDRESS,
@@ -160,9 +157,28 @@ export async function getTokenMetadataUri(token: Address): Promise<string> {
     fromBlock: 0n,
     toBlock: 'latest',
   })
-  const uri = (logs[0]?.args as { metadataURI?: string } | undefined)?.metadataURI ?? ''
-  metadataUriCache.set(key, uri)
-  return uri
+  const log = logs[0]
+  const result = log ? { metadataURI: (log.args as { metadataURI?: string }).metadataURI ?? '', blockNumber: log.blockNumber } : null
+  launchLogCache.set(key, result)
+  return result
+}
+
+/** Reads a token's `metadataURI` back from its one-time TokenLaunched
+ * event log — the contract itself only emits this, it isn't stored in
+ * state, so there's no direct view function for it. */
+export async function getTokenMetadataUri(token: Address): Promise<string> {
+  const log = await fetchTokenLaunchedLog(token)
+  return log?.metadataURI ?? ''
+}
+
+/** The exact block a token was created in. Needed to scan its true
+ * earliest trading activity — `getRecentTrades`'s default lookback window
+ * (last ~50k blocks) would silently miss launch-time trades for any token
+ * older than that, which is exactly the data a bundling/cluster check
+ * needs to be correct. */
+export async function getLaunchBlock(token: Address): Promise<bigint | null> {
+  const log = await fetchTokenLaunchedLog(token)
+  return log?.blockNumber ?? null
 }
 
 export interface CurveTrade {

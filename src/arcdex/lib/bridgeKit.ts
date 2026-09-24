@@ -15,6 +15,34 @@ import { createViemAdapterFromProvider } from '@circle-fin/adapter-viem-v2'
 
 export const kit = new BridgeKit()
 
+/** Same wallet ArcDexRouter and ArcLaunchpad already send fees to — see
+ * AGENTS.md. Not env-configurable: it's a fixed constant on both deployed
+ * contracts, so the bridge fee matches that rather than drifting from it. */
+export const PLATFORM_FEE_WALLET = '0x274262A0321A0701b0A46a3576e07aE881c286Bb'
+
+/** Bridge fee: 0.5% of the transfer, bounded so it's never trivial on tiny
+ * transfers or excessive on large ones — same "predictable, capped, no
+ * surprises" spirit as ArcDexRouter's swap fee and ArcLaunchpad's caps. */
+export const BRIDGE_FEE_BPS = 50
+export const BRIDGE_FEE_MIN_USDC = 0.05
+export const BRIDGE_FEE_MAX_USDC = 50
+
+export function computeBridgeFee(amount: string): number {
+  const n = parseFloat(amount)
+  if (!n || n <= 0) return 0
+  const fee = (n * BRIDGE_FEE_BPS) / 10_000
+  return Math.min(Math.max(fee, BRIDGE_FEE_MIN_USDC), BRIDGE_FEE_MAX_USDC)
+}
+
+// Bridge Kit adds this fee ON TOP of the transfer amount (wallet debits
+// amount + fee) and auto-splits it 10% to Circle / 90% to our recipient —
+// that split is Circle's own mechanic, not something we control. It only
+// applies to USDC transfers, which is all this app bridges.
+kit.setCustomFeePolicy({
+  computeFee: params => computeBridgeFee(params.amount).toFixed(6),
+  resolveFeeRecipientAddress: () => PLATFORM_FEE_WALLET,
+})
+
 /** Curated subset of the 26 CCTP v2 mainnet chains — the ones with real
  * liquidity/name recognition, so the destination picker isn't a 26-item
  * wall of chains nobody's heard of. */
