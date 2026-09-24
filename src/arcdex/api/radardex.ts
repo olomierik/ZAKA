@@ -54,19 +54,30 @@ export function getLaunchpadColor(lp: string): string {
   switch (lp?.toLowerCase()) {
     case 'arcdex':     return '#3b82f6'
     case 'argus':      return '#7c3aed'
-    case 'radardex':   return '#2563eb'
     case 'tolly':      return '#059669'
     case 'warp':       return '#f59e0b'
     case 'archemist':  return '#d97706'
     case 'arcpad':     return '#e11d48'
     case 'minara':     return '#06b6d4'
     case 'pegd':       return '#84cc16'
+    case 'arc.fun':    return '#ec4899'
+    case 'unknown':    return '#334155'
     default:           return '#475569'
   }
 }
 
+// RadarDex (the data aggregator we read from — not a launchpad) tells us
+// the true origin launchpad for only a small fraction of tokens; the rest
+// come back with `launchpad: null`. Verified directly against the live
+// API: of 500 sampled tokens, 499 had launchpad === null and 1 had
+// "arcfun". Labeling every null as "RadarDex" was actively wrong — that
+// name belongs to the data source, not an on-chain launch venue, and
+// claiming it as one for ~99.8% of tokens is exactly the kind of false
+// attribution DexScreener-style terminals don't do. Show "Unknown"
+// instead: honest about what we don't know, rather than a fabricated
+// answer with a real name attached to it.
 function normaliseLaunchpad(raw: string | null | undefined): string {
-  if (!raw) return 'RadarDex'
+  if (!raw) return 'Unknown'
   const l = raw.toLowerCase().trim()
   if (l.includes('argus'))     return 'Argus'
   if (l.includes('tolly'))     return 'Tolly'
@@ -75,7 +86,8 @@ function normaliseLaunchpad(raw: string | null | undefined): string {
   if (l.includes('arcpad'))    return 'ArcPad'
   if (l.includes('minara'))    return 'Minara'
   if (l.includes('pegd'))      return 'PEGD'
-  return raw.trim() || 'RadarDex'
+  if (l.includes('arcfun') || l.includes('arc.fun')) return 'Arc.fun'
+  return raw.trim() || 'Unknown'
 }
 
 const PROXY = '/api/radar'

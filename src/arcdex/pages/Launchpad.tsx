@@ -52,10 +52,33 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
   const { writeContract, data: txHash } = useWriteContract()
   const { data: receipt } = useWaitForTransactionReceipt({ hash: txHash })
 
-  useEffect(() => { if (receipt) { onCreated(); setOpen(false); setName(''); setSymbol(''); setDescription(''); setInitialBuy(''); setStep('idle') } }, [receipt, onCreated])
-
   // no flat creation fee — only the optional initial buy needs approval first
   const needsApprove = initialBuyWei > 0n && (allowance ?? 0n) < initialBuyWei
+
+  function fireCreate() {
+    setStep('creating')
+    writeContract({
+      address: LAUNCHPAD_ADDRESS, abi: LAUNCHPAD_ABI, functionName: 'createToken',
+      args: [name, symbol, description, BigInt(taxBps), initialBuyWei], chainId: arc.id,
+    })
+  }
+
+  // Approve and create are two separate transactions with two separate
+  // receipts, but both land in the same `receipt` — a receipt confirming
+  // during the 'approving' step means the *allowance* is set, not that a
+  // token exists yet. Treating any receipt as "done" (the previous
+  // behaviour) closed the form and told the user their token was created
+  // when only the approval had gone through. Chain straight into the
+  // actual createToken call instead; only treat a receipt as completion
+  // when it confirms during the 'creating' step.
+  useEffect(() => {
+    if (!receipt) return
+    if (step === 'approving') { fireCreate(); return }
+    if (step === 'creating') {
+      onCreated(); setOpen(false); setName(''); setSymbol(''); setDescription(''); setInitialBuy(''); setStep('idle')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receipt])
 
   function submit() {
     if (!name || !symbol || LAUNCHPAD_ADDRESS.length !== 42) return
@@ -64,11 +87,7 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
       writeContract({ address: USDC_ADDR, abi: ERC20_ABI, functionName: 'approve', args: [LAUNCHPAD_ADDRESS, initialBuyWei], chainId: arc.id })
       return
     }
-    setStep('creating')
-    writeContract({
-      address: LAUNCHPAD_ADDRESS, abi: LAUNCHPAD_ABI, functionName: 'createToken',
-      args: [name, symbol, description, BigInt(taxBps), initialBuyWei], chainId: arc.id,
-    })
+    fireCreate()
   }
 
   if (!open) {

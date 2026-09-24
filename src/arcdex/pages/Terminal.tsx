@@ -37,12 +37,6 @@ function fmtPct(n: number) {
   return `${n > 0 ? '+' : ''}${n.toFixed(1)}%`
 }
 
-// ── source labels matching the screenshot ────────────────────────────
-const SOURCES = [
-  'All sources', 'ARCDEX', 'ArcToolsPad', 'Uniswap V4', 'Stocks', 'Minara', 'Hopium',
-  'Argus', 'Tolly', 'Warp', 'Archemist', 'RadarDex',
-]
-
 // ── view tabs ─────────────────────────────────────────────────────────
 // Only tabs with real, distinct filtering behind them — 'Alpha', 'Insider
 // picks', 'Watchlist' and 'Holdings' implied personalization features
@@ -295,6 +289,18 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     return m
   }, [curation])
 
+  // Source pills are derived from what's actually in the data, not a
+  // fixed list — RadarDex's launchpad attribution is null for ~99.8% of
+  // tokens (verified directly against the live API), so a hardcoded list
+  // of "known" launchpads mostly produced pills that matched zero real
+  // tokens. Sorted by how many tokens are actually behind each one.
+  const sources = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const g of curation.groups) counts.set(g.primary.launchpad, (counts.get(g.primary.launchpad) ?? 0) + 1)
+    const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name)
+    return ['All sources', ...sorted]
+  }, [curation])
+
   // ── filter (runs against each group's primary token) ────────────────
   const matchesFilters = useCallback((t: ArcToken) => {
     if (search) {
@@ -383,7 +389,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
       {/* ── filter bar ── */}
       <div className="filter-bar">
         <div className="source-pills">
-          {SOURCES.map(s => (
+          {sources.map(s => (
             <button key={s} className={`source-pill${source === s ? ' active' : ''}`} onClick={() => setSource(s)}>
               {s === 'All sources' ? '◉ All sources' : s}
             </button>
