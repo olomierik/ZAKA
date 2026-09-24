@@ -6,7 +6,13 @@ import { arc } from '../wagmi'
 import type { ArcToken } from '../api/radardex'
 
 const USDC_ADDR    = '0x3600000000000000000000000000000000000000' as const
-const ROUTER_ADDR  = (import.meta.env.VITE_ARCDEX_ROUTER_ADDRESS ?? '') as `0x${string}`
+// Disabled: this widget was built for the retired ArcDexRouter, which has
+// no mainnet deployment (its env var held the *testnet* address — on
+// mainnet that's an empty account, so "swaps" silently did nothing while
+// users granted it unlimited USDC). Argus coins trade through
+// ArgusSwapWidget + ArcDexSwapRouter. Deliberately not read from env so a
+// stale VITE_ARCDEX_ROUTER_ADDRESS can't re-enable it. See AGENTS.md.
+const ROUTER_ADDR  = '' as `0x${string}`
 const FEE_TIER     = 3000 // 0.3% Uniswap V3 pool fee — separate from 1% platform fee
 
 const ERC20_ABI = [
@@ -65,7 +71,7 @@ export default function SwapWidget({ token }: Props) {
     abi: ERC20_ABI,
     functionName: 'allowance',
     args: [address!, ROUTER_ADDR],
-    query: { enabled: !!address && !!import.meta.env.VITE_ARCDEX_ROUTER_ADDRESS },
+    query: { enabled: !!address && !!ROUTER_ADDR },
   })
 
   const { writeContract, error: writeError } = useWriteContract()
@@ -85,7 +91,7 @@ export default function SwapWidget({ token }: Props) {
 
   async function handleSwap() {
     if (!address || !amountIn || parsedIn === 0n) return
-    if (!import.meta.env.VITE_ARCDEX_ROUTER_ADDRESS) { setErrMsg('Router not deployed yet — coming soon!'); setStep('error'); return }
+    if (!ROUTER_ADDR) { setErrMsg('Swapping this token isn’t available here yet — Argus coins trade from their own page.'); setStep('error'); return }
 
     setErrMsg('')
     try {

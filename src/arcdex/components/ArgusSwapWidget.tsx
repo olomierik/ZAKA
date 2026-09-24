@@ -6,8 +6,8 @@ import { arc } from '../wagmi'
 import { client } from '../api/launchpad'
 import { USDC_ADDRESS, type SwapRoute } from '../api/argusMarket'
 
-export const SWAP_ROUTER_ADDRESS = (import.meta.env.VITE_ARCDEX_SWAP_ROUTER_ADDRESS ?? '') as Address
-const routerReady = SWAP_ROUTER_ADDRESS.length === 42
+export const SWAP_ROUTER_ADDRESS = String(import.meta.env.VITE_ARCDEX_SWAP_ROUTER_ADDRESS ?? '').trim() as Address
+const routerReady = /^0x[0-9a-fA-F]{40}$/.test(SWAP_ROUTER_ADDRESS)
 
 const ERC20_ABI = [
   { name: 'allowance', type: 'function', stateMutability: 'view', inputs: [{ name: 'o', type: 'address' }, { name: 's', type: 'address' }], outputs: [{ type: 'uint256' }] },
