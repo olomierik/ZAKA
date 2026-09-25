@@ -249,6 +249,7 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
 - **Database v5:** `supabase/migrations/20260928000000_arcdex_market_engine.sql`, tested on PGlite. **The owner must run it** before the engine stores history.
   - It adds `arcdex_mkt_*` tokens, pools, trades, candles, liquidity and cursor tables.
   - Functions: `arcdex_mkt_rebuild_candle` and `arcdex_mkt_cleanup`. Retention: trades 72h, 1s candles 6h, 5s 24h, 15s 3d, 1m 30d.
+- **Railway (2026-09-25):** project **arcdex** holds Postgres + Redis for the engine. Its history goes there (`DATABASE_URL`, `store/postgresHistory.ts`, tables created on start); Supabase keeps the site's own data. The root `railway.toml` builds `engine/Dockerfile`. Steps are in `engine/README.md`.
 - **Owner setup to go live:**
   - A host running `engine/Dockerfile`.
   - A Redis URL, plus `SUPABASE_URL` / `SUPABASE_SECRET_KEY` in the engine's env.

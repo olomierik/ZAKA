@@ -31,6 +31,8 @@ export interface Config {
   logsRecentUrl: string
   logsArchiveUrls: string[]
   redisUrl: string | null
+  /** History in this Postgres (e.g. Railway); otherwise Supabase if configured. */
+  databaseUrl: string | null
   /** Fan events out through Redis pub/sub (needed when running separate ingest/gateway processes). */
   redisPubSub: boolean
   historyEnabled: boolean
@@ -66,7 +68,8 @@ export function loadConfig(): Config {
     logsArchiveUrls: urls('ARC_LOGS_ARCHIVE_URLS', ['https://rpc.beamrpc.com', 'https://rpc.mainnet.arc.io', 'https://rpc.beamrpc.com', 'https://rpc.quicknode.mainnet.arc.io'], http),
     redisUrl: process.env.REDIS_URL || null,
     redisPubSub: process.env.REDIS_PUBSUB === '1' || role !== 'all',
-    historyEnabled: process.env.HISTORY_ENABLED === '0' ? false : supabase,
+    databaseUrl: process.env.DATABASE_URL || null,
+    historyEnabled: process.env.HISTORY_ENABLED === '0' ? false : Boolean(process.env.DATABASE_URL) || supabase,
     allowedOrigins: list(process.env.WS_ALLOWED_ORIGINS, ['https://arcdex.online', 'https://www.arcdex.online']),
     metricsToken: process.env.METRICS_TOKEN || null,
     backfillOnStartBlocks: int('BACKFILL_ON_START_BLOCKS', 170_000, 0, 2_000_000),
@@ -91,7 +94,8 @@ export function redacted(c: Config) {
   return {
     role: c.role, port: c.port,
     wsProviders: c.wsUrls.map(host), httpProviders: c.httpUrls.map(host),
-    redis: c.redisUrl ? host(c.redisUrl) : null, history: c.historyEnabled,
+    redis: c.redisUrl ? host(c.redisUrl) : null,
+    history: !c.historyEnabled ? 'off' : c.databaseUrl ? 'postgres ' + host(c.databaseUrl) : 'supabase',
     allowedOrigins: c.allowedOrigins,
   }
 }

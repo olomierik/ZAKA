@@ -1,0 +1,13 @@
+# Railway: the ARCDEX market engine (engine/). The website deploys on Vercel.
+# Only engine files trigger a redeploy — website commits don't restart it.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "engine/Dockerfile"
+watchPatterns = ["engine/**", "api/_arcLogs.ts", "api/_arcSwaps.ts", "api/_marketProtocol.ts", "api/_supabaseAdmin.ts", "railway.toml"]
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

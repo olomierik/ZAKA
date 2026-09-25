@@ -31,7 +31,8 @@ Everything runs in one Bun process by default. For scale-out, split it into `ENG
 | `src/market/candles.ts` | 1s/5s/15s/1m/5m/15m/1h/4h/1d candles, late-trade handling |
 | `src/market/engine.ts` | Applies trades/launches; publishes events; ticks; warm restart |
 | `src/store/hot.ts` | Redis hot store (pipelined, TTLs) + in-memory store for tests/dev |
-| `src/store/history.ts` | Batched Postgres history (Supabase) behind a swappable interface |
+| `src/store/history.ts` | Batched history behind a swappable interface; Supabase (REST) backend |
+| `src/store/postgresHistory.ts` | Direct Postgres backend (`DATABASE_URL`, e.g. Railway); creates its own tables |
 | `src/ws/server.ts` | WebSocket + REST + `/health` + `/metrics` |
 | `../api/_marketProtocol.ts` | Wire protocol shared with the frontend |
 | `../api/_arcSwaps.ts`, `../api/_arcLogs.ts` | Swap decoding and log scanning, shared with the site |
@@ -45,7 +46,21 @@ bun src/main.ts                 # from engine/, or `bun engine/src/main.ts` from
 
 Without `REDIS_URL` it keeps hot state in memory; without Supabase credentials it runs without history. Both are fine for development. Point a local frontend at it with `VITE_ARCDEX_WS_URL=ws://localhost:8080/ws` in `.env.local`, and add `http://localhost:5173` to `WS_ALLOWED_ORIGINS`.
 
-## Deploy (production)
+## Deploy on Railway (set up 2026-09-25)
+
+Railway project **arcdex** holds **Postgres** and **Redis**. To add the engine:
+
+1. Railway can read `olomierik/ZAKA` (GitHub → Settings → Applications → Railway App).
+2. In project **arcdex**: Add → GitHub Repository → `olomierik/ZAKA`. The root `railway.toml` builds `engine/Dockerfile`, health-checks `/health`, and redeploys only when engine files change.
+3. Set these variables on the service:
+   - `DATABASE_URL=${{Postgres.DATABASE_URL}}` and `REDIS_URL=${{Redis.REDIS_URL}}` (Railway references, private network).
+   - `TRUST_PROXY=1`
+   - `WS_ALLOWED_ORIGINS=https://arcdex.online,https://www.arcdex.online`
+4. Networking → Generate Domain (or add `api.arcdex.online`) → then set `VITE_ARCDEX_WS_URL=wss://<domain>/ws` in Vercel and redeploy the site.
+
+The engine creates its history tables in Railway Postgres on first start. Supabase is untouched.
+
+## Deploy (any other host)
 
 The engine is a long-running process, so it can't run on Vercel. It needs any host that runs a Docker container or a Bun process 24/7 (Fly.io, Railway, Render, a VPS).
 

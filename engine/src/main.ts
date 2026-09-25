@@ -30,6 +30,7 @@ import { log, errMsg, setLogLevel } from './log'
 import { MarketEngine, type Publisher } from './market/engine'
 import { metrics } from './metrics'
 import { NullHistoryStore, SupabaseHistoryStore, type HistoryStore } from './store/history'
+import { PostgresHistoryStore } from './store/postgresHistory'
 import { MemoryHotStore, RedisHotStore, type HotStore } from './store/hot'
 import { DataApi, startServer } from './ws/server'
 
@@ -42,8 +43,10 @@ const hot: HotStore = cfg.redisUrl
   ? new RedisHotStore(new RedisClient(cfg.redisUrl), () => new RedisClient(cfg.redisUrl!))
   : new MemoryHotStore()
 if (hot.kind === 'memory') log.warn('REDIS_URL not set — hot state is in-process only (fine for dev; use Redis in production)')
-const history: HistoryStore = cfg.historyEnabled ? new SupabaseHistoryStore() : new NullHistoryStore()
-if (!history.enabled) log.warn('history disabled — set SUPABASE_URL + SUPABASE_SECRET_KEY (and run the market-engine migration) to store trades and candles')
+const history: HistoryStore = !cfg.historyEnabled ? new NullHistoryStore()
+  : cfg.databaseUrl ? new PostgresHistoryStore(cfg.databaseUrl)
+  : new SupabaseHistoryStore()
+if (!history.enabled) log.warn('history disabled — set DATABASE_URL (any Postgres, e.g. Railway) or SUPABASE_URL + SUPABASE_SECRET_KEY to store trades and candles')
 
 const rpc = new HttpRpc(cfg.httpUrls)
 const ws = new WsProvider(cfg.wsUrls, { staleHeadMs: cfg.staleHeadMs })
