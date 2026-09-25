@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { PnlPoint } from '../api/social'
+import { t as T } from '../lib/i18n'
 
 // Profile PnL chart (fomo's portfolio chart): cumulative realized PnL from
 // trades through ARCDEX, for the chosen window, as a line with hover value.
@@ -33,7 +34,7 @@ export default function PnlChart({ points, sinceMs }: { points: PnlPoint[]; sinc
     <div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
         <span style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'var(--mono)', color: shown.v >= 0 ? 'var(--green)' : 'var(--red)' }}>{money(shown.v)}</span>
-        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{hover !== null ? new Date(shown.t).toLocaleString() : 'realized PnL'}</span>
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{hover !== null ? new Date(shown.t).toLocaleString() : T("realized PnL")}</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: H, display: 'block', cursor: 'crosshair' }}
         onMouseLeave={() => setHover(null)}
@@ -49,7 +50,7 @@ export default function PnlChart({ points, sinceMs }: { points: PnlPoint[]; sinc
         <path d={path} fill="none" stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" />
         {hover !== null && <circle cx={x(series[hover].t)} cy={y(series[hover].v)} r={4} fill={color} />}
       </svg>
-      {points.length === 0 && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: -H / 2 - 8, position: 'relative' }}>No closed trades yet</div>}
+      {points.length === 0 && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: -H / 2 - 8, position: 'relative' }}>{T("No closed trades yet")}</div>}
     </div>
   )
 }

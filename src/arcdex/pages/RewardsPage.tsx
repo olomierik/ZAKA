@@ -12,18 +12,20 @@ import { shortAddr, useTrader } from '../lib/identity'
 import { referralLink } from '../lib/referral'
 import { pct, useRouterInfo } from '../lib/routerInfo'
 import { tweetUrl } from '../lib/shareCard'
+import { MyPoints } from '../components/PointsPanel'
 import type { Page } from '../App'
+import { t as T } from '../lib/i18n'
 
 // Rewards (fomo parity): total earned, this week, your /r/ link, and tabs
 // for Referrals (share of your referrals' fees, paid by the swap router in
 // the same transaction), Creator rewards (60% of your launchpad coins'
 // creator tax) and History (every payout).
 
-type Tab = 'referrals' | 'creator' | 'history'
+type Tab = 'points' | 'referrals' | 'creator' | 'history'
 const money = (n: number) => `$${n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : n.toFixed(2)}`
 function ago(iso: string) {
   const s = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 1000))
-  return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.floor(s / 60)}m ago` : s < 86400 ? `${Math.floor(s / 3600)}h ago` : `${Math.floor(s / 86400)}d ago`
+  return s < 60 ? T('{n}s ago', { n: s }) : s < 3600 ? T('{n}m ago', { n: Math.floor(s / 60) }) : s < 86400 ? T('{n}h ago', { n: Math.floor(s / 3600) }) : T('{n}d ago', { n: Math.floor(s / 86400) })
 }
 const USDC = '0x3600000000000000000000000000000000000000'
 
@@ -37,7 +39,7 @@ export default function RewardsPage({ navigate }: { navigate: (p: Page) => void 
   const [referred, setReferred] = useState<ReferredUser[]>([])
   const [profiles, setProfiles] = useState<Map<string, Profile>>(new Map())
   const [creator, setCreator] = useState<CreatorReward[] | null>(null)
-  const [tab, setTab] = useState<Tab>('referrals')
+  const [tab, setTab] = useState<Tab>('points')
   const [editing, setEditing] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -76,85 +78,76 @@ export default function RewardsPage({ navigate }: { navigate: (p: Page) => void 
 
   return (
     <div className="token-page" style={{ maxWidth: 820, padding: 16 }}>
-      <h2 style={{ margin: 0, fontSize: '1.4rem' }}>Rewards</h2>
-      <div style={{ fontSize: '0.86rem', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5 }}>
-        Earn <b style={{ color: 'var(--text)' }}>{sharePct} of the trading fees</b> of everyone you bring to ARCDEX, in USDC, on every trade they make, for good. Launch a coin and earn 60% of its creator tax too.
-      </div>
+      <h2 style={{ margin: 0, fontSize: '1.4rem' }}>{T("Rewards")}</h2>
+      <div style={{ fontSize: '0.86rem', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5 }}>{T("Earn")}{' '}<b style={{ color: 'var(--text)' }}>{sharePct}{' '}{T("of the trading fees")}</b>{' '}{T("of everyone you bring to ARCDEX, in USDC, on every trade they make, for good. Launch a coin and earn 60% of its creator tax too.")}</div>
 
       {!live && (
-        <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 10, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: '#fcd34d', fontSize: '0.8rem' }}>
-          Referral payouts switch on with the next router upgrade. Links you share now are remembered by the people who click them.
-        </div>
+        <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 10, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: '#fcd34d', fontSize: '0.8rem' }}>{T("Referral payouts switch on with the next router upgrade. Links you share now are remembered by the people who click them.")}</div>
       )}
 
       {!me ? (
         <div style={{ marginTop: 20 }}>
-          <ConnectKitButton.Custom>{({ show }) => <button onClick={show} style={btn('var(--adx-accent)')}>Connect wallet to get your link</button>}</ConnectKitButton.Custom>
-          <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: 8 }}>Or unlock your trading wallet in the right panel.</div>
+          <ConnectKitButton.Custom>{({ show }) => <button onClick={show} style={btn('var(--adx-accent)')}>{T("Connect wallet to get your link")}</button>}</ConnectKitButton.Custom>
+          <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: 8 }}>{T("Or unlock your trading wallet in the right panel.")}</div>
         </div>
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginTop: 16 }}>
-            <Stat label="Total earned" value={stats ? money(total) : '…'} color="var(--green)" big />
-            <Stat label="This week" value={stats ? money(thisWeek) : '…'} />
-            <Stat label="Traders referred" value={stats ? String(stats.referred_users) : '…'} />
+            <Stat label={T("Total earned")} value={stats ? money(total) : '…'} color="var(--green)" big />
+            <Stat label={T("This week")} value={stats ? money(thisWeek) : '…'} />
+            <Stat label={T("Traders referred")} value={stats ? String(stats.referred_users) : '…'} />
           </div>
 
           <div style={{ marginTop: 14, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 16 }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 6 }}>Your referral link</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 6 }}>{T("Your referral link")}</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <input readOnly value={link} onFocus={e => e.currentTarget.select()} style={{ flex: 1, minWidth: 220, padding: '10px 12px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', fontFamily: 'var(--mono)', fontSize: '0.84rem' }} />
-              <button onClick={() => { void navigator.clipboard?.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500) }} style={btn('var(--adx-accent)')}>{copied ? 'Copied ✓' : 'Copy'}</button>
-              <a href={tweetUrl('Trading Arc memecoins on ARCDEX — live charts, see who’s buying, one-tap trades. Join me:', link)} target="_blank" rel="noopener noreferrer" style={{ ...btn('#000'), textDecoration: 'none', border: '1px solid #333' }}>Post on 𝕏</a>
+              <button onClick={() => { void navigator.clipboard?.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500) }} style={btn('var(--adx-accent)')}>{copied ? T("Copied ✓") : T("Copy")}</button>
+              <a href={tweetUrl('Trading Arc memecoins on ARCDEX — live charts, see who’s buying, one-tap trades. Join me:', link)} target="_blank" rel="noopener noreferrer" style={{ ...btn('#000'), textDecoration: 'none', border: '1px solid #333' }}>{T("Post on 𝕏")}</a>
             </div>
             {!profile?.username && (
-              <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: 10 }}>
-                Want a short link like <span style={{ fontFamily: 'var(--mono)' }}>arcdex.online/r/yourname</span>?{' '}
-                <button onClick={() => setEditing(true)} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.76rem' }}>Pick a username</button>
+              <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: 10 }}>{T("Want a short link like")}{' '}<span style={{ fontFamily: 'var(--mono)' }}>{T("arcdex.online/r/yourname")}</span>?{' '}
+                <button onClick={() => setEditing(true)} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.76rem' }}>{T("Pick a username")}</button>
               </div>
             )}
           </div>
 
           <div style={{ display: 'flex', gap: 4, marginTop: 18, borderBottom: '1px solid var(--adx-card-border)' }}>
-            {([['referrals', `Referrals · ${sharePct}`], ['creator', 'Creator rewards'], ['history', 'History']] as [Tab, string][]).map(([k, l]) => (
+            {([['points', '★ ' + T('Points')], ['referrals', T('Referrals') + ' · ' + sharePct], ['creator', T('Creator rewards')], ['history', T('History')]] as [Tab, string][]).map(([k, l]) => (
               <button key={k} onClick={() => setTab(k)} style={{ padding: '8px 14px', background: 'none', border: 'none', borderBottom: `2px solid ${tab === k ? 'var(--adx-accent)' : 'transparent'}`, color: tab === k ? 'var(--text)' : 'var(--text-muted)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>{l}</button>
             ))}
           </div>
 
+          {tab === 'points' && <MyPoints address={me} navigate={navigate} />}
+
           {tab === 'referrals' && (
             <div>
               {referred.length === 0 ? (
-                <Empty>No one has joined through your link yet. Share it on 𝕏, Telegram or Discord — every trader who signs up through it pays you {sharePct} of their fees.</Empty>
+                <Empty>{T("No one has joined through your link yet. Share it on 𝕏, Telegram or Discord — every trader who signs up through it pays you")}{' '}{sharePct}{' '}{T("of their fees.")}</Empty>
               ) : referred.map(r => (
                 <div key={r.user_address} className="reward-row">
                   <button onClick={() => navigate({ name: 'trader', address: r.user_address })} style={{ display: 'flex', gap: 10, alignItems: 'center', background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', padding: 0 }}>
                     <Avatar address={r.user_address} url={profiles.get(r.user_address)?.avatar_url} size={28} />
-                    <span style={{ textAlign: 'left' }}><b>{name(r.user_address)}</b><div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>joined {ago(r.block_time)}</div></span>
+                    <span style={{ textAlign: 'left' }}><b>{name(r.user_address)}</b><div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T("joined")}{' '}{ago(r.block_time)}</div></span>
                   </button>
                   <span style={{ fontFamily: 'var(--mono)', color: 'var(--green)' }}>+{money(byUser.get(r.user_address) ?? 0)}</span>
                 </div>
               ))}
               <div style={{ marginTop: 14, fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                <b style={{ color: 'var(--text)' }}>How it works</b><br />
-                1. Someone opens your link and makes their first trade on ARCDEX.<br />
-                2. The swap router records you as their referrer on-chain — permanently.<br />
-                3. On every trade they make after that, {sharePct} of the {info ? pct(info.feeBps) : ''} platform fee goes straight to your wallet in USDC, in the same transaction. No claiming, no minimums.
-              </div>
+                <b style={{ color: 'var(--text)' }}>{T("How it works")}</b><br />{T("1. Someone opens your link and makes their first trade on ARCDEX.")}<br />{T("2. The swap router records you as their referrer on-chain — permanently.")}<br />{T("3. On every trade they make after that,")}{' '}{sharePct}{' '}{T("of the")}{' '}{info ? pct(info.feeBps) : ''}{' '}{T("platform fee goes straight to your wallet in USDC, in the same transaction. No claiming, no minimums.")}</div>
             </div>
           )}
 
           {tab === 'creator' && (
             <div>
-              {creator === null ? <Empty>Reading your launches from the chain…</Empty> : creator.length === 0 ? (
-                <Empty>
-                  You haven't launched a coin on ARCDEX yet. Launch one, set a creator tax of 0–3%, and 60% of it is paid to you in USDC on every trade — automatically.
-                  {LAUNCHPAD_ADDRESS && <div style={{ marginTop: 12 }}><button onClick={() => navigate({ name: 'launchpad' })} style={btn('var(--adx-accent)')}>Launch a coin</button></div>}
+              {creator === null ? <Empty>{T("Reading your launches from the chain…")}</Empty> : creator.length === 0 ? (
+                <Empty>{T("You haven't launched a coin on ARCDEX yet. Launch one, set a creator tax of 0–3%, and 60% of it is paid to you in USDC on every trade — automatically.")}{LAUNCHPAD_ADDRESS && <div style={{ marginTop: 12 }}><button onClick={() => navigate({ name: 'launchpad' })} style={btn('var(--adx-accent)')}>{T("Launch a coin")}</button></div>}
                 </Empty>
               ) : creator.map(c => (
                 <div key={c.token} className="reward-row">
                   <button onClick={() => navigate({ name: 'token', address: c.token })} style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
                     <b>${c.symbol}</b>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>creator tax {c.creatorTaxBps / 100}% · you get {(c.creatorTaxBps * 0.6 / 100).toFixed(2)}% of volume · {c.trades} trades · {money(c.volumeUsdc)} volume{c.windowCapped ? ' (last 3 days)' : ''}</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T("creator tax")}{' '}{c.creatorTaxBps / 100}{T("% · you get")}{' '}{(c.creatorTaxBps * 0.6 / 100).toFixed(2)}{T("% of volume ·")}{' '}{c.trades}{' '}{T("trades ·")}{' '}{money(c.volumeUsdc)}{' '}{T("volume")}{c.windowCapped ? T(" (last 3 days)") : ''}</div>
                   </button>
                   <span style={{ fontFamily: 'var(--mono)', color: 'var(--green)' }}>+{money(c.earnedUsdc)}</span>
                 </div>
@@ -164,9 +157,9 @@ export default function RewardsPage({ navigate }: { navigate: (p: Page) => void 
 
           {tab === 'history' && (
             <div>
-              {payouts.length === 0 ? <Empty>No payouts yet.</Empty> : payouts.map(p => (
+              {payouts.length === 0 ? <Empty>{T("No payouts yet.")}</Empty> : payouts.map(p => (
                 <div key={p.tx_hash + p.log_index} className="reward-row">
-                  <span style={{ fontSize: '0.8rem' }}>Referral fee from <button onClick={() => navigate({ name: 'trader', address: p.user_address })} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--adx-accent)', cursor: 'pointer', fontWeight: 600 }}>{name(p.user_address)}</button>
+                  <span style={{ fontSize: '0.8rem' }}>{T("Referral fee from")}{' '}<button onClick={() => navigate({ name: 'trader', address: p.user_address })} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--adx-accent)', cursor: 'pointer', fontWeight: 600 }}>{name(p.user_address)}</button>
                     <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}> · {ago(p.block_time)}</span></span>
                   <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                     <span style={{ fontFamily: 'var(--mono)', color: 'var(--green)' }}>{p.token.toLowerCase() === USDC ? `+${money(p.amount)}` : `+${p.amount} ${shortAddr(p.token)}`}</span>
@@ -177,7 +170,7 @@ export default function RewardsPage({ navigate }: { navigate: (p: Page) => void 
             </div>
           )}
 
-          <button onClick={() => navigate({ name: 'trader', address: me })} style={{ ...btn('var(--bg-2)'), marginTop: 16 }}>View my profile</button>
+          <button onClick={() => navigate({ name: 'trader', address: me })} style={{ ...btn('var(--bg-2)'), marginTop: 16 }}>{T("View my profile")}</button>
         </>
       )}
 

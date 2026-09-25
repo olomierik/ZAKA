@@ -4,6 +4,7 @@ import { ConnectKitButton } from 'connectkit'
 import { parseUnits, formatUnits, maxUint256, type Address } from 'viem'
 import { arc } from '../wagmi'
 import { LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, type LaunchpadToken } from '../api/launchpad'
+import { t as T } from '../lib/i18n'
 
 const USDC_ADDR = '0x3600000000000000000000000000000000000000' as const
 
@@ -87,7 +88,7 @@ export default function CurveSwapWidget({ token, onTraded }: Props) {
 
   async function handleSwap() {
     if (!address || !amountIn || parsedIn === 0n) return
-    if (LAUNCHPAD_ADDRESS.length !== 42) { setErrMsg('Launchpad not deployed yet'); setStep('error'); return }
+    if (LAUNCHPAD_ADDRESS.length !== 42) { setErrMsg(T('Launchpad not deployed yet')); setStep('error'); return }
 
     setErrMsg('')
     try {
@@ -107,7 +108,7 @@ export default function CurveSwapWidget({ token, onTraded }: Props) {
       }
       onTraded?.()
     } catch (e: unknown) {
-      setErrMsg(e instanceof Error ? e.message : 'Swap failed')
+      setErrMsg(e instanceof Error ? e.message : T('Swap failed'))
       setStep('error')
     }
   }
@@ -121,15 +122,13 @@ export default function CurveSwapWidget({ token, onTraded }: Props) {
             background: mode === m ? (m === 'buy' ? 'var(--green)' : 'var(--red)') : 'transparent',
             color: mode === m ? '#fff' : 'var(--text-muted)',
           }}>
-            {m === 'buy' ? 'Buy' : 'Sell'} {token.symbol}
+            {m === 'buy' ? T("Buy") : T("Sell")} {token.symbol}
           </button>
         ))}
       </div>
 
       {!token.curve.graduated && (
-        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-          Bonding curve · {token.bondingProgress.toFixed(1)}% to graduation
-          <div style={{ marginTop: 4, height: 5, borderRadius: 3, background: 'var(--bg-2)', overflow: 'hidden' }}>
+        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T("Bonding curve ·")}{' '}{token.bondingProgress.toFixed(1)}{T("% to graduation")}<div style={{ marginTop: 4, height: 5, borderRadius: 3, background: 'var(--bg-2)', overflow: 'hidden' }}>
             <div style={{ width: `${Math.min(100, token.bondingProgress)}%`, height: '100%', background: 'linear-gradient(90deg,#3b82f6,#22c55e)' }} />
           </div>
         </div>
@@ -137,7 +136,7 @@ export default function CurveSwapWidget({ token, onTraded }: Props) {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-          {mode === 'buy' ? 'USDC to spend' : `${token.symbol} to sell`}
+          {mode === 'buy' ? T("USDC to spend") : T('{symbol} to sell', { symbol: token.symbol })}
         </label>
         <input type="number" min="0" placeholder="0.00" value={amountIn} onChange={e => setAmountIn(e.target.value)}
           style={{ padding: '12px 14px', borderRadius: 8, fontSize: '1rem', fontFamily: 'var(--mono)',
@@ -148,13 +147,13 @@ export default function CurveSwapWidget({ token, onTraded }: Props) {
         <div style={{ padding: '12px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)',
           fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--orange)' }}>
-            <span>Fee (1% + {(token.curve.creatorTaxBps / 100).toFixed(1)}% creator tax)</span>
-            <span className="mono">{formatUnits(estimated.fee, 6)} USDC</span>
+            <span>{T("Fee (1% +")}{' '}{(token.curve.creatorTaxBps / 100).toFixed(1)}{T("% creator tax)")}</span>
+            <span className="mono">{formatUnits(estimated.fee, 6)}{' '}{T("USDC")}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--adx-card-border)', paddingTop: 6, color: 'var(--text)' }}>
-            <span>You receive (~)</span>
+            <span>{T("You receive (~)")}</span>
             <span className="mono" style={{ color: 'var(--green)' }}>
-              {formatUnits(estimated.out, estimated.decimals)} {mode === 'buy' ? token.symbol : 'USDC'}
+              {formatUnits(estimated.out, estimated.decimals)} {mode === 'buy' ? token.symbol : T("USDC")}
             </span>
           </div>
         </div>
@@ -167,17 +166,13 @@ export default function CurveSwapWidget({ token, onTraded }: Props) {
       )}
 
       {receipt && (
-        <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', color: '#86efac', fontSize: '0.8125rem' }}>
-          Trade confirmed!
-        </div>
+        <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', color: '#86efac', fontSize: '0.8125rem' }}>{T("Trade confirmed!")}</div>
       )}
 
       {!isConnected ? (
         <ConnectKitButton.Custom>
           {({ show }) => (
-            <button onClick={show} style={{ padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>
-              Connect Wallet
-            </button>
+            <button onClick={show} style={{ padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>{T("Connect Wallet")}</button>
           )}
         </ConnectKitButton.Custom>
       ) : (
@@ -186,15 +181,12 @@ export default function CurveSwapWidget({ token, onTraded }: Props) {
             background: needsApprove ? 'var(--orange)' : mode === 'buy' ? 'var(--green)' : 'var(--red)',
             color: '#fff', border: 'none', cursor: 'pointer', width: '100%',
             opacity: (!amountIn || parsedIn === 0n) ? 0.5 : 1, transition: 'opacity 0.15s' }}>
-          {step === 'approving' ? 'Approving…' : step === 'swapping' ? 'Swapping…' :
-           needsApprove ? `Approve ${mode === 'buy' ? 'USDC' : token.symbol}` : `${mode === 'buy' ? 'Buy' : 'Sell'} ${token.symbol}`}
+          {step === 'approving' ? T("Approving…") : step === 'swapping' ? T("Swapping…") :
+           needsApprove ? T('Approve {symbol}', { symbol: mode === 'buy' ? 'USDC' : token.symbol }) : T(mode === 'buy' ? 'Buy {symbol}' : 'Sell {symbol}', { symbol: token.symbol })}
         </button>
       )}
 
-      <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5 }}>
-        1% platform fee + {(token.curve.creatorTaxBps / 100).toFixed(1)}% creator tax (60% of that goes straight to the creator).
-        Liquidity lives permanently in the curve — no LP to rug.
-      </p>
+      <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5 }}>{T("1% platform fee +")}{' '}{(token.curve.creatorTaxBps / 100).toFixed(1)}{T("% creator tax (60% of that goes straight to the creator). Liquidity lives permanently in the curve — no LP to rug.")}</p>
     </div>
   )
 }

@@ -13,6 +13,7 @@ import { getProfile, triggerIndex } from '../api/social'
 import ShareCardModal from './ShareCardModal'
 import type { CardData } from '../lib/shareCard'
 import { setPrefs, usePrefs } from '../lib/prefs'
+import { t as T } from '../lib/i18n'
 
 export { SWAP_ROUTER_ADDRESS }
 
@@ -128,7 +129,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
 
   function callFor(r: RouterInfo, minOut: bigint, referrer: Address) {
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
-    if (!route) throw new Error('No route')
+    if (!route) throw new Error(T('No route'))
     const abi = r.version === 2 ? ROUTER_V2 : ROUTER_V1
     const tail = r.version === 2 ? [referrer] : []
     if (route.kind === 'v4') {
@@ -156,7 +157,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         // Exact amount only — the router never needs more than this trade.
         const h = await send({ address: tokenIn, abi: ERC20_ABI, functionName: 'approve', args: [SWAP_ROUTER_ADDRESS, amountIn] })
         const rc = await client.waitForTransactionReceipt({ hash: h })
-        if (rc.status !== 'success') throw new Error('Approval failed')
+        if (rc.status !== 'success') throw new Error(T('Approval failed'))
         setAllowance(amountIn)
       }
 
@@ -176,7 +177,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       setImpact(imp)
       if (imp >= CONFIRM_IMPACT && !riskOk) {
         setStep('idle')
-        setMsg(`This trade moves the price ${imp.toFixed(1)}% — you'd get ${mode === 'buy' ? fmtTok(outNum) + ' ' + symbol : fmtUsd(outNum)}. Tick the box to confirm, or trade a smaller amount.`)
+        setMsg(T("This trade moves the price {pct}% — you'd get {out}. Tick the box to confirm, or trade a smaller amount.", { pct: imp.toFixed(1), out: mode === 'buy' ? fmtTok(outNum) + ' ' + symbol : fmtUsd(outNum) }))
         return
       }
 
@@ -185,13 +186,13 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       const call = callFor(info, minOut, referrer)
       const h = await send({ address: SWAP_ROUTER_ADDRESS, abi: call.abi, functionName: call.functionName, args: call.args })
       const rc = await client.waitForTransactionReceipt({ hash: h })
-      if (rc.status !== 'success') throw new Error('Swap reverted')
+      if (rc.status !== 'success') throw new Error(T('Swap reverted'))
 
       const usd = mode === 'buy' ? Number(formatUnits(amountIn, 6)) : outNum
       const tokens = mode === 'buy' ? outNum : Number(formatUnits(amountIn, 18))
       setLastTrade({ kind: mode, usd, tokens })
       setStep('done')
-      setMsg(mode === 'buy' ? `Bought ${fmtTok(tokens)} ${symbol} for ${fmtUsd(usd)}` : `Sold ${fmtTok(tokens)} ${symbol} for ${fmtUsd(usd)}`)
+      setMsg(T(mode === 'buy' ? 'Bought {amount} {symbol} for {usd}' : 'Sold {amount} {symbol} for {usd}', { amount: fmtTok(tokens), symbol, usd: fmtUsd(usd) }))
       setAmount('')
       setAllowance(a => (a >= amountIn ? a - amountIn : 0n))
       void refresh()
@@ -200,7 +201,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
     } catch (e) {
       const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
       setStep('error')
-      setMsg(/rejected|denied/i.test(m) ? 'You cancelled the transaction.' : `Trade failed: ${m}`.slice(0, 220))
+      setMsg(/rejected|denied/i.test(m) ? T("You cancelled the transaction.") : T('Trade failed: {reason}', { reason: m }).slice(0, 220))
     }
   }
 
@@ -237,16 +238,16 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
             flex: 1, padding: 10, fontSize: '0.875rem', fontWeight: 700, border: 'none', cursor: 'pointer',
             background: mode === m ? (m === 'buy' ? 'var(--green)' : 'var(--red)') : 'transparent',
             color: mode === m ? '#fff' : 'var(--text-muted)',
-          }}>{m === 'buy' ? 'Buy' : 'Sell'} {symbol}</button>
+          }}>{m === 'buy' ? T("Buy") : T("Sell")} {symbol}</button>
         ))}
       </div>
 
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 6 }}>
-          <span>{mode === 'buy' ? 'You pay (USDC)' : `You sell (${symbol})`}</span>
+          <span>{mode === 'buy' ? T("You pay (USDC)") : T('You sell ({symbol})', { symbol })}</span>
           {balance !== null && (
             <button onClick={() => setAmount(formatUnits(balance, decIn))} style={{ background: 'none', border: 'none', color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.72rem' }}>
-              {mode === 'buy' ? 'Cash' : 'Holding'}: {mode === 'buy' ? fmtUsd(Number(formatUnits(balance, 6))) : fmtTok(Number(formatUnits(balance, 18)))}
+              {mode === 'buy' ? T("Cash") : T("Holding")}: {mode === 'buy' ? fmtUsd(Number(formatUnits(balance, 6))) : fmtTok(Number(formatUnits(balance, 18)))}
             </button>
           )}
         </div>
@@ -260,29 +261,29 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
                   onKeyDown={e => { if (e.key === 'Enter') savePresets() }}
                   style={{ flex: 1, minWidth: 0, padding: '6px 4px', borderRadius: 6, fontSize: '0.78rem', textAlign: 'center', fontFamily: 'var(--mono)', background: 'var(--bg-2)', border: '1px solid var(--adx-accent)', color: 'var(--text)' }} />
               ))}
-              <button title="Save presets" onClick={savePresets} style={pencil}>✓</button>
+              <button title={T("Save presets")} onClick={savePresets} style={pencil}>✓</button>
             </>
           ) : (
             <>
               {mode === 'buy'
                 ? presets.map(v => <Chip key={v} onClick={() => setAmount(String(v))}>${v}</Chip>)
-                : presets.map(p => <Chip key={p} onClick={() => balance !== null && setAmount(formatUnits((balance * BigInt(Math.round(p * 100))) / 10_000n, 18))}>{p >= 100 ? 'Max' : `${p}%`}</Chip>)}
-              <button title={`Edit quick ${mode} presets`} onClick={() => setEditing(presets.map(String))} style={pencil}>✎</button>
+                : presets.map(p => <Chip key={p} onClick={() => balance !== null && setAmount(formatUnits((balance * BigInt(Math.round(p * 100))) / 10_000n, 18))}>{p >= 100 ? T("Max") : `${p}%`}</Chip>)}
+              <button title={T(mode === 'buy' ? 'Edit quick buy presets' : 'Edit quick sell presets')} onClick={() => setEditing(presets.map(String))} style={pencil}>✎</button>
             </>
           )}
         </div>
       </div>
 
       <div style={{ padding: 12, borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <Row label="You receive (est.)" value={estimate > 0 ? (mode === 'buy' ? `${fmtTok(estimate)} ${symbol}` : fmtUsd(estimate)) : '—'} />
-        <Row label="Route" value={routeLoading ? 'Finding route…' : route ? routeText : 'No routable pool'} />
-        <Row label="Platform fee" value={info ? `${pct(info.feeBps)} (in USDC)` : '…'} />
-        <Row label="Creator tax" value={taxBps ? pct(taxBps) : '0%'} />
+        <Row label={T("You receive (est.)")} value={estimate > 0 ? (mode === 'buy' ? `${fmtTok(estimate)} ${symbol}` : fmtUsd(estimate)) : '—'} />
+        <Row label={T("Route")} value={routeLoading ? T('Finding route…') : route ? routeText : T('No routable pool')} />
+        <Row label={T("Platform fee")} value={info ? T('{pct} (in USDC)', { pct: pct(info.feeBps) }) : '…'} />
+        <Row label={T("Creator tax")} value={taxBps ? pct(taxBps) : '0%'} />
         {impact !== null && (
-          <Row label="Price impact" value={`${impact.toFixed(2)}%`} color={impact >= CONFIRM_IMPACT ? 'var(--red)' : impact >= WARN_IMPACT ? 'var(--amber)' : undefined} />
+          <Row label={T("Price impact")} value={`${impact.toFixed(2)}%`} color={impact >= CONFIRM_IMPACT ? 'var(--red)' : impact >= WARN_IMPACT ? 'var(--amber)' : undefined} />
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ color: 'var(--text-muted)' }}>Max slippage</span>
+          <span style={{ color: 'var(--text-muted)' }}>{T("Max slippage")}</span>
           <div style={{ display: 'flex', gap: 4 }}>
             {[1, 3, 5, 10].map(s => (
               <button key={s} onClick={() => setSlippage(s)} style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.7rem', cursor: 'pointer', border: '1px solid var(--adx-card-border)', background: slippage === s ? 'var(--adx-accent)' : 'transparent', color: slippage === s ? '#fff' : 'var(--text-muted)' }}>{s}%</button>
@@ -293,9 +294,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
 
       {needsRiskTick && (
         <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '0.76rem', color: '#fcd34d', cursor: 'pointer' }}>
-          <input type="checkbox" checked={riskOk} onChange={e => setRiskOk(e.target.checked)} style={{ marginTop: 2 }} />
-          I understand this trade moves the price {impact!.toFixed(1)}% and I'll get less than the market price.
-        </label>
+          <input type="checkbox" checked={riskOk} onChange={e => setRiskOk(e.target.checked)} style={{ marginTop: 2 }} />{T("I understand this trade moves the price")}{' '}{impact!.toFixed(1)}{T("% and I'll get less than the market price.")}</label>
       )}
 
       {msg && (
@@ -304,45 +303,42 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
           border: `1px solid ${step === 'error' ? 'rgba(239,68,68,0.3)' : step === 'done' ? 'rgba(34,197,94,0.3)' : 'rgba(245,158,11,0.35)'}`,
           color: step === 'error' ? '#fca5a5' : step === 'done' ? '#86efac' : '#fcd34d', display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
           <span>{msg}</span>
-          {step === 'done' && lastTrade && <button onClick={() => void openShare()} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--green)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>Share</button>}
+          {step === 'done' && lastTrade && <button onClick={() => void openShare()} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--green)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>{T("Share")}</button>}
         </div>
       )}
 
       {!routerConfigured ? (
-        <Note>Trading opens once the ARCDEX swap router is deployed.</Note>
+        <Note>{T("Trading opens once the ARCDEX swap router is deployed.")}</Note>
       ) : !me ? (
         <>
           <ConnectKitButton.Custom>
-            {({ show }) => <button onClick={show} style={btn('var(--adx-accent)')}>Connect Wallet</button>}
+            {({ show }) => <button onClick={show} style={btn('var(--adx-accent)')}>{T("Connect Wallet")}</button>}
           </ConnectKitButton.Custom>
-          <Note>Or unlock your <b>trading wallet</b> (right panel) for one-tap trades with no pop-ups.</Note>
+          <Note>{T("Or unlock your")}{' '}<b>{T("trading wallet")}</b>{' '}{T("(right panel) for one-tap trades with no pop-ups.")}</Note>
         </>
       ) : (
         <button onClick={() => void submit()} disabled={busy || amountIn === 0n || !route || insufficient || !info || (needsRiskTick && !riskOk)}
           style={{ ...btn(needsApprove ? 'var(--amber)' : mode === 'buy' ? 'var(--green)' : 'var(--red)'), opacity: busy || amountIn === 0n || !route || insufficient || !info || (needsRiskTick && !riskOk) ? 0.5 : 1 }}>
-          {insufficient ? 'Insufficient balance'
-            : step === 'approving' ? 'Approving…'
-            : step === 'quoting' ? 'Checking trade…'
-            : step === 'swapping' ? (mode === 'buy' ? 'Buying…' : 'Selling…')
-            : needsApprove ? `Approve & ${mode === 'buy' ? 'buy' : 'sell'}`
-            : `${mode === 'buy' ? 'Buy' : 'Sell'} ${symbol}`}
+          {insufficient ? T("Insufficient balance")
+            : step === 'approving' ? T("Approving…")
+            : step === 'quoting' ? T("Checking trade…")
+            : step === 'swapping' ? (mode === 'buy' ? T("Buying…") : T("Selling…"))
+            : needsApprove ? T(mode === 'buy' ? 'Approve & buy' : 'Approve & sell')
+            : T(mode === 'buy' ? 'Buy {symbol}' : 'Sell {symbol}', { symbol })}
         </button>
       )}
 
       {me && (
-        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-          Trading as {trader.kind === 'trading-wallet' ? '⚡ trading wallet' : 'wallet'} <span style={{ fontFamily: 'var(--mono)' }}>{shortAddr(me)}</span>
-          {trader.kind === 'trading-wallet' ? ' · one-tap, no pop-ups' : ''}
+        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textAlign: 'center' }}>{T("Trading as")}{' '}{trader.kind === 'trading-wallet' ? T("⚡ trading wallet") : T("wallet")} <span style={{ fontFamily: 'var(--mono)' }}>{shortAddr(me)}</span>
+          {trader.kind === 'trading-wallet' ? T(" · one-tap, no pop-ups") : ''}
         </div>
       )}
 
       {unverified && (
-        <div style={{ fontSize: '0.7rem', color: '#fcd34d', textAlign: 'center' }}>⚠ Unverified token — anyone can launch a coin with any name. Check the contract before trading.</div>
+        <div style={{ fontSize: '0.7rem', color: '#fcd34d', textAlign: 'center' }}>{T("⚠ Unverified token — anyone can launch a coin with any name. Check the contract before trading.")}</div>
       )}
 
-      <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5, margin: 0 }}>
-        Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.
-      </p>
+      <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5, margin: 0 }}>{T("Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.")}</p>
 
       {share && <ShareCardModal card={share.card} text={share.text} referralsLive={info?.version === 2} onClose={() => setShare(null)} />}
     </div>

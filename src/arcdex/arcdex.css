@@ -621,3 +621,8 @@ html body {
 .reward-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 4px; border-bottom: 1px solid var(--adx-card-border); }
 .row-star { background: none; border: none; padding: 0; cursor: pointer; color: var(--text-muted); font-size: 0.8rem; line-height: 1; }
 .row-star:hover, .row-star.on { color: #facc15; }
+.field-label { display: flex; flex-direction: column; gap: 5px; font-size: 0.74rem; color: var(--text-muted); }
+
+/* The pre-connect language picker would push "Connect Wallet" off narrow
+   screens; there, language is set from the landing page or Settings. */
+@media (max-width: 640px) { .lang-quick { display: none; } }

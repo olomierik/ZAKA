@@ -28,22 +28,29 @@ async function hmacKey() {
 
 export async function issueToken(address: string): Promise<{ token: string; expiresAt: number }> {
   const expiresAt = Math.floor(Date.now() / 1000) + TOKEN_TTL_S
-  const payload = b64url(enc.encode(JSON.stringify({ a: address.toLowerCase(), exp: expiresAt })))
+  const payload = b64url(enc.encode(JSON.stringify({ a: address.toLowerCase(), iat: Math.floor(Date.now() / 1000), exp: expiresAt })))
   const sig = await crypto.subtle.sign('HMAC', await hmacKey(), enc.encode(payload))
   return { token: `${payload}.${b64url(sig)}`, expiresAt }
 }
 
 /** The address a valid, unexpired token was issued to, else null. */
 export async function verifyToken(token: string | null | undefined): Promise<string | null> {
+  return (await verifySession(token))?.address ?? null
+}
+
+/** Like verifyToken, plus when the token was issued (seconds) — used to
+ * honour "sign out of all devices". Tokens from before `iat` existed
+ * count as issued at the start of their 30-day life. */
+export async function verifySession(token: string | null | undefined): Promise<{ address: string; iat: number } | null> {
   if (!sessionReady || !token) return null
   const [payload, sig] = token.split('.')
   if (!payload || !sig) return null
   try {
     const ok = await crypto.subtle.verify('HMAC', await hmacKey(), fromB64url(sig), enc.encode(payload))
     if (!ok) return null
-    const { a, exp } = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as { a: string; exp: number }
+    const { a, exp, iat } = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as { a: string; exp: number; iat?: number }
     if (typeof a !== 'string' || !/^0x[0-9a-f]{40}$/.test(a) || exp < Date.now() / 1000) return null
-    return a
+    return { address: a, iat: typeof iat === 'number' ? iat : exp - TOKEN_TTL_S }
   } catch {
     return null
   }

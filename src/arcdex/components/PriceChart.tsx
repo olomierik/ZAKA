@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createChart, type IChartApi, type ISeriesApi, type CandlestickData, CandlestickSeries } from 'lightweight-charts'
+import { createChart, type IChartApi, type ISeriesApi, type SeriesType, type CandlestickData, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts'
 import { getPoolOhlcv, type OhlcvCandle } from '../api/gecko'
 import { identiconUrl } from './Avatar'
+import { INDICATORS, bollinger, ema, rsi, sma, vwap, type IndicatorId } from '../lib/indicators'
+import { t as T } from '../lib/i18n'
+
+const IND_KEY = 'arcdex:chart-indicators'
+const RSI_PANE = 110
+function loadIndicators(): Set<IndicatorId> {
+  try { return new Set(JSON.parse(localStorage.getItem(IND_KEY) ?? '["volume"]') as IndicatorId[]) } catch { return new Set(['volume']) }
+}
 
 type Resolution = '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
 const RESOLUTIONS: { label: string; value: Resolution }[] = [
@@ -53,6 +61,16 @@ export default function PriceChart({ poolAddress, trades, thesisMarks, friends, 
   const [minSize, setMinSize] = useState<(typeof MIN_SIZES)[number]>(0)
   const [bubbles, setBubbles] = useState<Bubble[]>([])
   const [isFull, setIsFull] = useState(false)
+  const [ind, setInd] = useState<Set<IndicatorId>>(loadIndicators)
+  const [indOpen, setIndOpen] = useState(false)
+  const indSeries = useRef<ISeriesApi<SeriesType>[]>([])
+  const toggleInd = (id: IndicatorId) => setInd(prev => {
+    const n = new Set(prev)
+    if (n.has(id)) n.delete(id); else n.add(id)
+    try { localStorage.setItem(IND_KEY, JSON.stringify([...n])) } catch { /* storage blocked */ }
+    return n
+  })
+  const withRsi = ind.has('rsi')
   const needsFit = useRef(true)
   const scale = mode === 'mcap' && supply ? supply : 1
 
@@ -95,7 +113,7 @@ export default function PriceChart({ poolAddress, trades, thesisMarks, friends, 
       const step = RES_SECONDS[res]
       const first = candles[0].time, last = candles[candles.length - 1].time
       const paneW = el.clientWidth - chart.priceScale('right').width()
-      const paneH = el.clientHeight - chart.timeScale().height()
+      const paneH = chart.panes()[0]?.getHeight() ?? el.clientHeight - chart.timeScale().height()
       const out: Bubble[] = []
       for (const t of all) {
         if (t.kind !== 'thesis' && t.usd < minSize) continue
@@ -143,6 +161,9 @@ export default function PriceChart({ poolAddress, trades, thesisMarks, friends, 
     return () => { ro.disconnect(); chart.remove(); chartRef.current = null; seriesRef.current = null }
   }, [])
 
+  const layoutRef = useRef(layout)
+  layoutRef.current = layout
+
   // Pan/zoom/resize → re-place bubbles.
   useEffect(() => {
     const chart = chartRef.current
@@ -169,6 +190,49 @@ export default function PriceChart({ poolAddress, trades, thesisMarks, friends, 
     if (needsFit.current) { chartRef.current?.timeScale().fitContent(); needsFit.current = false }
     layout()
   }, [candles, layout, scale])
+
+  // Indicators: rebuilt whenever the data, the Price/MCap scale or the
+  // selection changes (cheap — a few hundred points each).
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    indSeries.current.forEach(x => { try { chart.removeSeries(x) } catch { /* already gone */ } })
+    indSeries.current = []
+    while (chart.panes().length > 1) { try { chart.removePane(chart.panes().length - 1) } catch { break } }
+    if (!candles.length || !ind.size) return
+    const times = candles.map(c => c.time as never)
+    const closes = candles.map(c => c.close * scale)
+    const line = (vals: (number | null)[], color: string, pane = 0, opts: Record<string, unknown> = {}) => {
+      const x = chart.addSeries(LineSeries, { color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, ...opts }, pane)
+      x.setData(vals.map((v, i) => (v === null ? { time: times[i] } : { time: times[i], value: v })))
+      indSeries.current.push(x as ISeriesApi<SeriesType>)
+      return x
+    }
+    const color = (id: IndicatorId) => INDICATORS.find(i => i.id === id)!.color
+    if (ind.has('volume')) {
+      const v = chart.addSeries(HistogramSeries, { priceScaleId: 'vol', priceFormat: { type: 'volume' }, priceLineVisible: false, lastValueVisible: false })
+      chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } })
+      v.setData(candles.map(c => ({ time: c.time as never, value: c.volume, color: c.close >= c.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)' })))
+      indSeries.current.push(v as ISeriesApi<SeriesType>)
+    }
+    if (ind.has('ma7')) line(sma(closes, 7), color('ma7'))
+    if (ind.has('ma25')) line(sma(closes, 25), color('ma25'))
+    if (ind.has('ma99')) line(sma(closes, 99), color('ma99'))
+    if (ind.has('ema20')) line(ema(closes, 20), color('ema20'))
+    if (ind.has('bb')) {
+      const b = bollinger(closes, 20, 2)
+      line(b.upper, color('bb'), 0, { lineStyle: 2 }); line(b.mid, color('bb')); line(b.lower, color('bb'), 0, { lineStyle: 2 })
+    }
+    if (ind.has('vwap')) line(vwap(candles.map(c => ({ ...c, high: c.high * scale, low: c.low * scale, close: c.close * scale }))), color('vwap'), 0, { lineWidth: 2 })
+    if (ind.has('rsi')) {
+      const r = line(rsi(closes, 14), color('rsi'), 1, { lastValueVisible: true, priceFormat: { type: 'price', precision: 1, minMove: 0.1 } })
+      r.createPriceLine({ price: 70, color: 'rgba(239,68,68,0.5)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '' })
+      r.createPriceLine({ price: 30, color: 'rgba(34,197,94,0.5)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '' })
+      chart.panes()[1]?.setHeight(RSI_PANE)
+    }
+    layoutRef.current()
+    // layout via ref: new trades arrive every few seconds and must not rebuild the indicators
+  }, [candles, scale, ind])
 
   function screenshot() {
     const chart = chartRef.current
@@ -205,14 +269,28 @@ export default function PriceChart({ poolAddress, trades, thesisMarks, friends, 
       <span style={{ flex: 1 }} />
       {supply ? (
         <span style={{ display: 'inline-flex', border: '1px solid var(--adx-card-border)', borderRadius: 6, overflow: 'hidden' }}>
-          {(['price', 'mcap'] as const).map(m => <button key={m} onClick={() => setMode(m)} style={{ ...pill(mode === m), border: 'none', borderRadius: 0 }}>{m === 'price' ? 'Price' : 'MCap'}</button>)}
+          {(['price', 'mcap'] as const).map(m => <button key={m} onClick={() => setMode(m)} style={{ ...pill(mode === m), border: 'none', borderRadius: 0 }}>{m === 'price' ? T("Price") : T("MCap")}</button>)}
         </span>
       ) : null}
-      <button onClick={screenshot} style={pill(false)} title="Save chart image">📷</button>
-      <button onClick={fullscreen} style={pill(false)} title="Fullscreen">⛶</button>
+      <span style={{ position: 'relative' }}>
+        <button onClick={() => setIndOpen(o => !o)} style={pill(ind.size > 0)} title={T("Indicators")}>ƒx {T("Indicators")}{ind.size ? ` (${ind.size})` : ''}</button>
+        {indOpen && (
+          <div className="menu-pop" style={{ top: 30, right: 0, minWidth: 220, zIndex: 20 }} onMouseLeave={() => setIndOpen(false)}>
+            {INDICATORS.map(i => (
+              <label key={i.id} className="menu-item" style={{ cursor: 'pointer' }}>
+                <input type="checkbox" checked={ind.has(i.id)} onChange={() => toggleInd(i.id)} />
+                <span style={{ width: 10, height: 3, borderRadius: 2, background: i.color, display: 'inline-block' }} />
+                {T(i.label)}
+              </label>
+            ))}
+          </div>
+        )}
+      </span>
+      <button onClick={screenshot} style={pill(false)} title={T("Save chart image")}>📷</button>
+      <button onClick={fullscreen} style={pill(false)} title={T("Fullscreen")}>⛶</button>
     </div>
     <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', flex: 1 }}>
-      <div ref={containerRef} style={{ height: isFull ? 'calc(100vh - 120px)' : 340 }} />
+      <div ref={containerRef} style={{ height: isFull ? 'calc(100vh - 120px)' : 340 + (withRsi ? RSI_PANE : 0) }} />
       {bubbles.length > 0 && (
         // zIndex: the chart library layers its canvases with z-index 1–2,
         // which would otherwise paint over these avatars.
@@ -234,21 +312,18 @@ export default function PriceChart({ poolAddress, trades, thesisMarks, friends, 
       {!candles.length && (
         <div style={{ position: 'absolute', inset: 0, height: 340,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(11,22,40,0.7)', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-          Loading chart…
-        </div>
+          background: 'rgba(11,22,40,0.7)', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{T("Loading chart…")}</div>
       )}
     </div>
     {(trades || thesisMarks) && (
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginTop: 10, fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-        <b style={{ color: 'var(--text)' }}>Chart overlays</b>
-        {check(showBubbles, setShowBubbles, 'Trades')}
-        {check(showMine, setShowMine, 'My swaps')}
-        {thesisMarks && check(showThesis, setShowThesis, 'Thesis')}
-        {friends && check(friendsOnly, setFriendsOnly, 'Friends only')}
-        <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>Min size
-          <select value={minSize} onChange={e => setMinSize(Number(e.target.value) as (typeof MIN_SIZES)[number])} className="disc-select">
-            {MIN_SIZES.map(m => <option key={m} value={m}>{m === 0 ? 'All' : `>$${m >= 1000 ? '1K' : m}`}</option>)}
+        <b style={{ color: 'var(--text)' }}>{T("Chart overlays")}</b>
+        {check(showBubbles, setShowBubbles, T('Trades'))}
+        {check(showMine, setShowMine, T('My swaps'))}
+        {thesisMarks && check(showThesis, setShowThesis, T('Thesis'))}
+        {friends && check(friendsOnly, setFriendsOnly, T('Friends only'))}
+        <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>{T("Min size")}<select value={minSize} onChange={e => setMinSize(Number(e.target.value) as (typeof MIN_SIZES)[number])} className="disc-select">
+            {MIN_SIZES.map(m => <option key={m} value={m}>{m === 0 ? T("All") : `>$${m >= 1000 ? '1K' : m}`}</option>)}
           </select>
         </span>
       </div>

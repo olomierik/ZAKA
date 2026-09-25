@@ -14,6 +14,7 @@ export interface Prefs {
   watchlist: string[]    // token addresses, lowercase
   recents: RecentToken[] // newest first
   alertSound: boolean
+  alertNotify: boolean   // desktop notifications while the tab is in the background
   alertMinUsd: number
   discoveryCollapsed: boolean
   discoverySplit: boolean
@@ -26,6 +27,7 @@ export const DEFAULT_PREFS: Prefs = {
   watchlist: [],
   recents: [],
   alertSound: false,
+  alertNotify: false,
   alertMinUsd: 10,
   discoveryCollapsed: false,
   discoverySplit: false,

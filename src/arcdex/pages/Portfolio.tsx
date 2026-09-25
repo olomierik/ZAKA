@@ -5,6 +5,7 @@ import { formatUnits } from 'viem'
 import { arc } from 'wagmi/chains'
 import { getTokens, type ArcToken } from '../api/radardex'
 import type { Page } from '../App'
+import { t as T } from '../lib/i18n'
 
 const ERC20_ABI = [
   {
@@ -68,10 +69,8 @@ export default function Portfolio({ navigate }: Props) {
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'center', gap: 20, padding: '80px 16px', textAlign: 'center' }}>
       <div style={{ fontSize: '3rem' }}>💼</div>
-      <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Connect your wallet</h2>
-      <p style={{ color: 'var(--text-muted)', maxWidth: 340 }}>
-        See your Arc mainnet token holdings valued in USDC.
-      </p>
+      <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>{T("Connect your wallet")}</h2>
+      <p style={{ color: 'var(--text-muted)', maxWidth: 340 }}>{T("See your Arc mainnet token holdings valued in USDC.")}</p>
       <ConnectKitButton />
     </div>
   )
@@ -79,35 +78,29 @@ export default function Portfolio({ navigate }: Props) {
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 16px' }}>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: 4 }}>Portfolio</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: 4 }}>{T("Portfolio")}</h1>
         <div style={{ fontFamily: 'var(--mono)', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-          {address?.slice(0,6)}…{address?.slice(-4)} · Arc Mainnet
-        </div>
+          {address?.slice(0,6)}…{address?.slice(-4)}{' '}{T("· Arc Mainnet")}</div>
       </div>
 
       {/* Total value */}
       <div className="arc-card" style={{ padding: '24px', marginBottom: 20,
         background: 'linear-gradient(135deg,rgba(59,130,246,0.1),rgba(139,92,246,0.1))' }}>
         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 6,
-          textTransform: 'uppercase', letterSpacing: '0.06em' }}>Total Portfolio Value</div>
+          textTransform: 'uppercase', letterSpacing: '0.06em' }}>{T("Total Portfolio Value")}</div>
         <div style={{ fontSize: '2.5rem', fontWeight: 800, fontFamily: 'var(--mono)' }}>
           ${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </div>
         <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginTop: 4 }}>
-          {balances.length} token{balances.length !== 1 ? 's' : ''} on Arc mainnet
-        </div>
+          {balances.length}{' '}{T("token")}{balances.length !== 1 ? T("s") : ''}{' '}{T("on Arc mainnet")}</div>
       </div>
 
       {loading && (
-        <div style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)' }}>
-          Loading balances…
-        </div>
+        <div style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)' }}>{T("Loading balances…")}</div>
       )}
 
       {!loading && balances.length === 0 && (
-        <div style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)' }}>
-          No token holdings found on Arc mainnet.
-        </div>
+        <div style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)' }}>{T("No token holdings found on Arc mainnet.")}</div>
       )}
 
       {balances.map(b => {
@@ -141,7 +134,7 @@ export default function Portfolio({ navigate }: Props) {
               <div style={{ display: 'flex', justifyContent: 'space-between',
                 fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: 8 }}>
                 <span className="mono">{b.balance.toLocaleString()} {b.symbol}</span>
-                <span>{pct.toFixed(1)}% of portfolio</span>
+                <span>{pct.toFixed(1)}{T("% of portfolio")}</span>
               </div>
               {/* Portfolio bar */}
               <div style={{ height: 3, borderRadius: 2, background: 'var(--bg-2)', overflow: 'hidden' }}>

@@ -3,8 +3,9 @@ import { createPublicClient, http, parseAbi, formatUnits } from 'viem'
 import { arc } from '../wagmi'
 import {
   hasStoredWallet, isUnlocked, currentAddress, createWallet, unlock, lock,
-  exportPrivateKey, deleteWallet,
+  exportPrivateKey, deleteWallet, hasPasskey, enablePasskey, disablePasskey, passkeySupport,
 } from '../lib/embeddedWallet'
+import { t as T } from '../lib/i18n'
 
 const USDC_ADDR = '0x3600000000000000000000000000000000000000' as const
 const ERC20_BALANCE_ABI = parseAbi(['function balanceOf(address) view returns (uint256)'])
@@ -12,7 +13,7 @@ const client = createPublicClient({ chain: arc, transport: http(arc.rpcUrls.defa
 
 function short(addr: string) { return `${addr.slice(0, 6)}…${addr.slice(-4)}` }
 
-type View = 'locked' | 'unlocked' | 'create' | 'import' | 'export'
+type View = 'locked' | 'unlocked' | 'create' | 'import' | 'export' | 'security'
 
 export default function TradingWalletPanel() {
   const [view, setView]       = useState<View>(hasStoredWallet() ? 'locked' : 'create')
@@ -24,6 +25,10 @@ export default function TradingWalletPanel() {
   const [balance, setBalance] = useState<string | null>(null)
   const [exported, setExported] = useState('')
   const [copied, setCopied]   = useState(false)
+  const [twoFa, setTwoFa]     = useState(hasPasskey())
+  const [support, setSupport] = useState<'yes' | 'maybe' | 'no'>('maybe')
+  const [busy, setBusy]       = useState(false)
+  useEffect(() => { void passkeySupport().then(setSupport) }, [])
 
   const refreshBalance = useCallback((addr: string) => {
     void client.readContract({ address: USDC_ADDR, abi: ERC20_BALANCE_ABI, functionName: 'balanceOf', args: [addr as `0x${string}`] })
@@ -37,29 +42,37 @@ export default function TradingWalletPanel() {
 
   async function doCreate() {
     setError('')
-    if (passcode !== passcode2) { setError('Passcodes do not match'); return }
+    if (passcode !== passcode2) { setError(T("Passcodes do not match")); return }
     try {
       const addr = await createWallet(passcode)
       setAddress(addr); setView('unlocked'); setPasscode(''); setPasscode2('')
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to create wallet') }
+    } catch (e) { setError(e instanceof Error ? e.message : T("Failed to create wallet")) }
   }
 
   async function doImport() {
     setError('')
-    if (passcode !== passcode2) { setError('Passcodes do not match'); return }
+    if (passcode !== passcode2) { setError(T("Passcodes do not match")); return }
     try {
       const { importPrivateKey } = await import('../lib/embeddedWallet')
       const addr = await importPrivateKey(importKey.trim(), passcode)
       setAddress(addr); setView('unlocked'); setPasscode(''); setPasscode2(''); setImportKey('')
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to import key') }
+    } catch (e) { setError(e instanceof Error ? e.message : T("Failed to import key")) }
   }
 
   async function doUnlock() {
-    setError('')
+    setError(''); setBusy(true)
     try {
       const addr = await unlock(passcode)
       setAddress(addr); setView('unlocked'); setPasscode('')
-    } catch (e) { setError(e instanceof Error ? e.message : 'Wrong passcode') }
+    } catch (e) { setError(e instanceof Error ? e.message : T("Wrong passcode")) } finally { setBusy(false) }
+  }
+
+  async function doTwoFa() {
+    setError(''); setBusy(true)
+    try {
+      if (twoFa) await disablePasskey(passcode); else await enablePasskey(passcode)
+      setTwoFa(hasPasskey()); setPasscode(''); setView('unlocked')
+    } catch (e) { setError(e instanceof Error ? e.message : T("Could not change 2FA")) } finally { setBusy(false) }
   }
 
   function doLock() { lock(); setAddress(null); setBalance(null); setView('locked') }
@@ -67,11 +80,11 @@ export default function TradingWalletPanel() {
   async function doExport() {
     setError('')
     try { setExported(await exportPrivateKey(passcode)); setPasscode('') }
-    catch (e) { setError(e instanceof Error ? e.message : 'Wrong passcode') }
+    catch (e) { setError(e instanceof Error ? e.message : T("Wrong passcode")) }
   }
 
   function doDelete() {
-    if (!confirm('This permanently deletes the wallet from this browser. Make sure you exported the key if it holds funds. Continue?')) return
+    if (!confirm(T('This permanently deletes the wallet from this browser. Make sure you exported the key if it holds funds. Continue?'))) return
     deleteWallet(); setAddress(null); setBalance(null); setExported(''); setView('create')
   }
 
@@ -87,8 +100,8 @@ export default function TradingWalletPanel() {
   return (
     <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 14, marginBottom: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <span style={{ fontWeight: 700, fontSize: '0.82rem' }}>Trading wallet</span>
-        {view === 'unlocked' && <button onClick={doLock} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.68rem' }}>Lock</button>}
+        <span style={{ fontWeight: 700, fontSize: '0.82rem' }}>{T("Trading wallet")}</span>
+        {view === 'unlocked' && <button onClick={doLock} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.68rem' }}>{T("Lock")}</button>}
       </div>
 
       {error && <div style={{ fontSize: '0.7rem', color: '#ef4444', marginBottom: 8 }}>{error}</div>}
@@ -99,50 +112,67 @@ export default function TradingWalletPanel() {
             <span style={{ fontFamily: 'var(--mono)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>{short(address)}</span>
             <button onClick={() => { void navigator.clipboard.writeText(address); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
               style={{ background: 'none', border: 'none', color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.68rem' }}>
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? T("Copied") : T("Copy")}
             </button>
           </div>
           <div style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: 10 }}>
             ${balance ? Number(balance).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}
-            <span style={{ fontSize: '0.65rem', fontWeight: 500, color: 'var(--text-muted)', marginLeft: 4 }}>USDC</span>
+            <span style={{ fontSize: '0.65rem', fontWeight: 500, color: 'var(--text-muted)', marginLeft: 4 }}>{T("USDC")}</span>
           </div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: 10 }}>
-            Deposit USDC on Arc mainnet to this address to trade with one click from the terminal.
-          </div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: 10 }}>{T("Deposit USDC on Arc mainnet to this address to trade with one click from the terminal.")}</div>
+          <button onClick={() => { setView('security'); setError('') }} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 8, padding: '8px 10px', borderRadius: 7, background: 'var(--bg-2)', border: `1px solid ${twoFa ? 'rgba(34,197,94,0.35)' : 'var(--adx-card-border)'}`, color: 'var(--text)', cursor: 'pointer', fontSize: '0.72rem' }}>
+            <span>{T("🔑 2FA (passkey)")}</span>
+            <b style={{ color: twoFa ? 'var(--green)' : 'var(--text-muted)' }}>{twoFa ? T("On") : T("Off — set up")}</b>
+          </button>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => setView('export')} style={{ ...btnStyle, background: 'var(--bg-2)', color: 'var(--text)', border: '1px solid var(--adx-card-border)' }}>Export key</button>
-            <button onClick={doDelete} style={{ ...btnStyle, background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }}>Delete</button>
+            <button onClick={() => setView('export')} style={{ ...btnStyle, background: 'var(--bg-2)', color: 'var(--text)', border: '1px solid var(--adx-card-border)' }}>{T("Export key")}</button>
+            <button onClick={doDelete} style={{ ...btnStyle, background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }}>{T("Delete")}</button>
           </div>
         </div>
       )}
 
       {view === 'locked' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <input type="password" placeholder="Passcode" value={passcode} onChange={e => setPasscode(e.target.value)} style={inputStyle} />
-          <button onClick={doUnlock} style={btnStyle}>Unlock</button>
-          <button onClick={doDelete} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.65rem', cursor: 'pointer' }}>Forgot passcode? Delete & start over</button>
+          <input type="password" placeholder={T("Passcode")} value={passcode} onChange={e => setPasscode(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void doUnlock() }} style={inputStyle} />
+          <button onClick={doUnlock} disabled={busy} style={btnStyle}>{busy ? (twoFa ? T("Confirm with your passkey…") : T("Unlocking…")) : twoFa ? T("Unlock with passcode + passkey") : T("Unlock")}</button>
+          {twoFa && <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', textAlign: 'center' }}>{T("🔑 2FA is on — your device will ask for your fingerprint, face or security key.")}</div>}
+          <button onClick={doDelete} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.65rem', cursor: 'pointer' }}>{T("Forgot passcode? Delete & start over")}</button>
         </div>
       )}
 
       {view === 'create' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-            Generates a key in this browser, encrypted with your passcode. Deposit USDC to trade with one click — a hot wallet for trading, not long-term storage.
-          </div>
-          <input type="password" placeholder="New passcode (min 6 chars)" value={passcode} onChange={e => setPasscode(e.target.value)} style={inputStyle} />
-          <input type="password" placeholder="Confirm passcode" value={passcode2} onChange={e => setPasscode2(e.target.value)} style={inputStyle} />
-          <button onClick={doCreate} style={btnStyle}>Create wallet</button>
-          <button onClick={() => { setView('import'); setError('') }} style={{ background: 'none', border: 'none', color: 'var(--adx-accent)', fontSize: '0.68rem', cursor: 'pointer' }}>Import existing key</button>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{T("Generates a key in this browser, encrypted with your passcode. Deposit USDC to trade with one click — a hot wallet for trading, not long-term storage.")}</div>
+          <input type="password" placeholder={T("New passcode (min 6 chars)")} value={passcode} onChange={e => setPasscode(e.target.value)} style={inputStyle} />
+          <input type="password" placeholder={T("Confirm passcode")} value={passcode2} onChange={e => setPasscode2(e.target.value)} style={inputStyle} />
+          <button onClick={doCreate} style={btnStyle}>{T("Create wallet")}</button>
+          <button onClick={() => { setView('import'); setError('') }} style={{ background: 'none', border: 'none', color: 'var(--adx-accent)', fontSize: '0.68rem', cursor: 'pointer' }}>{T("Import existing key")}</button>
         </div>
       )}
 
       {view === 'import' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <input type="password" placeholder="Private key (0x...)" value={importKey} onChange={e => setImportKey(e.target.value)} style={inputStyle} />
-          <input type="password" placeholder="Passcode to encrypt it with (min 6)" value={passcode} onChange={e => setPasscode(e.target.value)} style={inputStyle} />
-          <input type="password" placeholder="Confirm passcode" value={passcode2} onChange={e => setPasscode2(e.target.value)} style={inputStyle} />
-          <button onClick={doImport} style={btnStyle}>Import</button>
-          <button onClick={() => { setView('create'); setError('') }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.68rem', cursor: 'pointer' }}>← Back</button>
+          <input type="password" placeholder={T("Private key (0x...)")} value={importKey} onChange={e => setImportKey(e.target.value)} style={inputStyle} />
+          <input type="password" placeholder={T("Passcode to encrypt it with (min 6)")} value={passcode} onChange={e => setPasscode(e.target.value)} style={inputStyle} />
+          <input type="password" placeholder={T("Confirm passcode")} value={passcode2} onChange={e => setPasscode2(e.target.value)} style={inputStyle} />
+          <button onClick={doImport} style={btnStyle}>{T("Import")}</button>
+          <button onClick={() => { setView('create'); setError('') }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.68rem', cursor: 'pointer' }}>{T("← Back")}</button>
+        </div>
+      )}
+
+      {view === 'security' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <b style={{ fontSize: '0.78rem' }}>{twoFa ? T("Turn off passkey 2FA") : T("Protect this wallet with a passkey")}</b>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            {twoFa
+              ? T("Unlocking will need only your passcode again. You will confirm with your passkey one last time.")
+              : T("With 2FA on, unlocking needs your passcode AND your passkey (Windows Hello, Touch ID / Face ID, Android, or a security key). Someone who learns your passcode still cannot open the wallet.")}
+          </div>
+          {!twoFa && <div style={{ fontSize: '0.68rem', color: '#f59e0b', lineHeight: 1.5 }}>{T("Export and save your key first. If you lose this passkey and have no backup, the funds can't be recovered.")}</div>}
+          {!twoFa && support === 'no' && <div style={{ fontSize: '0.68rem', color: '#ef4444' }}>{T("This browser can't use passkeys for 2FA. Try a recent Chrome, Edge or Safari.")}</div>}
+          <input type="password" placeholder={T("Passcode")} value={passcode} onChange={e => setPasscode(e.target.value)} style={inputStyle} />
+          <button onClick={() => void doTwoFa()} disabled={busy || (!twoFa && support === 'no')} style={{ ...btnStyle, opacity: busy ? 0.6 : 1 }}>{busy ? T("Waiting for your passkey…") : twoFa ? T("Turn off 2FA") : T("Set up passkey")}</button>
+          <button onClick={() => { setView('unlocked'); setError(''); setPasscode('') }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.68rem', cursor: 'pointer' }}>{T("← Back")}</button>
         </div>
       )}
 
@@ -150,17 +180,17 @@ export default function TradingWalletPanel() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {!exported ? (
             <>
-              <div style={{ fontSize: '0.68rem', color: '#f59e0b' }}>Re-enter your passcode to reveal the private key. Anyone with it can take everything in this wallet.</div>
-              <input type="password" placeholder="Passcode" value={passcode} onChange={e => setPasscode(e.target.value)} style={inputStyle} />
-              <button onClick={doExport} style={btnStyle}>Reveal key</button>
+              <div style={{ fontSize: '0.68rem', color: '#f59e0b' }}>{T("Re-enter your passcode")}{twoFa ? T(" (and confirm with your passkey)") : ''}{' '}{T("to reveal the private key. Anyone with it can take everything in this wallet.")}</div>
+              <input type="password" placeholder={T("Passcode")} value={passcode} onChange={e => setPasscode(e.target.value)} style={inputStyle} />
+              <button onClick={doExport} style={btnStyle}>{T("Reveal key")}</button>
             </>
           ) : (
             <>
-              <div style={{ fontSize: '0.68rem', color: '#ef4444' }}>Save this somewhere safe. It will not be shown again.</div>
+              <div style={{ fontSize: '0.68rem', color: '#ef4444' }}>{T("Save this somewhere safe. It will not be shown again.")}</div>
               <div style={{ padding: 8, borderRadius: 6, background: 'var(--bg-2)', fontFamily: 'var(--mono)', fontSize: '0.68rem', wordBreak: 'break-all' }}>{exported}</div>
             </>
           )}
-          <button onClick={() => { setView('unlocked'); setExported(''); setError('') }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.68rem', cursor: 'pointer' }}>← Back</button>
+          <button onClick={() => { setView('unlocked'); setExported(''); setError('') }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.68rem', cursor: 'pointer' }}>{T("← Back")}</button>
         </div>
       )}
     </div>

@@ -5,6 +5,7 @@ import { shortAddr, useTrader } from '../lib/identity'
 import { loadBlueChips, useMarket, type TokenMeta } from '../lib/tokenMeta'
 import { setPrefs, usePrefs } from '../lib/prefs'
 import type { Page } from '../App'
+import { t as T, N_ } from '../lib/i18n'
 
 // fomo-style search: recently viewed coins when empty; otherwise coins,
 // traders and clans (All / Tokens / Users / Clans), with Follow inline.
@@ -70,14 +71,14 @@ export default function SearchBox({ navigate, mobileOpen = false }: { navigate: 
     <button key={t.address} className="menu-item" onClick={() => openToken(t)}>
       {t.image ? <img src={t.image} alt="" style={{ width: 26, height: 26, borderRadius: '50%' }} /> : <Avatar address={t.address} size={26} />}
       <span style={{ minWidth: 0, flex: 1 }}><b>{t.symbol}</b> <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontFamily: 'var(--mono)' }}>{shortAddr(t.address)}</span></span>
-      {'marketCapUsd' in t && <span style={{ fontSize: '0.72rem', fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>MC {money(t.marketCapUsd ?? null)}</span>}
+      {'marketCapUsd' in t && <span style={{ fontSize: '0.72rem', fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>{T("MC")}{' '}{money(t.marketCapUsd ?? null)}</span>}
       {'change24h' in t && t.change24h != null && <span style={{ fontSize: '0.72rem', width: 60, textAlign: 'right', color: t.change24h >= 0 ? 'var(--green)' : 'var(--red)' }}>{t.change24h >= 0 ? '+' : ''}{t.change24h.toFixed(1)}%</span>}
     </button>
   )
 
   return (
     <div ref={box} className={`navbar-search-wrap${mobileOpen ? ' open' : ''}`} style={{ position: 'relative' }}>
-      <input ref={input} className="navbar-search" value={q} placeholder="Search tokens or traders…   /"
+      <input ref={input} className="navbar-search" value={q} placeholder={T("Search tokens or traders…   /")}
         onFocus={() => setOpen(true)} onChange={e => { setQ(e.target.value); setOpen(true) }}
         onKeyDown={e => { if (e.key === 'Enter' && isAddr) openToken({ address: s, pool: tokens[0]?.pool ?? '' }) }} />
       {open && (
@@ -85,17 +86,17 @@ export default function SearchBox({ navigate, mobileOpen = false }: { navigate: 
           {!s ? (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                <span>Recents</span>{prefs.recents.length > 0 && <button className="disc-link" onClick={() => setPrefs({ recents: [] })}>Clear all</button>}
+                <span>{T("Recents")}</span>{prefs.recents.length > 0 && <button className="disc-link" onClick={() => setPrefs({ recents: [] })}>{T("Clear all")}</button>}
               </div>
-              {prefs.recents.length === 0 ? <div style={{ padding: 12, fontSize: '0.78rem', color: 'var(--text-muted)' }}>Coins you open show up here. Paste a contract address or type a name.</div>
+              {prefs.recents.length === 0 ? <div style={{ padding: 12, fontSize: '0.78rem', color: 'var(--text-muted)' }}>{T("Coins you open show up here. Paste a contract address or type a name.")}</div>
                 : prefs.recents.map(r => tokenRow({ ...r, ...(market.find(m => m.address === r.address) ?? {}) }))}
             </>
           ) : (
             <>
               <div style={{ display: 'flex', gap: 4, padding: '2px 4px 6px' }}>
-                {(['all', 'tokens', 'users', 'clans'] as Tab[]).map(t => <button key={t} onClick={() => setTab(t)} className={`disc-sub${tab === t ? ' active' : ''}`}>{t[0].toUpperCase() + t.slice(1)}</button>)}
+                {([['all', N_('All')], ['tokens', N_('Tokens')], ['users', N_('Users')], ['clans', N_('Clans')]] as [Tab, string][]).map(([k, l]) => <button key={k} onClick={() => setTab(k)} className={`disc-sub${tab === k ? ' active' : ''}`}>{T(l)}</button>)}
               </div>
-              {(tab === 'all' || tab === 'tokens') && (tokens.length ? tokens.map(tokenRow) : isAddr ? tokenRow({ address: s, symbol: 'Open token', image: null, pool: '' }) : tab === 'tokens' ? <Nothing /> : null)}
+              {(tab === 'all' || tab === 'tokens') && (tokens.length ? tokens.map(tokenRow) : isAddr ? tokenRow({ address: s, symbol: T('Open token'), image: null, pool: '' }) : tab === 'tokens' ? <Nothing /> : null)}
               {(tab === 'all' || tab === 'users') && (users.length ? users.map(u => (
                 <div key={u.address} className="menu-item" style={{ cursor: 'default' }}>
                   <button onClick={() => { setOpen(false); setQ(''); navigate({ name: 'trader', address: u.address }) }} style={{ display: 'flex', gap: 10, alignItems: 'center', background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', padding: 0, flex: 1, minWidth: 0 }}>
@@ -103,16 +104,16 @@ export default function SearchBox({ navigate, mobileOpen = false }: { navigate: 
                     <span style={{ textAlign: 'left' }}><b>{u.display_name || `@${u.username}`}</b><div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>@{u.username}</div></span>
                   </button>
                   {trader.address && trader.address.toLowerCase() !== u.address && (
-                    <button className={`rail-follow${following.has(u.address) ? ' on' : ''}`} onClick={() => void follow(u.address)}>{following.has(u.address) ? 'Following' : 'Follow'}</button>
+                    <button className={`rail-follow${following.has(u.address) ? ' on' : ''}`} onClick={() => void follow(u.address)}>{following.has(u.address) ? T("Following") : T("Follow")}</button>
                   )}
                 </div>
               )) : isAddr ? (
-                <button className="menu-item" onClick={() => { setOpen(false); setQ(''); navigate({ name: 'trader', address: s }) }}><Avatar address={s} size={26} /> View trader {shortAddr(s)}</button>
+                <button className="menu-item" onClick={() => { setOpen(false); setQ(''); navigate({ name: 'trader', address: s }) }}><Avatar address={s} size={26} />{' '}{T("View trader")}{' '}{shortAddr(s)}</button>
               ) : tab === 'users' ? <Nothing /> : null)}
               {(tab === 'all' || tab === 'clans') && (clans.length ? clans.map(c => (
                 <button key={c.id} className="menu-item" onClick={() => { setOpen(false); setQ(''); navigate({ name: 'clan', slug: c.slug }) }}>
                   {c.avatar_url ? <img src={c.avatar_url} alt="" style={{ width: 26, height: 26, borderRadius: 6 }} /> : <span style={{ width: 26, textAlign: 'center' }}>⚑</span>}
-                  <b>{c.name}</b><span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>clan</span>
+                  <b>{c.name}</b><span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T("clan")}</span>
                 </button>
               )) : tab === 'clans' ? <Nothing /> : null)}
               {tab === 'all' && !tokens.length && !users.length && !clans.length && !isAddr && <Nothing />}
@@ -124,4 +125,4 @@ export default function SearchBox({ navigate, mobileOpen = false }: { navigate: 
   )
 }
 
-function Nothing() { return <div style={{ padding: 12, fontSize: '0.78rem', color: 'var(--text-muted)' }}>No matches.</div> }
+function Nothing() { return <div style={{ padding: 12, fontSize: '0.78rem', color: 'var(--text-muted)' }}>{T("No matches.")}</div> }

@@ -4,7 +4,9 @@ import { getClanLeaderboard, getLeaderboard, getProfile, getProfiles, triggerInd
 import { shortAddr, useTrader } from '../lib/identity'
 import { referralLink } from '../lib/referral'
 import { tweetUrl } from '../lib/shareCard'
+import { PointsBoard } from '../components/PointsPanel'
 import type { Page } from '../App'
+import { t as T } from '../lib/i18n'
 
 // Top traders on ARCDEX by realized PnL — the competition that keeps
 // traders coming back (and trading through our router).
@@ -17,7 +19,7 @@ export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => v
   const [period, setPeriod] = useState<Period>('7d')
   const [rows, setRows] = useState<LeaderRow[] | null>(null)
   const [profiles, setProfiles] = useState<Map<string, Profile>>(new Map())
-  const [kind, setKind] = useState<'traders' | 'clans'>('traders')
+  const [kind, setKind] = useState<'traders' | 'clans' | 'points'>('traders')
   const [clans, setClans] = useState<ClanRank[] | null>(null)
 
   useEffect(() => {
@@ -60,32 +62,33 @@ export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => v
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <div style={{ display: 'flex', gap: 14, alignItems: 'baseline' }}>
-            {(['traders', 'clans'] as const).map(k => (
-              <button key={k} onClick={() => setKind(k)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: kind === k ? '1.4rem' : '1.05rem', fontWeight: 800, color: kind === k ? 'var(--text)' : 'var(--text-muted)' }}>{k === 'traders' ? 'Traders' : 'Clans'}</button>
+            {(['traders', 'clans', 'points'] as const).map(k => (
+              <button key={k} onClick={() => setKind(k)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: kind === k ? '1.4rem' : '1.05rem', fontWeight: 800, color: kind === k ? 'var(--text)' : 'var(--text-muted)' }}>{k === 'traders' ? T("Traders") : k === 'clans' ? T("Clans") : T("★ Points")}</button>
             ))}
           </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>Realized profit from trades made on ARCDEX. Trade here to climb it.</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>{T("Realized profit from trades made on ARCDEX. Trade here to climb it.")}</div>
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>{tab('24h', '24H')}{tab('7d', '7D')}{tab('30d', '30D')}{tab('all', 'All')}</div>
+        <div style={{ display: 'flex', gap: 6 }}>{tab('24h', '24H')}{tab('7d', '7D')}{tab('30d', '30D')}{tab('all', T('All'))}</div>
       </div>
 
       {kind === 'clans' && <ClanBoard clans={clans} navigate={navigate} />}
+      {kind === 'points' && <PointsBoard me={me} navigate={navigate} />}
 
       {kind === 'traders' && me && rows && (
         <div style={{ marginTop: 14, padding: '10px 16px', borderRadius: 12, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, fontSize: '0.84rem' }}>
-          <span>Your rank</span>
+          <span>{T("Your rank")}</span>
           <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <b>{myRank >= 0 ? `#${myRank + 1} · ${money(rows[myRank].realized_pnl)}` : 'Not ranked yet — make a trade'}</b>
-            {myRank >= 0 && <button onClick={() => void shareRank(myRank + 1, rows[myRank].realized_pnl)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--adx-accent)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>Share</button>}
+            <b>{myRank >= 0 ? `#${myRank + 1} · ${money(rows[myRank].realized_pnl)}` : T("Not ranked yet — make a trade")}</b>
+            {myRank >= 0 && <button onClick={() => void shareRank(myRank + 1, rows[myRank].realized_pnl)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--adx-accent)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>{T("Share")}</button>}
           </span>
         </div>
       )}
 
       {kind === 'traders' && <div style={{ marginTop: 14, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
-        {rows === null ? <Empty>Loading…</Empty> : rows.length === 0 ? <Empty>No trades in this period yet. The first trader to take profit on ARCDEX tops this board.</Empty> : (
+        {rows === null ? <Empty>{T("Loading…")}</Empty> : rows.length === 0 ? <Empty>{T("No trades in this period yet. The first trader to take profit on ARCDEX tops this board.")}</Empty> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
             <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
-              {['#', 'Trader', 'Realized PnL', 'Volume', 'Trades'].map((h, i) => <th key={h} style={{ padding: '10px 16px', textAlign: i >= 2 ? 'right' : 'left', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{h}</th>)}
+              {['#', T('Trader'), T('Realized PnL'), T('Volume'), T('Trades')].map((h, i) => <th key={h} style={{ padding: '10px 16px', textAlign: i >= 2 ? 'right' : 'left', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{h}</th>)}
             </tr></thead>
             <tbody>
               {rows.map((r, i) => {
@@ -119,12 +122,12 @@ export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => v
 function ClanBoard({ clans, navigate }: { clans: ClanRank[] | null; navigate: (p: Page) => void }) {
   return (
     <div style={{ marginTop: 14, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
-      {clans === null ? <Empty>Loading…</Empty> : clans.length === 0 ? (
-        <Empty>No clans yet. <button onClick={() => navigate({ name: 'clans' })} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.86rem' }}>Start one</button> and trade together.</Empty>
+      {clans === null ? <Empty>{T("Loading…")}</Empty> : clans.length === 0 ? (
+        <Empty>{T("No clans yet.")}{' '}<button onClick={() => navigate({ name: 'clans' })} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.86rem' }}>{T("Start one")}</button>{' '}{T("and trade together.")}</Empty>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
           <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
-            {['#', 'Clan', 'Members', 'Clan profit', 'Volume'].map((h, i) => <th key={h} style={{ padding: '10px 16px', textAlign: i >= 2 ? 'right' : 'left', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{h}</th>)}
+            {['#', T('Clan'), T('Members'), T('Clan profit'), T('Volume')].map((h, i) => <th key={h} style={{ padding: '10px 16px', textAlign: i >= 2 ? 'right' : 'left', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{h}</th>)}
           </tr></thead>
           <tbody>
             {clans.map((c, i) => (

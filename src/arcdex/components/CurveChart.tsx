@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createChart, type IChartApi, type ISeriesApi, type CandlestickData, CandlestickSeries } from 'lightweight-charts'
 import type { Address } from 'viem'
 import { getCurveOhlcv, type CurveCandle } from '../api/launchpad'
+import { t as T } from '../lib/i18n'
 
 type Resolution = '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
 const RESOLUTIONS: { label: string; value: Resolution }[] = [
@@ -70,9 +71,7 @@ export default function CurveChart({ token }: Props) {
         <div ref={containerRef} />
         {!candles.length && (
           <div style={{ position: 'absolute', inset: 0, height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(11,22,40,0.7)', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-            No trades yet on this resolution
-          </div>
+            background: 'rgba(11,22,40,0.7)', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{T("No trades yet on this resolution")}</div>
         )}
       </div>
     </>

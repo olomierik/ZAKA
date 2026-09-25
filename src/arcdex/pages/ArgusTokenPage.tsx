@@ -15,6 +15,7 @@ import { getFollowing, getProfiles, type Profile, type Thesis } from '../api/soc
 import { pushRecent, toggleWatch, usePrefs } from '../lib/prefs'
 import { useTrader } from '../lib/identity'
 import type { Page } from '../App'
+import { t as T } from '../lib/i18n'
 
 // Full page for one Argus launch. Live market data (price, volume,
 // liquidity, candles, trade history, holders, socials) comes from
@@ -173,7 +174,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     const price = r.tokenAmount > 0 ? r.usd / r.tokenAmount : 0
     if (!price) return []
     const p = r.maker ? profiles.get(r.maker.toLowerCase()) : undefined
-    const who = p?.username ? `@${p.username}` : r.maker ? `${r.maker.slice(0, 6)}…${r.maker.slice(-4)}` : 'Someone'
+    const who = p?.username ? `@${p.username}` : r.maker ? `${r.maker.slice(0, 6)}…${r.maker.slice(-4)}` : T('Someone')
     return [{
       id: r.txHash + r.kind + r.tokenAmount, time: r.timestamp, priceUsd: price, usd: r.usd, kind: r.kind, maker: r.maker,
       avatarUrl: p?.avatar_url ?? null, mine: !!me && r.maker?.toLowerCase() === me,
@@ -225,7 +226,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
       )}
 
       <div className="token-page-header">
-        <button className="back-btn" onClick={() => navigate({ name: 'terminal' })}>← Back</button>
+        <button className="back-btn" onClick={() => navigate({ name: 'terminal' })}>{T("← Back")}</button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
           <TokenImage src={image} symbol={symbol} />
           <div style={{ minWidth: 0 }}>
@@ -237,20 +238,20 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
               <span style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--text)', fontFamily: 'var(--mono)' }}>{active ? fmtPrice(priceUsd) : '…'}</span>
               {active && <span style={{ fontWeight: 700, fontSize: '0.8rem', color: active.change.h24 >= 0 ? 'var(--green)' : 'var(--red)' }}>{pct(active.change.h24)}</span>}
               <span style={{ background: 'rgba(168,85,247,0.15)', color: '#c084fc', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: '1px solid rgba(168,85,247,0.35)' }}>
-                {chain?.portal ? `ARGUS · Portal ${chain.portal}` : active?.dex === 'argus' ? 'ARGUS' : active?.dex ? active.dex.replace(/-arc$/, '').replace(/-/g, ' ').toUpperCase() : '…'}
+                {chain?.portal ? `ARGUS · Portal ${chain.portal}` : active?.dex === 'argus' ? T("ARGUS") : active?.dex ? active.dex.replace(/-arc$/, '').replace(/-/g, ' ').toUpperCase() : '…'}
               </span>
               {active && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>/ {active.quote.symbol}</span>}
-              {info && !info.verified && <span title="GeckoTerminal hasn't verified this token's metadata" style={{ background: 'rgba(245,158,11,0.12)', color: '#fcd34d', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99 }}>Unverified</span>}
-              {info?.isHoneypot && <span style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99 }}>HONEYPOT RISK</span>}
+              {info && !info.verified && <span title={T("GeckoTerminal hasn't verified this token's metadata")} style={{ background: 'rgba(245,158,11,0.12)', color: '#fcd34d', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99 }}>{T("Unverified")}</span>}
+              {info?.isHoneypot && <span style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99 }}>{T("HONEYPOT RISK")}</span>}
             </div>
           </div>
         </div>
         <div className="token-head-actions">
-          <button title={starred ? 'Remove from watchlist' : 'Add to watchlist'} onClick={() => toggleWatch(address)} className={`head-icon${starred ? ' on' : ''}`}>{starred ? '★' : '☆'}</button>
-          <button title="Copy contract address" className="head-icon" onClick={() => { void navigator.clipboard?.writeText(address); setCopiedCa(true); setTimeout(() => setCopiedCa(false), 1200) }}>{copiedCa ? '✓' : '⧉'}</button>
-          {info?.websites[0] && /^https?:\/\//i.test(info.websites[0]) && <a title="Website" className="head-icon" href={info.websites[0]} target="_blank" rel="noopener noreferrer">🌐</a>}
-          {info?.twitter && <a title="X / Twitter" className="head-icon" href={`https://x.com/${info.twitter}`} target="_blank" rel="noopener noreferrer">𝕏</a>}
-          <a title="Search on X" className="head-icon" href={`https://x.com/search?q=${encodeURIComponent(`${address} OR $${symbol}`)}&f=live`} target="_blank" rel="noopener noreferrer">🔍</a>
+          <button title={starred ? T("Remove from watchlist") : T("Add to watchlist")} onClick={() => toggleWatch(address)} className={`head-icon${starred ? ' on' : ''}`}>{starred ? '★' : '☆'}</button>
+          <button title={T("Copy contract address")} className="head-icon" onClick={() => { void navigator.clipboard?.writeText(address); setCopiedCa(true); setTimeout(() => setCopiedCa(false), 1200) }}>{copiedCa ? '✓' : '⧉'}</button>
+          {info?.websites[0] && /^https?:\/\//i.test(info.websites[0]) && <a title={T("Website")} className="head-icon" href={info.websites[0]} target="_blank" rel="noopener noreferrer">🌐</a>}
+          {info?.twitter && <a title={T("X / Twitter")} className="head-icon" href={`https://x.com/${info.twitter}`} target="_blank" rel="noopener noreferrer">𝕏</a>}
+          <a title={T("Search on X")} className="head-icon" href={`https://x.com/search?q=${encodeURIComponent(`${address} OR $${symbol}`)}&f=live`} target="_blank" rel="noopener noreferrer">🔍</a>
         </div>
       </div>
 
@@ -262,15 +263,15 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
             ['1h', pct(active.change.h1), active.change.h1 >= 0 ? 'var(--green)' : 'var(--red)'],
             ['6h', pct(active.change.h6), active.change.h6 >= 0 ? 'var(--green)' : 'var(--red)'],
             ['24h', pct(active.change.h24), active.change.h24 >= 0 ? 'var(--green)' : 'var(--red)'],
-            ['Market Cap', fmt(active.marketCapUsd ?? active.fdvUsd, '$'), 'var(--text)'],
+            [T('Market Cap'), fmt(active.marketCapUsd ?? active.fdvUsd, '$'), 'var(--text)'],
             ['FDV', fmt(active.fdvUsd, '$'), 'var(--text)'],
-            ['Liquidity', fmt(active.liquidityUsd, '$'), 'var(--text)'],
-            ['Volume 24h', fmt(active.volume24h, '$'), 'var(--text)'],
-            ['Buys 24h', active.txns24h.buys.toLocaleString(), 'var(--green)'],
-            ['Sells 24h', active.txns24h.sells.toLocaleString(), 'var(--red)'],
-            ['Holders', info?.holders != null ? info.holders.toLocaleString() : '—', 'var(--text)'],
-            ['Top 10 hold', info?.top10Pct != null ? `${info.top10Pct.toFixed(1)}%` : '—', 'var(--text)'],
-          ] as const).map(([label, val, color]) => (
+            [T('Liquidity'), fmt(active.liquidityUsd, '$'), 'var(--text)'],
+            [T('Volume 24h'), fmt(active.volume24h, '$'), 'var(--text)'],
+            [T('Buys 24h'), active.txns24h.buys.toLocaleString(), 'var(--green)'],
+            [T('Sells 24h'), active.txns24h.sells.toLocaleString(), 'var(--red)'],
+            [T('Holders'), info?.holders != null ? info.holders.toLocaleString() : '—', 'var(--text)'],
+            [T('Top 10 hold'), info?.top10Pct != null ? `${info.top10Pct.toFixed(1)}%` : '—', 'var(--text)'],
+          ] as [string, string, string][]).map(([label, val, color]) => (
             <div key={label}>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', marginBottom: 2 }}>{label}</div>
               <div style={{ fontWeight: 700, color, fontFamily: 'var(--mono)' }}>{val}</div>
@@ -279,20 +280,16 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         </div>
       )}
       {copy && (
-        <div style={{ ...card, padding: '12px 16px', fontSize: '0.82rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.4)', color: '#fcd34d' }}>
-          ⚠ This is <b>not</b> the real {copy}. It's a separate Argus launch that reuses the {copy} ticker — check the contract address before trading.
-        </div>
+        <div style={{ ...card, padding: '12px 16px', fontSize: '0.82rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.4)', color: '#fcd34d' }}>{T("⚠ This is")}{' '}<b>{T("not")}</b>{' '}{T("the real")}{' '}{copy}{T(". It's a separate Argus launch that reuses the")}{' '}{copy}{' '}{T("ticker — check the contract address before trading.")}</div>
       )}
       {pools !== null && pools.length === 0 && (
-        <div style={{ ...card, padding: 16, color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-          GeckoTerminal has no USDC- or ARGUS-quoted pool for this token yet.
-        </div>
+        <div style={{ ...card, padding: 16, color: 'var(--text-muted)', fontSize: '0.85rem' }}>{T("GeckoTerminal has no USDC- or ARGUS-quoted pool for this token yet.")}</div>
       )}
 
       <div className="token-detail-grid">
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ ...card, padding: 16 }}>
-            <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>PRICE CHART · USD</div>
+            <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{T("PRICE CHART · USD")}</div>
             <PriceChart poolAddress={activePool || null} trades={chartTrades} thesisMarks={thesisMarks} friends={friends} supply={supply} symbol={symbol}
               onTraderClick={a => navigate({ name: 'trader', address: a })} />
           </div>

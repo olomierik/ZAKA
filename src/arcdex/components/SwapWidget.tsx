@@ -4,6 +4,7 @@ import { ConnectKitButton } from 'connectkit'
 import { parseUnits, formatUnits, maxUint256 } from 'viem'
 import { arc } from '../wagmi'
 import type { ArcToken } from '../api/radardex'
+import { t as T } from '../lib/i18n'
 
 const USDC_ADDR    = '0x3600000000000000000000000000000000000000' as const
 // Disabled: this widget was built for the retired ArcDexRouter, which has
@@ -91,7 +92,7 @@ export default function SwapWidget({ token }: Props) {
 
   async function handleSwap() {
     if (!address || !amountIn || parsedIn === 0n) return
-    if (!ROUTER_ADDR) { setErrMsg('Swapping this token isn’t available here yet — Argus coins trade from their own page.'); setStep('error'); return }
+    if (!ROUTER_ADDR) { setErrMsg(T('Swapping this token isn’t available here yet — Argus coins trade from their own page.')); setStep('error'); return }
 
     setErrMsg('')
     try {
@@ -127,7 +128,7 @@ export default function SwapWidget({ token }: Props) {
         chainId: arc.id,
       })
     } catch (e: unknown) {
-      setErrMsg(e instanceof Error ? e.message : 'Swap failed')
+      setErrMsg(e instanceof Error ? e.message : T('Swap failed'))
       setStep('error')
     }
   }
@@ -150,7 +151,7 @@ export default function SwapWidget({ token }: Props) {
             background: mode === m ? (m === 'buy' ? 'var(--green)' : 'var(--red)') : 'transparent',
             color: mode === m ? '#fff' : 'var(--text-muted)',
           }}>
-            {m === 'buy' ? 'Buy' : 'Sell'} {token.symbol}
+            {m === 'buy' ? T("Buy") : T("Sell")} {token.symbol}
           </button>
         ))}
       </div>
@@ -158,7 +159,7 @@ export default function SwapWidget({ token }: Props) {
       {/* Amount input */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-          {mode === 'buy' ? 'USDC to spend' : `${token.symbol} to sell`}
+          {mode === 'buy' ? T("USDC to spend") : T('{symbol} to sell', { symbol: token.symbol })}
         </label>
         <input
           type="number" min="0" placeholder="0.00"
@@ -178,17 +179,17 @@ export default function SwapWidget({ token }: Props) {
           border: '1px solid var(--adx-card-border)', fontSize: '0.8125rem', display: 'flex',
           flexDirection: 'column', gap: '6px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-            <span>Amount in</span>
-            <span className="mono">{amountIn} {mode === 'buy' ? 'USDC' : token.symbol}</span>
+            <span>{T("Amount in")}</span>
+            <span className="mono">{amountIn} {mode === 'buy' ? T("USDC") : token.symbol}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--orange)' }}>
-            <span>Platform fee (1%)</span>
-            <span className="mono">{formatUnits(platformFee, decimalsIn)} {mode === 'buy' ? 'USDC' : token.symbol}</span>
+            <span>{T("Platform fee (1%)")}</span>
+            <span className="mono">{formatUnits(platformFee, decimalsIn)} {mode === 'buy' ? T("USDC") : token.symbol}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between',
             borderTop: '1px solid var(--adx-card-border)', paddingTop: 6, color: 'var(--text)' }}>
-            <span>You receive (~)</span>
-            <span className="mono" style={{ color: 'var(--green)' }}>{estimated} {mode === 'buy' ? token.symbol : 'USDC'}</span>
+            <span>{T("You receive (~)")}</span>
+            <span className="mono" style={{ color: 'var(--green)' }}>{estimated} {mode === 'buy' ? token.symbol : T("USDC")}</span>
           </div>
         </div>
       )}
@@ -204,10 +205,9 @@ export default function SwapWidget({ token }: Props) {
       {/* Success */}
       {receipt && (
         <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(34,197,94,0.1)',
-          border: '1px solid rgba(34,197,94,0.3)', color: '#86efac', fontSize: '0.8125rem' }}>
-          Swap confirmed!{' '}
+          border: '1px solid rgba(34,197,94,0.3)', color: '#86efac', fontSize: '0.8125rem' }}>{T("Swap confirmed!")}{' '}
           <a href={`https://explorer.mainnet.arc.io/tx/${txHash}`} target="_blank" rel="noreferrer"
-            style={{ color: 'var(--adx-accent)' }}>View on explorer ↗</a>
+            style={{ color: 'var(--adx-accent)' }}>{T("View on explorer ↗")}</a>
         </div>
       )}
 
@@ -219,9 +219,7 @@ export default function SwapWidget({ token }: Props) {
               padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700,
               background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer',
               width: '100%',
-            }}>
-              Connect Wallet
-            </button>
+            }}>{T("Connect Wallet")}</button>
           )}
         </ConnectKitButton.Custom>
       ) : (
@@ -236,17 +234,14 @@ export default function SwapWidget({ token }: Props) {
             transition: 'opacity 0.15s',
           }}
         >
-          {step === 'approving' ? 'Approving…' :
-           step === 'swapping'  ? 'Swapping…' :
-           needsApprove         ? `Approve ${mode === 'buy' ? 'USDC' : token.symbol}` :
-           `${mode === 'buy' ? 'Buy' : 'Sell'} ${token.symbol}`}
+          {step === 'approving' ? T("Approving…") :
+           step === 'swapping'  ? T("Swapping…") :
+           needsApprove         ? T('Approve {symbol}', { symbol: mode === 'buy' ? 'USDC' : token.symbol }) :
+           T(mode === 'buy' ? 'Buy {symbol}' : 'Sell {symbol}', { symbol: token.symbol })}
         </button>
       )}
 
-      <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5 }}>
-        1% platform fee applies. Gas paid in USDC on Arc mainnet.
-        5% max slippage. Transactions are irreversible.
-      </p>
+      <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5 }}>{T("1% platform fee applies. Gas paid in USDC on Arc mainnet. 5% max slippage. Transactions are irreversible.")}</p>
     </div>
   )
 }

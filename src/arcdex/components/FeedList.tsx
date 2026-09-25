@@ -7,6 +7,7 @@ import {
 import { shortAddr, useTrader } from '../lib/identity'
 import { useMarket, type TokenMeta } from '../lib/tokenMeta'
 import type { Page } from '../App'
+import { t as T, N_ } from '../lib/i18n'
 
 // Everything happening on ARCDEX, fomo-style: trades, theses, closed
 // positions, several traders piling into one coin, new listings, price
@@ -14,8 +15,8 @@ import type { Page } from '../App'
 // pinned daily recap.
 
 export const FEED_TYPES = [
-  ['trade', 'Trades'], ['closed', 'Closed positions'], ['thesis', 'Theses'], ['multi', 'Multi-trader buys'],
-  ['listing', 'New listings'], ['spike', 'Price spikes'], ['milestone', 'Profit milestones'], ['newtrader', 'New traders'],
+  ['trade', N_('Trades')], ['closed', N_('Closed positions')], ['thesis', N_('Theses')], ['multi', N_('Multi-trader buys')],
+  ['listing', N_('New listings')], ['spike', N_('Price spikes')], ['milestone', N_('Profit milestones')], ['newtrader', N_('New traders')],
 ] as const
 export type FeedType = (typeof FEED_TYPES)[number][0]
 
@@ -122,13 +123,13 @@ export default function FeedList({ navigate, compact = false, scope = 'all' }: {
   return (
     <div>
       <div style={{ padding: compact ? '6px 12px' : '10px 16px', position: 'relative' }}>
-        <button onClick={() => setShowFilter(s => !s)} style={{ ...linkBtn, fontSize: '0.74rem', color: 'var(--text-muted)' }}>⚲ Filter{types.size < FEED_TYPES.length ? ` (${types.size})` : ''}</button>
+        <button onClick={() => setShowFilter(s => !s)} style={{ ...linkBtn, fontSize: '0.74rem', color: 'var(--text-muted)' }}>{T("⚲ Filter")}{types.size < FEED_TYPES.length ? ` (${types.size})` : ''}</button>
         {showFilter && (
           <div style={{ position: 'absolute', zIndex: 20, top: '100%', left: compact ? 12 : 16, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 10, padding: 8, minWidth: 200, boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}>
-            <button onClick={() => setTypes(types.size ? new Set() : new Set(FEED_TYPES.map(t => t[0])))} style={{ ...linkBtn, fontSize: '0.74rem', color: 'var(--adx-accent)', padding: '4px 6px' }}>{types.size ? 'Deselect all' : 'Select all'}</button>
+            <button onClick={() => setTypes(types.size ? new Set() : new Set(FEED_TYPES.map(t => t[0])))} style={{ ...linkBtn, fontSize: '0.74rem', color: 'var(--adx-accent)', padding: '4px 6px' }}>{types.size ? T("Deselect all") : T("Select all")}</button>
             {FEED_TYPES.map(([k, label]) => (
               <label key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '5px 6px', fontSize: '0.78rem', cursor: 'pointer' }}>
-                {label}
+                {T(label)}
                 <input type="checkbox" checked={types.has(k)} onChange={() => setTypes(s => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n })} />
               </label>
             ))}
@@ -138,15 +139,13 @@ export default function FeedList({ navigate, compact = false, scope = 'all' }: {
 
       {recap && scope === 'all' && (
         <div style={{ margin: compact ? '0 12px 8px' : '0 16px 10px', padding: '10px 12px', borderRadius: 10, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', fontSize: compact ? '0.74rem' : '0.8rem', lineHeight: 1.5 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '0.68rem', marginBottom: 4 }}><span>📌 Recap · {new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}</span><span>ARCDEX</span></div>
-          • Top gainer: {coin(recap.gainer.address, recap.gainer.symbol)} <span style={{ color: 'var(--green)' }}>+{recap.gainer.change24h.toFixed(1)}%</span><br />
-          • Most traded: {coin(recap.volume.address, recap.volume.symbol)} with {money(recap.volume.volume24h)} volume<br />
-          • {money(recap.total)} traded across Argus coins in 24h{recap.trades24 ? ` · ${recap.trades24} trades on ARCDEX` : ''}
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '0.68rem', marginBottom: 4 }}><span>{T("📌 Recap ·")}{' '}{new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}</span><span>{T("ARCDEX")}</span></div>{T("• Top gainer:")}{' '}{coin(recap.gainer.address, recap.gainer.symbol)} <span style={{ color: 'var(--green)' }}>+{recap.gainer.change24h.toFixed(1)}%</span><br />{T("• Most traded:")}{' '}{coin(recap.volume.address, recap.volume.symbol)}{' '}{T("with")}{' '}{money(recap.volume.volume24h)}{' '}{T("volume")}<br />
+          • {money(recap.total)}{' '}{T("traded across Argus coins in 24h")}{recap.trades24 ? ' · ' + T('{n} trades on ARCDEX', { n: recap.trades24 }) : ''}
         </div>
       )}
 
-      {items === null ? <Empty>Loading…</Empty> : visible.length === 0 ? (
-        <Empty>{scope === 'following' ? (me ? 'Nothing yet from people you follow.' : 'Connect or unlock a wallet to see people you follow.') : 'No activity yet.'}</Empty>
+      {items === null ? <Empty>{T("Loading…")}</Empty> : visible.length === 0 ? (
+        <Empty>{scope === 'following' ? (me ? T("Nothing yet from people you follow.") : T("Connect or unlock a wallet to see people you follow.")) : T("No activity yet.")}</Empty>
       ) : visible.map((i, idx) => {
         const key = `${i.kind}-${idx}-${i.at}`
         const row = (avatar: string | null, children: React.ReactNode, extra?: React.ReactNode) => (
@@ -159,16 +158,16 @@ export default function FeedList({ navigate, compact = false, scope = 'all' }: {
           </div>
         )
         switch (i.kind) {
-          case 'trade': return row(i.t.trader, <>{who(i.t.trader)}<b style={{ color: i.t.side === 'buy' ? 'var(--green)' : 'var(--red)' }}>{i.t.side === 'buy' ? 'bought' : 'sold'}</b><span className="sensitive" style={{ fontFamily: 'var(--mono)' }}>{money(i.t.usdc)}</span>of {coin(i.t.token)}</>)
-          case 'thesis': return row(i.t.author, <>{who(i.t.author)}<Tag c="#93c5fd">THESIS</Tag>{coin(i.t.token)}</>,
-            <><div style={{ marginTop: 4, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{i.t.body}</div><div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 3 }}>♡ {i.t.likes}{i.t.position_usd ? ` · holds ${money(i.t.position_usd)}` : ''}</div></>)
+          case 'trade': return row(i.t.trader, <>{who(i.t.trader)}<b style={{ color: i.t.side === 'buy' ? 'var(--green)' : 'var(--red)' }}>{i.t.side === 'buy' ? T("bought") : T("sold")}</b><span className="sensitive" style={{ fontFamily: 'var(--mono)' }}>{money(i.t.usdc)}</span>{T("of")}{' '}{coin(i.t.token)}</>)
+          case 'thesis': return row(i.t.author, <>{who(i.t.author)}<Tag c="#93c5fd">{T("THESIS")}</Tag>{coin(i.t.token)}</>,
+            <><div style={{ marginTop: 4, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{i.t.body}</div><div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 3 }}>♡ {i.t.likes}{i.t.position_usd ? ' · ' + T('holds {usd}', { usd: money(i.t.position_usd) }) : ''}</div></>)
           case 'closed':
-          case 'milestone': return row(i.t.trader, <>{who(i.t.trader)}{i.kind === 'milestone' && <Tag c="#fcd34d">🏆 MILESTONE</Tag>}closed {coin(i.t.token)}<b style={{ color: i.t.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{i.t.pnl >= 0 ? '+' : ''}{money(i.t.pnl)}</b>{i.t.bought_usdc > 0 && <span style={{ color: 'var(--text-muted)' }}>({i.t.pnl >= 0 ? '+' : ''}{((i.t.pnl / i.t.bought_usdc) * 100).toFixed(0)}%)</span>}</>)
-          case 'multi': return row(null, <><b>{i.t.buyers} traders</b><b style={{ color: 'var(--green)' }}>bought</b>{coin(i.t.token)}<span style={{ fontFamily: 'var(--mono)' }}>{money(i.t.usdc)}</span></>,
+          case 'milestone': return row(i.t.trader, <>{who(i.t.trader)}{i.kind === 'milestone' && <Tag c="#fcd34d">{T("🏆 MILESTONE")}</Tag>}{T("closed")}{' '}{coin(i.t.token)}<b style={{ color: i.t.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{i.t.pnl >= 0 ? '+' : ''}{money(i.t.pnl)}</b>{i.t.bought_usdc > 0 && <span style={{ color: 'var(--text-muted)' }}>({i.t.pnl >= 0 ? '+' : ''}{((i.t.pnl / i.t.bought_usdc) * 100).toFixed(0)}%)</span>}</>)
+          case 'multi': return row(null, <><b>{i.t.buyers}{' '}{T("traders")}</b><b style={{ color: 'var(--green)' }}>{T("bought")}</b>{coin(i.t.token)}<span style={{ fontFamily: 'var(--mono)' }}>{money(i.t.usdc)}</span></>,
             <div style={{ display: 'flex', marginTop: 4 }}>{i.t.traders.slice(0, 6).map(a => <span key={a} style={{ marginRight: -6 }}><Avatar address={a} url={profiles.get(a)?.avatar_url} size={18} /></span>)}</div>)
-          case 'listing': return row(null, <><Tag c="#86efac">NEW</Tag>{coin(i.t.address, i.t.symbol)}listed{i.t.marketCapUsd ? <span style={{ color: 'var(--text-muted)' }}>at {money(i.t.marketCapUsd)} MC</span> : null}</>)
-          case 'spike': return row(null, <><Tag c="#f472b6">⚡ SPIKE</Tag>{coin(i.t.address, i.t.symbol)}<b style={{ color: 'var(--green)' }}>+{i.t.change1h.toFixed(0)}%</b><span style={{ color: 'var(--text-muted)' }}>in 1h</span></>)
-          case 'newtrader': return row(i.t.address, <>{who(i.t.address)}<span style={{ color: 'var(--text-muted)' }}>joined ARCDEX</span><Tag c="#c4b5fd">NEW TRADER</Tag></>)
+          case 'listing': return row(null, <><Tag c="#86efac">{T("NEW")}</Tag>{coin(i.t.address, i.t.symbol)}{T("listed")}{i.t.marketCapUsd ? <span style={{ color: 'var(--text-muted)' }}>{T("at")}{' '}{money(i.t.marketCapUsd)}{' '}{T("MC")}</span> : null}</>)
+          case 'spike': return row(null, <><Tag c="#f472b6">{T("⚡ SPIKE")}</Tag>{coin(i.t.address, i.t.symbol)}<b style={{ color: 'var(--green)' }}>+{i.t.change1h.toFixed(0)}%</b><span style={{ color: 'var(--text-muted)' }}>{T("in 1h")}</span></>)
+          case 'newtrader': return row(i.t.address, <>{who(i.t.address)}<span style={{ color: 'var(--text-muted)' }}>{T("joined ARCDEX")}</span><Tag c="#c4b5fd">{T("NEW TRADER")}</Tag></>)
         }
       })}
     </div>

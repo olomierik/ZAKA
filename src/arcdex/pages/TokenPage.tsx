@@ -7,6 +7,7 @@ import PriceChart from '../components/PriceChart'
 import SwapWidget from '../components/SwapWidget'
 import CurveTokenPage from './CurveTokenPage'
 import type { Page } from '../App'
+import { t as T } from '../lib/i18n'
 
 // DexScreener's /tokens/{address} endpoint returns every pool for a token
 // (often across multiple launchpads). Pick the deepest pool as "the" pair —
@@ -94,14 +95,14 @@ export default function TokenPage({ address, navigate }: Props) {
 
   const lp = pair ? getLaunchpad(pair) : null
 
-  if (isLaunchpadToken === null) return <div className="loading-state">Loading…</div>
+  if (isLaunchpadToken === null) return <div className="loading-state">{T("Loading…")}</div>
   if (isLaunchpadToken) return <CurveTokenPage address={address} navigate={navigate} />
 
   return (
     <div className="token-page">
       {/* header */}
       <div className="token-page-header">
-        <button className="back-btn" onClick={() => navigate({ name: 'terminal' })}>← Back</button>
+        <button className="back-btn" onClick={() => navigate({ name: 'terminal' })}>{T("← Back")}</button>
         {pair && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <TokenImage src={pair.info?.imageUrl} symbol={pair.baseToken.symbol} />
@@ -128,19 +129,19 @@ export default function TokenPage({ address, navigate }: Props) {
             </div>
           </div>
         )}
-        {loading && !pair && <div style={{ color: 'var(--text-muted)' }}>Loading…</div>}
+        {loading && !pair && <div style={{ color: 'var(--text-muted)' }}>{T("Loading…")}</div>}
       </div>
 
       {/* stats bar */}
       {pair && (
         <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', fontSize: '0.8rem' }}>
           {[
-            ['24h Change', `${pair.priceChange?.h24 >= 0 ? '+' : ''}${pair.priceChange?.h24?.toFixed(2) ?? 0}%`, pair.priceChange?.h24 >= 0 ? '#22c55e' : '#ef4444'],
-            ['24h Volume', fmt(pair.volume?.h24, '$'), '#3b82f6'],
-            ['Liquidity',  fmt(pair.liquidity?.usd, '$'), '#a855f7'],
-            ['Market Cap', fmt(pair.marketCap ?? pair.fdv, '$'), '#f97316'],
-            ['Buys 24h',   String(pair.txns?.h24?.buys ?? '—'), '#22c55e'],
-            ['Sells 24h',  String(pair.txns?.h24?.sells ?? '—'), '#ef4444'],
+            [T('24h Change'), `${pair.priceChange?.h24 >= 0 ? '+' : ''}${pair.priceChange?.h24?.toFixed(2) ?? 0}%`, pair.priceChange?.h24 >= 0 ? '#22c55e' : '#ef4444'],
+            [T('24h Volume'), fmt(pair.volume?.h24, '$'), '#3b82f6'],
+            [T('Liquidity'),  fmt(pair.liquidity?.usd, '$'), '#a855f7'],
+            [T('Market Cap'), fmt(pair.marketCap ?? pair.fdv, '$'), '#f97316'],
+            [T('Buys 24h'),   String(pair.txns?.h24?.buys ?? '—'), '#22c55e'],
+            [T('Sells 24h'),  String(pair.txns?.h24?.sells ?? '—'), '#ef4444'],
           ].map(([label, val, color]) => (
             <div key={label as string}>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', marginBottom: 2 }}>{label}</div>
@@ -154,30 +155,26 @@ export default function TokenPage({ address, navigate }: Props) {
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* price chart */}
           <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16, padding: 16 }}>
-            <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>PRICE CHART</div>
+            <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{T("PRICE CHART")}</div>
             <PriceChart poolAddress={pair?.pairAddress ?? null} />
           </div>
 
       {/* live trades */}
       <div style={{ marginTop: 16, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Live Trades</span>
+          <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>{T("Live Trades")}</span>
           <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-            <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#22c55e', marginRight: 5, animation: 'pulse 1.5s infinite' }} />
-            Real-time via Arc RPC
-          </span>
+            <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#22c55e', marginRight: 5, animation: 'pulse 1.5s infinite' }} />{T("Real-time via Arc RPC")}</span>
         </div>
 
         {trades.length === 0 ? (
-          <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            Waiting for trades on this pair…
-          </div>
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>{T("Waiting for trades on this pair…")}</div>
         ) : (
           <div style={{ overflowY: 'auto', maxHeight: 420 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
-                  {['Type', 'USD Value', 'Wallet', 'Tx Hash', 'Time'].map(h => (
+                  {[T('Type'), T('USD Value'), T('Wallet'), T('Tx Hash'), T('Time')].map(h => (
                     <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.7rem', letterSpacing: '0.05em' }}>{h}</th>
                   ))}
                 </tr>
@@ -220,9 +217,7 @@ export default function TokenPage({ address, navigate }: Props) {
           {radarToken ? (
             <SwapWidget token={radarToken} />
           ) : (
-            <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              Loading swap…
-            </div>
+            <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>{T("Loading swap…")}</div>
           )}
         </div>
       </div>

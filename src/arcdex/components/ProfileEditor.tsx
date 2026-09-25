@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { socialWrite, type Profile } from '../api/social'
 import type { Trader } from '../lib/identity'
+import { t as T } from '../lib/i18n'
 
 // Set your public trader identity: @username (also your referral link),
 // display name, picture, bio, X handle. Saving asks the wallet to sign a
@@ -25,7 +26,7 @@ export default function ProfileEditor({ trader, profile, onSaved, onClose }: { t
       onSaved(r.profile)
       onClose()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not save')
+      setErr(e instanceof Error ? e.message : T("Could not save"))
     } finally {
       setSaving(false)
     }
@@ -37,19 +38,19 @@ export default function ProfileEditor({ trader, profile, onSaved, onClose }: { t
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={e => e.stopPropagation()} style={{ width: 'min(440px, 100%)', background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 14, padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}><b>Edit profile</b><button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>✕</button></div>
-        <div><span style={label}>Username (3–20: a–z, 0–9, _) — also your referral link</span>
-          <input value={username} onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} maxLength={20} placeholder="satoshi" style={input} /></div>
-        <div><span style={label}>Display name</span><input value={displayName} onChange={e => setDisplayName(e.target.value)} maxLength={40} style={input} /></div>
-        <div><span style={label}>Profile picture URL (https://…)</span><input value={avatar} onChange={e => setAvatar(e.target.value.trim())} maxLength={500} placeholder="https://…" style={input} /></div>
-        <div><span style={label}>Banner image URL (https://…, wide)</span><input value={banner} onChange={e => setBanner(e.target.value.trim())} maxLength={500} placeholder="https://…" style={input} /></div>
-        <div><span style={label}>Bio</span><textarea value={bio} onChange={e => setBio(e.target.value)} maxLength={160} rows={2} style={{ ...input, resize: 'vertical', fontFamily: 'inherit' }} /></div>
-        <div><span style={label}>X handle</span><input value={x} onChange={e => setX(e.target.value.replace(/^@/, '').replace(/[^A-Za-z0-9_]/g, ''))} maxLength={15} placeholder="handle" style={input} /></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><b>{T("Edit profile")}</b><button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>✕</button></div>
+        <div><span style={label}>{T("Username (3–20: a–z, 0–9, _) — also your referral link")}</span>
+          <input value={username} onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} maxLength={20} placeholder={T("satoshi")} style={input} /></div>
+        <div><span style={label}>{T("Display name")}</span><input value={displayName} onChange={e => setDisplayName(e.target.value)} maxLength={40} style={input} /></div>
+        <div><span style={label}>{T("Profile picture URL (https://…)")}</span><input value={avatar} onChange={e => setAvatar(e.target.value.trim())} maxLength={500} placeholder={T("https://…")} style={input} /></div>
+        <div><span style={label}>{T("Banner image URL (https://…, wide)")}</span><input value={banner} onChange={e => setBanner(e.target.value.trim())} maxLength={500} placeholder={T("https://…")} style={input} /></div>
+        <div><span style={label}>{T("Bio")}</span><textarea value={bio} onChange={e => setBio(e.target.value)} maxLength={160} rows={2} style={{ ...input, resize: 'vertical', fontFamily: 'inherit' }} /></div>
+        <div><span style={label}>{T("X handle")}</span><input value={x} onChange={e => setX(e.target.value.replace(/^@/, '').replace(/[^A-Za-z0-9_]/g, ''))} maxLength={15} placeholder={T("handle")} style={input} /></div>
         {err && <div style={{ fontSize: '0.78rem', color: '#fca5a5' }}>{err}</div>}
         <button onClick={() => void save()} disabled={saving} style={{ padding: 12, borderRadius: 10, border: 'none', background: 'var(--adx-accent)', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
-          {saving ? 'Saving…' : 'Save profile'}
+          {saving ? T("Saving…") : T("Save profile")}
         </button>
-        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>The first save asks your wallet to sign a free message proving this profile is yours. No transaction, no gas.</div>
+        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{T("The first save asks your wallet to sign a free message proving this profile is yours. No transaction, no gas.")}</div>
       </div>
     </div>
   )

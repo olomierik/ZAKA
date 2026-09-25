@@ -3,6 +3,7 @@ import Avatar from '../components/Avatar'
 import { getClanLeaderboard, getClanOf, socialWrite, triggerIndex, type Clan, type ClanRank, type Period } from '../api/social'
 import { useTrader } from '../lib/identity'
 import type { Page } from '../App'
+import { t as T } from '../lib/i18n'
 
 // Clans: groups of traders who share their positions, ranked by everyone's
 // combined profit and loss. Anyone can start one or join one (one per wallet).
@@ -23,8 +24,8 @@ export default function ClansPage({ navigate }: { navigate: (p: Page) => void })
     <div className="token-page" style={{ maxWidth: 820 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '1.4rem' }}>Clans</h2>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>Groups of traders who share their positions, ranked by everyone's combined profit and loss.</div>
+          <h2 style={{ margin: 0, fontSize: '1.4rem' }}>{T("Clans")}</h2>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>{T("Groups of traders who share their positions, ranked by everyone's combined profit and loss.")}</div>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           {(['24h', '7d', '30d', 'all'] as Period[]).map(p => <button key={p} onClick={() => setPeriod(p)} className={`disc-sub${period === p ? ' active' : ''}`}>{p.toUpperCase()}</button>)}
@@ -34,26 +35,26 @@ export default function ClansPage({ navigate }: { navigate: (p: Page) => void })
       <div style={{ marginTop: 14, padding: '12px 16px', borderRadius: 12, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         {mine ? (
           <>
-            <span style={{ fontSize: '0.86rem' }}>You're in <b>{mine.clan.name}</b>{mine.role === 'owner' ? ' (owner)' : ''}</span>
-            <button className="btn-ghost" onClick={() => navigate({ name: 'clan', slug: mine.clan.slug })}>Open my clan</button>
+            <span style={{ fontSize: '0.86rem' }}>{T("You're in")}{' '}<b>{mine.clan.name}</b>{mine.role === 'owner' ? T(" (owner)") : ''}</span>
+            <button className="btn-ghost" onClick={() => navigate({ name: 'clan', slug: mine.clan.slug })}>{T("Open my clan")}</button>
           </>
         ) : (
           <>
-            <span style={{ fontSize: '0.86rem', color: 'var(--text-muted)' }}>{trader.address ? 'Start a clan and invite your trading friends — or join one below.' : 'Connect or unlock a wallet to start or join a clan.'}</span>
-            {trader.address && <button className="btn-primary" style={{ padding: '8px 16px' }} onClick={() => setCreating(true)}>+ Create a clan</button>}
+            <span style={{ fontSize: '0.86rem', color: 'var(--text-muted)' }}>{trader.address ? T("Start a clan and invite your trading friends — or join one below.") : T("Connect or unlock a wallet to start or join a clan.")}</span>
+            {trader.address && <button className="btn-primary" style={{ padding: '8px 16px' }} onClick={() => setCreating(true)}>{T("+ Create a clan")}</button>}
           </>
         )}
       </div>
 
       <div style={{ marginTop: 14, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
-        {rows === null ? <Empty>Loading…</Empty> : rows.length === 0 ? <Empty>No clans yet. Be the first to start one.</Empty> : rows.map((c, i) => (
+        {rows === null ? <Empty>{T("Loading…")}</Empty> : rows.length === 0 ? <Empty>{T("No clans yet. Be the first to start one.")}</Empty> : rows.map((c, i) => (
           <button key={c.clan_id} onClick={() => navigate({ name: 'clan', slug: c.slug })} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '12px 16px', background: 'none', border: 'none', borderBottom: '1px solid var(--adx-card-border)', color: 'var(--text)', cursor: 'pointer', textAlign: 'left' }}>
             <span style={{ width: 24, fontWeight: 800, color: i < 3 ? ['#facc15', '#cbd5e1', '#d97706'][i] : 'var(--text-muted)' }}>{i + 1}</span>
             {c.avatar_url ? <img src={c.avatar_url} alt="" style={{ width: 38, height: 38, borderRadius: 8, objectFit: 'cover' }} /> : <Avatar address={c.clan_id.replace(/-/g, '').slice(0, 40).padEnd(40, '0')} size={38} />}
-            <span style={{ flex: 1, minWidth: 0 }}><b>{c.name}</b><div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>👥 {c.members} member{c.members === 1 ? '' : 's'}</div></span>
+            <span style={{ flex: 1, minWidth: 0 }}><b>{c.name}</b><div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>👥 {c.members}{' '}{T("member")}{c.members === 1 ? '' : T("s")}</div></span>
             <span style={{ textAlign: 'right' }}>
               <div style={{ fontFamily: 'var(--mono)', fontWeight: 800, color: c.realized_pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{signed(c.realized_pnl)}</div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>vol ${c.volume_usdc.toFixed(0)}</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{T("vol $")}{c.volume_usdc.toFixed(0)}</div>
             </span>
           </button>
         ))}
@@ -85,22 +86,22 @@ export function ClanEditor({ mode, clan, onClose, onDone }: { mode: 'create' | '
         onDone(clan!.slug)
       }
       onClose()
-    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not save') } finally { setBusy(false) }
+    } catch (e) { setErr(e instanceof Error ? e.message : T("Could not save")) } finally { setBusy(false) }
   }
 
   const label: React.CSSProperties = { fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 4, display: 'block' }
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal-card" onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}><b>{mode === 'create' ? 'Create a clan' : 'Edit clan'}</b><button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>✕</button></div>
-        <div><span style={label}>Name</span><input className="field" value={name} maxLength={40} onChange={e => { setName(e.target.value); if (mode === 'create' && !slug) setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32)) }} /></div>
-        {mode === 'create' && <div><span style={label}>Link: arcdex.online/clans/<b>{slug || '…'}</b></span><input className="field" value={slug} maxLength={32} onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} /></div>}
-        <div><span style={label}>Motto</span><input className="field" value={motto} maxLength={120} onChange={e => setMotto(e.target.value)} placeholder="Get your money up" /></div>
-        <div><span style={label}>Logo image URL (https://…)</span><input className="field" value={avatar} onChange={e => setAvatar(e.target.value.trim())} /></div>
-        <div><span style={label}>Banner image URL (https://…)</span><input className="field" value={banner} onChange={e => setBanner(e.target.value.trim())} /></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><b>{mode === 'create' ? T("Create a clan") : T("Edit clan")}</b><button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>✕</button></div>
+        <div><span style={label}>{T("Name")}</span><input className="field" value={name} maxLength={40} onChange={e => { setName(e.target.value); if (mode === 'create' && !slug) setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32)) }} /></div>
+        {mode === 'create' && <div><span style={label}>{T("Link: arcdex.online/clans/")}<b>{slug || '…'}</b></span><input className="field" value={slug} maxLength={32} onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} /></div>}
+        <div><span style={label}>{T("Motto")}</span><input className="field" value={motto} maxLength={120} onChange={e => setMotto(e.target.value)} placeholder={T("Get your money up")} /></div>
+        <div><span style={label}>{T("Logo image URL (https://…)")}</span><input className="field" value={avatar} onChange={e => setAvatar(e.target.value.trim())} /></div>
+        <div><span style={label}>{T("Banner image URL (https://…)")}</span><input className="field" value={banner} onChange={e => setBanner(e.target.value.trim())} /></div>
         {err && <div style={{ fontSize: '0.78rem', color: '#fca5a5' }}>{err}</div>}
-        <button className="btn-primary" disabled={busy || name.trim().length < 2 || (mode === 'create' && slug.length < 3)} onClick={() => void save()} style={{ opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : mode === 'create' ? 'Create clan' : 'Save'}</button>
-        {mode === 'create' && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>You can be in one clan at a time. Your first save asks your wallet to sign a free message.</div>}
+        <button className="btn-primary" disabled={busy || name.trim().length < 2 || (mode === 'create' && slug.length < 3)} onClick={() => void save()} style={{ opacity: busy ? 0.6 : 1 }}>{busy ? T("Saving…") : mode === 'create' ? T("Create clan") : T("Save")}</button>
+        {mode === 'create' && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T("You can be in one clan at a time. Your first save asks your wallet to sign a free message.")}</div>}
       </div>
     </div>
   )

@@ -9,6 +9,7 @@ import { isUnlocked } from '../lib/embeddedWallet'
 import { quickBuyLaunchpad } from '../lib/quickTrade'
 import { uploadTokenImage, uploadTokenMetadata, buildInlineMetadataURI, isMediaUploadConfigured } from '../lib/mediaUpload'
 import type { Page } from '../App'
+import { t as T } from '../lib/i18n'
 
 function short(addr: string) { return `${addr.slice(0, 6)}…${addr.slice(-4)}` }
 
@@ -142,7 +143,7 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
         }
       } catch {
         if (imageFile && !imageUrl) {
-          setError('Image upload failed (storage not set up yet) — paste a direct image URL instead, or launch without an image.')
+          setError(T("Image upload failed (storage not set up yet) — paste a direct image URL instead, or launch without an image."))
           setStep('idle')
           return
         }
@@ -164,16 +165,14 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
       <button onClick={() => setOpen(true)} style={{
         padding: '10px 18px', borderRadius: 8, fontWeight: 700, fontSize: '0.85rem',
         background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer',
-      }}>
-        + Launch a token
-      </button>
+      }}>{T("+ Launch a token")}</button>
     )
   }
 
   return (
     <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 20, marginBottom: 20, maxWidth: 440 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <span style={{ fontWeight: 700 }}>Launch a token</span>
+        <span style={{ fontWeight: 700 }}>{T("Launch a token")}</span>
         <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -184,37 +183,34 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
             border: '1px dashed var(--adx-card-border)', display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: '0.6rem', color: 'var(--text-muted)', textAlign: 'center',
           }}>
-            {!imagePreview && !imageUrl && 'Logo'}
+            {!imagePreview && !imageUrl && T("Logo")}
             <input type="file" accept="image/*" onChange={pickImage} style={{ display: 'none' }} />
           </label>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Optional token logo — PNG/JPG/GIF/WebP, under 2MB.</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{T("Optional token logo — PNG/JPG/GIF/WebP, under 2MB.")}</div>
         </div>
-        <input placeholder="…or paste a direct image URL instead" value={imageUrl}
+        <input placeholder={T("…or paste a direct image URL instead")} value={imageUrl}
           onChange={e => { setImageUrl(e.target.value); if (e.target.value) { setImageFile(null); setImagePreview('') } }}
           style={inputStyle} />
-        <input placeholder="Token name" value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
-        <input placeholder="Symbol (e.g. MOON)" value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase().slice(0, 12))} style={inputStyle} />
-        <textarea placeholder="Description (optional)" value={description} onChange={e => setDescription(e.target.value)} style={{ ...inputStyle, minHeight: 60, resize: 'vertical' as const }} />
-        <input placeholder="Website (optional)" value={website} onChange={e => setWebsite(e.target.value)} style={inputStyle} />
-        <input placeholder="X / Twitter (optional)" value={twitter} onChange={e => setTwitter(e.target.value)} style={inputStyle} />
-        <input placeholder="Telegram (optional)" value={telegram} onChange={e => setTelegram(e.target.value)} style={inputStyle} />
-        <input type="number" min="0" placeholder="Initial buy in USDC (optional)" value={initialBuy} onChange={e => setInitialBuy(e.target.value)} style={inputStyle} />
+        <input placeholder={T("Token name")} value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
+        <input placeholder={T("Symbol (e.g. MOON)")} value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase().slice(0, 12))} style={inputStyle} />
+        <textarea placeholder={T("Description (optional)")} value={description} onChange={e => setDescription(e.target.value)} style={{ ...inputStyle, minHeight: 60, resize: 'vertical' as const }} />
+        <input placeholder={T("Website (optional)")} value={website} onChange={e => setWebsite(e.target.value)} style={inputStyle} />
+        <input placeholder={T("X / Twitter (optional)")} value={twitter} onChange={e => setTwitter(e.target.value)} style={inputStyle} />
+        <input placeholder={T("Telegram (optional)")} value={telegram} onChange={e => setTelegram(e.target.value)} style={inputStyle} />
+        <input type="number" min="0" placeholder={T("Initial buy in USDC (optional)")} value={initialBuy} onChange={e => setInitialBuy(e.target.value)} style={inputStyle} />
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Your creator tax — fixed forever once launched, max 3%</span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T("Your creator tax — fixed forever once launched, max 3%")}</span>
           <input type="number" min="0" max="3" step="0.1" value={taxPct} onChange={e => setTaxPct(e.target.value)} style={inputStyle} />
         </label>
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-          Free to launch{initialBuy ? ` + $${initialBuy} initial buy` : ''}. 1B fixed supply — 5% to the platform, 95% into the curve, no team pre-mine.
-          Every trade also pays a flat 1% platform fee on top of your {taxPct || 0}% tax. You keep 60% of your tax ({((taxBps * 0.6) / 100).toFixed(2)}% of every trade), forever.
-        </div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('Free to launch')}{initialBuy ? ' + ' + T('{usd} initial buy', { usd: '$' + initialBuy }) : ''}. {T('1B fixed supply — 5% to the platform, 95% into the curve, no team pre-mine. Every trade also pays a flat 1% platform fee on top of your {tax}% tax. You keep 60% of your tax ({keep}% of every trade), forever.', { tax: taxPct || 0, keep: ((taxBps * 0.6) / 100).toFixed(2) })}</div>
         {error && <div style={{ fontSize: '0.72rem', color: '#ef4444' }}>{error}</div>}
         {!isConnected ? (
           <ConnectKitButton.Custom>
-            {({ show }) => <button onClick={show} style={primaryBtnStyle}>Connect Wallet</button>}
+            {({ show }) => <button onClick={show} style={primaryBtnStyle}>{T("Connect Wallet")}</button>}
           </ConnectKitButton.Custom>
         ) : (
           <button onClick={() => void submit()} disabled={!name || !symbol || step !== 'idle'} style={{ ...primaryBtnStyle, opacity: (!name || !symbol) ? 0.5 : 1 }}>
-            {step === 'uploading' ? 'Uploading…' : step === 'approving' ? 'Approving USDC…' : step === 'creating' ? 'Launching…' : needsApprove ? 'Approve USDC' : 'Launch token'}
+            {step === 'uploading' ? T("Uploading…") : step === 'approving' ? T("Approving USDC…") : step === 'creating' ? T("Launching…") : needsApprove ? T("Approve USDC") : T("Launch token")}
           </button>
         )}
       </div>
@@ -237,13 +233,13 @@ function LaunchCard({ token: t, navigate, onTraded }: { token: LaunchpadToken; n
 
   async function quickBuy(e: React.MouseEvent) {
     e.stopPropagation()
-    if (!isUnlocked()) { setErr('Unlock your trading wallet →'); setTimeout(() => setErr(''), 2500); return }
+    if (!isUnlocked()) { setErr(T("Unlock your trading wallet →")); setTimeout(() => setErr(''), 2500); return }
     setBuying(true); setErr('')
     try {
       await quickBuyLaunchpad(t.address, 5_000_000n) // $5
       onTraded()
     } catch (e2) {
-      setErr(e2 instanceof Error ? e2.message : 'Buy failed')
+      setErr(e2 instanceof Error ? e2.message : T("Buy failed"))
       setTimeout(() => setErr(''), 2500)
     } finally { setBuying(false) }
   }
@@ -266,7 +262,7 @@ function LaunchCard({ token: t, navigate, onTraded }: { token: LaunchpadToken; n
           <span style={{ fontWeight: 700 }}>${t.symbol}</span>
         </div>
         {t.curve.graduated && (
-          <span style={{ fontSize: '0.62rem', background: '#22c55e22', color: '#22c55e', border: '1px solid #22c55e44', borderRadius: 4, padding: '2px 6px', fontWeight: 700 }}>✓ GRADUATED</span>
+          <span style={{ fontSize: '0.62rem', background: '#22c55e22', color: '#22c55e', border: '1px solid #22c55e44', borderRadius: 4, padding: '2px 6px', fontWeight: 700 }}>{T("✓ GRADUATED")}</span>
         )}
       </div>
       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 10 }}>{t.name}</div>
@@ -276,14 +272,14 @@ function LaunchCard({ token: t, navigate, onTraded }: { token: LaunchpadToken; n
           <div style={{ height: 5, borderRadius: 3, background: 'var(--bg-2)', overflow: 'hidden', marginBottom: 4 }}>
             <div style={{ width: `${Math.min(100, t.bondingProgress)}%`, height: '100%', background: 'linear-gradient(90deg,#3b82f6,#22c55e)' }} />
           </div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{t.bondingProgress.toFixed(1)}% to graduation</div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{t.bondingProgress.toFixed(1)}{T("% to graduation")}</div>
         </div>
       )}
       <button onClick={quickBuy} disabled={buying} style={{
         width: '100%', padding: '8px', borderRadius: 7, fontSize: '0.75rem', fontWeight: 700,
         background: 'var(--green)', color: '#fff', border: 'none', cursor: 'pointer', opacity: buying ? 0.6 : 1,
       }}>
-        {buying ? 'Buying…' : err || '⚡ Buy $5'}
+        {buying ? T("Buying…") : err || T("⚡ Buy $5")}
       </button>
     </div>
   )
@@ -302,11 +298,11 @@ function LiveActivityFeed({ symbolByAddress }: { symbolByAddress: Map<string, st
     <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginBottom: 20, overflow: 'hidden' }}>
       <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--adx-card-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
         <span className="pulse-dot" />
-        <span style={{ fontWeight: 700, fontSize: '0.82rem' }}>Live activity</span>
-        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>real-time buys &amp; sells across every launch, straight from Arc RPC</span>
+        <span style={{ fontWeight: 700, fontSize: '0.82rem' }}>{T("Live activity")}</span>
+        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{T("real-time buys & sells across every launch, straight from Arc RPC")}</span>
       </div>
       {trades.length === 0 ? (
-        <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.78rem' }}>Waiting for trades…</div>
+        <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.78rem' }}>{T("Waiting for trades…")}</div>
       ) : (
         <div style={{ maxHeight: 220, overflowY: 'auto' }}>
           {trades.map((t, i) => (
@@ -315,10 +311,10 @@ function LiveActivityFeed({ symbolByAddress }: { symbolByAddress: Map<string, st
               borderBottom: '1px solid var(--adx-border)', background: i === 0 ? (t.isBuy ? 'rgba(34,197,94,0.05)' : 'rgba(239,68,68,0.05)') : 'transparent',
             }}>
               <span style={{ background: t.isBuy ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: t.isBuy ? 'var(--green)' : 'var(--red)', fontWeight: 700, padding: '2px 7px', borderRadius: 4, fontSize: '0.68rem', width: 40, textAlign: 'center' }}>
-                {t.isBuy ? 'BUY' : 'SELL'}
+                {t.isBuy ? T("BUY") : T("SELL")}
               </span>
               <span style={{ fontWeight: 700, width: 70 }}>${symbolByAddress.get(t.token.toLowerCase()) ?? short(t.token)}</span>
-              <span style={{ color: 'var(--text-muted)', flex: 1 }}>{fmt(t.tokenAmount)} tokens</span>
+              <span style={{ color: 'var(--text-muted)', flex: 1 }}>{fmt(t.tokenAmount)}{' '}{T("tokens")}</span>
               <span style={{ fontWeight: 600 }}>${fmt(t.usdcAmount)}</span>
               <a href={`${'https://explorer.arc.io'}/address/${t.trader}`} target="_blank" rel="noopener noreferrer"
                 style={{ color: 'var(--text-muted)', fontFamily: 'var(--mono)', textDecoration: 'none', width: 90, textAlign: 'right' }}>
@@ -349,9 +345,7 @@ export default function Launchpad({ navigate }: Props) {
 
   if (LAUNCHPAD_ADDRESS.length !== 42) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-        Launchpad contract not configured yet — set VITE_ARC_LAUNCHPAD_ADDRESS once it's deployed to mainnet.
-      </div>
+      <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>{T("Launchpad contract not configured yet — set VITE_ARC_LAUNCHPAD_ADDRESS once it's deployed to mainnet.")}</div>
     )
   }
 
@@ -359,10 +353,8 @@ export default function Launchpad({ navigate }: Props) {
     <div style={{ padding: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 16 }}>
         <div>
-          <h1 style={{ fontSize: '1.3rem', fontWeight: 800, margin: 0 }}>Launchpad</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 4 }}>
-            Bonding-curve launches on Arc mainnet · free to launch · 1% platform fee + up to 3% creator tax
-          </p>
+          <h1 style={{ fontSize: '1.3rem', fontWeight: 800, margin: 0 }}>{T("Launchpad")}</h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 4 }}>{T("Bonding-curve launches on Arc mainnet · free to launch · 1% platform fee + up to 3% creator tax")}</p>
         </div>
         <CreateTokenForm onCreated={load} />
       </div>
@@ -370,9 +362,9 @@ export default function Launchpad({ navigate }: Props) {
       <LiveActivityFeed symbolByAddress={symbolByAddress} />
 
       {loading ? (
-        <div className="loading-state">Loading launches…</div>
+        <div className="loading-state">{T("Loading launches…")}</div>
       ) : tokens.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>No tokens launched yet — be the first.</div>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>{T("No tokens launched yet — be the first.")}</div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
           {tokens.map(t => <LaunchCard key={t.address} token={t} navigate={navigate} onTraded={load} />)}

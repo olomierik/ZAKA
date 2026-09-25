@@ -1,13 +1,13 @@
 // Shareable URLs for every page (fomo-style): /token/0x…, /profile/name,
 // /clans/slug, /r/name (referral). The app keeps its page state object;
 // this maps it to and from the address bar. vercel.json already serves
-// the SPA for every path.
+// the SPA for every path; / itself is the landing page (src/main.tsx).
 
 import type { Page } from '../App'
 
 export function pageToPath(p: Page): string {
   switch (p.name) {
-    case 'terminal':    return '/'
+    case 'terminal':    return '/app'
     case 'argus':       return `/token/${p.address}${p.pool ? `?pool=${p.pool}` : ''}`
     case 'token':       return `/token/${p.address}`
     case 'trader':      return `/profile/${p.address}`
@@ -18,6 +18,7 @@ export function pageToPath(p: Page): string {
     case 'alerts':      return '/alerts'
     case 'rewards':     return '/rewards'
     case 'transfers':   return '/transfers'
+    case 'burn':        return '/burn'
     case 'portfolio':   return '/portfolio'
     case 'launchpad':   return '/launchpad'
     case 'swap':        return '/swap'
@@ -41,12 +42,14 @@ export function pathToPage(pathname: string, search: string): Page | null {
       return null
     case 'profile':     return b ? { name: 'trader', address: b } : null
     case 'clans':       return b ? { name: 'clan', slug: b } : { name: 'clans' }
+    case 'app':         return { name: 'terminal' }
     case 'leaderboard': return { name: 'leaderboard' }
     case 'feed':        return { name: 'feed' }
     case 'alerts':      return { name: 'alerts' }
     case 'rewards':
     case 'earn':        return { name: 'rewards' }
     case 'transfers':   return { name: 'transfers' }
+    case 'burn':        return { name: 'burn' }
     case 'portfolio':   return { name: 'portfolio' }
     case 'launchpad':   return { name: 'launchpad' }
     case 'swap':        return { name: 'swap' }

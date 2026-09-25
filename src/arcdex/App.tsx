@@ -17,6 +17,7 @@ const RewardsPage     = lazy(() => import('./pages/RewardsPage'))
 const ClansPage       = lazy(() => import('./pages/ClansPage'))
 const ClanPage        = lazy(() => import('./pages/ClanPage'))
 const TransfersPage   = lazy(() => import('./pages/TransfersPage'))
+const BurnPage        = lazy(() => import('./pages/BurnPage'))
 const AlertsPage      = lazy(() => import('./pages/AlertsPage'))
 import TradingWalletPanel from './components/TradingWalletPanel'
 import DiscoveryPanel from './components/DiscoveryPanel'
@@ -24,6 +25,7 @@ import { DiscoverClans, FollowTopTraders, TickerBar } from './components/Rails'
 import { captureReferral } from './lib/referral'
 import { pageToPath, pathToPage } from './lib/router'
 import './arcdex.css'
+import { t as T, N_, useLang } from './lib/i18n'
 
 // Remember ?ref= or /r/<name> before anything renders (first-touch attribution).
 captureReferral()
@@ -40,6 +42,7 @@ export type Page =
   | { name: 'alerts' }
   | { name: 'rewards' }
   | { name: 'transfers' }
+  | { name: 'burn' }
   | { name: 'portfolio' }
   | { name: 'launchpad' }
   | { name: 'swap' }
@@ -47,10 +50,10 @@ export type Page =
 
 const fromUrl = (): Page => pathToPage(window.location.pathname, window.location.search) ?? { name: 'terminal' }
 
-const MOBILE_NAV: [Page, string][] = [
-  [{ name: 'terminal' }, '◈ Terminal'], [{ name: 'feed' }, '◉ Feed'], [{ name: 'leaderboard' }, '♛ Leaderboard'],
-  [{ name: 'clans' }, '⚑ Clans'], [{ name: 'rewards' }, '✦ Rewards'], [{ name: 'launchpad' }, '◆ Launchpad'],
-  [{ name: 'swap' }, '⇄ Swap'], [{ name: 'bridge' }, '◎ Bridge'], [{ name: 'portfolio' }, '▤ Portfolio'],
+const MOBILE_NAV: [Page, string, string][] = [
+  [{ name: 'terminal' }, '◈', N_('Terminal')], [{ name: 'feed' }, '◉', N_('Feed')], [{ name: 'leaderboard' }, '♛', N_('Leaderboard')],
+  [{ name: 'clans' }, '⚑', N_('Clans')], [{ name: 'rewards' }, '✦', N_('Rewards')], [{ name: 'launchpad' }, '◆', N_('Launchpad')],
+  [{ name: 'swap' }, '⇄', N_('Swap')], [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'portfolio' }, '▤', N_('Portfolio')],
 ]
 
 export default function App() {
@@ -73,24 +76,27 @@ export default function App() {
   // swap feed is gone. Stable identity so Terminal's loader doesn't rerun.
   const registerFeedTokens = useCallback((_tokens: { address: string; symbol: string }[]) => {}, [])
 
+  // Remount the content on a language change so every string re-renders.
+  const lang = useLang()
+
   return (
     <div className="app-shell">
       <NavBar page={page} navigate={navigate} onMenuClick={() => setNavOpen(o => !o)} />
 
-      <div className="app-body">
+      <div className="app-body" key={lang}>
         {navOpen && <div className="sidebar-backdrop" onClick={() => setNavOpen(false)} />}
         {/* left: fomo-style discovery panel (+ nav on phones) */}
         <aside className={`sidebar with-discovery${navOpen ? ' sidebar-open' : ''}`}>
           <nav className="mobile-nav" style={{ flexWrap: 'wrap', gap: 4, padding: 8, borderBottom: '1px solid var(--adx-border)' }}>
-            {MOBILE_NAV.map(([p, label]) => (
-              <button key={label} className={`disc-sub${page.name === p.name ? ' active' : ''}`} onClick={() => navigate(p)}>{label}</button>
+            {MOBILE_NAV.map(([p, icon, label]) => (
+              <button key={label} className={`disc-sub${page.name === p.name ? ' active' : ''}`} onClick={() => navigate(p)}>{icon} {T(label)}</button>
             ))}
           </nav>
           <DiscoveryPanel navigate={navigate} />
         </aside>
 
         <main className="main-content">
-          <Suspense fallback={<div className="loading-state">Loading…</div>}>
+          <Suspense fallback={<div className="loading-state">{T("Loading…")}</div>}>
           {page.name === 'terminal'    && <Terminal navigate={navigate} registerFeedTokens={registerFeedTokens} />}
           {page.name === 'token'       && <TokenPage address={page.address} navigate={navigate} />}
           {page.name === 'argus'       && <ArgusTokenPage key={page.address} address={page.address} pool={page.pool} navigate={navigate} />}
@@ -106,6 +112,7 @@ export default function App() {
           {page.name === 'alerts'      && <AlertsPage navigate={navigate} />}
           {page.name === 'rewards'     && <RewardsPage navigate={navigate} />}
           {page.name === 'transfers'   && <TransfersPage navigate={navigate} />}
+          {page.name === 'burn'        && <BurnPage navigate={navigate} />}
           </Suspense>
         </main>
 

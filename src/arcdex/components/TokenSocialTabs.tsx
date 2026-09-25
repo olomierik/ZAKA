@@ -5,6 +5,7 @@ import { ARC_EXPLORER } from '../api/arcRpc'
 import { getMyLikes, getTheses, getTokenHolders, socialWrite, type HolderRow, type Profile, type Thesis } from '../api/social'
 import { shortAddr, type Trader } from '../lib/identity'
 import type { Page } from '../App'
+import { t as T } from '../lib/i18n'
 
 // Under the chart on a coin page (fomo parity): Holders (ARCDEX traders
 // holding it, with PnL and average entry market cap), Swaps (every trade,
@@ -60,7 +61,7 @@ export function Who({ address, profiles, navigate, creator }: { address: string;
         <span style={{ fontFamily: p?.username ? undefined : 'var(--mono)', fontSize: '0.76rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {p?.username ? `@${p.username}` : shortAddr(address)}
         </span>
-        {isDev && <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: 'rgba(245,158,11,0.18)', color: '#fcd34d' }}>DEV</span>}
+        {isDev && <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: 'rgba(245,158,11,0.18)', color: '#fcd34d' }}>{T("DEV")}</span>}
       </button>
     </TraderHover>
   )
@@ -140,15 +141,15 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
       await socialWrite(trader, 'thesis', { token, body: draft.trim(), position_usd: positionUsd ?? undefined })
       setDraft('')
       await loadTheses()
-    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not post') } finally { setPosting(false) }
+    } catch (e) { setErr(e instanceof Error ? e.message : T("Could not post")) } finally { setPosting(false) }
   }
   async function toggleLike(t: Thesis) {
-    if (!trader.address) { setErr('Connect or unlock a wallet to like'); return }
+    if (!trader.address) { setErr(T("Connect or unlock a wallet to like")); return }
     const isLiked = liked.has(t.id)
     setLiked(s => { const n = new Set(s); if (isLiked) n.delete(t.id); else n.add(t.id); return n })
     setTheses(ts => ts?.map(x => x.id === t.id ? { ...x, likes: x.likes + (isLiked ? -1 : 1) } : x) ?? ts)
     try { await socialWrite(trader, isLiked ? 'unlike' : 'like', { thesis_id: t.id }) }
-    catch (e) { setErr(e instanceof Error ? e.message : 'Could not update like'); void loadTheses() }
+    catch (e) { setErr(e instanceof Error ? e.message : T("Could not update like")); void loadTheses() }
   }
 
   const tabBtn = (t: Tab, label: string) => (
@@ -167,9 +168,9 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <Who address={t.author} profiles={profiles} navigate={navigate} creator={creator} />
-            <span style={{ fontSize: '0.6rem', fontWeight: 800, padding: '1px 5px', borderRadius: 4, background: 'rgba(59,130,246,0.18)', color: '#93c5fd' }}>Thesis</span>
+            <span style={{ fontSize: '0.6rem', fontWeight: 800, padding: '1px 5px', borderRadius: 4, background: 'rgba(59,130,246,0.18)', color: '#93c5fd' }}>{T("Thesis")}</span>
             {!older && pos && <span className="sensitive" style={{ fontSize: '0.74rem', fontFamily: 'var(--mono)' }}>{usd(pos.value)} {pos.pct !== null && <span style={{ color: pos.pct >= 0 ? 'var(--green)' : 'var(--red)' }}>({pos.pct >= 0 ? '▲' : '▼'}{Math.abs(pos.pct).toFixed(2)}%)</span>}</span>}
-            {!older && !pos && t.position_usd != null && t.position_usd > 0 && <span style={{ fontSize: '0.68rem', fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>held ${fmt(t.position_usd)} when posted</span>}
+            {!older && !pos && t.position_usd != null && t.position_usd > 0 && <span style={{ fontSize: '0.68rem', fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>{T("held $")}{fmt(t.position_usd)}{' '}{T("when posted")}</span>}
             <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{ago(Date.parse(t.created_at))}</span>
           </div>
           <div style={{ fontSize: '0.86rem', margin: '6px 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{t.body}</div>
@@ -182,23 +183,23 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
   return (
     <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16, overflow: 'visible' }}>
       <div style={{ padding: '0 16px', borderBottom: '1px solid var(--adx-card-border)', display: 'flex', alignItems: 'center', overflowX: 'auto' }}>
-        {tabBtn('holders', `Holders${holders?.length ? ` (${holders.length})` : ''}`)}
-        {tabBtn('swaps', 'Swaps')}
-        {tabBtn('thesis', `Thesis${theses?.length ? ` (${theses.length})` : ''}`)}
-        {tabBtn('traders', 'Top traders')}
+        {tabBtn('holders', T('Holders') + (holders?.length ? ` (${holders.length})` : ''))}
+        {tabBtn('swaps', T('Swaps'))}
+        {tabBtn('thesis', T('Thesis') + (theses?.length ? ` (${theses.length})` : ''))}
+        {tabBtn('traders', T('Top traders'))}
         <span style={{ flex: 1 }} />
         {tab === 'swaps' && (
           <select value={minSwap} onChange={e => setMinSwap(Number(e.target.value))} className="disc-select">
-            {[0, 10, 100, 1000].map(v => <option key={v} value={v}>{v === 0 ? 'Any size' : `Min size >$${v >= 1000 ? '1K' : v}`}</option>)}
+            {[0, 10, 100, 1000].map(v => <option key={v} value={v}>{v === 0 ? T("Any size") : T('Min size {v}', { v: '>$' + (v >= 1000 ? '1K' : v) })}</option>)}
           </select>
         )}
-        {tab === 'holders' && <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', gap: 5, alignItems: 'center', whiteSpace: 'nowrap' }}><input type="checkbox" checked={thesisOnly} onChange={e => setThesisOnly(e.target.checked)} />Thesis only</label>}
+        {tab === 'holders' && <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', gap: 5, alignItems: 'center', whiteSpace: 'nowrap' }}><input type="checkbox" checked={thesisOnly} onChange={e => setThesisOnly(e.target.checked)} />{T("Thesis only")}</label>}
       </div>
 
-      {tab === 'holders' && (holders === null ? <Empty>Loading holders…</Empty> : holderRows.length === 0 ? <Empty>{thesisOnly ? 'No holder has posted a thesis yet.' : `No ARCDEX traders hold $${symbol} yet — buy some and you'll be first here.`}</Empty> : (
+      {tab === 'holders' && (holders === null ? <Empty>{T("Loading holders…")}</Empty> : holderRows.length === 0 ? <Empty>{thesisOnly ? T("No holder has posted a thesis yet.") : T("No ARCDEX traders hold ${symbol} yet — buy some and you'll be first here.", { symbol })}</Empty> : (
         <div style={{ overflow: 'auto', maxHeight: 480 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', minWidth: 640 }}>
-            <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>{['Trader', 'Position', 'PnL', 'Avg. entry', 'Thesis'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>{[T('Trader'), T('Position'), T('PnL'), T('Avg. entry'), T('Thesis')].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>
               {holderRows.map(h => {
                 const pos = positionOf.get(h.trader)!
@@ -206,7 +207,7 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
                 const held = (h.bought_tok - h.sold_tok) / 1e18
                 return (
                   <tr key={h.trader} style={{ borderBottom: '1px solid var(--adx-card-border)', background: trader.address?.toLowerCase() === h.trader ? 'rgba(250,204,21,0.07)' : undefined }}>
-                    <td style={td}><Who address={h.trader} profiles={profiles} navigate={navigate} creator={creator} />{pos.since && <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: 2 }}>◷ {dur(Date.now() - pos.since)} hold</div>}</td>
+                    <td style={td}><Who address={h.trader} profiles={profiles} navigate={navigate} creator={creator} />{pos.since && <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: 2 }}>◷ {dur(Date.now() - pos.since)}{' '}{T("hold")}</div>}</td>
                     <td className="sensitive" style={{ ...td, fontFamily: 'var(--mono)' }}>{usd(pos.value)}<div style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>{fmt(held)} {symbol}</div></td>
                     <td className="sensitive" style={{ ...td, fontFamily: 'var(--mono)', color: pos.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{pos.pnl >= 0 ? '+' : ''}{usd(pos.pnl)}{pos.pct !== null && <div style={{ fontSize: '0.66rem' }}>{pos.pct >= 0 ? '▲' : '▼'}{Math.abs(pos.pct).toFixed(2)}%</div>}</td>
                     <td style={{ ...td, fontFamily: 'var(--mono)' }}>{pos.entryMc !== null ? `${usd(pos.entryMc)} MC` : '—'}</td>
@@ -220,11 +221,11 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
       ))}
 
       {tab === 'swaps' && (swaps.length === 0 ? (
-        <Empty>{tradesLoaded ? 'No recent trades on this pool — new ones appear here instantly.' : 'Loading trades…'}</Empty>
+        <Empty>{tradesLoaded ? T("No recent trades on this pool — new ones appear here instantly.") : T("Loading trades…")}</Empty>
       ) : (
         <div style={{ overflow: 'auto', maxHeight: 480 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', minWidth: 560 }}>
-            <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>{['Trader', 'Action', 'Amount', 'Market cap', 'Time', ''].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>{[T('Trader'), T('Action'), T('Amount'), T('Market cap'), T('Time'), ''].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>
               {swaps.map(t => {
                 const c = t.kind === 'buy' ? 'var(--green)' : 'var(--red)'
@@ -232,8 +233,8 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
                 const mcAt = supply && t.tokenAmount > 0 ? (t.usd / t.tokenAmount) * supply : null
                 return (
                   <tr key={t.txHash + t.kind + t.tokenAmount} style={{ borderBottom: '1px solid var(--adx-card-border)', background: mine ? 'rgba(250,204,21,0.07)' : t.live ? 'rgba(59,130,246,0.06)' : 'transparent' }}>
-                    <td style={td}>{t.maker ? <Who address={t.maker} profiles={profiles} navigate={navigate} creator={creator} /> : <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>just now…</span>}</td>
-                    <td style={td}><span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '2px 7px', borderRadius: 4, background: t.kind === 'buy' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: c }}>{t.kind === 'buy' ? 'Buy' : 'Sell'}</span></td>
+                    <td style={td}>{t.maker ? <Who address={t.maker} profiles={profiles} navigate={navigate} creator={creator} /> : <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{T("just now…")}</span>}</td>
+                    <td style={td}><span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '2px 7px', borderRadius: 4, background: t.kind === 'buy' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: c }}>{t.kind === 'buy' ? T("Buy") : T("Sell")}</span></td>
                     <td style={{ ...td, fontFamily: 'var(--mono)' }}>{t.usd < 0.01 ? '<$0.01' : usd(t.usd)}</td>
                     <td style={{ ...td, fontFamily: 'var(--mono)' }}>{mcAt ? usd(mcAt) : '—'}</td>
                     <td style={{ ...td, color: 'var(--text-muted)' }}>{ago(t.timestamp)}</td>
@@ -252,32 +253,32 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <Avatar address={trader.address} url={profiles.get(trader.address.toLowerCase())?.avatar_url} size={32} />
               <div style={{ flex: 1 }}>
-                <textarea value={draft} maxLength={280} onChange={e => setDraft(e.target.value)} placeholder={`Why are you in $${symbol}? Share your thesis…`} rows={2}
+                <textarea value={draft} maxLength={280} onChange={e => setDraft(e.target.value)} placeholder={T('Why are you in ${symbol}? Share your thesis…', { symbol })} rows={2}
                   style={{ width: '100%', resize: 'vertical', padding: 10, borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', fontSize: '0.85rem', fontFamily: 'inherit' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{draft.length}/280{positionUsd ? ` · shows your live $${fmt(positionUsd)} position` : ''}</span>
-                  <button onClick={() => void post()} disabled={posting || !draft.trim()} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--adx-accent)', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: posting || !draft.trim() ? 0.5 : 1 }}>{posting ? 'Posting…' : 'Post'}</button>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{draft.length}/280{positionUsd ? ' · ' + T('shows your live {usd} position', { usd: '$' + fmt(positionUsd) }) : ''}</span>
+                  <button onClick={() => void post()} disabled={posting || !draft.trim()} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--adx-accent)', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: posting || !draft.trim() ? 0.5 : 1 }}>{posting ? T("Posting…") : T("Post")}</button>
                 </div>
               </div>
             </div>
-          ) : <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Connect or unlock a wallet to post your thesis.</div>}
+          ) : <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{T("Connect or unlock a wallet to post your thesis.")}</div>}
           {err && <div style={{ fontSize: '0.76rem', color: '#fca5a5' }}>{err}</div>}
-          {theses === null ? <Empty>Loading…</Empty> : thesisThreads.length === 0 ? <Empty>No theses yet — be the first to call it.</Empty> : thesisThreads.map(({ head, older }) => (
+          {theses === null ? <Empty>{T("Loading…")}</Empty> : thesisThreads.length === 0 ? <Empty>{T("No theses yet — be the first to call it.")}</Empty> : thesisThreads.map(({ head, older }) => (
             <div key={head.id}>
               {thesisCard(head)}
               {older.length > 0 && (expanded.has(head.author)
                 ? older.map(o => thesisCard(o, true))
-                : <button onClick={() => setExpanded(s => new Set(s).add(head.author))} style={{ marginLeft: 42, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.72rem' }}>↳ {older.length} older</button>)}
+                : <button onClick={() => setExpanded(s => new Set(s).add(head.author))} style={{ marginLeft: 42, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.72rem' }}>↳ {older.length}{' '}{T("older")}</button>)}
             </div>
           ))}
         </div>
       )}
 
-      {tab === 'traders' && (traders.length === 0 ? <Empty>No traders in the recent window yet.</Empty> : (
+      {tab === 'traders' && (traders.length === 0 ? <Empty>{T("No traders in the recent window yet.")}</Empty> : (
         <div style={{ overflow: 'auto', maxHeight: 480 }}>
-          <div style={{ padding: '8px 16px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>From the {rows.length} most recent trades on this pool.</div>
+          <div style={{ padding: '8px 16px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T("From the")}{' '}{rows.length}{' '}{T("most recent trades on this pool.")}</div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', minWidth: 520 }}>
-            <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>{['#', 'Trader', 'Bought', 'Sold', 'Net flow', 'Trades', 'Last'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>{['#', T('Trader'), T('Bought'), T('Sold'), T('Net flow'), T('Trades'), T('Last')].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>
               {traders.map((t, i) => {
                 const net = t.sold - t.bought

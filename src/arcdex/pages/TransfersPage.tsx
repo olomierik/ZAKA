@@ -8,6 +8,7 @@ import { getProfiles, getTransferNotes, type Profile, type TransferNote } from '
 import { shortAddr, useTrader } from '../lib/identity'
 import { USDC, useCash } from '../lib/usdc'
 import type { Page } from '../App'
+import { t as T } from '../lib/i18n'
 
 // Cash in and out (fomo "Transfers"): USDC deposits and withdrawals read
 // straight from Arc, plus cash sent between traders with its note.
@@ -63,23 +64,23 @@ export default function TransfersPage({ navigate }: { navigate: (p: Page) => voi
   // Router/pool legs of trades also move USDC — label them so cash moves stand out.
   const label = (r: Row) => {
     const n = notes.get(r.hash.toLowerCase())
-    if (n) return r.dir === 'out' ? 'Sent cash' : 'Received cash'
-    return r.dir === 'in' ? 'Deposit / received' : 'Withdraw / sent'
+    if (n) return r.dir === 'out' ? T('Sent cash') : T('Received cash')
+    return r.dir === 'in' ? T('Deposit / received') : T('Withdraw / sent')
   }
 
   return (
     <div className="token-page" style={{ maxWidth: 820 }}>
-      <h2 style={{ margin: 0, fontSize: '1.4rem' }}>Transfers</h2>
-      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>USDC moving in and out of your trading address on Arc.</div>
-      {!me ? <div style={{ marginTop: 20, color: 'var(--text-muted)' }}>Connect or unlock a wallet to see your transfers.</div> : (
+      <h2 style={{ margin: 0, fontSize: '1.4rem' }}>{T("Transfers")}</h2>
+      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>{T("USDC moving in and out of your trading address on Arc.")}</div>
+      {!me ? <div style={{ marginTop: 20, color: 'var(--text-muted)' }}>{T("Connect or unlock a wallet to see your transfers.")}</div> : (
         <>
           <div style={{ marginTop: 14, padding: 16, borderRadius: 12, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ flex: 1 }}><div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Total cash</div><div className="sensitive" style={{ fontSize: '1.6rem', fontWeight: 800, fontFamily: 'var(--mono)' }}>{cash === null ? '…' : `$${cash.toFixed(2)}`}</div></div>
-            <button className="btn-ghost" onClick={() => setModal('withdraw')}>Withdraw</button>
-            <button className="btn-primary" style={{ padding: '9px 18px' }} onClick={() => setModal('deposit')}>Deposit</button>
+            <div style={{ flex: 1 }}><div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T("Total cash")}</div><div className="sensitive" style={{ fontSize: '1.6rem', fontWeight: 800, fontFamily: 'var(--mono)' }}>{cash === null ? '…' : `$${cash.toFixed(2)}`}</div></div>
+            <button className="btn-ghost" onClick={() => setModal('withdraw')}>{T("Withdraw")}</button>
+            <button className="btn-primary" style={{ padding: '9px 18px' }} onClick={() => setModal('deposit')}>{T("Deposit")}</button>
           </div>
           <div style={{ marginTop: 14, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
-            {rows.length === 0 && !loading ? <div style={{ padding: 28, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.84rem' }}>No USDC transfers in this period.</div> : rows.map(r => {
+            {rows.length === 0 && !loading ? <div style={{ padding: 28, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.84rem' }}>{T("No USDC transfers in this period.")}</div> : rows.map(r => {
               const n = notes.get(r.hash.toLowerCase())
               const p = profiles.get(r.other)
               return (
@@ -88,7 +89,7 @@ export default function TransfersPage({ navigate }: { navigate: (p: Page) => voi
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <b>{label(r)}</b>
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
-                      {r.dir === 'in' ? 'from' : 'to'}
+                      {r.dir === 'in' ? T("from") : T("to")}
                       <button onClick={() => navigate({ name: 'trader', address: r.other })} style={{ display: 'inline-flex', gap: 4, alignItems: 'center', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0 }}>
                         <Avatar address={r.other} url={p?.avatar_url} size={14} />{p?.username ? `@${p.username}` : shortAddr(r.other)}
                       </button>
@@ -102,8 +103,8 @@ export default function TransfersPage({ navigate }: { navigate: (p: Page) => voi
               )
             })}
             <div style={{ padding: 12, textAlign: 'center' }}>
-              <button className="btn-ghost" disabled={loading || scannedTo === 0n} onClick={() => void scan()}>{loading ? 'Scanning Arc…' : 'Load older'}</button>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 6 }}>Includes USDC legs of your trades. Full history: <a href={`${ARC_EXPLORER}/address/${me}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--adx-accent)' }}>explorer</a></div>
+              <button className="btn-ghost" disabled={loading || scannedTo === 0n} onClick={() => void scan()}>{loading ? T("Scanning Arc…") : T("Load older")}</button>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 6 }}>{T("Includes USDC legs of your trades. Full history:")}{' '}<a href={`${ARC_EXPLORER}/address/${me}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--adx-accent)' }}>{T("explorer")}</a></div>
             </div>
           </div>
         </>

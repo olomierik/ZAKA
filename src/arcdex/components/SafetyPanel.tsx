@@ -3,6 +3,7 @@ import { parseAbi, type Address } from 'viem'
 import { client } from '../api/launchpad'
 import type { ArgusOnchain, ArgusTokenInfo } from '../api/argusMarket'
 import type { TradeRow } from './TokenSocialTabs'
+import { t as T } from '../lib/i18n'
 
 // Plain-language risk flags for a coin — the protection fomo's users say
 // they're missing ("I was exit liquidity"). Everything here is read from
@@ -38,32 +39,32 @@ export default function SafetyPanel({ token, info, chain, liquidityUsd, rows }: 
   }, [token, creator])
 
   const flags: Flag[] = []
-  if (info?.isHoneypot) flags.push({ level: 'bad', text: 'GeckoTerminal flags a honeypot risk — you may not be able to sell' })
+  if (info?.isHoneypot) flags.push({ level: 'bad', text: T('GeckoTerminal flags a honeypot risk — you may not be able to sell') })
 
   if (creator) {
     const devSells = rows.filter(r => r.maker?.toLowerCase() === creator.toLowerCase() && r.kind === 'sell')
     const sold = devSells.reduce((s, r) => s + r.usd, 0)
-    const who = chain?.creatorLabel === 'Creator payout wallet' ? 'Creator payout wallet' : 'Dev'
-    if (sold > 0) flags.push({ level: 'bad', text: `${who} sold ${fmt(sold)} in recent trades` })
-    else if (rows.length > 0) flags.push({ level: 'ok', text: `No ${who.toLowerCase()} sells in the last ${rows.length} trades` })
-    if (devPct !== null) flags.push({ level: devPct > 10 ? 'warn' : 'ok', text: `${who} holds ${devPct.toFixed(2)}% of supply` })
+    const payout = chain?.creatorLabel === 'Creator payout wallet'
+    if (sold > 0) flags.push({ level: 'bad', text: T(payout ? 'Creator payout wallet sold {usd} in recent trades' : 'Dev sold {usd} in recent trades', { usd: fmt(sold) }) })
+    else if (rows.length > 0) flags.push({ level: 'ok', text: T(payout ? 'No creator payout wallet sells in the last {n} trades' : 'No dev sells in the last {n} trades', { n: rows.length }) })
+    if (devPct !== null) flags.push({ level: devPct > 10 ? 'warn' : 'ok', text: T(payout ? 'Creator payout wallet holds {pct}% of supply' : 'Dev holds {pct}% of supply', { pct: devPct.toFixed(2) }) })
   }
 
   const buyTax = chain?.buyTaxBps, sellTax = chain?.sellTaxBps
   if (buyTax != null && sellTax != null) {
     const high = Math.max(buyTax, sellTax) >= 300
-    flags.push({ level: high ? 'warn' : 'ok', text: `Creator tax ${buyTax / 100}% buy · ${sellTax / 100}% sell${high ? ' (maximum)' : ''}` })
+    flags.push({ level: high ? 'warn' : 'ok', text: T('Creator tax {buy}% buy · {sell}% sell', { buy: buyTax / 100, sell: sellTax / 100 }) + (high ? ' ' + T('(maximum)') : '') })
   }
 
   if (info?.top10Pct != null) {
     const t = info.top10Pct
-    flags.push({ level: t > 50 ? 'bad' : t > 30 ? 'warn' : 'ok', text: `Top 10 wallets hold ${t.toFixed(1)}%` })
+    flags.push({ level: t > 50 ? 'bad' : t > 30 ? 'warn' : 'ok', text: T('Top 10 wallets hold {pct}%', { pct: t.toFixed(1) }) })
   }
   if (liquidityUsd != null && liquidityUsd > 0 && liquidityUsd < 5_000) {
-    flags.push({ level: 'warn', text: `Thin liquidity (${fmt(liquidityUsd)}) — trades move the price a lot` })
+    flags.push({ level: 'warn', text: T('Thin liquidity ({usd}) — trades move the price a lot', { usd: fmt(liquidityUsd) }) })
   }
-  if (info?.gtScore != null && info.gtScore < 30) flags.push({ level: 'warn', text: `Low GeckoTerminal trust score (${info.gtScore.toFixed(0)}/100)` })
-  if (chain?.bonded) flags.push({ level: 'ok', text: 'Bonded — graduated from its launch curve' })
+  if (info?.gtScore != null && info.gtScore < 30) flags.push({ level: 'warn', text: T('Low GeckoTerminal trust score ({score}/100)', { score: info.gtScore.toFixed(0) }) })
+  if (chain?.bonded) flags.push({ level: 'ok', text: T('Bonded — graduated from its launch curve') })
 
   if (flags.length === 0) return null
   const color = { ok: '#22c55e', warn: '#f59e0b', bad: '#ef4444' }
@@ -72,9 +73,9 @@ export default function SafetyPanel({ token, info, chain, liquidityUsd, rows }: 
   return (
     <div style={{ background: 'var(--adx-card-bg)', border: `1px solid ${bad ? 'rgba(239,68,68,0.4)' : 'var(--adx-card-border)'}`, borderRadius: 12, marginTop: 16 }}>
       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '0.85rem' }}>
-        <span>Safety check</span>
+        <span>{T("Safety check")}</span>
         <span style={{ fontSize: '0.72rem', color: bad ? color.bad : warn ? color.warn : color.ok }}>
-          {bad ? `${bad} red flag${bad > 1 ? 's' : ''}` : warn ? `${warn} caution${warn > 1 ? 's' : ''}` : 'Looks clean'}
+          {bad ? T(bad > 1 ? '{n} red flags' : '{n} red flag', { n: bad }) : warn ? T(warn > 1 ? '{n} cautions' : '{n} caution', { n: warn }) : T("Looks clean")}
         </span>
       </div>
       <div style={{ padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 7 }}>

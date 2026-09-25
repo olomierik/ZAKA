@@ -1,22 +1,15 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import { WagmiProvider } from 'wagmi'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ConnectKitProvider } from 'connectkit'
-import App from './arcdex/App'
-import { wagmiConfig } from './arcdex/wagmi'
-import './index.css'
+import { captureReferral } from './arcdex/lib/referral'
 
-const queryClient = new QueryClient()
+// arcdex.online/ is the landing page — a small bundle with no wallet
+// libraries, so it loads fast for new visitors. Every other path (/app,
+// /token/…, /profile/…, …) is the trading app. /r/<name> referral links
+// are remembered first, then land on the landing page.
+captureReferral()
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <WagmiProvider config={wagmiConfig}>
-      <QueryClientProvider client={queryClient}>
-        <ConnectKitProvider theme="midnight">
-          <App />
-        </ConnectKitProvider>
-      </QueryClientProvider>
-    </WagmiProvider>
-  </StrictMode>
-)
+const root = document.getElementById('root')!
+const path = window.location.pathname
+if (path === '/' || path === '/index.html') {
+  void import('./arcdex/landing/Landing').then(m => m.mountLanding(root))
+} else {
+  void import('./appMain').then(m => m.mountApp(root))
+}

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { getTokens, type ArcToken } from '../api/radardex'
 import SwapWidget from '../components/SwapWidget'
 import type { Page } from '../App'
+import { t as T } from '../lib/i18n'
 
 interface Props { navigate: (p: Page) => void }
 
@@ -23,16 +24,14 @@ export default function Swap({ navigate }: Props) {
 
   return (
     <div style={{ maxWidth: 440, margin: '0 auto', padding: '24px 16px' }}>
-      <h1 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: 4 }}>Swap</h1>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: 20 }}>
-        Trade any Arc mainnet token against USDC — 1% platform fee, same router as every token page.
-      </p>
+      <h1 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: 4 }}>{T("Swap")}</h1>
+      <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: 20 }}>{T("Trade any Arc mainnet token against USDC — 1% platform fee, same router as every token page.")}</p>
 
       {!picked ? (
         <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 20 }}>
           <input
             autoFocus
-            placeholder="Search by symbol, name, or address…"
+            placeholder={T("Search by symbol, name, or address…")}
             value={query}
             onChange={e => setQuery(e.target.value)}
             style={{
@@ -58,18 +57,14 @@ export default function Swap({ navigate }: Props) {
             </div>
           ))}
           {query && matches.length === 0 && (
-            <div style={{ padding: '16px 8px', color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center' }}>No tokens match "{query}"</div>
+            <div style={{ padding: '16px 8px', color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center' }}>{T("No tokens match \"")}{query}"</div>
           )}
         </div>
       ) : (
         <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px 0' }}>
-            <button onClick={() => { setPicked(null); setQuery('') }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.78rem' }}>
-              ← Choose a different token
-            </button>
-            <button onClick={() => navigate({ name: 'token', address: picked.address, symbol: picked.symbol })} style={{ background: 'none', border: 'none', color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.72rem' }}>
-              View chart →
-            </button>
+            <button onClick={() => { setPicked(null); setQuery('') }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.78rem' }}>{T("← Choose a different token")}</button>
+            <button onClick={() => navigate({ name: 'token', address: picked.address, symbol: picked.symbol })} style={{ background: 'none', border: 'none', color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.72rem' }}>{T("View chart →")}</button>
           </div>
           <SwapWidget token={picked} />
         </div>

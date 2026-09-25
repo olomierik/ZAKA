@@ -5,6 +5,7 @@ import { shortAddr, useTrader } from '../lib/identity'
 import { loadBlueChips, type TokenMeta } from '../lib/tokenMeta'
 import { client } from '../api/launchpad'
 import type { Page } from '../App'
+import { t as T } from '../lib/i18n'
 
 // Right-rail suggestions (fomo: "Follow top traders", "Discover clans")
 // and the bottom ticker bar (blue-chip prices + network status).
@@ -33,7 +34,7 @@ export function FollowTopTraders({ navigate }: { navigate: (p: Page) => void }) 
   }
   return (
     <div>
-      <div className="rail-section">👥 Follow top traders</div>
+      <div className="rail-section">{T("👥 Follow top traders")}</div>
       {list.map(r => {
         const p = profiles.get(r.trader)
         return (
@@ -42,10 +43,10 @@ export function FollowTopTraders({ navigate }: { navigate: (p: Page) => void }) 
               <Avatar address={r.trader} url={p?.avatar_url} size={26} />
               <span style={{ textAlign: 'left', minWidth: 0 }}>
                 <div style={{ fontSize: '0.76rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>{p?.display_name || (p?.username ? `@${p.username}` : shortAddr(r.trader))}</div>
-                <div style={{ fontSize: '0.66rem', color: r.realized_pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{r.realized_pnl >= 0 ? '+' : ''}${Math.abs(r.realized_pnl).toFixed(0)} 7d</div>
+                <div style={{ fontSize: '0.66rem', color: r.realized_pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{r.realized_pnl >= 0 ? '+' : ''}${Math.abs(r.realized_pnl).toFixed(0)}{' '}{T("7d")}</div>
               </span>
             </button>
-            {me && <button className={`rail-follow${following.has(r.trader) ? ' on' : ''}`} onClick={() => void toggle(r.trader)}>{following.has(r.trader) ? 'Following' : 'Follow'}</button>}
+            {me && <button className={`rail-follow${following.has(r.trader) ? ' on' : ''}`} onClick={() => void toggle(r.trader)}>{following.has(r.trader) ? T("Following") : T("Follow")}</button>}
           </div>
         )
       })}
@@ -58,7 +59,7 @@ export function DiscoverClans({ navigate }: { navigate: (p: Page) => void }) {
   useEffect(() => { void getClanLeaderboard('7d', 5).then(setClans).catch(() => {}) }, [])
   return (
     <div>
-      <div className="rail-section">⚑ Discover clans <button className="disc-link" onClick={() => navigate({ name: 'clans' })}>{clans.length ? 'All ›' : 'Start one ›'}</button></div>
+      <div className="rail-section">{T("⚑ Discover clans")}{' '}<button className="disc-link" onClick={() => navigate({ name: 'clans' })}>{clans.length ? T("All ›") : T("Start one ›")}</button></div>
       {clans.map(c => (
         <button key={c.clan_id} className="rail-row" onClick={() => navigate({ name: 'clan', slug: c.slug })} style={{ width: '100%', background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', textAlign: 'left' }}>
           {c.avatar_url ? <img src={c.avatar_url} alt="" style={{ width: 26, height: 26, borderRadius: 6 }} /> : <span style={{ width: 26, textAlign: 'center' }}>⚑</span>}
@@ -100,8 +101,8 @@ export function TickerBar({ navigate }: { navigate: (p: Page) => void }) {
         </button>
       ))}
       <span style={{ flex: 1 }} />
-      <span style={{ color }}>● {status === 'ok' ? 'Arc: Stable' : status === 'slow' ? 'Arc: Slow' : 'Arc: Unreachable'}</span>
-      <a href="https://explorer.arc.io" target="_blank" rel="noopener noreferrer">Explorer</a>
+      <span style={{ color }}>● {status === 'ok' ? T("Arc: Stable") : status === 'slow' ? T("Arc: Slow") : T("Arc: Unreachable")}</span>
+      <a href="https://explorer.arc.io" target="_blank" rel="noopener noreferrer">{T("Explorer")}</a>
     </div>
   )
 }

@@ -9,6 +9,7 @@ import { getArgusMarket, argusPoolToArcToken } from '../api/argusMarket'
 import { curateTokens, type CuratedGroup } from '../lib/curate'
 import type { Page } from '../App'
 import { toggleWatch, usePrefs } from '../lib/prefs'
+import { t as T, N_ } from '../lib/i18n'
 
 interface Props {
   navigate: (p: Page) => void
@@ -51,7 +52,7 @@ function fmtPct(n: number) {
 // picks', 'Watchlist' and 'Holdings' implied personalization features
 // (saved watchlists, wallet-linked holdings, curated calls) this app
 // doesn't have, so they did nothing when clicked.
-const VIEW_TABS = ['All', 'New pair', 'New <15m', 'Trending', 'Top volume']
+const VIEW_TABS = [N_('All'), N_('New pair'), N_('New <15m'), N_('Trending'), N_('Top volume')]
 
 // ── sort columns ─────────────────────────────────────────────────────
 type SortCol = 'mcap' | 'volume' | 'txns' | 'score' | 'age' | 'liq' | 'holders' | 'change'
@@ -116,7 +117,7 @@ function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onTogg
       {/* rank */}
       <td className="td-rank">
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          {!isDuplicateRow && <button className={`row-star${starred ? ' on' : ''}`} title={starred ? 'Remove from watchlist' : 'Add to watchlist'} onClick={e => { e.stopPropagation(); toggleWatch(token.address) }}>{starred ? '★' : '☆'}</button>}
+          {!isDuplicateRow && <button className={`row-star${starred ? ' on' : ''}`} title={starred ? T("Remove from watchlist") : T("Add to watchlist")} onClick={e => { e.stopPropagation(); toggleWatch(token.address) }}>{starred ? '★' : '☆'}</button>}
           <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{isDuplicateRow ? '↳' : rank}</span>
         </span>
       </td>
@@ -130,25 +131,20 @@ function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onTogg
                 {token.symbol}
               </span>
               {token.verified && (
-                <span style={{ fontSize: '0.55rem', background: '#1d4ed822', color: '#60a5fa', border: '1px solid #1d4ed844', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>
-                  ✓ VERIFIED
-                </span>
+                <span style={{ fontSize: '0.55rem', background: '#1d4ed822', color: '#60a5fa', border: '1px solid #1d4ed844', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>{T("✓ VERIFIED")}</span>
               )}
               <span style={{ fontSize: '0.55rem', background: lpColor + '22', color: lpColor, border: `1px solid ${lpColor}44`, borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>
                 {lp}
               </span>
               {isDuplicateRow && (
-                <span title="Another contract also uses this ticker — sorted below the highest-liquidity one." style={{ fontSize: '0.55rem', background: '#f59e0b18', color: 'var(--amber)', border: '1px solid #f59e0b44', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>
-                  ⚠ SAME TICKER
-                </span>
+                <span title={T("Another contract also uses this ticker — sorted below the highest-liquidity one.")} style={{ fontSize: '0.55rem', background: '#f59e0b18', color: 'var(--amber)', border: '1px solid #f59e0b44', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>{T("⚠ SAME TICKER")}</span>
               )}
               {!isDuplicateRow && dupCount > 0 && (
                 <button
                   onClick={e => { e.stopPropagation(); onToggleExpand?.() }}
                   style={{ fontSize: '0.6rem', background: 'var(--bg-3)', color: 'var(--text-muted)', border: '1px solid var(--border-hi)', borderRadius: 3, padding: '1px 5px', fontWeight: 700, cursor: 'pointer' }}
                 >
-                  {expanded ? '▾' : '▸'} +{dupCount} same ticker
-                </button>
+                  {expanded ? '▾' : '▸'} +{dupCount}{' '}{T("same ticker")}</button>
               )}
             </div>
             <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: 1, display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
@@ -232,11 +228,11 @@ function TokenCard({ token, dupCount = 0, onClick }: CardProps) {
           </div>
           <div className="token-card-badges">
             {token.verified && (
-              <span style={{ fontSize: '0.58rem', background: '#1d4ed822', color: '#60a5fa', border: '1px solid #1d4ed844', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>✓ VERIFIED</span>
+              <span style={{ fontSize: '0.58rem', background: '#1d4ed822', color: '#60a5fa', border: '1px solid #1d4ed844', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>{T("✓ VERIFIED")}</span>
             )}
             <span style={{ fontSize: '0.58rem', background: lpColor + '22', color: lpColor, border: `1px solid ${lpColor}44`, borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>{lp}</span>
             {dupCount > 0 && (
-              <span style={{ fontSize: '0.58rem', background: '#f59e0b18', color: 'var(--amber)', border: '1px solid #f59e0b44', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>+{dupCount} same ticker</span>
+              <span style={{ fontSize: '0.58rem', background: '#f59e0b18', color: 'var(--amber)', border: '1px solid #f59e0b44', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>+{dupCount}{' '}{T("same ticker")}</span>
             )}
           </div>
         </div>
@@ -246,10 +242,10 @@ function TokenCard({ token, dupCount = 0, onClick }: CardProps) {
         </div>
       </div>
       <div className="token-card-stats">
-        <div className="token-card-stat"><span className="token-card-stat-label">Liq</span><span className="token-card-stat-value">{fmt(token.liquidity, '$')}</span></div>
-        <div className="token-card-stat"><span className="token-card-stat-label">Vol</span><span className="token-card-stat-value">{fmt(token.volume24h, '$')}</span></div>
-        <div className="token-card-stat"><span className="token-card-stat-label">Txns</span><span className="token-card-stat-value">{token.txCount24h.toLocaleString()}</span></div>
-        <div className="token-card-stat"><span className="token-card-stat-label">Holders</span><span className="token-card-stat-value">{token.holderCount > 0 ? token.holderCount.toLocaleString() : '—'}</span></div>
+        <div className="token-card-stat"><span className="token-card-stat-label">{T("Liq")}</span><span className="token-card-stat-value">{fmt(token.liquidity, '$')}</span></div>
+        <div className="token-card-stat"><span className="token-card-stat-label">{T("Vol")}</span><span className="token-card-stat-value">{fmt(token.volume24h, '$')}</span></div>
+        <div className="token-card-stat"><span className="token-card-stat-label">{T("Txns")}</span><span className="token-card-stat-value">{token.txCount24h.toLocaleString()}</span></div>
+        <div className="token-card-stat"><span className="token-card-stat-label">{T("Holders")}</span><span className="token-card-stat-value">{token.holderCount > 0 ? token.holderCount.toLocaleString() : '—'}</span></div>
       </div>
     </div>
   )
@@ -434,61 +430,61 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
         <div className="source-pills">
           {sources.map(s => (
             <button key={s} className={`source-pill${source === s ? ' active' : ''}`} onClick={() => setSource(s)}>
-              {s === 'All sources' ? '◉ All sources' : s}
+              {s === 'All sources' ? '◉ ' + T('All sources') : s}
             </button>
           ))}
         </div>
         <div className="filter-controls">
-          <input className="filter-input" placeholder="min MC $" value={minMcap} onChange={e => setMinMcap(e.target.value)} style={{ width: 90 }} />
-          <input className="filter-input" placeholder="max MC $" value={maxMcap} onChange={e => setMaxMcap(e.target.value)} style={{ width: 90 }} />
-          <input className="filter-input" placeholder="min vol $" value={minVol}  onChange={e => setMinVol(e.target.value)}  style={{ width: 90 }} />
+          <input className="filter-input" placeholder={T("min MC $")} value={minMcap} onChange={e => setMinMcap(e.target.value)} style={{ width: 90 }} />
+          <input className="filter-input" placeholder={T("max MC $")} value={maxMcap} onChange={e => setMaxMcap(e.target.value)} style={{ width: 90 }} />
+          <input className="filter-input" placeholder={T("min vol $")} value={minVol}  onChange={e => setMinVol(e.target.value)}  style={{ width: 90 }} />
         </div>
       </div>
 
       {/* ── sort dropdown + view tabs ── */}
       <div className="view-bar">
         <select className="sort-select" value={sortCol} onChange={e => setSortCol(e.target.value as SortCol)}>
-          <option value="volume">Sort: volume</option>
-          <option value="mcap">Sort: market cap</option>
-          <option value="txns">Sort: transactions</option>
-          <option value="holders">Sort: holders</option>
-          <option value="age">Sort: newest</option>
-          <option value="liq">Sort: liquidity</option>
-          <option value="score">Sort: score</option>
+          <option value="volume">{T("Sort: volume")}</option>
+          <option value="mcap">{T("Sort: market cap")}</option>
+          <option value="txns">{T("Sort: transactions")}</option>
+          <option value="holders">{T("Sort: holders")}</option>
+          <option value="age">{T("Sort: newest")}</option>
+          <option value="liq">{T("Sort: liquidity")}</option>
+          <option value="score">{T("Sort: score")}</option>
         </select>
         <div className="view-tabs">
           {VIEW_TABS.map(t => (
             <button key={t} className={`view-tab${viewTab === t ? ' active' : ''}`} onClick={() => setViewTab(t)}>
-              {t === 'Trending' ? '⚡ Trending' : t}
+              {t === 'Trending' ? '⚡ ' + T('Trending') : T(t)}
             </button>
           ))}
         </div>
         <div className="time-tabs">
-          <span className="live-badge">● live</span>
+          <span className="live-badge">{T("● live")}</span>
         </div>
       </div>
 
       {/* ── pagination + search ── */}
       <div className="pagination-bar">
-        <button className="pg-btn" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>← prev</button>
+        <button className="pg-btn" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>{T("← prev")}</button>
         {Array.from({ length: Math.min(5, totalPages) }, (_, i) => i + 1).map(n => (
           <button key={n} className={`pg-btn${page === n ? ' active' : ''}`} onClick={() => setPage(n)}>{n}</button>
         ))}
         {totalPages > 5 && <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', padding: '0 4px' }}>…</span>}
-        <button className="pg-btn" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>next →</button>
+        <button className="pg-btn" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>{T("next →")}</button>
         <span className="pg-info">
-          {sorted.length.toLocaleString()} tokens · page {page}/{totalPages}
+          {sorted.length.toLocaleString()}{' '}{T("tokens · page")}{' '}{page}/{totalPages}
           {(curation.hiddenDuplicateCount > 0 || curation.deadFilteredCount > 0) && (
-            <span title="Contracts reusing another token's ticker are folded into that token's row (expand with the ticker badge); listings with zero liquidity, volume, and holders are hidden entirely.">
-              {' · '}{curation.hiddenDuplicateCount > 0 && `${curation.hiddenDuplicateCount} same-ticker duplicates folded`}
+            <span title={T("Contracts reusing another token's ticker are folded into that token's row (expand with the ticker badge); listings with zero liquidity, volume, and holders are hidden entirely.")}>
+              {' · '}{curation.hiddenDuplicateCount > 0 && T('{n} same-ticker duplicates folded', { n: curation.hiddenDuplicateCount })}
               {curation.hiddenDuplicateCount > 0 && curation.deadFilteredCount > 0 && ', '}
-              {curation.deadFilteredCount > 0 && `${curation.deadFilteredCount} dead listings hidden`}
+              {curation.deadFilteredCount > 0 && T('{n} dead listings hidden', { n: curation.deadFilteredCount })}
             </span>
           )}
         </span>
         <div style={{ marginLeft: 'auto' }}>
           <input
-            className="filter-input" placeholder="🔍 Search…"
+            className="filter-input" placeholder={T("🔍 Search…")}
             value={search} onChange={e => setSearch(e.target.value)}
             style={{ width: 160 }}
           />
@@ -498,21 +494,21 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
       {/* ── table ── */}
       <div className="table-scroll">
         {loading && tokens.length === 0 ? (
-          <div className="loading-state">Loading Arc tokens…</div>
+          <div className="loading-state">{T("Loading Arc tokens…")}</div>
         ) : (
           <table className="token-table">
             <thead>
               <tr>
                 <th className="th-rank">#</th>
-                <th className="th-token" style={{ textAlign: 'left' }}>TOKEN / AGE ↕</th>
-                <SortTh col="age"     label="AGE"     align="right" />
-                <SortTh col="mcap"    label="MC $"    align="right" />
-                <SortTh col="liq"     label="LIQ"     align="right" />
-                <SortTh col="volume"  label="ALL VOL" align="right" />
-                <SortTh col="txns"    label="ALL TXS" align="right" />
-                <SortTh col="holders" label="HOLDERS" align="right" />
-                <SortTh col="score"   label="SCORE"   align="right" />
-                <th className="th-sort" style={{ textAlign: 'right' }}>QUOTE</th>
+                <th className="th-token" style={{ textAlign: 'left' }}>{T("TOKEN / AGE ↕")}</th>
+                <SortTh col="age"     label={T("AGE")}     align="right" />
+                <SortTh col="mcap"    label={T("MC $")}    align="right" />
+                <SortTh col="liq"     label={T("LIQ")}     align="right" />
+                <SortTh col="volume"  label={T("ALL VOL")} align="right" />
+                <SortTh col="txns"    label={T("ALL TXS")} align="right" />
+                <SortTh col="holders" label={T("HOLDERS")} align="right" />
+                <SortTh col="score"   label={T("SCORE")}   align="right" />
+                <th className="th-sort" style={{ textAlign: 'right' }}>{T("QUOTE")}</th>
               </tr>
             </thead>
             <tbody>

@@ -8,18 +8,22 @@
 //   { action: 'clan.join', clan_id } | { action: 'clan.leave' }
 //   { action: 'clan.update', name?, motto?, avatar_url?, banner_url? }   (owner)
 //   { action: 'transfer.note', tx_hash, note }  (only for your own USDC transfer)
+//   { action: 'support', category, message, contact?, page?, tx_hash? }  (private; 5 a day)
+//   { action: 'session.revoke_all' }   sign out of every device (all older tokens stop working)
 //
 // Every write is on behalf of the address the session token was issued to
 // — the body can never name someone else as the actor. Reads don't come
 // through here; browsers read the public tables directly.
 
 import { createPublicClient, http, isAddress, parseAbiItem, decodeEventLog, type Hex } from 'viem'
-import { bearer, verifyToken } from './_session'
-import { adminReady, db, DbError, insertIgnore, json, upsert } from './_supabaseAdmin'
+import { bearer, verifySession } from './_session'
+import { adminReady, db, DbError, insertIgnore, json, sessionRevoked, upsert } from './_supabaseAdmin'
 
 export const config = { runtime: 'edge' }
 
 const THESES_PER_DAY = 20
+const TICKETS_PER_DAY = 5
+const SUPPORT_CATEGORIES = ['trade', 'deposit', 'withdraw', 'account', 'bug', 'idea', 'other']
 const USDC = '0x3600000000000000000000000000000000000000'
 const TRANSFER = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)')
 const chain = createPublicClient({ transport: http('https://rpc.mainnet.arc.io', { retryCount: 2 }) })
@@ -35,8 +39,10 @@ const addr = (v: unknown) => {
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return json(405, { error: 'POST only' })
   if (!adminReady) return json(503, { error: 'Social features are not configured on the server yet' })
-  const me = await verifyToken(bearer(req))
-  if (!me) return json(401, { error: 'Sign in with your wallet first' })
+  const session = await verifySession(bearer(req))
+  if (!session) return json(401, { error: 'Sign in with your wallet first' })
+  const me = session.address
+  if (await sessionRevoked(me, session.iat)) return json(401, { error: 'You signed out of all devices — sign in again' })
 
   let b: Body
   try { b = await req.json() } catch { return json(400, { error: 'Bad JSON' }) }
@@ -151,6 +157,26 @@ export default async function handler(req: Request): Promise<Response> {
         if (!t) return json(403, { error: 'That transaction is not a USDC transfer from your wallet' })
         const { to, value } = t.args as { to: string; value: bigint }
         await insertIgnore('arcdex_transfer_notes', [{ tx_hash: hash.toLowerCase(), sender: me, recipient: to.toLowerCase(), amount: (Number(value) / 1e6).toFixed(6), note: note || null }])
+        return json(200, { ok: true })
+      }
+      case 'support': {
+        const category = str(b.category)
+        const message = str(b.message)
+        const contact = str(b.contact) || null
+        const page = str(b.page)?.slice(0, 300) || null
+        const tx = str(b.tx_hash)?.toLowerCase() || null
+        if (!category || !SUPPORT_CATEGORIES.includes(category)) return json(400, { error: 'Pick a topic' })
+        if (!message || message.length < 5 || message.length > 2000) return json(400, { error: 'Tell us what happened (5–2000 characters)' })
+        if (contact && contact.length > 120) return json(400, { error: 'Contact is at most 120 characters' })
+        if (tx && !/^0x[0-9a-f]{64}$/.test(tx)) return json(400, { error: 'That transaction hash looks wrong' })
+        const since = new Date(Date.now() - 86_400_000).toISOString()
+        const recent = await db<{ id: number }[]>(`arcdex_support_tickets?select=id&address=eq.${me}&created_at=gte.${since}`)
+        if (recent.length >= TICKETS_PER_DAY) return json(429, { error: 'You have sent 5 messages today — we will get back to you' })
+        const rows = await db<{ id: number }[]>('arcdex_support_tickets', { method: 'POST', body: [{ address: me, category, message, contact, page, tx_hash: tx }], prefer: 'return=representation' })
+        return json(200, { ticket: rows[0]?.id ?? null })
+      }
+      case 'session.revoke_all': {
+        await upsert('arcdex_session_revocations', [{ address: me, revoked_before: new Date().toISOString() }], 'address')
         return json(200, { ok: true })
       }
       default:

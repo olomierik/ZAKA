@@ -58,3 +58,16 @@ export function json(status: number, body: unknown, cache = 'no-store'): Respons
     headers: { 'Content-Type': 'application/json', 'Cache-Control': cache },
   })
 }
+
+/** True if the owner signed out of all devices after this token was
+ * issued. Missing table (v3 migration not run yet) = never revoked. */
+export async function sessionRevoked(me: string, iat: number): Promise<boolean> {
+  try {
+    const r = await db<{ revoked_before: string }[]>(`arcdex_session_revocations?address=eq.${me}&select=revoked_before`)
+    // Whole seconds on both sides, so signing in again right after
+    // revoking (same second) isn't rejected.
+    return r.length > 0 && Math.floor(Date.parse(r[0].revoked_before) / 1000) > iat
+  } catch {
+    return false
+  }
+}

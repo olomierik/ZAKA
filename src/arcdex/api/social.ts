@@ -272,15 +272,16 @@ export async function signIn(trader: Trader): Promise<string> {
   return j.token
 }
 
-/** Performs a social write as `trader`, signing in first if needed. */
-export async function socialWrite<T = unknown>(trader: Trader, action: string, payload: Record<string, unknown> = {}): Promise<T> {
+/** POSTs to one of ARCDEX's signed-in endpoints as `trader`, signing in
+ * first if needed (and once more if the server rejects the token). */
+async function authedPost<T>(trader: Trader, url: string, body: Record<string, unknown>): Promise<T> {
   if (!trader.address) throw new Error('Connect or unlock a wallet first')
   let token = storedSession(trader.address) ?? (await signIn(trader))
   for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await fetch('/api/social', {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ action, ...payload }),
+      body: JSON.stringify(body),
     })
     const j = (await res.json().catch(() => ({}))) as T & { error?: string }
     if (res.status === 401 && attempt === 0) {
@@ -289,10 +290,68 @@ export async function socialWrite<T = unknown>(trader: Trader, action: string, p
       continue
     }
     if (!res.ok) throw new Error(j.error ?? 'Request failed')
-    if (action === 'profile') invalidateProfile(trader.address)
     return j
   }
   throw new Error('Sign-in failed')
+}
+
+/** Performs a social write as `trader`, signing in first if needed. */
+export async function socialWrite<T = unknown>(trader: Trader, action: string, payload: Record<string, unknown> = {}): Promise<T> {
+  const j = await authedPost<T>(trader, '/api/social', { action, ...payload })
+  if (action === 'profile' && trader.address) invalidateProfile(trader.address)
+  return j
+}
+
+// ── account: sign out everywhere, support ─────────────────────────────
+
+/** Invalidates every ARCDEX session for this wallet on every device
+ * (including this one — the next write signs in again). */
+export async function signOutEverywhere(trader: Trader): Promise<void> {
+  await socialWrite(trader, 'session.revoke_all')
+  if (trader.address) try { localStorage.removeItem(SESSION_KEY(trader.address)) } catch { /* ignore */ }
+}
+
+export type SupportCategory = 'trade' | 'deposit' | 'withdraw' | 'account' | 'bug' | 'idea' | 'other'
+export async function sendSupport(trader: Trader, t: { category: SupportCategory; message: string; contact?: string; tx_hash?: string }): Promise<number | null> {
+  const r = await socialWrite<{ ticket: number | null }>(trader, 'support', { ...t, page: location.pathname + location.search })
+  return r.ticket
+}
+
+// ── card deposits (Circle Onramp) ─────────────────────────────────────
+
+export async function onrampStatus(): Promise<{ enabled: boolean; sandbox: boolean }> {
+  const r = await fetch('/api/onramp').catch(() => null)
+  if (!r?.ok) return { enabled: false, sandbox: false }
+  return r.json() as Promise<{ enabled: boolean; sandbox: boolean }>
+}
+
+/** A 30-minute widget session delivering USDC on Arc to `trader`. */
+export function startCardDeposit(trader: Trader): Promise<{ session: unknown; widgetBaseUrl: string }> {
+  return authedPost(trader, '/api/onramp', {})
+}
+
+// ── points (seasonal) ─────────────────────────────────────────────────
+
+export interface PointsRow { trader: string; trade_pts: number; referral_pts: number; day_pts: number; social_pts: number; active_days: number; total: number; rank: number }
+export interface Season { n: number; start: Date; end: Date }
+
+// Rolling 30-day seasons from Season 1 (2026-09-25 00:00 UTC).
+const SEASON_1 = Date.UTC(2026, 8, 25)
+const SEASON_MS = 30 * 86_400_000
+export function season(n: number): Season {
+  return { n, start: new Date(SEASON_1 + (n - 1) * SEASON_MS), end: new Date(SEASON_1 + n * SEASON_MS) }
+}
+export function currentSeason(): Season {
+  return season(Math.max(1, Math.floor((Date.now() - SEASON_1) / SEASON_MS) + 1))
+}
+
+const pointsNums = (r: PointsRow) => nums(r, ['trade_pts', 'referral_pts', 'day_pts', 'social_pts', 'active_days', 'total', 'rank'])
+export async function getPoints(s: Season, limit = 100): Promise<PointsRow[]> {
+  return (await rpc<PointsRow>('arcdex_points', { p_since: s.start.toISOString(), p_until: s.end.toISOString(), p_limit: limit })).map(pointsNums)
+}
+export async function getPointsOf(address: string, s: Season): Promise<PointsRow | null> {
+  const r = (await rpc<PointsRow>('arcdex_points_of', { p_trader: lc(address), p_since: s.start.toISOString(), p_until: s.end.toISOString() }))[0]
+  return r ? pointsNums(r) : null
 }
 
 // ── v2: holders, most held, stats, history, feed events, clans ───────

@@ -6,6 +6,7 @@ import { ARC_EXPLORER } from '../api/arcRpc'
 import CurveSwapWidget from '../components/CurveSwapWidget'
 import CurveChart from '../components/CurveChart'
 import type { Page } from '../App'
+import { t as T } from '../lib/i18n'
 
 interface Props { address: string; navigate: (p: Page) => void }
 
@@ -74,8 +75,8 @@ export default function CurveTokenPage({ address, navigate }: Props) {
     return unsub
   }, [address])
 
-  if (loading && !token) return <div className="loading-state">Loading…</div>
-  if (!token) return <div style={{ padding: 40, color: 'var(--text-muted)' }}>Token not found.</div>
+  if (loading && !token) return <div className="loading-state">{T("Loading…")}</div>
+  if (!token) return <div style={{ padding: 40, color: 'var(--text-muted)' }}>{T("Token not found.")}</div>
 
   const rUsdcUsd = Number(token.curve.rUsdc) / 1e6
   const marketCap = token.priceUsd * (Number(token.curve.vToken) / 1e18 > 0 ? 1_000_000_000 : 0)
@@ -83,7 +84,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
   return (
     <div className="token-page">
       <div className="token-page-header">
-        <button className="back-btn" onClick={() => navigate({ name: 'terminal' })}>← Back</button>
+        <button className="back-btn" onClick={() => navigate({ name: 'terminal' })}>{T("← Back")}</button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {token.metadata?.image ? (
             <img src={token.metadata.image} alt="" width={44} height={44}
@@ -102,22 +103,18 @@ export default function CurveTokenPage({ address, navigate }: Props) {
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 700, fontSize: '1.05rem', color: '#3b82f6' }}>${fmt(token.priceUsd)}</span>
-              <span style={{ background: '#7c3aed22', color: '#a78bfa', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: '1px solid #7c3aed44' }}>
-                ARCDEX Launchpad
-              </span>
+              <span style={{ background: '#7c3aed22', color: '#a78bfa', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: '1px solid #7c3aed44' }}>{T("ARCDEX Launchpad")}</span>
               {token.curve.graduated && (
-                <span style={{ background: '#22c55e22', color: '#22c55e', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: '1px solid #22c55e44' }}>
-                  ✓ Graduated
-                </span>
+                <span style={{ background: '#22c55e22', color: '#22c55e', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: '1px solid #22c55e44' }}>{T("✓ Graduated")}</span>
               )}
               {token.metadata?.website && (
-                <a href={token.metadata.website} target="_blank" rel="noopener noreferrer" style={socialLinkStyle}>🌐 Website</a>
+                <a href={token.metadata.website} target="_blank" rel="noopener noreferrer" style={socialLinkStyle}>{T("🌐 Website")}</a>
               )}
               {token.metadata?.twitter && (
                 <a href={token.metadata.twitter} target="_blank" rel="noopener noreferrer" style={socialLinkStyle}>𝕏</a>
               )}
               {token.metadata?.telegram && (
-                <a href={token.metadata.telegram} target="_blank" rel="noopener noreferrer" style={socialLinkStyle}>✈ Telegram</a>
+                <a href={token.metadata.telegram} target="_blank" rel="noopener noreferrer" style={socialLinkStyle}>{T("✈ Telegram")}</a>
               )}
             </div>
           </div>
@@ -126,11 +123,11 @@ export default function CurveTokenPage({ address, navigate }: Props) {
 
       <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', fontSize: '0.8rem' }}>
         {[
-          ['Market Cap', `$${fmt(marketCap)}`, '#f97316'],
-          ['Raised', `$${fmt(rUsdcUsd)}`, '#a855f7'],
-          ['To graduation', token.curve.graduated ? '100%' : `${token.bondingProgress.toFixed(1)}%`, '#3b82f6'],
-          ['Status', token.curve.graduated ? 'Graduated' : 'Bonding', token.curve.graduated ? '#22c55e' : '#f59e0b'],
-          ['Dev holds', devPct === null ? '…' : `${devPct.toFixed(2)}%`, devPct !== null && devPct > 5 ? '#f59e0b' : '#22c55e'],
+          [T('Market Cap'), `$${fmt(marketCap)}`, '#f97316'],
+          [T('Raised'), `$${fmt(rUsdcUsd)}`, '#a855f7'],
+          [T('To graduation'), token.curve.graduated ? '100%' : `${token.bondingProgress.toFixed(1)}%`, '#3b82f6'],
+          [T('Status'), token.curve.graduated ? T('Graduated') : T('Bonding'), token.curve.graduated ? '#22c55e' : '#f59e0b'],
+          [T('Dev holds'), devPct === null ? '…' : `${devPct.toFixed(2)}%`, devPct !== null && devPct > 5 ? '#f59e0b' : '#22c55e'],
         ].map(([label, val, color]) => (
           <div key={label}>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', marginBottom: 2 }}>{label}</div>
@@ -142,25 +139,24 @@ export default function CurveTokenPage({ address, navigate }: Props) {
       <div className="token-detail-grid">
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16, padding: 16 }}>
-            <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>PRICE CHART</div>
+            <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{T("PRICE CHART")}</div>
             <CurveChart token={token.address} />
           </div>
 
           {!token.curve.graduated && (
             <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16, padding: 16 }}>
-              <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>BONDING CURVE PROGRESS</div>
+              <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{T("BONDING CURVE PROGRESS")}</div>
               <div style={{ height: 10, borderRadius: 5, background: 'var(--bg-2)', overflow: 'hidden' }}>
                 <div style={{ width: `${Math.min(100, token.bondingProgress)}%`, height: '100%', background: 'linear-gradient(90deg,#3b82f6,#22c55e)' }} />
               </div>
               <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                ${fmt(rUsdcUsd)} of $25,000 raised — graduates automatically, no external migration step.
-              </div>
+                ${fmt(rUsdcUsd)}{' '}{T("of $25,000 raised — graduates automatically, no external migration step.")}</div>
             </div>
           )}
 
           <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16, padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-muted)' }}>TRUST SIGNALS</span>
+              <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{T("TRUST SIGNALS")}</span>
               {trust && (
                 <span style={{
                   fontWeight: 800, fontSize: '0.9rem', padding: '2px 10px', borderRadius: 99,
@@ -172,37 +168,33 @@ export default function CurveTokenPage({ address, navigate }: Props) {
               )}
             </div>
             {trustLoading && !trust ? (
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Scanning early-buyer funding history…</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>{T("Scanning early-buyer funding history…")}</div>
             ) : trust ? (
               <>
                 <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {trust.flags.map((f, i) => <li key={i}>{f}</li>)}
                 </ul>
-                <div style={{ marginTop: 10, fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.5, opacity: 0.85 }}>
-                  Based on {trust.earlyBuyerCount} early buyer wallet(s)' public on-chain USDC funding history — a heuristic signal, not proof. Every token on this launchpad already gets the same on-chain floor regardless of this score: $2k/tx buy cap for 10 minutes after launch, $5k/block cap across all wallets, no contract-mediated bots, and no owner withdrawal path for real reserves.
-                </div>
+                <div style={{ marginTop: 10, fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.5, opacity: 0.85 }}>{T("Based on")}{' '}{trust.earlyBuyerCount}{' '}{T("early buyer wallet(s)' public on-chain USDC funding history — a heuristic signal, not proof. Every token on this launchpad already gets the same on-chain floor regardless of this score: $2k/tx buy cap for 10 minutes after launch, $5k/block cap across all wallets, no contract-mediated bots, and no owner withdrawal path for real reserves.")}</div>
               </>
             ) : (
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Not enough trade history yet.</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>{T("Not enough trade history yet.")}</div>
             )}
           </div>
 
           <div style={{ marginTop: 16, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Trades</span>
+              <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>{T("Trades")}</span>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#22c55e', marginRight: 5 }} />
-                On-chain via ArcLaunchpad
-              </span>
+                <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#22c55e', marginRight: 5 }} />{T("On-chain via ArcLaunchpad")}</span>
             </div>
             {trades.length === 0 ? (
-              <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>No trades yet — be the first buyer.</div>
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>{T("No trades yet — be the first buyer.")}</div>
             ) : (
               <div style={{ overflowY: 'auto', maxHeight: 420 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
-                      {['Type', 'USDC', 'Tokens', 'Trader', 'Tx'].map(h => (
+                      {[T('Type'), 'USDC', T('Tokens'), T('Trader'), 'Tx'].map(h => (
                         <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.7rem' }}>{h}</th>
                       ))}
                     </tr>
@@ -212,7 +204,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
                       <tr key={t.txHash + i} style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
                         <td style={{ padding: '8px 12px' }}>
                           <span style={{ background: t.isBuy ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: t.isBuy ? '#22c55e' : '#ef4444', fontWeight: 700, padding: '2px 8px', borderRadius: 4, fontSize: '0.72rem' }}>
-                            {t.isBuy ? 'BUY' : 'SELL'}
+                            {t.isBuy ? T("BUY") : T("SELL")}
                           </span>
                         </td>
                         <td style={{ padding: '8px 12px', fontWeight: 600 }}>${fmt(Number(t.usdcAmount) / 1e6)}</td>

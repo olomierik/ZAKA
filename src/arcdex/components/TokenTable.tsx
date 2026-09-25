@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { ArcToken } from '../api/radardex'
 import { getLaunchpadColor } from '../api/radardex'
 import type { Page } from '../App'
+import { t as T, N_ } from '../lib/i18n'
 
 type SortKey = 'marketCap' | 'price' | 'priceChange24h' | 'volume24h' | 'liquidity' | 'ageMs'
 
@@ -49,12 +50,12 @@ export default function TokenTable({ tokens, loading, navigate, filter, launchpa
     .sort((a, b) => (a[sort] - b[sort]) * dir)
 
   const headers: { key: SortKey; label: string; align?: string }[] = [
-    { key: 'marketCap',      label: 'MCap' },
-    { key: 'price',          label: 'Price',     align: 'right' },
-    { key: 'priceChange24h', label: '24h %',     align: 'right' },
-    { key: 'volume24h',      label: 'Volume 24h', align: 'right' },
-    { key: 'liquidity',      label: 'Liquidity', align: 'right' },
-    { key: 'ageMs',          label: 'Age',        align: 'right' },
+    { key: 'marketCap',      label: N_('MCap') },
+    { key: 'price',          label: N_('Price'),     align: 'right' },
+    { key: 'priceChange24h', label: N_('24h %'),     align: 'right' },
+    { key: 'volume24h',      label: N_('Volume 24h'), align: 'right' },
+    { key: 'liquidity',      label: N_('Liquidity'), align: 'right' },
+    { key: 'ageMs',          label: N_('Age'),        align: 'right' },
   ]
 
   return (
@@ -65,9 +66,9 @@ export default function TokenTable({ tokens, loading, navigate, filter, launchpa
             <th style={{ padding: '10px 16px', textAlign: 'left', color: 'var(--text-muted)',
               fontWeight: 500, fontSize: '0.75rem', whiteSpace: 'nowrap' }}>#</th>
             <th style={{ padding: '10px 8px', textAlign: 'left', color: 'var(--text-muted)',
-              fontWeight: 500, fontSize: '0.75rem', whiteSpace: 'nowrap' }}>Token</th>
+              fontWeight: 500, fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{T("Token")}</th>
             <th style={{ padding: '10px 8px', textAlign: 'left', color: 'var(--text-muted)',
-              fontWeight: 500, fontSize: '0.75rem' }}>Source</th>
+              fontWeight: 500, fontSize: '0.75rem' }}>{T("Source")}</th>
             {headers.map(h => (
               <th
                 key={h.key}
@@ -79,7 +80,7 @@ export default function TokenTable({ tokens, loading, navigate, filter, launchpa
                   userSelect: 'none', whiteSpace: 'nowrap',
                 }}
               >
-                {h.label} {sort === h.key ? (dir === -1 ? '↓' : '↑') : ''}
+                {T(h.label)} {sort === h.key ? (dir === -1 ? '↓' : '↑') : ''}
               </th>
             ))}
           </tr>
@@ -87,16 +88,12 @@ export default function TokenTable({ tokens, loading, navigate, filter, launchpa
         <tbody>
           {loading && (
             <tr>
-              <td colSpan={9} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
-                Loading tokens from Arc mainnet…
-              </td>
+              <td colSpan={9} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>{T("Loading tokens from Arc mainnet…")}</td>
             </tr>
           )}
           {!loading && filtered.length === 0 && (
             <tr>
-              <td colSpan={9} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
-                No tokens found
-              </td>
+              <td colSpan={9} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>{T("No tokens found")}</td>
             </tr>
           )}
           {filtered.map((t, i) => {

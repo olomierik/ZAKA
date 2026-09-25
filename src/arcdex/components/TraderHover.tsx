@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import Avatar from './Avatar'
 import { getFollowStats, getFollowing, getProfile, getTraderStats, socialWrite, type Profile } from '../api/social'
 import { shortAddr, useTrader } from '../lib/identity'
+import { t as T } from '../lib/i18n'
 
 // Hover a trader anywhere → a mini profile card (fomo-style): picture,
 // name, bio, followers/following, 7-day realized PnL, Follow button.
@@ -52,7 +53,7 @@ export default function TraderHover({ address, children }: { address: string; ch
           <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <Avatar address={a} url={p?.avatar_url} size={40} />
             {trader.address && trader.address.toLowerCase() !== a && card && (
-              <button className={`rail-follow${card.iFollow ? ' on' : ''}`} onClick={e => void follow(e)}>{card.iFollow ? 'Following' : 'Follow'}</button>
+              <button className={`rail-follow${card.iFollow ? ' on' : ''}`} onClick={e => void follow(e)}>{card.iFollow ? T("Following") : T("Follow")}</button>
             )}
           </span>
           <span style={{ display: 'block', marginTop: 8, fontWeight: 800, fontSize: '0.9rem' }}>{p?.display_name || (p?.username ? `@${p.username}` : shortAddr(a))}</span>
@@ -60,13 +61,13 @@ export default function TraderHover({ address, children }: { address: string; ch
           {p?.bio && <span style={{ display: 'block', fontSize: '0.78rem', margin: '6px 0' }}>{p.bio}</span>}
           {card ? (
             <>
-              <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--text-muted)', margin: '4px 0 8px' }}><b style={{ color: 'var(--text)' }}>{card.following}</b> following · <b style={{ color: 'var(--text)' }}>{card.followers}</b> followers</span>
+              <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--text-muted)', margin: '4px 0 8px' }}><b style={{ color: 'var(--text)' }}>{card.following}</b>{' '}{T("following ·")}{' '}<b style={{ color: 'var(--text)' }}>{card.followers}</b>{' '}{T("followers")}</span>
               <span style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', borderRadius: 8, background: 'var(--bg-2)', fontSize: '0.74rem' }}>
-                <span style={{ color: 'var(--text-muted)' }}>7d PnL</span>
+                <span style={{ color: 'var(--text-muted)' }}>{T("7d PnL")}</span>
                 <b className="sensitive" style={{ color: card.pnl7d >= 0 ? 'var(--green)' : 'var(--red)', fontFamily: 'var(--mono)' }}>{card.pnl7d >= 0 ? '+' : '-'}${Math.abs(card.pnl7d).toFixed(2)}</b>
               </span>
             </>
-          ) : <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 6 }}>Loading…</span>}
+          ) : <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 6 }}>{T("Loading…")}</span>}
         </span>
       )}
     </span>
