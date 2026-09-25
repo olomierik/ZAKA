@@ -22,6 +22,8 @@ function normalizeSymbol(symbol: string): string {
  * a token someone will actually want to trade. Filtered from the default
  * view entirely (not even folded into a group) rather than just sorted low. */
 function isDeadEntry(t: ArcToken): boolean {
+  // A launch from the last 15 minutes just hasn't traded yet (ageMs 0 = unknown age).
+  if (t.ageMs > 0 && t.ageMs < 15 * 60_000) return false
   return t.liquidity <= 0 && t.volume24h <= 0 && t.holderCount <= 0 && t.marketCap <= 0
 }
 

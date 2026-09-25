@@ -15,7 +15,9 @@
     "typecheck": "tsc --noEmit",
     "check": "bash scripts/check.sh",
     "contracts:build": "forge build",
-    "contracts:test": "forge test"
+    "contracts:test": "forge test",
+    "engine": "bun engine/src/main.ts",
+    "engine:test": "bun test engine/test"
   },
   "dependencies": {
     "@circle-fin/adapter-viem-v2": "^1.18.0",

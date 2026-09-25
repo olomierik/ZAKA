@@ -3,6 +3,7 @@ import Avatar from './Avatar'
 import { getFollowing, searchClans, searchProfiles, socialWrite, type Clan, type Profile } from '../api/social'
 import { shortAddr, useTrader } from '../lib/identity'
 import { loadBlueChips, useMarket, type TokenMeta } from '../lib/tokenMeta'
+import { useRecentLaunches } from '../api/marketStream'
 import { setPrefs, usePrefs } from '../lib/prefs'
 import type { Page } from '../App'
 import { t as T, N_ } from '../lib/i18n'
@@ -18,6 +19,8 @@ export default function SearchBox({ navigate, mobileOpen = false }: { navigate: 
   const trader = useTrader()
   const prefs = usePrefs()
   const market = useMarket()
+  // Launches the market engine just detected — searchable before any list has them.
+  const launches = useRecentLaunches()
   const [chips, setChips] = useState<TokenMeta[]>([])
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
@@ -55,9 +58,14 @@ export default function SearchBox({ navigate, mobileOpen = false }: { navigate: 
 
   const tokens = useMemo(() => {
     if (!s) return []
-    const all = [...chips, ...market.filter(m => !chips.some(c => c.address === m.address))]
+    const known = [...chips, ...market.filter(m => !chips.some(c => c.address === m.address))]
+    const fresh: TokenMeta[] = launches.filter(l => !known.some(k => k.address === l.token)).map(l => ({
+      address: l.token, symbol: l.symbol, name: l.name, image: l.image ?? null, priceUsd: 0, pool: l.pool ?? '',
+      change24h: 0, change1h: 0, marketCapUsd: null, volume24h: 0, liquidityUsd: 0, bonded: null, createdAt: new Date(l.timestamp).toISOString(),
+    }))
+    const all = [...known, ...fresh]
     return all.filter(t => t.address === s || t.symbol.toLowerCase().includes(s.replace(/^\$/, '')) || t.name.toLowerCase().includes(s)).slice(0, 12)
-  }, [s, market, chips])
+  }, [s, market, chips, launches])
   const isAddr = /^0x[0-9a-f]{40}$/.test(s)
 
   const openToken = (t: { address: string; pool: string | null }) => { setOpen(false); setQ(''); navigate({ name: 'argus', address: t.address, pool: t.pool ?? '' }) }

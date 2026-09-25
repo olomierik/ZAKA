@@ -7,22 +7,14 @@
 // Live: Arc's WebSocket pushes each swap the moment its block lands (~0.5s
 // blocks); after a reconnect the gap is backfilled from the logs.
 //
-// v4: every pool's swaps come from the one PoolManager, with the PoolId as
-//     topic1. v3: the pool contract itself emits Swap. Both put amount0,
-//     amount1 and sqrtPriceX96 in the first three data words, but v4's
-//     amounts are the swapper's deltas and v3's the pool's — so buy/sell
-//     flips between them.
+// Decoding (v4 vs v3 sign conventions, prices from sqrtPriceX96) is shared
+// with the market engine: api/_arcSwaps.ts.
 
 import { ARCHIVE_RPCS, RECENT_RPC, hex, rpcBatch, rpcCall, type RawLog } from '../../../api/_arcLogs'
+import { ARGUS, ARGUS_USDC_V3, NATIVE, POOL_MANAGER, USDC, V3_SWAP, V4_SWAP, decodeSwapLog, priceFromSqrt, word } from '../../../api/_arcSwaps'
 import { ARC_RPC_WS } from './arcRpc'
 
-export const POOL_MANAGER = '0x8366a39cc670b4001a1121b8f6a443a643e40951'
-const V4_SWAP = '0x40e9cecb9f5f1f1c5b9c97dec2917b7ee92e57ba5563708daca94dd84ad7112f'
-const V3_SWAP = '0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67'
-const USDC = '0x3600000000000000000000000000000000000000'
-const ARGUS = '0xece5ca8bf9220718e5727754026757512212cb3c'
-/** The deep ARGUS/USDC v3 pool — the reference price for ARGUS-quoted coins. */
-const ARGUS_USDC_V3 = '0x6a3bacaa6493734c1ac221ebf42cf530a96c1e02'
+export { POOL_MANAGER }
 
 export interface PoolMeta {
   pool: string   // v4 PoolId (66 chars) or v3 pool address
@@ -45,10 +37,15 @@ export interface PoolSwap {
   price: number
   /** Pushed over the WebSocket this session (vs loaded from history). */
   live?: boolean
+  /** Filled in when the swap came from the market engine, which prices and attributes it server-side. */
+  priceUsd?: number | null
+  usd?: number | null
+  maker?: string | null
 }
 
 export function poolMeta(pool: string, token: string, quote: string): PoolMeta {
   const q = quote.toLowerCase()
+  // ERC-20 USDC has 6 decimals; native USDC (address 0 in v4 pools) has 18.
   return { pool: pool.toLowerCase(), token: token.toLowerCase(), quote: q, tokenDecimals: 18, quoteDecimals: q === USDC ? 6 : 18 }
 }
 
@@ -57,39 +54,20 @@ function filterOf(m: PoolMeta) {
   return isV4(m) ? { address: POOL_MANAGER, topics: [V4_SWAP, m.pool] } : { address: m.pool, topics: [V3_SWAP] }
 }
 
-const word = (data: string, i: number) => data.slice(2 + i * 64, 2 + (i + 1) * 64)
-const signed = (w: string) => BigInt.asIntN(256, BigInt('0x' + w))
-const abs = (x: bigint) => (x < 0n ? -x : x)
-
-/** Quote per token from a sqrtPriceX96. */
-export function priceFromSqrt(sqrtPriceX96: bigint, m: PoolMeta): number {
-  const s = Number(sqrtPriceX96) / 2 ** 96
-  const raw1per0 = s * s
-  const scale = 10 ** (m.tokenDecimals - m.quoteDecimals)
-  return m.token < m.quote ? raw1per0 * scale : raw1per0 > 0 ? scale / raw1per0 : 0
-}
-
 export function decodeSwap(l: RawLog & { removed?: boolean }, m: PoolMeta): PoolSwap | null {
-  if (l.removed || !l.data || l.data.length < 2 + 64 * 3) return null
-  const a0 = signed(word(l.data, 0))
-  const a1 = signed(word(l.data, 1))
-  const tokenIs0 = m.token < m.quote
-  const tokenLeg = tokenIs0 ? a0 : a1
-  const quoteLeg = tokenIs0 ? a1 : a0
-  if (tokenLeg === 0n) return null
-  const buy = isV4(m) ? tokenLeg > 0n : tokenLeg < 0n
-  const block = parseInt(l.blockNumber, 16)
+  const d = decodeSwapLog(l, { v4: isV4(m), baseIs0: m.token < m.quote, baseDecimals: m.tokenDecimals, quoteDecimals: m.quoteDecimals })
+  if (!d) return null
   const logIndex = parseInt(l.logIndex, 16)
   return {
     id: `${l.transactionHash.toLowerCase()}:${logIndex}`,
     txHash: l.transactionHash.toLowerCase(),
-    block,
+    block: parseInt(l.blockNumber, 16),
     logIndex,
     time: l.blockTimestamp ? parseInt(l.blockTimestamp, 16) * 1000 : Date.now(),
-    kind: buy ? 'buy' : 'sell',
-    tokenAmount: Number(abs(tokenLeg)) / 10 ** m.tokenDecimals,
-    quoteAmount: Number(abs(quoteLeg)) / 10 ** m.quoteDecimals,
-    price: priceFromSqrt(BigInt('0x' + word(l.data, 2)), m),
+    kind: d.side === 'BUY' ? 'buy' : 'sell',
+    tokenAmount: d.baseAmount,
+    quoteAmount: d.quoteAmount,
+    price: d.price,
   }
 }
 
@@ -177,7 +155,7 @@ function getArgusUsd(): Promise<number | null> {
     .catch(() => rpcCall<string>(ARCHIVE_RPCS[0], 'eth_call', [{ to: ARGUS_USDC_V3, data: '0x3850c7bd' }, 'latest'], 5_000))
     .then(r => {
       // token0 = USDC (6), token1 = ARGUS (18): price = USD per ARGUS.
-      const p = priceFromSqrt(BigInt('0x' + word(r, 0)), { pool: ARGUS_USDC_V3, token: ARGUS, quote: USDC, tokenDecimals: 18, quoteDecimals: 6 })
+      const p = priceFromSqrt(BigInt('0x' + word(r, 0)), ARGUS < USDC, 18, 6)
       return p > 0 && Number.isFinite(p) ? p : null
     })
     .catch(() => null)
@@ -188,7 +166,7 @@ function getArgusUsd(): Promise<number | null> {
 /** USD value of one unit of `quote` (USDC = 1), or null if unknown. */
 export async function quoteUsd(quote: string): Promise<number | null> {
   const q = quote.toLowerCase()
-  if (q === USDC) return 1
+  if (q === USDC || q === NATIVE) return 1
   if (q === ARGUS) return getArgusUsd()
   return null
 }

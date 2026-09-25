@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createChart, type IChartApi, type ISeriesApi, type SeriesType, type CandlestickData, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts'
 import { getPoolOhlcv } from '../api/gecko'
 import { candlesFromTicks, mergeCandles, type Candle, type Tick } from '../lib/candles'
+import { engineEnabled, getEngineCandles, marketStream, useEngineStatus } from '../api/marketStream'
+import type { WireCandle } from '../../../api/_marketProtocol'
 import { identiconUrl } from './Avatar'
 import { INDICATORS, bollinger, ema, rsi, sma, vwap, type IndicatorId } from '../lib/indicators'
 import { t as T } from '../lib/i18n'
@@ -12,14 +14,14 @@ function loadIndicators(): Set<IndicatorId> {
   try { return new Set(JSON.parse(localStorage.getItem(IND_KEY) ?? '["volume"]') as IndicatorId[]) } catch { return new Set(['volume']) }
 }
 
-type Resolution = '1s' | '15s' | '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
+type Resolution = '1s' | '5s' | '15s' | '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
 const RESOLUTIONS: { label: string; value: Resolution }[] = [
-  { label: '1s', value: '1s' }, { label: '15s', value: '15s' },
+  { label: '1s', value: '1s' }, { label: '5s', value: '5s' }, { label: '15s', value: '15s' },
   { label: '1m', value: '1m' }, { label: '5m', value: '5m' },
   { label: '15m', value: '15m' }, { label: '1H', value: '1h' },
   { label: '4H', value: '4h' }, { label: '1D', value: '1d' },
 ]
-const RES_SECONDS: Record<Resolution, number> = { '1s': 1, '15s': 15, '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14_400, '1d': 86_400 }
+const RES_SECONDS: Record<Resolution, number> = { '1s': 1, '5s': 5, '15s': 15, '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14_400, '1d': 86_400 }
 /** Sub-minute candles exist only on-chain (GeckoTerminal's finest is 1m). */
 const onChainOnly = (r: Resolution) => RES_SECONDS[r] < 60
 const RES_KEY = 'arcdex:chart-res'
@@ -32,6 +34,14 @@ function loadRes(hasTicks: boolean): Resolution {
 }
 /** Bars shown when a chart opens — recent action, not the whole history squeezed in. */
 const VISIBLE_BARS = 140
+const fromWireCandle = (c: WireCandle): Candle => ({ time: c[0], open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5] })
+/** History with live candles laid over it, by bucket. */
+function overlay(history: Candle[], live: Candle[]): Candle[] {
+  if (!live.length) return history
+  const byT = new Map(history.map(c => [c.time, c]))
+  for (const c of live) byT.set(c.time, c)
+  return [...byT.values()].sort((a, b) => a.time - b.time)
+}
 const MIN_SIZES = [0, 10, 100, 1000] as const
 
 /** A trade (or thesis) drawn on the chart as the trader's avatar (fomo-style). */
@@ -57,6 +67,9 @@ interface Props {
   ticks?: Tick[] | null
   /** Swaps are streaming in live right now. */
   live?: boolean
+  /** With the market engine connected: its stored candles for history and
+   * its CANDLE_UPDATE events live (each one updates just that candle). */
+  engineToken?: string
   trades?: ChartTrade[]
   thesisMarks?: ChartTrade[]
   friends?: Set<string>
@@ -70,12 +83,16 @@ interface Bubble { t: ChartTrade; x: number; y: number; size: number }
 // Price axis: 2 decimals for $1+ coins, 4 significant digits for micro-caps.
 const fmtPrice = (v: number) => v >= 1000 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v === 0 ? '0' : v.toPrecision(4)
 
-export default function PriceChart({ poolAddress, ticks, live, trades, thesisMarks, friends, supply, symbol, onTraderClick }: Props) {
-  const hasTicks = ticks !== undefined
+export default function PriceChart({ poolAddress, ticks, live, engineToken, trades, thesisMarks, friends, supply, symbol, onTraderClick }: Props) {
+  const engineStatus = useEngineStatus()
+  const engineMode = engineEnabled && !!engineToken && engineStatus === 'open'
+  const hasTicks = ticks !== undefined || engineMode
   const [res, setResState] = useState<Resolution>(() => loadRes(hasTicks))
   const setRes = (r: Resolution) => { setResState(r); try { localStorage.setItem(RES_KEY, r) } catch { /* storage blocked */ } }
   const [history, setHistory] = useState<Candle[]>([])
   const [historyLoaded, setHistoryLoaded] = useState(false)
+  const [engineHistory, setEngineHistory] = useState(false)
+  const [liveCandles, setLiveCandles] = useState<Candle[]>([])
   const [mode, setMode] = useState<'price' | 'mcap'>('price')
   const [showBubbles, setShowBubbles] = useState(true)
   const [showMine, setShowMine] = useState(true)
@@ -100,28 +117,59 @@ export default function PriceChart({ poolAddress, ticks, live, trades, thesisMar
   // History from GeckoTerminal. With on-chain swaps driving the recent
   // candles it only needs an occasional refresh; without them (non-Argus
   // pages) it's the whole chart, refreshed every 20s.
+  // (With the engine: its stored candles first — every timeframe — and
+  // GeckoTerminal only if the engine has too little history for this coin.)
   useEffect(() => {
     needsFit.current = true
-    setHistory([]); setHistoryLoaded(false)
-    if (!poolAddress || onChainOnly(res)) { setHistoryLoaded(true); return }
+    setHistory([]); setHistoryLoaded(false); setEngineHistory(false)
     let cancelled = false
-    const load = () => getPoolOhlcv(poolAddress, res as Exclude<Resolution, '1s' | '15s'>, 300)
-      .then(c => { if (!cancelled) setHistory(c) })
-      // A failed refresh keeps the candles already drawn.
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setHistoryLoaded(true) })
-    void load()
-    const id = setInterval(() => { if (!document.hidden) void load() }, hasTicks ? 90_000 : 20_000)
-    return () => { cancelled = true; clearInterval(id) }
-  }, [poolAddress, res, hasTicks])
+    const fromGecko = () => {
+      if (!poolAddress || onChainOnly(res)) { setHistoryLoaded(true); return null }
+      const load = () => getPoolOhlcv(poolAddress, res as Exclude<Resolution, '1s' | '5s' | '15s'>, 300)
+        .then(c => { if (!cancelled) setHistory(c) })
+        // A failed refresh keeps the candles already drawn.
+        .catch(() => {})
+        .finally(() => { if (!cancelled) setHistoryLoaded(true) })
+      void load()
+      return setInterval(() => { if (!document.hidden) void load() }, hasTicks ? 90_000 : 20_000)
+    }
+    let id: ReturnType<typeof setInterval> | null = null
+    if (engineMode && engineToken) {
+      getEngineCandles(engineToken, res, 500)
+        .then(c => {
+          if (cancelled) return
+          if (c.length >= 20) { setHistory(c.map(fromWireCandle)); setEngineHistory(true); setHistoryLoaded(true) }
+          else id = fromGecko()
+        })
+        .catch(() => { if (!cancelled) id = fromGecko() })
+    } else id = fromGecko()
+    return () => { cancelled = true; if (id) clearInterval(id) }
+  }, [poolAddress, res, hasTicks, engineMode, engineToken])
+
+  // Engine live candles: each CANDLE_UPDATE replaces its bucket.
+  useEffect(() => {
+    setLiveCandles([])
+    if (!engineMode || !engineToken) return
+    return marketStream.subscribe({ channel: 'candles', token: engineToken, interval: res }, m => {
+      if (m.t !== 'CANDLE_UPDATE' || m.i !== res) return
+      const c = fromWireCandle(m.d)
+      setLiveCandles(prev => [...prev.filter(x => x.time !== c.time), c].sort((a, b) => a.time - b.time).slice(-200))
+    })
+  }, [engineMode, engineToken, res])
 
   const step = RES_SECONDS[res]
   const recent = useMemo(() => candlesFromTicks(ticks ?? [], step), [ticks, step])
-  const candles = useMemo(() => mergeCandles(onChainOnly(res) ? [] : history, recent), [history, recent, res])
+  const candles = useMemo(() => {
+    if (engineMode && engineHistory) return overlay(history, liveCandles)
+    const base = mergeCandles(onChainOnly(res) ? [] : history, recent)
+    return engineMode ? overlay(base, liveCandles) : base
+  }, [engineMode, engineHistory, history, liveCandles, recent, res])
   const loading = candles.length === 0 && (!historyLoaded || (hasTicks && ticks === null))
   useEffect(() => { needsFit.current = true }, [mode])
   // Without on-chain swaps there are no sub-minute candles.
   useEffect(() => { if (!hasTicks && onChainOnly(res)) setResState('1h') }, [hasTicks, res])
+  // 5s candles exist only in the engine.
+  useEffect(() => { if (!engineMode && res === '5s') setResState('15s') }, [engineMode, res])
   // Wheel zoom only in fullscreen, where there's no page to scroll.
   useEffect(() => {
     chartRef.current?.applyOptions({ handleScroll: { mouseWheel: isFull }, handleScale: { mouseWheel: isFull } })
@@ -338,7 +386,7 @@ export default function PriceChart({ poolAddress, ticks, live, trades, thesisMar
   return (
     <div ref={wrapRef} style={{ background: isFull ? '#0b1628' : undefined, display: 'flex', flexDirection: 'column', height: isFull ? '100%' : undefined, padding: isFull ? 16 : 0 }}>
     <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-      {RESOLUTIONS.filter(r => hasTicks || !onChainOnly(r.value)).map(r => (
+      {RESOLUTIONS.filter(r => (hasTicks || !onChainOnly(r.value)) && (r.value !== '5s' || engineMode)).map(r => (
         <button key={r.value} onClick={() => setRes(r.value)} style={pill(res === r.value)}>{r.label}</button>
       ))}
       {live && <span title={T("Every swap appears the moment its block lands")} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 6, fontSize: '0.68rem', fontWeight: 800, color: 'var(--green)', letterSpacing: '0.05em' }}><span className="pulse-dot" />{T("LIVE")}</span>}

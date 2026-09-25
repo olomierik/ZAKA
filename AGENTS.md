@@ -236,6 +236,32 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
   - `bun scripts/test-pool-swaps.ts`: on-chain swap loading and prices vs GeckoTerminal.
   - `bun scripts/test-holders.ts [token] [createdIso]`: a full holder count; it must report 0 negative balances.
 
+## Real-time market engine — `engine/` (2026-09-25)
+
+A long-running Bun service (not on Vercel) that ingests Arc directly and pushes to the site over WebSocket. See `engine/README.md` for architecture, deployment, protocol and tests.
+- **Pipeline:** Arc WebSocket + getLogs (`chain/stream.ts`) → launchpad adapters (Argus Portals 7 & 8, ArcLaunchpad) and the swap parser (v4 PoolManager + v3 factory pools) → `MarketEngine` (hot state, 1s–1d candles) → Redis (hot), Postgres (history) and WebSocket/REST.
+- **Argus launches (measured 2026-09-25):**
+  - Portal 7 `0xB021…97Da` handles ~3,000 launches/day. Its event `0x1d891723…` carries token, creator, name, symbol and poolId.
+  - Portal 8 `0xeed7…5D93` handles ~125/day through `Launched` + `LaunchMetadata`.
+  - Portals 1–6 are dormant.
+  - Each launch tx also carries the PoolManager `Initialize`, so the pool is registered before its first trade.
+- **v4 pools with `currency0 = 0x0`** trade native USDC (18 decimals). The engine prices them. The coin page's swap widget doesn't route them yet ("No routable pool").
+- **Database v5:** `supabase/migrations/20260928000000_arcdex_market_engine.sql`, tested on PGlite. **The owner must run it** before the engine stores history.
+  - It adds `arcdex_mkt_*` tokens, pools, trades, candles, liquidity and cursor tables.
+  - Functions: `arcdex_mkt_rebuild_candle` and `arcdex_mkt_cleanup`. Retention: trades 72h, 1s candles 6h, 5s 24h, 15s 3d, 1m 30d.
+- **Owner setup to go live:**
+  - A host running `engine/Dockerfile`.
+  - A Redis URL, plus `SUPABASE_URL` / `SUPABASE_SECRET_KEY` in the engine's env.
+  - DNS `api.arcdex.online`.
+  - Then `VITE_ARCDEX_WS_URL=wss://api.arcdex.online/ws` in Vercel project `app`.
+  - Until that variable is set, the site uses its direct-from-chain path (`poolSwaps.ts`) and behaves exactly as before.
+- **Frontend (`src/arcdex/api/marketStream.ts`):** one shared, ref-counted WebSocket. What uses it:
+  - **Coin page:** engine trades via REST + `token` channel, merged by trade id, with chain fallback after 4s or on REST failure.
+  - **PriceChart:** engine candles + `CANDLE_UPDATE`, with a 5s timeframe in engine mode.
+  - **Terminal:** `new_tokens` rows with a NEW badge, visible before their first trade; `market` ticks update prices; list polling slows to 60s.
+  - **Search:** includes fresh launches.
+- **Tests:** `bun run engine:test` — 38 tests, including replays of recorded mainnet data (`engine/test/fixtures/mainnet.json`) and a RESP3 Redis round-trip against Bun's client. Live latency: `bun engine/scripts/latency-check.ts <ws-url> 60`.
+
 ## Hosting — arcdex.online only
 
 **Every commit to `main` deploys to arcdex.online, and nowhere else** (owner decision, 2026-09-24).

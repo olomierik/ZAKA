@@ -14,9 +14,15 @@
 // So: recent blocks go to Blockdaemon in big spans, older ones to the
 // archive endpoints in 9k spans, a few at a time, retried on throttling.
 
-export const RECENT_RPC = 'https://rpc.blockdaemon.mainnet.arc.io'
+export let RECENT_RPC = 'https://rpc.blockdaemon.mainnet.arc.io'
 // Beam twice per rotation: it takes bursts the other two throttle.
-export const ARCHIVE_RPCS = ['https://rpc.beamrpc.com', 'https://rpc.mainnet.arc.io', 'https://rpc.beamrpc.com', 'https://rpc.quicknode.mainnet.arc.io']
+export let ARCHIVE_RPCS = ['https://rpc.beamrpc.com', 'https://rpc.mainnet.arc.io', 'https://rpc.beamrpc.com', 'https://rpc.quicknode.mainnet.arc.io']
+
+/** Override the endpoints (the market engine reads them from its env). */
+export function setLogEndpoints(recent: string, archive: string[]) {
+  if (recent) RECENT_RPC = recent
+  if (archive.length) ARCHIVE_RPCS = archive
+}
 /** Blocks back from the head that Blockdaemon still serves (with margin). */
 export const RECENT_DEPTH = 600_000
 const RECENT_SPAN = 100_000
@@ -30,6 +36,7 @@ export interface RawLog {
   blockTimestamp?: string
   transactionHash: string
   logIndex: string
+  removed?: boolean
 }
 
 export class RpcError extends Error {
@@ -95,20 +102,22 @@ function suggestedEnd(e: unknown, from: number, to: number): number {
   return Number.isFinite(b) && b >= from && b < to ? b : from + Math.floor((to - from) / 2)
 }
 
-export interface LogFilter { address: string; topics: (string | string[] | null)[] }
+/** address omitted = every contract (e.g. all Uniswap v3 pools). */
+export interface LogFilter { address?: string | string[]; topics: (string | string[] | null)[] }
 
 /** Test hook: see which calls fail and why. */
 export const logHooks: { onError?: (url: string, e: unknown) => void } = {}
 
 let rr = 0
 async function getLogsOnce(url: string, f: LogFilter, from: number, to: number, timeoutMs: number): Promise<RawLog[]> {
-  return rpcCall<RawLog[]>(url, 'eth_getLogs', [{ address: f.address, topics: f.topics, fromBlock: hex(from), toBlock: hex(to) }], timeoutMs)
+  return rpcCall<RawLog[]>(url, 'eth_getLogs', [{ ...(f.address ? { address: f.address } : {}), topics: f.topics, fromBlock: hex(from), toBlock: hex(to) }], timeoutMs)
 }
 
 /** Logs in [from, to] reduced chunk by chunk; splits wherever an endpoint
  * refuses (too many results), falls back to archive where Blockdaemon has
- * pruned, and retries throttling with backoff. */
-async function fetchRange<R>(f: LogFilter, from: number, to: number, recent: boolean, reduce: (logs: RawLog[]) => R, deadline: number): Promise<R[]> {
+ * pruned, and retries throttling with backoff. Stops at the deadline or on
+ * an error it can't get past, returning what it finished (reachedTo). */
+async function fetchRange<R>(f: LogFilter, from: number, to: number, recent: boolean, reduce: (logs: RawLog[]) => R, deadline: number): Promise<{ parts: R[]; reachedTo: number }> {
   const out: R[] = []
   let a = from
   let attempts = 0
@@ -118,7 +127,7 @@ async function fetchRange<R>(f: LogFilter, from: number, to: number, recent: boo
     const b: number = forcedEnd ?? Math.min(to, a + (useRecent ? RECENT_SPAN : ARCHIVE_SPAN) - 1)
     forcedEnd = null
     const left = deadline - Date.now()
-    if (left < 800) throw new RpcError('deadline')
+    if (left < 800) break
     const url = useRecent ? RECENT_RPC : ARCHIVE_RPCS[rr++ % ARCHIVE_RPCS.length]
     try {
       const logs = await getLogsOnce(url, f, a, b, Math.min(8_000, left))
@@ -133,11 +142,11 @@ async function fetchRange<R>(f: LogFilter, from: number, to: number, recent: boo
       if (timedOut(e) && b - a > 500 && attempts < 6) { forcedEnd = a + Math.floor((b - a) / 2); attempts++; continue }
       if (useRecent && pruned(e)) { useRecent = false; continue }
       if (useRecent && attempts >= 1) { useRecent = false; attempts = 0; continue } // Blockdaemon down → archive
-      if (++attempts > 5 || !isThrottle(e)) throw e
+      if (++attempts > 5 || !isThrottle(e)) break
       await sleep(Math.min(3_000, 300 * 2 ** attempts) + Math.random() * 200)
     }
   }
-  return out
+  return { parts: out, reachedTo: a - 1 }
 }
 
 export interface ScanResult<R> {
@@ -166,20 +175,28 @@ export async function scanLogs<R>(f: LogFilter, from: number, to: number, opts: 
     chunks.push({ from: a, to: b, recent })
     a = b + 1
   }
-  const done: (R[] | null)[] = chunks.map(() => null)
+  const done: ({ parts: R[]; reachedTo: number } | null)[] = chunks.map(() => null)
   let next = 0
   let failed = Infinity
   const worker = async () => {
     while (next < chunks.length && next < failed && Date.now() < deadline - 1_500) {
       const i = next++
       const c = chunks[i]
-      try { done[i] = await fetchRange(f, c.from, c.to, c.recent, opts.reduce, deadline) }
-      catch { failed = Math.min(failed, i) }
+      try {
+        const r = await fetchRange(f, c.from, c.to, c.recent, opts.reduce, deadline)
+        done[i] = r
+        // Stopped part-way: nothing after this chunk can join the prefix.
+        if (r.reachedTo < c.to) failed = Math.min(failed, i)
+      } catch { failed = Math.min(failed, i) }
     }
   }
   await Promise.all(Array.from({ length: Math.min(opts.concurrency ?? 5, chunks.length) }, worker))
   const parts: R[] = []
   let scannedTo = from - 1
-  for (let i = 0; i < chunks.length && done[i]; i++) { parts.push(...done[i]!); scannedTo = chunks[i].to }
+  for (let i = 0; i < chunks.length && done[i]; i++) {
+    parts.push(...done[i]!.parts)
+    scannedTo = done[i]!.reachedTo
+    if (scannedTo < chunks[i].to) break // partial chunk ends the contiguous prefix
+  }
   return { scannedTo, parts }
 }

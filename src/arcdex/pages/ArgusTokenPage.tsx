@@ -6,6 +6,8 @@ import {
 } from '../api/argusMarket'
 import { byRecency, knownMaker, loadPoolSwaps, poolMeta, quoteUsd, resolveMakers, subscribePoolSwaps, type PoolSwap } from '../api/poolSwaps'
 import { useChainHolders } from '../api/holders'
+import { engineEnabled, getEngineToken, getEngineTrades, marketStream } from '../api/marketStream'
+import type { LaunchInfo, WireTrade } from '../../../api/_marketProtocol'
 import type { Tick } from '../lib/candles'
 import PriceChart, { type ChartTrade } from '../components/PriceChart'
 import ArgusSwapWidget from '../components/ArgusSwapWidget'
@@ -32,6 +34,15 @@ interface Props { address: string; pool: string; navigate: (p: Page) => void }
 
 // live = pushed over the WebSocket during this visit
 type Row = TradeRow
+
+/** A trade from the market engine, in the page's swap shape. */
+function engineSwap(w: WireTrade, live: boolean): PoolSwap | null {
+  if (w.s === 'U') return null
+  return {
+    id: w.id, txHash: w.tx, block: w.b, logIndex: w.li, time: w.ts, kind: w.s === 'B' ? 'buy' : 'sell',
+    tokenAmount: w.ba, quoteAmount: w.qa, price: w.p, priceUsd: w.pu, usd: w.u, maker: w.w, live,
+  }
+}
 
 const card: React.CSSProperties = { background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16 }
 
@@ -74,6 +85,16 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   const [gtLoaded, setGtLoaded] = useState(false)
   const [qUsd, setQUsd] = useState<number | null>(null)
   const [makersTick, setMakersTick] = useState(0)
+  // The engine's record of this launch — names a coin opened seconds after
+  // it launched, before GeckoTerminal has indexed it.
+  const [engineMeta, setEngineMeta] = useState<LaunchInfo | null>(null)
+  useEffect(() => {
+    setEngineMeta(null)
+    if (!engineEnabled) return
+    let alive = true
+    getEngineToken(address).then(r => { if (alive) setEngineMeta(r.meta) }).catch(() => {})
+    return () => { alive = false }
+  }, [address])
   const [, tick] = useState(0)
   const trader = useTrader()
   const me = trader.address?.toLowerCase() ?? null
@@ -146,13 +167,20 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   const quoteAddr = active?.quote.address
     ?? (route ? (route.kind === 'v4' && route.via === 'ARGUS' ? ARGUS_TOKEN.toLowerCase() : USDC_ADDRESS.toLowerCase()) : undefined)
 
-  // Every swap, from the chain: history first (newest drawn as soon as it
-  // arrives), then each new one the moment its block lands.
+  // Every swap: history first (newest drawn as soon as it arrives), then
+  // each new one the moment its block lands. With the market engine
+  // (VITE_ARCDEX_WS_URL) it comes priced and attributed from the engine's
+  // WebSocket + REST; without it, or if the engine can't be reached,
+  // straight from the chain. Either way: subscribe first, then load
+  // history, and merge by trade id — no gap, no duplicates.
   useEffect(() => {
     setSwaps(null); setOnchainFailed(false)
-    if (!activePool || !quoteAddr) return
-    const meta = poolMeta(activePool, address, quoteAddr)
+    if (!activePool) return
+    // Decoding swaps ourselves needs the quote side; the engine's come priced.
+    const meta = quoteAddr ? poolMeta(activePool, address, quoteAddr) : null
+    if (!meta && !engineEnabled) return
     let alive = true
+    const cleanups: (() => void)[] = []
     const add = (fresh: PoolSwap[]) => {
       if (!alive) return
       setSwaps(prev => {
@@ -162,12 +190,34 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         return [...next, ...(prev ?? [])].sort(byRecency).slice(0, 6_000)
       })
     }
-    // Subscribe first, so nothing lands between the history and the stream.
-    const unsub = subscribePoolSwaps(meta, add)
-    loadPoolSwaps(meta, { onProgress: add })
-      .then(r => add(r.swaps))
-      .catch(() => { if (alive) { setOnchainFailed(true); setSwaps(prev => prev ?? []) } })
-    return () => { alive = false; unsub() }
+    // The chain fallbacks, each started at most once.
+    let chainLive = false, chainHistory = false
+    const liveFromChain = () => { if (meta && !chainLive && alive) { chainLive = true; cleanups.push(subscribePoolSwaps(meta, add)) } }
+    const historyFromChain = () => {
+      if (chainHistory || !alive) return
+      chainHistory = true
+      if (!meta) { setSwaps(prev => prev ?? []); return }
+      loadPoolSwaps(meta, { onProgress: add })
+        .then(r => add(r.swaps))
+        .catch(() => { if (alive) { setOnchainFailed(true); setSwaps(prev => prev ?? []) } })
+    }
+    if (engineEnabled) {
+      cleanups.push(marketStream.subscribe({ channel: 'token', token: address }, m => {
+        if (m.t === 'TRADE') { const x = engineSwap(m.d, true); if (x) add([x]) }
+        else if (m.t === 'SNAPSHOT') add(m.d.trades.map(t => engineSwap(t, false)).filter((x): x is PoolSwap => x !== null))
+      }))
+      getEngineTrades(address, 200)
+        .then(ts => {
+          add(ts.map(t => engineSwap(t, false)).filter((x): x is PoolSwap => x !== null))
+          // A token the engine has little history for: deepen it from the chain.
+          if (ts.length < 50 && meta) loadPoolSwaps(meta, { maxSwaps: 1_500, onProgress: add }).then(r => add(r.swaps)).catch(() => {})
+        })
+        .catch(() => { liveFromChain(); historyFromChain() })
+      // Engine not reachable within 4s: stream from the chain meanwhile.
+      const t = setTimeout(() => { if (marketStream.status !== 'open') liveFromChain() }, 4_000)
+      cleanups.push(() => clearTimeout(t))
+    } else { liveFromChain(); historyFromChain() }
+    return () => { alive = false; cleanups.forEach(c => c()) }
   }, [activePool, quoteAddr, address])
 
   // USD per quote unit: USDC = 1; ARGUS from its own pool's live price.
@@ -184,7 +234,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
 
   // Who made each recent trade (the transaction's sender), in batches.
   useEffect(() => {
-    const need = (swaps ?? []).slice(0, 120).map(x => x.txHash).filter(h => !knownMaker(h))
+    const need = (swaps ?? []).slice(0, 120).filter(x => !x.maker).map(x => x.txHash).filter(h => !knownMaker(h))
     if (need.length === 0) return
     const id = setTimeout(() => void resolveMakers(need).then(() => setMakersTick(n => n + 1)).catch(() => {}), 200)
     return () => clearTimeout(id)
@@ -206,16 +256,19 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   const rows: Row[] = useMemo(() => {
     if (onchainFailed && !swaps?.length) return gtTrades.map(t => ({ ...t, live: false })).slice(0, 100)
     return (swaps ?? []).slice(0, 100).map(x => ({
-      txHash: x.txHash, maker: knownMaker(x.txHash), kind: x.kind, tokenAmount: x.tokenAmount,
-      usd: usdPerQuote ? x.quoteAmount * usdPerQuote : 0, timestamp: x.time, live: !!x.live,
+      txHash: x.txHash, maker: x.maker ?? knownMaker(x.txHash), kind: x.kind, tokenAmount: x.tokenAmount,
+      usd: x.usd ?? (usdPerQuote ? x.quoteAmount * usdPerQuote : 0), timestamp: x.time, live: !!x.live,
     }))
     // makersTick: re-read makers once a batch resolves
   }, [swaps, onchainFailed, gtTrades, usdPerQuote, makersTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // The chart's ticks: every swap's pool price and size, in USD.
   const ticks: Tick[] | null = useMemo(() => {
-    if (swaps === null || !usdPerQuote) return null
-    return swaps.map(x => ({ time: x.time, priceUsd: x.price * usdPerQuote, usd: x.quoteAmount * usdPerQuote }))
+    if (swaps === null || (!usdPerQuote && !swaps.some(x => x.priceUsd))) return null
+    return swaps.flatMap(x => {
+      const p = x.priceUsd ?? (usdPerQuote ? x.price * usdPerQuote : null)
+      return p ? [{ time: x.time, priceUsd: p, usd: x.usd ?? (usdPerQuote ? x.quoteAmount * usdPerQuote : 0) }] : []
+    })
   }, [swaps, usdPerQuote])
   const streaming = !!swaps?.some(x => x.live)
 
@@ -252,12 +305,12 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   // refreshes the position card.
   const onTraded = useCallback(() => { setRefreshKey(k => k + 1) }, [])
 
-  const symbol = active?.token.symbol || info?.symbol || '…'
-  const name = active?.token.name || info?.name || ''
-  const image = info?.image ?? active?.token.image ?? null
+  const symbol = active?.token.symbol || info?.symbol || engineMeta?.symbol || '…'
+  const name = active?.token.name || info?.name || engineMeta?.name || ''
+  const image = info?.image ?? active?.token.image ?? engineMeta?.image ?? null
   // The pool's price only changes on a swap, so the latest swap's price IS
   // the live price (GeckoTerminal's is 10-60s behind).
-  const livePrice = swaps?.[0] && usdPerQuote ? swaps[0].price * usdPerQuote : null
+  const livePrice = swaps?.[0] ? (swaps[0].priceUsd ?? (usdPerQuote ? swaps[0].price * usdPerQuote : null)) : null
   const priceUsd = livePrice ?? active?.priceUsd ?? 0
   const copy = symbol === '…' ? null : copycatOf(symbol, address)
   const gtMcap = active?.marketCapUsd ?? active?.fdvUsd ?? null
@@ -366,7 +419,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ ...card, padding: 16 }}>
             <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{T("PRICE CHART · USD")}</div>
-            <PriceChart poolAddress={activePool || null} ticks={onchainFailed ? undefined : ticks} live={streaming} trades={chartTrades} thesisMarks={thesisMarks} friends={friends} supply={supply} symbol={symbol}
+            <PriceChart poolAddress={activePool || null} engineToken={address} ticks={onchainFailed ? undefined : ticks} live={streaming} trades={chartTrades} thesisMarks={thesisMarks} friends={friends} supply={supply} symbol={symbol}
               onTraderClick={a => navigate({ name: 'trader', address: a })} />
           </div>
 

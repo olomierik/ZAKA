@@ -1,0 +1,16 @@
+{
+  "name": "arcdex-market-engine",
+  "private": true,
+  "type": "module",
+  "description": "ARCDEX real-time market engine: Arc chain → trades, launches, candles → Redis + Postgres → WebSocket",
+  "scripts": {
+    "start": "bun src/main.ts",
+    "test": "bun test test",
+    "typecheck": "tsc --noEmit -p .",
+    "fixtures": "bun scripts/capture-fixtures.ts",
+    "latency": "bun scripts/latency-check.ts"
+  },
+  "dependencies": {
+    "viem": "2.56.5"
+  }
+}

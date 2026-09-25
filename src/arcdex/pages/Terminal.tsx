@@ -6,6 +6,8 @@ import {
 import { getAllLaunchpadTokensAsArcTokens } from '../api/launchpad'
 import { getArgusTokens } from '../api/argus'
 import { cachedArgusMarket, getArgusMarket, argusPoolToArcToken } from '../api/argusMarket'
+import { engineEnabled, getNewTokens, marketStream, useEngineStatus } from '../api/marketStream'
+import type { LaunchInfo } from '../../../api/_marketProtocol'
 import { curateTokens, type CuratedGroup } from '../lib/curate'
 import type { Page } from '../App'
 import { toggleWatch, usePrefs } from '../lib/prefs'
@@ -33,6 +35,21 @@ function fmt(n: number, prefix = ''): string {
   if (n >= 1)    return `${prefix}${n.toFixed(2)}`
   return `${prefix}${n.toPrecision(3)}`
 }
+const QUOTE_SYMBOL: Record<string, string> = {
+  '0x3600000000000000000000000000000000000000': 'USDC', '0x0000000000000000000000000000000000000000': 'USDC',
+  '0xece5ca8bf9220718e5727754026757512212cb3c': 'ARGUS', '0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1': 'EURC', '0x93ffd195481e8c08eb25a158689e4d9e61313111': 'WETH',
+}
+/** A launch the market engine just detected, as a Terminal row — before its first trade. */
+function launchToArcToken(l: LaunchInfo): ArcToken {
+  return {
+    address: l.token, symbol: l.symbol, name: l.name, decimals: l.decimals, logoUrl: l.image ?? '',
+    price: l.priceUsd ?? 0, priceChange5m: 0, priceChange1h: 0, priceChange24h: 0, volume24h: 0, marketCap: l.marketCapUsd ?? 0, liquidity: 0,
+    ageMs: Math.max(0, Date.now() - l.timestamp), launchpad: l.launchpad === 'ARGUS' ? 'Argus' : l.launchpad,
+    poolAddress: l.pool ?? '', txCount24h: 0, holderCount: 0, buys24h: 0, sells24h: 0, verified: false, graduated: false,
+    bondingProgress: null, spark: [], deployer: l.creator ?? undefined, quoteSymbol: (l.quote && QUOTE_SYMBOL[l.quote]) || '',
+  }
+}
+
 function fmtAge(ms: number): string {
   const s = ms / 1000
   if (s < 60)    return `${Math.floor(s)}s`
@@ -167,6 +184,7 @@ function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onTogg
         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
           {fmtAge(token.ageMs)}
         </span>
+        {token.ageMs < 5 * 60_000 && <span className="new-badge">{T("NEW")}</span>}
       </td>
       {/* mcap */}
       <td className="td-num">
@@ -270,6 +288,24 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   // RadarDex's broad, unattributed multi-launchpad aggregate.
   const argusSeen = useRef(new Map<string, { t: ArcToken; seen: number }>())
   const oursRef = useRef<ArcToken[]>([])
+  // From the market engine (when connected): launches it detected, and its
+  // once-a-second price/volume ticks, laid over the rows above.
+  const launchesRef = useRef(new Map<string, LaunchInfo>())
+  const ticksRef = useRef(new Map<string, [number | null, number | null, number, number | null, number]>())
+  const engineStatus = useEngineStatus()
+  const withTick = (t: ArcToken): ArcToken => {
+    const k = ticksRef.current.get(t.address.toLowerCase())
+    if (!k) return t
+    const [price, chg24, vol, mc, trades] = k
+    return {
+      ...t,
+      price: price ?? t.price,
+      priceChange24h: chg24 ?? t.priceChange24h,
+      volume24h: Math.max(vol, t.volume24h),
+      marketCap: mc ?? (price && t.price && t.marketCap ? t.marketCap * (price / t.price) : t.marketCap),
+      txCount24h: Math.max(trades, t.txCount24h),
+    }
+  }
 
   // Merge, don't replace: when GeckoTerminal throttles one refresh, the
   // list comes back short — coins keep their last-known row until they've
@@ -279,7 +315,9 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     const seen = argusSeen.current
     for (const t of fresh) seen.set(t.address.toLowerCase(), { t, seen: now })
     for (const [k, v] of seen) if (now - v.seen > 10 * 60_000) seen.delete(k)
-    const data = [...oursRef.current, ...[...seen.values()].map(v => v.t)]
+    const listed = new Set([...oursRef.current.map(t => t.address.toLowerCase()), ...seen.keys()])
+    const launched = [...launchesRef.current.values()].filter(l => !listed.has(l.token)).map(launchToArcToken)
+    const data = [...oursRef.current, ...[...seen.values()].map(v => v.t), ...launched].map(withTick)
     setTokens(data)
     // Keep the loading state until there's something to show — the first
     // source to land may be an empty one.
@@ -313,10 +351,32 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   // The last list this browser saw, at once; the fresh one replaces it.
   useEffect(() => { const c = cachedArgusMarket(); if (c) publish(c.map(argusPoolToArcToken)) }, [publish])
   useEffect(() => { void load() }, [load])
+  // With the engine streaming prices, the list only needs a slow metadata
+  // refresh (names, liquidity, 5m/1h change); otherwise poll every 15s.
+  const engineLive = engineEnabled && engineStatus === 'open'
   useEffect(() => {
-    const iv = setInterval(() => void load(), 15_000)
+    const iv = setInterval(() => void load(), engineLive ? 60_000 : 15_000)
     return () => clearInterval(iv)
-  }, [load])
+  }, [load, engineLive])
+
+  // Market engine: new launches appear the moment they're detected (before
+  // their first trade), and prices/volumes move with every tick.
+  useEffect(() => {
+    if (!engineEnabled) return
+    void getNewTokens(100).then(ls => { for (const l of ls) launchesRef.current.set(l.token, l); publish([]) }).catch(() => {})
+    const offNew = marketStream.subscribe({ channel: 'new_tokens' }, m => {
+      if (m.t !== 'NEW_TOKEN') return
+      launchesRef.current.set(m.d.token, m.d)
+      if (launchesRef.current.size > 500) launchesRef.current.delete(launchesRef.current.keys().next().value as string)
+      publish([])
+    })
+    const offTicks = marketStream.subscribe({ channel: 'market' }, m => {
+      if (m.t !== 'TICKS') return
+      for (const [token, price, chg, vol, mc, trades] of m.d) ticksRef.current.set(token, [price, chg, vol, mc, trades])
+      publish([])
+    })
+    return () => { offNew(); offTicks() }
+  }, [publish])
 
   // reset page on filter change
   useEffect(() => setPage(1), [source, viewTab, search, sortCol, sortAsc, minMcap, maxMcap, minVol])

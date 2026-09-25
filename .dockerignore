@@ -1,0 +1,17 @@
+**/node_modules
+dist
+.git
+.vercel
+.claude
+.argus-ref
+cache
+contracts
+src
+public
+scripts
+supabase
+ZAKA
+**/.env
+**/.env.*
+!**/.env.example
+engine/test
