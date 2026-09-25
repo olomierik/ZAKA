@@ -7,7 +7,7 @@
 //   fees     swap-router fees generated / paid to referrers (Supabase)
 // Every number is public and verifiable on-chain; this just gathers them.
 
-import { GT_BASE, gtHeaders } from './_geckoterminal'
+import { gtFetch } from './_geckoterminal'
 import { adminReady, db } from './_supabaseAdmin'
 
 export const config = { runtime: 'edge' }
@@ -60,7 +60,7 @@ async function recentBurns(): Promise<Burn[]> {
 }
 
 async function market() {
-  const r = await fetch(`${GT_BASE}/networks/arc/pools/${POOL}?include=base_token`, { headers: gtHeaders() })
+  const r = await gtFetch(`/networks/arc/pools/${POOL}?include=base_token`)
   if (!r.ok) throw new Error('gecko ' + r.status)
   const j = await r.json() as { data: { attributes: Record<string, unknown> }; included?: { attributes: Record<string, unknown> }[] }
   const a = j.data.attributes

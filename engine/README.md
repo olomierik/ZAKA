@@ -60,6 +60,8 @@ Railway project **arcdex** holds **Postgres** and **Redis**. To add the engine:
 
 The engine creates its history tables in Railway Postgres on first start. Supabase is untouched.
 
+**Live:** service `arcdex-engine`, at `https://arcdex-engine-production.up.railway.app`, with steps 1–4 done except the Vercel variable.
+
 ## Deploy (any other host)
 
 The engine is a long-running process, so it can't run on Vercel. It needs any host that runs a Docker container or a Bun process 24/7 (Fly.io, Railway, Render, a VPS).
@@ -75,7 +77,7 @@ The engine is a long-running process, so it can't run on Vercel. It needs any ho
 4. **DNS:** point `api.arcdex.online` at the host, with TLS. The WebSocket is then `wss://api.arcdex.online/ws`.
 5. **Frontend:** in Vercel project `app`, set `VITE_ARCDEX_WS_URL=wss://api.arcdex.online/ws` (and optionally `VITE_ARCDEX_API_URL=https://api.arcdex.online`), then redeploy. Until these are set the site uses its direct-from-chain path, so nothing breaks while the engine is down.
 
-The first start with no saved cursor replays ~24h (`BACKFILL_ON_START_BLOCKS`), at about 300 trades/s (a few minutes). Later restarts resume from the cursor saved in Redis/Postgres.
+Each start first indexes every pool `Initialize` of the last ~600k blocks in one bulk scan (~30s, ~15k pools), so older pools are identified by lookup rather than by a slow scan each. The first start with no saved cursor then replays ~24h (`BACKFILL_ON_START_BLOCKS`), at ~360 trades/s measured from cold (about 15–20 minutes). Later restarts resume from the cursor saved in Redis/Postgres.
 
 ## WebSocket protocol
 
@@ -96,6 +98,7 @@ REST: `GET /v1/tokens/new`, `/v1/tokens/:token`, `/v1/tokens/:token/trades?limit
 ## Reliability
 
 - **Dedupe:** every log is processed once, by `txHash:logIndex`. Postgres upserts are idempotent.
+- **Backpressure:** catch-up fetches the next chunk while the previous one is handled, never more. `/health` reports `lastProcessedBlock` (handled), `lastFetchedBlock` and `queuedEvents`.
 - **Missed-event detection:** every `RECONCILE_MS` the stream re-reads `(cursor, head−2]` with `getLogs` and recovers anything the socket dropped (metric `missed_events_recovered`).
 - **Disconnect / restart:** the cursor falls behind. New live logs are buffered while the gap is backfilled in block order, then the stream is live again.
 - **Stale stream:** no new block for `STALE_HEAD_MS` means the socket is dropped and the next `ARC_WS_URLS` provider is used. HTTP calls fail over across `ARC_HTTP_URLS`.
@@ -117,7 +120,8 @@ REST: `GET /v1/tokens/new`, `/v1/tokens/:token`, `/v1/tokens/:token/trades?limit
 ## Tests
 
 ```bash
-bun test engine/test                       # 38 tests: candles, 24h state, protocol, real-mainnet replays (Argus launches, v3/v4 swaps), stream/provider reliability, Redis (RESP3), WebSocket/REST end-to-end
+bun test engine/test                       # 39 tests: candles, 24h state, protocol, real-mainnet replays (Argus launches, v3/v4 swaps), stream/provider reliability (incl. catch-up backpressure), Redis (RESP3), WebSocket/REST end-to-end
+PG_TEST_URL=postgres://… bun test engine/test/postgres.test.ts   # +2: the Postgres history backend, against a scratch database
 bun engine/scripts/capture-fixtures.ts     # refresh the recorded mainnet fixtures
 ```
 

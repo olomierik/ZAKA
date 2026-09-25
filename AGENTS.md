@@ -87,7 +87,10 @@ Every Argus coin across all 8 Portals, live, the way argus.world does it: **Geck
   - `buildSwapRoute` gets the v4 PoolKey from `PositionManager.poolKeys(bytes25)` and verifies `keccak(key) == poolId` before using it.
   - Each trade approves the exact amount, runs `simulateContract` with the user's account for the real output, and sets min-out from the chosen slippage.
 - **Copycat tickers.** Argus launches are permissionless, and several use the `USDC` ticker. `copycatOf()` flags them in the Terminal ("⚠ Not real USDC") and with a banner on the token page.
-- **Upstream key (optional).** Set `COINGECKO_API_KEY` in Vercel to move both `/api/argus` and `/api/gecko` to CoinGecko's paid on-chain API: same data, dedicated rate limit (`api/_geckoterminal.ts`). Without it, the free GeckoTerminal API is shared by IP and can throttle under load.
+- **Upstream key (optional).** Set `COINGECKO_API_KEY` in Vercel to move `/api/argus`, `/api/gecko` and `/api/arcd` to CoinGecko's on-chain API (GeckoTerminal's own data, argus.world's source): same data, dedicated rate limit (`api/_geckoterminal.ts`). Without it, the free GeckoTerminal API is shared by IP and can throttle under load.
+  - Pro and Demo keys look alike (`CG-…`): the key is tried on `pro-api.coingecko.com`, then on `api.coingecko.com` (Demo); a key neither accepts falls back to the free API, so a bad key can't break the site.
+  - Every response carries `X-Arcdex-Upstream: coingecko-pro | coingecko-demo | geckoterminal`, which shows the key is active without exposing it. Tests: `bun scripts/test-geckoterminal.ts`.
+  - The owner sets the key in Vercel project `app` (Production) themselves; it takes effect on the next deployment.
 - The on-chain Portal reader in `src/arcdex/api/argus.ts` is kept only as a fallback if `/api/argus` fails entirely.
 
 
@@ -246,22 +249,20 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
   - Portals 1–6 are dormant.
   - Each launch tx also carries the PoolManager `Initialize`, so the pool is registered before its first trade.
 - **v4 pools with `currency0 = 0x0`** trade native USDC (18 decimals). The engine prices them. The coin page's swap widget doesn't route them yet ("No routable pool").
-- **Database v5:** `supabase/migrations/20260928000000_arcdex_market_engine.sql`, tested on PGlite. **The owner must run it** before the engine stores history.
+- **Database v5:** `supabase/migrations/20260928000000_arcdex_market_engine.sql`, tested on PGlite. Only needed if the engine stores history in Supabase; the Railway deployment below uses its own Postgres instead.
   - It adds `arcdex_mkt_*` tokens, pools, trades, candles, liquidity and cursor tables.
   - Functions: `arcdex_mkt_rebuild_candle` and `arcdex_mkt_cleanup`. Retention: trades 72h, 1s candles 6h, 5s 24h, 15s 3d, 1m 30d.
-- **Railway (2026-09-25):** project **arcdex** holds Postgres + Redis for the engine. Its history goes there (`DATABASE_URL`, `store/postgresHistory.ts`, tables created on start); Supabase keeps the site's own data. The root `railway.toml` builds `engine/Dockerfile`. Steps are in `engine/README.md`.
-- **Owner setup to go live:**
-  - A host running `engine/Dockerfile`.
-  - A Redis URL, plus `SUPABASE_URL` / `SUPABASE_SECRET_KEY` in the engine's env.
-  - DNS `api.arcdex.online`.
-  - Then `VITE_ARCDEX_WS_URL=wss://api.arcdex.online/ws` in Vercel project `app`.
-  - Until that variable is set, the site uses its direct-from-chain path (`poolSwaps.ts`) and behaves exactly as before.
+- **Running on Railway (since 2026-09-25):** project **arcdex**, service **arcdex-engine**, built from GitHub `olomierik/ZAKA` `main` (the only repo the Railway GitHub App can see).
+  - Public URL: `https://arcdex-engine-production.up.railway.app` (WebSocket `wss://…/ws`, `/health`, `/v1/…`).
+  - History goes to the project's own Postgres (`DATABASE_URL=${{Postgres.DATABASE_URL}}`, `store/postgresHistory.ts`, tables created on start); hot state to its Redis (`REDIS_URL=${{Redis.REDIS_URL}}`). Also set: `TRUST_PROXY=1`, `WS_ALLOWED_ORIGINS=https://arcdex.online,https://www.arcdex.online`, `LOG_LEVEL=info`. Supabase keeps the site's own data.
+  - The root `railway.toml` builds `engine/Dockerfile`, health-checks `/health`, and redeploys only on engine file changes. A restart resumes from the cursor saved in Redis/Postgres.
+- **Switching the site to the engine (owner's call):** set `VITE_ARCDEX_WS_URL=wss://arcdex-engine-production.up.railway.app/ws` (or `wss://api.arcdex.online/ws` once that DNS points at Railway) in Vercel project `app`, then redeploy. Until that variable is set, the site uses its direct-from-chain path (`poolSwaps.ts`) and behaves exactly as before.
 - **Frontend (`src/arcdex/api/marketStream.ts`):** one shared, ref-counted WebSocket. What uses it:
   - **Coin page:** engine trades via REST + `token` channel, merged by trade id, with chain fallback after 4s or on REST failure.
   - **PriceChart:** engine candles + `CANDLE_UPDATE`, with a 5s timeframe in engine mode.
   - **Terminal:** `new_tokens` rows with a NEW badge, visible before their first trade; `market` ticks update prices; list polling slows to 60s.
   - **Search:** includes fresh launches.
-- **Tests:** `bun run engine:test` — 38 tests, including replays of recorded mainnet data (`engine/test/fixtures/mainnet.json`) and a RESP3 Redis round-trip against Bun's client. Live latency: `bun engine/scripts/latency-check.ts <ws-url> 60`.
+- **Tests:** `bun run engine:test` — 39 tests (+2 Postgres ones that need `PG_TEST_URL`), including catch-up backpressure, replays of recorded mainnet data (`engine/test/fixtures/mainnet.json`) and a RESP3 Redis round-trip against Bun's client. Live latency: `bun engine/scripts/latency-check.ts <ws-url> 60`.
 
 ## Hosting — arcdex.online only
 

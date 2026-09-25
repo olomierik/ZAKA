@@ -85,6 +85,10 @@ export class MakerResolver {
   }
 }
 
+/** The pool a swap log belongs to: the v4 PoolId, or the v3 pool's address. */
+export const poolKeyOf = (l: SwapLogLike): string | null =>
+  (l.topics[0] === V4_SWAP ? l.topics[1] : l.address)?.toLowerCase() ?? null
+
 export class TradeParser {
   constructor(
     private pools: PoolRegistry,
@@ -94,8 +98,7 @@ export class TradeParser {
   ) {}
 
   async parse(l: SwapLogLike): Promise<Trade | null> {
-    const v4 = l.topics[0] === V4_SWAP
-    const poolKey = v4 ? l.topics[1]?.toLowerCase() : l.address.toLowerCase()
+    const poolKey = poolKeyOf(l)
     if (!poolKey) return null
     const info = await this.pools.resolve(poolKey)
     if (!info) { metrics.inc('swaps_unknown_pool'); return null }

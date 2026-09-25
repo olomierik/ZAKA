@@ -6,7 +6,7 @@
 // build comes back partial (GeckoTerminal throttles Vercel's shared IPs),
 // the browser rebuilds it from its own IP — see argusMarket.ts.
 
-import { GT_BASE, gtHeaders } from './_geckoterminal'
+import { gtFetch, gtUpstream } from './_geckoterminal'
 import { buildArgusMarket, type ArgusPool, type GtList } from './_argusCore'
 import { bondedFlags } from './_argusBonded'
 import { kvGet, kvSet } from './_supabaseAdmin'
@@ -27,10 +27,7 @@ async function gtBudgeted(path: string, deadline: number, failures: Failure[]): 
     const left = deadline - Date.now()
     if (left < 1_000) break
     try {
-      const res = await fetch(`${GT_BASE}${path}`, {
-        headers: gtHeaders(),
-        signal: AbortSignal.timeout(Math.min(6_000, left)),
-      })
+      const res = await gtFetch(path, { signal: AbortSignal.timeout(Math.min(6_000, left)) })
       if (res.status === 429) { why = '429'; await new Promise(r => setTimeout(r, Math.min(1_500, Math.max(0, deadline - Date.now() - 1_000)))); continue }
       if (!res.ok) { why = String(res.status); break }
       return (await res.json()) as GtList
@@ -78,7 +75,7 @@ async function build(prev: Snapshot | null): Promise<Snapshot | null> {
   const carried = (prev?.pools ?? []).filter(p => !seen.has(p.token.address) && now - (p.seenAt ?? 0) < KEEP_UNSEEN_MS)
   return {
     updatedAt: new Date().toISOString(),
-    source: 'geckoterminal',
+    source: gtUpstream(),
     // Partial only when there was nothing to fill the gaps with.
     partial: failures.length > 0 && !prev,
     failures,
@@ -89,7 +86,7 @@ async function build(prev: Snapshot | null): Promise<Snapshot | null> {
 function respond(s: Snapshot, cache: string): Response {
   return new Response(JSON.stringify(s), {
     status: 200,
-    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': cache },
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': cache, 'X-Arcdex-Upstream': gtUpstream() },
   })
 }
 

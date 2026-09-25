@@ -22,7 +22,7 @@ import { ChainStream, type CursorStore, type FetchLogs } from './chain/stream'
 import { WsProvider, type LogFilterWs } from './chain/wsProvider'
 import { loadConfig, redacted } from './config'
 import { PoolRegistry } from './dex/pools'
-import { MakerResolver, QuoteOracle, TradeParser, isSwapLog } from './dex/trades'
+import { MakerResolver, QuoteOracle, TradeParser, isSwapLog, poolKeyOf } from './dex/trades'
 import { AdapterRegistry } from './launchpads/adapter'
 import { ArcLaunchpadAdapter } from './launchpads/arcLaunchpad'
 import { ArgusAdapter } from './launchpads/argus'
@@ -64,6 +64,7 @@ const health = () => {
   return {
     status: chainDown ? 'down' as const : degraded ? 'degraded' as const : 'ok' as const,
     role: cfg.role,
+    commit: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
     uptimeSec: Math.round((Date.now() - metrics.startedAt) / 1000),
     chain: cfg.role === 'gateway' ? null : {
       ws: ws.status, provider: ws.provider, lastBlock: ws.lastHead?.number ?? null,
@@ -91,11 +92,43 @@ async function main() {
   }
 
   // ── ingest (+ serve, in `all`) ───────────────────────────────────────
-  const findInitialize = async (poolId: string) => {
-    // A v4 pool not created through the PositionManager: its Initialize log.
+  // A v4 pool not created through the PositionManager is identified by its
+  // Initialize log. Every Initialize of the last ~600k blocks (~3.5 days,
+  // ~15k pools) is fetched once at start in one bulk scan (~30s): a lookup
+  // then replaces a ~600k-block scan per pool, which took 8–16s each and,
+  // cut off by its deadline, lost pools (and their trades). Pools created
+  // after the scan arrive through the stream's own Initialize logs.
+  const INIT_DEPTH = 600_000
+  const recentInits = (async () => {
+    const t0 = Date.now()
     const head = parseInt(await rpc.call<string>('eth_blockNumber', []), 16)
-    const r = await scanLogs<RawLog[]>({ address: POOL_MANAGER, topics: [V4_INITIALIZE, poolId] }, Math.max(0, head - 600_000), head, { head, reduce: l => l, deadline: Date.now() + 15_000 })
-    return r.parts.flat()[0] ?? null
+    const r = await scanLogs<RawLog[]>({ address: POOL_MANAGER, topics: [V4_INITIALIZE] }, Math.max(0, head - INIT_DEPTH), head, { head, reduce: l => l, deadline: Date.now() + 180_000 })
+    const byPool = new Map<string, RawLog>()
+    for (const l of r.parts.flat()) if (l.topics[1]) byPool.set(l.topics[1].toLowerCase(), l)
+    const complete = r.scannedTo >= head
+    log.info('indexed recent pool initializations', { pools: byPool.size, complete, ms: Date.now() - t0 })
+    return { byPool, complete }
+  })().catch(e => { log.warn('pool initialization index failed', { error: errMsg(e) }); return { byPool: new Map<string, RawLog>(), complete: false } })
+  // Fallback when the bulk scan didn't finish: one pool at a time, at most 6 at once.
+  let scans = 0
+  const scanWaiting: (() => void)[] = []
+  const scanForInitialize = async (poolId: string) => {
+    if (scans < 6) scans++
+    else await new Promise<void>(r => scanWaiting.push(r)) // the finishing scan hands over its slot
+    const t0 = Date.now()
+    try {
+      const head = parseInt(await rpc.call<string>('eth_blockNumber', []), 16)
+      const r = await scanLogs<RawLog[]>({ address: POOL_MANAGER, topics: [V4_INITIALIZE, poolId] }, Math.max(0, head - INIT_DEPTH), head, { head, reduce: l => l, deadline: Date.now() + 15_000 })
+      return r.parts.flat()[0] ?? null
+    } finally {
+      metrics.latency('pool_initialize_scan', Date.now() - t0)
+      const next = scanWaiting.shift()
+      if (next) next(); else scans--
+    }
+  }
+  const findInitialize = async (poolId: string) => {
+    const idx = await recentInits
+    return idx.byPool.get(poolId) ?? (idx.complete ? null : scanForInitialize(poolId))
   }
   const pools = new PoolRegistry(rpc, { onNewPool: p => { hot.putPool(p); history.pool(p) }, findInitialize })
   pools.seed(await hot.getPools().catch(() => []))
@@ -127,39 +160,58 @@ async function main() {
   await eng.warmStart()
   const parser = new TradeParser(pools, oracle, makers, eng.launchpadOf)
 
-  // Parse concurrently (pool lookups and sender lookups overlap), then apply
-  // strictly in chain order.
+  const isInitialize = (l: RawLog) => l.topics[0] === V4_INITIALIZE && l.address.toLowerCase() === POOL_MANAGER
+  const parseOne = async (l: RawLog) => {
+    try {
+      if (isInitialize(l)) return null // registered in the pre-pass
+      const ad = adapters.find(l)
+      if (ad) {
+        const launch = await ad.parseLaunch(l, { rpc, pools })
+        if (launch) {
+          const p = launch.pool ? pools.get(launch.pool) : undefined
+          const q = launch.quote ? oracle.usd(launch.quote) : null
+          return { launch, initialPriceUsd: p?.initialPrice && q ? p.initialPrice * q : null }
+        }
+        const trade = await ad.parseTrade?.(l, { rpc, pools })
+        return trade ? { trade } : null
+      }
+      if (isSwapLog(l)) { const trade = await parser.parse(l); return trade ? { trade } : null }
+    } catch (e) {
+      metrics.inc('parse_errors')
+      log.warn('could not parse log', { tx: l.transactionHash, error: errMsg(e) })
+    }
+    return null
+  }
+  // Up to 2,000 logs parse at once (sender lookups batch and overlap, and one
+  // slow pool lookup doesn't stall the rest); results apply strictly in chain order.
+  const PARSE_WINDOW = 2_000
   const handler = async (logs: RawLog[], ctx: { replay: boolean }) => {
     const receivedAt = Date.now()
-    // 1,000 at a time: enough in flight to keep 8 sender-lookup batches busy.
-    for (let i = 0; i < logs.length; i += 1_000) {
-      const chunk = logs.slice(i, i + 1_000)
-      const parsed = await Promise.all(chunk.map(async l => {
-        try {
-          if (l.topics[0] === V4_INITIALIZE && l.address.toLowerCase() === POOL_MANAGER) { await pools.fromInitialize(l); return null }
-          const ad = adapters.find(l)
-          if (ad) {
-            const launch = await ad.parseLaunch(l, { rpc, pools })
-            if (launch) {
-              const p = launch.pool ? pools.get(launch.pool) : undefined
-              const q = launch.quote ? oracle.usd(launch.quote) : null
-              return { launch, initialPriceUsd: p?.initialPrice && q ? p.initialPrice * q : null }
-            }
-            const trade = await ad.parseTrade?.(l, { rpc, pools })
-            return trade ? { trade } : null
-          }
-          if (isSwapLog(l)) { const trade = await parser.parse(l); return trade ? { trade } : null }
-        } catch (e) {
-          metrics.inc('parse_errors')
-          log.warn('could not parse log', { tx: l.transactionHash, error: errMsg(e) })
-        }
-        return null
-      }))
-      for (const p of parsed) {
-        if (!p) continue
-        if ('launch' in p && p.launch) eng.onLaunch(p.launch, { replay: ctx.replay, initialPriceUsd: p.initialPriceUsd })
-        else if ('trade' in p && p.trade) eng.onTrade(p.trade, { replay: ctx.replay, receivedAt })
-      }
+    // Pools created in this batch first, so their swaps find them registered
+    // instead of each scanning the chain for the Initialize.
+    await Promise.all(logs.filter(isInitialize).map(l => pools.fromInitialize(l).catch(e => {
+      metrics.inc('parse_errors')
+      log.warn('could not register pool', { tx: l.transactionHash, error: errMsg(e) })
+    })))
+    // Then start resolving every other pool the batch trades in, so the slow
+    // ones (older pools that need an Initialize scan) run side by side rather
+    // than one at a time as the parser reaches them. resolve() dedupes; the
+    // cap bounds the RPC burst on a cold start (the rest resolve as reached).
+    const unknown = new Set<string>()
+    for (const l of logs) {
+      const k = isSwapLog(l) ? poolKeyOf(l) : null
+      if (k && !pools.get(k)) unknown.add(k)
+      if (unknown.size >= 300) break
+    }
+    for (const k of unknown) void pools.resolve(k)
+    const parsed: ReturnType<typeof parseOne>[] = []
+    for (let i = 0; i < Math.min(PARSE_WINDOW, logs.length); i++) parsed[i] = parseOne(logs[i])
+    for (let i = 0; i < logs.length; i++) {
+      const p = await parsed[i]
+      if (i + PARSE_WINDOW < logs.length) parsed[i + PARSE_WINDOW] = parseOne(logs[i + PARSE_WINDOW])
+      if (!p) continue
+      if ('launch' in p && p.launch) eng.onLaunch(p.launch, { replay: ctx.replay, initialPriceUsd: p.initialPriceUsd })
+      else if ('trade' in p && p.trade) eng.onTrade(p.trade, { replay: ctx.replay, receivedAt })
     }
   }
 
