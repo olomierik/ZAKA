@@ -17,8 +17,8 @@
 // Circle Console with arcdex.online registered as the web URL.
 
 import { createOnrampServerKit, KitError } from '@circle-fin/onramp-kit/server'
-import { bearer, verifySession } from './_session'
-import { json, sessionRevoked } from './_supabaseAdmin'
+import { bearer, verifySession } from './_session.js'
+import { json, sessionRevoked } from './_supabaseAdmin.js'
 
 declare const process: { env: Record<string, string | undefined> }
 
