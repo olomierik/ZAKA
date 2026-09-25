@@ -121,6 +121,37 @@ describe('ChainStream', () => {
     stream.stop()
   })
 
+  test('catch-up waits for the handler: fetching never runs more than one chunk ahead', async () => {
+    // Fetching is instant and handling is slow, as on a fast host replaying 24h.
+    const chain = new FakeChain()
+    for (let b = 501; b <= 1_000; b++) chain.addLog(b, 0)
+    let saved: number | null = 500
+    let maxAhead = 0, maxQueued = 0
+    const ids: string[] = []
+    const ws = new WsProvider(['wss://a'], { staleHeadMs: 60_000, factory: chain.factory })
+    const stream: ChainStream = new ChainStream(ws, chain.rpc, chain.fetchLogs, { get: async () => saved, set: async b => { saved = b } },
+      async logs => {
+        maxAhead = Math.max(maxAhead, stream.cursor - parseInt(logs[0].blockNumber, 16))
+        maxQueued = Math.max(maxQueued, stream.queued)
+        await sleep(15)
+        for (const l of logs) ids.push(logId(l))
+      },
+      { filters: [{ topics: ['0xswap'] }], reconcileMs: 30, backfillOnStartBlocks: 50, backfillMaxBlocks: 1_000, catchUpChunk: 50 })
+    await stream.start()
+    await sleep(60)
+    expect(stream.mode).toBe('catching_up')
+    expect(stream.handledTo).toBeLessThan(1_000)            // not reported as done while the handler is still busy
+    await sleep(600)
+    await stream.persist()
+    expect(stream.mode).toBe('live')
+    expect(maxAhead).toBeLessThan(100)                      // at most the chunk being handled + the one being fetched
+    expect(maxQueued).toBeLessThanOrEqual(100)
+    expect(ids).toEqual(chain.logs.map(logId))              // every log, once, in chain order
+    expect(stream.handledTo).toBe(1_000)
+    expect(saved).toBe(1_000)
+    stream.stop()
+  })
+
   test('after a dropped connection the gap is backfilled and the cursor persisted', async () => {
     const { chain, stream, got, cursor } = setup({ cursor: 1_000 })
     await stream.start()

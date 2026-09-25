@@ -57,7 +57,7 @@ let redisOk = hot.kind === 'memory'
 
 const health = () => {
   const head = ws.lastHead?.number ?? (metrics.gauges.chain_head as number | undefined) ?? 0
-  const lag = stream && head ? head - stream.cursor : null
+  const lag = stream && head ? head - stream.handledTo : null
   const db = history.status()
   const chainDown = cfg.role !== 'gateway' && (ws.status === 'down' || ws.status === 'stale') && (lag === null || lag > 100)
   const degraded = (lag !== null && lag > 20) || !redisOk || (history.enabled && db.lastError !== null) || stream?.mode === 'catching_up'
@@ -67,7 +67,8 @@ const health = () => {
     uptimeSec: Math.round((Date.now() - metrics.startedAt) / 1000),
     chain: cfg.role === 'gateway' ? null : {
       ws: ws.status, provider: ws.provider, lastBlock: ws.lastHead?.number ?? null,
-      lastProcessedBlock: stream?.cursor ?? null, lagBlocks: lag, mode: stream?.mode ?? null,
+      lastProcessedBlock: stream?.handledTo ?? null, lastFetchedBlock: stream?.cursor ?? null, queuedEvents: stream?.queued ?? 0,
+      lagBlocks: lag, mode: stream?.mode ?? null,
       backfillRemainingBlocks: metrics.gauges.backfill_remaining_blocks ?? 0, http: rpc.status(),
     },
     rates: { eventsPerSec: metrics.rate('events'), tradesPerSec: metrics.rate('trades'), newTokens: metrics.counters.new_tokens ?? 0 },

@@ -9,7 +9,10 @@
 //   catch-up   after a restart or a dropped connection the cursor is behind:
 //              the gap is backfilled from getLogs in block order while new
 //              live logs wait in a buffer, then the buffer is flushed and the
-//              stream is live again
+//              stream is live again. The next chunk is fetched while the last
+//              one is handled, but never further: getLogs is far faster than
+//              the handler, and without that limit the fetch would reach the
+//              head ("live") with hours of logs still queued in memory
 //
 // Duplicates (the same log from live and reconcile, or a replay after a
 // restart) are dropped by id = txHash:logIndex. Arc has single-slot
@@ -57,7 +60,12 @@ class Lru {
 }
 
 export class ChainStream {
+  /** Everything up to here has been fetched and handed to the handler. */
   cursor = -1
+  /** Everything up to here has been handled (at most one chunk behind `cursor`). */
+  handledTo = -1
+  /** Logs handed to the handler and not finished yet. */
+  queued = 0
   mode: 'starting' | 'catching_up' | 'live' = 'starting'
   private seen = new Lru(400_000)
   private buffer: RawLog[] = []
@@ -87,7 +95,7 @@ export class ChainStream {
       metrics.inc('backfill_skipped_blocks', head - cursor - this.opts.backfillMaxBlocks)
       cursor = head - this.opts.backfillMaxBlocks
     }
-    this.cursor = cursor
+    this.cursor = this.handledTo = cursor
     this.mode = head - cursor > 4 ? 'catching_up' : 'live'
     metrics.set('backfill_status', this.mode === 'catching_up' ? 'running' : 'idle')
     log.info('chain stream starting', { cursor, head, behind: head - cursor, resumed: saved !== null })
@@ -137,10 +145,11 @@ export class ChainStream {
     }
     if (!fresh.length) return
     metrics.inc('events', fresh.length)
+    this.queued += fresh.length
     this.queue = this.queue.then(() => this.handler(fresh, ctx)).catch(e => {
       metrics.inc('handler_errors')
       log.error('event handler failed', { error: errMsg(e) })
-    })
+    }).finally(() => { this.queued -= fresh.length })
     this.lastProcessedAt = Date.now()
   }
 
@@ -182,20 +191,27 @@ export class ChainStream {
           const now = Date.now()
           const missed = this.mode === 'live' ? logs.filter(l => !this.seen.has(logId(l))).length : 0
           if (missed) { metrics.inc('missed_events_recovered', missed); log.info('recovered events the socket missed', { count: missed, from, to: scannedTo }) }
+          // Catching up: this fetch overlapped with handling the previous
+          // chunk; let that finish before queueing more (see the header).
+          if (this.mode === 'catching_up') await this.queue
+          if (this.stopped) return
           // Old logs are replays; recent ones are broadcast like live ones.
           const old = logs.filter(l => l.blockTimestamp && now - parseInt(l.blockTimestamp, 16) * 1000 > replayAge)
           const recent = logs.filter(l => !(l.blockTimestamp && now - parseInt(l.blockTimestamp, 16) * 1000 > replayAge))
           if (old.length) this.dispatch(old, { replay: true, source: this.mode === 'live' ? 'reconcile' : 'backfill' })
           if (recent.length) this.dispatch(recent, { replay: false, source: this.mode === 'live' ? 'reconcile' : 'backfill' })
           this.cursor = scannedTo
-          metrics.set('last_processed_block', scannedTo)
-          metrics.set('lag_blocks', head - scannedTo)
+          this.queue = this.queue.then(() => {
+            this.handledTo = Math.max(this.handledTo, scannedTo)
+            metrics.set('last_processed_block', this.handledTo)
+          })
           this.saveCursor(scannedTo)
         }
         behind = head - this.cursor > 4
       }
+      metrics.set('lag_blocks', head - this.handledTo)
       if (this.mode === 'catching_up' && head - this.cursor <= 4) this.goLive()
-      else if (this.mode === 'catching_up') metrics.set('backfill_remaining_blocks', head - this.cursor)
+      else if (this.mode === 'catching_up') metrics.set('backfill_remaining_blocks', head - this.handledTo)
     } catch (e) {
       metrics.inc('reconcile_errors')
       log.warn('reconcile failed', { error: errMsg(e), cursor: this.cursor })
