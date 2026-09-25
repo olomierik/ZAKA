@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useWriteContract } from 'wagmi'
-import { ConnectKitButton } from 'connectkit'
+import { openConnectModal } from './ConnectWallet'
 import { parseUnits, formatUnits, type Address, type Hex } from 'viem'
 import { arc } from '../wagmi'
 import { client } from '../api/launchpad'
@@ -311,9 +311,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         <Note>{T("Trading opens once the ARCDEX swap router is deployed.")}</Note>
       ) : !me ? (
         <>
-          <ConnectKitButton.Custom>
-            {({ show }) => <button onClick={show} style={btn('var(--adx-accent)')}>{T("Connect Wallet")}</button>}
-          </ConnectKitButton.Custom>
+          <button onClick={openConnectModal} style={btn('var(--adx-accent)')}>{T("Connect Wallet")}</button>
           <Note>{T("Or unlock your")}{' '}<b>{T("trading wallet")}</b>{' '}{T("(right panel) for one-tap trades with no pop-ups.")}</Note>
         </>
       ) : (

@@ -163,7 +163,7 @@ export async function getPoolTrades(poolAddress: string): Promise<GeckoTrade[]> 
 
 export interface OhlcvCandle { time: number; open: number; high: number; low: number; close: number; volume: number }
 
-type ChartRes = '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
+export type ChartRes = '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
 
 // GeckoTerminal buckets OHLCV as {timeframe: day|hour|minute} + an `aggregate`
 // multiplier — map our chart-button resolutions onto that shape.

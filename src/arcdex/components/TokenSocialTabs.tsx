@@ -4,11 +4,13 @@ import TraderHover from './TraderHover'
 import { ARC_EXPLORER } from '../api/arcRpc'
 import { getMyLikes, getTheses, getTokenHolders, socialWrite, type HolderRow, type Profile, type Thesis } from '../api/social'
 import { shortAddr, type Trader } from '../lib/identity'
+import type { ChainHolders } from '../api/holders'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 
-// Under the chart on a coin page (fomo parity): Holders (ARCDEX traders
-// holding it, with PnL and average entry market cap), Swaps (every trade,
+// Under the chart on a coin page (fomo parity): Holders (every on-chain
+// holder from ARCDEX's own index, with PnL and average entry market cap for
+// those who trade on ARCDEX — or just the ARCDEX traders), Swaps (every trade,
 // with the market cap at that moment), Thesis (holders' notes with their
 // live position), and Top traders (recent flow).
 
@@ -28,6 +30,8 @@ interface Props {
   rows: TradeRow[]
   tradesLoaded: boolean
   profiles: Map<string, Profile>
+  /** On-chain holders (null: index unavailable or still loading). */
+  chainHolders?: ChainHolders | null
   trader: Trader
   positionUsd: number | null
   creator: string | null
@@ -67,8 +71,9 @@ export function Who({ address, profiles, navigate, creator }: { address: string;
   )
 }
 
-export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, profiles, trader, positionUsd, creator, priceUsd, supply, navigate, onProfilesNeeded, onThesesLoaded }: Props) {
+export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, profiles, chainHolders, trader, positionUsd, creator, priceUsd, supply, navigate, onProfilesNeeded, onThesesLoaded }: Props) {
   const [tab, setTab] = useState<Tab>('holders')
+  const [holderView, setHolderView] = useState<'all' | 'arcdex'>('all')
   const [theses, setTheses] = useState<Thesis[] | null>(null)
   const [holders, setHolders] = useState<HolderRow[] | null>(null)
   const [liked, setLiked] = useState<Set<number>>(new Set())
@@ -107,6 +112,11 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
     }
     return m
   }, [holders, priceUsd, supply])
+
+  // Usernames/avatars for the on-chain holders too.
+  const chainTop = chainHolders?.top
+  useEffect(() => { if (chainTop?.length) onProfilesNeeded(chainTop.filter(h => !h.tag).map(h => h.address)) }, [chainTop, onProfilesNeeded])
+  const showAll = holderView === 'all' && !!chainTop?.length
 
   const latestThesisBy = useMemo(() => {
     const m = new Map<string, Thesis>()
@@ -159,6 +169,8 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
   const td: React.CSSProperties = { padding: '8px 12px' }
   const swaps = rows.filter(r => r.usd >= minSwap)
   const holderRows = (holders ?? []).filter(h => !thesisOnly || latestThesisBy.has(h.trader))
+  const chainRows = (chainTop ?? []).filter(h => !thesisOnly || latestThesisBy.has(h.address))
+  const holderCount = chainHolders?.holders ?? holders?.length ?? 0
 
   const thesisCard = (t: Thesis, older = false) => {
     const pos = positionOf.get(t.author)
@@ -183,7 +195,7 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
   return (
     <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16, overflow: 'visible' }}>
       <div style={{ padding: '0 16px', borderBottom: '1px solid var(--adx-card-border)', display: 'flex', alignItems: 'center', overflowX: 'auto' }}>
-        {tabBtn('holders', T('Holders') + (holders?.length ? ` (${holders.length})` : ''))}
+        {tabBtn('holders', T('Holders') + (holderCount ? ` (${holderCount.toLocaleString()}${chainHolders && !chainHolders.complete ? '…' : ''})` : ''))}
         {tabBtn('swaps', T('Swaps'))}
         {tabBtn('thesis', T('Thesis') + (theses?.length ? ` (${theses.length})` : ''))}
         {tabBtn('traders', T('Top traders'))}
@@ -193,10 +205,53 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
             {[0, 10, 100, 1000].map(v => <option key={v} value={v}>{v === 0 ? T("Any size") : T('Min size {v}', { v: '>$' + (v >= 1000 ? '1K' : v) })}</option>)}
           </select>
         )}
+        {tab === 'holders' && !!chainTop?.length && (
+          <span style={{ display: 'inline-flex', border: '1px solid var(--adx-card-border)', borderRadius: 6, overflow: 'hidden', marginRight: 10, flexShrink: 0 }}>
+            {(['all', 'arcdex'] as const).map(v => (
+              <button key={v} onClick={() => setHolderView(v)} style={{ padding: '3px 9px', fontSize: '0.7rem', fontWeight: 700, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', background: holderView === v ? 'rgba(59,130,246,0.15)' : 'transparent', color: holderView === v ? 'var(--adx-accent)' : 'var(--text-muted)' }}>{v === 'all' ? T("All holders") : T("On ARCDEX")}</button>
+            ))}
+          </span>
+        )}
         {tab === 'holders' && <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', gap: 5, alignItems: 'center', whiteSpace: 'nowrap' }}><input type="checkbox" checked={thesisOnly} onChange={e => setThesisOnly(e.target.checked)} />{T("Thesis only")}</label>}
       </div>
 
-      {tab === 'holders' && (holders === null ? <Empty>{T("Loading holders…")}</Empty> : holderRows.length === 0 ? <Empty>{thesisOnly ? T("No holder has posted a thesis yet.") : T("No ARCDEX traders hold ${symbol} yet — buy some and you'll be first here.", { symbol })}</Empty> : (
+      {tab === 'holders' && showAll && (chainRows.length === 0 ? <Empty>{T("No holder has posted a thesis yet.")}</Empty> : (
+        <div style={{ overflow: 'auto', maxHeight: 480 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', minWidth: 680 }}>
+            <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>{['#', T('Holder'), T('Balance'), T('Supply'), T('Value'), T('PnL'), T('Thesis')].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <tbody>
+              {chainRows.map((h, i) => {
+                const pos = positionOf.get(h.address)
+                const ts = latestThesisBy.get(h.address)
+                const mine = trader.address?.toLowerCase() === h.address
+                return (
+                  <tr key={h.address} style={{ borderBottom: '1px solid var(--adx-card-border)', background: mine ? 'rgba(250,204,21,0.07)' : undefined }}>
+                    <td style={{ ...td, color: 'var(--text-muted)' }}>{i + 1}</td>
+                    <td style={td}>
+                      {h.tag === 'pool' ? <span style={{ fontSize: '0.76rem' }}>💧 {T("Liquidity pool")}</span>
+                        : h.tag === 'burn' ? <span style={{ fontSize: '0.76rem' }}>🔥 {T("Burned")}</span>
+                        : <Who address={h.address} profiles={profiles} navigate={navigate} creator={creator} />}
+                      {pos?.since && <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: 2 }}>◷ {dur(Date.now() - pos.since)}{' '}{T("hold")}</div>}
+                    </td>
+                    <td className="sensitive" style={{ ...td, fontFamily: 'var(--mono)' }}>{fmt(h.balance)}</td>
+                    <td style={{ ...td, fontFamily: 'var(--mono)' }}>{h.pct != null ? `${h.pct < 0.01 ? '<0.01' : h.pct.toFixed(2)}%` : '—'}</td>
+                    <td className="sensitive" style={{ ...td, fontFamily: 'var(--mono)' }}>{priceUsd ? usd(h.balance * priceUsd) : '—'}</td>
+                    <td className="sensitive" style={{ ...td, fontFamily: 'var(--mono)', color: pos ? (pos.pnl >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text-muted)' }}>{pos ? <>{pos.pnl >= 0 ? '+' : ''}{usd(pos.pnl)}{pos.pct !== null && <div style={{ fontSize: '0.66rem' }}>{pos.pct >= 0 ? '▲' : '▼'}{Math.abs(pos.pct).toFixed(2)}%</div>}</> : '—'}</td>
+                    <td style={{ ...td, maxWidth: 240 }}>{ts ? <span style={{ fontSize: '0.76rem' }}>♡ {ts.likes} · {ts.body.slice(0, 80)}{ts.body.length > 80 ? '…' : ''}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <div style={{ padding: '8px 16px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+            {chainHolders!.complete
+              ? T("Top {n} of {total} holders, live from the chain. PnL is shown for wallets that trade on ARCDEX.", { n: String(chainRows.length), total: chainHolders!.holders.toLocaleString() })
+              : T("Counting every holder on-chain… {pct}% done.", { pct: String(Math.floor(chainHolders!.progress * 100)) })}
+          </div>
+        </div>
+      ))}
+
+      {tab === 'holders' && !showAll && (holders === null ? <Empty>{T("Loading holders…")}</Empty> : holderRows.length === 0 ? <Empty>{thesisOnly ? T("No holder has posted a thesis yet.") : T("No ARCDEX traders hold ${symbol} yet — buy some and you'll be first here.", { symbol })}</Empty> : (
         <div style={{ overflow: 'auto', maxHeight: 480 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', minWidth: 640 }}>
             <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>{[T('Trader'), T('Position'), T('PnL'), T('Avg. entry'), T('Thesis')].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>

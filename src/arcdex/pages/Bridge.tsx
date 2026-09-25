@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAccount } from 'wagmi'
-import { ConnectKitButton } from 'connectkit'
+import { openConnectModal } from '../components/ConnectWallet'
 import type { EIP1193Provider } from 'viem'
 import { kit, getBridgeAdapter, BRIDGE_DESTINATIONS, computeBridgeFee, BRIDGE_FEE_BPS } from '../lib/bridgeKit'
 import type { BridgeResult } from '@circle-fin/bridge-kit'
@@ -113,11 +113,7 @@ export default function Bridge() {
         )}
 
         {!isConnected ? (
-          <ConnectKitButton.Custom>
-            {({ show }) => (
-              <button onClick={show} style={{ padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>{T("Connect Wallet")}</button>
-            )}
-          </ConnectKitButton.Custom>
+          <button onClick={openConnectModal} style={{ padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>{T("Connect Wallet")}</button>
         ) : (
           <button onClick={handleBridge} disabled={!amount || status === 'bridging'} style={{
             padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700,

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt } from 'wagmi'
-import { ConnectKitButton } from 'connectkit'
+import { openConnectModal } from './ConnectWallet'
 import { parseUnits, formatUnits, maxUint256, type Address } from 'viem'
 import { arc } from '../wagmi'
 import { LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, type LaunchpadToken } from '../api/launchpad'
@@ -170,11 +170,7 @@ export default function CurveSwapWidget({ token, onTraded }: Props) {
       )}
 
       {!isConnected ? (
-        <ConnectKitButton.Custom>
-          {({ show }) => (
-            <button onClick={show} style={{ padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>{T("Connect Wallet")}</button>
-          )}
-        </ConnectKitButton.Custom>
+        <button onClick={openConnectModal} style={{ padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>{T("Connect Wallet")}</button>
       ) : (
         <button onClick={handleSwap} disabled={!amountIn || parsedIn === 0n || step === 'approving' || step === 'swapping'}
           style={{ padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700,

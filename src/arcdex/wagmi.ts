@@ -1,5 +1,5 @@
 import { createConfig, http } from 'wagmi'
-import { getDefaultConfig } from 'connectkit'
+import { coinbaseWallet, injected, walletConnect } from 'wagmi/connectors'
 import { defineChain } from 'viem'
 
 // Arc mainnet — not in wagmi/chains yet, defined inline
@@ -25,15 +25,34 @@ export const SWAP_ROUTER02 = '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45' as con
 export const V3_FACTORY    = '0xf0db7b58379503491d857db50ac9ece64c653918' as const
 export const MULTICALL3    = '0xcA11bde05977b3631167028862bE2a173976CA11' as const
 
-export const wagmiConfig = createConfig(
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-  getDefaultConfig({
-    chains:    [arc],
-    transports: { [arc.id]: http('https://rpc.mainnet.arc.io') },
-    walletConnectProjectId: (import.meta.env.VITE_WC_PROJECT_ID as string | undefined) ?? 'e5f3a751de0ba10999179b7f1e2d557b',
-    appName:   'ARCDEX',
-    appDescription: 'Arc Mainnet DEX Terminal — trade any Arc token with a 1% fee',
-    appUrl:    'https://zakaapp-drab.vercel.app',
-    appIcon:   '/arcdex-icon.png',
-  }) as Parameters<typeof createConfig>[0]
-)
+const APP_ICON = 'https://arcdex.online/arcdex-icon.png'
+
+/** WalletConnect without the eager start-up. wagmi's connector loads the
+ * WalletConnect SDK (~860 KB) and opens its relay socket in setup(), which
+ * runs on every page load for every visitor. Its connect() registers every
+ * listener it needs, so setup is skipped: the SDK now loads only when
+ * someone picks WalletConnect or reconnects a WalletConnect session. */
+function lazyWalletConnect(params: Parameters<typeof walletConnect>[0]) {
+  const create = walletConnect(params)
+  return ((config: Parameters<typeof create>[0]) => ({ ...create(config), async setup() {} })) as typeof create
+}
+
+// Same connector ids ConnectKit used (metaMask, coinbaseWalletSDK,
+// walletConnect), so wallets connected before reconnect as they were. Other
+// browser wallets (Rabby, OKX, Phantom…) announce themselves (EIP-6963) and
+// are added automatically. The WalletConnect and Coinbase SDKs load only
+// when someone picks them — see ConnectWallet.tsx and lib/reconnect.ts.
+export const wagmiConfig = createConfig({
+  chains: [arc],
+  transports: { [arc.id]: http('https://rpc.mainnet.arc.io') },
+  connectors: [
+    injected({ target: 'metaMask' }),
+    injected({ shimDisconnect: true }),
+    lazyWalletConnect({
+      projectId: (import.meta.env.VITE_WC_PROJECT_ID as string | undefined) ?? 'e5f3a751de0ba10999179b7f1e2d557b',
+      showQrModal: true,
+      metadata: { name: 'ARCDEX', description: 'The social trading terminal for Arc', url: 'https://arcdex.online', icons: [APP_ICON] },
+    }),
+    coinbaseWallet({ appName: 'ARCDEX', appLogoUrl: APP_ICON }),
+  ],
+})

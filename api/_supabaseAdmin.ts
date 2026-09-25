@@ -59,6 +59,25 @@ export function json(status: number, body: unknown, cache = 'no-store'): Respons
   })
 }
 
+/** Last good copy of an upstream response (v4 `arcdex_kv`). Null when
+ * missing — or when the table doesn't exist yet, so callers just skip it. */
+export async function kvGet<T>(key: string): Promise<{ value: T; age: number } | null> {
+  if (!adminReady) return null
+  try {
+    const r = await db<{ value: T; updated_at: string }[]>(`arcdex_kv?key=eq.${encodeURIComponent(key)}&select=value,updated_at`)
+    return r.length ? { value: r[0].value, age: Date.now() - Date.parse(r[0].updated_at) } : null
+  } catch {
+    return null
+  }
+}
+
+export async function kvSet(key: string, value: unknown): Promise<void> {
+  if (!adminReady) return
+  try {
+    await db('arcdex_kv?on_conflict=key', { method: 'POST', body: [{ key, value, updated_at: new Date().toISOString() }], prefer: 'resolution=merge-duplicates,return=minimal' })
+  } catch { /* cache only */ }
+}
+
 /** True if the owner signed out of all devices after this token was
  * issued. Missing table (v3 migration not run yet) = never revoked. */
 export async function sessionRevoked(me: string, iat: number): Promise<boolean> {

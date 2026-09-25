@@ -5,7 +5,7 @@ import {
 } from '../api/radardex'
 import { getAllLaunchpadTokensAsArcTokens } from '../api/launchpad'
 import { getArgusTokens } from '../api/argus'
-import { getArgusMarket, argusPoolToArcToken } from '../api/argusMarket'
+import { cachedArgusMarket, getArgusMarket, argusPoolToArcToken } from '../api/argusMarket'
 import { curateTokens, type CuratedGroup } from '../lib/curate'
 import type { Page } from '../App'
 import { toggleWatch, usePrefs } from '../lib/prefs'
@@ -310,6 +310,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     setLoading(false) // both done — even if everything came back empty
   }, [publish])
 
+  // The last list this browser saw, at once; the fresh one replaces it.
+  useEffect(() => { const c = cachedArgusMarket(); if (c) publish(c.map(argusPoolToArcToken)) }, [publish])
   useEffect(() => { void load() }, [load])
   useEffect(() => {
     const iv = setInterval(() => void load(), 15_000)

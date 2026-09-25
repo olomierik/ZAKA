@@ -67,11 +67,20 @@ Circle's Bridge Kit has a native mechanism for this (`kit.setCustomFeePolicy`), 
 Every Argus coin across all 8 Portals, live, the way argus.world does it: **GeckoTerminal is the primary data source; Arc RPC fills in only what GeckoTerminal doesn't carry.**
 
 - **Market list — `api/argus.ts` (edge).** Server-side aggregator of GeckoTerminal. Sources: $ARGUS's own pools, which also carry the ARGUS-quoted launches; the `argus` dex pools by 24h volume; and new pools. One row per token, its deepest pool. CDN-cached `s-maxage=60`; partial results (some calls throttled) are cached only 15s. It works to a 17s time budget, so a throttled upstream yields a shorter list, never a timeout.
+  - **Stored list (v4 `arcdex_kv`):** the last list is kept in Supabase and served at once (~0.2s); a stale one is rebuilt in the background (`waitUntil`). A throttled rebuild keeps coins it missed for 15 minutes. Before the v4 migration, a cold CDN still means a 10–17s build.
+  - The browser keeps the last list too (`localStorage` `arcdex:market:v1`, ≤24h), so a returning visitor's Terminal paints instantly.
+  - `/api/gecko` saves each good GeckoTerminal answer to `arcdex_kv` and serves that copy (≤6h old, `X-Arcdex-Age` header) when GeckoTerminal throttles, instead of passing the 429 to the browser.
   - GeckoTerminal quirk: on `/tokens/{X}/pools`, `fdv_usd`/`market_cap_usd` describe **X**, not each pool's base. Those caps are dropped and refilled from `/tokens/multi/…`.
   - The Terminal merges refreshes, so a short (throttled) list doesn't remove coins; a coin drops out after 10 minutes unseen.
 - **Token page — `src/arcdex/pages/ArgusTokenPage.tsx`**, opened for any Terminal row with `launchpad === 'Argus'`.
-  - From GeckoTerminal via `/api/gecko`: price and 5m/1h/6h/24h change, MC/FDV, liquidity, volume, buys/sells, holders, top-10 %, GT score, honeypot flag, banner, description and socials, and a candle chart refreshed every 20s.
-  - Live trades: GeckoTerminal history (with maker wallets) merged with swaps pushed over Arc's WebSocket (`src/arcdex/api/argusLive.ts`) the moment their block lands. The two are deduped by tx hash.
+  - **Straight from the chain (`src/arcdex/api/poolSwaps.ts`):** every swap in the pool. History comes from `eth_getLogs` on Blockdaemon, newest first and drawn as it arrives. Each new swap is pushed over Arc's WebSocket the moment its block lands, and gaps after a reconnect or a background tab are backfilled.
+    - Swaps drive the live price (the pool price after the last swap), the Swaps list, the chart's candles (1s/15s on-chain only; 1m+ merged onto GeckoTerminal's older candles, `lib/candles.ts`) and the chart's trader avatars.
+    - Makers are each transaction's sender, batch-fetched. ARGUS-quoted coins are priced through the ARGUS/USDC v3 pool's `slot0`.
+    - GeckoTerminal's trade list is used only if the chain can't be read.
+  - **True holders (`/api/holders`, `api/_holdersCore.ts`, hook `api/holders.ts` → `useChainHolders`):** every holder's exact balance, rebuilt from the token's Transfer logs from the block its contract was created in (binary search on `getCode`). Stored in Supabase (v4 migration), so each request only scans new blocks.
+    - A token's first count runs in ~14s slices across requests. The page polls while it runs and shows GeckoTerminal's count meanwhile. ARGUS, the busiest (~2 transfers per block), takes a few minutes the first time.
+    - The Holders tab lists the top 50 on-chain holders (the liquidity pool and burn address are tagged), with ARCDEX PnL and theses for those who trade here; "On ARCDEX" shows the old ARCDEX-only view. Top-10 % excludes the pool and burn address.
+  - From GeckoTerminal via `/api/gecko`: 5m/1h/6h/24h change, MC/FDV (scaled to the live price), liquidity, 24h volume, buys/sells, top-10 % (until the holder index is complete), GT score, honeypot flag, banner, description and socials.
   - From Arc RPC (`getArgusOnchain` in `src/arcdex/api/argusMarket.ts`): creator wallet, Portal #, hook, creator buy/sell tax, bonded. Each Portal is decoded with its own ABI.
   - Portal 8 records have no creator, so its "Creator payout wallet" comes from the creator registry's `payoutOf`.
 - **Swap — `src/arcdex/components/ArgusSwapWidget.tsx`.**
@@ -203,6 +212,30 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
 - **`/burn` (in the app):** a public dashboard. When the connected wallet is the fee wallet, it also shows owner controls: "Buy back $ARCD" (opens the coin page) and "Burn $ARCD" (transfer to `0x…dEaD`, with confirmation).
   - The navbar 🔥 ticker shows $ARCD burned and links here.
 
+## Speed + live data (2026-09-25)
+
+- **Database v4:** `supabase/migrations/20260927000000_arcdex_speed.sql`, tested on PGlite. **The owner must run it** after v3. Until then, `/api/holders` answers 503 (pages show GeckoTerminal's count), and `/api/argus` and `/api/gecko` work as before, without their stored copies.
+  - `arcdex_kv` (private): last good upstream responses.
+  - `arcdex_holder_scans` and `arcdex_holder_balances` (public read): the holder index.
+  - `arcdex_apply_holder_deltas()` (service role only): applies one contiguous block range at a time, so two scans can't double-count.
+- **Arc RPC for logs — `api/_arcLogs.ts`,** shared by edge functions, the browser and scripts. Measured endpoints:
+  - Blockdaemon: 100k-block `getLogs`, bursts OK, CORS, but only ~900k blocks of history (≈5 days); older ranges say "pruned".
+  - Beam (`rpc.beamrpc.com`): full archive, 10k ranges, bursts OK.
+  - public and QuickNode: full archive, 9k ranges, about 2 calls/s.
+  - drpc: free plan refuses history. The explorer is behind a Cloudflare challenge.
+  - `scanLogs` sends recent blocks to Blockdaemon and older ones across the archives, 5 workers in parallel. It splits on "max results" (20k logs per answer) and on timeouts, and returns the contiguous prefix it finished before its deadline.
+- **Bundle:** `/app` loads ~0.7 MB of JS (was 2.58 MB).
+  - ConnectKit removed (see Tech Stack).
+  - The WalletConnect connector's eager `setup()` is skipped (`lazyWalletConnect` in `wagmi.ts`).
+  - supabase-js replaced by a 100-line read-only PostgREST client, `lib/postgrest.ts`; `scripts/test-postgrest.ts` checks it matches supabase-js.
+- **Scrolling:**
+  - `.main-content` scrolls any page without its own scroller (Swap, Bridge, Portfolio and Launchpad were cut off below the fold).
+  - `.app-shell` falls back to `100vh` where `dvh` isn't supported.
+  - The chart no longer captures the mouse wheel or vertical swipes (zoom with a pinch, the time axis, or the wheel in fullscreen).
+- **Tests:** `bun scripts/test-candles.ts`, `bun scripts/test-postgrest.ts`. Live against mainnet, no funds or keys:
+  - `bun scripts/test-pool-swaps.ts`: on-chain swap loading and prices vs GeckoTerminal.
+  - `bun scripts/test-holders.ts [token] [createdIso]`: a full holder count; it must report 0 negative balances.
+
 ## Hosting — arcdex.online only
 
 **Every commit to `main` deploys to arcdex.online, and nowhere else** (owner decision, 2026-09-24).
@@ -221,7 +254,7 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
 - Frontend: React 18, Vite, TypeScript, Tailwind CSS
 - Web3: wagmi v2, viem v2, ConnectKit
 - Contracts: Solidity 0.8.28 + Foundry. Sources in `contracts/`, unit tests in `contracts/test/*.t.sol`. Build with `bun run contracts:build` (`forge build`), test with `bun run contracts:test` (`forge test`).
-- Wallet: injected (MetaMask, etc.)
+- Wallet: wagmi connectors with ARCDEX's own connect modal (`src/arcdex/components/ConnectWallet.tsx`; ConnectKit was removed 2026-09-25, it was ~40% of the app's JS). Browser wallets announce themselves (EIP-6963); WalletConnect (QR / mobile) and Coinbase Wallet load their SDKs only when picked, and only the last-used wallet is reconnected on load (`lib/reconnect.ts`). Connector ids match ConnectKit's, so earlier sessions reconnect.
 - Chain: Arc Testnet (Chain ID: 5042002, imported from `viem/chains`)
 - Token: USDC (6 decimals) (Address: 0x3600000000000000000000000000000000000000, Chain: Arc Testnet)
 - Toasts: Sonner

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt } from 'wagmi'
-import { ConnectKitButton } from 'connectkit'
+import { openConnectModal } from '../components/ConnectWallet'
 import { parseUnits } from 'viem'
 import { arc } from '../wagmi'
 import { getAllLaunchpadTokens, LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, type LaunchpadToken } from '../api/launchpad'
@@ -205,9 +205,7 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('Free to launch')}{initialBuy ? ' + ' + T('{usd} initial buy', { usd: '$' + initialBuy }) : ''}. {T('1B fixed supply — 5% to the platform, 95% into the curve, no team pre-mine. Every trade also pays a flat 1% platform fee on top of your {tax}% tax. You keep 60% of your tax ({keep}% of every trade), forever.', { tax: taxPct || 0, keep: ((taxBps * 0.6) / 100).toFixed(2) })}</div>
         {error && <div style={{ fontSize: '0.72rem', color: '#ef4444' }}>{error}</div>}
         {!isConnected ? (
-          <ConnectKitButton.Custom>
-            {({ show }) => <button onClick={show} style={primaryBtnStyle}>{T("Connect Wallet")}</button>}
-          </ConnectKitButton.Custom>
+          <button onClick={openConnectModal} style={primaryBtnStyle}>{T("Connect Wallet")}</button>
         ) : (
           <button onClick={() => void submit()} disabled={!name || !symbol || step !== 'idle'} style={{ ...primaryBtnStyle, opacity: (!name || !symbol) ? 0.5 : 1 }}>
             {step === 'uploading' ? T("Uploading…") : step === 'approving' ? T("Approving USDC…") : step === 'creating' ? T("Launching…") : needsApprove ? T("Approve USDC") : T("Launch token")}

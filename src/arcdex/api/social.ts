@@ -6,16 +6,16 @@
 // api/_session.ts). If the tables don't exist yet, reads return empty so
 // the UI shows "no data yet" instead of breaking.
 
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { createPostgrest, type PostgrestClient } from '../lib/postgrest'
 import type { Trader } from '../lib/identity'
 
 const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 
-let sb: SupabaseClient | null = null
-function client(): SupabaseClient | null {
+let sb: PostgrestClient | null = null
+function client(): PostgrestClient | null {
   if (!URL || !KEY) return null
-  if (!sb) sb = createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } })
+  if (!sb) sb = createPostgrest(URL, KEY)
   return sb
 }
 

@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Address } from 'viem'
 import {
   getArgusTokenPools, getArgusTokenInfo, getArgusTrades, getArgusOnchain, buildSwapRoute, copycatOf,
-  USDC_ADDRESS, type ArgusPool, type ArgusTokenInfo, type ArgusTrade, type ArgusOnchain, type SwapRoute,
+  ARGUS_TOKEN, USDC_ADDRESS, type ArgusPool, type ArgusTokenInfo, type ArgusTrade, type ArgusOnchain, type SwapRoute,
 } from '../api/argusMarket'
-import { subscribePoolSwaps, type LiveSwap } from '../api/argusLive'
+import { byRecency, knownMaker, loadPoolSwaps, poolMeta, quoteUsd, resolveMakers, subscribePoolSwaps, type PoolSwap } from '../api/poolSwaps'
+import { useChainHolders } from '../api/holders'
+import type { Tick } from '../lib/candles'
 import PriceChart, { type ChartTrade } from '../components/PriceChart'
 import ArgusSwapWidget from '../components/ArgusSwapWidget'
 import TokenSocialTabs, { type TradeRow } from '../components/TokenSocialTabs'
@@ -17,16 +19,18 @@ import { useTrader } from '../lib/identity'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 
-// Full page for one Argus launch. Live market data (price, volume,
-// liquidity, candles, trade history, holders, socials) comes from
-// GeckoTerminal — the same source argus.world uses. Arc RPC supplies what
-// GeckoTerminal doesn't carry (creator wallet, Portal, hook, taxes) and a
-// WebSocket push of each swap the moment its block lands, ahead of
-// GeckoTerminal's indexing.
+// Full page for one Argus launch. What moves is read straight from the
+// chain: every swap in the pool (history from the logs, then each new one
+// over Arc's WebSocket the moment its block lands) drives the price, the
+// candles and the trades list, and holders come from ARCDEX's own index of
+// the token's transfers. GeckoTerminal supplies the rest (24h stats,
+// liquidity, older candles, socials) and stands in if the chain can't be
+// read. Arc RPC also gives what GeckoTerminal doesn't carry (creator
+// wallet, Portal, hook, taxes).
 
 interface Props { address: string; pool: string; navigate: (p: Page) => void }
 
-// live = pushed from the chain, not yet indexed by GeckoTerminal
+// live = pushed over the WebSocket during this visit
 type Row = TradeRow
 
 const card: React.CSSProperties = { background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16 }
@@ -62,9 +66,14 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   const [chain, setChain] = useState<ArgusOnchain | null>(null)
   const [route, setRoute] = useState<SwapRoute | null>(null)
   const [routeLoading, setRouteLoading] = useState(true)
-  const [trades, setTrades] = useState<ArgusTrade[]>([])
-  const [live, setLive] = useState<LiveSwap[]>([])
-  const [tradesLoaded, setTradesLoaded] = useState(false)
+  // Every swap in the pool, newest first (null while loading).
+  const [swaps, setSwaps] = useState<PoolSwap[] | null>(null)
+  const [onchainFailed, setOnchainFailed] = useState(false)
+  // GeckoTerminal's trade list — only if the chain can't be read.
+  const [gtTrades, setGtTrades] = useState<ArgusTrade[]>([])
+  const [gtLoaded, setGtLoaded] = useState(false)
+  const [qUsd, setQUsd] = useState<number | null>(null)
+  const [makersTick, setMakersTick] = useState(0)
   const [, tick] = useState(0)
   const trader = useTrader()
   const me = trader.address?.toLowerCase() ?? null
@@ -132,39 +141,83 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     return () => { cancelled = true }
   }, [address, activePool, pools === null])
 
-  // Trade history (makers + USD values) from GeckoTerminal…
-  const loadTrades = useMemo(() => () => !activePool ? Promise.resolve() : getArgusTrades(activePool, address).then(t => { setTrades(t); setTradesLoaded(true) }).catch(() => setTradesLoaded(true)), [activePool, address])
-  useEffect(() => {
-    setTrades([]); setLive([]); setTradesLoaded(false)
-    void loadTrades()
-    const id = setInterval(() => { if (!document.hidden) void loadTrades() }, 10_000)
-    return () => clearInterval(id)
-  }, [loadTrades])
-
-  // …plus every swap pushed straight from the chain as it happens.
+  // The pool's quote side: from GeckoTerminal's pool data, or — while that's
+  // still loading — from the on-chain route.
   const quoteAddr = active?.quote.address
+    ?? (route ? (route.kind === 'v4' && route.via === 'ARGUS' ? ARGUS_TOKEN.toLowerCase() : USDC_ADDRESS.toLowerCase()) : undefined)
+
+  // Every swap, from the chain: history first (newest drawn as soon as it
+  // arrives), then each new one the moment its block lands.
   useEffect(() => {
-    if (!quoteAddr) return
-    const tokenIsCurrency0 = address.toLowerCase() < quoteAddr
-    const quoteDecimals = quoteAddr === USDC_ADDRESS.toLowerCase() ? 6 : 18
-    return subscribePoolSwaps(activePool, tokenIsCurrency0, quoteDecimals, s => setLive(prev => [s, ...prev].slice(0, 100)))
+    setSwaps(null); setOnchainFailed(false)
+    if (!activePool || !quoteAddr) return
+    const meta = poolMeta(activePool, address, quoteAddr)
+    let alive = true
+    const add = (fresh: PoolSwap[]) => {
+      if (!alive) return
+      setSwaps(prev => {
+        const seen = new Set((prev ?? []).map(x => x.id))
+        const next = fresh.filter(x => !seen.has(x.id))
+        if (prev && next.length === 0) return prev
+        return [...next, ...(prev ?? [])].sort(byRecency).slice(0, 6_000)
+      })
+    }
+    // Subscribe first, so nothing lands between the history and the stream.
+    const unsub = subscribePoolSwaps(meta, add)
+    loadPoolSwaps(meta, { onProgress: add })
+      .then(r => add(r.swaps))
+      .catch(() => { if (alive) { setOnchainFailed(true); setSwaps(prev => prev ?? []) } })
+    return () => { alive = false; unsub() }
   }, [activePool, quoteAddr, address])
+
+  // USD per quote unit: USDC = 1; ARGUS from its own pool's live price.
+  useEffect(() => {
+    setQUsd(null)
+    if (!quoteAddr) return
+    let alive = true
+    const load = () => void quoteUsd(quoteAddr).then(v => { if (alive && v) setQUsd(v) })
+    load()
+    const id = setInterval(() => { if (!document.hidden) load() }, 15_000)
+    return () => { alive = false; clearInterval(id) }
+  }, [quoteAddr])
+  const usdPerQuote = qUsd ?? (active?.priceUsd && swaps?.[0]?.price ? active.priceUsd / swaps[0].price : null)
+
+  // Who made each recent trade (the transaction's sender), in batches.
+  useEffect(() => {
+    const need = (swaps ?? []).slice(0, 120).map(x => x.txHash).filter(h => !knownMaker(h))
+    if (need.length === 0) return
+    const id = setTimeout(() => void resolveMakers(need).then(() => setMakersTick(n => n + 1)).catch(() => {}), 200)
+    return () => clearTimeout(id)
+  }, [swaps])
+
+  // GeckoTerminal's trades, only if the chain couldn't be read.
+  const loadGtTrades = useMemo(() => () => !activePool ? Promise.resolve() : getArgusTrades(activePool, address).then(t => { setGtTrades(t); setGtLoaded(true) }).catch(() => setGtLoaded(true)), [activePool, address])
+  useEffect(() => {
+    if (!onchainFailed) return
+    void loadGtTrades()
+    const id = setInterval(() => { if (!document.hidden) void loadGtTrades() }, 10_000)
+    return () => clearInterval(id)
+  }, [onchainFailed, loadGtTrades])
+  const tradesLoaded = onchainFailed ? gtLoaded : swaps !== null
 
   // Re-render every 5s so "ago" timestamps stay honest.
   useEffect(() => { const id = setInterval(() => tick(n => n + 1), 5000); return () => clearInterval(id) }, [])
 
   const rows: Row[] = useMemo(() => {
-    const known = new Set(trades.map(t => t.txHash.toLowerCase()))
-    const quoteIsUsdc = active?.quote.address === USDC_ADDRESS.toLowerCase()
-    const pushed: Row[] = live
-      .filter(s => !known.has(s.txHash.toLowerCase()))
-      .map(s => ({
-        txHash: s.txHash, maker: null, kind: s.kind, tokenAmount: s.tokenAmount, timestamp: s.receivedAt, live: true,
-        usd: quoteIsUsdc ? s.quoteAmount : s.tokenAmount * (active?.priceUsd ?? 0),
-      }))
-    const indexed: Row[] = trades.map(t => ({ ...t, live: false }))
-    return [...pushed, ...indexed].sort((a, b) => b.timestamp - a.timestamp).slice(0, 100)
-  }, [trades, live, active])
+    if (onchainFailed && !swaps?.length) return gtTrades.map(t => ({ ...t, live: false })).slice(0, 100)
+    return (swaps ?? []).slice(0, 100).map(x => ({
+      txHash: x.txHash, maker: knownMaker(x.txHash), kind: x.kind, tokenAmount: x.tokenAmount,
+      usd: usdPerQuote ? x.quoteAmount * usdPerQuote : 0, timestamp: x.time, live: !!x.live,
+    }))
+    // makersTick: re-read makers once a batch resolves
+  }, [swaps, onchainFailed, gtTrades, usdPerQuote, makersTick]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The chart's ticks: every swap's pool price and size, in USD.
+  const ticks: Tick[] | null = useMemo(() => {
+    if (swaps === null || !usdPerQuote) return null
+    return swaps.map(x => ({ time: x.time, priceUsd: x.price * usdPerQuote, usd: x.quoteAmount * usdPerQuote }))
+  }, [swaps, usdPerQuote])
+  const streaming = !!swaps?.some(x => x.live)
 
   useEffect(() => { needProfiles(rows.flatMap(r => (r.maker ? [r.maker] : []))) }, [rows, needProfiles])
   useEffect(() => { if (chain?.creator) needProfiles([chain.creator]) }, [chain?.creator, needProfiles])
@@ -195,16 +248,39 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     }
   }).filter(m => m.priceUsd > 0), [theses, rows, profiles, me, active])
 
-  const onTraded = useCallback(() => { void loadTrades(); setRefreshKey(k => k + 1) }, [loadTrades])
+  // Your own trade shows up over the WebSocket within a block; this just
+  // refreshes the position card.
+  const onTraded = useCallback(() => { setRefreshKey(k => k + 1) }, [])
 
   const symbol = active?.token.symbol || info?.symbol || '…'
   const name = active?.token.name || info?.name || ''
   const image = info?.image ?? active?.token.image ?? null
-  const priceUsd = active?.priceUsd ?? 0
+  // The pool's price only changes on a swap, so the latest swap's price IS
+  // the live price (GeckoTerminal's is 10-60s behind).
+  const livePrice = swaps?.[0] && usdPerQuote ? swaps[0].price * usdPerQuote : null
+  const priceUsd = livePrice ?? active?.priceUsd ?? 0
   const copy = symbol === '…' ? null : copycatOf(symbol, address)
-  const mcap = active?.marketCapUsd ?? active?.fdvUsd ?? null
+  const gtMcap = active?.marketCapUsd ?? active?.fdvUsd ?? null
   // Circulating supply, for MCap-at-trade and the chart's MCap mode.
-  const supply = mcap && priceUsd ? mcap / priceUsd : null
+  const supply = gtMcap && active?.priceUsd ? gtMcap / active.priceUsd : null
+  const mcap = supply && priceUsd ? supply * priceUsd : gtMcap
+
+  // Tick the header price green/red as it moves.
+  const lastPrice = useRef(0)
+  const [priceDir, setPriceDir] = useState<'up' | 'down' | null>(null)
+  useEffect(() => {
+    if (lastPrice.current && priceUsd && priceUsd !== lastPrice.current) setPriceDir(priceUsd > lastPrice.current ? 'up' : 'down')
+    lastPrice.current = priceUsd
+  }, [priceUsd])
+
+  // True holders from ARCDEX's own index (GeckoTerminal's is hours old).
+  const chainHolders = useChainHolders(address, active?.createdAt)
+  const infoLive = useMemo(() => info && chainHolders?.complete
+    ? { ...info, holders: chainHolders.holders, top10Pct: chainHolders.top10Pct ?? info.top10Pct }
+    : info, [info, chainHolders])
+  const holdersLabel = chainHolders?.complete ? chainHolders.holders.toLocaleString()
+    : info?.holders != null ? info.holders.toLocaleString()
+    : chainHolders ? chainHolders.holders.toLocaleString() + '…' : '—'
 
   // Recently viewed (search box) once we know what this coin is called.
   useEffect(() => {
@@ -235,7 +311,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
               <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-muted)' }}>{name}</span>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--text)', fontFamily: 'var(--mono)' }}>{active ? fmtPrice(priceUsd) : '…'}</span>
+              <span key={priceUsd} className={priceDir ? `price-tick ${priceDir}` : undefined} style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--text)', fontFamily: 'var(--mono)', borderRadius: 4, padding: '0 2px' }}>{priceUsd ? fmtPrice(priceUsd) : '…'}</span>
               {active && <span style={{ fontWeight: 700, fontSize: '0.8rem', color: active.change.h24 >= 0 ? 'var(--green)' : 'var(--red)' }}>{pct(active.change.h24)}</span>}
               <span style={{ background: 'rgba(168,85,247,0.15)', color: '#c084fc', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: '1px solid rgba(168,85,247,0.35)' }}>
                 {chain?.portal ? `ARGUS · Portal ${chain.portal}` : active?.dex === 'argus' ? T("ARGUS") : active?.dex ? active.dex.replace(/-arc$/, '').replace(/-/g, ' ').toUpperCase() : '…'}
@@ -263,14 +339,14 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
             ['1h', pct(active.change.h1), active.change.h1 >= 0 ? 'var(--green)' : 'var(--red)'],
             ['6h', pct(active.change.h6), active.change.h6 >= 0 ? 'var(--green)' : 'var(--red)'],
             ['24h', pct(active.change.h24), active.change.h24 >= 0 ? 'var(--green)' : 'var(--red)'],
-            [T('Market Cap'), fmt(active.marketCapUsd ?? active.fdvUsd, '$'), 'var(--text)'],
+            [T('Market Cap'), fmt(mcap, '$'), 'var(--text)'],
             ['FDV', fmt(active.fdvUsd, '$'), 'var(--text)'],
             [T('Liquidity'), fmt(active.liquidityUsd, '$'), 'var(--text)'],
             [T('Volume 24h'), fmt(active.volume24h, '$'), 'var(--text)'],
             [T('Buys 24h'), active.txns24h.buys.toLocaleString(), 'var(--green)'],
             [T('Sells 24h'), active.txns24h.sells.toLocaleString(), 'var(--red)'],
-            [T('Holders'), info?.holders != null ? info.holders.toLocaleString() : '—', 'var(--text)'],
-            [T('Top 10 hold'), info?.top10Pct != null ? `${info.top10Pct.toFixed(1)}%` : '—', 'var(--text)'],
+            [T('Holders'), holdersLabel, 'var(--text)'],
+            [T('Top 10 hold'), infoLive?.top10Pct != null ? `${infoLive.top10Pct.toFixed(1)}%` : '—', 'var(--text)'],
           ] as [string, string, string][]).map(([label, val, color]) => (
             <div key={label}>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', marginBottom: 2 }}>{label}</div>
@@ -290,11 +366,11 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ ...card, padding: 16 }}>
             <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{T("PRICE CHART · USD")}</div>
-            <PriceChart poolAddress={activePool || null} trades={chartTrades} thesisMarks={thesisMarks} friends={friends} supply={supply} symbol={symbol}
+            <PriceChart poolAddress={activePool || null} ticks={onchainFailed ? undefined : ticks} live={streaming} trades={chartTrades} thesisMarks={thesisMarks} friends={friends} supply={supply} symbol={symbol}
               onTraderClick={a => navigate({ name: 'trader', address: a })} />
           </div>
 
-          <TokenSocialTabs token={address} symbol={symbol} rows={rows} tradesLoaded={tradesLoaded} profiles={profiles}
+          <TokenSocialTabs token={address} symbol={symbol} rows={rows} tradesLoaded={tradesLoaded} profiles={profiles} chainHolders={chainHolders}
             trader={trader} positionUsd={positionUsd} creator={chain?.creator ?? null} priceUsd={priceUsd} supply={supply}
             navigate={navigate} onProfilesNeeded={needProfiles} onThesesLoaded={setTheses} />
         </div>
@@ -302,16 +378,16 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         <div className="token-detail-swap">
           <div style={{ ...card, overflow: 'hidden' }}>
             <ArgusSwapWidget token={address as Address} symbol={symbol} tokenImage={image} priceUsd={priceUsd}
-              marketCapUsd={active?.marketCapUsd ?? active?.fdvUsd ?? null} route={route} routeLoading={routeLoading}
+              marketCapUsd={mcap} route={route} routeLoading={routeLoading}
               buyTaxBps={chain?.buyTaxBps} sellTaxBps={chain?.sellTaxBps} onTraded={onTraded} unverified={info ? !info.verified : false} />
           </div>
 
           <PositionCard token={address} symbol={symbol} image={image} priceUsd={priceUsd} trader={trader} rows={rows}
             refreshKey={refreshKey} onPositionUsd={setPositionUsd} />
 
-          <SafetyPanel token={address} info={info} chain={chain} liquidityUsd={active?.liquidityUsd ?? null} rows={rows} />
+          <SafetyPanel token={address} info={infoLive} chain={chain} liquidityUsd={active?.liquidityUsd ?? null} rows={rows} />
 
-          <AboutPanel address={address} symbol={symbol} info={info} pool={active} chain={chain} rows={rows} supply={supply} profiles={profiles} navigate={navigate} />
+          <AboutPanel address={address} symbol={symbol} info={infoLive} pool={active} chain={chain} rows={rows} supply={supply} profiles={profiles} navigate={navigate} />
         </div>
       </div>
     </div>

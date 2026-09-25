@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ConnectKitButton } from 'connectkit'
+import { openConnectModal } from '../components/ConnectWallet'
 import Avatar from '../components/Avatar'
 import ProfileEditor from '../components/ProfileEditor'
 import {
@@ -87,7 +87,7 @@ export default function RewardsPage({ navigate }: { navigate: (p: Page) => void 
 
       {!me ? (
         <div style={{ marginTop: 20 }}>
-          <ConnectKitButton.Custom>{({ show }) => <button onClick={show} style={btn('var(--adx-accent)')}>{T("Connect wallet to get your link")}</button>}</ConnectKitButton.Custom>
+          <button onClick={openConnectModal} style={btn('var(--adx-accent)')}>{T("Connect wallet to get your link")}</button>
           <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: 8 }}>{T("Or unlock your trading wallet in the right panel.")}</div>
         </div>
       ) : (

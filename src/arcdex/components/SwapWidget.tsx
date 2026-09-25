@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt } from 'wagmi'
-import { ConnectKitButton } from 'connectkit'
+import { openConnectModal } from './ConnectWallet'
 import { parseUnits, formatUnits, maxUint256 } from 'viem'
 import { arc } from '../wagmi'
 import type { ArcToken } from '../api/radardex'
@@ -213,15 +213,11 @@ export default function SwapWidget({ token }: Props) {
 
       {/* CTA */}
       {!isConnected ? (
-        <ConnectKitButton.Custom>
-          {({ show }) => (
-            <button onClick={show} style={{
+        <button onClick={openConnectModal} style={{
               padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700,
               background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer',
               width: '100%',
             }}>{T("Connect Wallet")}</button>
-          )}
-        </ConnectKitButton.Custom>
       ) : (
         <button
           onClick={handleSwap}

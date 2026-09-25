@@ -56,6 +56,26 @@ function localMarket(onPartial?: (pools: ArgusPool[]) => void): Promise<ArgusPoo
  * later — the rest of a partial list, or the slower of two sources — is
  * delivered merged via `onUpdate`. */
 export async function getArgusMarket(onUpdate?: (pools: ArgusPool[]) => void): Promise<ArgusPool[]> {
+  const pools = await loadArgusMarket(onUpdate && (p => { rememberMarket(p); onUpdate(p) }))
+  rememberMarket(pools)
+  return pools
+}
+
+// The last list this browser saw, so a returning visitor gets it instantly
+// (then the fresh one) instead of waiting on the network.
+const SNAPSHOT_KEY = 'arcdex:market:v1'
+export function cachedArgusMarket(): ArgusPool[] | null {
+  try {
+    const s = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) ?? 'null') as { at: number; pools: ArgusPool[] } | null
+    return s && Date.now() - s.at < 24 * 3600_000 && Array.isArray(s.pools) && s.pools.length ? s.pools : null
+  } catch { return null }
+}
+function rememberMarket(pools: ArgusPool[]) {
+  if (pools.length < 20) return // a throttled fragment, not worth keeping
+  try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({ at: Date.now(), pools })) } catch { /* storage full or blocked */ }
+}
+
+async function loadArgusMarket(onUpdate?: (pools: ArgusPool[]) => void): Promise<ArgusPool[]> {
   const server = fetchServerMarket()
   // The first call picks up the response arcdex.html preloaded at page
   // start, so its wait counts from page start: if a CDN hit would already

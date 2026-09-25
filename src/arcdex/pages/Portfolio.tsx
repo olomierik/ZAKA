@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAccount, useReadContracts } from 'wagmi'
-import { ConnectKitButton } from 'connectkit'
+import { ConnectButton } from '../components/ConnectWallet'
 import { formatUnits } from 'viem'
 import { arc } from 'wagmi/chains'
 import { getTokens, type ArcToken } from '../api/radardex'
@@ -71,7 +71,7 @@ export default function Portfolio({ navigate }: Props) {
       <div style={{ fontSize: '3rem' }}>💼</div>
       <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>{T("Connect your wallet")}</h2>
       <p style={{ color: 'var(--text-muted)', maxWidth: 340 }}>{T("See your Arc mainnet token holdings valued in USDC.")}</p>
-      <ConnectKitButton />
+      <ConnectButton />
     </div>
   )
 

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createChart, type IChartApi, type ISeriesApi, type SeriesType, type CandlestickData, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts'
-import { getPoolOhlcv, type OhlcvCandle } from '../api/gecko'
+import { getPoolOhlcv } from '../api/gecko'
+import { candlesFromTicks, mergeCandles, type Candle, type Tick } from '../lib/candles'
 import { identiconUrl } from './Avatar'
 import { INDICATORS, bollinger, ema, rsi, sma, vwap, type IndicatorId } from '../lib/indicators'
 import { t as T } from '../lib/i18n'
@@ -11,13 +12,26 @@ function loadIndicators(): Set<IndicatorId> {
   try { return new Set(JSON.parse(localStorage.getItem(IND_KEY) ?? '["volume"]') as IndicatorId[]) } catch { return new Set(['volume']) }
 }
 
-type Resolution = '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
+type Resolution = '1s' | '15s' | '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
 const RESOLUTIONS: { label: string; value: Resolution }[] = [
+  { label: '1s', value: '1s' }, { label: '15s', value: '15s' },
   { label: '1m', value: '1m' }, { label: '5m', value: '5m' },
   { label: '15m', value: '15m' }, { label: '1H', value: '1h' },
   { label: '4H', value: '4h' }, { label: '1D', value: '1d' },
 ]
-const RES_SECONDS: Record<Resolution, number> = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14_400, '1d': 86_400 }
+const RES_SECONDS: Record<Resolution, number> = { '1s': 1, '15s': 15, '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14_400, '1d': 86_400 }
+/** Sub-minute candles exist only on-chain (GeckoTerminal's finest is 1m). */
+const onChainOnly = (r: Resolution) => RES_SECONDS[r] < 60
+const RES_KEY = 'arcdex:chart-res'
+function loadRes(hasTicks: boolean): Resolution {
+  try {
+    const r = localStorage.getItem(RES_KEY) as Resolution | null
+    if (r && r in RES_SECONDS && (hasTicks || !onChainOnly(r))) return r
+  } catch { /* storage blocked */ }
+  return hasTicks ? '1m' : '1h'
+}
+/** Bars shown when a chart opens — recent action, not the whole history squeezed in. */
+const VISIBLE_BARS = 140
 const MIN_SIZES = [0, 10, 100, 1000] as const
 
 /** A trade (or thesis) drawn on the chart as the trader's avatar (fomo-style). */
@@ -35,8 +49,14 @@ export interface ChartTrade {
 
 // `poolAddress` is the pair/pool contract, not the token — GeckoTerminal's
 // OHLCV API is keyed by pool. Pass null while it's still resolving.
+// `ticks` are the pool's on-chain swaps (null while loading): they draw the
+// recent candles and move the last one on every new swap; GeckoTerminal's
+// candles fill in the history before them.
 interface Props {
   poolAddress: string | null
+  ticks?: Tick[] | null
+  /** Swaps are streaming in live right now. */
+  live?: boolean
   trades?: ChartTrade[]
   thesisMarks?: ChartTrade[]
   friends?: Set<string>
@@ -50,9 +70,12 @@ interface Bubble { t: ChartTrade; x: number; y: number; size: number }
 // Price axis: 2 decimals for $1+ coins, 4 significant digits for micro-caps.
 const fmtPrice = (v: number) => v >= 1000 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v === 0 ? '0' : v.toPrecision(4)
 
-export default function PriceChart({ poolAddress, trades, thesisMarks, friends, supply, symbol, onTraderClick }: Props) {
-  const [res, setRes] = useState<Resolution>('1h')
-  const [candles, setCandles] = useState<OhlcvCandle[]>([])
+export default function PriceChart({ poolAddress, ticks, live, trades, thesisMarks, friends, supply, symbol, onTraderClick }: Props) {
+  const hasTicks = ticks !== undefined
+  const [res, setResState] = useState<Resolution>(() => loadRes(hasTicks))
+  const setRes = (r: Resolution) => { setResState(r); try { localStorage.setItem(RES_KEY, r) } catch { /* storage blocked */ } }
+  const [history, setHistory] = useState<Candle[]>([])
+  const [historyLoaded, setHistoryLoaded] = useState(false)
   const [mode, setMode] = useState<'price' | 'mcap'>('price')
   const [showBubbles, setShowBubbles] = useState(true)
   const [showMine, setShowMine] = useState(true)
@@ -74,22 +97,35 @@ export default function PriceChart({ poolAddress, trades, thesisMarks, friends, 
   const needsFit = useRef(true)
   const scale = mode === 'mcap' && supply ? supply : 1
 
+  // History from GeckoTerminal. With on-chain swaps driving the recent
+  // candles it only needs an occasional refresh; without them (non-Argus
+  // pages) it's the whole chart, refreshed every 20s.
   useEffect(() => {
     needsFit.current = true
-    if (!poolAddress) { setCandles([]); return }
+    setHistory([]); setHistoryLoaded(false)
+    if (!poolAddress || onChainOnly(res)) { setHistoryLoaded(true); return }
     let cancelled = false
-    const load = (initial: boolean) => getPoolOhlcv(poolAddress, res)
-      .then(c => { if (!cancelled) setCandles(c) })
-      // A failed refresh keeps the candles already drawn; only a failed
-      // first load clears them.
-      .catch(() => { if (!cancelled && initial) setCandles([]) })
-    void load(true)
-    // Keep the last candle moving — the gecko proxy caches for 10s, so this
-    // costs at most one upstream call per pool per 20s across all viewers.
-    const id = setInterval(() => { if (!document.hidden) void load(false) }, 20_000)
+    const load = () => getPoolOhlcv(poolAddress, res as Exclude<Resolution, '1s' | '15s'>, 300)
+      .then(c => { if (!cancelled) setHistory(c) })
+      // A failed refresh keeps the candles already drawn.
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setHistoryLoaded(true) })
+    void load()
+    const id = setInterval(() => { if (!document.hidden) void load() }, hasTicks ? 90_000 : 20_000)
     return () => { cancelled = true; clearInterval(id) }
-  }, [poolAddress, res])
+  }, [poolAddress, res, hasTicks])
+
+  const step = RES_SECONDS[res]
+  const recent = useMemo(() => candlesFromTicks(ticks ?? [], step), [ticks, step])
+  const candles = useMemo(() => mergeCandles(onChainOnly(res) ? [] : history, recent), [history, recent, res])
+  const loading = candles.length === 0 && (!historyLoaded || (hasTicks && ticks === null))
   useEffect(() => { needsFit.current = true }, [mode])
+  // Without on-chain swaps there are no sub-minute candles.
+  useEffect(() => { if (!hasTicks && onChainOnly(res)) setResState('1h') }, [hasTicks, res])
+  // Wheel zoom only in fullscreen, where there's no page to scroll.
+  useEffect(() => {
+    chartRef.current?.applyOptions({ handleScroll: { mouseWheel: isFull }, handleScale: { mouseWheel: isFull } })
+  }, [isFull])
   useEffect(() => {
     const onFs = () => setIsFull(!!document.fullscreenElement && document.fullscreenElement === wrapRef.current)
     document.addEventListener('fullscreenchange', onFs)
@@ -100,6 +136,8 @@ export default function PriceChart({ poolAddress, trades, thesisMarks, friends, 
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef     = useRef<IChartApi | null>(null)
   const seriesRef    = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const volRef       = useRef<ISeriesApi<'Histogram'> | null>(null)
+  const applied      = useRef<{ key: string; data: CandlestickData[] }>({ key: '', data: [] })
   const frame        = useRef(0)
 
   // Positions every bubble at its trade's candle and price. Re-run whenever
@@ -142,7 +180,12 @@ export default function PriceChart({ poolAddress, trades, thesisMarks, friends, 
         horzLine: { color: '#3b82f6', labelBackgroundColor: '#3b82f6' },
       },
       rightPriceScale: { borderColor: '#1e3050' },
-      timeScale: { borderColor: '#1e3050', timeVisible: true },
+      timeScale: { borderColor: '#1e3050', timeVisible: true, secondsVisible: true },
+      // The page has to scroll past the chart: a wheel or a vertical swipe
+      // over it scrolls the page. Zoom with a pinch, a drag on the time
+      // axis, or the wheel in fullscreen.
+      handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+      handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true, axisDoubleClickReset: true },
       width:  containerRef.current.clientWidth,
       height: containerRef.current.clientHeight || 340,
     })
@@ -153,6 +196,7 @@ export default function PriceChart({ poolAddress, trades, thesisMarks, friends, 
     })
     chartRef.current  = chart
     seriesRef.current = series
+    applied.current = { key: '', data: [] }
 
     const ro = new ResizeObserver(() => {
       if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight || 340 })
@@ -178,26 +222,56 @@ export default function PriceChart({ poolAddress, trades, thesisMarks, friends, 
     }
   }, [layout])
 
+  // Draw. A new swap usually only changes the last candle (or starts a new
+  // one): that's a cheap update() and the chart ticks in place. Anything
+  // else — new timeframe, history refresh, backfill — redraws it all.
   useEffect(() => {
-    if (!seriesRef.current || !candles.length) return
+    const series = seriesRef.current
+    if (!series) return
     const data: CandlestickData[] = candles.map(c => ({
       time: c.time as never, open: c.open * scale, high: c.high * scale, low: c.low * scale, close: c.close * scale,
     }))
-    seriesRef.current.applyOptions({ priceFormat: scale > 1 ? { type: 'custom', formatter: (v: number) => v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(1)}K` : `$${v.toFixed(0)}`, minMove: 1 } : { type: 'custom', formatter: fmtPrice, minMove: 1e-12 } })
-    seriesRef.current.setData(data)
-    // Fit once per pool/resolution/mode, not on every live refresh —
-    // otherwise the user's zoom/scroll would snap back every 20s.
-    if (needsFit.current) { chartRef.current?.timeScale().fitContent(); needsFit.current = false }
-    layout()
-  }, [candles, layout, scale])
+    const key = `${poolAddress}|${res}|${scale}`
+    const prev = applied.current
+    const n = prev.data.length
+    const same = (a: CandlestickData | undefined, b: CandlestickData | undefined) => !!a && !!b && a.time === b.time && a.open === b.open && a.high === b.high && a.low === b.low && a.close === b.close
+    const tailOnly = prev.key === key && n > 1 && data.length >= n && data.length - n <= 2 && data[0].time === prev.data[0].time && same(data[n - 2], prev.data[n - 2])
+    if (tailOnly) {
+      for (let i = n - 1; i < data.length; i++) series.update(data[i])
+      const vol = volRef.current
+      if (vol) for (let i = n - 1; i < candles.length; i++) {
+        const c = candles[i]
+        vol.update({ time: c.time as never, value: c.volume, color: c.close >= c.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)' })
+      }
+    } else {
+      series.applyOptions({ priceFormat: scale > 1 ? { type: 'custom', formatter: (v: number) => v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(1)}K` : `$${v.toFixed(0)}`, minMove: 1 } : { type: 'custom', formatter: fmtPrice, minMove: 1e-12 } })
+      series.setData(data)
+      // Frame once per pool/timeframe/mode, not on every refresh — otherwise
+      // the user's zoom/scroll would snap back.
+      if (needsFit.current && data.length) {
+        const ts = chartRef.current?.timeScale()
+        if (data.length > VISIBLE_BARS) ts?.setVisibleLogicalRange({ from: data.length - VISIBLE_BARS, to: data.length + 4 })
+        else ts?.fitContent()
+        needsFit.current = false
+      }
+    }
+    applied.current = { key, data }
+    layoutRef.current()
+  }, [candles, scale, res, poolAddress])
 
-  // Indicators: rebuilt whenever the data, the Price/MCap scale or the
-  // selection changes (cheap — a few hundred points each).
+  // Indicators: rebuilt when a bar is added, or the Price/MCap scale or
+  // the selection changes — not on every tick (the draw effect keeps the
+  // volume bar live; the lines catch up on the next bar).
+  const candlesRef = useRef(candles)
+  candlesRef.current = candles
+  const barsKey = `${candles.length}|${candles[0]?.time ?? 0}`
   useEffect(() => {
     const chart = chartRef.current
+    const candles = candlesRef.current
     if (!chart) return
     indSeries.current.forEach(x => { try { chart.removeSeries(x) } catch { /* already gone */ } })
     indSeries.current = []
+    volRef.current = null
     while (chart.panes().length > 1) { try { chart.removePane(chart.panes().length - 1) } catch { break } }
     if (!candles.length || !ind.size) return
     const times = candles.map(c => c.time as never)
@@ -214,6 +288,7 @@ export default function PriceChart({ poolAddress, trades, thesisMarks, friends, 
       chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } })
       v.setData(candles.map(c => ({ time: c.time as never, value: c.volume, color: c.close >= c.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)' })))
       indSeries.current.push(v as ISeriesApi<SeriesType>)
+      volRef.current = v
     }
     if (ind.has('ma7')) line(sma(closes, 7), color('ma7'))
     if (ind.has('ma25')) line(sma(closes, 25), color('ma25'))
@@ -232,7 +307,7 @@ export default function PriceChart({ poolAddress, trades, thesisMarks, friends, 
     }
     layoutRef.current()
     // layout via ref: new trades arrive every few seconds and must not rebuild the indicators
-  }, [candles, scale, ind])
+  }, [barsKey, scale, ind, res])
 
   function screenshot() {
     const chart = chartRef.current
@@ -263,9 +338,10 @@ export default function PriceChart({ poolAddress, trades, thesisMarks, friends, 
   return (
     <div ref={wrapRef} style={{ background: isFull ? '#0b1628' : undefined, display: 'flex', flexDirection: 'column', height: isFull ? '100%' : undefined, padding: isFull ? 16 : 0 }}>
     <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-      {RESOLUTIONS.map(r => (
+      {RESOLUTIONS.filter(r => hasTicks || !onChainOnly(r.value)).map(r => (
         <button key={r.value} onClick={() => setRes(r.value)} style={pill(res === r.value)}>{r.label}</button>
       ))}
+      {live && <span title={T("Every swap appears the moment its block lands")} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 6, fontSize: '0.68rem', fontWeight: 800, color: 'var(--green)', letterSpacing: '0.05em' }}><span className="pulse-dot" />{T("LIVE")}</span>}
       <span style={{ flex: 1 }} />
       {supply ? (
         <span style={{ display: 'inline-flex', border: '1px solid var(--adx-card-border)', borderRadius: 6, overflow: 'hidden' }}>
@@ -311,8 +387,8 @@ export default function PriceChart({ poolAddress, trades, thesisMarks, friends, 
       )}
       {!candles.length && (
         <div style={{ position: 'absolute', inset: 0, height: 340,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(11,22,40,0.7)', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{T("Loading chart…")}</div>
+          display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 16,
+          background: 'rgba(11,22,40,0.7)', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{loading ? T("Loading chart…") : onChainOnly(res) ? T("No trades in the last few hours — try a longer timeframe.") : T("No chart data yet.")}</div>
       )}
     </div>
     {(trades || thesisMarks) && (

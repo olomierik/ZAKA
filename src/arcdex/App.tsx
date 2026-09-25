@@ -26,6 +26,7 @@ import { captureReferral } from './lib/referral'
 import { pageToPath, pathToPage } from './lib/router'
 import './arcdex.css'
 import { t as T, N_, useLang } from './lib/i18n'
+import { ConnectModalHost } from './components/ConnectWallet'
 
 // Remember ?ref= or /r/<name> before anything renders (first-touch attribution).
 captureReferral()
@@ -125,6 +126,7 @@ export default function App() {
       </div>
 
       <TickerBar navigate={navigate} />
+      <ConnectModalHost />
     </div>
   )
 }

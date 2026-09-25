@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ConnectKitButton } from 'connectkit'
+import { ConnectButton } from './ConnectWallet'
 import { useDisconnect } from 'wagmi'
 import Avatar from './Avatar'
 import { DepositModal } from './CashModals'
@@ -43,7 +43,7 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
   if (!trader.address) return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <LangQuick />
-      <ConnectKitButton />
+      <ConnectButton />
     </div>
   )
 
