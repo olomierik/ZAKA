@@ -433,9 +433,13 @@ html body {
 .token-detail-swap { width: 340px; flex-shrink: 0; }
 
 @media (max-width: 860px) {
-  .token-detail-grid { flex-direction: column; padding: 0 12px 16px; }
-  .token-detail-swap { width: 100%; order: -1; }
+  /* stretch, not flex-start: a column sized to its content grew as wide as
+     the chart's first drawing (648px) and never shrank to the screen */
+  .token-detail-grid { flex-direction: column; align-items: stretch; padding: 0 12px 16px; }
+  .token-detail-grid > * { min-width: 0; width: 100%; }
+  .token-detail-swap { width: 100%; }
 }
+.price-chart { min-width: 0; width: 100%; }
 
 /* ── pulse dot ───────────────────────────────────────────────────── */
 .pulse-dot {
@@ -653,3 +657,113 @@ html body {
 .swap-coin-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 8px; border-radius: 10px; border: none; background: transparent; color: var(--text); cursor: pointer; min-height: 52px; }
 .swap-coin-row:hover, .swap-coin-row:active { background: var(--bg-2); }
 .swap-tag { margin-left: 6px; padding: 1px 6px; border-radius: 99px; font-size: 0.58rem; font-weight: 800; vertical-align: middle; background: rgba(124,58,237,0.18); color: #a78bfa; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Phones (≤ 767px): feel like an installed app, not a web page
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* No grey tap flash, no double-tap-zoom delay, no rubber-banding of the shell. */
+html body { -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+
+/* Bottom sheets (components/Sheet.tsx) */
+.sheet-back { position: fixed; inset: 0; z-index: 1100; background: rgba(0,0,0,0.55); display: flex; align-items: flex-end; justify-content: center; animation: sheet-fade 0.18s ease-out; }
+.sheet { width: 100%; max-width: 560px; max-height: 88vh; max-height: 88dvh; display: flex; flex-direction: column; background: var(--adx-card-bg); border: 1px solid var(--adx-card-border); border-bottom: none; border-radius: 18px 18px 0 0; padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -12px 40px rgba(0,0,0,0.5); animation: sheet-up 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.sheet-grip { width: 38px; height: 4px; border-radius: 99px; background: var(--border-hi); margin: 8px auto 4px; flex-shrink: 0; }
+.sheet-title { font-weight: 800; font-size: 1rem; padding: 4px 18px 10px; }
+.sheet-body { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes sheet-fade { from { background: rgba(0,0,0,0); } }
+@media (prefers-reduced-motion: reduce) { .sheet, .sheet-back { animation: none; } }
+
+/* "More" sheet (components/MobileTabBar.tsx) */
+.more-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 4px 14px 12px; }
+.more-item { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px; border-radius: 14px; background: var(--bg-2); border: 1px solid var(--adx-card-border); color: var(--text); font-size: 0.72rem; font-weight: 600; cursor: pointer; text-align: center; }
+.more-item.active { border-color: var(--adx-accent); color: var(--adx-accent); }
+.more-icon { font-size: 1.25rem; line-height: 1; }
+.more-lists { display: flex; justify-content: space-between; align-items: center; margin: 0 14px 14px; width: calc(100% - 28px); padding: 14px; border-radius: 14px; background: var(--bg-2); border: 1px solid var(--adx-card-border); color: var(--text); font-weight: 700; font-size: 0.84rem; cursor: pointer; }
+
+/* Inline text that acts like a link ("trading wallet"). */
+.link-btn { background: none; border: none; padding: 0; font: inherit; font-weight: 700; color: var(--adx-accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+/* Phone-only pieces stay out of the desktop layout. */
+.tabbar, .trade-bar, .navbar-back, .filters-btn, .token-card-meta { display: none; }
+.show-more { display: block; width: calc(100% - 28px); margin: 14px; padding: 13px; border-radius: 12px; border: 1px solid var(--adx-card-border); background: var(--bg-2); color: var(--text); font-weight: 700; font-size: 0.85rem; cursor: pointer; }
+
+@media (max-width: 767px) {
+  html body { font-size: 14px; }
+
+  /* Top bar: under the status bar when installed, back arrow on coin pages. */
+  .top-navbar { height: calc(52px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 12px 0; gap: 8px; }
+  .navbar-hamburger { display: none !important; }
+  .navbar-back { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; margin-left: -8px; border: none; background: none; color: var(--text); font-size: 2.1rem; line-height: 1; cursor: pointer; flex-shrink: 0; }
+  .navbar-search-wrap { top: calc(52px + env(safe-area-inset-top)) !important; }
+
+  /* Bottom tab bar */
+  .tabbar { display: flex; flex-shrink: 0; height: calc(58px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); background: rgba(8,15,28,0.97); border-top: 1px solid var(--adx-border); z-index: 60; }
+  .tabbar-item { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: none; background: none; color: var(--text-muted); font-size: 0.64rem; font-weight: 600; cursor: pointer; }
+  .tabbar-icon { font-size: 1.15rem; line-height: 1; height: 22px; display: flex; align-items: center; }
+  .tabbar-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tabbar-item.active { color: var(--text); }
+  .tabbar-item.active .tabbar-icon { color: var(--adx-accent); }
+  .tabbar-trade .tabbar-icon { width: 42px; height: 28px; border-radius: 10px; justify-content: center; background: var(--adx-accent); color: #fff !important; }
+
+  /* The lists drawer (opened from More) sits between the bars; page links live in the tab bar now. */
+  .sidebar { top: calc(52px + env(safe-area-inset-top)) !important; bottom: calc(58px + env(safe-area-inset-bottom)) !important; }
+  .sidebar-backdrop { inset: calc(52px + env(safe-area-inset-top)) 0 calc(58px + env(safe-area-inset-bottom)) 0 !important; }
+  .sidebar .mobile-nav { display: none !important; }
+
+  /* Modals and dropdown menus open as bottom sheets. */
+  .modal-back { align-items: flex-end; padding: 0; }
+  .modal-card { width: 100%; max-width: none; border-radius: 18px 18px 0 0; max-height: 90vh; max-height: 90dvh; padding-bottom: calc(18px + env(safe-area-inset-bottom)); animation: sheet-up 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .menu-pop { position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important; bottom: 0 !important; width: 100% !important; min-width: 0 !important; max-height: 80vh; max-height: 80dvh; overflow-y: auto; border-radius: 18px 18px 0 0; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); z-index: 1100; box-shadow: 0 -12px 40px rgba(0,0,0,0.6); animation: sheet-up 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .menu-item { padding: 12px 12px; font-size: 0.92rem; }
+
+  /* Coin pages: header, chart edge to edge, then the rest; Buy / Sell pinned at the bottom. */
+  .coin-mobile { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
+  .coin-mobile .token-page-header { padding: 12px 14px 8px; gap: 10px; background: transparent; border-bottom: none; }
+  .coin-mobile .token-head-actions { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .coin-mobile .token-head-actions::-webkit-scrollbar { display: none; }
+  .coin-mobile .coin-chart-card { margin-top: 4px !important; border-radius: 0 !important; border-left: none !important; border-right: none !important; padding: 8px 10px 12px !important; }
+  .coin-mobile .coin-chart-title { display: none; }
+  .coin-mobile .coin-stats { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 10px 8px !important; padding: 12px 14px !important; }
+  .coin-mobile-body { padding: 0 12px; }
+  .coin-mobile-body > * { max-width: 100%; }
+  .trade-bar { display: flex; gap: 10px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 70; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); background: linear-gradient(to top, var(--adx-bg) 72%, rgba(6,13,24,0)); }
+  .trade-bar button { flex: 1; min-width: 0; height: 50px; border-radius: 14px; border: none; font-size: 1rem; font-weight: 800; color: #fff; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 10px; }
+  .trade-bar-buy { background: var(--green); }
+  .trade-bar-sell { background: var(--red); }
+  .token-page:not(.coin-mobile) { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
+
+  /* Chart controls scroll sideways instead of wrapping or running off the screen. */
+  .chart-controls, .chart-overlays { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .chart-controls::-webkit-scrollbar, .chart-overlays::-webkit-scrollbar { display: none; }
+  .chart-controls > *, .chart-overlays > * { flex-shrink: 0; }
+
+  /* Terminal: a clean list first; filters only when asked for. */
+  .terminal-shell .filter-bar, .terminal-shell .sort-select { display: none; }
+  .terminal-shell.filters-open .filter-bar { display: flex; }
+  .terminal-shell.filters-open .sort-select { display: block; }
+  .filters-btn { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; flex-shrink: 0; padding: 6px 10px; border-radius: 99px; border: 1px solid var(--adx-card-border); background: var(--bg-3); color: var(--text-muted); font-size: 0.72rem; font-weight: 700; cursor: pointer; }
+  .filters-btn.on { color: var(--adx-accent); border-color: var(--adx-accent); }
+  /* the view chips scroll; the Filters button stays pinned at the right */
+  .view-bar { flex-wrap: nowrap !important; overflow: hidden; gap: 6px; }
+  .view-tabs { flex: 1; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .view-tabs::-webkit-scrollbar { display: none; }
+  .view-tab { flex-shrink: 0; }
+  .time-tabs { display: none !important; }
+  .pagination-bar .pg-btn, .pagination-bar .pg-info, .pagination-bar > span { display: none; }
+  .pagination-bar > div { margin: 0 !important; width: 100%; }
+  .pagination-bar input { width: 100% !important; }
+  .table-scroll .token-table { display: none; }
+  .token-cards { display: block; }
+  .token-card { padding: 10px 14px; gap: 0; }
+  .token-card-top { gap: 12px; }
+  .token-card-badges, .token-card-stats { display: none; }
+  .token-card-meta { display: block; font-size: 0.68rem; color: var(--text-muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .token-card-price div:first-child { font-size: 0.92rem !important; }
+
+  /* Leaderboards: tighter cells, and the least important column steps aside. */
+  .lb-table th, .lb-table td { padding: 10px 8px !important; }
+  .lb-table tr > :nth-child(5) { display: none; }
+}

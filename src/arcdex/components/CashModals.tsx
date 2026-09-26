@@ -6,6 +6,7 @@ import { shortAddr, type Trader } from '../lib/identity'
 import { useCash, useSendUsdc } from '../lib/usdc'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import { openTradingWallet } from '../lib/tradingWalletSheet'
 
 // fomo-style cash flows: Deposit (USDC on Arc, or bridge from another
 // chain), Withdraw (to any Arc address) and Send cash to a trader with a
@@ -42,7 +43,12 @@ export function DepositModal({ trader, navigate, onClose, initial = 'crypto' }: 
 
   return (
     <Modal title={T("Deposit with")} onClose={onClose}>
-      {!addr ? <div style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>{T("Connect a wallet or create a trading wallet (right panel) first.")}</div> : (
+      {!addr ? (
+        <div style={{ fontSize: '0.84rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {T("Connect a wallet or create a trading wallet first.")}
+          <button className="btn-primary" onClick={() => { onClose(); openTradingWallet() }}>{T("Open trading wallet")}</button>
+        </div>
+      ) : (
         <>
           {opt('crypto', T('Crypto'), T('Send USDC on Arc from any wallet or exchange'), '⎘')}
           {opt('bridge', T('From another chain'), T('Move USDC to Arc with Circle CCTP (Ethereum, Base, …)'), '⇄')}

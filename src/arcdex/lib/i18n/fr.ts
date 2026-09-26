@@ -991,5 +991,17 @@ const d: Record<string, string> = {
   "Smart-contract wallets can't trade on the launchpad — use a regular wallet or your trading wallet.": "Les wallets smart contract ne peuvent pas trader sur le launchpad — utilisez un wallet classique ou votre wallet de trading.",
   "Enter an amount.": "Entrez un montant.",
   "This token isn't on the launchpad.": "Ce jeton n’est pas sur le launchpad.",
+  "for one-tap trades with no pop-ups.": "pour trader en un clic, sans pop-up.",
+  "Connect a wallet or create a trading wallet first.": "Connectez un wallet ou créez d’abord un wallet de trading.",
+  "Open trading wallet": "Ouvrir le wallet de trading",
+  "No app needed — one-tap trades, no pop-ups": "Aucune app nécessaire — trades en un clic, sans pop-up",
+  "Home": "Accueil",
+  "$ARCD burn": "Burn $ARCD",
+  "Main": "Principal",
+  "More": "Plus",
+  "Watchlist, trending & most held": "Watchlist, tendances et plus détenus",
+  "Back": "Retour",
+  "Filters": "Filtres",
+  "Show more": "Voir plus",
 }
 export default d

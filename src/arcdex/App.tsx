@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import NavBar from './components/NavBar'
 import Terminal from './pages/Terminal'
 // Everything but the Terminal loads on first visit to that page — they
@@ -27,6 +27,10 @@ import { pageToPath, pathToPage } from './lib/router'
 import './arcdex.css'
 import { t as T, N_, useLang } from './lib/i18n'
 import { ConnectModalHost } from './components/ConnectWallet'
+import MobileTabBar from './components/MobileTabBar'
+import Sheet from './components/Sheet'
+import { sheetHistory } from './lib/sheetHistory'
+import { OPEN_TRADING_WALLET } from './lib/tradingWalletSheet'
 
 // Remember ?ref= or /r/<name> before anything renders (first-touch attribution).
 captureReferral()
@@ -61,14 +65,21 @@ export default function App() {
   const [page, setPage]       = useState<Page>(fromUrl)
   const [navOpen, setNavOpen] = useState(false)
 
-  // Every page has a shareable URL; Back/Forward work.
+  // Every page has a shareable URL; Back/Forward work. `depth` counts the
+  // steps taken inside the app, so a back arrow knows whether "back" stays here.
+  const depth = useRef(0)
   const navigate = useCallback((p: Page) => {
     setPage(p); setNavOpen(false); window.scrollTo({ top: 0 })
     const path = pageToPath(p)
-    if (path !== window.location.pathname + window.location.search) window.history.pushState(null, '', path)
+    if (path !== window.location.pathname + window.location.search) { window.history.pushState(null, '', path); depth.current++ }
   }, [])
   useEffect(() => {
-    const onPop = () => setPage(fromUrl())
+    const onPop = () => {
+      // A bottom sheet's own history entry, not a page change (see sheetHistory).
+      if (sheetHistory.ignoreNextPop) { sheetHistory.ignoreNextPop = false; return }
+      if (sheetHistory.open > 0) return
+      setPage(fromUrl()); depth.current = Math.max(0, depth.current - 1)
+    }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
@@ -79,10 +90,25 @@ export default function App() {
 
   // Remount the content on a language change so every string re-renders.
   const lang = useLang()
+  // Coin pages are "pushed" screens on phones: a back arrow up top, their
+  // own Buy/Sell bar at the bottom instead of the tab bar.
+  const detail = page.name === 'argus' || page.name === 'token'
+  const goBack = useCallback(() => {
+    if (depth.current > 0) window.history.back()
+    else navigate({ name: 'terminal' })
+  }, [navigate])
+
+  // The trading wallet as a sheet, from any "trading wallet" link.
+  const [walletSheet, setWalletSheet] = useState(false)
+  useEffect(() => {
+    const open = () => setWalletSheet(true)
+    window.addEventListener(OPEN_TRADING_WALLET, open)
+    return () => window.removeEventListener(OPEN_TRADING_WALLET, open)
+  }, [])
 
   return (
-    <div className="app-shell">
-      <NavBar page={page} navigate={navigate} onMenuClick={() => setNavOpen(o => !o)} />
+    <div className={`app-shell${detail ? ' is-detail' : ''}`}>
+      <NavBar page={page} navigate={navigate} onMenuClick={() => setNavOpen(o => !o)} onBack={detail ? goBack : undefined} />
 
       <div className="app-body" key={lang}>
         {navOpen && <div className="sidebar-backdrop" onClick={() => setNavOpen(false)} />}
@@ -126,6 +152,10 @@ export default function App() {
       </div>
 
       <TickerBar navigate={navigate} />
+      {!detail && <MobileTabBar page={page} navigate={navigate} onOpenLists={() => setNavOpen(true)} />}
+      <Sheet open={walletSheet} onClose={() => setWalletSheet(false)}>
+        <TradingWalletPanel />
+      </Sheet>
       <ConnectModalHost />
     </div>
   )

@@ -5,7 +5,7 @@ import { compact, loadArcd, type ArcdStats } from '../lib/arcd'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 
-interface Props { page: Page; navigate: (p: Page) => void; onMenuClick: () => void }
+interface Props { page: Page; navigate: (p: Page) => void; onMenuClick: () => void; onBack?: () => void }
 
 // 🔥 $ARCD burned — links to the buyback-and-burn dashboard.
 function BurnTicker({ navigate }: { navigate: (p: Page) => void }) {
@@ -26,7 +26,7 @@ function BurnTicker({ navigate }: { navigate: (p: Page) => void }) {
   )
 }
 
-export default function NavBar({ page, navigate, onMenuClick }: Props) {
+export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
   const [searchOpen, setSearchOpen] = useState(false)
 
   const navLinks: { label: string; page: Page }[] = [
@@ -44,6 +44,8 @@ export default function NavBar({ page, navigate, onMenuClick }: Props) {
       <button className="navbar-hamburger" onClick={onMenuClick} aria-label={T("Menu")}>
         <span /><span /><span />
       </button>
+      {/* phones: coin pages are pushed screens with a back arrow */}
+      {onBack && <button className="navbar-back" onClick={onBack} aria-label={T("Back")}>‹</button>}
 
       {/* Logo */}
       <button className="navbar-logo" onClick={() => navigate({ name: 'terminal' })} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

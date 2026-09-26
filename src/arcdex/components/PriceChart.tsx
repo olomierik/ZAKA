@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createChart, type IChartApi, type ISeriesApi, type SeriesType, type CandlestickData, LineSeries, HistogramSeries } from 'lightweight-charts'
 import { addMainSeries, lineColors, loadChartStyle, onChartStyle, saveChartStyle, type ChartStyle, type MainSeries } from '../lib/chartStyle'
+import { useIsMobile } from '../lib/useMobile'
 import { getPoolOhlcv } from '../api/gecko'
 import { candlesFromTicks, mergeCandles, type Candle, type Tick } from '../lib/candles'
 import { engineEnabled, getEngineCandles, marketStream, useEngineStatus } from '../api/marketStream'
@@ -85,6 +86,7 @@ interface Bubble { t: ChartTrade; x: number; y: number; size: number }
 const fmtPrice = (v: number) => v >= 1000 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v === 0 ? '0' : v.toPrecision(4)
 
 export default function PriceChart({ poolAddress, ticks, live, engineToken, trades, thesisMarks, friends, supply, symbol, onTraderClick }: Props) {
+  const mobile = useIsMobile()
   const engineStatus = useEngineStatus()
   const engineMode = engineEnabled && !!engineToken && engineStatus === 'open'
   const hasTicks = ticks !== undefined || engineMode
@@ -418,8 +420,8 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
   )
 
   return (
-    <div ref={wrapRef} style={{ background: isFull ? '#0b1628' : undefined, display: 'flex', flexDirection: 'column', height: isFull ? '100%' : undefined, padding: isFull ? 16 : 0 }}>
-    <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+    <div ref={wrapRef} className="price-chart" style={{ background: isFull ? '#0b1628' : undefined, display: 'flex', flexDirection: 'column', height: isFull ? '100%' : undefined, padding: isFull ? 16 : 0 }}>
+    <div className="chart-controls" style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
       {RESOLUTIONS.filter(r => (hasTicks || !onChainOnly(r.value)) && (r.value !== '5s' || engineMode)).map(r => (
         <button key={r.value} onClick={() => setRes(r.value)} style={pill(res === r.value)}>{r.label}</button>
       ))}
@@ -451,7 +453,7 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
       <button onClick={fullscreen} style={pill(false)} title={T("Fullscreen")}>⛶</button>
     </div>
     <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', flex: 1 }}>
-      <div ref={containerRef} style={{ height: isFull ? 'calc(100vh - 120px)' : 340 + (withRsi ? RSI_PANE : 0) }} />
+      <div ref={containerRef} style={{ height: isFull ? 'calc(100vh - 120px)' : (mobile ? 300 : 340) + (withRsi ? RSI_PANE : 0) }} />
       {bubbles.length > 0 && (
         // zIndex: the chart library layers its canvases with z-index 1–2,
         // which would otherwise paint over these avatars.
@@ -477,7 +479,7 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
       )}
     </div>
     {(trades || thesisMarks) && (
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginTop: 10, fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+      <div className="chart-overlays" style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginTop: 10, fontSize: '0.74rem', color: 'var(--text-muted)' }}>
         <b style={{ color: 'var(--text)' }}>{T("Chart overlays")}</b>
         {check(showBubbles, setShowBubbles, T('Trades'))}
         {check(showMine, setShowMine, T('My swaps'))}

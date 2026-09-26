@@ -991,5 +991,17 @@ const d: Record<string, string> = {
   "Smart-contract wallets can't trade on the launchpad — use a regular wallet or your trading wallet.": "智能合约钱包无法在发射台交易——请使用普通钱包或你的交易钱包。",
   "Enter an amount.": "请输入金额。",
   "This token isn't on the launchpad.": "此代币不在发射台上。",
+  "for one-tap trades with no pop-ups.": "即可一键交易，无弹窗。",
+  "Connect a wallet or create a trading wallet first.": "请先连接钱包或创建交易钱包。",
+  "Open trading wallet": "打开交易钱包",
+  "No app needed — one-tap trades, no pop-ups": "无需安装应用——一键交易，无弹窗",
+  "Home": "首页",
+  "$ARCD burn": "$ARCD 销毁",
+  "Main": "主导航",
+  "More": "更多",
+  "Watchlist, trending & most held": "关注列表、热门与最多持有",
+  "Back": "返回",
+  "Filters": "筛选",
+  "Show more": "显示更多",
 }
 export default d

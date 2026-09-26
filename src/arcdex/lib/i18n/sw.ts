@@ -991,5 +991,17 @@ const d: Record<string, string> = {
   "Smart-contract wallets can't trade on the launchpad — use a regular wallet or your trading wallet.": "Wallet za smart contract haziwezi kufanya biashara kwenye launchpad — tumia wallet ya kawaida au wallet yako ya biashara.",
   "Enter an amount.": "Weka kiasi.",
   "This token isn't on the launchpad.": "Tokeni hii haiko kwenye launchpad.",
+  "for one-tap trades with no pop-ups.": "kwa biashara ya mguso mmoja, bila madirisha ibukizi.",
+  "Connect a wallet or create a trading wallet first.": "Unganisha wallet au unda wallet ya biashara kwanza.",
+  "Open trading wallet": "Fungua wallet ya biashara",
+  "No app needed — one-tap trades, no pop-ups": "Hakuna programu inayohitajika — biashara ya mguso mmoja, bila madirisha ibukizi",
+  "Home": "Nyumbani",
+  "$ARCD burn": "Uchomaji wa $ARCD",
+  "Main": "Kuu",
+  "More": "Zaidi",
+  "Watchlist, trending & most held": "Watchlist, zinazovuma na zinazoshikiliwa zaidi",
+  "Back": "Rudi",
+  "Filters": "Vichujio",
+  "Show more": "Onyesha zaidi",
 }
 export default d

@@ -31,15 +31,15 @@ const BUY_PRESETS = [10, 25, 50, 100]
 const SELL_PRESETS = [25, 50, 100]
 
 type Step = 'idle' | 'approving' | 'checking' | 'swapping' | 'done' | 'error'
-interface Props { token: LaunchpadToken; onTraded?: () => void }
+interface Props { token: LaunchpadToken; onTraded?: () => void; initialMode?: 'buy' | 'sell' }
 
 const fmtTok = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toFixed(2)
 
-export default function CurveSwapWidget({ token, onTraded }: Props) {
+export default function CurveSwapWidget({ token, onTraded, initialMode }: Props) {
   const trader = useTrader()
   const me = trader.address
   const { writeContractAsync } = useWriteContract()
-  const [mode, setMode] = useState<'buy' | 'sell'>('buy')
+  const [mode, setMode] = useState<'buy' | 'sell'>(initialMode ?? 'buy')
   const [amount, setAmount] = useState('')
   const [slippage, setSlippage] = useState(3)
   const [step, setStep] = useState<Step>('idle')

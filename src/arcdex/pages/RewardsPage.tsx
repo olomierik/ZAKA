@@ -15,6 +15,7 @@ import { tweetUrl } from '../lib/shareCard'
 import { MyPoints } from '../components/PointsPanel'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import { openTradingWallet } from '../lib/tradingWalletSheet'
 
 // Rewards (fomo parity): total earned, this week, your /r/ link, and tabs
 // for Referrals (share of your referrals' fees, paid by the swap router in
@@ -88,7 +89,7 @@ export default function RewardsPage({ navigate }: { navigate: (p: Page) => void 
       {!me ? (
         <div style={{ marginTop: 20 }}>
           <button onClick={openConnectModal} style={btn('var(--adx-accent)')}>{T("Connect wallet to get your link")}</button>
-          <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: 8 }}>{T("Or unlock your trading wallet in the right panel.")}</div>
+          <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: 8 }}>{T("Or unlock your")}{' '}<button className="link-btn" onClick={openTradingWallet}>{T("trading wallet")}</button>.</div>
         </div>
       ) : (
         <>

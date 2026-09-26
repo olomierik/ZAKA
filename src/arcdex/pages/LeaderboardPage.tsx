@@ -86,7 +86,7 @@ export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => v
 
       {kind === 'traders' && <div style={{ marginTop: 14, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
         {rows === null ? <Empty>{T("Loading…")}</Empty> : rows.length === 0 ? <Empty>{T("No trades in this period yet. The first trader to take profit on ARCDEX tops this board.")}</Empty> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+          <table className="lb-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
             <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
               {['#', T('Trader'), T('Realized PnL'), T('Volume'), T('Trades')].map((h, i) => <th key={h} style={{ padding: '10px 16px', textAlign: i >= 2 ? 'right' : 'left', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{h}</th>)}
             </tr></thead>
@@ -125,7 +125,7 @@ function ClanBoard({ clans, navigate }: { clans: ClanRank[] | null; navigate: (p
       {clans === null ? <Empty>{T("Loading…")}</Empty> : clans.length === 0 ? (
         <Empty>{T("No clans yet.")}{' '}<button onClick={() => navigate({ name: 'clans' })} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.86rem' }}>{T("Start one")}</button>{' '}{T("and trade together.")}</Empty>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+        <table className="lb-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
           <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
             {['#', T('Clan'), T('Members'), T('Clan profit'), T('Volume')].map((h, i) => <th key={h} style={{ padding: '10px 16px', textAlign: i >= 2 ? 'right' : 'left', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{h}</th>)}
           </tr></thead>

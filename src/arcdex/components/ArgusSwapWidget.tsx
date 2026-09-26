@@ -7,6 +7,7 @@ import { client } from '../api/launchpad'
 import { USDC_ADDRESS, type SwapRoute } from '../api/argusMarket'
 import { useTrader, shortAddr } from '../lib/identity'
 import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
+import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { SWAP_ROUTER_ADDRESS, routerConfigured, useRouterInfo, pct, type RouterInfo } from '../lib/routerInfo'
 import { referrerFor, referralLink } from '../lib/referral'
 import { getProfile, triggerIndex } from '../api/social'
@@ -57,6 +58,8 @@ interface Props {
   sellTaxBps?: number | null
   onTraded?: () => void
   unverified?: boolean
+  /** Which side opens first (the phone trade bar's Buy / Sell). */
+  initialMode?: 'buy' | 'sell'
 }
 
 type Step = 'idle' | 'approving' | 'quoting' | 'swapping' | 'done' | 'error'
@@ -64,13 +67,13 @@ type Step = 'idle' | 'approving' | 'quoting' | 'swapping' | 'done' | 'error'
 const fmtUsd = (n: number) => n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(2)}`
 const fmtTok = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toFixed(2)
 
-export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, marketCapUsd, route, routeLoading, buyTaxBps, sellTaxBps, onTraded, unverified }: Props) {
+export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, marketCapUsd, route, routeLoading, buyTaxBps, sellTaxBps, onTraded, unverified, initialMode }: Props) {
   const trader = useTrader()
   const me = trader.address
   const info = useRouterInfo()
   const { writeContractAsync } = useWriteContract()
 
-  const [mode, setMode] = useState<'buy' | 'sell'>('buy')
+  const [mode, setMode] = useState<'buy' | 'sell'>(initialMode ?? 'buy')
   const [amount, setAmount] = useState('')
   const [slippage, setSlippage] = useState(3)
   const [step, setStep] = useState<Step>('idle')
@@ -312,7 +315,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       ) : !me ? (
         <>
           <button onClick={openConnectModal} style={btn('var(--adx-accent)')}>{T("Connect Wallet")}</button>
-          <Note>{T("Or unlock your")}{' '}<b>{T("trading wallet")}</b>{' '}{T("(right panel) for one-tap trades with no pop-ups.")}</Note>
+          <Note>{T("Or unlock your")}{' '}<button className="link-btn" onClick={openTradingWallet}>{T("trading wallet")}</button>{' '}{T("for one-tap trades with no pop-ups.")}</Note>
         </>
       ) : (
         <button onClick={() => void submit()} disabled={busy || amountIn === 0n || !route || insufficient || !info || (needsRiskTick && !riskOk)}

@@ -18,6 +18,8 @@ import AboutPanel from '../components/AboutPanel'
 import { getFollowing, getProfiles, type Profile, type Thesis } from '../api/social'
 import { pushRecent, toggleWatch, usePrefs } from '../lib/prefs'
 import { useTrader } from '../lib/identity'
+import { useIsMobile } from '../lib/useMobile'
+import Sheet, { TradeBar } from '../components/Sheet'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 
@@ -72,6 +74,8 @@ function TokenImage({ src, symbol }: { src: string | null; symbol: string }) {
 }
 
 export default function ArgusTokenPage({ address, pool, navigate }: Props) {
+  const mobile = useIsMobile()
+  const [tradeSheet, setTradeSheet] = useState<'buy' | 'sell' | null>(null)
   const [pools, setPools] = useState<ArgusPool[] | null>(null)
   const [info, setInfo] = useState<ArgusTokenInfo | null>(null)
   const [chain, setChain] = useState<ArgusOnchain | null>(null)
@@ -347,15 +351,41 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     return () => { document.title = prev }
   }, [symbol, mcap])
 
+  const chartCard = (
+    <div className="coin-chart-card" style={{ ...card, padding: 16 }}>
+      <div className="coin-chart-title" style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{T("PRICE CHART · USD")}</div>
+      <PriceChart poolAddress={activePool || null} engineToken={address} ticks={onchainFailed ? undefined : ticks} live={streaming} trades={chartTrades} thesisMarks={thesisMarks} friends={friends} supply={supply} symbol={symbol}
+        onTraderClick={a => navigate({ name: 'trader', address: a })} />
+    </div>
+  )
+  const swapWidget = (mode?: 'buy' | 'sell') => (
+    <ArgusSwapWidget key={mode ?? 'inline'} token={address as Address} symbol={symbol} tokenImage={image} priceUsd={priceUsd}
+      marketCapUsd={mcap} route={route} routeLoading={routeLoading} initialMode={mode}
+      buyTaxBps={chain?.buyTaxBps} sellTaxBps={chain?.sellTaxBps} onTraded={onTraded} unverified={info ? !info.verified : false} />
+  )
+  const socialTabs = (
+    <TokenSocialTabs token={address} symbol={symbol} rows={rows} tradesLoaded={tradesLoaded} profiles={profiles} chainHolders={chainHolders}
+      trader={trader} positionUsd={positionUsd} creator={chain?.creator ?? null} priceUsd={priceUsd} supply={supply}
+      navigate={navigate} onProfilesNeeded={needProfiles} onThesesLoaded={setTheses} />
+  )
+  const sidePanels = (
+    <>
+      <PositionCard token={address} symbol={symbol} image={image} priceUsd={priceUsd} trader={trader} rows={rows}
+        refreshKey={refreshKey} onPositionUsd={setPositionUsd} />
+      <SafetyPanel token={address} info={infoLive} chain={chain} liquidityUsd={active?.liquidityUsd ?? null} rows={rows} />
+      <AboutPanel address={address} symbol={symbol} info={infoLive} pool={active} chain={chain} rows={rows} supply={supply} profiles={profiles} navigate={navigate} />
+    </>
+  )
+
   return (
-    <div className="token-page">
-      {info?.banner && /^https:\/\//i.test(info.banner) && (
+    <div className={`token-page${mobile ? ' coin-mobile' : ''}`}>
+      {!mobile && info?.banner && /^https:\/\//i.test(info.banner) && (
         <img src={info.banner} alt="" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 12, marginBottom: 12, display: 'block' }}
           onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
       )}
 
       <div className="token-page-header">
-        <button className="back-btn" onClick={() => navigate({ name: 'terminal' })}>{T("← Back")}</button>
+        {!mobile && <button className="back-btn" onClick={() => navigate({ name: 'terminal' })}>{T("← Back")}</button>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
           <TokenImage src={image} symbol={symbol} />
           <div style={{ minWidth: 0 }}>
@@ -384,9 +414,12 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         </div>
       </div>
 
+      {/* phones: the chart comes straight after the price, fomo-style */}
+      {mobile && chartCard}
+
       {/* stats */}
       {active && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', fontSize: '0.8rem' }}>
+        <div className="coin-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', fontSize: '0.8rem' }}>
           {([
             ['5m', pct(active.change.m5), active.change.m5 >= 0 ? 'var(--green)' : 'var(--red)'],
             ['1h', pct(active.change.h1), active.change.h1 >= 0 ? 'var(--green)' : 'var(--red)'],
@@ -415,34 +448,28 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         <div style={{ ...card, padding: 16, color: 'var(--text-muted)', fontSize: '0.85rem' }}>{T("GeckoTerminal has no USDC- or ARGUS-quoted pool for this token yet.")}</div>
       )}
 
-      <div className="token-detail-grid">
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ ...card, padding: 16 }}>
-            <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{T("PRICE CHART · USD")}</div>
-            <PriceChart poolAddress={activePool || null} engineToken={address} ticks={onchainFailed ? undefined : ticks} live={streaming} trades={chartTrades} thesisMarks={thesisMarks} friends={friends} supply={supply} symbol={symbol}
-              onTraderClick={a => navigate({ name: 'trader', address: a })} />
+      {mobile ? (
+        <div className="coin-mobile-body">
+          {socialTabs}
+          {sidePanels}
+          <TradeBar symbol={symbol} onTrade={setTradeSheet} />
+          <Sheet open={tradeSheet !== null} onClose={() => setTradeSheet(null)}>
+            {tradeSheet && swapWidget(tradeSheet)}
+          </Sheet>
+        </div>
+      ) : (
+        <div className="token-detail-grid">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {chartCard}
+            {socialTabs}
           </div>
 
-          <TokenSocialTabs token={address} symbol={symbol} rows={rows} tradesLoaded={tradesLoaded} profiles={profiles} chainHolders={chainHolders}
-            trader={trader} positionUsd={positionUsd} creator={chain?.creator ?? null} priceUsd={priceUsd} supply={supply}
-            navigate={navigate} onProfilesNeeded={needProfiles} onThesesLoaded={setTheses} />
-        </div>
-
-        <div className="token-detail-swap">
-          <div style={{ ...card, overflow: 'hidden' }}>
-            <ArgusSwapWidget token={address as Address} symbol={symbol} tokenImage={image} priceUsd={priceUsd}
-              marketCapUsd={mcap} route={route} routeLoading={routeLoading}
-              buyTaxBps={chain?.buyTaxBps} sellTaxBps={chain?.sellTaxBps} onTraded={onTraded} unverified={info ? !info.verified : false} />
+          <div className="token-detail-swap">
+            <div style={{ ...card, overflow: 'hidden' }}>{swapWidget()}</div>
+            {sidePanels}
           </div>
-
-          <PositionCard token={address} symbol={symbol} image={image} priceUsd={priceUsd} trader={trader} rows={rows}
-            refreshKey={refreshKey} onPositionUsd={setPositionUsd} />
-
-          <SafetyPanel token={address} info={infoLive} chain={chain} liquidityUsd={active?.liquidityUsd ?? null} rows={rows} />
-
-          <AboutPanel address={address} symbol={symbol} info={infoLive} pool={active} chain={chain} rows={rows} supply={supply} profiles={profiles} navigate={navigate} />
         </div>
-      </div>
+      )}
     </div>
   )
 }

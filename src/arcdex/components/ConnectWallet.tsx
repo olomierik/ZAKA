@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useAccount, useConnect, type Connector } from 'wagmi'
 import { arc } from '../wagmi'
 import { t as T } from '../lib/i18n'
+import { openTradingWallet } from '../lib/tradingWalletSheet'
 
 // "Connect wallet" for the whole app — a small modal over wagmi's own
 // connectors, in place of ConnectKit (which, with its Aave account kit,
@@ -115,6 +116,14 @@ export function ConnectModalHost() {
               </span>
             </a>
           )}
+          {/* Most phone users have no wallet app in this browser: the trading wallet needs none. */}
+          <button className="wallet-row" onClick={() => { setOpen(false); openTradingWallet() }}>
+            <span className="wallet-row-blank" style={{ color: 'var(--amber)' }}>⚡</span>
+            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
+              <span style={{ fontWeight: 700 }}>{T("Trading wallet")}</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T("No app needed — one-tap trades, no pop-ups")}</span>
+            </span>
+          </button>
         </div>
         {err && <div style={{ fontSize: '0.76rem', color: '#fca5a5', wordBreak: 'break-word' }}>{err}</div>}
         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>

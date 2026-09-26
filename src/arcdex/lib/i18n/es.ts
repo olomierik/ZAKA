@@ -991,5 +991,17 @@ const d: Record<string, string> = {
   "Smart-contract wallets can't trade on the launchpad — use a regular wallet or your trading wallet.": "Las billeteras de contrato inteligente no pueden operar en el launchpad — usa una billetera normal o tu billetera de trading.",
   "Enter an amount.": "Introduce un importe.",
   "This token isn't on the launchpad.": "Este token no está en el launchpad.",
+  "for one-tap trades with no pop-ups.": "para operar con un toque, sin ventanas emergentes.",
+  "Connect a wallet or create a trading wallet first.": "Conecta una billetera o crea primero una billetera de trading.",
+  "Open trading wallet": "Abrir billetera de trading",
+  "No app needed — one-tap trades, no pop-ups": "Sin app — operaciones con un toque, sin ventanas emergentes",
+  "Home": "Inicio",
+  "$ARCD burn": "Quema de $ARCD",
+  "Main": "Principal",
+  "More": "Más",
+  "Watchlist, trending & most held": "Watchlist, tendencias y más holdeados",
+  "Back": "Atrás",
+  "Filters": "Filtros",
+  "Show more": "Ver más",
 }
 export default d

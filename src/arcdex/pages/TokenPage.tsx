@@ -5,6 +5,8 @@ import { getToken, type ArcToken } from '../api/radardex'
 import { getCurve, LAUNCHPAD_ADDRESS } from '../api/launchpad'
 import PriceChart from '../components/PriceChart'
 import TokenSwap from '../components/TokenSwap'
+import Sheet, { TradeBar } from '../components/Sheet'
+import { useIsMobile } from '../lib/useMobile'
 import CurveTokenPage from './CurveTokenPage'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
@@ -42,6 +44,8 @@ function TokenImage({ src, symbol }: { src?: string; symbol: string }) {
 }
 
 export default function TokenPage({ address, navigate }: Props) {
+  const mobile = useIsMobile()
+  const [tradeSheet, setTradeSheet] = useState<'buy' | 'sell' | null>(null)
   const [pair,   setPair]   = useState<DexPair | null>(null)
   const [trades, setTrades] = useState<LiveTrade[]>([])
   const [loading, setLoading] = useState(true)
@@ -102,7 +106,7 @@ export default function TokenPage({ address, navigate }: Props) {
     <div className="token-page">
       {/* header */}
       <div className="token-page-header">
-        <button className="back-btn" onClick={() => navigate({ name: 'terminal' })}>{T("← Back")}</button>
+        {!mobile && <button className="back-btn" onClick={() => navigate({ name: 'terminal' })}>{T("← Back")}</button>}
         {pair && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <TokenImage src={pair.info?.imageUrl} symbol={pair.baseToken.symbol} />
@@ -212,12 +216,23 @@ export default function TokenPage({ address, navigate }: Props) {
       </div>
         </div>
 
-        {/* swap sidebar */}
-        <div className="token-detail-swap" style={{ marginTop: 16, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
-          <TokenSwap address={address} pool={radarToken?.poolAddress || undefined}
-            fallback={radarToken ? { symbol: radarToken.symbol, image: radarToken.logoUrl || null, priceUsd: radarToken.price } : undefined} />
-        </div>
+        {/* swap sidebar (phones: the Buy / Sell bar and sheet below) */}
+        {!mobile && (
+          <div className="token-detail-swap" style={{ marginTop: 16, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
+            <TokenSwap address={address} pool={radarToken?.poolAddress || undefined}
+              fallback={radarToken ? { symbol: radarToken.symbol, image: radarToken.logoUrl || null, priceUsd: radarToken.price } : undefined} />
+          </div>
+        )}
       </div>
+      {mobile && (
+        <>
+          <TradeBar symbol={radarToken?.symbol ?? ''} onTrade={setTradeSheet} />
+          <Sheet open={tradeSheet !== null} onClose={() => setTradeSheet(null)}>
+            {tradeSheet && <TokenSwap key={tradeSheet} address={address} pool={radarToken?.poolAddress || undefined} initialMode={tradeSheet}
+              fallback={radarToken ? { symbol: radarToken.symbol, image: radarToken.logoUrl || null, priceUsd: radarToken.price } : undefined} />}
+          </Sheet>
+        </>
+      )}
     </div>
   )
 }

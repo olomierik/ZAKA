@@ -5,6 +5,8 @@ import { computeTrustReport, type TrustReport } from '../api/trustScore'
 import { ARC_EXPLORER } from '../api/arcRpc'
 import CurveSwapWidget from '../components/CurveSwapWidget'
 import CurveChart from '../components/CurveChart'
+import Sheet, { TradeBar } from '../components/Sheet'
+import { useIsMobile } from '../lib/useMobile'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 
@@ -29,6 +31,8 @@ function fmt(n: number, prefix = '') {
 }
 
 export default function CurveTokenPage({ address, navigate }: Props) {
+  const mobile = useIsMobile()
+  const [tradeSheet, setTradeSheet] = useState<'buy' | 'sell' | null>(null)
   const [token, setToken]   = useState<LaunchpadToken | null>(null)
   const [trades, setTrades] = useState<CurveTrade[]>([])
   const [loading, setLoading] = useState(true)
@@ -91,7 +95,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
   return (
     <div className="token-page">
       <div className="token-page-header">
-        <button className="back-btn" onClick={() => navigate({ name: 'terminal' })}>{T("← Back")}</button>
+        {!mobile && <button className="back-btn" onClick={() => navigate({ name: 'terminal' })}>{T("← Back")}</button>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {token.metadata?.image ? (
             <img src={token.metadata.image} alt="" width={44} height={44}
@@ -231,10 +235,20 @@ export default function CurveTokenPage({ address, navigate }: Props) {
           </div>
         </div>
 
-        <div className="token-detail-swap" style={{ marginTop: 16, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
-          <CurveSwapWidget token={token} onTraded={load} />
-        </div>
+        {!mobile && (
+          <div className="token-detail-swap" style={{ marginTop: 16, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
+            <CurveSwapWidget token={token} onTraded={load} />
+          </div>
+        )}
       </div>
+      {mobile && (
+        <>
+          <TradeBar symbol={token.symbol} onTrade={setTradeSheet} />
+          <Sheet open={tradeSheet !== null} onClose={() => setTradeSheet(null)}>
+            {tradeSheet && <CurveSwapWidget key={tradeSheet} token={token} onTraded={load} initialMode={tradeSheet} />}
+          </Sheet>
+        </>
+      )}
     </div>
   )
 }

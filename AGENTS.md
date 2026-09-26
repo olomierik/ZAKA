@@ -251,6 +251,20 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
   - `bun scripts/test-pool-swaps.ts`: on-chain swap loading and prices vs GeckoTerminal.
   - `bun scripts/test-holders.ts [token] [createdIso]`: a full holder count; it must report 0 negative balances.
 
+## Phones: native-app layout (2026-09-26)
+
+One breakpoint, `max-width: 767px` (`lib/useMobile.ts`, and the last block of `arcdex.css`). Desktop is unchanged.
+- **Shell:** a bottom tab bar (`MobileTabBar`: Home, Feed, Swap, Portfolio, More) replaces the hamburger. "More" is a sheet with every other page, the trading wallet, and the lists drawer (watchlist, trending, most held). The top bar respects safe areas (`viewport-fit=cover`).
+- **Coin pages** (Argus, launchpad, other tokens) are pushed screens. The top bar has a back arrow (in-app history depth in `App.tsx`), and there is no tab bar.
+  - Order: header → chart (edge to edge, 300px) → stats → tabs → position/safety/about.
+  - A sticky Buy / Sell bar (`TradeBar`) opens the swap box in a bottom sheet (`Sheet`); widgets take `initialMode`.
+- **Sheets (`components/Sheet.tsx`):** portal, backdrop tap / Esc / the phone's Back closes them. Each open sheet adds a history entry. `lib/sheetHistory.ts` keeps the page router from treating those pops as navigation, and `afterSheetClose` navigates only after the sheet's entry is gone. Modals (`.modal-card`) and dropdowns (`.menu-pop`) also open as bottom sheets on phones.
+- **Trading wallet anywhere:** `openTradingWallet()` (`lib/tradingWalletSheet.ts`) opens it as a sheet. It's linked from More, Connect Wallet (as a first-class option: most phone users have no wallet app), the swap box, Deposit and Rewards. The right rail that holds it is hidden below 1180px.
+- **Terminal:** compact rows (a single volume/liquidity line), view chips scroll with Filters pinned, and "Show more" replaces pages.
+- **Fixed on the way:** `.token-detail-grid` used `align-items: flex-start`, so on narrow screens the chart column kept the chart's first width (648px) and the chart, controls and holder tables ran off the screen. Leaderboard tables drop a column on phones.
+- **Installable:** `public/manifest.webmanifest` (standalone, start `/app`, icons 192/512) plus Apple web-app meta. Added to the home screen, ARCDEX opens full screen with no browser bar.
+- **Checked** at 360px and 390px on every main page: nothing wider than the screen, except rows meant to scroll sideways.
+
 ## Real-time market engine — `engine/` (2026-09-25)
 
 A long-running Bun service (not on Vercel) that ingests Arc directly and pushes to the site over WebSocket. See `engine/README.md` for architecture, deployment, protocol and tests.

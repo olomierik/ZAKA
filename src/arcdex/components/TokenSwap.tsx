@@ -20,9 +20,10 @@ interface Props {
   /** Shown while (or if) the market list doesn't have the coin. */
   fallback?: { symbol: string; image?: string | null; priceUsd?: number }
   onTraded?: () => void
+  initialMode?: 'buy' | 'sell'
 }
 
-export default function TokenSwap({ address, pool, fallback, onTraded }: Props) {
+export default function TokenSwap({ address, pool, fallback, onTraded, initialMode }: Props) {
   const token = address.toLowerCase()
   const [curve, setCurve] = useState<LaunchpadToken | null | undefined>(undefined)
   const [row, setRow] = useState<ArgusPool | null | undefined>(undefined)
@@ -65,7 +66,7 @@ export default function TokenSwap({ address, pool, fallback, onTraded }: Props) 
   }, [curve, token, poolId, row])
 
   if (curve === undefined) return <div className="loading-state" style={{ padding: 24 }}>{T("Loading…")}</div>
-  if (curve) return <CurveSwapWidget token={curve} onTraded={onTraded} />
+  if (curve) return <CurveSwapWidget token={curve} onTraded={onTraded} initialMode={initialMode} />
 
   const symbol = row?.token.symbol ?? fallback?.symbol ?? '…'
   if (row === null && !poolId) {
@@ -78,6 +79,6 @@ export default function TokenSwap({ address, pool, fallback, onTraded }: Props) 
   return (
     <ArgusSwapWidget token={address as Address} symbol={symbol} tokenImage={row?.token.image ?? fallback?.image ?? null}
       priceUsd={row?.priceUsd ?? fallback?.priceUsd ?? 0} marketCapUsd={row?.marketCapUsd ?? null}
-      route={route} routeLoading={routeLoading} buyTaxBps={tax.buy} sellTaxBps={tax.sell} onTraded={onTraded} />
+      route={route} routeLoading={routeLoading} buyTaxBps={tax.buy} sellTaxBps={tax.sell} onTraded={onTraded} initialMode={initialMode} />
   )
 }

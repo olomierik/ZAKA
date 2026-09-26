@@ -1,0 +1,16 @@
+{
+  "name": "ARCDEX — trade Arc coins",
+  "short_name": "ARCDEX",
+  "description": "The social trading app for Arc: live coins and charts, one-tap trades, launchpad and bridge.",
+  "id": "/app",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#060d18",
+  "theme_color": "#0b1525",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/arcdex-logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

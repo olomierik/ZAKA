@@ -244,6 +244,8 @@ function TokenCard({ token, dupCount = 0, onClick }: CardProps) {
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {token.name} · {fmtAge(token.ageMs)}
           </div>
+          {/* phones: one quiet line instead of the badge row and stat grid */}
+          <div className="token-card-meta">{T("Vol")} {fmt(token.volume24h, '$')} · {T("Liq")} {fmt(token.liquidity, '$')}{dupCount > 0 ? ` · +${dupCount} ${T("same ticker")}` : ''}</div>
           <div className="token-card-badges">
             {token.verified && (
               <span style={{ fontSize: '0.58rem', background: '#1d4ed822', color: '#60a5fa', border: '1px solid #1d4ed844', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>{T("✓ VERIFIED")}</span>
@@ -278,6 +280,10 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   const [sortAsc,  setSortAsc]  = useState(false)
   const [search,   setSearch]   = useState('')
   const [page,     setPage]     = useState(1)
+  // Phones: filters fold away behind a button, and the list grows with
+  // "Show more" (an app feed) instead of numbered pages.
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [shown, setShown] = useState(PAGE_SIZE)
   const [minMcap,  setMinMcap]  = useState('')
   const [maxMcap,  setMaxMcap]  = useState('')
   const [minVol,   setMinVol]   = useState('')
@@ -379,7 +385,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   }, [publish])
 
   // reset page on filter change
-  useEffect(() => setPage(1), [source, viewTab, search, sortCol, sortAsc, minMcap, maxMcap, minVol])
+  useEffect(() => { setPage(1); setShown(PAGE_SIZE) }, [source, viewTab, search, sortCol, sortAsc, minMcap, maxMcap, minVol])
 
   // ── curate: fold ticker-squatting duplicates behind an expand toggle,
   // drop fully-dead placeholder entries — see lib/curate.ts ────────────
@@ -469,7 +475,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   const tickerTokens = tokens.slice(0, 20)
 
   return (
-    <div className="terminal-shell">
+    <div className={`terminal-shell${filtersOpen ? ' filters-open' : ''}`}>
 
       {/* ── scrolling ticker ── */}
       <div className="ticker-bar" ref={tickerRef}>
@@ -524,6 +530,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
         <div className="time-tabs">
           <span className="live-badge">{T("● live")}</span>
         </div>
+        <button className={`filters-btn${filtersOpen ? ' on' : ''}`} onClick={() => setFiltersOpen(o => !o)} aria-expanded={filtersOpen}>⚙ {T("Filters")}</button>
       </div>
 
       {/* ── pagination + search ── */}
@@ -612,7 +619,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
         {/* mobile card list — same data, CSS toggles which one is visible */}
         {!loading && (
           <div className="token-cards">
-            {pageItems.map(token => {
+            {sorted.slice(0, shown).map(token => {
               const group = groupByPrimaryAddress.get(token.address)
               return (
                 <TokenCard
@@ -623,6 +630,9 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
                 />
               )
             })}
+            {shown < sorted.length && (
+              <button className="show-more" onClick={() => setShown(n => n + PAGE_SIZE)}>{T("Show more")} · {(sorted.length - shown).toLocaleString()}</button>
+            )}
           </div>
         )}
       </div>
