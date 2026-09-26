@@ -22,10 +22,12 @@ export type { ArgusPool }
 // refresh doesn't spend the visitor's GeckoTerminal quota every time.
 let localBuild: { at: number; pools: Promise<ArgusPool[]> } | null = null
 
-// How long to wait on the server's copy before also building in-browser. A
-// CDN hit answers in ~1s; a cold rebuild can take 10-17s.
-const SERVER_WAIT_MS = 2_500
-let firstMarketCall = true
+// How long to wait on the server's copy before also building in-browser.
+// The server answers from its stored list (v4 `arcdex_kv`, built with the
+// CoinGecko key) in ~0.6s, so the in-browser build — which spends the
+// visitor's own free GeckoTerminal quota, ~30 calls/min — only runs when
+// the server fails, comes back partial, or is this slow.
+const SERVER_WAIT_MS = 4_000
 
 interface ServerMarket { pools: ArgusPool[]; partial: boolean }
 
@@ -77,13 +79,7 @@ function rememberMarket(pools: ArgusPool[]) {
 
 async function loadArgusMarket(onUpdate?: (pools: ArgusPool[]) => void): Promise<ArgusPool[]> {
   const server = fetchServerMarket()
-  // The first call picks up the response arcdex.html preloaded at page
-  // start, so its wait counts from page start: if a CDN hit would already
-  // have answered while the app bundle downloaded, this is a cold rebuild
-  // — don't wait any longer before building in-browser too.
-  const wait = firstMarketCall ? Math.max(300, SERVER_WAIT_MS - performance.now()) : SERVER_WAIT_MS
-  firstMarketCall = false
-  const quick = await Promise.race([server, new Promise<undefined>(r => setTimeout(r, wait))])
+  const quick = await Promise.race([server, new Promise<undefined>(r => setTimeout(r, SERVER_WAIT_MS))])
 
   // Fast and complete — the common case once the CDN is warm.
   if (quick && !quick.partial && quick.pools.length > 0) return quick.pools
