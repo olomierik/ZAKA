@@ -18,6 +18,7 @@ import { t as T } from '../lib/i18n'
 import { waitForReceipt } from '../lib/receipts'
 import { onBalances } from '../lib/balances'
 import { PERMIT2, PERMIT2_ABI, UR_ABI, encodeNativeBuy, encodeNativeSell, feeShares, netAfterFees, permit2Allowance, quoteExactIn, universalRouter } from '../api/universalRouter'
+import { curveBuyCall, curveSellCall, quoteCurveBuy, quoteCurveSell, type CurveCall, type CurveInfo } from '../api/curves'
 
 export { SWAP_ROUTER_ADDRESS }
 
@@ -100,6 +101,9 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
   const [allowance, setAllowance] = useState<bigint>(0n)
   const [impact, setImpact] = useState<number | null>(null)
   const [riskOk, setRiskOk] = useState(false)
+  // A curve's launch snipe tax on this buy (basis points, from its quote), and the trader's OK to pay it.
+  const [snipe, setSnipe] = useState<number | null>(null)
+  const [snipeOk, setSnipeOk] = useState(false)
   const [share, setShare] = useState<{ card: CardData; text: string } | null>(null)
   const [lastTrade, setLastTrade] = useState<{ kind: 'buy' | 'sell'; usd: number; tokens: number } | null>(null)
   // Quick-trade presets (fomo's pencil): buy in USDC, sell in % of holding.
@@ -116,17 +120,22 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
   const tokenIn = mode === 'buy' ? USDC_ADDRESS : token
   const decIn = mode === 'buy' ? 6 : 18
   const amountIn = useMemo(() => { try { return amount ? parseUnits(amount, decIn) : 0n } catch { return 0n } }, [amount, decIn])
-  const feeBps = info?.feeBps ?? 0
-  const taxBps = (mode === 'buy' ? buyTaxBps : sellTaxBps) ?? 0
+  // Mercuri's or SolonPad's own curve: its fee and creator tax instead of ARCDEX's fee.
+  const curve = route?.kind === 'curve' ? route.curve : null
+  const feeBps = curve ? curve.feeBps : info?.feeBps ?? 0
+  const taxBps = curve ? curve.creatorTaxBps : (mode === 'buy' ? buyTaxBps : sellTaxBps) ?? 0
 
   // Balance + allowance for whichever wallet is trading (works for both the
   // trading wallet and an external one — no wagmi hooks tied to one).
   // A native-USDC pool trades through Uniswap's Universal Router: a buy
-  // pays in native USDC (no approval), a sell goes through Permit2.
+  // pays in native USDC (no approval), a sell goes through Permit2. A curve
+  // takes native USDC for a buy and an approval of itself for a sell.
   const native = route?.kind === 'v4native'
+  const curveAddr = curve?.curve ?? null
   const refresh = useCallback(async () => {
     if (!me || !routerConfigured) { setBalance(null); setAllowance(0n); return }
     const allowanceOf = async (): Promise<bigint> => {
+      if (curveAddr) return mode === 'buy' ? 2n ** 255n : client.readContract({ address: tokenIn, abi: ERC20_ABI, functionName: 'allowance', args: [me, curveAddr] })
       if (!native) return client.readContract({ address: tokenIn, abi: ERC20_ABI, functionName: 'allowance', args: [me, SWAP_ROUTER_ADDRESS] })
       if (mode === 'buy') return 2n ** 255n
       const [toPermit2, toRouter] = await Promise.all([
@@ -140,7 +149,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       allowanceOf(),
     ]).catch(() => [null, 0n] as const)
     setBalance(b); setAllowance(a ?? 0n)
-  }, [me, tokenIn, native, mode])
+  }, [me, tokenIn, native, mode, curveAddr])
   useEffect(() => {
     void refresh()
     const id = setInterval(() => { if (!document.hidden) void refresh() }, 12_000)
@@ -148,11 +157,11 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
     return () => { clearInterval(id); off() }
   }, [refresh])
 
-  useEffect(() => { setImpact(null); setRiskOk(false) }, [amount, mode])
+  useEffect(() => { setImpact(null); setRiskOk(false); setSnipe(null); setSnipeOk(false) }, [amount, mode])
 
-  // Pre-trade estimate from the market price, net of the platform fee and
-  // the coin's creator tax. The exact figure comes from simulating the
-  // real transaction just before it's sent.
+  // Pre-trade estimate from the market price, net of the fee (ARCDEX's, or a
+  // curve's own) and the coin's creator tax. The exact figure comes from
+  // simulating the real transaction just before it's sent.
   const net = (1 - feeBps / 10_000) * (1 - taxBps / 10_000)
   const estimate = amountIn > 0n && priceUsd > 0
     ? mode === 'buy' ? (Number(formatUnits(amountIn, 6)) * net) / priceUsd : Number(formatUnits(amountIn, 18)) * priceUsd * net
@@ -197,9 +206,11 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
     onTraded?.()
   }
 
-  /** Is the price impact past the confirm line (and not yet confirmed)? Says so if it is. */
-  function holdForImpact(outNum: number): boolean {
-    const imp = estimate > 0 ? Math.max(0, (1 - outNum / estimate) * 100) : 0
+  /** Is the price impact past the confirm line (and not yet confirmed)? Says so if it is.
+   * `setAside` scales the estimate for a cost confirmed separately (a curve's snipe tax),
+   * so the impact is the cost of size alone. */
+  function holdForImpact(outNum: number, setAside = 1): boolean {
+    const imp = estimate > 0 ? Math.max(0, (1 - outNum / (estimate * setAside)) * 100) : 0
     setImpact(imp)
     if (imp < CONFIRM_IMPACT || riskOk) return false
     setStep('idle')
@@ -267,10 +278,63 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
     finish(outNum)
   }
 
+  /** Mercuri's or SolonPad's own bonding curve, traded from this wallet
+   * directly. ARCDEX adds no fee here (api/curves.ts); the curve charges its
+   * own fee and taxes, all inside its quote. */
+  async function submitCurve(c: CurveInfo) {
+    if (!me) return
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+    const keep = (x: bigint) => (x * BigInt(Math.round((100 - slippage) * 100))) / 10_000n
+    // Mercuri binds the referrer a wallet names on its first Mercuri trade
+    // (and ignores it after that): ARCDEX's fee wallet.
+    const referrer = c.venue === 'Mercuri'
+      ? await client.readContract({ address: SWAP_ROUTER_ADDRESS, abi: ROUTER_FEES, functionName: 'feeWallet' }).catch(() => ZERO_ADDR)
+      : ZERO_ADDR
+    let req: CurveCall, outNum: number
+    if (mode === 'buy') {
+      if (!c.canBuy) throw new Error(T('This curve has sold out and is moving to its Uniswap pool: buying reopens there shortly. You can still sell.'))
+      setStep('quoting')
+      const value = amountIn * 10n ** 12n // native USDC has 18 decimals
+      const q = await quoteCurveBuy(c, value, me)
+      outNum = Number(formatUnits(q.tokensOut, 18))
+      // A launch snipe tax is its own confirmation, not a price impact.
+      setSnipe(q.snipeBps || null)
+      if (q.snipeBps > 0 && !snipeOk) {
+        setStep('idle')
+        setMsg(T('{symbol} launched moments ago: a {pct} snipe tax goes to the launchpad on this buy, falling to 0 shortly after launch. Tick the box to buy anyway, or wait.', { symbol, pct: pct(q.snipeBps) }))
+        return
+      }
+      if (holdForImpact(outNum, 1 - q.snipeBps / 10_000)) return
+      req = curveBuyCall(c, value, keep(q.tokensOut), me, referrer, deadline)
+    } else {
+      const approved = await client.readContract({ address: token, abi: ERC20_ABI, functionName: 'allowance', args: [me, c.curve] })
+      if (approved < amountIn) {
+        setStep('approving')
+        // Exact amount only, to the curve the launchpad's factory names for this token.
+        const h = await send({ address: token, abi: ERC20_ABI, functionName: 'approve', args: [c.curve, amountIn] })
+        if ((await waitForReceipt(h)).status !== 'success') throw new Error(T('Approval failed'))
+        await waitForAllowance(client, token, me, c.curve, amountIn)
+      }
+      setStep('quoting')
+      const out = await quoteCurveSell(c, amountIn, me)
+      outNum = Number(formatUnits(out, 18))
+      if (holdForImpact(outNum)) return
+      req = curveSellCall(c, amountIn, keep(out), me, referrer, deadline)
+    }
+    // Simulate the exact transaction first: a moved price or a curve that
+    // just graduated stops here, before signing.
+    await client.simulateContract({ ...req, account: me } as never)
+    setStep('swapping')
+    const h = await send({ ...req, args: [...req.args] })
+    if ((await waitForReceipt(h)).status !== 'success') throw new Error(T('Swap reverted'))
+    finish(outNum)
+  }
+
   async function submit() {
     if (!me || !info || !route || amountIn === 0n) return
     setMsg('')
     try {
+      if (route.kind === 'curve') { await submitCurve(route.curve); return }
       if (route.kind === 'v4native') { await submitNative(info, route.key); return }
       if (needsApprove) {
         setStep('approving')
@@ -334,8 +398,12 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
   const busy = step === 'approving' || step === 'quoting' || step === 'swapping'
   const routeText = route?.kind === 'v4' && route.via === 'ARGUS'
     ? (mode === 'buy' ? `USDC → ARGUS → ${symbol}` : `${symbol} → ARGUS → USDC`)
-    : (mode === 'buy' ? `USDC → ${symbol}` : `${symbol} → USDC`)
+    : (mode === 'buy' ? `USDC → ${symbol}` : `${symbol} → USDC`) + (curve ? ` · ${T('{launchpad} curve', { launchpad: curve.venue })}` : '')
   const needsRiskTick = impact !== null && impact >= CONFIRM_IMPACT
+  const needsSnipeTick = mode === 'buy' && !!snipe
+  // A Mercuri curve that has sold out takes sells only while it graduates.
+  const buyClosed = mode === 'buy' && !!curve && !curve.canBuy
+  const blocked = busy || amountIn === 0n || !route || insufficient || !info || (needsRiskTick && !riskOk) || (needsSnipeTick && !snipeOk) || buyClosed
 
   return (
     <div className="swap-box">
@@ -383,9 +451,11 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       <div className="swap-info">
         <Row label={T("You receive (est.)")} value={estimate > 0 ? (mode === 'buy' ? `${fmtTok(estimate)} ${symbol}` : fmtUsd(estimate)) : '—'} />
         <Row label={T("Route")} value={routeLoading ? T('Finding route…') : route ? routeText : T('No routable pool')} />
-        <Row label={T("Platform fee")} value={info ? T('{pct} (in USDC)', { pct: pct(info.feeBps) }) : '…'} />
+        <Row label={T("Platform fee")} value={curve ? '0%' : info ? T('{pct} (in USDC)', { pct: pct(info.feeBps) }) : '…'} />
+        {curve && <Row label={T("Curve fee")} value={pct(curve.feeBps)} />}
         {/* An Argus creator tax; other launchpads charge through their pool's own fee (the note below). */}
         {(!venue || taxBps > 0) && <Row label={T("Creator tax")} value={taxBps ? pct(taxBps) : '0%'} />}
+        {needsSnipeTick && <Row label={T("Snipe tax")} value={pct(snipe ?? 0)} color="var(--red)" />}
         {impact !== null && (
           <Row label={T("Price impact")} value={`${impact.toFixed(2)}%`} color={impact >= CONFIRM_IMPACT ? 'var(--red)' : impact >= WARN_IMPACT ? 'var(--amber)' : undefined} />
         )}
@@ -402,6 +472,10 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       {needsRiskTick && (
         <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '0.76rem', color: '#fcd34d', cursor: 'pointer' }}>
           <input type="checkbox" checked={riskOk} onChange={e => setRiskOk(e.target.checked)} style={{ marginTop: 2 }} />{T("I understand this trade moves the price")}{' '}{impact!.toFixed(1)}{T("% and I'll get less than the market price.")}</label>
+      )}
+      {needsSnipeTick && (
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '0.76rem', color: '#fca5a5', cursor: 'pointer' }}>
+          <input type="checkbox" checked={snipeOk} onChange={e => setSnipeOk(e.target.checked)} style={{ marginTop: 2 }} />{T('I accept the {pct} snipe tax on this buy.', { pct: pct(snipe ?? 0) })}</label>
       )}
 
       {msg && (
@@ -422,8 +496,8 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
           <Note>{T("Or unlock your")}{' '}<button className="link-btn" onClick={openTradingWallet}>{T("trading wallet")}</button>{' '}{T("for one-tap trades with no pop-ups.")}</Note>
         </>
       ) : (
-        <button onClick={() => void submit()} disabled={busy || amountIn === 0n || !route || insufficient || !info || (needsRiskTick && !riskOk)}
-          style={{ ...btn(needsApprove ? 'var(--amber)' : mode === 'buy' ? 'var(--green)' : 'var(--red)'), opacity: busy || amountIn === 0n || !route || insufficient || !info || (needsRiskTick && !riskOk) ? 0.5 : 1 }}>
+        <button onClick={() => void submit()} disabled={blocked}
+          style={{ ...btn(needsApprove ? 'var(--amber)' : mode === 'buy' ? 'var(--green)' : 'var(--red)'), opacity: blocked ? 0.5 : 1 }}>
           {insufficient ? T("Insufficient balance")
             : step === 'approving' ? T("Approving…")
             : step === 'quoting' ? T("Checking trade…")
@@ -432,6 +506,8 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
             : T(mode === 'buy' ? 'Buy {symbol}' : 'Sell {symbol}', { symbol })}
         </button>
       )}
+
+      {buyClosed && <Note>{T('This curve has sold out and is moving to its Uniswap pool: buying reopens there shortly. You can still sell.')}</Note>}
 
       {!routeLoading && !route && venue && (
         <Note>
@@ -450,9 +526,11 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         <div style={{ fontSize: '0.7rem', color: '#fcd34d', textAlign: 'center' }}>{T("⚠ Unverified token — anyone can launch a coin with any name. Check the contract before trading.")}</div>
       )}
 
-      <p className="swap-note">{venue
-        ? T("Every trade is simulated before it's sent. The pool's own fee, set by {launchpad}, applies on top of the platform fee.", { launchpad: venue.name })
-        : T("Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.")}</p>
+      <p className="swap-note">{curve
+        ? T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee; ARCDEX adds none.", { launchpad: curve.venue })
+        : venue
+          ? T("Every trade is simulated before it's sent. The pool's own fee, set by {launchpad}, applies on top of the platform fee.", { launchpad: venue.name })
+          : T("Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.")}</p>
 
       {share && <ShareCardModal card={share.card} text={share.text} referralsLive={info?.version === 2} onClose={() => setShare(null)} />}
     </div>

@@ -1206,5 +1206,13 @@ const d: Record<string, string> = {
   "Every trade is simulated before it's sent. The pool's own fee, set by {launchpad}, applies on top of the platform fee.": "Chaque trade est simulé avant l’envoi. Les frais du pool, fixés par {launchpad}, s’ajoutent aux frais de plateforme.",
   "Trade on {launchpad} ↗": "Trader sur {launchpad} ↗",
   "{symbol} trades on {launchpad}'s own contracts, which ARCDEX can't route yet.": "{symbol} s’échange sur les contrats de {launchpad}, qu’ARCDEX ne peut pas encore router.",
+  "{launchpad} curve": "courbe {launchpad}",
+  "Curve fee": "Frais de la courbe",
+  "Snipe tax": "Taxe anti-snipe",
+  "I accept the {pct} snipe tax on this buy.": "J’accepte la taxe anti-snipe de {pct} sur cet achat.",
+  "{symbol} launched moments ago: a {pct} snipe tax goes to the launchpad on this buy, falling to 0 shortly after launch. Tick the box to buy anyway, or wait.": "{symbol} vient d’être lancé : une taxe anti-snipe de {pct} revient au launchpad sur cet achat, et tombe à 0 peu après le lancement. Cochez la case pour acheter quand même, ou patientez.",
+  "This curve has sold out and is moving to its Uniswap pool: buying reopens there shortly. You can still sell.": "Cette courbe est épuisée et passe à son pool Uniswap : les achats y rouvrent sous peu. Vous pouvez toujours vendre.",
+  "Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee; ARCDEX adds none.": "Chaque trade est simulé avant l’envoi. La courbe de {launchpad} prélève ses propres frais ; ARCDEX n’en ajoute aucun.",
+  "On {launchpad}'s bonding curve: {pct} of the way to its Uniswap pool.": "Sur la courbe de {launchpad} : {pct} du chemin vers son pool Uniswap.",
 }
 export default d

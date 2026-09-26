@@ -1206,5 +1206,13 @@ const d: Record<string, string> = {
   "Every trade is simulated before it's sent. The pool's own fee, set by {launchpad}, applies on top of the platform fee.": "每笔交易发送前都会先模拟。池子自身的费用（由 {launchpad} 设置）在平台费之外另计。",
   "Trade on {launchpad} ↗": "前往 {launchpad} 交易 ↗",
   "{symbol} trades on {launchpad}'s own contracts, which ARCDEX can't route yet.": "{symbol} 在 {launchpad} 自己的合约上交易，ARCDEX 暂时无法路由。",
+  "{launchpad} curve": "{launchpad} 曲线",
+  "Curve fee": "曲线手续费",
+  "Snipe tax": "狙击税",
+  "I accept the {pct} snipe tax on this buy.": "我接受本次买入 {pct} 的狙击税。",
+  "{symbol} launched moments ago: a {pct} snipe tax goes to the launchpad on this buy, falling to 0 shortly after launch. Tick the box to buy anyway, or wait.": "{symbol} 刚刚发行：本次买入的 {pct} 将作为狙击税归发射平台，该税率会在发行后不久降至 0。勾选方框仍然买入，或稍候再买。",
+  "This curve has sold out and is moving to its Uniswap pool: buying reopens there shortly. You can still sell.": "该曲线已售罄，正在迁移到其 Uniswap 池：稍后即可在那里继续买入。你仍然可以卖出。",
+  "Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee; ARCDEX adds none.": "每笔交易发送前都会先模拟。{launchpad} 的曲线收取自己的手续费；ARCDEX 不额外收费。",
+  "On {launchpad}'s bonding curve: {pct} of the way to its Uniswap pool.": "在 {launchpad} 的联合曲线上：距离迁移到其 Uniswap 池已完成 {pct}。",
 }
 export default d

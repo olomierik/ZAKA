@@ -306,7 +306,8 @@ The Argus integration above, extended to every launchpad GeckoTerminal lists on 
   |---|---|---|
   | Uniswap v4 | Argus, Minara (fee hook), o1, SolonPad instant mode (no hook), UBI.fun (Flaunch-style hook), graduated Mercuri | yes, if its hook allows it: ERC-20 USDC pools through ArcDexSwapRouter, native-USDC pools through Uniswap's Universal Router (next section) |
   | Uniswap v3 | Tolly (locked 1% pools), RadarDEX (reflection tokens), Archemist, graduated Sashimi | yes, if the pool came from SwapRouter02's factory |
-  | Own curve or DEX | Sashimi, Warp/CircleWarp (native USDC; graduates to WarpDex, a Uniswap V2 fork), Mercuri and SolonPad curves | no: the coin page links to the launchpad |
+  | Own curve | Mercuri, SolonPad (curve mode) | yes: on the curve itself, until the coin graduates ("Mercuri and SolonPad bonding curves" below) |
+  | Own curve or DEX | Sashimi, Warp/CircleWarp (native USDC; graduates to WarpDex, a Uniswap V2 fork) | no: the coin page links to the launchpad |
 
 - **Market list** (`api/_argusCore.ts` `buildMarket`, served by `/api/argus`):
   - Order: Argus first, as before. Then each other launchpad's top 20 by 24h volume, new pools on any listed launchpad, and missing caps filled in.
@@ -326,7 +327,7 @@ The Argus integration above, extended to every launchpad GeckoTerminal lists on 
 - **Known limits:**
   - ArcDexSwapRouter doesn't take native-USDC (address 0) pools; those trade through Uniswap's Universal Router (next section).
   - A hook that only allows its own router shows up at simulation. That's after the exact-amount approval to ARCDEX's router, which can't move funds by itself.
-  - Curve trading per launchpad (Sashimi, Warp, Mercuri, SolonPad) would need each one's contract ABI. Mercuri's and SolonPad's are published: github.com/mercuri-finance/mercuri-launch-contracts and github.com/solonlend/solonpad-skill.
+  - Mercuri's and SolonPad's curves trade on ARCDEX (below). Sashimi's and Warp's would need their contract ABIs, which aren't published.
 - **Tests:**
   - `bun scripts/test-launchpads.ts`: recognition, discovery, the multi-launchpad build (order, concurrency, dedupe, caps, streaming) and Initialize-log key decoding.
   - Browser checks cover the Terminal pills and badges, a Tolly v3 route, a Minara v4 route via the Initialize fallback, the Warp link, and a fork-factory pool being refused.
@@ -351,6 +352,32 @@ Minara, SolonPad's instant launches and other launchpads open their Uniswap v4 p
 - **Encoding:** both Arc deployments are built against v4-periphery whose `ExactInputSingleParams` has `minHopPriceX36` (sent as 0). `ADDRESS_THIS` is address(2), `OPEN_DELTA` is 0.
 - **Cash (max) on any buy** leaves 0.15 USDC. Arc takes gas from the same USDC balance, up front, so a buy of all of it passes the simulation and then reverts on-chain; it also leaves gas to sell.
 - **Tests:** `bun scripts/test-native-pools.ts`: selectors, commands and actions, the swap struct byte for byte against an independent encoding, fee shares, and the router's own arithmetic for sells (portions) and buys (partial fills). Browser checks cover a Minara coin's buy and sell (the signed transactions decoded), a bound referrer's share, a self-referral ignored and Cash (max).
+
+## Mercuri and SolonPad bonding curves (2026-09-26)
+
+Before graduating, a Mercuri coin, or a SolonPad coin launched in curve mode, trades only on its own bonding curve. ARCDEX now trades it there, from the trader's wallet, as those launchpads' own sites do. The coin is found from its address alone, so it works whether GeckoTerminal lists it or not (search → paste the address → Open token).
+
+- **Code:** `src/arcdex/api/curves.ts`: factory lookups, curve state, quotes, the buy and sell calls, and trade-event decoding. `SwapRoute` has `{ kind: 'curve', curve }`, traded in `ArgusSwapWidget.submitCurve`.
+- **Contracts:**
+  - **Mercuri** (github.com/mercuri-finance/mercuri-launch-contracts, v1.0.0 as deployed): LaunchFactory `0x8f5D…59EB` `curveOf(token)`.
+    - Each curve: `buy(minTokensOut, referrer, deadline)` payable; `sell(tokensIn, minUsdcOut, referrer, deadline)` after an approval.
+    - Views `quoteBuy`, `quoteSell`, `phase()` (0 trading, 1 sold out and graduating: sells only, 2 graduated), `price()`, `progressBps()`.
+  - **SolonPad** (github.com/solonlend/solonpad-skill): Pons V2 factory `0xd6b8…5A3b` `getLaunchedToken(token)`.
+    - Each curve: `buy(quoteIn, minTokensOut, recipient)` payable, with `msg.value == quoteIn`; `sell(tokensIn, minQuoteOut, recipient)` after an approval.
+    - No quote view: buys and sells are quoted by simulating them from the trader, with `minOut` 1 (a zero minimum can revert, `MinimumOutputRequired`).
+    - Curves quoted in another ERC-20 (`isNativeQuote() == false`) aren't traded here.
+  - Both take native USDC (18 decimals) as `msg.value`. Mercuri's refund on a buy that sells the curve out, and SolonPad's partial-fill refund near graduation, go to the caller: the trader.
+- **Fee:** ARCDEX adds none on a curve. ArcDexSwapRouter can't call one, and a fee sent in a second transaction wouldn't be atomic. The widget shows Platform fee 0% and the curve's own fee (1%), plus SolonPad's creator tax.
+  - Mercuri pays 0.20% of each trade (out of its 1% fee) to the referrer a wallet names on its first Mercuri trade, for all of that wallet's later Mercuri trades, on the curve and in the graduated pool. ARCDEX names its fee wallet (`ArcDexSwapRouter.feeWallet()`).
+  - Those shares accrue in Mercuri's FeeManager `0x31D1…2580`: the fee wallet claims them with `claim(to)`.
+  - After graduation the coins trade in their Uniswap v4 pools with ARCDEX's 2%: Mercuri's pools pair with ERC-20 USDC (ArcDexSwapRouter), SolonPad's with native USDC (the Universal Router).
+- **Snipe tax:** buys right after launch pay a launch snipe tax (Mercuri: from 99%, to 0 over 120 blocks; SolonPad: `currentSnipeTaxBps(recipient)`). The quote shows it; buying needs its own tick box ("I accept the X% snipe tax"), and the price-impact check sets it aside.
+- **Coin page:** with a live curve, the curve is the market.
+  - Its Buy/Sell events are the chart and the trades list (`poolSwaps.curveMeta`: from the chain, not the market engine, which doesn't index these curves).
+  - Its price leads (Mercuri's events carry it exactly; SolonPad's reserves are re-read after each trade). Supply, name and symbol come from the token when GeckoTerminal has none.
+  - A banner shows the way to graduation, and the curve is re-read every 15s while live.
+  - Portfolio values held curve coins on their curve, and its Sell sheet (`TokenSwap`) trades them there.
+- **Tests:** `bun scripts/test-curves.ts`: every selector and event topic against the published sources, the calls byte for byte, and trades decoded from both launchpads' events. Browser checks cover a Mercuri coin opened by address (curve route, fees, price, its trades from its events) and its buy (value, min out, the fee wallet as referrer) and sell (exact approval to the curve). They also cover the snipe-tax confirmation, a graduating curve taking sells only, a SolonPad coin's buy and sell, and the Portfolio's value and Sell sheet.
 
 ## Social trading layer (fomo.family-style) — ARCDEX
 

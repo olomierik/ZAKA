@@ -14,15 +14,18 @@ import { ARCHIVE_RPCS, RECENT_RPC, hex, rpcBatch, rpcCall, type RawLog } from '.
 import { ARGUS, ARGUS_USDC_V3, NATIVE, POOL_MANAGER, USDC, V3_SWAP, V4_SWAP, decodeSwapLog, priceFromSqrt, word } from '../../../api/_arcSwaps'
 import { ARC_RPC_WS } from './arcRpc'
 import type { ArgusTrade } from './argusMarket'
+import { curveTradeFilter, decodeCurveTrade, type CurveInfo, type CurveVenue } from './curves'
 
 export { POOL_MANAGER }
 
 export interface PoolMeta {
-  pool: string   // v4 PoolId (66 chars) or v3 pool address
+  pool: string   // v4 PoolId (66 chars), v3 pool address, or a launchpad's curve (with `curve`)
   token: string
   quote: string
   tokenDecimals: number
   quoteDecimals: number
+  /** A Mercuri or SolonPad bonding curve (api/curves.ts): its Buy/Sell events are the trades. */
+  curve?: { venue: CurveVenue; virtual?: { usdc: bigint; tokens: bigint } }
 }
 
 export interface PoolSwap {
@@ -52,21 +55,36 @@ export function poolMeta(pool: string, token: string, quote: string): PoolMeta {
   return { pool: pool.toLowerCase(), token: token.toLowerCase(), quote: q, tokenDecimals: 18, quoteDecimals: q === USDC ? 6 : 18 }
 }
 
+/** A launchpad curve's trades, priced in native USDC. */
+export function curveMeta(c: CurveInfo): PoolMeta {
+  return { pool: c.curve.toLowerCase(), token: c.token.toLowerCase(), quote: NATIVE, tokenDecimals: 18, quoteDecimals: 18, curve: { venue: c.venue, virtual: c.virtual } }
+}
+
 const isV4 = (m: PoolMeta) => m.pool.length === 66
 function filterOf(m: PoolMeta) {
+  if (m.curve) return curveTradeFilter(m.pool, m.curve.venue)
   return isV4(m) ? { address: POOL_MANAGER, topics: [V4_SWAP, m.pool] } : { address: m.pool, topics: [V3_SWAP] }
 }
 
 export function decodeSwap(l: RawLog & { removed?: boolean }, m: PoolMeta): PoolSwap | null {
-  const d = decodeSwapLog(l, { v4: isV4(m), baseIs0: m.token < m.quote, baseDecimals: m.tokenDecimals, quoteDecimals: m.quoteDecimals })
-  if (!d) return null
   const logIndex = parseInt(l.logIndex, 16)
-  return {
+  const at = {
     id: `${l.transactionHash.toLowerCase()}:${logIndex}`,
     txHash: l.transactionHash.toLowerCase(),
     block: parseInt(l.blockNumber, 16),
     logIndex,
     time: l.blockTimestamp ? parseInt(l.blockTimestamp, 16) * 1000 : Date.now(),
+  }
+  if (m.curve) {
+    // Only this curve's own events; they name the trader (no router in between).
+    if (l.address.toLowerCase() !== m.pool) return null
+    const c = decodeCurveTrade(l, m.curve.venue, m.curve.virtual)
+    return c ? { ...at, kind: c.kind, tokenAmount: c.tokenAmount, quoteAmount: c.usdc, price: c.price, maker: c.trader } : null
+  }
+  const d = decodeSwapLog(l, { v4: isV4(m), baseIs0: m.token < m.quote, baseDecimals: m.tokenDecimals, quoteDecimals: m.quoteDecimals })
+  if (!d) return null
+  return {
+    ...at,
     kind: d.side === 'BUY' ? 'buy' : 'sell',
     tokenAmount: d.baseAmount,
     quoteAmount: d.quoteAmount,

@@ -11,6 +11,7 @@
 
 import { formatUnits, pad, parseAbi, type Address } from 'viem'
 import { client, getLaunchpadToken } from '../api/launchpad'
+import { getCurve, type CurveInfo } from '../api/curves'
 import { gtGet } from '../api/gtClient'
 import { getTraderPositions } from '../api/social'
 import { MULTICALL3 } from '../wagmi'
@@ -131,21 +132,25 @@ export async function loadHoldings(owner: Address): Promise<Holding[]> {
   // Launchpad coins: priced on their curve.
   const curves = new Map(await Promise.all(held.filter(h => launchpadSet.has(h.a)).map(async h =>
     [h.a, await getLaunchpadToken(h.a as Address).catch(() => null)] as const)))
+  // Coins on Mercuri's or SolonPad's own curve: priced there (GeckoTerminal may not list them).
+  const unpriced = held.filter(h => !curves.get(h.a) && !(byAddr.get(h.a)?.priceUsd))
+  const onCurve = new Map((await Promise.all(unpriced.map(async h => [h.a, await getCurve(h.a).catch(() => null)] as const)))
+    .filter((e): e is readonly [string, CurveInfo] => !!e[1] && !e[1].graduated && e[1].priceUsd > 0))
   // The rest without a market price: GeckoTerminal.
-  const needPrice = held.filter(h => !curves.get(h.a) && !(byAddr.get(h.a)?.priceUsd))
+  const needPrice = unpriced.filter(h => !onCurve.has(h.a))
   const gecko = needPrice.length ? await geckoTokens(needPrice.map(h => h.a)) : new Map<string, GeckoToken>()
 
   const out: Holding[] = []
   held.forEach((h, i) => {
     const dec = decimals[i]
     if (dec === null || dec === undefined || Number(dec) > 36) return
-    const m = byAddr.get(h.a), c = curves.get(h.a), g = gecko.get(h.a), cm = chainMeta.get(h.a)
+    const m = byAddr.get(h.a), c = curves.get(h.a), g = gecko.get(h.a), cm = chainMeta.get(h.a), o = onCurve.get(h.a)
     const balance = Number(formatUnits(h.raw, Number(dec)))
-    const priceUsd = c?.priceUsd ?? (m?.priceUsd || g?.price || 0)
+    const priceUsd = c?.priceUsd ?? (m?.priceUsd || o?.priceUsd || g?.price || 0)
     out.push({
       address: h.a as Address,
-      symbol: m?.symbol ?? c?.symbol ?? g?.symbol ?? cm?.symbol ?? '???',
-      name: m?.name ?? c?.name ?? g?.name ?? cm?.name ?? '',
+      symbol: m?.symbol ?? c?.symbol ?? o?.symbol ?? g?.symbol ?? cm?.symbol ?? '???',
+      name: m?.name ?? c?.name ?? o?.name ?? g?.name ?? cm?.name ?? '',
       decimals: Number(dec),
       image: m?.image ?? c?.metadata?.image ?? g?.image ?? null,
       balance, raw: h.raw, priceUsd, valueUsd: balance * priceUsd,
