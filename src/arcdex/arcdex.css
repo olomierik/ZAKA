@@ -488,14 +488,22 @@ html body {
 /* Above the chart: GeckoTerminal / ARCDEX chart tabs. */
 .chart-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .chart-trade.mine { background: rgba(250,204,21,0.16); box-shadow: inset 0 0 0 1px rgba(250,204,21,0.6); }
-/* A swap's pop: in with a bounce, gone within its second (PriceChart POP_MS). */
-.chart-trade.pop { animation: trade-pop 1s ease-out forwards; }
-@keyframes trade-pop {
-  0%   { transform: translate(-50%, -10%) scale(0.3); opacity: 0; }
-  20%  { transform: translate(-50%, -85%) scale(1.3); opacity: 1; }
-  38%  { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-  72%  { opacity: 1; }
-  100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+/* A swap's pop: in with a bounce at its candle, then it flies off upward —
+   each in its own direction (--fly-x / --fly-y, set per trade by
+   PriceChart) — fading as it goes, gone at 2s (PriceChart POP_MS). */
+/* Fully readable for its first second, fading over the second one. */
+.chart-trade.pop { animation: trade-fly 2s linear forwards; will-change: transform, opacity; }
+@keyframes trade-fly {
+  0%   { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+  7%   { transform: translate(-50%, -50%) scale(1.3); opacity: 1; }
+  14%  { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  50%  { transform: translate(calc(-50% + var(--fly-x, 0px) * 0.4), calc(-50% + var(--fly-y, -100px) * 0.4)) scale(1); opacity: 1; }
+  78%  { transform: translate(calc(-50% + var(--fly-x, 0px) * 0.78), calc(-50% + var(--fly-y, -100px) * 0.78)) scale(0.95); opacity: 0.55; }
+  100% { transform: translate(calc(-50% + var(--fly-x, 0px)), calc(-50% + var(--fly-y, -100px))) scale(0.9); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chart-trade.pop { animation: trade-fade 2s ease-out forwards; }
+  @keyframes trade-fade { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
 }
 /* Legend, top left: coin · timeframe, value under the crosshair, change */
 .chart-legend {

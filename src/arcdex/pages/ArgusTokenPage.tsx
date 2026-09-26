@@ -408,7 +408,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     <div className="coin-chart-card" style={{ ...card, padding: 16 }}>
       <div className="coin-chart-title" style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{T("PRICE CHART · USD")}</div>
       {canEmbedGecko(activePool) && <div className="chart-toolbar"><ChartSourceTabs value={chartSource} onChange={setChartSource} /></div>}
-      {showGecko ? <GeckoChart pool={activePool} symbol={symbol} /> : (
+      {showGecko ? <GeckoChart key={activePool} pool={activePool} symbol={symbol} createdAt={active?.createdAt} /> : (
         <PriceChart poolAddress={activePool || null} engineToken={address} ticks={onchainFailed ? undefined : ticks} live={streaming} trades={chartTrades} thesisMarks={thesisMarks} friends={friends} supply={supply} symbol={symbol}
           onTraderClick={a => navigate({ name: 'trader', address: a })} />
       )}

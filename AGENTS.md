@@ -102,10 +102,20 @@ Why buys, swaps and bridges failed for people, and the fixes:
 ### Charts — `components/PriceChart.tsx` (2026-09-26)
 - Trades are text, not avatar circles (owner's request).
   - Buys show "+$500" in green just above the line; sells "-$250" in red just below.
-  - **The chart stays clean (owner's request, round 2):** history is never drawn. A swap pops up only when it arrives live (`ChartTrade.live`, set by the page for swaps that came in after it opened, within 60s of happening) and is gone after 1 second (`POP_MS`). The same swap from GeckoTerminal and the chain pops once (keyed by transaction and side).
+  - **The chart stays clean (owner's request, round 2):** history is never drawn. A swap pops up only when it arrives live (`ChartTrade.live`, set by the page for swaps that came in after it opened, within 60s of happening). The same swap from GeckoTerminal and the chain pops once (keyed by transaction and side).
+  - **Pops fly (owner's request, round 4):** each pop lasts 2 seconds (`POP_MS`, CSS `trade-fly`). It is fully readable for the first second, then flies off upward while it fades.
+    - Buys and sells both fly upward, each in its own direction: up to 45° either side of straight up, 80–150px, set by `lib/chartMotion.ts` `flightOf`.
+    - The direction is fixed per trade, so pops landing together scatter, and every pop shows (none is dropped for overlapping).
+    - With reduced motion turned on, pops just fade.
   - Theses are off by default; the Thesis overlay turns them on.
   - Your own trades get a yellow outline.
   - Placement: yours, then theses, then the largest trades; overlapping labels are dropped (28 on phones, 70 on desktop).
+- **Fits itself (owner's request, round 4):** every candle of the chosen timeframe fits the window, and changing the timeframe is all anyone needs to do.
+  - `fitContent()` runs on load, on each new candle and on each history refresh.
+  - The price axis goes back to auto on a new timeframe, coin, Price/MCap view or style.
+  - The time scale can't scroll past the first or last candle, and a resize keeps the fit (`fixLeftEdge`, `fixRightEdge`, `lockVisibleTimeRangeOnResize`).
+  - Someone who drags, pinches or wheel-zooms keeps their view until they change the timeframe; a double-click fits it again. The old "last 140 bars" window is gone.
+  - The GeckoTerminal embed opens on the timeframe that fits the coin's whole life in about 60–120 candles (`fitResolution`: under 2h → 1m … over 60 days → 1d). Its own toolbar still switches timeframe.
 - Like fomo's chart:
   - A legend: coin · timeframe, then the value under the crosshair and its change from the bar before.
   - % / log / auto scale buttons and a UTC clock under the chart.
@@ -178,7 +188,9 @@ Why buys, swaps and bridges failed for people, and the fixes:
 - Content pages (Rewards, Burn, Clans, Feed, Transfers, Alerts, Leaderboard) share `.content-page` (centered, `--page-w`, 820px by default) and `.page-h` titles. Stat cards, the Portfolio total, the PnL chart and the profile banner are smaller.
 - Other trade ages (Feed, discovery, trader pages, Rewards history, launchpad trades) count up live too.
 - Not changed: at 1181–1340px wide the coin page's chart column is narrow (both side panels are open). Collapsing the Tokens panel on coin pages would fix it; that's a layout decision for the owner.
-- **Tests:** `bun scripts/test-live-trades.ts`: ages, merging GeckoTerminal's swaps with the chain's, and the live holder count.
+- **Tests:**
+  - `bun scripts/test-live-trades.ts`: ages, merging GeckoTerminal's swaps with the chain's, and the live holder count.
+  - `bun scripts/test-chart-motion.ts`: pop flights and the embed's timeframe by age.
 
 ## Argus integration (ARCDEX)
 
