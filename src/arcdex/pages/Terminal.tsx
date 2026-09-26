@@ -3,7 +3,8 @@ import {
   getLaunchpadColor,
   type ArcToken,
 } from '../api/radardex'
-import { getAllLaunchpadTokensAsArcTokens } from '../api/launchpad'
+import { getAllLaunchpadTokensAsArcTokens, LAUNCHPAD_ADDRESS } from '../api/launchpad'
+import { subscribeMarketPulse } from '../api/marketPulse'
 import { getArgusTokens } from '../api/argus'
 import { cachedArgusMarket, getArgusMarket, argusPoolToArcToken } from '../api/argusMarket'
 import { engineEnabled, getNewTokens, marketStream, useEngineStatus } from '../api/marketStream'
@@ -16,6 +17,8 @@ import { toggleWatch, usePrefs } from '../lib/prefs'
 import { t as T, N_ } from '../lib/i18n'
 import { useIsMobile } from '../lib/useMobile'
 import MobileHome from '../components/MobileHome'
+import RiskBadge from '../components/RiskBadge'
+import { RISK_COLOR as RISK_DOT, riskText, tokenRisk, type Risk } from '../lib/risk'
 
 interface Props {
   navigate: (p: Page) => void
@@ -43,6 +46,14 @@ const QUOTE_SYMBOL: Record<string, string> = {
   '0x3600000000000000000000000000000000000000': 'USDC', '0x0000000000000000000000000000000000000000': 'USDC',
   '0xece5ca8bf9220718e5727754026757512212cb3c': 'ARGUS', '0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1': 'EURC', '0x93ffd195481e8c08eb25a158689e4d9e61313111': 'WETH',
 }
+const QUOTE_BY_SYMBOL: Record<string, string> = {
+  USDC: '0x3600000000000000000000000000000000000000', ARGUS: '0xece5ca8bf9220718e5727754026757512212cb3c',
+}
+/** A live trade's flash on its coin's row: which side, and a counter whose
+ * parity alternates the CSS animation so back-to-back trades each restart it. */
+interface Flash { side: 'buy' | 'sell'; n: number }
+const flashClass = (f?: Flash) => (f ? ` flash-${f.side}-${f.n % 2}` : '')
+
 /** A launch the market engine just detected, as a Terminal row — before its first trade. */
 function launchToArcToken(l: LaunchInfo): ArcToken {
   return {
@@ -51,6 +62,7 @@ function launchToArcToken(l: LaunchInfo): ArcToken {
     ageMs: Math.max(0, Date.now() - l.timestamp), launchpad: l.launchpad === 'ARGUS' ? 'Argus' : l.launchpad,
     poolAddress: l.pool ?? '', txCount24h: 0, holderCount: 0, buys24h: 0, sells24h: 0, verified: false, graduated: false,
     bondingProgress: null, spark: [], deployer: l.creator ?? undefined, quoteSymbol: (l.quote && QUOTE_SYMBOL[l.quote]) || '',
+    quoteAddress: l.quote ?? undefined,
   }
 }
 
@@ -76,9 +88,22 @@ function fmtPct(n: number) {
 const VIEW_TABS = [N_('All'), N_('New pair'), N_('New <15m'), N_('Trending'), N_('Top volume')]
 
 // ── sort columns ─────────────────────────────────────────────────────
-type SortCol = 'mcap' | 'volume' | 'txns' | 'score' | 'age' | 'liq' | 'holders' | 'change'
+type SortCol = 'mcap' | 'volume' | 'txns' | 'score' | 'age' | 'liq' | 'holders' | 'change' | 'risk'
 
 const PAGE_SIZE = 50
+
+/** A sortable column header. (Declared out here: a component created inside
+ * render is a new component on every render, remounting the header each time.) */
+function SortTh({ col, label, sortCol, sortAsc, onSort }: { col: SortCol; label: string; sortCol: SortCol; sortAsc: boolean; onSort: (c: SortCol) => void }) {
+  const active = sortCol === col
+  return (
+    <th className="th-sort" style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => onSort(col)}>
+      <span style={{ color: active ? 'var(--adx-accent)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+        {label} {active ? (sortAsc ? '↑' : '↓') : ''}
+      </span>
+    </th>
+  )
+}
 
 function ScoreBar({ score }: { score: number }) {
   const pct = Math.min(100, Math.max(0, score))
@@ -121,8 +146,10 @@ interface RowProps {
   token: ArcToken; rank: number; onClick: () => void
   dupCount?: number; expanded?: boolean; onToggleExpand?: () => void
   isDuplicateRow?: boolean
+  risk: Risk
+  flash?: Flash
 }
-function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onToggleExpand, isDuplicateRow = false }: RowProps) {
+function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onToggleExpand, isDuplicateRow = false, risk, flash }: RowProps) {
   const lp      = token.launchpad
   const lpColor = getLaunchpadColor(lp)
   const ch24    = token.priceChange24h
@@ -134,7 +161,7 @@ function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onTogg
   ))
 
   return (
-    <tr className={`token-row${isDuplicateRow ? ' duplicate-row' : ''}`} onClick={onClick}>
+    <tr className={`token-row${isDuplicateRow ? ' duplicate-row' : ''}${flashClass(flash)}`} onClick={onClick}>
       {/* rank */}
       <td className="td-rank">
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -222,6 +249,10 @@ function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onTogg
       <td className="td-num">
         <ScoreBar score={score} />
       </td>
+      {/* risk */}
+      <td className="td-num">
+        <RiskBadge risk={risk} quick />
+      </td>
       {/* quote */}
       <td className="td-num">
         <span style={{ fontSize: '0.65rem', color: 'var(--adx-accent)', background: 'var(--adx-accent)18', borderRadius: 3, padding: '2px 5px', fontWeight: 700 }}>
@@ -232,13 +263,13 @@ function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onTogg
   )
 }
 
-interface CardProps { token: ArcToken; dupCount?: number; onClick: () => void }
-function TokenCard({ token, dupCount = 0, onClick }: CardProps) {
+interface CardProps { token: ArcToken; dupCount?: number; onClick: () => void; risk: Risk; flash?: Flash }
+function TokenCard({ token, dupCount = 0, onClick, risk, flash }: CardProps) {
   const lp = token.launchpad
   const lpColor = getLaunchpadColor(lp)
   const ch24 = token.priceChange24h
   return (
-    <div className="token-card" onClick={onClick}>
+    <div className={`token-card${flashClass(flash)}`} onClick={onClick}>
       <div className="token-card-top">
         <TokenLogo src={token.logoUrl} symbol={token.symbol} size={36} />
         <div className="token-card-name">
@@ -249,12 +280,13 @@ function TokenCard({ token, dupCount = 0, onClick }: CardProps) {
             {token.name} · {fmtAge(token.ageMs)}
           </div>
           {/* phones: one quiet line instead of the badge row and stat grid */}
-          <div className="token-card-meta">{T("Vol")} {fmt(token.volume24h, '$')} · {T("Liq")} {fmt(token.liquidity, '$')}{dupCount > 0 ? ` · +${dupCount} ${T("same ticker")}` : ''}</div>
+          <div className="token-card-meta"><span style={{ color: RISK_DOT[risk.level] }}>●</span> {riskText(risk.level)} · {T("Vol")} {fmt(token.volume24h, '$')} · {T("Liq")} {fmt(token.liquidity, '$')}{dupCount > 0 ? ` · +${dupCount} ${T("same ticker")}` : ''}</div>
           <div className="token-card-badges">
             {token.verified && (
               <span style={{ fontSize: '0.58rem', background: '#1d4ed822', color: '#60a5fa', border: '1px solid #1d4ed844', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>{T("✓ VERIFIED")}</span>
             )}
             <span style={{ fontSize: '0.58rem', background: lpColor + '22', color: lpColor, border: `1px solid ${lpColor}44`, borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>{lp}</span>
+            <RiskBadge risk={risk} quick compact />
             {dupCount > 0 && (
               <span style={{ fontSize: '0.58rem', background: '#f59e0b18', color: 'var(--amber)', border: '1px solid #f59e0b44', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>+{dupCount}{' '}{T("same ticker")}</span>
             )}
@@ -370,6 +402,65 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     return () => clearInterval(iv)
   }, [load, engineLive])
 
+  // ── live pulse: every buy and sell on-chain flashes its coin's row ──
+  // (green for a buy, red for a sell) as its block lands, straight from
+  // Arc's WebSocket (api/marketPulse.ts). The "live" badge counts them.
+  const [flash, setFlash] = useState<Map<string, Flash>>(new Map())
+  const [perMin, setPerMin] = useState(0)
+  const pulseBuf = useRef<{ token: string; side: 'buy' | 'sell' }[]>([])
+  const pulseTimes = useRef<number[]>([])
+  const lastPulse = useRef(new Map<string, number>())
+  const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const countPerMin = useCallback(() => {
+    const cutoff = Date.now() - 60_000
+    pulseTimes.current = pulseTimes.current.filter(t => t > cutoff)
+    setPerMin(pulseTimes.current.length)
+  }, [])
+  const pulse = useCallback((p: { token: string; side: 'buy' | 'sell' }) => {
+    const now = Date.now()
+    lastPulse.current.set(p.token, now)
+    pulseTimes.current.push(now)
+    pulseBuf.current.push(p)
+    if (flushTimer.current) return
+    // Batched: a burst of swaps is one re-render, not one per swap.
+    flushTimer.current = setTimeout(() => {
+      flushTimer.current = null
+      const batch = pulseBuf.current
+      pulseBuf.current = []
+      countPerMin()
+      if (document.hidden) return
+      setFlash(prev => {
+        const next = new Map(prev)
+        for (const x of batch) next.set(x.token, { side: x.side, n: (next.get(x.token)?.n ?? 0) + 1 })
+        return next
+      })
+    }, 150)
+  }, [countPerMin])
+  useEffect(() => {
+    const id = setInterval(countPerMin, 5_000)
+    return () => { clearInterval(id); if (flushTimer.current) clearTimeout(flushTimer.current) }
+  }, [countPerMin])
+  // Which pool (and quote) belongs to which listed coin, for decoding swaps.
+  const poolsRef = useRef(new Map<string, { token: string; quote: string }>())
+  const curveRef = useRef(new Set<string>())
+  useEffect(() => {
+    const pools = new Map<string, { token: string; quote: string }>()
+    const curve = new Set<string>()
+    for (const t of tokens) {
+      if (t.launchpad === 'ARCDEX') curve.add(t.address.toLowerCase())
+      const quote = t.quoteAddress || QUOTE_BY_SYMBOL[t.quoteSymbol]
+      if (t.poolAddress && quote) pools.set(t.poolAddress.toLowerCase(), { token: t.address.toLowerCase(), quote: quote.toLowerCase() })
+    }
+    poolsRef.current = pools
+    curveRef.current = curve
+  }, [tokens])
+  // The listed v3 pools (a v3 pool is a contract address; v4 pools are ids).
+  const v3Pools = useMemo(() => [...new Set(tokens.filter(t => /^0x[0-9a-fA-F]{40}$/.test(t.poolAddress)).map(t => t.poolAddress.toLowerCase()))].sort().join(','), [tokens])
+  useEffect(() => subscribeMarketPulse(LAUNCHPAD_ADDRESS, {
+    pool: id => poolsRef.current.get(id),
+    curve: token => curveRef.current.has(token),
+  }, pulse, v3Pools ? v3Pools.split(',') : []), [pulse, v3Pools])
+
   // Market engine: new launches appear the moment they're detected (before
   // their first trade), and prices/volumes move with every tick.
   useEffect(() => {
@@ -383,11 +474,18 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     })
     const offTicks = marketStream.subscribe({ channel: 'market' }, m => {
       if (m.t !== 'TICKS') return
-      for (const [token, price, chg, vol, mc, trades] of m.d) ticksRef.current.set(token, [price, chg, vol, mc, trades])
+      for (const [token, price, chg, vol, mc, trades] of m.d) {
+        const prev = ticksRef.current.get(token)
+        ticksRef.current.set(token, [price, chg, vol, mc, trades])
+        // A trade the chain feed didn't show (its socket reconnecting, or a
+        // pool this list doesn't carry): flash it from the engine's count.
+        if (prev && trades > prev[4] && Date.now() - (lastPulse.current.get(token) ?? 0) > 3_000)
+          pulse({ token, side: price !== null && prev[0] !== null && price < prev[0] ? 'sell' : 'buy' })
+      }
       publish([])
     })
     return () => { offNew(); offTicks() }
-  }, [publish])
+  }, [publish, pulse])
 
   // reset page on filter change
   useEffect(() => { setPage(1); setShown(PAGE_SIZE) }, [source, viewTab, search, sortCol, sortAsc, minMcap, maxMcap, minVol])
@@ -420,6 +518,18 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   // ── curate: fold ticker-squatting duplicates behind an expand toggle,
   // drop fully-dead placeholder entries — see lib/curate.ts ────────────
   const curation = useMemo(() => curateTokens(withHolders), [withHolders])
+  // Every coin's risk score, from its market data (lib/risk.ts). A smaller
+  // coin reusing a bigger one's ticker scores higher.
+  const riskBy = useMemo(() => {
+    const m = new Map<string, Risk>()
+    for (const g of curation.groups) {
+      m.set(g.primary.address, tokenRisk(g.primary))
+      for (const d of g.duplicates) m.set(d.address, tokenRisk(d, { sameTicker: true }))
+    }
+    return m
+  }, [curation])
+  const riskOfRow = (t: ArcToken) => riskBy.get(t.address) ?? tokenRisk(t)
+
   const groupByPrimaryAddress = useMemo(() => {
     const m = new Map<string, CuratedGroup>()
     for (const g of curation.groups) m.set(g.primary.address, g)
@@ -475,6 +585,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     if (sortCol === 'holders')  diff = (b.holderCount ?? 0)  - (a.holderCount ?? 0)
     if (sortCol === 'change')   diff = (b.priceChange24h??0) - (a.priceChange24h??0)
     if (sortCol === 'age')      diff = a.ageMs - b.ageMs
+    // Safest first; tap again for the riskiest.
+    if (sortCol === 'risk')     diff = riskOfRow(a).score - riskOfRow(b).score
     if (sortCol === 'score') {
       const scoreOf = (t: ArcToken) =>
         Math.min(40, t.holderCount/25) + Math.min(40, Math.log10(t.volume24h+1)*8) + Math.min(20, t.txCount24h/50)
@@ -490,16 +602,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     if (sortCol === col) setSortAsc(p => !p)
     else { setSortCol(col); setSortAsc(false) }
   }
-  function SortTh({ col, label, align = 'right' }: { col: SortCol; label: string; align?: string }) {
-    const active = sortCol === col
-    return (
-      <th className="th-sort" style={{ textAlign: align as 'right' | 'left', cursor: 'pointer' }} onClick={() => toggleSort(col)}>
-        <span style={{ color: active ? 'var(--adx-accent)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-          {label} {active ? (sortAsc ? '↑' : '↓') : ''}
-        </span>
-      </th>
-    )
-  }
+  const sortTh = (col: SortCol, label: string) => <SortTh col={col} label={label} sortCol={sortCol} sortAsc={sortAsc} onSort={toggleSort} />
 
   // ── top ticker tokens ─────────────────────────────────────────────
   const tickerTokens = tokens.slice(0, 20)
@@ -551,6 +654,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
           <option value="age">{T("Sort: newest")}</option>
           <option value="liq">{T("Sort: liquidity")}</option>
           <option value="score">{T("Sort: score")}</option>
+          <option value="risk">{T("Sort: risk")}</option>
         </select>
         <div className="view-tabs">
           {VIEW_TABS.map(t => (
@@ -560,7 +664,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
           ))}
         </div>
         <div className="time-tabs">
-          <span className="live-badge">{T("● live")}</span>
+          <span className="live-badge" title={T("Every buy and sell on Arc, as its block lands")}>{T("● live")}{perMin > 0 && <> · {T('{n} trades/min', { n: perMin })}</>}</span>
         </div>
         <button className={`filters-btn${filtersOpen ? ' on' : ''}`} onClick={() => setFiltersOpen(o => !o)} aria-expanded={filtersOpen}>⚙ {T("Filters")}</button>
       </div>
@@ -602,13 +706,14 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
               <tr>
                 <th className="th-rank">#</th>
                 <th className="th-token" style={{ textAlign: 'left' }}>{T("TOKEN / AGE ↕")}</th>
-                <SortTh col="age"     label={T("AGE")}     align="right" />
-                <SortTh col="mcap"    label={T("MC $")}    align="right" />
-                <SortTh col="liq"     label={T("LIQ")}     align="right" />
-                <SortTh col="volume"  label={T("ALL VOL")} align="right" />
-                <SortTh col="txns"    label={T("ALL TXS")} align="right" />
-                <SortTh col="holders" label={T("HOLDERS")} align="right" />
-                <SortTh col="score"   label={T("SCORE")}   align="right" />
+                {sortTh('age', T("AGE"))}
+                {sortTh('mcap', T("MC $"))}
+                {sortTh('liq', T("LIQ"))}
+                {sortTh('volume', T("ALL VOL"))}
+                {sortTh('txns', T("ALL TXS"))}
+                {sortTh('holders', T("HOLDERS"))}
+                {sortTh('score', T("SCORE"))}
+                {sortTh('risk', T("RISK"))}
                 <th className="th-sort" style={{ textAlign: 'right' }}>{T("QUOTE")}</th>
               </tr>
             </thead>
@@ -623,6 +728,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
                     <TokenRow
                       token={token}
                       rank={(page - 1) * PAGE_SIZE + i + 1}
+                      risk={riskOfRow(token)}
+                      flash={flash.get(token.address.toLowerCase())}
                       onClick={() => goTo(token)}
                       dupCount={dupCount}
                       expanded={isExpanded}
@@ -637,6 +744,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
                         key={dup.address}
                         token={dup}
                         rank={0}
+                        risk={riskOfRow(dup)}
+                        flash={flash.get(dup.address.toLowerCase())}
                         isDuplicateRow
                         onClick={() => goTo(dup)}
                       />
@@ -657,6 +766,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
                 <TokenCard
                   key={token.address}
                   token={token}
+                  risk={riskOfRow(token)}
+                  flash={flash.get(token.address.toLowerCase())}
                   dupCount={group?.duplicates.length ?? 0}
                   onClick={() => navigate(openPage(token))}
                 />

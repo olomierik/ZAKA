@@ -9,6 +9,7 @@ import { t as T } from '../lib/i18n'
 import { useTrader } from '../lib/identity'
 import { DepositModal, WithdrawModal } from './CashModals'
 import type { Page } from '../App'
+import { onBalances } from '../lib/balances'
 
 const USDC_ADDR = '0x3600000000000000000000000000000000000000' as const
 const ERC20_BALANCE_ABI = parseAbi(['function balanceOf(address) view returns (uint256)'])
@@ -42,7 +43,12 @@ export default function TradingWalletPanel({ navigate }: { navigate?: (p: Page) 
   }, [])
 
   useEffect(() => {
-    if (address) { refreshBalance(address); const iv = setInterval(() => refreshBalance(address), 8000); return () => clearInterval(iv) }
+    if (address) {
+      refreshBalance(address)
+      const iv = setInterval(() => refreshBalance(address), 8000)
+      const off = onBalances(() => refreshBalance(address))
+      return () => { clearInterval(iv); off() }
+    }
   }, [address, refreshBalance])
 
   async function doCreate() {

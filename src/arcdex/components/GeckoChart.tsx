@@ -4,9 +4,10 @@
 // page can switch to ARCDEX's chart (PriceChart: trade labels, theses,
 // indicators, whose history also comes from GeckoTerminal's API).
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useIsMobile } from '../lib/useMobile'
 import { t as T } from '../lib/i18n'
+import { fitResolution } from '../lib/chartMotion'
 
 const NETWORK = 'arc'
 const BG = '0b1628'
@@ -15,15 +16,25 @@ const BG = '0b1628'
 export const canEmbedGecko = (pool: string | null | undefined): pool is string =>
   !!pool && /^0x([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$/.test(pool)
 
-export function geckoEmbedUrl(pool: string, chartType: 'price' | 'market_cap' = 'market_cap'): string {
+export function geckoEmbedUrl(pool: string, chartType: 'price' | 'market_cap' = 'market_cap', resolution = '15m'): string {
   const q = new URLSearchParams({
     embed: '1', info: '0', swaps: '0', grayscale: '0', light_chart: '0',
-    chart_type: chartType, resolution: '15m', bg_color: BG,
+    chart_type: chartType, resolution, bg_color: BG,
   })
   return `https://www.geckoterminal.com/${NETWORK}/pools/${pool.toLowerCase()}?${q}`
 }
 
-export default function GeckoChart({ pool, symbol }: { pool: string; symbol: string }) {
+/** `createdAt`: the pool's creation time, for the timeframe that fits it. */
+export default function GeckoChart({ pool, symbol, createdAt }: { pool: string; symbol: string; createdAt?: string | null }) {
+  // Picked once per pool, so the chart doesn't reload as the coin ages —
+  // or once more if the pool's age only arrives after the chart started.
+  const [resolution, setResolution] = useState(() => fitResolution(createdAt))
+  const aged = useRef(!!createdAt)
+  useEffect(() => {
+    if (aged.current || !createdAt) return
+    aged.current = true
+    setResolution(fitResolution(createdAt))
+  }, [createdAt])
   const mobile = useIsMobile()
   const [loaded, setLoaded] = useState(false)
   return (
@@ -36,7 +47,7 @@ export default function GeckoChart({ pool, symbol }: { pool: string; symbol: str
       <iframe
         key={pool}
         title={T('{symbol} live chart by GeckoTerminal', { symbol })}
-        src={geckoEmbedUrl(pool)}
+        src={geckoEmbedUrl(pool, 'market_cap', resolution)}
         onLoad={() => setLoaded(true)}
         allow="clipboard-write; fullscreen"
         allowFullScreen

@@ -13,6 +13,7 @@ import { uploadTokenImage, uploadTokenMetadata, buildInlineMetadataURI } from '.
 import { useTrader } from '../lib/identity'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import { waitForReceipt } from '../lib/receipts'
 
 function short(addr: string) { return `${addr.slice(0, 6)}…${addr.slice(-4)}` }
 
@@ -149,7 +150,7 @@ function CreateTokenForm({ onCreated }: { onCreated: (token?: Address) => void }
       if (!feeCredit(me)) {
         setStep('fee')
         const h = await sendArc(trader.kind, { address: USDC_ADDR, abi: ERC20_ABI, functionName: 'transfer', args: [LAUNCH_FEE_WALLET, LAUNCH_FEE_USDC] })
-        const rc = await client.waitForTransactionReceipt({ hash: h })
+        const rc = await waitForReceipt(h)
         if (rc.status !== 'success') throw new Error(T('The launch fee payment failed — nothing was charged.'))
         saveFeeCredit(me, h)
       }
@@ -159,7 +160,7 @@ function CreateTokenForm({ onCreated }: { onCreated: (token?: Address) => void }
         if (allowance < initialBuyWei) {
           setStep('approving')
           const h = await sendArc(trader.kind, { address: USDC_ADDR, abi: ERC20_ABI, functionName: 'approve', args: [LAUNCHPAD_ADDRESS, initialBuyWei] })
-          const rc = await client.waitForTransactionReceipt({ hash: h })
+          const rc = await waitForReceipt(h)
           if (rc.status !== 'success') throw new Error(T('Approval failed'))
           await waitForAllowance(client, USDC_ADDR, me, LAUNCHPAD_ADDRESS, initialBuyWei)
         }
@@ -168,7 +169,7 @@ function CreateTokenForm({ onCreated }: { onCreated: (token?: Address) => void }
       setStep('creating')
       await client.simulateContract({ ...create, account: me })
       const h = await sendArc(trader.kind, create as never)
-      const rc = await client.waitForTransactionReceipt({ hash: h })
+      const rc = await waitForReceipt(h)
       if (rc.status !== 'success') throw new Error(T('The launch transaction failed. Your launch fee is kept for your next try.'))
       spendFeeCredit(me)
       const launched = parseEventLogs({ abi: LAUNCHPAD_ABI, logs: rc.logs, eventName: 'TokenLaunched' })[0]?.args.token as Address | undefined

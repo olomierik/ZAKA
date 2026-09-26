@@ -8,6 +8,7 @@ import { engineEnabled, getEngineCandles, marketStream, useEngineStatus } from '
 import type { WireCandle } from '../../../api/_marketProtocol'
 import { INDICATORS, bollinger, ema, rsi, sma, vwap, type IndicatorId } from '../lib/indicators'
 import { t as T } from '../lib/i18n'
+import { flightOf } from '../lib/chartMotion'
 
 const IND_KEY = 'arcdex:chart-indicators'
 const RSI_PANE = 110
@@ -33,8 +34,6 @@ function loadRes(hasTicks: boolean): Resolution {
   } catch { /* storage blocked */ }
   return hasTicks ? '1m' : '1h'
 }
-/** Bars shown when a chart opens — recent action, not the whole history squeezed in. */
-const VISIBLE_BARS = 140
 const fromWireCandle = (c: WireCandle): Candle => ({ time: c[0], open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5] })
 /** History with live candles laid over it, by bucket. */
 function overlay(history: Candle[], live: Candle[]): Candle[] {
@@ -82,14 +81,16 @@ interface Props {
   onTraderClick?: (address: string) => void
 }
 
-interface TradeLabel { t: ChartTrade; x: number; y: number; text: string; w: number; above: boolean }
+/** fx/fy: where a pop flies to (px from where it starts) as it fades. */
+interface TradeLabel { t: ChartTrade; x: number; y: number; text: string; w: number; above: boolean; fx: number; fy: number }
 
 /** $1,234 → "1.2K" — short enough to sit on a chart. */
 const compactUsd = (v: number) => v >= 1e6 ? `${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(v >= 1e4 ? 0 : 1)}K` : v >= 100 ? v.toFixed(0) : v >= 1 ? String(Number(v.toFixed(1))) : v.toFixed(2)
 const labelText = (t: ChartTrade) => t.kind === 'thesis' ? '💬' : `${t.kind === 'buy' ? '+' : '-'}$${compactUsd(t.usd)}`
-/** A swap pops up on the chart the moment it lands ("+$500" / "-$250") and
- * is gone a second later: between trades the chart stays clean. */
-const POP_MS = 1_000
+/** A swap pops up on the chart the moment it lands ("+$500" / "-$250"),
+ * flies off upward as it fades, and is gone 2 seconds later: between
+ * trades the chart stays clean. (arcdex.css .chart-trade.pop runs as long.) */
+const POP_MS = 2_000
 /** A live swap that reaches us later than this after it happened (a slow indexer) doesn't pop. */
 const LIVE_WINDOW_MS = 60_000
 /** The same swap from two sources (GeckoTerminal, the chain) pops once: by transaction and side. */
@@ -151,6 +152,9 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
   })
   const withRsi = ind.has('rsi')
   const needsFit = useRef(true)
+  // Set when someone drags, pinches or wheel-zooms the chart: their view is
+  // kept (no re-fitting) until the timeframe changes or they double-click.
+  const userMoved = useRef(false)
   const scale = mode === 'mcap' && supply ? supply : 1
 
   // History from GeckoTerminal (through /api/gecko, on the paid CoinGecko
@@ -204,7 +208,10 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
     return engineMode ? overlay(base, liveCandles) : base
   }, [engineMode, engineHistory, history, liveCandles, recent, res])
   const loading = candles.length === 0 && (!historyLoaded || (hasTicks && ticks === null))
-  useEffect(() => { needsFit.current = true }, [mode])
+  // A new coin, timeframe, Price/MCap view or chart style starts fitted:
+  // every candle in the window and the price axis on auto. Changing the
+  // timeframe is all anyone needs to do.
+  useEffect(() => { needsFit.current = true; userMoved.current = false; setAutoScale(true) }, [poolAddress, res, mode, style])
   // Without on-chain swaps there are no sub-minute candles.
   useEffect(() => { if (!hasTicks && onChainOnly(res)) setResState('1h') }, [hasTicks, res])
   // 5s candles exist only in the engine.
@@ -229,10 +236,9 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
   const frame        = useRef(0)
 
   // Each new swap pops up at its candle and price the moment it lands —
-  // buys just above the line, sells just below — and disappears a second
-  // later. Your own, then the biggest, are placed first; one that would
-  // overlap a label already placed is skipped. Re-run whenever the chart
-  // pans/zooms/resizes, the data changes, or a pop ends.
+  // buys just above the line, sells just below — then flies off upward as
+  // it fades, gone 2 seconds later. Re-run whenever the chart pans, zooms
+  // or resizes, the data changes, or a pop ends.
   const layout = useCallback(() => {
     cancelAnimationFrame(frame.current)
     frame.current = requestAnimationFrame(() => {
@@ -285,14 +291,17 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
           t, text, w, above,
           x: Math.min(paneW - w / 2 - 1, Math.max(w / 2 + 1, x)),
           y: Math.min(paneH - LABEL_H / 2, Math.max(LABEL_H / 2, above ? y - LABEL_GAP : y + LABEL_GAP)),
+          ...(t.kind === 'thesis' ? { fx: 0, fy: 0 } : flightOf(popKey(t), Math.min(1, paneH / 320))),
         })
       }
       const rank = (l: TradeLabel) => (l.t.mine ? 2e12 : 0) + (l.t.kind === 'thesis' ? 1e12 : 0) + l.t.usd
       cands.sort((a, b) => rank(b) - rank(a))
       const placed: TradeLabel[] = []
       const max = mobile ? 28 : 70
+      // Every pop shows (they fly apart); a thesis mark that would overlap a
+      // label already placed is skipped.
       for (const c of cands) {
-        if (placed.some(p => Math.abs(p.x - c.x) * 2 < p.w + c.w + 2 && Math.abs(p.y - c.y) < LABEL_H + 1)) continue
+        if (c.t.kind === 'thesis' && placed.some(p => Math.abs(p.x - c.x) * 2 < p.w + c.w + 2 && Math.abs(p.y - c.y) < LABEL_H + 1)) continue
         placed.push(c)
         if (placed.length >= max) break
       }
@@ -337,7 +346,9 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
         horzLine: { color: '#3b82f6', labelBackgroundColor: '#3b82f6' },
       },
       rightPriceScale: { borderColor: '#1e3050' },
-      timeScale: { borderColor: '#1e3050', timeVisible: true, secondsVisible: true },
+      // Every candle fits the window (fitContent on each new candle, below):
+      // no scrolling past the first or last one, and a resize keeps the fit.
+      timeScale: { borderColor: '#1e3050', timeVisible: true, secondsVisible: true, fixLeftEdge: true, fixRightEdge: true, lockVisibleTimeRangeOnResize: true },
       // The page has to scroll past the chart: a wheel or a vertical swipe
       // over it scrolls the page. Zoom with a pinch, a drag on the time
       // axis, or the wheel in fullscreen.
@@ -428,17 +439,17 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
         const c = candles[i]
         vol.update({ time: c.time as never, value: c.volume, color: c.close >= c.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)' })
       }
+      // A new candle: every candle stays in the window.
+      if (data.length !== n && !userMoved.current) chartRef.current?.timeScale().fitContent()
     } else {
       // Market caps under $100K in full dollars ($7,001): a new coin's moves are
       // a few dollars wide, and "$7.0K" on every gridline says nothing.
       series.applyOptions({ priceFormat: scale > 1 ? { type: 'custom', formatter: (v: number) => v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : v >= 1e5 ? `$${(v / 1e3).toFixed(1)}K` : `$${Math.round(v).toLocaleString('en-US')}`, minMove: 1 } : { type: 'custom', formatter: fmtPrice, minMove: 1e-12 } })
       series.setData(data.map(point))
-      // Frame once per pool/timeframe/mode, not on every refresh — otherwise
-      // the user's zoom/scroll would snap back.
-      if (needsFit.current && data.length) {
-        const ts = chartRef.current?.timeScale()
-        if (data.length > VISIBLE_BARS) ts?.setVisibleLogicalRange({ from: data.length - VISIBLE_BARS, to: data.length + 4 })
-        else ts?.fitContent()
+      // Fit every candle in the window — on a new timeframe always, and on a
+      // refresh unless someone zoomed or scrolled (their view is kept).
+      if (data.length && (needsFit.current || !userMoved.current)) {
+        chartRef.current?.timeScale().fitContent()
         needsFit.current = false
       }
     }
@@ -510,6 +521,33 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
     const off = () => { if (chartRef.current?.priceScale('right').options().autoScale === false) setAutoScale(false) }
     el.addEventListener('pointerup', off)
     return () => el.removeEventListener('pointerup', off)
+  }, [])
+  // Someone zooming or scrolling the chart (a sideways drag, a pinch, the
+  // wheel in fullscreen) keeps their view; a double-click fits it again.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    let x0: number | null = null
+    const down = (e: PointerEvent) => { x0 = e.clientX }
+    const move = (e: PointerEvent) => { if (x0 !== null && e.buttons && Math.abs(e.clientX - x0) > 6) userMoved.current = true }
+    const up = () => { x0 = null }
+    const wheel = () => { if (document.fullscreenElement) userMoved.current = true }
+    const pinch = (e: TouchEvent) => { if (e.touches.length > 1) userMoved.current = true }
+    const refit = () => { userMoved.current = false; chartRef.current?.timeScale().fitContent(); setAutoScale(true) }
+    el.addEventListener('pointerdown', down)
+    el.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    el.addEventListener('wheel', wheel, { passive: true })
+    el.addEventListener('touchmove', pinch, { passive: true })
+    el.addEventListener('dblclick', refit)
+    return () => {
+      el.removeEventListener('pointerdown', down)
+      el.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      el.removeEventListener('wheel', wheel)
+      el.removeEventListener('touchmove', pinch)
+      el.removeEventListener('dblclick', refit)
+    }
   }, [])
   // The UTC clock under the chart (fomo shows one too).
   const clockRef = useRef<HTMLSpanElement>(null)
@@ -592,10 +630,10 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
         // zIndex: the chart library layers its canvases with z-index 1–2,
         // which would otherwise paint over these labels.
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }}>
-          {labels.map(({ t, x, y, text }) => (
+          {labels.map(({ t, x, y, text, fx, fy }) => (
             <span key={popKey(t)} title={t.label} onClick={() => t.maker && onTraderClick?.(t.maker)}
               className={`chart-trade ${t.kind}${t.mine && showMine ? ' mine' : ''}${t.kind !== 'thesis' ? ' pop' : ''}`}
-              style={{ left: x, top: y, cursor: t.maker && onTraderClick ? 'pointer' : 'default' }}>{text}</span>
+              style={{ left: x, top: y, cursor: t.maker && onTraderClick ? 'pointer' : 'default', '--fly-x': `${fx}px`, '--fly-y': `${fy}px` } as React.CSSProperties}>{text}</span>
           ))}
         </div>
       )}

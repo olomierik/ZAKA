@@ -7,6 +7,7 @@ import { isUnlocked, currentAddress, getEmbeddedWalletClient } from './embeddedW
 import { LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, client as publicClient, getCurve } from '../api/launchpad'
 import { waitForAllowance } from './rpc'
 import { rememberHolding } from './held'
+import { waitForReceipt } from './receipts'
 
 const USDC_ADDR = '0x3600000000000000000000000000000000000000' as const
 const ERC20_ABI = parseAbi([
@@ -40,7 +41,7 @@ export async function quickBuyLaunchpad(token: `0x${string}`, usdcAmount: bigint
   })
   if (allowance < usdcAmount) {
     const approveHash = await wallet.writeContract({ address: USDC_ADDR, abi: ERC20_ABI, functionName: 'approve', args: [LAUNCHPAD_ADDRESS, usdcAmount] })
-    const rc = await publicClient.waitForTransactionReceipt({ hash: approveHash })
+    const rc = await waitForReceipt(approveHash)
     if (rc.status !== 'success') throw new Error('Approval failed')
     // Arc's RPC nodes can trail by a block: wait until the approval is visible.
     await waitForAllowance(publicClient, USDC_ADDR, owner, LAUNCHPAD_ADDRESS, usdcAmount)

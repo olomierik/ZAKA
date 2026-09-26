@@ -13,7 +13,9 @@ import PriceChart, { type ChartTrade } from '../components/PriceChart'
 import GeckoChart, { ChartSourceTabs, canEmbedGecko, useChartSource } from '../components/GeckoChart'
 import ArgusSwapWidget from '../components/ArgusSwapWidget'
 import TokenSocialTabs, { type TradeRow } from '../components/TokenSocialTabs'
-import SafetyPanel from '../components/SafetyPanel'
+import SafetyPanel, { useDevPct } from '../components/SafetyPanel'
+import RiskBadge from '../components/RiskBadge'
+import { riskOf } from '../lib/risk'
 import PositionCard from '../components/PositionCard'
 import AboutPanel from '../components/AboutPanel'
 import { getFollowing, getProfiles, type Profile, type Thesis } from '../api/social'
@@ -368,6 +370,25 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     : info?.holders != null ? info.holders.toLocaleString()
     : chainHolders ? chainHolders.holders.toLocaleString() + '…' : '—'
 
+  // The coin's risk score (lib/risk.ts): its market data plus this page's
+  // own checks — honeypot flag, trust score, top-10 share, the dev's
+  // holdings and sells, creator tax. Shown in the header and Safety check.
+  const creator = chain?.creator?.toLowerCase() ?? null
+  const devPct = useDevPct(address, chain?.creator ?? null)
+  const risk = useMemo(() => {
+    const devSoldUsd = creator ? rows.filter(r => r.kind === 'sell' && r.maker?.toLowerCase() === creator).reduce((sum, r) => sum + r.usd, 0) : 0
+    const launched = active?.createdAt ? Date.parse(active.createdAt) : NaN
+    const buyTax = chain?.buyTaxBps, sellTax = chain?.sellTaxBps
+    return riskOf({
+      liquidityUsd: active?.liquidityUsd ?? null, marketCapUsd: mcap, launchedAt: Number.isFinite(launched) ? launched : null,
+      holders: holderCount ?? infoLive?.holders ?? null,
+      txns24h: active ? active.txns24h.buys + active.txns24h.sells : null, buys24h: active?.txns24h.buys, sells24h: active?.txns24h.sells,
+      change24h: active?.change.h24 ?? null, bonded: chain?.bonded ?? null, copycat: copy,
+      honeypot: info?.isHoneypot ?? null, gtScore: info?.gtScore ?? null, top10Pct: infoLive?.top10Pct ?? null,
+      devPct, devSoldUsd, taxBps: buyTax != null && sellTax != null ? Math.max(buyTax, sellTax) : null,
+    })
+  }, [active, mcap, holderCount, infoLive, chain, copy, info, devPct, rows, creator])
+
   // Recently viewed (search box) once we know what this coin is called.
   useEffect(() => {
     if (symbol !== '…') pushRecent({ address, symbol, image, pool: activePool || null })
@@ -387,7 +408,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     <div className="coin-chart-card" style={{ ...card, padding: 16 }}>
       <div className="coin-chart-title" style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{T("PRICE CHART · USD")}</div>
       {canEmbedGecko(activePool) && <div className="chart-toolbar"><ChartSourceTabs value={chartSource} onChange={setChartSource} /></div>}
-      {showGecko ? <GeckoChart pool={activePool} symbol={symbol} /> : (
+      {showGecko ? <GeckoChart key={activePool} pool={activePool} symbol={symbol} createdAt={active?.createdAt} /> : (
         <PriceChart poolAddress={activePool || null} engineToken={address} ticks={onchainFailed ? undefined : ticks} live={streaming} trades={chartTrades} thesisMarks={thesisMarks} friends={friends} supply={supply} symbol={symbol}
           onTraderClick={a => navigate({ name: 'trader', address: a })} />
       )}
@@ -407,7 +428,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     <>
       <PositionCard token={address} symbol={symbol} image={image} priceUsd={priceUsd} trader={trader} rows={rows}
         refreshKey={refreshKey} onPositionUsd={setPositionUsd} />
-      <SafetyPanel token={address} info={infoLive} chain={chain} liquidityUsd={active?.liquidityUsd ?? null} rows={rows} />
+      <SafetyPanel info={infoLive} chain={chain} liquidityUsd={active?.liquidityUsd ?? null} rows={rows} devPct={devPct} risk={risk} />
       <AboutPanel address={address} symbol={symbol} info={infoLive} pool={active} chain={chain} rows={rows} supply={supply} profiles={profiles} navigate={navigate} />
     </>
   )
@@ -437,6 +458,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
               {active && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>/ {active.quote.symbol}</span>}
               {info && !info.verified && <span title={T("GeckoTerminal hasn't verified this token's metadata")} style={{ background: 'rgba(245,158,11,0.12)', color: '#fcd34d', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99 }}>{T("Unverified")}</span>}
               {info?.isHoneypot && <span style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99 }}>{T("HONEYPOT RISK")}</span>}
+              {active && <RiskBadge risk={risk} />}
             </div>
           </div>
         </div>

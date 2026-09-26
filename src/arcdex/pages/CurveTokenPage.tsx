@@ -9,6 +9,9 @@ import type { Tick } from '../lib/candles'
 import { useTrader } from '../lib/identity'
 import { useChainHolders, useLiveHolderCount } from '../api/holders'
 import { AgoText } from '../components/Ago'
+import RiskBadge from '../components/RiskBadge'
+import { RISK_COLOR, riskLabel, riskOf } from '../lib/risk'
+import { copycatOf } from '../api/argusMarket'
 import Sheet, { TradeBar } from '../components/Sheet'
 import { useIsMobile } from '../lib/useMobile'
 import type { Page } from '../App'
@@ -27,6 +30,14 @@ const socialLinkStyle: React.CSSProperties = {
   background: 'var(--bg-2)', color: 'var(--text-muted)', fontSize: '0.65rem', fontWeight: 700,
   padding: '2px 8px', borderRadius: 99, border: '1px solid var(--adx-card-border)', textDecoration: 'none',
 }
+/** Buys, sells and trades in the last 24h, from the trades list (newest first). */
+function dayStats(trades: CurveTrade[]): { buys: number; sells: number } {
+  const since = Math.floor(Date.now() / 1000) - 86_400
+  let buys = 0, sells = 0
+  for (const t of trades) { if (t.timestamp < since) break; if (t.isBuy) buys++; else sells++ }
+  return { buys, sells }
+}
+
 function fmt(n: number, prefix = '') {
   if (!n || isNaN(n)) return '—'
   if (n >= 1e6) return `${prefix}${(n / 1e6).toFixed(2)}M`
@@ -114,6 +125,24 @@ export default function CurveTokenPage({ address, navigate }: Props) {
   const holdersLabel = chainHolders?.complete ? (liveHolders ?? chainHolders.holders).toLocaleString()
     : chainHolders ? `${chainHolders.holders.toLocaleString()}…` : '—'
 
+  // The coin's risk score (lib/risk.ts). On the curve its liquidity can't
+  // be pulled; the launch-buyer bundling check and the dev's holdings and
+  // sells count too.
+  const risk = useMemo(() => {
+    if (!token) return null
+    const day = dayStats(trades)
+    const dev = token.curve.creator.toLowerCase()
+    const devSoldUsd = trades.filter(t => !t.isBuy && t.trader.toLowerCase() === dev).reduce((sum, t) => sum + Number(t.usdcAmount) / 1e6, 0)
+    return riskOf({
+      liquidityUsd: Number(token.curve.rUsdc) / 1e6, marketCapUsd: token.priceUsd * 1_000_000_000,
+      launchedAt: token.curve.launchedAt * 1000,
+      holders: (chainHolders?.complete ? liveHolders ?? chainHolders.holders : null) ?? null,
+      txns24h: day.buys + day.sells, buys24h: day.buys, sells24h: day.sells,
+      curve: true, bonded: token.curve.graduated, copycat: copycatOf(token.symbol, token.address),
+      devPct, devSoldUsd, trustScore: trust?.score ?? null,
+    })
+  }, [token, trades, chainHolders, liveHolders, devPct, trust])
+
   if (loading && !token) return <div className="loading-state">{T("Loading…")}</div>
   if (!token) return <div style={{ padding: 40, color: 'var(--text-muted)' }}>{T("Token not found.")}</div>
 
@@ -143,6 +172,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 700, fontSize: '1.05rem', color: '#3b82f6' }}>${fmt(token.priceUsd)}</span>
               <span style={{ background: '#7c3aed22', color: '#a78bfa', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: '1px solid #7c3aed44' }}>{T("ARCDEX Launchpad")}</span>
+              {risk && <RiskBadge risk={risk} />}
               {token.curve.graduated && (
                 <span style={{ background: '#22c55e22', color: '#22c55e', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: '1px solid #22c55e44' }}>{T("✓ Graduated")}</span>
               )}
@@ -168,6 +198,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
           [T('Status'), token.curve.graduated ? T('Graduated') : T('Bonding'), token.curve.graduated ? '#22c55e' : '#f59e0b'],
           [T('Dev holds'), devPct === null ? '…' : `${devPct.toFixed(2)}%`, devPct !== null && devPct > 5 ? '#f59e0b' : '#22c55e'],
           [T('Holders'), holdersLabel, 'var(--text)'],
+          ...(risk ? [[T('Risk'), `${risk.score} · ${riskLabel(risk.level)}`, RISK_COLOR[risk.level]]] : []),
         ].map(([label, val, color]) => (
           <div key={label}>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', marginBottom: 2 }}>{label}</div>

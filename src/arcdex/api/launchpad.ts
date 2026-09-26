@@ -6,7 +6,7 @@
 
 import { createPublicClient, parseAbi, type Address } from 'viem'
 import { arc } from '../wagmi'
-import { arcTransport } from '../lib/rpc'
+import { arcReadTransport } from '../lib/rpc'
 import { headBlock, scanLogs, type RawLog } from '../../../api/_arcLogs'
 import { CURVE_TRADE, DEPLOY_BLOCKS, TOKEN_LAUNCHED, decodeLaunch, decodeTrade, priceAfter, resolveMeta, statsOf, type Launch, type LaunchStats, type TradeRow } from '../../../api/_launchpadCore'
 
@@ -55,7 +55,9 @@ export const BURN_ADDRESS = '0x000000000000000000000000000000000000dEaD' as cons
 
 /** Lag-tolerant: a simulation right after an approval retries until the
  * RPC node answering has seen it (lib/rpc.ts). */
-export const client = createPublicClient({ chain: arc, transport: arcTransport() })
+// Reads that start together (a page's balances, allowances, supplies) go out
+// as one Multicall3 call instead of one request each.
+export const client = createPublicClient({ chain: arc, transport: arcReadTransport(), batch: { multicall: true } })
 
 export interface CurveState {
   creator: Address
