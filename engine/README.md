@@ -98,6 +98,7 @@ REST: `GET /v1/tokens/new`, `/v1/tokens/:token`, `/v1/tokens/:token/trades?limit
 ## Reliability
 
 - **Dedupe:** every log is processed once, by `txHash:logIndex`. Postgres upserts are idempotent.
+- **Live batching:** a live log goes to the handler at once when it's idle. Logs that arrive while it's busy are handled together, so their sender lookups share one batch. Handling one log per lookup round trip would cap the engine at ~5 trades/s on Railway, below a busy chain.
 - **Backpressure:** catch-up fetches the next chunk while the previous one is handled, never more. `/health` reports `lastProcessedBlock` (handled), `lastFetchedBlock` and `queuedEvents`.
 - **Missed-event detection:** every `RECONCILE_MS` the stream re-reads `(cursor, head−2]` with `getLogs` and recovers anything the socket dropped (metric `missed_events_recovered`).
 - **Disconnect / restart:** the cursor falls behind. New live logs are buffered while the gap is backfilled in block order, then the stream is live again.
@@ -120,7 +121,7 @@ REST: `GET /v1/tokens/new`, `/v1/tokens/:token`, `/v1/tokens/:token/trades?limit
 ## Tests
 
 ```bash
-bun test engine/test                       # 39 tests: candles, 24h state, protocol, real-mainnet replays (Argus launches, v3/v4 swaps), stream/provider reliability (incl. catch-up backpressure), Redis (RESP3), WebSocket/REST end-to-end
+bun test engine/test                       # 40 tests: candles, 24h state, protocol, real-mainnet replays (Argus launches, v3/v4 swaps), stream/provider reliability (incl. catch-up backpressure, live batching), Redis (RESP3), WebSocket/REST end-to-end
 PG_TEST_URL=postgres://… bun test engine/test/postgres.test.ts   # +2: the Postgres history backend, against a scratch database
 bun engine/scripts/capture-fixtures.ts     # refresh the recorded mainnet fixtures
 ```

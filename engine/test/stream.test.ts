@@ -152,6 +152,29 @@ describe('ChainStream', () => {
     stream.stop()
   })
 
+  test('live logs that arrive while the handler is busy are handled together, in order', async () => {
+    // Each handler call takes a lookup round trip; a busy chain must not queue one call per log.
+    const chain = new FakeChain()
+    const calls: number[] = []
+    const ids: string[] = []
+    const ws = new WsProvider(['wss://a'], { staleHeadMs: 60_000, factory: chain.factory })
+    const stream = new ChainStream(ws, chain.rpc, chain.fetchLogs, { get: async () => 1_000, set: async () => {} },
+      async logs => { calls.push(logs.length); await sleep(60); for (const l of logs) ids.push(logId(l)) },
+      { filters: [{ topics: ['0xswap'] }], reconcileMs: 10_000, backfillOnStartBlocks: 50, backfillMaxBlocks: 500 })
+    await stream.start()
+    await sleep(60)
+    expect(stream.mode).toBe('live')
+    const mined: RawLog[] = []
+    for (let i = 0; i < 20; i++) { mined.push(...chain.mine(2)); await sleep(5) } // 40 logs in ~100ms
+    await sleep(400)
+    await stream.drain()
+    expect(ids).toEqual(mined.map(logId))           // every log, once, in chain order
+    expect(calls[0]).toBe(2)                         // the first block goes straight through
+    expect(calls.length).toBeLessThanOrEqual(10)     // the rest in batches: one call per block would be 20
+    expect(Math.max(...calls)).toBeGreaterThanOrEqual(6)
+    stream.stop()
+  })
+
   test('after a dropped connection the gap is backfilled and the cursor persisted', async () => {
     const { chain, stream, got, cursor } = setup({ cursor: 1_000 })
     await stream.start()

@@ -155,7 +155,7 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
 - **Coin page (`ArgusTokenPage`):**
   - Header: watchlist star, copy CA, website, X, and search on X. The tab title reads `$MC | SYMBOL | ARCDEX`. The badge says ARGUS only for real Argus launches.
   - `PriceChart`:
-    - Price/MCap switch, screenshot, fullscreen.
+    - Line or Candles (Line by default), Price/MCap switch, screenshot, fullscreen. The line is green while the visible window is up and red while it's down, following pans and zooms. The style lives in `lib/chartStyle.ts`: remembered per browser (`arcdex:chart-style`) and shared with the launchpad's `CurveChart`.
     - Overlays: Trades, My swaps, Thesis marks, Friends only, Min size.
   - `TokenSocialTabs`:
     - Holders: position, PnL, avg entry MC, hold time, thesis.
@@ -190,7 +190,7 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
     - Tests: `bun scripts/test-wallet-2fa.ts`.
     - "Sign out of all devices" (Settings → Account) revokes session tokens server-side: `arcdex_session_revocations`, checked in `/api/social` and `/api/onramp`.
   - **Languages:** `lib/i18n.ts` with `t()`. Code imports it as `T`, because many files use `t` as a loop variable. Strings are keyed by their English text; `N_()` marks module-level strings.
-    - Languages: en, fr, es, pt, sw, de, zh, in `lib/i18n/<lang>.ts`, each loaded on demand. 909 strings each, all complete.
+    - Languages: en, fr, es, pt, sw, de, zh, in `lib/i18n/<lang>.ts`, each loaded on demand. 933 strings each, all complete.
     - Pickers: Settings → Language, the avatar menu, the pre-connect picker, and the landing nav. The app remounts on a language change.
   - **Points** (ARCDEX's rewards program): rolling 30-day seasons from 2026-09-25.
     - Scoring: 1 pt per $1 traded, 20% of referrals' points, 10 pts per active day, and 2 pts per like from traders (capped at 500).
@@ -263,7 +263,7 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
   - **PriceChart:** engine candles + `CANDLE_UPDATE`, with a 5s timeframe in engine mode.
   - **Terminal:** `new_tokens` rows with a NEW badge, visible before their first trade; `market` ticks update prices; list polling slows to 60s.
   - **Search:** includes fresh launches.
-- **Tests:** `bun run engine:test` — 39 tests (+2 Postgres ones that need `PG_TEST_URL`), including catch-up backpressure, replays of recorded mainnet data (`engine/test/fixtures/mainnet.json`) and a RESP3 Redis round-trip against Bun's client. Live latency: `bun engine/scripts/latency-check.ts <ws-url> 60`.
+- **Tests:** `bun run engine:test` — 40 tests (+2 Postgres ones that need `PG_TEST_URL`), including catch-up backpressure, live batching, replays of recorded mainnet data (`engine/test/fixtures/mainnet.json`) and a RESP3 Redis round-trip against Bun's client. Live latency: `bun engine/scripts/latency-check.ts <ws-url> 60`.
 
 ## Hosting — arcdex.online only
 

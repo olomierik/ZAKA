@@ -69,6 +69,8 @@ export class ChainStream {
   mode: 'starting' | 'catching_up' | 'live' = 'starting'
   private seen = new Lru(400_000)
   private buffer: RawLog[] = []
+  /** Live logs waiting for the handler (see onLive). */
+  private liveBatch: RawLog[] = []
   private queue: Promise<void> = Promise.resolve()
   private timer: ReturnType<typeof setTimeout> | null = null
   private unsubs: (() => void)[] = []
@@ -161,7 +163,17 @@ export class ChainStream {
       if (this.buffer.length < 100_000) this.buffer.push(l)
       return
     }
-    this.dispatch([l], { replay: false, source: 'live' })
+    // Handed over as soon as the handler is free — at once when it's idle.
+    // While it's busy, new logs pile up here and go together, so their
+    // sender lookups share one batch: one log per lookup round trip
+    // (~5/s on Railway) would fall behind a busy chain.
+    this.liveBatch.push(l)
+    if (this.liveBatch.length > 1) return
+    void this.queue.then(() => {
+      const batch = this.liveBatch.sort(order)
+      this.liveBatch = []
+      if (!this.stopped) this.dispatch(batch, { replay: false, source: 'live' })
+    })
   }
 
   private kick(delay = 0) {

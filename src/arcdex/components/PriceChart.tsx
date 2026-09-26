@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createChart, type IChartApi, type ISeriesApi, type SeriesType, type CandlestickData, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts'
+import { createChart, type IChartApi, type ISeriesApi, type SeriesType, type CandlestickData, LineSeries, HistogramSeries } from 'lightweight-charts'
+import { addMainSeries, lineColors, loadChartStyle, onChartStyle, saveChartStyle, type ChartStyle, type MainSeries } from '../lib/chartStyle'
 import { getPoolOhlcv } from '../api/gecko'
 import { candlesFromTicks, mergeCandles, type Candle, type Tick } from '../lib/candles'
 import { engineEnabled, getEngineCandles, marketStream, useEngineStatus } from '../api/marketStream'
@@ -94,6 +95,10 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
   const [engineHistory, setEngineHistory] = useState(false)
   const [liveCandles, setLiveCandles] = useState<Candle[]>([])
   const [mode, setMode] = useState<'price' | 'mcap'>('price')
+  const [style, setStyle] = useState<ChartStyle>(loadChartStyle)
+  useEffect(() => onChartStyle(setStyle), [])
+  const styleRef = useRef(style)
+  styleRef.current = style
   const [showBubbles, setShowBubbles] = useState(true)
   const [showMine, setShowMine] = useState(true)
   const [showThesis, setShowThesis] = useState(true)
@@ -183,9 +188,10 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
   const wrapRef      = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef     = useRef<IChartApi | null>(null)
-  const seriesRef    = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const seriesRef    = useRef<MainSeries | null>(null)
   const volRef       = useRef<ISeriesApi<'Histogram'> | null>(null)
   const applied      = useRef<{ key: string; data: CandlestickData[] }>({ key: '', data: [] })
+  const lineUp       = useRef(true)
   const frame        = useRef(0)
 
   // Positions every bubble at its trade's candle and price. Re-run whenever
@@ -237,14 +243,7 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
       width:  containerRef.current.clientWidth,
       height: containerRef.current.clientHeight || 340,
     })
-    const series = chart.addSeries(CandlestickSeries, {
-      upColor: '#22c55e', downColor: '#ef4444',
-      borderUpColor: '#22c55e', borderDownColor: '#ef4444',
-      wickUpColor: '#22c55e', wickDownColor: '#ef4444',
-    })
-    chartRef.current  = chart
-    seriesRef.current = series
-    applied.current = { key: '', data: [] }
+    chartRef.current = chart
 
     const ro = new ResizeObserver(() => {
       if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight || 340 })
@@ -253,14 +252,45 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
     return () => { ro.disconnect(); chart.remove(); chartRef.current = null; seriesRef.current = null }
   }, [])
 
-  const layoutRef = useRef(layout)
-  layoutRef.current = layout
-
-  // Pan/zoom/resize → re-place bubbles.
+  // The price series — a line or candlesticks. Changing the style swaps it
+  // (the draw effect below then redraws everything into the new one).
   useEffect(() => {
     const chart = chartRef.current
     if (!chart) return
-    const onRange = () => layout()
+    const s = addMainSeries(chart, style)
+    seriesRef.current = s
+    lineUp.current = true
+    applied.current = { key: '', data: [] }
+    return () => {
+      try { chart.removeSeries(s) } catch { /* the chart itself is gone */ }
+      if (seriesRef.current === s) seriesRef.current = null
+    }
+  }, [style])
+
+  const layoutRef = useRef(layout)
+  layoutRef.current = layout
+
+  // The line is green while what's on screen is up (first visible bar to
+  // last), red while it's down — it follows pans and zooms. Refs only, so
+  // any render's copy of this function behaves the same.
+  const recolor = () => {
+    const series = seriesRef.current, chart = chartRef.current, data = applied.current.data
+    if (styleRef.current !== 'line' || !series || !chart || !data.length) return
+    const r = chart.timeScale().getVisibleLogicalRange()
+    const last = data.length - 1
+    const i0 = r ? Math.min(last, Math.max(0, Math.ceil(r.from))) : 0
+    const i1 = r ? Math.min(last, Math.max(i0, Math.floor(r.to))) : last
+    const up = data[i1].close >= data[i0].close
+    if (up !== lineUp.current) { series.applyOptions(lineColors(up)); lineUp.current = up }
+  }
+  const recolorRef = useRef(recolor)
+  recolorRef.current = recolor
+
+  // Pan/zoom/resize → re-place bubbles, re-colour the line.
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    const onRange = () => { layout(); recolorRef.current() }
     chart.timeScale().subscribeVisibleLogicalRangeChange(onRange)
     chart.timeScale().subscribeSizeChange(onRange)
     layout()
@@ -279,13 +309,15 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
     const data: CandlestickData[] = candles.map(c => ({
       time: c.time as never, open: c.open * scale, high: c.high * scale, low: c.low * scale, close: c.close * scale,
     }))
-    const key = `${poolAddress}|${res}|${scale}`
+    const key = `${poolAddress}|${res}|${scale}|${style}`
     const prev = applied.current
     const n = prev.data.length
     const same = (a: CandlestickData | undefined, b: CandlestickData | undefined) => !!a && !!b && a.time === b.time && a.open === b.open && a.high === b.high && a.low === b.low && a.close === b.close
     const tailOnly = prev.key === key && n > 1 && data.length >= n && data.length - n <= 2 && data[0].time === prev.data[0].time && same(data[n - 2], prev.data[n - 2])
+    // A line only needs each bar's close.
+    const point = (d: CandlestickData) => (style === 'candles' ? d : { time: d.time, value: d.close })
     if (tailOnly) {
-      for (let i = n - 1; i < data.length; i++) series.update(data[i])
+      for (let i = n - 1; i < data.length; i++) series.update(point(data[i]))
       const vol = volRef.current
       if (vol) for (let i = n - 1; i < candles.length; i++) {
         const c = candles[i]
@@ -293,7 +325,7 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
       }
     } else {
       series.applyOptions({ priceFormat: scale > 1 ? { type: 'custom', formatter: (v: number) => v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(1)}K` : `$${v.toFixed(0)}`, minMove: 1 } : { type: 'custom', formatter: fmtPrice, minMove: 1e-12 } })
-      series.setData(data)
+      series.setData(data.map(point))
       // Frame once per pool/timeframe/mode, not on every refresh — otherwise
       // the user's zoom/scroll would snap back.
       if (needsFit.current && data.length) {
@@ -304,8 +336,9 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
       }
     }
     applied.current = { key, data }
+    recolorRef.current()
     layoutRef.current()
-  }, [candles, scale, res, poolAddress])
+  }, [candles, scale, res, poolAddress, style])
 
   // Indicators: rebuilt when a bar is added, or the Price/MCap scale or
   // the selection changes — not on every tick (the draw effect keeps the
@@ -355,7 +388,8 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
     }
     layoutRef.current()
     // layout via ref: new trades arrive every few seconds and must not rebuild the indicators
-  }, [barsKey, scale, ind, res])
+    // (style: a swapped price series is added last; re-adding keeps the indicator lines above it)
+  }, [barsKey, scale, ind, res, style])
 
   function screenshot() {
     const chart = chartRef.current
@@ -391,6 +425,9 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
       ))}
       {live && <span title={T("Every swap appears the moment its block lands")} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 6, fontSize: '0.68rem', fontWeight: 800, color: 'var(--green)', letterSpacing: '0.05em' }}><span className="pulse-dot" />{T("LIVE")}</span>}
       <span style={{ flex: 1 }} />
+      <span title={T("Chart style")} style={{ display: 'inline-flex', border: '1px solid var(--adx-card-border)', borderRadius: 6, overflow: 'hidden' }}>
+        {(['line', 'candles'] as const).map(s => <button key={s} onClick={() => saveChartStyle(s)} style={{ ...pill(style === s), border: 'none', borderRadius: 0 }}>{s === 'line' ? T("Line") : T("Candles")}</button>)}
+      </span>
       {supply ? (
         <span style={{ display: 'inline-flex', border: '1px solid var(--adx-card-border)', borderRadius: 6, overflow: 'hidden' }}>
           {(['price', 'mcap'] as const).map(m => <button key={m} onClick={() => setMode(m)} style={{ ...pill(mode === m), border: 'none', borderRadius: 0 }}>{m === 'price' ? T("Price") : T("MCap")}</button>)}
