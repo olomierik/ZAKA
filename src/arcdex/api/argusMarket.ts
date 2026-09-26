@@ -169,6 +169,7 @@ export function argusPoolToArcToken(p: ArgusPool): ArcToken {
     bondingProgress: null,
     spark: [],
     quoteSymbol: p.quote.symbol,
+    quoteAddress: p.quote.address,
   }
 }
 

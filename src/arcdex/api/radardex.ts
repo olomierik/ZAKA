@@ -29,6 +29,7 @@ export interface ArcToken {
   telegram?:       string
   deployer?:       string
   quoteSymbol:     string          // 'USDC' | 'EURC' | 'ARGUS' | ...
+  quoteAddress?:   string          // the pool's quote token, when known
 }
 
 export interface OhlcvCandle {

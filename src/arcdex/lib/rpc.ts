@@ -8,7 +8,8 @@
 // "transfer amount exceeds allowance" although the approval is on-chain.
 // `lagTolerant` retries exactly those calls for a moment before giving up.
 
-import { http, type Address, type Transport } from 'viem'
+import { fallback, http, type Address, type Transport } from 'viem'
+import { RECENT_RPC } from '../../../api/_arcLogs'
 
 /** eth_call / eth_estimateGas failures a lagging node produces. Also
  * OpenZeppelin v5's custom errors (the launchpad's tokens):
@@ -48,6 +49,11 @@ export const ARC_RPC = 'https://rpc.mainnet.arc.io'
 
 /** Arc over the public RPC, lag-tolerant. */
 export const arcTransport = () => lagTolerant(http(ARC_RPC))
+/** Reads on Arc (balances, quotes, simulations): the public RPC, and
+ * Blockdaemon the moment it throttles or fails — instead of backing off
+ * and retrying the same busy node. A revert is an answer, not a failure:
+ * it's never retried elsewhere. Lag-tolerant either way. */
+export const arcReadTransport = () => fallback([lagTolerant(http(ARC_RPC)), lagTolerant(http(RECENT_RPC))], { retryCount: 1 })
 /** Any chain over its default RPC, lag-tolerant. */
 export const chainTransport = (url?: string) => lagTolerant(http(url))
 

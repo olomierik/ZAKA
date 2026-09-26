@@ -20,6 +20,11 @@ export const arc = defineChain({
   nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
   rpcUrls: { default: { http: ['https://rpc.mainnet.arc.io'], webSocket: ['wss://rpc.mainnet.arc.io'] } },
   blockExplorers: { default: { name: 'Arc Explorer', url: 'https://explorer.arc.io' } },
+  // ~0.5s blocks. Without it viem assumes Ethereum's 12s and polls every 4s
+  // (a confirmed trade noticed up to 4s late).
+  blockTime: 500,
+  // Concurrent reads are batched into one Multicall3 call (api/launchpad.ts).
+  contracts: { multicall3: { address: '0xcA11bde05977b3631167028862bE2a173976CA11' } },
 })
 
 export const USDC_ADDRESS  = '0x3600000000000000000000000000000000000000' as const

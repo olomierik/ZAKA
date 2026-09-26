@@ -140,6 +140,39 @@ Why buys, swaps and bridges failed for people, and the fixes:
   - `bun scripts/test-withdraw-guard.ts`: the rule, funding detection and tamper-proof storage.
   - `bun scripts/test-portfolio.ts`: which coins are checked and how they're priced.
 
+### Risk scores, faster confirmations, a live Terminal (2026-09-26, round 3)
+- **Risk score on every coin (`lib/risk.ts`, `components/RiskBadge.tsx`):** 0–100, higher is riskier. Low under 30, Medium 30–59, High 60+. Hovering the badge lists the reasons; the Safety check spells them out for phones.
+  - **Terminal rows and phone cards** are scored from the market data they already carry, with no extra requests: liquidity, market cap ÷ liquidity, age, holders, 24h trades, the 24h move, sells vs buys, copycat tickers, and "a bigger coin uses the same ticker".
+  - On a launchpad curve, liquidity counts half, because it can't be pulled. Bonded coins get −5.
+  - **Coin pages** add their own checks, so their score can be higher than the Terminal row's:
+    - GeckoTerminal's honeypot flag (always 100) and trust score;
+    - the top-10 share;
+    - the dev's holdings and sells (`useDevPct`, lifted out of `SafetyPanel`);
+    - creator tax;
+    - the launchpad's launch-buyer bundling check.
+  - The badge sits in the coin header and the Safety check; launchpad pages also show it in the stats row.
+  - The Terminal has a RISK column and "Sort: risk" (safest first).
+  - Tests: `bun scripts/test-risk-pulse.ts`.
+- **Faster confirmations.**
+  - **Why it was slow:** Arc's chain definition had no `blockTime`, so viem assumed Ethereum's 12s blocks and polled every 4s. Each confirmed transaction was noticed up to ~4.3s late, so a buy that needed an approval waited about 8.5s for nothing.
+  - **Chain definition:** `arc` now declares `blockTime: 500`, which gives viem and wagmi 500ms polling. It also declares `contracts.multicall3`.
+  - **`lib/receipts.ts` `waitForReceipt()`** is used by every trade, approval, transfer, launch and burn.
+    - It asks both the public RPC and Blockdaemon for the receipt every 250ms and takes the first answer.
+    - It never asks an endpoint again while that endpoint still owes an answer.
+    - Simulated with 0.5s blocks: about 0.56s to notice a confirmation, against about 4.26s before.
+  - **`lib/balances.ts`:** when a receipt lands, every balance on screen refreshes at once (header cash, the Trading wallet panel, both swap widgets and Portfolio). It fires again 1.2s later in case the first read hit a node one block behind.
+  - **The shared read client (`api/launchpad.ts` `client`)** batches concurrent reads into one Multicall3 call (`batch: { multicall: true }`). It uses `arcReadTransport()`, which falls back to Blockdaemon when the public RPC throttles or fails.
+    - A revert is never retried on the other endpoint.
+    - Writes (the trading wallet and wagmi) still go only to the public RPC.
+- **A live Terminal (`api/marketPulse.ts`).**
+  - One WebSocket to Arc carries up to three log subscriptions: every v4 swap (through the PoolManager, where Argus coins trade), swaps in the listed v3 pools only (not every stablecoin pair's arbitrage), and ArcLaunchpad trades.
+  - Each swap is matched to a listed coin by pool (`ArcToken.quoteAddress`, new) and decoded with `decodeSwapLog`.
+  - The coin's row or phone card flashes green on a buy and red on a sell. There are two alternating animations per side, so back-to-back trades each restart the flash.
+  - Updates are batched every 150ms.
+  - The "● live" badge counts trades per minute.
+  - With the market engine connected, a trade the socket missed still flashes: the engine's trade count going up, with the side taken from the price move.
+- **Lint:** `SortTh` moved out of the Terminal's render, so headers aren't remounted on every render.
+
 ### Compact forms and pages (2026-09-26, round 2)
 - Swap and bridge forms are 420px at most (`.form-page`, `.swap-box`, `.swap-input`, `.swap-info`, `.swap-note`), with smaller inputs, presets and buttons.
 - Content pages (Rewards, Burn, Clans, Feed, Transfers, Alerts, Leaderboard) share `.content-page` (centered, `--page-w`, 820px by default) and `.page-h` titles. Stat cards, the Portfolio total, the PnL chart and the profile banner are smaller.

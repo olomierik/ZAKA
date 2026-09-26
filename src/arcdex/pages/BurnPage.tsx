@@ -6,6 +6,7 @@ import { useTrader } from '../lib/identity'
 import { t as T } from '../lib/i18n'
 import { ARCD, ARCD_POOL, ARC_EXPLORER, BURN_ADDRESS, FEE_WALLET, compact, loadArcd, price, short, type ArcdStats } from '../lib/arcd'
 import type { Page } from '../App'
+import { waitForReceipt } from '../lib/receipts'
 
 // /burn — the $ARCD buyback-and-burn dashboard. Public: how much $ARCD has
 // been burned, what's waiting in the fee wallet, every recent burn. When
@@ -115,7 +116,7 @@ function OwnerPanel({ stats, onDone, navigate }: { stats: ArcdStats | null; onDo
     try {
       const req = { address: ARCD as Address, abi: ERC20, functionName: 'transfer' as const, args: [BURN_ADDRESS as Address, value] as const }
       const hash = await sendArc(trader.kind, req as never)
-      const rc = await client.waitForTransactionReceipt({ hash })
+      const rc = await waitForReceipt(hash)
       if (rc.status !== 'success') throw new Error(T('Burn failed'))
       setState({ tx: hash }); setAmount('')
       void load(); onDone()

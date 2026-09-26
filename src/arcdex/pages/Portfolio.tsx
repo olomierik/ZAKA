@@ -10,6 +10,7 @@ import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { useCash } from '../lib/usdc'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import { onBalances } from '../lib/balances'
 
 // Your wallet on Arc: USDC cash and every coin you hold, valued live, with
 // Sell (to USDC) and Send on each coin and Deposit / Withdraw for cash.
@@ -50,7 +51,8 @@ export default function Portfolio({ navigate }: Props) {
     setHoldings(null); setFailed(false)
     load()
     const id = setInterval(() => { if (!document.hidden) load() }, 45_000)
-    return () => clearInterval(id)
+    const off = onBalances(load)
+    return () => { clearInterval(id); off() }
   }, [load])
 
   const afterTrade = useCallback(() => { refreshCash(); load() }, [refreshCash, load])

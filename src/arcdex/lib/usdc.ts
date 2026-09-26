@@ -7,6 +7,8 @@ import { parseAbi, parseUnits, type Address, type Hex } from 'viem'
 import { client } from '../api/launchpad'
 import { sendArc } from './tx'
 import type { Trader } from './identity'
+import { waitForReceipt } from './receipts'
+import { onBalances } from './balances'
 
 export const USDC = '0x3600000000000000000000000000000000000000' as Address
 const ERC20 = parseAbi(['function balanceOf(address) view returns (uint256)', 'function transfer(address to, uint256 amount) returns (bool)'])
@@ -26,7 +28,9 @@ export function useCash(address: string | null): { cash: number | null; refresh:
   useEffect(() => {
     refresh()
     const id = setInterval(() => { if (!document.hidden) refresh() }, 15_000)
-    return () => clearInterval(id)
+    // A trade or transfer just confirmed: refresh now, not on the next poll.
+    const off = onBalances(refresh)
+    return () => { clearInterval(id); off() }
   }, [refresh])
   return { cash, refresh }
 }
@@ -42,7 +46,7 @@ export function useSendToken(trader: Trader) {
     if (value <= 0n) throw new Error('Enter an amount')
     const req = { address: token, abi: ERC20, functionName: 'transfer' as const, args: [to as Address, value] as const }
     const hash = await sendArc(trader.kind, req as never)
-    const rc = await client.waitForTransactionReceipt({ hash })
+    const rc = await waitForReceipt(hash)
     if (rc.status !== 'success') throw new Error('Transfer failed')
     return hash
   }, [trader])

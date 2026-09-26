@@ -15,6 +15,8 @@ import ShareCardModal from './ShareCardModal'
 import type { CardData } from '../lib/shareCard'
 import { setPrefs, usePrefs } from '../lib/prefs'
 import { t as T } from '../lib/i18n'
+import { waitForReceipt } from '../lib/receipts'
+import { onBalances } from '../lib/balances'
 
 export { SWAP_ROUTER_ADDRESS }
 
@@ -113,7 +115,8 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
   useEffect(() => {
     void refresh()
     const id = setInterval(() => { if (!document.hidden) void refresh() }, 12_000)
-    return () => clearInterval(id)
+    const off = onBalances(() => void refresh())
+    return () => { clearInterval(id); off() }
   }, [refresh])
 
   useEffect(() => { setImpact(null); setRiskOk(false) }, [amount, mode])
@@ -154,7 +157,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         setStep('approving')
         // Exact amount only — the router never needs more than this trade.
         const h = await send({ address: tokenIn, abi: ERC20_ABI, functionName: 'approve', args: [SWAP_ROUTER_ADDRESS, amountIn] })
-        const rc = await client.waitForTransactionReceipt({ hash: h })
+        const rc = await waitForReceipt(h)
         if (rc.status !== 'success') throw new Error(T('Approval failed'))
         // Arc's RPC nodes can trail by a block: wait until the approval is visible.
         await waitForAllowance(client, tokenIn, me, SWAP_ROUTER_ADDRESS, amountIn)
@@ -185,7 +188,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       setStep('swapping')
       const call = callFor(info, minOut, referrer)
       const h = await send({ address: SWAP_ROUTER_ADDRESS, abi: call.abi, functionName: call.functionName, args: call.args })
-      const rc = await client.waitForTransactionReceipt({ hash: h })
+      const rc = await waitForReceipt(h)
       if (rc.status !== 'success') throw new Error(T('Swap reverted'))
 
       const usd = mode === 'buy' ? Number(formatUnits(amountIn, 6)) : outNum

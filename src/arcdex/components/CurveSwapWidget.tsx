@@ -8,6 +8,8 @@ import { waitForAllowance } from '../lib/rpc'
 import { triggerIndex } from '../api/social'
 import { rememberHolding } from '../lib/held'
 import { t as T } from '../lib/i18n'
+import { waitForReceipt } from '../lib/receipts'
+import { onBalances } from '../lib/balances'
 
 const USDC_ADDR = '0x3600000000000000000000000000000000000000' as const
 
@@ -63,7 +65,8 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
   useEffect(() => {
     void refresh()
     const id = setInterval(() => { if (!document.hidden) void refresh() }, 12_000)
-    return () => clearInterval(id)
+    const off = onBalances(() => void refresh())
+    return () => { clearInterval(id); off() }
   }, [refresh])
 
   // Curve math, same as the contract: a flat 1% platform fee plus this
@@ -97,7 +100,7 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
         setStep('approving')
         // Exactly this trade's amount — the launchpad never gets more.
         const h = await send({ address: tokenIn, abi: ERC20_ABI, functionName: 'approve', args: [LAUNCHPAD_ADDRESS, amountIn] })
-        const rc = await client.waitForTransactionReceipt({ hash: h })
+        const rc = await waitForReceipt(h)
         if (rc.status !== 'success') throw new Error(T('Approval failed'))
         // Arc's RPC nodes can trail by a block: don't simulate the trade
         // against one that hasn't seen the approval yet.
@@ -112,7 +115,7 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
       await client.simulateContract({ ...call, account: me } as never)
       setStep('swapping')
       const h = await send(call)
-      const rc = await client.waitForTransactionReceipt({ hash: h })
+      const rc = await waitForReceipt(h)
       if (rc.status !== 'success') throw new Error(T('Swap reverted'))
       const out = Number(formatUnits(estimate.out, estimate.decimals))
       rememberHolding(me, token.address)
