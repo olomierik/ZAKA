@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Ago, { AgoText } from './Ago'
 import Avatar from './Avatar'
 import TraderHover from './TraderHover'
 import { ARC_EXPLORER } from '../api/arcRpc'
@@ -32,6 +33,8 @@ interface Props {
   profiles: Map<string, Profile>
   /** On-chain holders (null: index unavailable or still loading). */
   chainHolders?: ChainHolders | null
+  /** The live holder count (the index plus the newest transfers). */
+  holderCount?: number | null
   trader: Trader
   positionUsd: number | null
   creator: string | null
@@ -46,21 +49,14 @@ type Tab = 'holders' | 'swaps' | 'thesis' | 'traders'
 
 const fmt = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n >= 1 ? n.toFixed(2) : n.toFixed(4)
 const usd = (n: number) => (n < 0 ? '-' : '') + '$' + fmt(Math.abs(n))
-function ago(ts: number) {
-  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000))
-  if (s < 60) return `${s}s`
-  if (s < 3600) return `${Math.floor(s / 60)}m`
-  if (s < 86400) return `${Math.floor(s / 3600)}h`
-  return `${Math.floor(s / 86400)}d`
-}
 const dur = (ms: number) => { const h = ms / 3600_000; return h < 1 ? `${Math.max(1, Math.round(ms / 60_000))}m` : h < 48 ? `${Math.round(h)}h` : `${Math.round(h / 24)}d` }
 
-export function Who({ address, profiles, navigate, creator }: { address: string; profiles: Map<string, Profile>; navigate: (p: Page) => void; creator?: string | null }) {
+export function Who({ address, profiles, navigate, creator, maxWidth }: { address: string; profiles: Map<string, Profile>; navigate: (p: Page) => void; creator?: string | null; maxWidth?: number }) {
   const p = profiles.get(address.toLowerCase())
   const isDev = creator && creator.toLowerCase() === address.toLowerCase()
   return (
     <TraderHover address={address}>
-      <button onClick={() => navigate({ name: 'trader', address })} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--text)', minWidth: 0 }}>
+      <button onClick={() => navigate({ name: 'trader', address })} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--text)', minWidth: 0, maxWidth }}>
         <Avatar address={address} url={p?.avatar_url} size={20} />
         <span style={{ fontFamily: p?.username ? undefined : 'var(--mono)', fontSize: '0.76rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {p?.username ? `@${p.username}` : shortAddr(address)}
@@ -71,8 +67,9 @@ export function Who({ address, profiles, navigate, creator }: { address: string;
   )
 }
 
-export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, profiles, chainHolders, trader, positionUsd, creator, priceUsd, supply, navigate, onProfilesNeeded, onThesesLoaded }: Props) {
-  const [tab, setTab] = useState<Tab>('holders')
+export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, profiles, chainHolders, holderCount: liveCount, trader, positionUsd, creator, priceUsd, supply, navigate, onProfilesNeeded, onThesesLoaded }: Props) {
+  // Swaps first, like DexScreener's transactions: the live view of the coin.
+  const [tab, setTab] = useState<Tab>('swaps')
   const [holderView, setHolderView] = useState<'all' | 'arcdex'>('all')
   const [theses, setTheses] = useState<Thesis[] | null>(null)
   const [holders, setHolders] = useState<HolderRow[] | null>(null)
@@ -170,7 +167,7 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
   const swaps = rows.filter(r => r.usd >= minSwap)
   const holderRows = (holders ?? []).filter(h => !thesisOnly || latestThesisBy.has(h.trader))
   const chainRows = (chainTop ?? []).filter(h => !thesisOnly || latestThesisBy.has(h.address))
-  const holderCount = chainHolders?.holders ?? holders?.length ?? 0
+  const holderCount = liveCount ?? chainHolders?.holders ?? holders?.length ?? 0
 
   const thesisCard = (t: Thesis, older = false) => {
     const pos = positionOf.get(t.author)
@@ -183,7 +180,7 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
             <span style={{ fontSize: '0.6rem', fontWeight: 800, padding: '1px 5px', borderRadius: 4, background: 'rgba(59,130,246,0.18)', color: '#93c5fd' }}>{T("Thesis")}</span>
             {!older && pos && <span className="sensitive" style={{ fontSize: '0.74rem', fontFamily: 'var(--mono)' }}>{usd(pos.value)} {pos.pct !== null && <span style={{ color: pos.pct >= 0 ? 'var(--green)' : 'var(--red)' }}>({pos.pct >= 0 ? '▲' : '▼'}{Math.abs(pos.pct).toFixed(2)}%)</span>}</span>}
             {!older && !pos && t.position_usd != null && t.position_usd > 0 && <span style={{ fontSize: '0.68rem', fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>{T("held $")}{fmt(t.position_usd)}{' '}{T("when posted")}</span>}
-            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{ago(Date.parse(t.created_at))}</span>
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 'auto' }}><Ago ts={Date.parse(t.created_at)} /></span>
           </div>
           <div style={{ fontSize: '0.86rem', margin: '6px 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{t.body}</div>
           <button onClick={() => void toggleLike(t)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: liked.has(t.id) ? '#f472b6' : 'var(--text-muted)', fontSize: '0.76rem' }}>{liked.has(t.id) ? '♥' : '♡'} {t.likes}</button>
@@ -195,8 +192,8 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
   return (
     <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16, overflow: 'visible' }}>
       <div style={{ padding: '0 16px', borderBottom: '1px solid var(--adx-card-border)', display: 'flex', alignItems: 'center', overflowX: 'auto' }}>
-        {tabBtn('holders', T('Holders') + (holderCount ? ` (${holderCount.toLocaleString()}${chainHolders && !chainHolders.complete ? '…' : ''})` : ''))}
         {tabBtn('swaps', T('Swaps'))}
+        {tabBtn('holders', T('Holders') + (holderCount ? ` (${holderCount.toLocaleString()}${chainHolders && !chainHolders.complete ? '…' : ''})` : ''))}
         {tabBtn('thesis', T('Thesis') + (theses?.length ? ` (${theses.length})` : ''))}
         {tabBtn('traders', T('Top traders'))}
         <span style={{ flex: 1 }} />
@@ -245,7 +242,7 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
           </table>
           <div style={{ padding: '8px 16px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
             {chainHolders!.complete
-              ? T("Top {n} of {total} holders, live from the chain. PnL is shown for wallets that trade on ARCDEX.", { n: String(chainRows.length), total: chainHolders!.holders.toLocaleString() })
+              ? T("Top {n} of {total} holders, live from the chain. PnL is shown for wallets that trade on ARCDEX.", { n: String(chainRows.length), total: holderCount.toLocaleString() })
               : T("Counting every holder on-chain… {pct}% done.", { pct: String(Math.floor(chainHolders!.progress * 100)) })}
           </div>
         </div>
@@ -278,22 +275,32 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
       {tab === 'swaps' && (swaps.length === 0 ? (
         <Empty>{tradesLoaded ? T("No recent trades on this pool — new ones appear here instantly.") : T("Loading trades…")}</Empty>
       ) : (
-        <div style={{ overflow: 'auto', maxHeight: 480 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', minWidth: 560 }}>
-            <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>{[T('Trader'), T('Action'), T('Amount'), T('Market cap'), T('Time'), ''].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+        // Like DexScreener's transactions: each swap's age counting up live
+        // (12s ago → 3m ago → 2h ago → 4d ago → 2mo ago), side, size, price
+        // and the wallet that made it. A new swap flashes in at the top.
+        // The wallet always shows: on a narrow card the market cap, the price
+        // and then the token amount make way for it (arcdex.css, .swaps-table).
+        <div className="swaps-wrap" style={{ overflow: 'auto', maxHeight: 480 }}>
+          <table className="swaps-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+            <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>{([[T('Date')], [T('Type'), 'sw-type'], ['USD'], [symbol, 'sw-tok'], [T('Price'), 'sw-price'], [T('Market cap'), 'sw-mc'], [T('Maker')], ['', 'sw-tx']] as [string, string?][]).map(([h, cls], i) => <th key={i} className={cls} style={th}>{h}</th>)}</tr></thead>
             <tbody>
               {swaps.map(t => {
-                const c = t.kind === 'buy' ? 'var(--green)' : 'var(--red)'
+                const buy = t.kind === 'buy'
+                const c = buy ? 'var(--green)' : 'var(--red)'
                 const mine = trader.address && t.maker?.toLowerCase() === trader.address.toLowerCase()
-                const mcAt = supply && t.tokenAmount > 0 ? (t.usd / t.tokenAmount) * supply : null
+                const price = t.tokenAmount > 0 ? t.usd / t.tokenAmount : 0
+                const mcAt = supply && price ? price * supply : null
+                const mono: React.CSSProperties = { ...td, fontFamily: 'var(--mono)', color: c, whiteSpace: 'nowrap' }
                 return (
-                  <tr key={t.txHash + t.kind + t.tokenAmount} style={{ borderBottom: '1px solid var(--adx-card-border)', background: mine ? 'rgba(250,204,21,0.07)' : t.live ? 'rgba(59,130,246,0.06)' : 'transparent' }}>
-                    <td style={td}>{t.maker ? <Who address={t.maker} profiles={profiles} navigate={navigate} creator={creator} /> : <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{T("just now…")}</span>}</td>
-                    <td style={td}><span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '2px 7px', borderRadius: 4, background: t.kind === 'buy' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: c }}>{t.kind === 'buy' ? T("Buy") : T("Sell")}</span></td>
-                    <td style={{ ...td, fontFamily: 'var(--mono)' }}>{t.usd < 0.01 ? '<$0.01' : usd(t.usd)}</td>
-                    <td style={{ ...td, fontFamily: 'var(--mono)' }}>{mcAt ? usd(mcAt) : '—'}</td>
-                    <td style={{ ...td, color: 'var(--text-muted)' }}>{ago(t.timestamp)}</td>
-                    <td style={td}><a href={`${ARC_EXPLORER}/tx/${t.txHash}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>↗</a></td>
+                  <tr key={t.txHash + t.kind + t.tokenAmount} className={t.live ? 'swap-row-new' : undefined} style={{ borderBottom: '1px solid var(--adx-card-border)', background: mine ? 'rgba(250,204,21,0.07)' : 'transparent' }}>
+                    <td style={{ ...td, color: 'var(--text-muted)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}><AgoText ts={t.timestamp} /></td>
+                    <td className="sw-type" style={{ ...td, color: c, fontWeight: 700 }}>{buy ? T("Buy") : T("Sell")}</td>
+                    <td style={mono}>{t.usd < 0.01 ? '<$0.01' : usd(t.usd)}</td>
+                    <td className="sw-tok" style={mono}>{fmt(t.tokenAmount)}</td>
+                    <td className="sw-price" style={mono}>{price ? `$${price >= 1 ? price.toFixed(4) : price.toPrecision(4)}` : '—'}</td>
+                    <td className="sw-mc" style={{ ...td, fontFamily: 'var(--mono)', whiteSpace: 'nowrap' }}>{mcAt ? usd(mcAt) : '—'}</td>
+                    <td style={td}>{t.maker ? <Who address={t.maker} profiles={profiles} navigate={navigate} creator={creator} maxWidth={120} /> : <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{T("just now…")}</span>}</td>
+                    <td className="sw-tx" style={td}><a href={`${ARC_EXPLORER}/tx/${t.txHash}`} target="_blank" rel="noopener noreferrer" title={T("Explorer")} style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>↗</a></td>
                   </tr>
                 )
               })}
@@ -345,7 +352,7 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
                     <td style={{ ...td, fontFamily: 'var(--mono)', color: 'var(--red)' }}>{usd(t.sold)}</td>
                     <td style={{ ...td, fontFamily: 'var(--mono)', color: net >= 0 ? 'var(--green)' : 'var(--red)' }}>{net >= 0 ? '+' : ''}{usd(net)}</td>
                     <td style={{ ...td, fontFamily: 'var(--mono)' }}>{t.n}</td>
-                    <td style={{ ...td, color: 'var(--text-muted)' }}>{ago(t.last)}</td>
+                    <td style={{ ...td, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}><Ago ts={t.last} /></td>
                   </tr>
                 )
               })}

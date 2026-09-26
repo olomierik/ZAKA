@@ -8,10 +8,10 @@ import { t as T } from '../lib/i18n'
 export default function FeedPage({ navigate }: { navigate: (p: Page) => void }) {
   const [scope, setScope] = useState<'all' | 'following'>('all')
   return (
-    <div className="token-page" style={{ maxWidth: 760 }}>
+    <div className="token-page content-page" style={{ '--page-w': '760px' } as React.CSSProperties}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '1.4rem' }}>{T("Feed")}</h2>
+          <h2 className="page-h">{T("Feed")}</h2>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>{T("Trades, theses, wins and new coins — live from ARCDEX.")}</div>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>

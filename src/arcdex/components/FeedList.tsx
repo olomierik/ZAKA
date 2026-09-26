@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import Ago from './Ago'
+import { agoShort } from '../lib/ago'
 import Avatar from './Avatar'
 import {
   getClosedPositions, getFollowing, getMultiBuys, getNewProfiles, getProfiles, getTheses, getTrades, triggerIndex,
@@ -29,10 +31,7 @@ type Item =
   | { kind: 'newtrader'; at: number; t: Profile }
 
 const money = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(n) >= 1e6 ? (Math.abs(n) / 1e6).toFixed(2) + 'M' : Math.abs(n) >= 1e3 ? (Math.abs(n) / 1e3).toFixed(1) + 'K' : Math.abs(n).toFixed(2)}`
-export function ago(ms: number) {
-  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000))
-  return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`
-}
+export const ago = (ms: number) => agoShort(ms)
 
 const FILTER_KEY = 'arcdex:feed-filter'
 function loadFilter(): Set<FeedType> {
@@ -152,7 +151,7 @@ export default function FeedList({ navigate, compact = false, scope = 'all' }: {
           <div key={key} style={{ display: 'flex', gap: 10, padding: pad, borderBottom: '1px solid var(--adx-card-border)', fontSize: fs }}>
             {avatar ? <Avatar address={avatar} url={profiles.get(avatar)?.avatar_url} size={compact ? 26 : 32} /> : <div style={{ width: compact ? 26 : 32, height: compact ? 26 : 32, borderRadius: '50%', background: 'var(--bg-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✦</div>}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>{children}<span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--text-muted)' }}>{ago(i.at)}</span></div>
+              <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>{children}<span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}><Ago ts={i.at} /></span></div>
               {extra}
             </div>
           </div>

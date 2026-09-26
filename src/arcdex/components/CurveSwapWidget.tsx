@@ -141,17 +141,17 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
 
   const busy = step === 'approving' || step === 'checking' || step === 'swapping'
   const pill = (active: boolean): React.CSSProperties => ({
-    flex: 1, padding: '8px 0', borderRadius: 8, fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
+    flex: 1, padding: '5px 0', borderRadius: 6, fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
     border: `1px solid ${active ? 'var(--adx-accent)' : 'var(--adx-card-border)'}`,
     background: active ? 'rgba(59,130,246,0.15)' : 'var(--bg-2)', color: active ? 'var(--adx-accent)' : 'var(--text)',
   })
 
   return (
-    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className="swap-box">
       <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--adx-card-border)', background: 'var(--bg-2)' }}>
         {(['buy', 'sell'] as const).map(m => (
           <button key={m} onClick={() => { setMode(m); setAmount(''); setStep('idle'); setMsg('') }} style={{
-            flex: 1, padding: 10, fontSize: '0.875rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+            flex: 1, padding: 8, fontSize: '0.82rem', fontWeight: 700, border: 'none', cursor: 'pointer',
             background: mode === m ? (m === 'buy' ? 'var(--green)' : 'var(--red)') : 'transparent',
             color: mode === m ? '#fff' : 'var(--text-muted)',
           }}>{m === 'buy' ? T("Buy") : T("Sell")} {token.symbol}</button>
@@ -171,8 +171,7 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
           <span>{mode === 'buy' ? T("USDC to spend") : T('{symbol} to sell', { symbol: token.symbol })}</span>
           {balance !== null && <span className="mono">{T("Balance")}: {mode === 'buy' ? `$${Number(formatUnits(balance, 6)).toFixed(2)}` : fmtTok(Number(formatUnits(balance, 18)))}</span>}
         </div>
-        <input type="text" inputMode="decimal" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-          style={{ padding: '12px 14px', borderRadius: 8, fontSize: '1rem', fontFamily: 'var(--mono)', background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', outline: 'none', width: '100%' }} />
+        <input type="text" inputMode="decimal" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} className="swap-input" />
         <div style={{ display: 'flex', gap: 6 }}>
           {(mode === 'buy' ? BUY_PRESETS : SELL_PRESETS).map(v => (
             <button key={v} onClick={() => preset(v)} style={pill(false)}>{mode === 'buy' ? `$${v}` : `${v}%`}</button>
@@ -181,7 +180,7 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
       </div>
 
       {estimate && (
-        <div style={{ padding: 12, borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div className="swap-info">
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--orange)' }}>
             <span>{T("Fee (1% +")}{' '}{(token.curve.creatorTaxBps / 100).toFixed(1)}{T("% creator tax)")}</span>
             <span className="mono">{Number(formatUnits(estimate.fee, 6)).toFixed(4)}{' '}{T("USDC")}</span>
@@ -208,10 +207,10 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
       )}
 
       {!me ? (
-        <button onClick={openConnectModal} style={{ padding: 14, borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>{T("Connect Wallet")}</button>
+        <button onClick={openConnectModal} style={{ padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>{T("Connect Wallet")}</button>
       ) : (
         <button onClick={() => void submit()} disabled={!configured || amountIn === 0n || insufficient || busy}
-          style={{ padding: 14, borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700, width: '100%', border: 'none', cursor: 'pointer',
+          style={{ padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, width: '100%', border: 'none', cursor: 'pointer',
             background: needsApprove ? 'var(--orange)' : mode === 'buy' ? 'var(--green)' : 'var(--red)', color: '#fff',
             opacity: amountIn === 0n || insufficient || busy ? 0.55 : 1 }}>
           {step === 'approving' ? T("Approving…") : step === 'checking' ? T("Checking…") : step === 'swapping' ? T("Swapping…")
@@ -221,7 +220,7 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
         </button>
       )}
 
-      <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5, margin: 0 }}>{T("1% platform fee +")}{' '}{(token.curve.creatorTaxBps / 100).toFixed(1)}{T("% creator tax (60% of that goes straight to the creator). Liquidity lives permanently in the curve — no LP to rug.")}{' '}{T("Approvals are for the exact trade amount only.")}</p>
+      <p className="swap-note">{T("1% platform fee +")}{' '}{(token.curve.creatorTaxBps / 100).toFixed(1)}{T("% creator tax (60% of that goes straight to the creator). Liquidity lives permanently in the curve — no LP to rug.")}{' '}{T("Approvals are for the exact trade amount only.")}</p>
     </div>
   )
 }

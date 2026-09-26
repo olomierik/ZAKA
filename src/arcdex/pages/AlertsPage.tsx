@@ -6,7 +6,7 @@ import type { Page } from '../App'
 
 export default function AlertsPage({ navigate }: { navigate: (p: Page) => void }) {
   return (
-    <div className="token-page" style={{ maxWidth: 520, height: 'calc(100vh - 120px)' }}>
+    <div className="token-page content-page" style={{ '--page-w': '560px', height: 'calc(100vh - 120px)' } as React.CSSProperties}>
       <DiscoveryPanel navigate={navigate} initialTab="alerts" />
     </div>
   )

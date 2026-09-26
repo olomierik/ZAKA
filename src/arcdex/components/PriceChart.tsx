@@ -57,6 +57,8 @@ export interface ChartTrade {
   avatarUrl?: string | null
   label?: string // tooltip, e.g. "@name bought $120"
   mine?: boolean
+  /** Arrived live, after the page loaded — only these pop up (history never does). */
+  live?: boolean
 }
 
 // `poolAddress` is the pair/pool contract, not the token — GeckoTerminal's
@@ -85,8 +87,13 @@ interface TradeLabel { t: ChartTrade; x: number; y: number; text: string; w: num
 /** $1,234 → "1.2K" — short enough to sit on a chart. */
 const compactUsd = (v: number) => v >= 1e6 ? `${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(v >= 1e4 ? 0 : 1)}K` : v >= 100 ? v.toFixed(0) : v >= 1 ? String(Number(v.toFixed(1))) : v.toFixed(2)
 const labelText = (t: ChartTrade) => t.kind === 'thesis' ? '💬' : `${t.kind === 'buy' ? '+' : '-'}$${compactUsd(t.usd)}`
-/** Live trades newer than this pop in; older ones (history, backfill) just appear. */
-const POP_WINDOW_MS = 90_000
+/** A swap pops up on the chart the moment it lands ("+$500" / "-$250") and
+ * is gone a second later: between trades the chart stays clean. */
+const POP_MS = 1_000
+/** A live swap that reaches us later than this after it happened (a slow indexer) doesn't pop. */
+const LIVE_WINDOW_MS = 60_000
+/** The same swap from two sources (GeckoTerminal, the chain) pops once: by transaction and side. */
+const popKey = (t: ChartTrade) => (/^0x[0-9a-fA-F]{64}/.test(t.id) ? `${t.id.slice(0, 66).toLowerCase()}:${t.kind}` : t.id)
 /** Label height, and how far above (buys) or below (sells) the line it sits. */
 const LABEL_H = 16
 const LABEL_GAP = 11
@@ -118,13 +125,17 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
   styleRef.current = style
   const [showBubbles, setShowBubbles] = useState(true)
   const [showMine, setShowMine] = useState(true)
-  const [showThesis, setShowThesis] = useState(true)
+  // Theses stay on the chart when this is on; off by default, so the chart
+  // shows nothing but the price (and each trade's pop) until asked.
+  const [showThesis, setShowThesis] = useState(false)
   const [friendsOnly, setFriendsOnly] = useState(false)
   const [minSize, setMinSize] = useState<(typeof MIN_SIZES)[number]>(0)
   const [labels, setLabels] = useState<TradeLabel[]>([])
-  // Which trades have been seen, and until when a new live one "pops".
+  // Which trades have been seen, and until when a new live one shows.
   const seenTrades = useRef(new Set<string>())
   const popUntil = useRef(new Map<string, number>())
+  const popEnd = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (popEnd.current) clearTimeout(popEnd.current) }, [])
   const [scaleMode, setScaleMode] = useState<keyof typeof SCALE_MODES>('normal')
   const [autoScale, setAutoScale] = useState(true)
   const legendRef = useRef<HTMLSpanElement>(null)
@@ -217,23 +228,41 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
   const lineUp       = useRef(true)
   const frame        = useRef(0)
 
-  // A label at each trade's candle and price — buys just above the line,
-  // sells just below. Your own trades, then theses, then the biggest trades
-  // are placed first; a label that would overlap one already placed is
-  // skipped, so a busy coin stays readable. Re-run whenever the chart
-  // pans/zooms/resizes or the data changes.
+  // Each new swap pops up at its candle and price the moment it lands —
+  // buys just above the line, sells just below — and disappears a second
+  // later. Your own, then the biggest, are placed first; one that would
+  // overlap a label already placed is skipped. Re-run whenever the chart
+  // pans/zooms/resizes, the data changes, or a pop ends.
   const layout = useCallback(() => {
     cancelAnimationFrame(frame.current)
     frame.current = requestAnimationFrame(() => {
       const chart = chartRef.current, series = seriesRef.current, el = containerRef.current
-      const all = [...(showBubbles ? trades ?? [] : []), ...(showThesis ? thesisMarks ?? [] : [])]
-      // New live trades pop in; history and backfill just appear.
       const now = Date.now()
-      for (const t of all) {
-        if (seenTrades.current.has(t.id)) continue
-        seenTrades.current.add(t.id)
-        if (now - t.time < POP_WINDOW_MS) popUntil.current.set(t.id, now + 1_500)
+      // Every swap is marked seen as it arrives (Trades off too, so turning
+      // them back on doesn't replay what came in meanwhile); only new live ones pop.
+      for (const t of trades ?? []) {
+        const k = popKey(t)
+        if (seenTrades.current.has(k)) continue
+        seenTrades.current.add(k)
+        if (showBubbles && t.live && now - t.time < LIVE_WINDOW_MS) popUntil.current.set(k, now + POP_MS)
       }
+      for (const [k, until] of popUntil.current) if (until <= now) popUntil.current.delete(k)
+      // One label per swap, even while the chain's copy replaces GeckoTerminal's.
+      const popping: ChartTrade[] = []
+      if (showBubbles && popUntil.current.size) {
+        const shown = new Set<string>()
+        for (const t of trades ?? []) {
+          const k = popKey(t)
+          if (popUntil.current.has(k) && !shown.has(k)) { shown.add(k); popping.push(t) }
+        }
+      }
+      // Clear each pop the moment its second is up.
+      if (popEnd.current) { clearTimeout(popEnd.current); popEnd.current = null }
+      if (popping.length) {
+        const end = Math.min(...popping.map(t => popUntil.current.get(popKey(t))!))
+        popEnd.current = setTimeout(() => layoutRef.current(), Math.max(0, end - now) + 30)
+      }
+      const all = [...popping, ...(showThesis ? thesisMarks ?? [] : [])]
       if (!chart || !series || !el || !all.length || !candles.length) { setLabels([]); return }
       const step = RES_SECONDS[res]
       const first = candles[0].time, last = candles[candles.length - 1].time
@@ -564,8 +593,8 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
         // which would otherwise paint over these labels.
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }}>
           {labels.map(({ t, x, y, text }) => (
-            <span key={t.id} title={t.label} onClick={() => t.maker && onTraderClick?.(t.maker)}
-              className={`chart-trade ${t.kind}${t.mine && showMine ? ' mine' : ''}${(popUntil.current.get(t.id) ?? 0) > Date.now() ? ' pop' : ''}`}
+            <span key={popKey(t)} title={t.label} onClick={() => t.maker && onTraderClick?.(t.maker)}
+              className={`chart-trade ${t.kind}${t.mine && showMine ? ' mine' : ''}${t.kind !== 'thesis' ? ' pop' : ''}`}
               style={{ left: x, top: y, cursor: t.maker && onTraderClick ? 'pointer' : 'default' }}>{text}</span>
           ))}
         </div>

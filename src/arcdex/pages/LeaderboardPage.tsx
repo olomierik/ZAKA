@@ -58,7 +58,7 @@ export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => v
   )
 
   return (
-    <div className="token-page" style={{ padding: 16 }}>
+    <div className="token-page content-page" style={{ '--page-w': '980px' } as React.CSSProperties}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <div style={{ display: 'flex', gap: 14, alignItems: 'baseline' }}>

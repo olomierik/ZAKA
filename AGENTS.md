@@ -102,7 +102,8 @@ Why buys, swaps and bridges failed for people, and the fixes:
 ### Charts — `components/PriceChart.tsx` (2026-09-26)
 - Trades are text, not avatar circles (owner's request).
   - Buys show "+$500" in green just above the line; sells "-$250" in red just below.
-  - New live trades pop in.
+  - **The chart stays clean (owner's request, round 2):** history is never drawn. A swap pops up only when it arrives live (`ChartTrade.live`, set by the page for swaps that came in after it opened, within 60s of happening) and is gone after 1 second (`POP_MS`). The same swap from GeckoTerminal and the chain pops once (keyed by transaction and side).
+  - Theses are off by default; the Thesis overlay turns them on.
   - Your own trades get a yellow outline.
   - Placement: yours, then theses, then the largest trades; overlapping labels are dropped (28 on phones, 70 on desktop).
 - Like fomo's chart:
@@ -134,10 +135,17 @@ Why buys, swaps and bridges failed for people, and the fixes:
     - the market list and the launchpad coins;
     - tokens sent to the wallet in the last ~2 days.
   - Balances are read by multicall. Prices come from the market list, the curve, else GeckoTerminal.
-- **Coin page chart:** GeckoTerminal's own live chart is embedded by default (`components/GeckoChart.tsx`), as argus.world shows it ("Powered by GeckoTerminal"). "ARCDEX chart" switches to `PriceChart`, which keeps trade labels, theses and indicators, and the choice is remembered. `PriceChart` refreshes its GeckoTerminal candles every 30s, down from 90s (it goes through `/api/gecko`, which uses the paid key).
+- **Coin page chart:** GeckoTerminal's own live chart is embedded by default (`components/GeckoChart.tsx`), as argus.world shows it ("Powered by GeckoTerminal"). "ARCDEX chart" switches to `PriceChart` (trade pops, theses, indicators), and the choice is remembered. `PriceChart` refreshes its GeckoTerminal candles every 30s, down from 90s (it goes through `/api/gecko`, which uses the paid key).
 - **Tests:**
   - `bun scripts/test-withdraw-guard.ts`: the rule, funding detection and tamper-proof storage.
   - `bun scripts/test-portfolio.ts`: which coins are checked and how they're priced.
+
+### Compact forms and pages (2026-09-26, round 2)
+- Swap and bridge forms are 420px at most (`.form-page`, `.swap-box`, `.swap-input`, `.swap-info`, `.swap-note`), with smaller inputs, presets and buttons.
+- Content pages (Rewards, Burn, Clans, Feed, Transfers, Alerts, Leaderboard) share `.content-page` (centered, `--page-w`, 820px by default) and `.page-h` titles. Stat cards, the Portfolio total, the PnL chart and the profile banner are smaller.
+- Other trade ages (Feed, discovery, trader pages, Rewards history, launchpad trades) count up live too.
+- Not changed: at 1181–1340px wide the coin page's chart column is narrow (both side panels are open). Collapsing the Tokens panel on coin pages would fix it; that's a layout decision for the owner.
+- **Tests:** `bun scripts/test-live-trades.ts`: ages, merging GeckoTerminal's swaps with the chain's, and the live holder count.
 
 ## Argus integration (ARCDEX)
 
@@ -153,9 +161,12 @@ Every Argus coin across all 8 Portals, live, the way argus.world does it: **Geck
   - **Straight from the chain (`src/arcdex/api/poolSwaps.ts`):** every swap in the pool. History comes from `eth_getLogs` on Blockdaemon, newest first and drawn as it arrives. Each new swap is pushed over Arc's WebSocket the moment its block lands, and gaps after a reconnect or a background tab are backfilled.
     - Swaps drive the live price (the pool price after the last swap), the Swaps list, the chart's candles (1s/15s on-chain only; 1m+ merged onto GeckoTerminal's older candles, `lib/candles.ts`) and the chart's trader avatars.
     - Makers are each transaction's sender, batch-fetched. ARGUS-quoted coins are priced through the ARGUS/USDC v3 pool's `slot0`.
-    - GeckoTerminal's trade list is used only if the chain can't be read.
+    - GeckoTerminal's live trades are polled every 3s while the tab is visible (`getArgusTrades(..., { proxyOnly: true })`: the paid key through `/api/gecko`, whose `/trades` answers are CDN-cached 2s and never served stale). `mergeSwaps` in `poolSwaps.ts` merges them: whichever of GeckoTerminal, the engine and the chain has a swap first shows it, and the chain's or engine's copy replaces GeckoTerminal's (matched by id or transaction). The first page is history; later ones are live.
+    - GeckoTerminal's full trade list (with the free direct fallback) is used only if the chain can't be read.
   - **True holders (`/api/holders`, `api/_holdersCore.ts`, hook `api/holders.ts` → `useChainHolders`):** every holder's exact balance, rebuilt from the token's Transfer logs from the block its contract was created in (binary search on `getCode`). Stored in Supabase (v4 migration), so each request only scans new blocks.
     - A token's first count runs in ~14s slices across requests. The page polls while it runs and shows GeckoTerminal's count meanwhile. ARGUS, the busiest (~2 transfers per block), takes a few minutes the first time.
+    - **Live count (`useLiveHolderCount`):** the index's count plus the Transfer logs after its `scanned_to` block. A wallet going from 0 to a balance adds one; one selling everything takes one away. Re-checked every 6s and 1.5s after each new trade; if the index moves mid-read the answer is thrown away and re-read. Shown in the header stat, the Holders tab and on launchpad coin pages.
+    - The Terminal's Holders column comes from `arcdex_holder_scans` for coins scanned within about a day.
     - The Holders tab lists the top 50 on-chain holders (the liquidity pool and burn address are tagged), with ARCDEX PnL and theses for those who trade here; "On ARCDEX" shows the old ARCDEX-only view. Top-10 % excludes the pool and burn address.
   - From GeckoTerminal via `/api/gecko`: 5m/1h/6h/24h change, MC/FDV (scaled to the live price), liquidity, 24h volume, buys/sells, top-10 % (until the holder index is complete), GT score, honeypot flag, banner, description and socials.
   - From Arc RPC (`getArgusOnchain` in `src/arcdex/api/argusMarket.ts`): creator wallet, Portal #, hook, creator buy/sell tax, bonded. Each Portal is decoded with its own ABI.
@@ -236,7 +247,8 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
     - Overlays: Trades, My swaps, Thesis marks, Friends only, Min size.
   - `TokenSocialTabs`:
     - Holders: position, PnL, avg entry MC, hold time, thesis.
-    - Swaps: MC at trade, min size.
+    - Swaps (the first tab, open by default), like DexScreener's transactions: Date, Type, USD, amount, Price, MC at trade, Maker (the wallet), tx link; min size. The date is each swap's age counting up live (`12s ago` → `5m` → `3h` → `2d` → `4mo` → `1y`, `lib/ago.ts` and `components/Ago.tsx`: one shared 1-second clock for the whole page). New swaps flash in at the top.
+    - On a narrow card the Swaps columns make way for Maker, which always shows: MC first, then Price, then amount (container queries on `.swaps-table` in `arcdex.css`, checked from 250px to 990px cards).
     - Thesis: threads, live position.
     - Top traders.
   - `AboutPanel`: 5M/1H/6H/24H, buys vs sells, volume, buyers vs sellers, links, View more.

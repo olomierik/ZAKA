@@ -21,10 +21,10 @@ export default function ClansPage({ navigate }: { navigate: (p: Page) => void })
   useEffect(() => { if (trader.address) void getClanOf(trader.address).then(setMine).catch(() => {}) }, [trader.address])
 
   return (
-    <div className="token-page" style={{ maxWidth: 820 }}>
+    <div className="token-page content-page">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '1.4rem' }}>{T("Clans")}</h2>
+          <h2 className="page-h">{T("Clans")}</h2>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>{T("Groups of traders who share their positions, ranked by everyone's combined profit and loss.")}</div>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>

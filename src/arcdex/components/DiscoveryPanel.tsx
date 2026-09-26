@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Avatar from './Avatar'
-import FeedList, { ago } from './FeedList'
+import FeedList from './FeedList'
+import Ago from './Ago'
 import {
   getClanLeaderboard, getFollowing, getLeaderboard, getMostHeld, getProfiles, getTrades, triggerIndex,
   type ClanRank, type IndexedTrade, type LeaderRow, type Period, type Profile,
@@ -325,7 +326,7 @@ function Alerts({ navigate }: { navigate: (p: Page) => void }) {
                 </div>
                 <div className="disc-sub2">${m?.symbol ?? shortAddr(a.token)}{mcAt ? ' ' + T('at {mc} MC', { mc: money(mcAt) }) : ''}</div>
               </div>
-              <span className="disc-sub2">{ago(a.at)}</span>
+              <span className="disc-sub2" style={{ fontVariantNumeric: 'tabular-nums' }}><Ago ts={a.at} /></span>
             </div>
           )
         })}

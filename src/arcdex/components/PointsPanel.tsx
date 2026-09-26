@@ -54,7 +54,7 @@ export function MyPoints({ address, navigate }: { address: string; navigate: (p:
   return (
     <div style={{ paddingTop: 12 }}>
       <SeasonPicker s={s} onPick={pick} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginTop: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginTop: 10 }}>
         <Box label={t('Your points')} value={mine === undefined ? '…' : fmtPts(mine?.total ?? 0)} big color="#facc15" />
         <Box label={t('Rank')} value={mine === undefined ? '…' : mine ? `#${mine.rank}` : '—'} />
         <Box label={t('Active days')} value={mine === undefined ? '…' : String(mine?.active_days ?? 0)} />
@@ -150,9 +150,9 @@ function PointsLine({ r, p, me, navigate }: { r: PointsRow; p?: Profile; me: str
 
 function Box({ label, value, color, big }: { label: string; value: string; color?: string; big?: boolean }) {
   return (
-    <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: '12px 14px' }}>
-      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{label}</div>
-      <div style={{ fontSize: big ? '1.6rem' : '1.3rem', fontWeight: 800, fontFamily: 'var(--mono)', color, marginTop: 2 }}>{value}</div>
+    <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 10, padding: '10px 12px' }}>
+      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{label}</div>
+      <div style={{ fontSize: big ? '1.3rem' : '1.1rem', fontWeight: 800, fontFamily: 'var(--mono)', color, marginTop: 2 }}>{value}</div>
     </div>
   )
 }

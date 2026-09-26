@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { AgoText } from '../components/Ago'
 import { getPairsByToken, getLaunchpad, type DexPair } from '../api/dexscreener'
 import { subscribePair, deriveTradeInfo, ARC_EXPLORER, type LiveTrade } from '../api/arcRpc'
 import { getToken, type ArcToken } from '../api/radardex'
@@ -22,7 +23,6 @@ function pickDeepestPair(pairs: DexPair[]): DexPair | null {
 interface Props { address: string; navigate: (p: Page) => void }
 
 function short(addr: string) { return `${addr.slice(0, 6)}…${addr.slice(-4)}` }
-function fmtTime(ts: number) { return new Date(ts).toLocaleTimeString() }
 function fmt(n: number | null | undefined, prefix = '') {
   if (n == null || isNaN(n)) return '—'
   if (n >= 1e9)  return `${prefix}${(n/1e9).toFixed(2)}B`
@@ -206,7 +206,7 @@ export default function TokenPage({ address, navigate }: Props) {
                         {short(t.txHash)}
                       </a>
                     </td>
-                    <td style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>{fmtTime(t.timestamp)}</td>
+                    <td style={{ padding: '8px 12px', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}><AgoText ts={t.timestamp} /></td>
                   </tr>
                 ))}
               </tbody>

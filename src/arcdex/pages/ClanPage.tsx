@@ -84,7 +84,7 @@ export default function ClanPage({ slug, navigate }: { slug: string; navigate: (
         <div style={{ padding: '0 18px 16px', display: 'flex', gap: 14, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: -30 }}>
           {clan.avatar_url ? <img src={clan.avatar_url} alt="" style={{ width: 72, height: 72, borderRadius: 14, objectFit: 'cover', border: '3px solid var(--adx-card-bg)' }} /> : <Avatar address={clan.id.replace(/-/g, '').slice(0, 40).padEnd(40, '0')} size={72} />}
           <div style={{ flex: 1, minWidth: 200 }}>
-            <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>{clan.name}</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>{clan.name}</div>
             {clan.motto && <div style={{ fontSize: '0.86rem', color: 'var(--text-muted)' }}>{clan.motto}</div>}
             <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 4 }}>👥 {members.length}{' '}{T("member")}{members.length === 1 ? '' : T("s")} · {members.reduce((s, m) => s + (m.volume_usdc > 0 ? 1 : 0), 0)}{' '}{T("active")}</div>
           </div>
@@ -106,7 +106,7 @@ export default function ClanPage({ slug, navigate }: { slug: string; navigate: (
               <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{T("Clan profit")}</span>
               <div style={{ display: 'flex', gap: 4 }}>{(['24h', '7d', '30d', 'all'] as Period[]).map(p => <button key={p} onClick={() => setPeriod(p)} className={`disc-sub${period === p ? ' active' : ''}`}>{p.toUpperCase()}</button>)}</div>
             </div>
-            <div className="sensitive" style={{ fontSize: '2rem', fontWeight: 800, fontFamily: 'var(--mono)', color: profit >= 0 ? 'var(--green)' : 'var(--red)', margin: '6px 0 12px' }}>{signed(profit)}</div>
+            <div className="sensitive" style={{ fontSize: '1.5rem', fontWeight: 800, fontFamily: 'var(--mono)', color: profit >= 0 ? 'var(--green)' : 'var(--red)', margin: '4px 0 10px' }}>{signed(profit)}</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
               {top3.map(p => (
                 <button key={p.token} onClick={() => navigate({ name: 'argus', address: p.token, pool: p.m?.pool ?? '' })} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 10, borderRadius: 10, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', cursor: 'pointer' }}>

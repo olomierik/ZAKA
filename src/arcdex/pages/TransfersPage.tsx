@@ -69,13 +69,13 @@ export default function TransfersPage({ navigate }: { navigate: (p: Page) => voi
   }
 
   return (
-    <div className="token-page" style={{ maxWidth: 820 }}>
-      <h2 style={{ margin: 0, fontSize: '1.4rem' }}>{T("Transfers")}</h2>
+    <div className="token-page content-page">
+      <h2 className="page-h">{T("Transfers")}</h2>
       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>{T("USDC moving in and out of your trading address on Arc.")}</div>
       {!me ? <div style={{ marginTop: 20, color: 'var(--text-muted)' }}>{T("Connect or unlock a wallet to see your transfers.")}</div> : (
         <>
-          <div style={{ marginTop: 14, padding: 16, borderRadius: 12, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ flex: 1 }}><div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T("Total cash")}</div><div className="sensitive" style={{ fontSize: '1.6rem', fontWeight: 800, fontFamily: 'var(--mono)' }}>{cash === null ? '…' : `$${cash.toFixed(2)}`}</div></div>
+          <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 12, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1 }}><div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T("Total cash")}</div><div className="sensitive" style={{ fontSize: '1.3rem', fontWeight: 800, fontFamily: 'var(--mono)' }}>{cash === null ? '…' : `$${cash.toFixed(2)}`}</div></div>
             <button className="btn-ghost" onClick={() => setModal('withdraw')}>{T("Withdraw")}</button>
             <button className="btn-primary" style={{ padding: '9px 18px' }} onClick={() => setModal('deposit')}>{T("Deposit")}</button>
           </div>
