@@ -24,6 +24,8 @@ export interface LaunchpadLiveTrade {
   timestamp:    number
   /** Curve price after this trade (USD per token), from its reserves. */
   priceAfter:   number
+  /** USDC on the curve after this trade (whole USDC): its progress to graduation. */
+  rUsdcAfter:   number
 }
 
 type LogEvent = {
@@ -72,7 +74,7 @@ function connect() {
     const priceAfter = spotPrice(word(4), word(5))
 
     const trade: LaunchpadLiveTrade = {
-      token, trader, isBuy, usdcAmount, tokenAmount, priceAfter,
+      token, trader, isBuy, usdcAmount, tokenAmount, priceAfter, rUsdcAfter: Number(word(4)) / 1e6,
       txHash: log.transactionHash,
       blockNumber: parseInt(log.blockNumber, 16),
       timestamp: Date.now(),

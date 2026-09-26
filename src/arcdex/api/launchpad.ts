@@ -78,6 +78,8 @@ export interface LaunchpadToken {
   priceUsd: number
   bondingProgress: number // 0-100
   metadata?: import('../lib/mediaUpload').TokenMetadata | null
+  /** 24h volume, trades, traders… from the launchpad index (absent until it has the coin). */
+  stats?: LaunchStats
 }
 
 const GRADUATION_THRESHOLD_USDC = 25_000_000_000n
@@ -159,7 +161,7 @@ async function indexFromChain(token: string): Promise<LaunchpadIndex> {
   chainLogs = state
   const tradesOf = (t: string) => state.trades.filter(x => x[0] === t)
   return {
-    launches: state.launches.map(l => ({ ...l, stats: statsOf(tradesOf(l.token)) })),
+    launches: state.launches.map(l => ({ ...l, stats: statsOf(tradesOf(l.token), undefined, l.ts) })),
     ...(token ? { trades: tradesOf(token) } : {}),
   }
 }
@@ -197,7 +199,7 @@ export async function getAllLaunchpadTokens(includeMetadata = true): Promise<Lau
       if (!curve) return null
       return {
         address: addr, name, symbol, curve, priceUsd: priceFromCurve(curve), bondingProgress: bondingProgressFromCurve(curve),
-        metadata: includeMetadata ? metadataOf(launch) : undefined,
+        metadata: includeMetadata ? metadataOf(launch) : undefined, stats: launch?.stats,
       }
     } catch { return null }
   }))
@@ -280,7 +282,7 @@ export async function getAllLaunchpadTokensAsArcTokens(): Promise<import('./rada
       price: t.priceUsd,
       priceChange5m: 0,
       priceChange1h: 0,
-      priceChange24h: 0,
+      priceChange24h: s?.change24 ?? 0,
       volume24h: volume,
       marketCap: t.priceUsd * 1_000_000_000,
       liquidity: Number(t.curve.rUsdc) / 1e6,

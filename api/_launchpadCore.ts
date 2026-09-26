@@ -159,10 +159,17 @@ export interface LaunchStats {
   traders: number
   lastPrice: number | null
   lastTradeTs: number | null
+  /** Price change over the last 24h in % (since launch for a younger coin). */
+  change24?: number
+  /** Its price over the same window, oldest first: the opening price, then
+   * SPARK_POINTS closes. Optional: responses cached before it existed lack it. */
+  spark?: number[]
 }
 
 const INITIAL_VIRTUAL_USDC = 8_000_000_000n // $8,000 (6 decimals)
 const VIRTUAL_TOKEN_OFFSET = 200_000_000n * 10n ** 18n
+const CURVE_TOKENS = 950_000_000n * 10n ** 18n // 95% of the 1B supply opens the curve
+export const SPARK_POINTS = 24
 
 /** Curve price (USD per whole token) from real reserves (6 and 18 decimals). */
 export function spotPrice(rUsdc: bigint, rToken: bigint): number {
@@ -174,7 +181,30 @@ export function priceAfter(t: TradeRow): number {
   return spotPrice(BigInt(t[6]), BigInt(t[7]))
 }
 
-export function statsOf(trades: TradeRow[], nowSec = Math.floor(Date.now() / 1000)): LaunchStats {
+/** A coin's price before its first trade. */
+export const OPENING_PRICE = spotPrice(0n, CURVE_TOKENS)
+
+const sig = (p: number) => Number(p.toPrecision(5))
+
+/** A coin's 24h change and its price line over the last 24h (since launch
+ * for a younger coin): the window's opening price, then one close per
+ * 1/SPARK_POINTS of it. `trades` in time order, as the index keeps them. */
+export function trendOf(trades: TradeRow[], nowSec: number, launchedTs?: number): { change24: number; spark: number[] } {
+  const start = Math.max(nowSec - 86_400, launchedTs ?? trades[0]?.[9] ?? 0)
+  const span = Math.max(1, nowSec - start)
+  let i = 0, price = OPENING_PRICE
+  while (i < trades.length && trades[i][9] < start) price = priceAfter(trades[i++])
+  const open = price
+  const spark = [sig(open)]
+  for (let k = 1; k <= SPARK_POINTS; k++) {
+    const end = k === SPARK_POINTS ? Infinity : start + (span * k) / SPARK_POINTS
+    while (i < trades.length && trades[i][9] <= end) price = priceAfter(trades[i++])
+    spark.push(sig(price))
+  }
+  return { change24: open > 0 ? (price / open - 1) * 100 : 0, spark }
+}
+
+export function statsOf(trades: TradeRow[], nowSec = Math.floor(Date.now() / 1000), launchedTs?: number): LaunchStats {
   const day = trades.filter(t => nowSec - t[9] < 86_400)
   const last = trades.length ? trades[trades.length - 1] : null
   return {
@@ -186,5 +216,6 @@ export function statsOf(trades: TradeRow[], nowSec = Math.floor(Date.now() / 100
     traders: new Set(trades.map(t => t[1])).size,
     lastPrice: last ? priceAfter(last) : null,
     lastTradeTs: last ? last[9] : null,
+    ...trendOf(trades, nowSec, launchedTs),
   }
 }

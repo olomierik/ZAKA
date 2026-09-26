@@ -94,7 +94,7 @@ export default async function handler(req: Request, ctx?: Ctx): Promise<Response
     const complete = state.scannedTo >= head - 20
     const body: Record<string, unknown> = {
       launchpad: LAUNCHPAD, head, scannedTo: state.scannedTo, complete,
-      launches: state.launches.map(({ metaTriedAt: _skip, ...l }) => ({ ...l, stats: statsOf(byToken.get(l.token) ?? []) })),
+      launches: state.launches.map(({ metaTriedAt: _skip, ...l }) => ({ ...l, stats: statsOf(byToken.get(l.token) ?? [], undefined, l.ts) })),
     }
     if (token) body.trades = (byToken.get(token) ?? []).slice(-MAX_TRADES_OUT)
     return json(200, body, complete ? 'public, s-maxage=4, stale-while-revalidate=30' : 'no-store')

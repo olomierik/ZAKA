@@ -150,6 +150,60 @@ Why buys, swaps and bridges failed for people, and the fixes:
   - `bun scripts/test-withdraw-guard.ts`: the rule, funding detection and tamper-proof storage.
   - `bun scripts/test-portfolio.ts`: which coins are checked and how they're priced.
 
+### Launchpad coin cards and filters (2026-09-26, round 5)
+- **Owner's request:** Argus-style launch cards, with the coin's image covering the whole card and cards that are never still, plus coin filtering. argus.world itself was out of reach from the build sandbox (blocked by its network policy); compare once it's allowed.
+- **`components/CoinCard.tsx`:** the coin's image fills the card. A coin without an image gets gradient art in its own colors, with its ticker.
+  - Overlaid:
+    - ticker and market cap;
+    - name and creator;
+    - the description (on hover; always on the featured card);
+    - a striped progress bar;
+    - 24h volume and trades;
+    - the risk badge (`riskOf` with the curve's data);
+    - socials;
+    - ⚡ Buy $5 (the trading wallet's quick buy);
+    - a watchlist star, age, NEW (under 1h), GRADUATING (50%+ since round 6; was 70%) and GRADUATED.
+  - **Motion:**
+    - the art drifts (slow zoom and pan, varied per card from its address);
+    - a sheen sweeps across;
+    - the card tilts toward the mouse with a glare;
+    - graduating coins get a spinning conic glow border, graduated ones a gold glow.
+  - **Live trades:** each one flashes its card green or red and floats the amount up ("+$250").
+  - **Motion pauses** while a card is off screen (IntersectionObserver, `data-live`) and stops with reduced motion.
+- **`pages/Launchpad.tsx`:**
+  - Tabs, each with a count: 🔥 Trending, ✨ New, 🟢 Live (round 6), 🚀 Graduating (50%+ since round 6), 🎓 Graduated, ★ Watchlist, 👤 My coins.
+  - Search by name, ticker or address.
+  - Sort: best for the tab, market cap, 24h volume, newest, progress, 24h trades or last trade.
+  - Age filter (1h, 24h, 7d), "Has socials", "Low risk", and big/small cards. The choice is remembered per browser (`arcdex:launch-view`).
+  - The hottest coin is a landscape hero card on Trending.
+  - A live tape of every launchpad trade replaces the old activity list. Each trade moves its card's price and progress at once (`LaunchpadLiveTrade.rUsdcAfter`, new). The list still refreshes every 10s.
+  - `LaunchpadToken.stats` (new) carries the index's 24h numbers.
+
+### Launchpad: what Argus's Tokens page does (2026-09-26, round 6)
+- **Source:** argus.world is still blocked from the build sandbox, but Argus publishes its app docs in its official repo, github.com/arguspad/argus-world (`docs/02-discover-tokens.md`, `03-create-token.md`, `06-glossary.md`). Round 6 adds what those docs describe and the launchpad lacked.
+- **24h change and a trend line on every card** ("24h change" and "Trend" in Argus's glossary).
+  - `api/_launchpadCore.ts` `trendOf()`, added to `statsOf()` as `change24` and `spark`: the price 24h ago (the opening price for a younger coin), then 24 closes to now, from the index's trades. That's 25 points, ~300 bytes a coin.
+  - Both fields are optional on `LaunchStats`, because CDN-cached responses from before this change lack them.
+  - `statsOf()` takes the launch time (`l.ts`) at both call sites.
+  - `OPENING_PRICE` is the curve's price before any trade: $8,000 over 1.15B virtual tokens.
+  - On the card, `components/Sparkline.tsx` (paths from `lib/spark.ts`) runs across the art just above the text. It is green when the coin is up and red when down, draws in from the left the first time it's on screen, and has a pulsing dot on the latest price. A change pill sits on the name row.
+  - Live trades replace the last point and recompute the change.
+  - New sort: "24h change". Terminal rows for ARCDEX coins now show the real 24h change (it was always 0).
+  - **Holders are deliberately not on the cards.** The only cheap count (net buys from curve trades) would disagree with the coin page's exact count from Transfer logs.
+- **Search as on Argus** (`components/CoinSearch.tsx`, matching in `lib/coinSearch.ts`):
+  - Press ⌘K / Ctrl K anywhere on the page, or click the box. It matches a name, a ticker with or without `$`, or an address (from its start, or 6+ hex characters from anywhere).
+  - Order: exact ticker or address, then ticker prefix, then name or word prefix, then contains; ties go to the bigger market cap.
+  - Up to 8 matches drop down. The arrow keys move (wrapping) and Enter opens one. Enter with nothing picked opens the coin if there's exactly one match (a pasted address); otherwise it's "View all N matches". That switches to all coins with the quick filters off if the current view hid some, then scrolls to the grid. Escape closes it.
+  - The grid still filters as you type, with the same matcher.
+  - Empty states: "No coin matches …" with a hint to paste the full address, or "No coins match these filters" with Show all coins.
+- **Scopes as on Argus:** a 🟢 Live tab (still on its curve). Graduating means live and at least 50% of the way (`GRADUATING_PCT` in `lib/launchpadCoins.ts`, used by the tab, the badge and the glow).
+- **Launch form live preview** (Argus: "the preview updates as you enter your details"). The real `CoinCard` is shown in `preview` mode: NEW with no age or star, the description always shown, and "by you" before a wallet is connected.
+  - It is built by `lib/launchPreview.ts` with the contract's own launch and first-buy math: the fees come off first, then the constant product, so the preview shows the market cap and progress the coin will open at.
+  - Desktop: beside the form, sticky. Phones: under the fields, above the cost and the launch button.
+- **Tests:**
+  - `bun scripts/test-launch-cards.ts`: trend and change math, search ranking, sparkline geometry, and preview math checked against the index's own price function.
+  - The launchpad browser suite covers every item above, plus the phone layout.
+
 ### Risk scores, faster confirmations, a live Terminal (2026-09-26, round 3)
 - **Risk score on every coin (`lib/risk.ts`, `components/RiskBadge.tsx`):** 0–100, higher is riskier. Low under 30, Medium 30–59, High 60+. Hovering the badge lists the reasons; the Safety check spells them out for phones.
   - **Terminal rows and phone cards** are scored from the market data they already carry, with no extra requests: liquidity, market cap ÷ liquidity, age, holders, 24h trades, the 24h move, sells vs buys, copycat tickers, and "a bigger coin uses the same ticker".
