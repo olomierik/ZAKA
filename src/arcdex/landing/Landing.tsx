@@ -1,16 +1,18 @@
-import { StrictMode, useEffect, useState } from 'react'
+import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { LANGS, setLang, t, useLang, type Lang } from '../lib/i18n'
 import {
   ARCD, ARCD_APP_PATH, ARCD_POOL, ARCD_SUPPLY, ARC_EXPLORER, BURN_ADDRESS, FEE_WALLET,
   compact, loadArcd, price, short, type ArcdStats,
 } from '../lib/arcd'
+import { LIVE_NOW, PHASES, ROADMAP_START, phaseRange, phaseStatus } from './roadmap'
 import './landing.css'
 
 // arcdex.online/ — the landing page: what ARCDEX is, $ARCD (the official
 // coin) and how platform fees buy it back and burn it, with live on-chain
-// numbers. A separate small bundle (no wallet libraries); "Launch app"
-// goes to /app.
+// numbers, then the roadmap (./roadmap.ts) and the whitepaper (/whitepaper,
+// with its PDF). A separate small bundle (no wallet libraries); "Launch
+// app" goes to /app.
 
 export function mountLanding(root: HTMLElement) {
   document.title = 'ARCDEX — The social trading app for Arc · $ARCD'
@@ -35,6 +37,23 @@ export default function Landing() {
   const lang = useLang()
   const [d, setD] = useState<ArcdStats | null>(null)
   const [menu, setMenu] = useState(false)
+  const navRef = useRef<HTMLElement>(null)
+
+  // The links fold into the ☰ menu wherever they don't fit on one line: on
+  // phones (landing.css), and on mid-width screens in languages with long
+  // labels (.ld-nav-fold). Measured unfolded, before paint.
+  useLayoutEffect(() => {
+    const nav = navRef.current
+    if (!nav) return
+    const fit = () => {
+      nav.classList.remove('ld-nav-fold')
+      nav.classList.toggle('ld-nav-fold', nav.scrollWidth > nav.clientWidth + 1)
+    }
+    fit()
+    void document.fonts.ready.then(fit)
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [lang])
 
   useEffect(() => {
     const load = () => void loadArcd(true).then(setD).catch(() => {})
@@ -88,18 +107,23 @@ export default function Landing() {
   ]
 
   const up = (m?.change24h ?? 0) >= 0
+  const startDate = new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : lang, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(`${ROADMAP_START}T00:00:00Z`))
+  const xShare = `https://x.com/intent/post?text=${encodeURIComponent(t('The ARCDEX whitepaper and roadmap: a new phase every week on Arc.'))}&url=${encodeURIComponent('https://arcdex.online/whitepaper')}`
 
   return (
     <div className="ld" lang={lang}>
       <div className="ld-glow ld-glow-a" /><div className="ld-glow ld-glow-b" />
 
       {/* ── nav ─────────────────────────────────────────── */}
-      <header className="ld-nav">
+      <header className="ld-nav" ref={navRef}>
         <a href="/" className="ld-brand"><img src="/arcdex-logo.svg" alt="" width={30} height={30} />ARCDEX</a>
         <nav className={`ld-links${menu ? ' open' : ''}`} onClick={() => setMenu(false)}>
           <a href="#features">{t('Features')}</a>
           <a href="#arcd">$ARCD</a>
           <a href="#burn">{t('Buyback & burn')}</a>
+          <a href="#roadmap">{t('Roadmap')}</a>
+          <a href="/whitepaper">{t('Whitepaper')}</a>
           <a href="#faq">{t('FAQ')}</a>
           {/* phones: the language picker lives in this menu */}
           <div className="ld-menu-lang" onClick={e => e.stopPropagation()}>
@@ -257,6 +281,54 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* ── roadmap ─────────────────────────────────────── */}
+      <section className="ld-section" id="roadmap">
+        <span className="ld-pill">🗺 {t('Roadmap')}</span>
+        <h2>{t('A new phase every week')}</h2>
+        <p className="ld-sub">{t('Seven phases, each shipped in 5–7 days, starting {date}.', { date: startDate })}</p>
+        <div className="ld-roadmap">
+          <div className="ld-card ld-phase ld-phase-live">
+            <div className="ld-phase-head"><span className="ld-phase-n">0</span><span className="ld-phase-chip live">{t('Live now')}</span></div>
+            <h3>{t('Live on arcdex.online')}</h3>
+            <ul>{LIVE_NOW.map(x => <li key={x}>{t(x)}</li>)}</ul>
+          </div>
+          {PHASES.map(p => {
+            const st = phaseStatus(p.n)
+            return (
+              <div key={p.n} className={`ld-card ld-phase ld-phase-${st}`}>
+                <div className="ld-phase-head">
+                  <span className="ld-phase-n">{p.n}</span>
+                  <span className={`ld-phase-chip ${st}`}>{st === 'done' ? t('Done ✓') : st === 'now' ? t('In progress') : t('Planned')}</span>
+                </div>
+                <h3>{t(p.title)}</h3>
+                <div className="ld-phase-when">{phaseRange(p.n, lang)} · {t('5–7 days')}</div>
+                <ul>{p.items.map(i => <li key={i.text}>{t(i.text)}{i.dep && <sup title={t('Built in the phase; goes live once a partner, an audit or a regulator allows it.')}>{'\u00a0†'}</sup>}</li>)}</ul>
+              </div>
+            )
+          })}
+        </div>
+        <p className="ld-note">† {t('Built in the phase; goes live once a partner, an audit or a regulator allows it.')}</p>
+      </section>
+
+      {/* ── whitepaper ──────────────────────────────────── */}
+      <section className="ld-section" id="whitepaper">
+        <div className="ld-card ld-paper">
+          <div className="ld-paper-text">
+            <span className="ld-pill">📄 {t('Whitepaper')}</span>
+            <h2>{t('Read the ARCDEX whitepaper')}</h2>
+            <p className="ld-sub ld-left">{t('Why Arc’s meme market needs one fast, safe and social place to trade, what traders want, how $ARCD buyback and burn works, and the plan week by week.')}</p>
+            <div className="ld-cta">
+              <a className="ld-btn ld-btn-primary" href="/whitepaper">{t('Read the whitepaper')} →</a>
+              <a className="ld-btn ld-btn-ghost" href="/arcdex-whitepaper.pdf" download>⬇ {t('Download PDF')}</a>
+              <a className="ld-btn ld-btn-ghost" href={xShare} target="_blank" rel="noopener noreferrer">𝕏 {t('Share on X')}</a>
+            </div>
+          </div>
+          <a className="ld-paper-cover" href="/whitepaper" aria-label={t('Read the whitepaper')}>
+            <img src="/arcdex-whitepaper-x.png" alt="" width={1600} height={900} loading="lazy" />
+          </a>
+        </div>
+      </section>
+
       {/* ── FAQ ─────────────────────────────────────────── */}
       <section className="ld-section" id="faq">
         <h2>{t('Questions')}</h2>
@@ -284,6 +356,8 @@ export default function Landing() {
             <a href="/rewards">{t('Rewards')}</a>
             <a href="/launchpad">{t('Launchpad')}</a>
             <a href="/burn">{t('Burn dashboard')}</a>
+            <a href="/whitepaper">{t('Whitepaper')}</a>
+            <a href="/arcdex-whitepaper.pdf" download>{t('Whitepaper (PDF)')}</a>
           </nav>
         </div>
         <p className="ld-disclaimer">{t('ARCDEX is non-custodial software on Arc: you control your wallet and your funds. Nothing on this site is financial advice. Crypto prices are volatile and you can lose money. $ARCD has no promise of value or profit.')}</p>
