@@ -210,6 +210,8 @@ html body {
 }
 .navbar-link:hover { color: var(--text); background: var(--bg-3); }
 .navbar-link.active { color: var(--adx-accent); background: var(--accent-dim); }
+@media (max-width: 1320px) { .navbar-link { padding: 6px 8px; } }
+@media (max-width: 1180px) { .navbar-link.nav-secondary { display: none; } }
 
 .navbar-search-wrap { flex: 1; min-width: 100px; max-width: 440px; }
 .navbar-search {
@@ -440,6 +442,37 @@ html body {
   .token-detail-swap { width: 100%; }
 }
 .price-chart { min-width: 0; width: 100%; }
+/* Trades on the chart: "+$500" in green for a buy (just above the line),
+   "-$250" in red for a sell (just below). New live trades pop in. */
+.chart-trade {
+  position: absolute; transform: translate(-50%, -50%); pointer-events: auto; white-space: nowrap;
+  font: 800 11px/1 var(--mono); padding: 2px 3px; border-radius: 4px; letter-spacing: -0.02em; user-select: none;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.95), 0 0 4px rgba(0,0,0,0.85);
+}
+.chart-trade.buy { color: #22c55e; }
+.chart-trade.sell { color: #ef4444; }
+.chart-trade.thesis { font-size: 13px; text-shadow: none; }
+.chart-trade.mine { background: rgba(250,204,21,0.16); box-shadow: inset 0 0 0 1px rgba(250,204,21,0.6); }
+.chart-trade.pop { animation: trade-pop 0.65s cubic-bezier(0.2, 0.9, 0.3, 1.25); }
+@keyframes trade-pop {
+  0%   { transform: translate(-50%, -10%) scale(0.3); opacity: 0; }
+  55%  { transform: translate(-50%, -85%) scale(1.35); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+/* Legend, top left: coin · timeframe, value under the crosshair, change */
+.chart-legend {
+  position: absolute; top: 6px; left: 8px; z-index: 4; pointer-events: none; display: flex; gap: 7px; align-items: baseline;
+  font-size: 0.74rem; color: var(--text-muted); max-width: calc(100% - 80px); overflow: hidden; white-space: nowrap;
+}
+.chart-legend b { color: var(--text); font-weight: 700; }
+.chart-legend-val { color: #c4b5fd; font-family: var(--mono); font-weight: 700; }
+.chart-legend span:last-child { font-family: var(--mono); }
+/* Under the chart: UTC clock and % / log / auto */
+.chart-footer { display: flex; align-items: center; gap: 4px; margin-top: 6px; font-size: 0.72rem; color: var(--text-muted); }
+.chart-clock { font-family: var(--mono); }
+.chart-footer button { padding: 3px 8px; border-radius: 6px; border: 1px solid transparent; background: none; color: var(--text-muted); font-size: 0.72rem; font-weight: 600; cursor: pointer; }
+.chart-footer button:hover { color: var(--text); }
+.chart-footer button.on { color: var(--adx-accent); background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.35); }
 
 /* ── pulse dot ───────────────────────────────────────────────────── */
 .pulse-dot {
@@ -599,7 +632,9 @@ html body {
 .menu-pop { position: absolute; z-index: 300; background: var(--adx-card-bg); border: 1px solid var(--adx-card-border); border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,0.55); padding: 6px; min-width: 210px; }
 .menu-item { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; color: var(--text); font-size: 0.82rem; padding: 8px 10px; border-radius: 8px; cursor: pointer; text-align: left; }
 .menu-item:hover { background: var(--bg-3); }
-.modal-back { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+/* Above sheets (1100): Connect Wallet opened from the Buy sheet on a phone
+   used to appear behind it. WalletConnect's own modal sits above (1300). */
+.modal-back { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 16px; }
 .modal-card { width: min(440px, 100%); max-height: 90vh; overflow-y: auto; background: var(--adx-card-bg); border: 1px solid var(--adx-card-border); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
 .field { width: 100%; padding: 9px 11px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--adx-card-border); color: var(--text); font-size: 0.86rem; }
 .btn-primary { padding: 11px; border-radius: 10px; border: none; background: var(--adx-accent); color: #fff; font-weight: 700; cursor: pointer; }
@@ -668,6 +703,20 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 
 /* Bottom sheets (components/Sheet.tsx) */
 .sheet-back { position: fixed; inset: 0; z-index: 1100; background: rgba(0,0,0,0.55); display: flex; align-items: flex-end; justify-content: center; animation: sheet-fade 0.18s ease-out; }
+
+/* "Confirm in MetaMask · Open" while a WalletConnect wallet on a phone has a request waiting */
+.wallet-prompt { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 1250; display: flex; align-items: center; gap: 10px; width: min(420px, calc(100% - 24px)); padding: 10px 12px; border-radius: 14px; background: #111d33; border: 1px solid rgba(59,130,246,0.45); box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-size: 0.84rem; font-weight: 600; color: var(--text); }
+.wallet-prompt-btn { padding: 7px 14px; border-radius: 10px; background: var(--adx-accent); color: #fff; font-weight: 700; text-decoration: none; flex-shrink: 0; }
+/* The connected wallet is on another network */
+.net-guard { display: flex; align-items: center; gap: 10px; padding: 7px 14px; background: rgba(245,158,11,0.12); border-bottom: 1px solid rgba(245,158,11,0.35); color: #fcd34d; font-size: 0.78rem; }
+.net-guard button { padding: 5px 12px; border-radius: 8px; border: none; background: #f59e0b; color: #111; font-weight: 700; cursor: pointer; flex-shrink: 0; }
+.net-guard button:disabled { opacity: 0.6; cursor: default; }
+/* Launch form: what the launch costs */
+.launch-cost { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--adx-card-border); font-size: 0.78rem; }
+.launch-cost > div { display: flex; justify-content: space-between; gap: 8px; color: var(--text-muted); }
+.launch-cost b { color: var(--text); font-family: var(--mono); }
+.launch-cost-total { border-top: 1px solid var(--adx-card-border); padding-top: 5px; margin-top: 2px; }
+.launch-cost-total span { color: var(--text); font-weight: 700; }
 .sheet { width: 100%; max-width: 560px; max-height: 88vh; max-height: 88dvh; display: flex; flex-direction: column; background: var(--adx-card-bg); border: 1px solid var(--adx-card-border); border-bottom: none; border-radius: 18px 18px 0 0; padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -12px 40px rgba(0,0,0,0.5); animation: sheet-up 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .sheet-grip { width: 38px; height: 4px; border-radius: 99px; background: var(--border-hi); margin: 8px auto 4px; flex-shrink: 0; }
 .sheet-title { font-weight: 800; font-size: 1rem; padding: 4px 18px 10px; }
@@ -689,6 +738,21 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 /* Phone-only pieces stay out of the desktop layout. */
 .tabbar, .trade-bar, .navbar-back, .filters-btn, .token-card-meta { display: none; }
 .show-more { display: block; width: calc(100% - 28px); margin: 14px; padding: 13px; border-radius: 12px; border: 1px solid var(--adx-card-border); background: var(--bg-2); color: var(--text); font-weight: 700; font-size: 0.85rem; cursor: pointer; }
+
+/* Phone home (components/MobileHome.tsx): cash + Deposit, then top traders — fomo's app opening screen */
+.m-home { padding: 14px 14px 4px; display: flex; flex-direction: column; gap: 12px; }
+.m-home-cash { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.m-home-balance { font-size: 1.9rem; font-weight: 800; letter-spacing: -0.02em; font-family: var(--mono); line-height: 1.1; }
+.m-home-balance.small { font-size: 1.1rem; font-family: var(--sans); letter-spacing: 0; }
+.m-home-label { font-size: 0.74rem; color: var(--text-muted); margin-top: 3px; }
+.m-home-cta { flex-shrink: 0; padding: 12px 22px; border-radius: 14px; border: none; background: #5b5ff5; color: #fff; font-weight: 800; font-size: 0.95rem; cursor: pointer; box-shadow: 0 6px 18px rgba(91,95,245,0.35); }
+.m-home-traders { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -14px; padding: 0 14px 2px; scroll-snap-type: x proximity; }
+.m-home-traders::-webkit-scrollbar { display: none; }
+.m-trader-card { flex: 0 0 auto; min-width: 128px; max-width: 170px; display: flex; flex-direction: column; gap: 6px; padding: 9px 11px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--adx-card-border); color: var(--text); text-align: left; cursor: pointer; scroll-snap-align: start; }
+.m-trader-name { display: flex; align-items: center; gap: 6px; font-size: 0.76rem; font-weight: 700; min-width: 0; }
+.m-trader-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-trader-pnl { font-family: var(--mono); font-weight: 800; font-size: 0.95rem; color: var(--green); }
+.m-trader-vol { font-family: var(--mono); font-weight: 700; font-size: 0.8rem; color: var(--text-muted); }
 
 @media (max-width: 767px) {
   html body { font-size: 14px; }

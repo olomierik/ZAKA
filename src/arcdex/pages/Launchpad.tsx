@@ -1,9 +1,11 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt } from 'wagmi'
 import { openConnectModal } from '../components/ConnectWallet'
-import { parseUnits } from 'viem'
-import { arc } from '../wagmi'
-import { getAllLaunchpadTokens, LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, type LaunchpadToken } from '../api/launchpad'
+import { formatUnits, parseEventLogs, parseUnits, type Address } from 'viem'
+import { getAllLaunchpadTokens, client, LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, type LaunchpadToken } from '../api/launchpad'
+import { sendArc, txErrorText } from '../lib/tx'
+import { waitForAllowance } from '../lib/rpc'
+import { LAUNCH_FEE_USDC, LAUNCH_FEE_WALLET, feeCredit, saveFeeCredit, spendFeeCredit } from '../lib/launchFee'
+import { rememberLaunchpadCoin } from '../lib/launchpadCoins'
 import { subscribeLaunchpadTrades, type LaunchpadLiveTrade } from '../api/launchpadRpc'
 import { isUnlocked } from '../lib/embeddedWallet'
 import { quickBuyLaunchpad } from '../lib/quickTrade'
@@ -22,6 +24,11 @@ const ERC20_ABI = [
   { name: 'approve', type: 'function', stateMutability: 'nonpayable',
     inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }],
     outputs: [{ type: 'bool' }] },
+  { name: 'balanceOf', type: 'function', stateMutability: 'view',
+    inputs: [{ name: 'owner', type: 'address' }], outputs: [{ type: 'uint256' }] },
+  { name: 'transfer', type: 'function', stateMutability: 'nonpayable',
+    inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }],
+    outputs: [{ type: 'bool' }] },
 ] as const
 
 interface Props { navigate: (p: Page) => void }
@@ -33,9 +40,17 @@ function fmt(n: number, prefix = '$') {
   return `${prefix}${n.toFixed(n < 1 ? 6 : 2)}`
 }
 
-function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
-  const { address, isConnected } = useAccount()
+/** The launchpad's custom errors, in words a creator can act on. */
+const LAUNCH_REVERTS: Record<string, string> = {
+  InvalidMetadata: 'Enter a token name and symbol.',
+  InvalidTax: 'The creator tax can be at most 3%.',
+  NoContracts: "Smart-contract wallets can't launch — use a regular wallet or your trading wallet.",
+  EnforcedPause: 'Launches are paused right now — try again later.',
+}
+
+function CreateTokenForm({ onCreated }: { onCreated: (token?: Address) => void }) {
   const trader = useTrader()
+  const me = trader.address
   const [open, setOpen]           = useState(false)
   const [name, setName]           = useState('')
   const [symbol, setSymbol]       = useState('')
@@ -48,64 +63,35 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
   const [imageUrl, setImageUrl] = useState('') // fallback when Storage isn't set up — paste a direct link instead
   const [initialBuy, setInitialBuy]   = useState('')
   const [taxPct, setTaxPct]           = useState('3') // 0-3%, fixed forever once launched
-  const [step, setStep] = useState<'idle' | 'uploading' | 'approving' | 'creating'>('idle')
+  const [step, setStep] = useState<'idle' | 'uploading' | 'fee' | 'approving' | 'creating'>('idle')
   const [error, setError] = useState('')
-  const [pendingMetadataURI, setPendingMetadataURI] = useState<string | null>(null)
+  const [cash, setCash] = useState<bigint | null>(null)
 
   const initialBuyWei = initialBuy ? (() => { try { return parseUnits(initialBuy, 6) } catch { return 0n } })() : 0n
   const taxBps = Math.max(0, Math.min(300, Math.round(Number(taxPct || 0) * 100)))
 
-  const { data: allowance } = useReadContract({
-    address: USDC_ADDR, abi: ERC20_ABI, functionName: 'allowance',
-    args: [address!, LAUNCHPAD_ADDRESS],
-    query: { enabled: !!address && LAUNCHPAD_ADDRESS.length === 42 && initialBuyWei > 0n },
-  })
-
-  const { writeContract, data: txHash, error: writeError } = useWriteContract()
-  const { data: receipt } = useWaitForTransactionReceipt({ hash: txHash })
-
-  // Async wallet/RPC failures (rejected signature, chain switch refused,
-  // etc.) land on the hook's `error`, not as a thrown exception at the
-  // writeContract() call site — without this, the button gets stuck on
-  // "Approving…"/"Launching…" forever with no feedback, even though the
-  // wallet still shows connected.
+  // USDC of whoever launches (trading wallet or external), for the "not
+  // enough USDC" check before anything is signed.
   useEffect(() => {
-    if (!writeError) return
-    setError(writeError.message.split('\n')[0].slice(0, 160))
-    setStep('idle')
-  }, [writeError])
+    if (!open || !me) { setCash(null); return }
+    let alive = true
+    const load = () => void client.readContract({ address: USDC_ADDR, abi: ERC20_ABI, functionName: 'balanceOf', args: [me] })
+      .then(b => { if (alive) setCash(b) }).catch(() => {})
+    load()
+    const id = setInterval(load, 15_000)
+    return () => { alive = false; clearInterval(id) }
+  }, [open, me])
 
-  // no flat creation fee — only the optional initial buy needs approval first
-  const needsApprove = initialBuyWei > 0n && (allowance ?? 0n) < initialBuyWei
+  const credit = me ? feeCredit(me) : null
+  const feeDue = credit ? 0n : LAUNCH_FEE_USDC
+  const totalDue = feeDue + initialBuyWei
+  const short = cash !== null && cash < totalDue
 
   function resetForm() {
     setOpen(false); setName(''); setSymbol(''); setDescription('')
     setWebsite(''); setTwitter(''); setTelegram('')
-    setImageFile(null); setImagePreview(''); setImageUrl(''); setInitialBuy(''); setStep('idle'); setPendingMetadataURI(null)
+    setImageFile(null); setImagePreview(''); setImageUrl(''); setInitialBuy(''); setStep('idle')
   }
-
-  function fireCreate(metadataURI: string) {
-    setStep('creating')
-    writeContract({
-      address: LAUNCHPAD_ADDRESS, abi: LAUNCHPAD_ABI, functionName: 'createToken',
-      args: [name, symbol, metadataURI, BigInt(taxBps), initialBuyWei], chainId: arc.id,
-    })
-  }
-
-  // Approve and create are two separate transactions with two separate
-  // receipts, but both land in the same `receipt` — a receipt confirming
-  // during the 'approving' step means the *allowance* is set, not that a
-  // token exists yet. Treating any receipt as "done" (the previous
-  // behaviour) closed the form and told the user their token was created
-  // when only the approval had gone through. Chain straight into the
-  // actual createToken call instead; only treat a receipt as completion
-  // when it confirms during the 'creating' step.
-  useEffect(() => {
-    if (!receipt) return
-    if (step === 'approving') { fireCreate(pendingMetadataURI ?? ''); return }
-    if (step === 'creating') { onCreated(); resetForm() }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [receipt])
 
   function pickImage(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -116,7 +102,7 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
   }
 
   async function submit() {
-    if (!name || !symbol || LAUNCHPAD_ADDRESS.length !== 42) return
+    if (!me || !name || !symbol || LAUNCHPAD_ADDRESS.length !== 42) return
     setError('')
 
     // Build off-chain metadata (image/socials/description) only if the
@@ -153,14 +139,49 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
         metadataURI = buildInlineMetadataURI({ ...meta, image })
       }
     }
-    setPendingMetadataURI(metadataURI)
 
-    if (needsApprove) {
-      setStep('approving')
-      writeContract({ address: USDC_ADDR, abi: ERC20_ABI, functionName: 'approve', args: [LAUNCHPAD_ADDRESS, initialBuyWei], chainId: arc.id })
-      return
+    const create = {
+      address: LAUNCHPAD_ADDRESS, abi: LAUNCHPAD_ABI, functionName: 'createToken' as const,
+      args: [name, symbol, metadataURI, BigInt(taxBps), initialBuyWei] as const,
     }
-    fireCreate(metadataURI)
+    try {
+      // 1. The $3 launch fee — unless an earlier attempt already paid it.
+      if (!feeCredit(me)) {
+        setStep('fee')
+        const h = await sendArc(trader.kind, { address: USDC_ADDR, abi: ERC20_ABI, functionName: 'transfer', args: [LAUNCH_FEE_WALLET, LAUNCH_FEE_USDC] })
+        const rc = await client.waitForTransactionReceipt({ hash: h })
+        if (rc.status !== 'success') throw new Error(T('The launch fee payment failed — nothing was charged.'))
+        saveFeeCredit(me, h)
+      }
+      // 2. The optional initial buy: approve exactly that amount.
+      if (initialBuyWei > 0n) {
+        const allowance = await client.readContract({ address: USDC_ADDR, abi: ERC20_ABI, functionName: 'allowance', args: [me, LAUNCHPAD_ADDRESS] })
+        if (allowance < initialBuyWei) {
+          setStep('approving')
+          const h = await sendArc(trader.kind, { address: USDC_ADDR, abi: ERC20_ABI, functionName: 'approve', args: [LAUNCHPAD_ADDRESS, initialBuyWei] })
+          const rc = await client.waitForTransactionReceipt({ hash: h })
+          if (rc.status !== 'success') throw new Error(T('Approval failed'))
+          await waitForAllowance(client, USDC_ADDR, me, LAUNCHPAD_ADDRESS, initialBuyWei)
+        }
+      }
+      // 3. Launch: simulated first, so a problem shows before signing.
+      setStep('creating')
+      await client.simulateContract({ ...create, account: me })
+      const h = await sendArc(trader.kind, create as never)
+      const rc = await client.waitForTransactionReceipt({ hash: h })
+      if (rc.status !== 'success') throw new Error(T('The launch transaction failed. Your launch fee is kept for your next try.'))
+      spendFeeCredit(me)
+      const launched = parseEventLogs({ abi: LAUNCHPAD_ABI, logs: rc.logs, eventName: 'TokenLaunched' })[0]?.args.token as Address | undefined
+      if (launched) rememberLaunchpadCoin(launched)
+      resetForm()
+      onCreated(launched)
+    } catch (e) {
+      const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
+      const known = Object.keys(LAUNCH_REVERTS).find(k => m.includes(k))
+      const paid = !!feeCredit(me)
+      setError((known ? T(LAUNCH_REVERTS[known]) : txErrorText(e)) + (paid ? ' ' + T('Your $3 launch fee is paid — it will be used for your next try.') : ''))
+      setStep('idle')
+    }
   }
 
   if (!open) {
@@ -172,8 +193,9 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
     )
   }
 
+  const usd = (v: bigint) => `$${Number(formatUnits(v, 6)).toFixed(2)}`
   return (
-    <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 20, marginBottom: 20, maxWidth: 440 }}>
+    <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 20, marginBottom: 20, maxWidth: 440, width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <span style={{ fontWeight: 700 }}>{T("Launch a token")}</span>
         <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
@@ -205,13 +227,23 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T("Your creator tax — fixed forever once launched, max 3%")}</span>
           <input type="number" min="0" max="3" step="0.1" value={taxPct} onChange={e => setTaxPct(e.target.value)} style={inputStyle} />
         </label>
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('Free to launch')}{initialBuy ? ' + ' + T('{usd} initial buy', { usd: '$' + initialBuy }) : ''}. {T('1B fixed supply — 5% to the platform, 95% into the curve, no team pre-mine. Every trade also pays a flat 1% platform fee on top of your {tax}% tax. You keep 60% of your tax ({keep}% of every trade), forever.', { tax: taxPct || 0, keep: ((taxBps * 0.6) / 100).toFixed(2) })}</div>
+        <div className="launch-cost">
+          <div><span>{T('Launch fee')}</span><b>{credit ? T('Paid ✓') : usd(LAUNCH_FEE_USDC)}</b></div>
+          {initialBuyWei > 0n && <div><span>{T('Initial buy')}</span><b>{usd(initialBuyWei)}</b></div>}
+          <div className="launch-cost-total"><span>{T('Total')}</span><b>{usd(totalDue)}</b></div>
+        </div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('1B fixed supply — 5% to the platform, 95% into the curve, no team pre-mine. Every trade also pays a flat 1% platform fee on top of your {tax}% tax. You keep 60% of your tax ({keep}% of every trade), forever.', { tax: taxPct || 0, keep: ((taxBps * 0.6) / 100).toFixed(2) })}</div>
         {error && <div style={{ fontSize: '0.72rem', color: '#ef4444' }}>{error}</div>}
-        {!isConnected ? (
+        {!me ? (
           <button onClick={openConnectModal} style={primaryBtnStyle}>{T("Connect Wallet")}</button>
         ) : (
-          <button onClick={() => void submit()} disabled={!name || !symbol || step !== 'idle'} style={{ ...primaryBtnStyle, opacity: (!name || !symbol) ? 0.5 : 1 }}>
-            {step === 'uploading' ? T("Uploading…") : step === 'approving' ? T("Approving USDC…") : step === 'creating' ? T("Launching…") : needsApprove ? T("Approve USDC") : T("Launch token")}
+          <button onClick={() => void submit()} disabled={!name || !symbol || step !== 'idle' || short} style={{ ...primaryBtnStyle, opacity: (!name || !symbol || short) ? 0.5 : 1 }}>
+            {step === 'uploading' ? T("Uploading…")
+              : step === 'fee' ? T("Paying the launch fee…")
+              : step === 'approving' ? T("Approving USDC…")
+              : step === 'creating' ? T("Launching…")
+              : short ? T('Not enough USDC — you need {usd}', { usd: usd(totalDue) })
+              : T('Launch token · {usd}', { usd: usd(totalDue) })}
           </button>
         )}
       </div>
@@ -355,9 +387,9 @@ export default function Launchpad({ navigate }: Props) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 16 }}>
         <div>
           <h1 style={{ fontSize: '1.3rem', fontWeight: 800, margin: 0 }}>{T("Launchpad")}</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 4 }}>{T("Bonding-curve launches on Arc mainnet · free to launch · 1% platform fee + up to 3% creator tax")}</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 4 }}>{T("Bonding-curve launches on Arc mainnet · $3 to launch · 1% platform fee + up to 3% creator tax")}</p>
         </div>
-        <CreateTokenForm onCreated={load} />
+        <CreateTokenForm onCreated={token => { load(); if (token) navigate({ name: 'token', address: token }) }} />
       </div>
 
       <LiveActivityFeed symbolByAddress={symbolByAddress} />

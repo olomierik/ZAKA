@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useWriteContract } from 'wagmi'
 import { formatUnits, parseAbi, parseUnits, type Address } from 'viem'
-import { arc } from '../wagmi'
 import { client } from '../api/launchpad'
-import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
+import { sendArc, txErrorText } from '../lib/tx'
 import { useTrader } from '../lib/identity'
 import { t as T } from '../lib/i18n'
 import { ARCD, ARCD_POOL, ARC_EXPLORER, BURN_ADDRESS, FEE_WALLET, compact, loadArcd, price, short, type ArcdStats } from '../lib/arcd'
@@ -95,7 +93,6 @@ export default function BurnPage({ navigate }: { navigate: (p: Page) => void }) 
 /** Only shown to the fee wallet: 1) buy back, 2) burn what it holds. */
 function OwnerPanel({ stats, onDone, navigate }: { stats: ArcdStats | null; onDone: () => void; navigate: (p: Page) => void }) {
   const trader = useTrader()
-  const { writeContractAsync } = useWriteContract()
   const [bal, setBal] = useState<bigint | null>(null)
   const [amount, setAmount] = useState('')
   const [state, setState] = useState<'' | 'burning' | { tx: string } | { error: string }>('')
@@ -117,16 +114,13 @@ function OwnerPanel({ stats, onDone, navigate }: { stats: ArcdStats | null; onDo
     setState('burning')
     try {
       const req = { address: ARCD as Address, abi: ERC20, functionName: 'transfer' as const, args: [BURN_ADDRESS as Address, value] as const }
-      const hash = trader.kind === 'trading-wallet'
-        ? await getEmbeddedWalletClient().writeContract(req as never)
-        : await writeContractAsync({ ...req, chainId: arc.id } as never)
+      const hash = await sendArc(trader.kind, req as never)
       const rc = await client.waitForTransactionReceipt({ hash })
       if (rc.status !== 'success') throw new Error(T('Burn failed'))
       setState({ tx: hash }); setAmount('')
       void load(); onDone()
     } catch (e) {
-      const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
-      setState({ error: /rejected|denied/i.test(m) ? T('You cancelled the transaction.') : m.slice(0, 200) })
+      setState({ error: txErrorText(e) })
     }
   }
 

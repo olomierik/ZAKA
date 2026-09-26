@@ -6,6 +6,7 @@
 // token0/token1 ordering — so no separate "which side is quote" step.
 
 import { ARC_RPC_WS } from './arcRpc'
+import { spotPrice } from '../../../api/_launchpadCore'
 
 // keccak256("Trade(address,address,bool,uint256,uint256,uint256,uint256,uint256)")
 // Computed via viem's toEventSelector and cross-checked against a second,
@@ -21,6 +22,8 @@ export interface LaunchpadLiveTrade {
   txHash:       string
   blockNumber:  number
   timestamp:    number
+  /** Curve price after this trade (USD per token), from its reserves. */
+  priceAfter:   number
 }
 
 type LogEvent = {
@@ -66,9 +69,10 @@ function connect() {
     const isBuy = word(0) === 1n
     const usdcAmount = Number(word(1)) / 1e6
     const tokenAmount = Number(word(2)) / 1e18
+    const priceAfter = spotPrice(word(4), word(5))
 
     const trade: LaunchpadLiveTrade = {
-      token, trader, isBuy, usdcAmount, tokenAmount,
+      token, trader, isBuy, usdcAmount, tokenAmount, priceAfter,
       txHash: log.transactionHash,
       blockNumber: parseInt(log.blockNumber, 16),
       timestamp: Date.now(),

@@ -12,6 +12,8 @@ import { curateTokens, type CuratedGroup } from '../lib/curate'
 import type { Page } from '../App'
 import { toggleWatch, usePrefs } from '../lib/prefs'
 import { t as T, N_ } from '../lib/i18n'
+import { useIsMobile } from '../lib/useMobile'
+import MobileHome from '../components/MobileHome'
 
 interface Props {
   navigate: (p: Page) => void
@@ -272,6 +274,7 @@ function TokenCard({ token, dupCount = 0, onClick }: CardProps) {
 }
 
 export default function Terminal({ navigate, registerFeedTokens }: Props) {
+  const mobile = useIsMobile()
   const [tokens,   setTokens]   = useState<ArcToken[]>([])
   const [loading,  setLoading]  = useState(true)
   const [source,   setSource]   = useState('All sources')
@@ -476,6 +479,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
 
   return (
     <div className={`terminal-shell${filtersOpen ? ' filters-open' : ''}`}>
+      {/* Phones open like fomo's app: cash + Deposit, then top traders, then the coins. */}
+      {mobile && <MobileHome navigate={navigate} />}
 
       {/* ── scrolling ticker ── */}
       <div className="ticker-bar" ref={tickerRef}>

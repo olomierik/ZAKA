@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useWriteContract } from 'wagmi'
 import { openConnectModal } from './ConnectWallet'
 import { parseUnits, formatUnits, type Address, type Hex } from 'viem'
-import { arc } from '../wagmi'
 import { LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, client, type LaunchpadToken } from '../api/launchpad'
 import { useTrader } from '../lib/identity'
-import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
+import { sendArc, txErrorText } from '../lib/tx'
+import { waitForAllowance } from '../lib/rpc'
 import { triggerIndex } from '../api/social'
 import { t as T } from '../lib/i18n'
 
@@ -38,7 +37,6 @@ const fmtTok = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ?
 export default function CurveSwapWidget({ token, onTraded, initialMode }: Props) {
   const trader = useTrader()
   const me = trader.address
-  const { writeContractAsync } = useWriteContract()
   const [mode, setMode] = useState<'buy' | 'sell'>(initialMode ?? 'buy')
   const [amount, setAmount] = useState('')
   const [slippage, setSlippage] = useState(3)
@@ -88,10 +86,7 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
   const insufficient = balance !== null && amountIn > balance
   const needsApprove = amountIn > 0n && allowance < amountIn
 
-  async function send(req: { address: Address; abi: unknown; functionName: string; args: unknown[] }): Promise<Hex> {
-    if (trader.kind === 'trading-wallet') return getEmbeddedWalletClient().writeContract(req as never)
-    return writeContractAsync({ ...req, chainId: arc.id } as never)
-  }
+  const send = (req: { address: Address; abi: unknown; functionName: string; args: unknown[] }): Promise<Hex> => sendArc(trader.kind, req as never)
 
   async function submit() {
     if (!me || !estimate || amountIn === 0n || !configured) return
@@ -103,6 +98,9 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
         const h = await send({ address: tokenIn, abi: ERC20_ABI, functionName: 'approve', args: [LAUNCHPAD_ADDRESS, amountIn] })
         const rc = await client.waitForTransactionReceipt({ hash: h })
         if (rc.status !== 'success') throw new Error(T('Approval failed'))
+        // Arc's RPC nodes can trail by a block: don't simulate the trade
+        // against one that hasn't seen the approval yet.
+        await waitForAllowance(client, tokenIn, me, LAUNCHPAD_ADDRESS, amountIn)
         setAllowance(amountIn)
       }
       const minOut = (estimate.out * BigInt(Math.round((100 - slippage) * 100))) / 10_000n
@@ -129,7 +127,7 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
       const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
       const known = Object.keys(REVERTS).find(k => m.includes(k))
       setStep('error')
-      setMsg(/rejected|denied/i.test(m) ? T("You cancelled the transaction.") : known ? T(REVERTS[known]) : T('Trade failed: {reason}', { reason: m }).slice(0, 220))
+      setMsg(known && !/rejected|denied/i.test(m) ? T(REVERTS[known]) : txErrorText(e))
     }
   }
 

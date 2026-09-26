@@ -47,8 +47,12 @@ Self-contained bonding-curve launchpad — no separate LaunchToken deploy needed
   - `VITE_ARC_LAUNCHPAD_ADDRESS` is set in Vercel production and `.env`
 - **Redeploy / reference:** `scripts/deploy-launchpad.sh` — bytecode is in `contracts/out/ArcLaunchpad.sol/ArcLaunchpad.json`. Defaults `PLATFORM_FEE_WALLET` to `0x274262A0321A0701b0A46a3576e07aE881c286Bb` — override the env var if you ever want fees going elsewhere.
   - Constructor args used: `(0x414B6Be4CF906739FbF7D49165beCa5F4CeEC3dA, 0x274262A0321A0701b0A46a3576e07aE881c286Bb)`
+- **$3 launch fee (owner decision, 2026-09-26) — collected by the app, not the contract** (`lib/launchFee.ts`):
+  - The launch form first sends a $3 USDC transfer to `platformFeeWallet`, then launches. The contract is immutable and has no creation fee, so a direct `createToken` call skips it; enforcing it on-chain needs a new launchpad contract that the owner deploys.
+  - If the fee goes through but the launch doesn't, the payment is kept as a credit for that wallet in that browser (7 days), and the next launch doesn't charge again.
+  - The form works with the trading wallet too (it used to need an external wallet). It shows the fee, the initial buy and the total, checks the balance first, and opens the new coin's page after launch.
 - **Fees — two additive layers, paid directly out of every trade, no accrual:**
-  - 5% of each token's 1B supply → `platformFeeWallet` at creation (95% seeds the curve). No flat USDC creation fee.
+  - 5% of each token's 1B supply → `platformFeeWallet` at creation (95% seeds the curve). No flat USDC creation fee in the contract (the $3 above is the app's).
   - Platform swap fee: fixed 1%, always, 100% to `platformFeeWallet`.
   - Creator tax: 0-3%, the creator's choice, fixed forever once launched — 60% straight to the creator's wallet, 40% to `platformFeeWallet`.
   - Worst case total per trade: 4%.
@@ -57,6 +61,8 @@ Self-contained bonding-curve launchpad — no separate LaunchToken deploy needed
   - Tests: `bun scripts/test-launchpad-index.ts` (decoding, metadata safety, live endpoint).
 - **Logo uploads — `/api/upload`:** signed-in wallets only (the `/api/session` token), 30 a day per wallet. PNG/JPEG/GIF/WebP up to 2 MB, sniffed from the bytes (no SVG); metadata sanitized. Stored in Supabase Storage bucket `launchpad-media`, created on first use. If an upload fails, the form falls back to an image link and inline (`data:`) metadata. Tests: `bun scripts/test-upload.ts` (mocked Supabase).
 - **Approvals are exact** everywhere: `CurveSwapWidget`, one-tap `quickTrade.ts` (which also has a 5% minimum-out now, it had none), token creation. Trades are simulated before sending, and the launchpad's revert errors are shown in words.
+- **Coin links open the right page (`pages/CoinPage.tsx`, `lib/launchpadCoins.ts`):** every `/token/0x…` link (search, discovery panel, feed, profiles, clans, a reload) used to open the Argus coin page, where a launchpad coin has no pool: "No routable pool", nothing to buy. The app now fetches the launchpad's coin list at start and opens launchpad coins on their curve page.
+- **Buying was verified end to end on 2026-09-26** (local dev; each transaction simulated on mainnet with state overrides, nothing sent): external wallet left on Base (switched to Arc, approved $5, bought) and trading wallet (approve nonce 0, buy nonce 1). See "Sending transactions" below.
 - **Buyback-and-burn is manual and off-contract, by design** — there is no on-chain treasury. To buy back the platform's own token: launch it through the UI like any other token, then from `platformFeeWallet` call `buy()` on ArcLaunchpad, then call `burn(amount)` on the token itself (`LaunchToken` is `ERC20Burnable`).
 - **Anti-rug / anti-bot, all enforced on-chain:**
   - Anti-snipe: buys capped at $2,000/tx for the first 10 minutes after launch (`SNIPE_MAX_BUY_USDC`, `SNIPE_WINDOW_SECONDS`).
@@ -71,8 +77,46 @@ Both directions, via Circle CCTP v2 (Bridge Kit), with Circle's Forwarder mintin
 - **Deposit to Arc (chain X → Arc):** the external wallet signs approve + burn on X. `ensureWalletChain` switches it to X, adding X first if the wallet doesn't know it (4902), and switches back to Arc afterwards. The default recipient is the trading wallet. Deposit → "From another chain" opens `/bridge?dir=in`.
 - **Send from Arc (Arc → chain X):** from the connected wallet or, one-tap, the trading wallet (`tradingWalletAdapter`, a `ViemAdapter` over its local account, Arc only). Solana is a destination only and needs a Solana address.
 - **Quotes before signing:** `quoteBridge` prices the route with Circle's estimate (a throwaway, never-funded account; it never signs) and shows Circle's fees, our fee, what leaves the wallet and what arrives. Measured 2026-09-26 for $10: Arc → Base, Circle $0.055; Base → Arc $0.016; Arc → Ethereum $100, $1.49. Live progress (approve, burn, attestation, mint) and Retry use the kit's events and `kit.retry`.
+- **Fixed 2026-09-26 (why sending from the trading wallet failed):** in a browser the kit's `ViemAdapter` asks the wallet to switch chains before each step (`wallet_switchEthereumChain`). The trading wallet signs locally, so that request went to Arc's RPC ("method not supported") and the approve step failed every time. `localChainSwitch` answers it in-app. Also:
+  - The kit gets lag-tolerant clients (see "Sending transactions").
+  - Approve and burn are always two plain transactions (`batchTransactions: false`), not an EIP-5792 batch that asks MetaMask to switch to a smart account.
+  - A failed step shows why.
+  - WalletConnect sessions include the bridge chains (`wagmi.ts`), so a phone wallet can switch to Base to sign a deposit.
+- **Checked:** the kit's Arc → Base and Base → Arc transactions, dry-run against mainnet with a throwaway account (every transaction simulated with state overrides), and the trading wallet's Arc → Base in the browser, up to the attestation.
 
 Fees: Circle's Bridge Kit has a native mechanism for this (`kit.setCustomFeePolicy`), used instead of a hand-rolled side-transfer. `computeBridgeFee()`: 0.5% of the transfer, bounded to [$0.05, $50]. Bridge Kit adds this **on top of** the transfer amount (wallet debits `amount + fee`, shown in `Bridge.tsx` before signing) and auto-splits it 10% to Circle / 90% to `PLATFORM_FEE_WALLET` — that 10/90 split is Circle's own mechanic on `CustomFeePolicy`, not something this app controls. Only applies to USDC (Bridge Kit rejects a custom fee policy on non-USDC tokens), which is all this app bridges.
+
+### Sending transactions — `lib/tx.ts`, `lib/rpc.ts` (2026-09-26)
+Why buys, swaps and bridges failed for people, and the fixes:
+- **Wrong network.** wagmi refuses to send while the wallet is on another chain ("does not match the target chain"). `sendArc()` (used by every trade, launch, cash send and burn) first puts an external wallet on Arc (`ensureArc`, adding Arc if needed). A slim `NetworkGuard` bar offers "Switch to Arc" (hidden on /bridge, which switches on purpose).
+- **Lagging RPC nodes.** Arc's public RPC answers from nodes that can trail by a block (6 of 240 requests, measured). Right after an approval, the trade's simulation, gas estimate or `eth_fillTransaction` (viem 2.5x fills local-account transactions with it) could land on a node without the approval → "transfer amount exceeds allowance".
+  - `lagTolerant()` retries exactly those failures (4 tries, 600ms apart).
+  - It wraps the shared `client`, the wagmi Arc transport, the trading wallet and the Bridge Kit clients.
+  - `waitForAllowance()` waits until an approval is visible before the trade.
+- **Trading-wallet nonces.** The same lag made the trade reuse the approval's nonce. The trading wallet's nonce is now at least one past the last it broadcast in this tab (`recordBroadcasts` + `walletNonces` in `embeddedWallet.ts`). viem's own nonceManager misses this when that nonce is 0: a new wallet's first approval.
+- **Phones.**
+  - Connect Wallet opened *behind* the Buy sheet. Layering is now: sheets 1100, modals 1200, wallet prompt 1250, WalletConnect's modal 1300 (`--wcm-z-index`).
+  - With WalletConnect on a phone, a pending request shows "Confirm in <wallet> · Open", a button that opens the wallet app (`WalletPromptHost`). Browsers only follow app links on a tap.
+- **Local test wallet.** Buys, swaps, launch and bridge were checked in local dev with an in-page EIP-6963 test wallet. It never signs: each transaction is simulated against mainnet with state overrides, funded and approved, and gets a made-up receipt. The external-wallet version started on Base to exercise the switch.
+
+### Charts — `components/PriceChart.tsx` (2026-09-26)
+- Trades are text, not avatar circles (owner's request).
+  - Buys show "+$500" in green just above the line; sells "-$250" in red just below.
+  - New live trades pop in.
+  - Your own trades get a yellow outline.
+  - Placement: yours, then theses, then the largest trades; overlapping labels are dropped (28 on phones, 70 on desktop).
+- Like fomo's chart:
+  - A legend: coin · timeframe, then the value under the crosshair and its change from the bar before.
+  - % / log / auto scale buttons and a UTC clock under the chart.
+  - Market cap by default (remembered).
+  - Caps under $100K in full dollars on the axis.
+- Launchpad coins use this chart too (the old `CurveChart` is gone), priced from the curve's reserves after each trade.
+
+### Phone home and desktop nav (2026-09-26)
+- **Phone home** (`components/MobileHome.tsx`, top of the Terminal on phones), like fomo's app:
+  - Your cash with Deposit; with no wallet yet, "Get started" opens the trading wallet.
+  - A side-scrolling strip of the week's top traders: PnL if positive, else volume.
+- **Desktop nav** has Swap and Bridge. Below 1180px wide, Feed, Leaderboard, Clans and Rewards drop out of the top bar; they stay in the left panel and the account menu.
 
 ## Argus integration (ARCDEX)
 

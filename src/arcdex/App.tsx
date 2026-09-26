@@ -5,7 +5,8 @@ import Terminal from './pages/Terminal'
 // pull in heavy libraries (Circle Bridge Kit, charting, launchpad flows)
 // that would otherwise all have to download before the coin list shows.
 const TokenPage       = lazy(() => import('./pages/TokenPage'))
-const ArgusTokenPage  = lazy(() => import('./pages/ArgusTokenPage'))
+// Argus/Uniswap coins and launchpad (bonding-curve) coins share /token/0x… links.
+const CoinPage        = lazy(() => import('./pages/CoinPage'))
 const Portfolio       = lazy(() => import('./pages/Portfolio'))
 const Launchpad       = lazy(() => import('./pages/Launchpad'))
 const Swap            = lazy(() => import('./pages/Swap'))
@@ -23,10 +24,12 @@ import TradingWalletPanel from './components/TradingWalletPanel'
 import DiscoveryPanel from './components/DiscoveryPanel'
 import { DiscoverClans, FollowTopTraders, TickerBar } from './components/Rails'
 import { captureReferral } from './lib/referral'
+import { loadLaunchpadCoins } from './lib/launchpadCoins'
 import { pageToPath, pathToPage } from './lib/router'
 import './arcdex.css'
 import { t as T, N_, useLang } from './lib/i18n'
 import { ConnectModalHost } from './components/ConnectWallet'
+import { NetworkGuard, WalletPromptHost } from './components/WalletPrompt'
 import MobileTabBar from './components/MobileTabBar'
 import Sheet from './components/Sheet'
 import { sheetHistory } from './lib/sheetHistory'
@@ -34,6 +37,8 @@ import { OPEN_TRADING_WALLET } from './lib/tradingWalletSheet'
 
 // Remember ?ref= or /r/<name> before anything renders (first-touch attribution).
 captureReferral()
+// Launchpad coins open their own page from /token/0x… links (pages/CoinPage.tsx): know them early.
+void loadLaunchpadCoins().catch(() => {})
 
 export type Page =
   | { name: 'terminal' }
@@ -109,6 +114,8 @@ export default function App() {
   return (
     <div className={`app-shell${detail ? ' is-detail' : ''}`}>
       <NavBar page={page} navigate={navigate} onMenuClick={() => setNavOpen(o => !o)} onBack={detail ? goBack : undefined} />
+      {/* The bridge switches the wallet to other chains on purpose. */}
+      <NetworkGuard hidden={page.name === 'bridge'} />
 
       <div className="app-body" key={lang}>
         {navOpen && <div className="sidebar-backdrop" onClick={() => setNavOpen(false)} />}
@@ -126,7 +133,7 @@ export default function App() {
           <Suspense fallback={<div className="loading-state">{T("Loading…")}</div>}>
           {page.name === 'terminal'    && <Terminal navigate={navigate} registerFeedTokens={registerFeedTokens} />}
           {page.name === 'token'       && <TokenPage address={page.address} navigate={navigate} />}
-          {page.name === 'argus'       && <ArgusTokenPage key={page.address} address={page.address} pool={page.pool} navigate={navigate} />}
+          {page.name === 'argus'       && <CoinPage key={page.address} address={page.address} pool={page.pool} navigate={navigate} />}
           {page.name === 'portfolio'   && <Portfolio navigate={navigate} />}
           {page.name === 'launchpad'   && <Launchpad navigate={navigate} />}
           {page.name === 'swap'        && <Swap navigate={navigate} />}
@@ -157,6 +164,7 @@ export default function App() {
         <TradingWalletPanel />
       </Sheet>
       <ConnectModalHost />
+      <WalletPromptHost />
     </div>
   )
 }

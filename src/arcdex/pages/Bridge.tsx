@@ -6,6 +6,8 @@ import { openConnectModal } from '../components/ConnectWallet'
 import { kit, getBridgeAdapter, tradingWalletAdapter, ensureWalletChain, quoteBridge, BRIDGE_CHAINS, BRIDGE_FEE_BPS, type BridgeQuote } from '../lib/bridgeKit'
 import { useEmbeddedAddress } from '../lib/identity'
 import { t as T } from '../lib/i18n'
+import { promptWallet, txErrorText } from '../lib/tx'
+import { hideWalletPrompt } from '../lib/walletPrompt'
 
 type Dir = 'out' | 'in'
 type Adapter = Awaited<ReturnType<typeof getBridgeAdapter>> | ReturnType<typeof tradingWalletAdapter>
@@ -82,9 +84,12 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
     if (!sender || !(n > 0) || !recipientOk) return
     setErrMsg(''); setResult(null); setProgress([])
     let provider: EIP1193Provider | null = null
+    let prompted = false
     const onStep = (p: unknown) => {
       const m = (p as { method?: string }).method
       if (m) setProgress(prev => (prev.includes(m) ? prev : [...prev, m]))
+      // Both signatures are in: nothing left to confirm in the wallet app.
+      if (m === 'burn' && prompted) { hideWalletPrompt(); prompted = false }
     }
     try {
       let adapter: Adapter
@@ -95,23 +100,27 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
         setStatus('switching')
         await ensureWalletChain(provider, from)
         adapter = await getBridgeAdapter(provider)
+        // WalletConnect on a phone: offer to open the wallet app for the approve + burn.
+        prompted = await promptWallet()
       }
       adapterRef.current = adapter
       setStatus('bridging')
       kit.on('*' as never, onStep as never)
-      const res = await kit.bridge({ from: { adapter, chain: from as BridgeChain }, to: { chain: to as BridgeChain, recipientAddress: recipientAddr, useForwarder: true }, amount } as never)
+      // Approve, then burn, as two plain transactions: the kit would otherwise
+      // batch them (EIP-5792) where the wallet supports it, which asks
+      // MetaMask users to switch to a smart account first.
+      const res = await kit.bridge({ from: { adapter, chain: from as BridgeChain }, to: { chain: to as BridgeChain, recipientAddress: recipientAddr, useForwarder: true }, amount, config: { batchTransactions: false } } as never)
       setResult(res)
       setStatus(res.state === 'success' ? 'done' : 'error')
       if (res.state !== 'success') setErrMsg(T("The transfer didn't finish — see the steps below. If the burn went through, your USDC is safe: press Retry to finish it."))
       if (res.state === 'success') setAmount('')
     } catch (e) {
       const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
-      setErrMsg(/rejected|denied|cancel/i.test(m) ? T('You cancelled the transaction.')
-        : /insufficient|exceeds balance/i.test(m) ? T('Not enough USDC (or gas) on {chain} for this transfer.', { chain: from })
-        : m.slice(0, 220))
+      setErrMsg(/insufficient|exceeds balance/i.test(m) && !/allowance/i.test(m) ? T('Not enough USDC (or gas) on {chain} for this transfer.', { chain: from }) : txErrorText(e))
       setStatus('error')
     } finally {
       kit.off('*' as never, onStep as never)
+      if (prompted) hideWalletPrompt()
       // Bringing USDC in switched the wallet away from Arc: switch it back for the rest of ARCDEX.
       if (provider && from !== 'Arc') void ensureWalletChain(provider, 'Arc').catch(() => {})
     }
@@ -220,11 +229,15 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
               <>
                 <div style={{ fontWeight: 700, color: result.state === 'success' ? 'var(--green)' : 'var(--amber)' }}>{result.state === 'success' ? T("✓ Bridge complete") : T('State: {state}', { state: result.state })}</div>
                 {result.steps.map((s, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: 'var(--text-muted)' }}>
-                    <span>{T(STEP[s.name] ?? s.name)}{s.forwarded ? T(" (auto via Circle relayer)") : ''}</span>
-                    <span style={{ color: s.state === 'success' ? 'var(--green)' : s.state === 'error' ? 'var(--red)' : 'var(--text-muted)', flexShrink: 0 }}>
-                      {s.explorerUrl && s.txHash ? <a href={s.explorerUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>{s.state}</a> : s.state}
-                    </span>
+                  <div key={i}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: 'var(--text-muted)' }}>
+                      <span>{T(STEP[s.name] ?? s.name)}{s.forwarded ? T(" (auto via Circle relayer)") : ''}</span>
+                      <span style={{ color: s.state === 'success' ? 'var(--green)' : s.state === 'error' ? 'var(--red)' : 'var(--text-muted)', flexShrink: 0 }}>
+                        {s.explorerUrl && s.txHash ? <a href={s.explorerUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>{s.state}</a> : s.state}
+                      </span>
+                    </div>
+                    {/* Why a step failed, in the kit's words (or ours for the common ones). */}
+                    {s.state === 'error' && (s.errorMessage || s.error) ? <div style={{ color: '#fca5a5', fontSize: '0.72rem', marginTop: 2, wordBreak: 'break-word' }}>{txErrorText(s.error ?? new Error(s.errorMessage))}</div> : null}
                   </div>
                 ))}
                 {result.state !== 'success' && <button className="btn-ghost" onClick={() => void retry()} disabled={busy}>{T("Retry")}</button>}

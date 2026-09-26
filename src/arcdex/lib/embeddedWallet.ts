@@ -22,8 +22,59 @@
 // storage alone, can't decrypt the wallet.
 
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts'
-import { createWalletClient, http, type Hex } from 'viem'
+import { createWalletClient, parseTransaction, type Hex, type NonceManager, type Transport } from 'viem'
+import { getTransactionCount } from 'viem/actions'
 import { arc } from '../wagmi'
+import { arcTransport } from './rpc'
+
+// ── nonces ─────────────────────────────────────────────────────────────
+// After an approval confirms, the trade that follows is signed at once —
+// and a load-balanced RPC node one block behind still reports the old
+// transaction count. Signed with the approval's nonce, the trade is either
+// rejected ("nonce too low") or, worse, accepted by that node and never
+// mined. So a trading-wallet nonce is at least one past the last one this
+// tab broadcast. (viem's own nonceManager can't catch this when that nonce
+// was 0 — a new wallet's first approval — and it counts nonces whose
+// broadcast failed, which would leave a gap.)
+
+/** Highest nonce broadcast per wallet and chain, this tab. */
+const broadcast = new Map<string, number>()
+const nonceKey = (address: string, chainId: number) => `${address.toLowerCase()}:${chainId}`
+
+const walletNonces: NonceManager = {
+  async consume({ address, chainId, client }) {
+    const fetched = await getTransactionCount(client, { address, blockTag: 'pending' })
+    const sent = broadcast.get(nonceKey(address, chainId))
+    return sent !== undefined && fetched <= sent ? sent + 1 : fetched
+  },
+  async get(p) { return this.consume(p) },
+  increment() {},
+  reset() {},
+}
+
+/** Wraps the trading wallet's transport: every transaction it broadcasts
+ * is recorded, for the nonce of the next one. */
+export function recordBroadcasts(inner: Transport): Transport {
+  return (opts => {
+    const t = inner(opts)
+    const request = (async (args: { method: string; params?: unknown }, options?: unknown) => {
+      const res = await (t.request as (a: unknown, o?: unknown) => Promise<unknown>)(args, options)
+      if (args.method === 'eth_sendRawTransaction' && unlockedAccount) {
+        try {
+          const tx = parseTransaction((args.params as [Hex])[0])
+          if (typeof tx.nonce === 'number' && typeof tx.chainId === 'number') {
+            const k = nonceKey(unlockedAccount.address, tx.chainId)
+            broadcast.set(k, Math.max(broadcast.get(k) ?? -1, tx.nonce))
+          }
+        } catch { /* not a transaction this wallet signed */ }
+      }
+      return res
+    }) as typeof t.request
+    return { ...t, request }
+  }) as Transport
+}
+
+const account = (pk: Hex) => privateKeyToAccount(pk, { nonceManager: walletNonces })
 
 const STORAGE_KEY = 'arcdex.embeddedWallet.v1'
 const PBKDF2_ITERATIONS = 250_000
@@ -174,7 +225,7 @@ export async function createWallet(passcode: string): Promise<`0x${string}`> {
   const blob = await encryptPrivateKey(pk, passcode)
   localStorage.setItem(STORAGE_KEY, JSON.stringify(blob))
   unlockedPrivateKey = pk
-  unlockedAccount = privateKeyToAccount(pk)
+  unlockedAccount = account(pk)
   changed()
   return unlockedAccount.address
 }
@@ -183,13 +234,13 @@ export async function createWallet(passcode: string): Promise<`0x${string}`> {
 export async function importPrivateKey(privateKey: string, passcode: string): Promise<`0x${string}`> {
   if (passcode.length < 6) throw new Error('Passcode must be at least 6 characters')
   const pk = (privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`) as Hex
-  const account = privateKeyToAccount(pk) // throws if malformed
+  const imported = account(pk) // throws if malformed
   const blob = await encryptPrivateKey(pk, passcode)
   localStorage.setItem(STORAGE_KEY, JSON.stringify(blob))
   unlockedPrivateKey = pk
-  unlockedAccount = account
+  unlockedAccount = imported
   changed()
-  return account.address
+  return imported.address
 }
 
 /** Decrypt the stored wallet into memory for this tab session (asks for
@@ -197,7 +248,7 @@ export async function importPrivateKey(privateKey: string, passcode: string): Pr
 export async function unlock(passcode: string): Promise<`0x${string}`> {
   const pk = await decryptPrivateKey(storedBlob(), passcode)
   unlockedPrivateKey = pk
-  unlockedAccount = privateKeyToAccount(pk)
+  unlockedAccount = account(pk)
   changed()
   return unlockedAccount.address
 }
@@ -272,5 +323,5 @@ export function deleteWallet(): void {
  * directly, no external wallet popup. Throws if locked. */
 export function getEmbeddedWalletClient() {
   if (!unlockedAccount || !unlockedPrivateKey) throw new Error('Wallet is locked')
-  return createWalletClient({ account: unlockedAccount, chain: arc, transport: http(arc.rpcUrls.default.http[0]) })
+  return createWalletClient({ account: unlockedAccount, chain: arc, transport: recordBroadcasts(arcTransport()) })
 }

@@ -12,12 +12,19 @@
 // Estimated with a throwaway wallet on 2026-09-26: Arc → Base, Base → Arc,
 // Arbitrum → Arc and Arc → Ethereum all quote (see Bridge.tsx for the fees).
 
-import { createPublicClient, createWalletClient, http, type EIP1193Provider } from 'viem'
+import { createPublicClient, createWalletClient, http, type Chain, type EIP1193Provider, type Transport } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { BridgeKit, type BridgeChain } from '@circle-fin/bridge-kit'
 import * as Chains from '@circle-fin/bridge-kit/chains'
 import { createViemAdapterFromProvider, ViemAdapter } from '@circle-fin/adapter-viem-v2'
-import { getEmbeddedWalletClient } from './embeddedWallet'
+import { getEmbeddedWalletClient, recordBroadcasts } from './embeddedWallet'
+import { chainTransport } from './rpc'
+
+/** Reads, simulations and gas estimates for the kit: lag-tolerant, because
+ * the kit simulates the burn the moment the approval confirms, and a
+ * trailing RPC node then reports "transfer amount exceeds allowance"
+ * (lib/rpc.ts). */
+const kitPublicClient = ({ chain }: { chain: Chain }) => createPublicClient({ chain, transport: chainTransport() })
 
 export const kit = new BridgeKit()
 
@@ -100,7 +107,24 @@ export async function ensureWalletChain(provider: EIP1193Provider, name: string)
  * — not hardcoded to `window.ethereum`, which only exists for injected
  * wallets and would silently break WalletConnect sessions. */
 export async function getBridgeAdapter(provider: EIP1193Provider) {
-  return createViemAdapterFromProvider({ provider })
+  return createViemAdapterFromProvider({ provider, getPublicClient: kitPublicClient } as never)
+}
+
+/** In a browser, Bridge Kit's adapter asks the wallet to switch chains
+ * (`wallet_switchEthereumChain`) before every step. The trading wallet has
+ * no wallet app to ask: it signs locally, and its client is already built
+ * for the chain the kit wants — so the switch is answered here instead of
+ * being sent to an RPC node, which rejects it ("method not supported").
+ * Without this, sending from the trading wallet failed at the approve step. */
+function localChainSwitch(inner: Transport): Transport {
+  return (opts => {
+    const t = inner(opts)
+    const request = (async (args: { method: string; params?: unknown }, options?: unknown) =>
+      args.method === 'wallet_switchEthereumChain' || args.method === 'wallet_addEthereumChain'
+        ? null
+        : (t.request as (a: unknown, o?: unknown) => Promise<unknown>)(args, options)) as typeof t.request
+    return { ...t, request }
+  }) as Transport
 }
 
 /** The in-browser trading wallet as a Bridge Kit adapter — Arc only (it
@@ -110,8 +134,8 @@ export function tradingWalletAdapter() {
   const account = getEmbeddedWalletClient().account
   if (!account) throw new Error('Unlock your trading wallet first')
   return new ViemAdapter({
-    getPublicClient: ({ chain }) => createPublicClient({ chain, transport: http() }),
-    getWalletClient: ({ chain }) => createWalletClient({ account, chain, transport: http() }),
+    getPublicClient: kitPublicClient,
+    getWalletClient: ({ chain }) => createWalletClient({ account, chain, transport: localChainSwitch(recordBroadcasts(chainTransport())) }),
   }, { addressContext: 'user-controlled', supportedChains: [Chains.Arc] })
 }
 

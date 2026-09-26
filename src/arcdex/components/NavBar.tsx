@@ -29,14 +29,18 @@ function BurnTicker({ navigate }: { navigate: (p: Page) => void }) {
 export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
   const [searchOpen, setSearchOpen] = useState(false)
 
-  const navLinks: { label: string; page: Page }[] = [
+  // Secondary links drop out on narrower desktops (they're also in the
+  // left panel and the account menu); trading links always show.
+  const navLinks: { label: string; page: Page; secondary?: boolean }[] = [
     { label: T('Terminal'),    page: { name: 'terminal' } },
-    { label: T('Feed'),        page: { name: 'feed' } },
-    { label: T('Leaderboard'), page: { name: 'leaderboard' } },
-    { label: T('Clans'),       page: { name: 'clans' } },
-    { label: T('Rewards'),     page: { name: 'rewards' } },
+    { label: T('Swap'),        page: { name: 'swap' } },
+    { label: T('Bridge'),      page: { name: 'bridge' } },
     { label: T('Launchpad'),   page: { name: 'launchpad' } },
     { label: T('Portfolio'),   page: { name: 'portfolio' } },
+    { label: T('Feed'),        page: { name: 'feed' }, secondary: true },
+    { label: T('Leaderboard'), page: { name: 'leaderboard' }, secondary: true },
+    { label: T('Clans'),       page: { name: 'clans' }, secondary: true },
+    { label: T('Rewards'),     page: { name: 'rewards' }, secondary: true },
   ]
 
   return (
@@ -55,10 +59,10 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
 
       {/* Nav links */}
       <nav className="navbar-links">
-        {navLinks.map(({ label, page: p }) => (
+        {navLinks.map(({ label, page: p, secondary }) => (
           <button
             key={label}
-            className={`navbar-link${page.name === p.name ? ' active' : ''}`}
+            className={`navbar-link${page.name === p.name ? ' active' : ''}${secondary ? ' nav-secondary' : ''}`}
             onClick={() => navigate(p)}
           >
             {label}

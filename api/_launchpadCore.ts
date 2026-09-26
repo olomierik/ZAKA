@@ -164,9 +164,14 @@ export interface LaunchStats {
 const INITIAL_VIRTUAL_USDC = 8_000_000_000n // $8,000 (6 decimals)
 const VIRTUAL_TOKEN_OFFSET = 200_000_000n * 10n ** 18n
 
+/** Curve price (USD per whole token) from real reserves (6 and 18 decimals). */
+export function spotPrice(rUsdc: bigint, rToken: bigint): number {
+  return Number(INITIAL_VIRTUAL_USDC + rUsdc) / 1e6 / (Number(rToken + VIRTUAL_TOKEN_OFFSET) / 1e18)
+}
+
 /** Curve price (USD per whole token) after a trade, from its real reserves. */
 export function priceAfter(t: TradeRow): number {
-  return Number(INITIAL_VIRTUAL_USDC + BigInt(t[6])) / 1e6 / (Number(BigInt(t[7]) + VIRTUAL_TOKEN_OFFSET) / 1e18)
+  return spotPrice(BigInt(t[6]), BigInt(t[7]))
 }
 
 export function statsOf(trades: TradeRow[], nowSec = Math.floor(Date.now() / 1000)): LaunchStats {

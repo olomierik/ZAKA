@@ -1,4 +1,4 @@
-// Line or candlesticks, for every price chart (PriceChart, CurveChart).
+// Line or candlesticks, for every price chart (PriceChart).
 // Line is the default: one price line with a soft fill, green while the
 // chart's window is up and red while it's down, the way fomo draws it.
 // The choice is remembered per browser.

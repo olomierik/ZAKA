@@ -4,10 +4,11 @@
 // aggregator (they're not real Uniswap pools), so every read here goes
 // straight to Arc mainnet via viem — first-party, no proxy needed.
 
-import { createPublicClient, http, parseAbi, type Address } from 'viem'
+import { createPublicClient, parseAbi, type Address } from 'viem'
 import { arc } from '../wagmi'
+import { arcTransport } from '../lib/rpc'
 import { headBlock, scanLogs, type RawLog } from '../../../api/_arcLogs'
-import { CURVE_TRADE, DEPLOY_BLOCKS, TOKEN_LAUNCHED, decodeLaunch, decodeTrade, resolveMeta, statsOf, type Launch, type LaunchStats, type TradeRow } from '../../../api/_launchpadCore'
+import { CURVE_TRADE, DEPLOY_BLOCKS, TOKEN_LAUNCHED, decodeLaunch, decodeTrade, priceAfter, resolveMeta, statsOf, type Launch, type LaunchStats, type TradeRow } from '../../../api/_launchpadCore'
 
 export const LAUNCHPAD_ADDRESS = (import.meta.env.VITE_ARC_LAUNCHPAD_ADDRESS ?? '') as Address
 
@@ -52,7 +53,9 @@ const ERC20_META_ABI = parseAbi([
 
 export const BURN_ADDRESS = '0x000000000000000000000000000000000000dEaD' as const
 
-export const client = createPublicClient({ chain: arc, transport: http(arc.rpcUrls.default.http[0]) })
+/** Lag-tolerant: a simulation right after an approval retries until the
+ * RPC node answering has seen it (lib/rpc.ts). */
+export const client = createPublicClient({ chain: arc, transport: arcTransport() })
 
 export interface CurveState {
   creator: Address
@@ -232,6 +235,8 @@ export interface CurveTrade {
   txHash: `0x${string}`
   /** unix seconds */
   timestamp: number
+  /** Curve price after the trade (USD per token), from its reserves. */
+  priceAfter?: number
 }
 
 /** A token's trades since `fromBlock` (default: all of them), newest first. */
@@ -242,7 +247,7 @@ export async function getRecentTrades(token: Address, fromBlock?: bigint): Promi
     .filter(t => fromBlock === undefined || BigInt(t[8]) >= fromBlock)
     .map(t => ({
       trader: t[1] as Address, isBuy: t[2] === 1, usdcAmount: BigInt(t[3]), tokenAmount: BigInt(t[4]),
-      blockNumber: BigInt(t[8]), txHash: t[10] as `0x${string}`, timestamp: t[9],
+      blockNumber: BigInt(t[8]), txHash: t[10] as `0x${string}`, timestamp: t[9], priceAfter: priceAfter(t),
     }))
     .reverse()
 }
@@ -295,44 +300,6 @@ export async function getAllLaunchpadTokensAsArcTokens(): Promise<import('./rada
       quoteSymbol: 'USDC',
     }
   }))
-}
-
-export interface CurveCandle { time: number; open: number; high: number; low: number; close: number; volume: number }
-
-const RESOLUTION_SECONDS: Record<'1m' | '5m' | '15m' | '1h' | '4h' | '1d', number> = {
-  '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400,
-}
-
-/** Real OHLC candles from the coin's Trade events: each trade's own
- * execution price (usdcAmount/tokenAmount) is a data point, at its block's
- * timestamp (carried in the log, so no block lookups). */
-export async function getCurveOhlcv(token: Address, resolution: keyof typeof RESOLUTION_SECONDS): Promise<CurveCandle[]> {
-  const trades = await getRecentTrades(token)
-  if (trades.length === 0) return []
-
-  const bucketSec = RESOLUTION_SECONDS[resolution]
-  const points = trades
-    .map(t => ({
-      time: t.timestamp,
-      price: Number(t.usdcAmount) / 1e6 / (Number(t.tokenAmount) / 1e18),
-      volume: Number(t.usdcAmount) / 1e6,
-    }))
-    .sort((a, b) => a.time - b.time)
-
-  const buckets = new Map<number, CurveCandle>()
-  for (const p of points) {
-    const bucketTime = Math.floor(p.time / bucketSec) * bucketSec
-    const existing = buckets.get(bucketTime)
-    if (!existing) {
-      buckets.set(bucketTime, { time: bucketTime, open: p.price, high: p.price, low: p.price, close: p.price, volume: p.volume })
-    } else {
-      existing.high = Math.max(existing.high, p.price)
-      existing.low = Math.min(existing.low, p.price)
-      existing.close = p.price
-      existing.volume += p.volume
-    }
-  }
-  return [...buckets.values()].sort((a, b) => a.time - b.time)
 }
 
 export interface PlatformTokenStats {

@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useWriteContract } from 'wagmi'
 import { openConnectModal } from './ConnectWallet'
 import { parseUnits, formatUnits, type Address, type Hex } from 'viem'
-import { arc } from '../wagmi'
 import { client } from '../api/launchpad'
 import { USDC_ADDRESS, type SwapRoute } from '../api/argusMarket'
 import { useTrader, shortAddr } from '../lib/identity'
-import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
+import { sendArc, txErrorText } from '../lib/tx'
+import { waitForAllowance } from '../lib/rpc'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { SWAP_ROUTER_ADDRESS, routerConfigured, useRouterInfo, pct, type RouterInfo } from '../lib/routerInfo'
 import { referrerFor, referralLink } from '../lib/referral'
@@ -71,7 +70,6 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
   const trader = useTrader()
   const me = trader.address
   const info = useRouterInfo()
-  const { writeContractAsync } = useWriteContract()
 
   const [mode, setMode] = useState<'buy' | 'sell'>(initialMode ?? 'buy')
   const [amount, setAmount] = useState('')
@@ -143,13 +141,9 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
     return { abi, functionName: 'swapExactInV3' as const, args: [tokenIn, tokenOut, route.fee, amountIn, minOut, deadline, ...tail] }
   }
 
-  async function send(req: { address: Address; abi: unknown; functionName: string; args: unknown[] }): Promise<Hex> {
-    if (trader.kind === 'trading-wallet') {
-      // One-tap: the in-browser trading wallet signs directly, no pop-up.
-      return getEmbeddedWalletClient().writeContract(req as never)
-    }
-    return writeContractAsync({ ...req, chainId: arc.id } as never)
-  }
+  // One-tap with the trading wallet (signs locally, no pop-up); an external
+  // wallet is put on Arc first (lib/tx.ts).
+  const send = (req: { address: Address; abi: unknown; functionName: string; args: unknown[] }): Promise<Hex> => sendArc(trader.kind, req as never)
 
   async function submit() {
     if (!me || !info || !route || amountIn === 0n) return
@@ -161,6 +155,8 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         const h = await send({ address: tokenIn, abi: ERC20_ABI, functionName: 'approve', args: [SWAP_ROUTER_ADDRESS, amountIn] })
         const rc = await client.waitForTransactionReceipt({ hash: h })
         if (rc.status !== 'success') throw new Error(T('Approval failed'))
+        // Arc's RPC nodes can trail by a block: wait until the approval is visible.
+        await waitForAllowance(client, tokenIn, me, SWAP_ROUTER_ADDRESS, amountIn)
         setAllowance(amountIn)
       }
 
@@ -202,9 +198,8 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       triggerIndex(true)
       onTraded?.()
     } catch (e) {
-      const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
       setStep('error')
-      setMsg(/rejected|denied/i.test(m) ? T("You cancelled the transaction.") : T('Trade failed: {reason}', { reason: m }).slice(0, 220))
+      setMsg(txErrorText(e))
     }
   }
 

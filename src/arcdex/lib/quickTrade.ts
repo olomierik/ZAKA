@@ -5,6 +5,7 @@
 import { parseAbi } from 'viem'
 import { isUnlocked, currentAddress, getEmbeddedWalletClient } from './embeddedWallet'
 import { LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, client as publicClient, getCurve } from '../api/launchpad'
+import { waitForAllowance } from './rpc'
 
 const USDC_ADDR = '0x3600000000000000000000000000000000000000' as const
 const ERC20_ABI = parseAbi([
@@ -38,7 +39,10 @@ export async function quickBuyLaunchpad(token: `0x${string}`, usdcAmount: bigint
   })
   if (allowance < usdcAmount) {
     const approveHash = await wallet.writeContract({ address: USDC_ADDR, abi: ERC20_ABI, functionName: 'approve', args: [LAUNCHPAD_ADDRESS, usdcAmount] })
-    await publicClient.waitForTransactionReceipt({ hash: approveHash })
+    const rc = await publicClient.waitForTransactionReceipt({ hash: approveHash })
+    if (rc.status !== 'success') throw new Error('Approval failed')
+    // Arc's RPC nodes can trail by a block: wait until the approval is visible.
+    await waitForAllowance(publicClient, USDC_ADDR, owner, LAUNCHPAD_ADDRESS, usdcAmount)
   }
 
   const call = { address: LAUNCHPAD_ADDRESS, abi: LAUNCHPAD_ABI, functionName: 'buy' as const, args: [token, usdcAmount, minOut] as const }

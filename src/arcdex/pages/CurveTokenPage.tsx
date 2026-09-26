@@ -1,10 +1,12 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { getLaunchpadToken, getRecentTrades, getDevHoldingPct, LAUNCHPAD_ADDRESS, type LaunchpadToken, type CurveTrade } from '../api/launchpad'
 import { subscribeLaunchpadTrades } from '../api/launchpadRpc'
 import { computeTrustReport, type TrustReport } from '../api/trustScore'
 import { ARC_EXPLORER } from '../api/arcRpc'
 import CurveSwapWidget from '../components/CurveSwapWidget'
-import CurveChart from '../components/CurveChart'
+import PriceChart, { type ChartTrade } from '../components/PriceChart'
+import type { Tick } from '../lib/candles'
+import { useTrader } from '../lib/identity'
 import Sheet, { TradeBar } from '../components/Sheet'
 import { useIsMobile } from '../lib/useMobile'
 import type { Page } from '../App'
@@ -39,6 +41,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
   const [devPct, setDevPct] = useState<number | null>(null)
   const [trust, setTrust] = useState<TrustReport | null>(null)
   const [trustLoading, setTrustLoading] = useState(false)
+  const me = useTrader().address?.toLowerCase() ?? null
 
   const load = useCallback(() => {
     void getLaunchpadToken(address as `0x${string}`).then(t => {
@@ -80,11 +83,26 @@ export default function CurveTokenPage({ address, navigate }: Props) {
         blockNumber: BigInt(live.blockNumber),
         txHash: live.txHash as `0x${string}`,
         timestamp: Math.floor(live.timestamp / 1000),
+        priceAfter: live.priceAfter,
       }
       setTrades(prev => prev.some(t => t.txHash === trade.txHash) ? prev : [trade, ...prev].slice(0, 200))
     })
     return unsub
   }, [address])
+
+  // The chart: each trade moves the curve price (its reserves after the
+  // trade) and is marked where it happened — "+$5" for a buy, "-$2" for a sell.
+  const priceOf = (t: CurveTrade) => t.priceAfter ?? Number(t.usdcAmount) / 1e6 / (Number(t.tokenAmount) / 1e18)
+  const ticks = useMemo<Tick[]>(() => trades.map(t => ({ time: t.timestamp * 1000, priceUsd: priceOf(t), usd: Number(t.usdcAmount) / 1e6 })), [trades])
+  const chartTrades = useMemo<ChartTrade[]>(() => trades.map(t => {
+    const usd = Number(t.usdcAmount) / 1e6
+    return {
+      id: `${t.txHash}:${t.isBuy ? 'b' : 's'}:${t.tokenAmount}`, time: t.timestamp * 1000, priceUsd: priceOf(t), usd,
+      kind: t.isBuy ? 'buy' : 'sell', maker: t.trader,
+      label: T(t.isBuy ? '{who} bought ${usd}' : '{who} sold ${usd}', { who: short(t.trader), usd: usd.toFixed(2) }),
+      mine: !!me && t.trader.toLowerCase() === me,
+    }
+  }), [trades, me])
 
   if (loading && !token) return <div className="loading-state">{T("Loading…")}</div>
   if (!token) return <div style={{ padding: 40, color: 'var(--text-muted)' }}>{T("Token not found.")}</div>
@@ -151,7 +169,8 @@ export default function CurveTokenPage({ address, navigate }: Props) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16, padding: 16 }}>
             <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{T("PRICE CHART")}</div>
-            <CurveChart token={token.address} />
+            <PriceChart poolAddress={null} ticks={ticks} live trades={chartTrades} supply={1_000_000_000} symbol={token.symbol}
+              onTraderClick={a => navigate({ name: 'trader', address: a })} />
           </div>
 
           {!token.curve.graduated && (

@@ -3,11 +3,9 @@
 // for a connected external wallet (wagmi).
 
 import { useCallback, useEffect, useState } from 'react'
-import { useWriteContract } from 'wagmi'
 import { parseAbi, parseUnits, type Address, type Hex } from 'viem'
-import { arc } from '../wagmi'
 import { client } from '../api/launchpad'
-import { getEmbeddedWalletClient } from './embeddedWallet'
+import { sendArc } from './tx'
 import type { Trader } from './identity'
 
 export const USDC = '0x3600000000000000000000000000000000000000' as Address
@@ -36,7 +34,6 @@ export function useCash(address: string | null): { cash: number | null; refresh:
 /** Returns a function that sends USDC from the trader's wallet and waits
  * for it to confirm. */
 export function useSendUsdc(trader: Trader) {
-  const { writeContractAsync } = useWriteContract()
   return useCallback(async (to: string, amount: string): Promise<Hex> => {
     if (!trader.address) throw new Error('Connect or unlock a wallet first')
     if (!/^0x[0-9a-fA-F]{40}$/.test(to)) throw new Error('That is not a valid Arc address')
@@ -44,11 +41,9 @@ export function useSendUsdc(trader: Trader) {
     const value = parseUnits(amount, 6)
     if (value <= 0n) throw new Error('Enter an amount')
     const req = { address: USDC, abi: ERC20, functionName: 'transfer' as const, args: [to as Address, value] as const }
-    const hash = trader.kind === 'trading-wallet'
-      ? await getEmbeddedWalletClient().writeContract(req as never)
-      : await writeContractAsync({ ...req, chainId: arc.id } as never)
+    const hash = await sendArc(trader.kind, req as never)
     const rc = await client.waitForTransactionReceipt({ hash })
     if (rc.status !== 'success') throw new Error('Transfer failed')
     return hash
-  }, [trader, writeContractAsync])
+  }, [trader])
 }

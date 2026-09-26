@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createChart, type IChartApi, type ISeriesApi, type SeriesType, type CandlestickData, LineSeries, HistogramSeries } from 'lightweight-charts'
+import { createChart, type IChartApi, type ISeriesApi, type SeriesType, type CandlestickData, type MouseEventParams, LineSeries, HistogramSeries, PriceScaleMode } from 'lightweight-charts'
 import { addMainSeries, lineColors, loadChartStyle, onChartStyle, saveChartStyle, type ChartStyle, type MainSeries } from '../lib/chartStyle'
 import { useIsMobile } from '../lib/useMobile'
 import { getPoolOhlcv } from '../api/gecko'
 import { candlesFromTicks, mergeCandles, type Candle, type Tick } from '../lib/candles'
 import { engineEnabled, getEngineCandles, marketStream, useEngineStatus } from '../api/marketStream'
 import type { WireCandle } from '../../../api/_marketProtocol'
-import { identiconUrl } from './Avatar'
 import { INDICATORS, bollinger, ema, rsi, sma, vwap, type IndicatorId } from '../lib/indicators'
 import { t as T } from '../lib/i18n'
 
@@ -46,7 +45,8 @@ function overlay(history: Candle[], live: Candle[]): Candle[] {
 }
 const MIN_SIZES = [0, 10, 100, 1000] as const
 
-/** A trade (or thesis) drawn on the chart as the trader's avatar (fomo-style). */
+/** A trade (or thesis) marked on the chart: "+$500" in green for a buy,
+ * "-$250" in red for a sell, 💬 for a thesis. */
 export interface ChartTrade {
   id: string
   time: number // ms
@@ -80,7 +80,20 @@ interface Props {
   onTraderClick?: (address: string) => void
 }
 
-interface Bubble { t: ChartTrade; x: number; y: number; size: number }
+interface TradeLabel { t: ChartTrade; x: number; y: number; text: string; w: number; above: boolean }
+
+/** $1,234 → "1.2K" — short enough to sit on a chart. */
+const compactUsd = (v: number) => v >= 1e6 ? `${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(v >= 1e4 ? 0 : 1)}K` : v >= 100 ? v.toFixed(0) : v >= 1 ? String(Number(v.toFixed(1))) : v.toFixed(2)
+const labelText = (t: ChartTrade) => t.kind === 'thesis' ? '💬' : `${t.kind === 'buy' ? '+' : '-'}$${compactUsd(t.usd)}`
+/** Live trades newer than this pop in; older ones (history, backfill) just appear. */
+const POP_WINDOW_MS = 90_000
+/** Label height, and how far above (buys) or below (sells) the line it sits. */
+const LABEL_H = 16
+const LABEL_GAP = 11
+/** Market caps on the legend: $563.2K, $1.25M. */
+const compactValue = (x: number) => x >= 1e9 ? (x / 1e9).toFixed(2) + 'B' : x >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : x >= 1e3 ? (x / 1e3).toFixed(1) + 'K' : x.toFixed(x >= 1 ? 0 : 2)
+const MODE_KEY = 'arcdex:chart-mode'
+const SCALE_MODES = { normal: PriceScaleMode.Normal, log: PriceScaleMode.Logarithmic, pct: PriceScaleMode.Percentage } as const
 
 // Price axis: 2 decimals for $1+ coins, 4 significant digits for micro-caps.
 const fmtPrice = (v: number) => v >= 1000 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v === 0 ? '0' : v.toPrecision(4)
@@ -96,7 +109,9 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const [engineHistory, setEngineHistory] = useState(false)
   const [liveCandles, setLiveCandles] = useState<Candle[]>([])
-  const [mode, setMode] = useState<'price' | 'mcap'>('price')
+  // Market cap by default, like fomo; the choice is remembered per browser.
+  const [mode, setModeState] = useState<'price' | 'mcap'>(() => { try { return localStorage.getItem(MODE_KEY) === 'price' ? 'price' : 'mcap' } catch { return 'mcap' } })
+  const setMode = (m: 'price' | 'mcap') => { setModeState(m); try { localStorage.setItem(MODE_KEY, m) } catch { /* storage blocked */ } }
   const [style, setStyle] = useState<ChartStyle>(loadChartStyle)
   useEffect(() => onChartStyle(setStyle), [])
   const styleRef = useRef(style)
@@ -106,7 +121,13 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
   const [showThesis, setShowThesis] = useState(true)
   const [friendsOnly, setFriendsOnly] = useState(false)
   const [minSize, setMinSize] = useState<(typeof MIN_SIZES)[number]>(0)
-  const [bubbles, setBubbles] = useState<Bubble[]>([])
+  const [labels, setLabels] = useState<TradeLabel[]>([])
+  // Which trades have been seen, and until when a new live one "pops".
+  const seenTrades = useRef(new Set<string>())
+  const popUntil = useRef(new Map<string, number>())
+  const [scaleMode, setScaleMode] = useState<keyof typeof SCALE_MODES>('normal')
+  const [autoScale, setAutoScale] = useState(true)
+  const legendRef = useRef<HTMLSpanElement>(null)
   const [isFull, setIsFull] = useState(false)
   const [ind, setInd] = useState<Set<IndicatorId>>(loadIndicators)
   const [indOpen, setIndOpen] = useState(false)
@@ -196,19 +217,29 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
   const lineUp       = useRef(true)
   const frame        = useRef(0)
 
-  // Positions every bubble at its trade's candle and price. Re-run whenever
-  // the chart pans/zooms/resizes or the data changes.
+  // A label at each trade's candle and price — buys just above the line,
+  // sells just below. Your own trades, then theses, then the biggest trades
+  // are placed first; a label that would overlap one already placed is
+  // skipped, so a busy coin stays readable. Re-run whenever the chart
+  // pans/zooms/resizes or the data changes.
   const layout = useCallback(() => {
     cancelAnimationFrame(frame.current)
     frame.current = requestAnimationFrame(() => {
       const chart = chartRef.current, series = seriesRef.current, el = containerRef.current
       const all = [...(showBubbles ? trades ?? [] : []), ...(showThesis ? thesisMarks ?? [] : [])]
-      if (!chart || !series || !el || !all.length || !candles.length) { setBubbles([]); return }
+      // New live trades pop in; history and backfill just appear.
+      const now = Date.now()
+      for (const t of all) {
+        if (seenTrades.current.has(t.id)) continue
+        seenTrades.current.add(t.id)
+        if (now - t.time < POP_WINDOW_MS) popUntil.current.set(t.id, now + 1_500)
+      }
+      if (!chart || !series || !el || !all.length || !candles.length) { setLabels([]); return }
       const step = RES_SECONDS[res]
       const first = candles[0].time, last = candles[candles.length - 1].time
       const paneW = el.clientWidth - chart.priceScale('right').width()
       const paneH = chart.panes()[0]?.getHeight() ?? el.clientHeight - chart.timeScale().height()
-      const out: Bubble[] = []
+      const cands: TradeLabel[] = []
       for (const t of all) {
         if (t.kind !== 'thesis' && t.usd < minSize) continue
         if (friendsOnly && t.kind !== 'thesis' && !(t.mine || (t.maker && friends?.has(t.maker.toLowerCase())))) continue
@@ -218,13 +249,54 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
         const x = chart.timeScale().timeToCoordinate(bucket as never)
         const y = series.priceToCoordinate(t.priceUsd * scale)
         if (x === null || y === null || x < 0 || x > paneW || y < 0 || y > paneH) continue
-        const size = t.kind === 'thesis' ? 26 : Math.max(16, Math.min(34, 12 + Math.log10(Math.max(1, t.usd)) * 6))
-        out.push({ t, x, y, size })
+        const text = labelText(t)
+        const w = t.kind === 'thesis' ? 18 : text.length * 6.6 + 8
+        const above = t.kind !== 'sell'
+        cands.push({
+          t, text, w, above,
+          x: Math.min(paneW - w / 2 - 1, Math.max(w / 2 + 1, x)),
+          y: Math.min(paneH - LABEL_H / 2, Math.max(LABEL_H / 2, above ? y - LABEL_GAP : y + LABEL_GAP)),
+        })
       }
-      // Big trades on top; cap the count so a busy coin stays readable.
-      setBubbles(out.sort((a, b) => a.t.usd - b.t.usd).slice(-180))
+      const rank = (l: TradeLabel) => (l.t.mine ? 2e12 : 0) + (l.t.kind === 'thesis' ? 1e12 : 0) + l.t.usd
+      cands.sort((a, b) => rank(b) - rank(a))
+      const placed: TradeLabel[] = []
+      const max = mobile ? 28 : 70
+      for (const c of cands) {
+        if (placed.some(p => Math.abs(p.x - c.x) * 2 < p.w + c.w + 2 && Math.abs(p.y - c.y) < LABEL_H + 1)) continue
+        placed.push(c)
+        if (placed.length >= max) break
+      }
+      setLabels(placed)
     })
-  }, [trades, thesisMarks, showBubbles, showThesis, friendsOnly, friends, minSize, candles, res, scale])
+  }, [trades, thesisMarks, showBubbles, showThesis, friendsOnly, friends, minSize, candles, res, scale, mobile])
+
+  // fomo-style readout, top left: the value under the crosshair (or the
+  // latest), and its change from the bar before. Written straight to the
+  // DOM — crosshair moves come too fast to re-render the chart for each.
+  const legendVal = useRef<HTMLSpanElement>(null)
+  const legendChg = useRef<HTMLSpanElement>(null)
+  const scaleRef = useRef(scale)
+  scaleRef.current = scale
+  const writeLegend = (time?: number) => {
+    const v = legendVal.current, c = legendChg.current, data = applied.current.data
+    if (!v || !c) return
+    if (!data.length) { v.textContent = ''; c.textContent = ''; return }
+    let i = data.length - 1
+    if (time !== undefined) {
+      let lo = 0, hi = data.length - 1
+      while (lo < hi) { const mid = (lo + hi) >> 1; if ((data[mid].time as number) < time) lo = mid + 1; else hi = mid }
+      if ((data[lo].time as number) === time) i = lo
+    }
+    const cur = data[i].close, prev = i > 0 ? data[i - 1].close : data[i].open
+    const ch = cur - prev, pct = prev ? (ch / prev) * 100 : 0
+    const fmt = (x: number) => scaleRef.current > 1 ? '$' + compactValue(x) : '$' + fmtPrice(x)
+    v.textContent = fmt(cur)
+    c.textContent = `${ch >= 0 ? '+' : '-'}${fmt(Math.abs(ch))} (${ch >= 0 ? '+' : ''}${pct.toFixed(2)}%)`
+    c.style.color = ch >= 0 ? 'var(--green)' : 'var(--red)'
+  }
+  const writeLegendRef = useRef(writeLegend)
+  writeLegendRef.current = writeLegend
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -246,6 +318,8 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
       height: containerRef.current.clientHeight || 340,
     })
     chartRef.current = chart
+    // The legend follows the crosshair, and returns to the latest value when it leaves.
+    chart.subscribeCrosshairMove((p: MouseEventParams) => writeLegendRef.current(p.time === undefined ? undefined : Number(p.time)))
 
     const ro = new ResizeObserver(() => {
       if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight || 340 })
@@ -326,7 +400,9 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
         vol.update({ time: c.time as never, value: c.volume, color: c.close >= c.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)' })
       }
     } else {
-      series.applyOptions({ priceFormat: scale > 1 ? { type: 'custom', formatter: (v: number) => v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(1)}K` : `$${v.toFixed(0)}`, minMove: 1 } : { type: 'custom', formatter: fmtPrice, minMove: 1e-12 } })
+      // Market caps under $100K in full dollars ($7,001): a new coin's moves are
+      // a few dollars wide, and "$7.0K" on every gridline says nothing.
+      series.applyOptions({ priceFormat: scale > 1 ? { type: 'custom', formatter: (v: number) => v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : v >= 1e5 ? `$${(v / 1e3).toFixed(1)}K` : `$${Math.round(v).toLocaleString('en-US')}`, minMove: 1 } : { type: 'custom', formatter: fmtPrice, minMove: 1e-12 } })
       series.setData(data.map(point))
       // Frame once per pool/timeframe/mode, not on every refresh — otherwise
       // the user's zoom/scroll would snap back.
@@ -338,6 +414,7 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
       }
     }
     applied.current = { key, data }
+    writeLegendRef.current()
     recolorRef.current()
     layoutRef.current()
   }, [candles, scale, res, poolAddress, style])
@@ -392,6 +469,27 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
     // layout via ref: new trades arrive every few seconds and must not rebuild the indicators
     // (style: a swapped price series is added last; re-adding keeps the indicator lines above it)
   }, [barsKey, scale, ind, res, style])
+
+  // % / log / auto, like fomo's (and TradingView's) price-axis buttons.
+  useEffect(() => {
+    chartRef.current?.priceScale('right').applyOptions({ mode: SCALE_MODES[scaleMode], autoScale })
+  }, [scaleMode, autoScale])
+  // Dragging the price axis turns auto-scaling off in the chart; the button follows.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const off = () => { if (chartRef.current?.priceScale('right').options().autoScale === false) setAutoScale(false) }
+    el.addEventListener('pointerup', off)
+    return () => el.removeEventListener('pointerup', off)
+  }, [])
+  // The UTC clock under the chart (fomo shows one too).
+  const clockRef = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    const tick = () => { if (clockRef.current) clockRef.current.textContent = new Date().toISOString().slice(11, 19) + ' UTC' }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [])
 
   function screenshot() {
     const chart = chartRef.current
@@ -453,22 +551,22 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
       <button onClick={fullscreen} style={pill(false)} title={T("Fullscreen")}>⛶</button>
     </div>
     <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', flex: 1 }}>
-      <div ref={containerRef} style={{ height: isFull ? 'calc(100vh - 120px)' : (mobile ? 300 : 340) + (withRsi ? RSI_PANE : 0) }} />
-      {bubbles.length > 0 && (
+      <div ref={containerRef} style={{ height: isFull ? 'calc(100vh - 150px)' : (mobile ? 300 : 340) + (withRsi ? RSI_PANE : 0) }} />
+      {/* fomo-style legend: coin · timeframe, then the value under the crosshair and its change. */}
+      <div className="chart-legend">
+        {symbol && <b>{symbol}</b>}
+        <span className="chart-legend-res">{RESOLUTIONS.find(r => r.value === res)?.label}</span>
+        <span ref={legendVal} className="chart-legend-val" />
+        <span ref={legendChg} />
+      </div>
+      {labels.length > 0 && (
         // zIndex: the chart library layers its canvases with z-index 1–2,
-        // which would otherwise paint over these avatars.
+        // which would otherwise paint over these labels.
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }}>
-          {bubbles.map(({ t, x, y, size }) => (
-            <div key={t.id} title={t.label} onClick={() => t.maker && onTraderClick?.(t.maker)}
-              style={{ position: 'absolute', left: x - size / 2, top: y - size / 2, width: size, height: size, pointerEvents: 'auto', cursor: t.maker && onTraderClick ? 'pointer' : 'default' }}>
-              <img src={t.avatarUrl || (t.maker ? identiconUrl(t.maker) : identiconUrl(t.id))} alt=""
-                style={{
-                  width: size, height: size, borderRadius: '50%', objectFit: 'cover', background: '#0b1628',
-                  border: `2px solid ${t.kind === 'thesis' ? '#60a5fa' : t.mine && showMine ? '#facc15' : t.kind === 'buy' ? '#22c55e' : '#ef4444'}`,
-                  boxShadow: t.mine && showMine ? '0 0 0 3px rgba(250,204,21,0.35)' : '0 1px 4px rgba(0,0,0,0.5)',
-                }} />
-              {t.kind === 'thesis' && <span style={{ position: 'absolute', right: -6, top: -8, fontSize: 12 }}>💬</span>}
-            </div>
+          {labels.map(({ t, x, y, text }) => (
+            <span key={t.id} title={t.label} onClick={() => t.maker && onTraderClick?.(t.maker)}
+              className={`chart-trade ${t.kind}${t.mine && showMine ? ' mine' : ''}${(popUntil.current.get(t.id) ?? 0) > Date.now() ? ' pop' : ''}`}
+              style={{ left: x, top: y, cursor: t.maker && onTraderClick ? 'pointer' : 'default' }}>{text}</span>
           ))}
         </div>
       )}
@@ -477,6 +575,13 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
           display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 16,
           background: 'rgba(11,22,40,0.7)', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{loading ? T("Loading chart…") : onChainOnly(res) ? T("No trades in the last few hours — try a longer timeframe.") : T("No chart data yet.")}</div>
       )}
+    </div>
+    <div className="chart-footer">
+      <span ref={clockRef} className="chart-clock" />
+      <span style={{ flex: 1 }} />
+      <button className={scaleMode === 'pct' ? 'on' : ''} onClick={() => setScaleMode(m => (m === 'pct' ? 'normal' : 'pct'))} title={T("Percentage scale")}>%</button>
+      <button className={scaleMode === 'log' ? 'on' : ''} onClick={() => setScaleMode(m => (m === 'log' ? 'normal' : 'log'))} title={T("Logarithmic scale")}>log</button>
+      <button className={autoScale ? 'on' : ''} onClick={() => setAutoScale(a => !a)} title={T("Auto-fit the price scale")}>auto</button>
     </div>
     {(trades || thesisMarks) && (
       <div className="chart-overlays" style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginTop: 10, fontSize: '0.74rem', color: 'var(--text-muted)' }}>
