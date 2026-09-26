@@ -1202,5 +1202,9 @@ const d: Record<string, string> = {
   "Whitepaper": "Whitepaper",
   "Whitepaper (PDF)": "Whitepaper (PDF)",
   "Why Arc’s meme market needs one fast, safe and social place to trade, what traders want, how $ARCD buyback and burn works, and the plan week by week.": "Kwa nini soko la meme coins la Arc linahitaji sehemu moja ya haraka, salama na ya kijamii ya kufanya biashara, wafanyabiashara wanataka nini, jinsi kununua tena na kuchoma $ARCD kunavyofanya kazi, na mpango wiki kwa wiki.",
+  ". It's a separate launch that reuses the": ". Ni uzinduzi mwingine unaotumia tena tika ya",
+  "Every trade is simulated before it's sent. The pool's own fee, set by {launchpad}, applies on top of the platform fee.": "Kila biashara huigwa kabla ya kutumwa. Ada ya pool yenyewe, iliyowekwa na {launchpad}, huongezwa juu ya ada ya jukwaa.",
+  "Trade on {launchpad} ↗": "Fanya biashara kwenye {launchpad} ↗",
+  "{symbol} trades on {launchpad}'s own contracts, which ARCDEX can't route yet.": "{symbol} inauzwa kwenye mikataba ya {launchpad} yenyewe, ambayo ARCDEX bado haiwezi kupitisha.",
 }
 export default d

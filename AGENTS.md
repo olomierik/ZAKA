@@ -292,6 +292,65 @@ Every Argus coin across all 8 Portals, live, the way argus.world does it: **Geck
   - The owner sets the key in Vercel project `app` (Production) themselves; it takes effect on the next deployment. Set on 2026-09-25.
 - The on-chain Portal reader in `src/arcdex/api/argus.ts` is kept only as a fallback if `/api/argus` fails entirely.
 
+## Every other Arc launchpad (2026-09-26)
+
+The Argus integration above, extended to every launchpad GeckoTerminal lists on Arc: their coins are in the Terminal, open the full coin page, and trade through ArcDexSwapRouter wherever they sit in a Uniswap pool.
+
+- **Registry — `api/_launchpads.ts`** (shared by the server list and the app):
+  - Each launchpad has a name, a badge color, a site, and a regex matched against GeckoTerminal dex ids and names (`_` counts as a separator).
+  - Sites are only listed where the address is confirmed (docs, DefiLlama's adapters, the awesome-arc list). ArcPad, Arc.fun, Flipt, Onmi and NebulaPad are recognized but not linked.
+  - `isLaunchpadDex` keeps plain DEXes out (Uniswap, Curve, PEGD, …). A new venue named like a launchpad (`.fun`, `pad`, `launch`, `pump`, `meme`) is picked up without a code change.
+- **Where each launchpad's coins trade** (from its docs and DefiLlama's Arc adapters, github.com/DefiLlama/dimension-adapters `fees/<name>`):
+
+  | Venue | Launchpads | Routable by ARCDEX |
+  |---|---|---|
+  | Uniswap v4 | Argus, Minara (fee hook), o1, SolonPad instant mode (no hook), UBI.fun (Flaunch-style hook), graduated Mercuri | yes, if its hook allows it: ERC-20 USDC pools through ArcDexSwapRouter, native-USDC pools through Uniswap's Universal Router (next section) |
+  | Uniswap v3 | Tolly (locked 1% pools), RadarDEX (reflection tokens), Archemist, graduated Sashimi | yes, if the pool came from SwapRouter02's factory |
+  | Own curve or DEX | Sashimi, Warp/CircleWarp (native USDC; graduates to WarpDex, a Uniswap V2 fork), Mercuri and SolonPad curves | no: the coin page links to the launchpad |
+
+- **Market list** (`api/_argusCore.ts` `buildMarket`, served by `/api/argus`):
+  - Order: Argus first, as before. Then each other launchpad's top 20 by 24h volume, new pools on any listed launchpad, and missing caps filled in.
+  - Each row carries `launchpad` (the badge).
+  - The launchpads come from GeckoTerminal's `/networks/arc/dexes`, kept 6h in `arcdex_kv` (`arc:launchpads`). If that can't be read, the known ids in `KNOWN_LAUNCHPAD_DEXES` are used.
+  - The server fetches 4 launchpads at a time with a Pro key, 2 with a Demo key, and 1 on the free API.
+  - The response includes `launchpads`, so the browser's own rebuild (only when the server's copy is partial) asks for just the top 4 on the visitor's quota.
+- **App:**
+  - Terminal badges and source pills use each launchpad's color (`getLaunchpadColor`). Every non-ARCDEX coin with a pool opens `/token/<address>?pool=…`.
+  - The coin page's badge, the About panel's Launchpad row and its link (argus.world only for Argus coins), and the copycat banner all name the coin's launchpad.
+- **Trading** (`src/arcdex/api/argusMarket.ts`):
+  - `buildSwapRoute(token, pool, createdAt)` routes a v3 pool only when its `factory()` is SwapRouter02's. The router finds v3 pools by (pair, fee), so a fork's pool would be swapped somewhere else.
+  - v4 keys come from `PositionManager.poolKeys`. Launchpads that add liquidity through their own hook never register there; for those, the key is read from PoolManager's `Initialize` log within ±60k blocks of the pool's GeckoTerminal creation time. Either way, the key must hash to the pool id before it's used.
+  - `bestSwapRoute` tries the page's pool, then the coin's other pools (deepest first), so a graduated coin's Uniswap pool is found.
+  - The coin page re-checks the route in the background when the pool list refreshes (every 15s); it only starts over ("Finding route…") for a new coin or pool, so a trade clicked during a refresh isn't lost.
+  - With no route, the swap widget says the coin trades on its launchpad's own contracts and links there (`venue`). Its fee note names the launchpad's pool fee instead of Argus's creator tax.
+- **Known limits:**
+  - ArcDexSwapRouter doesn't take native-USDC (address 0) pools; those trade through Uniswap's Universal Router (next section).
+  - A hook that only allows its own router shows up at simulation. That's after the exact-amount approval to ARCDEX's router, which can't move funds by itself.
+  - Curve trading per launchpad (Sashimi, Warp, Mercuri, SolonPad) would need each one's contract ABI. Mercuri's and SolonPad's are published: github.com/mercuri-finance/mercuri-launch-contracts and github.com/solonlend/solonpad-skill.
+- **Tests:**
+  - `bun scripts/test-launchpads.ts`: recognition, discovery, the multi-launchpad build (order, concurrency, dedupe, caps, streaming) and Initialize-log key decoding.
+  - Browser checks cover the Terminal pills and badges, a Tolly v3 route, a Minara v4 route via the Initialize fallback, the Warp link, and a fork-factory pool being refused.
+
+
+## Native-USDC v4 pools, through Uniswap's Universal Router (2026-09-26)
+
+Minara, SolonPad's instant launches and other launchpads open their Uniswap v4 pools against Arc's native USDC (`currency0 = 0x0`, 18 decimals). ArcDexSwapRouter only takes ERC-20 USDC pools, so these trade through Uniswap's own Universal Router, with ARCDEX's fee taken in the same transaction. Nothing new to deploy.
+
+- **Code:** `src/arcdex/api/universalRouter.ts` (encoders, router and quoter lookup, Permit2). `buildSwapRoute` returns `{ kind: 'v4native', key }` for them; `ArgusSwapWidget` trades them in `submitNative`.
+- **Contracts** (Uniswap's deploy lists for Arc): Universal Router 2.1.2 `0x8702…2650`, else 2.1.1 `0x4fca…9fb1`; V4Quoter `0x8Dc1…8F94`; Permit2 `0x0000…8BA3`. The router and quoter are used only after their `poolManager()` answers Arc's PoolManager `0x8366…0951`.
+- **Buy**, one transaction, `msg.value` = the USDC (the 6-decimal amount × 10¹²):
+  - `TRANSFER` each fee share (referrer, then fee wallet).
+  - `V4_SWAP`: `SWAP_EXACT_IN_SINGLE`, `SETTLE_ALL` native, `TAKE_ALL` the token ≥ min out.
+  - `SWEEP` native back to the trader: a partial fill's unswapped USDC, so nothing stays in the router.
+- **Sell**: the token approves Permit2 (exact amount), Permit2 approves the router (exact amount, 30 minutes), then one `execute`:
+  - `V4_SWAP`: `SWAP_EXACT_IN_SINGLE`, `SETTLE_ALL` the token through Permit2, `TAKE` the native USDC to the router.
+  - `PAY_PORTION_FULL_PRECISION` each fee share. Each is a share of what's left, so each gets its exact share of the whole.
+  - `SWEEP` the rest to the trader, ≥ min out.
+- **Fee:** as ArcDexSwapRouter charges it. `feeBps` (2%) is read from that router and paid to its `feeWallet()`, `referralShareBps` (15%) of it to the referrer: the one bound there (`referrerOf`), else the visitor's stored invite (`referrerFor`), never the trader. The Universal Router doesn't bind referrers on-chain.
+- **Safety:** quoted on the V4Quoter through the pool's hook; min out (slippage) enforced on-chain; over 15% price impact needs the tick box; the exact `execute` is simulated before signing, so a hook that refuses the router stops there.
+- **Encoding:** both Arc deployments are built against v4-periphery whose `ExactInputSingleParams` has `minHopPriceX36` (sent as 0). `ADDRESS_THIS` is address(2), `OPEN_DELTA` is 0.
+- **Cash (max) on any buy** leaves 0.15 USDC. Arc takes gas from the same USDC balance, up front, so a buy of all of it passes the simulation and then reverts on-chain; it also leaves gas to sell.
+- **Tests:** `bun scripts/test-native-pools.ts`: selectors, commands and actions, the swap struct byte for byte against an independent encoding, fee shares, and the router's own arithmetic for sells (portions) and buys (partial fills). Browser checks cover a Minara coin's buy and sell (the signed transactions decoded), a bound referrer's share, a self-referral ignored and Cash (max).
 
 ## Social trading layer (fomo.family-style) — ARCDEX
 
@@ -478,7 +537,7 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
   - Portal 8 `0xeed7…5D93` handles ~125/day through `Launched` + `LaunchMetadata`.
   - Portals 1–6 are dormant.
   - Each launch tx also carries the PoolManager `Initialize`, so the pool is registered before its first trade.
-- **v4 pools with `currency0 = 0x0`** trade native USDC (18 decimals). The engine prices them. The coin page's swap widget doesn't route them yet ("No routable pool").
+- **v4 pools with `currency0 = 0x0`** trade native USDC (18 decimals). The engine prices them. The coin page trades them through Uniswap's Universal Router ("Native-USDC v4 pools").
 - **Database v5:** `supabase/migrations/20260928000000_arcdex_market_engine.sql`, tested on PGlite. Only needed if the engine stores history in Supabase; the Railway deployment below uses its own Postgres instead.
   - It adds `arcdex_mkt_*` tokens, pools, trades, candles, liquidity and cursor tables.
   - Functions: `arcdex_mkt_rebuild_candle` and `arcdex_mkt_cleanup`. Retention: trades 72h, 1s candles 6h, 5s 24h, 15s 3d, 1m 30d.

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Address } from 'viem'
 import {
-  getArgusTokenPools, getArgusTokenInfo, getArgusTrades, getArgusOnchain, buildSwapRoute, copycatOf,
+  getArgusTokenPools, getArgusTokenInfo, getArgusTrades, getArgusOnchain, bestSwapRoute, cachedArgusMarket, copycatOf,
   ARGUS_TOKEN, USDC_ADDRESS, type ArgusPool, type ArgusTokenInfo, type ArgusTrade, type ArgusOnchain, type SwapRoute,
 } from '../api/argusMarket'
 import { geckoSwap, knownMaker, loadPoolSwaps, mergeSwaps, poolMeta, quoteUsd, resolveMakers, subscribePoolSwaps, type PoolSwap } from '../api/poolSwaps'
@@ -25,6 +25,8 @@ import { useIsMobile } from '../lib/useMobile'
 import Sheet, { TradeBar } from '../components/Sheet'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import { getLaunchpadColor } from '../api/radardex'
+import { launchpadLabel, launchpadNamed } from '../../../api/_launchpads'
 
 // Full page for one Argus launch. What moves is read straight from the
 // chain: every swap in the pool (history from the logs, then each new one
@@ -158,17 +160,37 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     return () => { cancelled = true; clearInterval(id) }
   }, [address])
 
+  // The route: this pool first, then the coin's other pools, deepest
+  // first — a launchpad's own curve can't be routed, but a graduated
+  // coin's Uniswap pool can. Keyed on which pools there are, not on the
+  // 15s refreshes of their numbers.
+  const poolsRef = useRef(pools)
+  useEffect(() => { poolsRef.current = pools }, [pools]) // before the route effect below
+  const poolList = (pools ?? []).map(p => p.pool).join(',')
+  const poolsLoaded = pools !== null
+  const createdAt = active?.createdAt ?? null
+  const routedFor = useRef('')
+  const routeRef = useRef(route)
+  useEffect(() => { routeRef.current = route }, [route]) // before the route effect below
   useEffect(() => {
     let cancelled = false
-    setRouteLoading(true); setRoute(null)
+    // A new coin or pool starts over ("Finding route…"). The same pool after
+    // a pool-list refresh (a new pool, a new order) is re-checked in the
+    // background: a route it has stays tradable meanwhile, and only a route
+    // found replaces it — so a click during a refresh isn't lost.
+    const fresh = routedFor.current !== `${address}:${activePool}`
+    routedFor.current = `${address}:${activePool}`
+    if (fresh) { setRouteLoading(true); setRoute(null) }
+    else if (!routeRef.current) setRouteLoading(true) // nothing to keep: show it's looking
     // Opened from a bare /token/<address> URL: wait for the pool list.
-    if (!activePool) { setRouteLoading(pools === null); return }
-    buildSwapRoute(address, activePool)
-      .then(r => { if (!cancelled) setRoute(r) })
-      .catch(() => { if (!cancelled) setRoute(null) })
+    if (!activePool) { setRouteLoading(poolsRef.current === null); return }
+    const others = (poolsRef.current ?? []).filter(p => p.pool !== activePool)
+    bestSwapRoute(address, [{ pool: activePool, createdAt }, ...others])
+      .then(r => { if (!cancelled && (r || fresh)) setRoute(r) })
+      .catch(() => { if (!cancelled && fresh) setRoute(null) })
       .finally(() => { if (!cancelled) setRouteLoading(false) })
     return () => { cancelled = true }
-  }, [address, activePool, pools === null])
+  }, [address, activePool, poolList, createdAt, poolsLoaded])
 
   // The pool's quote side: from GeckoTerminal's pool data, or — while that's
   // still loading — from the on-chain route.
@@ -345,6 +367,12 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   const livePrice = swaps?.[0] ? (swaps[0].priceUsd ?? (usdPerQuote ? swaps[0].price * usdPerQuote : null)) : null
   const priceUsd = livePrice ?? active?.priceUsd ?? 0
   const copy = symbol === '…' ? null : copycatOf(symbol, address)
+  // Where the coin launched (its pool's GeckoTerminal dex), for the badge,
+  // the notes and — when ARCDEX can't route it — a link to trade it there.
+  const listed = useMemo(() => cachedArgusMarket()?.find(p => p.token.address === address.toLowerCase()) ?? null, [address])
+  const lpName = chain?.portal ? 'Argus' : active ? (active.launchpad ?? launchpadLabel(active.dex)) : listed?.launchpad ?? null
+  const lpColor = getLaunchpadColor(lpName ?? '')
+  const venue = lpName && lpName !== 'Argus' && !/uniswap/i.test(lpName) ? { name: lpName, site: launchpadNamed(lpName)?.site } : null
   const gtMcap = active?.marketCapUsd ?? active?.fdvUsd ?? null
   // Circulating supply, for MCap-at-trade and the chart's MCap mode.
   const supply = gtMcap && active?.priceUsd ? gtMcap / active.priceUsd : null
@@ -417,7 +445,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   const swapWidget = (mode?: 'buy' | 'sell') => (
     <ArgusSwapWidget key={mode ?? 'inline'} token={address as Address} symbol={symbol} tokenImage={image} priceUsd={priceUsd}
       marketCapUsd={mcap} route={route} routeLoading={routeLoading} initialMode={mode}
-      buyTaxBps={chain?.buyTaxBps} sellTaxBps={chain?.sellTaxBps} onTraded={onTraded} unverified={info ? !info.verified : false} />
+      buyTaxBps={chain?.buyTaxBps} sellTaxBps={chain?.sellTaxBps} onTraded={onTraded} unverified={info ? !info.verified : false} venue={venue} />
   )
   const socialTabs = (
     <TokenSocialTabs token={address} symbol={symbol} rows={rows} tradesLoaded={tradesLoaded} profiles={profiles} chainHolders={chainHolders} holderCount={holderCount}
@@ -452,8 +480,8 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
               <span key={priceUsd} className={priceDir ? `price-tick ${priceDir}` : undefined} style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--text)', fontFamily: 'var(--mono)', borderRadius: 4, padding: '0 2px' }}>{priceUsd ? fmtPrice(priceUsd) : '…'}</span>
               {active && <span style={{ fontWeight: 700, fontSize: '0.8rem', color: active.change.h24 >= 0 ? 'var(--green)' : 'var(--red)' }}>{pct(active.change.h24)}</span>}
-              <span style={{ background: 'rgba(168,85,247,0.15)', color: '#c084fc', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: '1px solid rgba(168,85,247,0.35)' }}>
-                {chain?.portal ? `ARGUS · Portal ${chain.portal}` : active?.dex === 'argus' ? T("ARGUS") : active?.dex ? active.dex.replace(/-arc$/, '').replace(/-/g, ' ').toUpperCase() : '…'}
+              <span style={{ background: `${lpColor}26`, color: lpColor, fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: `1px solid ${lpColor}59`, filter: 'brightness(1.35)' }}>
+                {chain?.portal ? `ARGUS · Portal ${chain.portal}` : lpName ? lpName.toUpperCase() : '…'}
               </span>
               {active && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>/ {active.quote.symbol}</span>}
               {info && !info.verified && <span title={T("GeckoTerminal hasn't verified this token's metadata")} style={{ background: 'rgba(245,158,11,0.12)', color: '#fcd34d', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99 }}>{T("Unverified")}</span>}
@@ -499,7 +527,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         </div>
       )}
       {copy && (
-        <div style={{ ...card, padding: '12px 16px', fontSize: '0.82rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.4)', color: '#fcd34d' }}>{T("⚠ This is")}{' '}<b>{T("not")}</b>{' '}{T("the real")}{' '}{copy}{T(". It's a separate Argus launch that reuses the")}{' '}{copy}{' '}{T("ticker — check the contract address before trading.")}</div>
+        <div style={{ ...card, padding: '12px 16px', fontSize: '0.82rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.4)', color: '#fcd34d' }}>{T("⚠ This is")}{' '}<b>{T("not")}</b>{' '}{T("the real")}{' '}{copy}{venue ? T(". It's a separate launch that reuses the") : T(". It's a separate Argus launch that reuses the")}{' '}{copy}{' '}{T("ticker — check the contract address before trading.")}</div>
       )}
       {pools !== null && pools.length === 0 && (
         <div style={{ ...card, padding: 16, color: 'var(--text-muted)', fontSize: '0.85rem' }}>{T("GeckoTerminal has no USDC- or ARGUS-quoted pool for this token yet.")}</div>

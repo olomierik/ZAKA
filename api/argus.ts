@@ -1,5 +1,6 @@
-// Argus market list, built server-side from GeckoTerminal and CDN-cached so
-// one refresh serves every visitor. The last list is also kept in Supabase
+// The market list (every Argus coin, then every other Arc launchpad's),
+// built server-side from GeckoTerminal and CDN-cached so one refresh serves
+// every visitor. The last list is also kept in Supabase
 // (v4 `arcdex_kv`), so a visitor never waits on a rebuild: they get the
 // stored list at once and a stale one is rebuilt in the background. The
 // list logic lives in _argusCore.ts; when there's no stored list and the
@@ -7,7 +8,8 @@
 // the browser rebuilds it from its own IP — see argusMarket.ts.
 
 import { gtFetch, gtUpstream } from './_geckoterminal'
-import { buildArgusMarket, type ArgusPool, type GtList } from './_argusCore'
+import { buildMarket, discoverLaunchpads, type ArgusPool, type GtDex, type GtList } from './_argusCore'
+import { KNOWN_LAUNCHPAD_DEXES } from './_launchpads'
 import { bondedFlags } from './_argusBonded'
 import { kvGet, kvSet } from './_supabaseAdmin'
 
@@ -41,7 +43,7 @@ async function gtBudgeted(path: string, deadline: number, failures: Failure[]): 
 }
 
 interface Ctx { waitUntil?: (p: Promise<unknown>) => void }
-interface Snapshot { updatedAt: string; source: string; partial: boolean; failures: Failure[]; pools: (ArgusPool & { seenAt?: number })[] }
+interface Snapshot { updatedAt: string; source: string; partial: boolean; failures: Failure[]; pools: (ArgusPool & { seenAt?: number })[]; launchpads?: GtDex[] }
 
 const SNAPSHOT = 'argus:market'
 const BUILDING = 'argus:building'
@@ -49,11 +51,28 @@ const BUILDING = 'argus:building'
 const FRESH_MS = 45_000
 /** A coin a throttled rebuild missed stays listed this long. */
 const KEEP_UNSEEN_MS = 15 * 60_000
+/** Which of GeckoTerminal's Arc dexes are launchpads, re-read this often. */
+const LAUNCHPADS = 'arc:launchpads'
+const LAUNCHPADS_TTL_MS = 6 * 3600_000
+
+/** The launchpads to list: GeckoTerminal's own list of Arc dexes, filtered
+ * to launch venues (new ones show up without a code change). Kept for 6h;
+ * if it can't be read, the last good copy, then the known ids. */
+async function launchpads(deadline: number, failures: Failure[]): Promise<GtDex[]> {
+  const saved = await kvGet<GtDex[]>(LAUNCHPADS)
+  if (saved && saved.age < LAUNCHPADS_TTL_MS && saved.value.length) return saved.value
+  const found = discoverLaunchpads(await gtBudgeted('/networks/arc/dexes?page=1', deadline, failures))
+  if (found.length) { await kvSet(LAUNCHPADS, found); return found }
+  return saved?.value.length ? saved.value : KNOWN_LAUNCHPAD_DEXES
+}
 
 async function build(prev: Snapshot | null): Promise<Snapshot | null> {
   const deadline = Date.now() + BUDGET_MS
   const failures: Failure[] = []
-  const pools = await buildArgusMarket(path => gtBudgeted(path, deadline, failures))
+  const lps = await launchpads(deadline, failures)
+  // Paid keys have their own rate limit: fetch a few launchpads at once.
+  const concurrency = gtUpstream() === 'coingecko-pro' ? 4 : gtUpstream() === 'coingecko-demo' ? 2 : 1
+  const pools = await buildMarket(path => gtBudgeted(path, deadline, failures), undefined, { launchpads: lps, concurrency })
 
   // Graduated vs still-bonding, for the Graduated / Bonding lists. Capped
   // at 5s so a slow RPC can never hold up the market list itself.
@@ -80,6 +99,7 @@ async function build(prev: Snapshot | null): Promise<Snapshot | null> {
     partial: failures.length > 0 && !prev,
     failures,
     pools: [...fresh, ...carried],
+    launchpads: lps,
   }
 }
 

@@ -1,5 +1,6 @@
-// Argus market list from GeckoTerminal — the same source argus.world uses
-// for live coin data. Pure logic over an injected fetcher, shared by:
+// The market list — every Argus coin, then every other Arc launchpad's —
+// from GeckoTerminal, the same source argus.world uses for live coin data.
+// Pure logic over an injected fetcher, shared by:
 //   - api/argus.ts (edge): builds it once, CDN-cached for every visitor;
 //   - the browser (src/arcdex/api/argusMarket.ts): rebuilds it from the
 //     visitor's own IP when the server's copy came back incomplete.
@@ -7,6 +8,8 @@
 // server IPs are shared with other projects, so they're often throttled
 // (429) while a visitor's own IP is not. (The leading underscore keeps
 // Vercel from deploying this file as a function.)
+
+import { KNOWN_LAUNCHPAD_DEXES, isLaunchpadDex, launchpadLabel } from './_launchpads'
 
 export const ARGUS_TOKEN = '0xece5ca8bf9220718e5727754026757512212cb3c'
 const INC = 'include=base_token,quote_token,dex'
@@ -32,8 +35,14 @@ export interface ArgusPool {
   createdAt: string | null
   /** Argus launch graduated from its curve (null/absent = unknown or not an Argus launch) */
   bonded?: boolean | null
+  /** Where the coin launched: "Argus", "Tolly", … (absent on lists from before other launchpads were listed = Argus). */
+  launchpad?: string
 }
 
+/** A GeckoTerminal dex on Arc. */
+export interface GtDex { id: string; name: string }
+
+const str = (v: unknown) => (typeof v === 'string' ? v : '')
 const num = (v: unknown) => {
   const n = typeof v === 'string' ? parseFloat(v) : typeof v === 'number' ? v : NaN
   return Number.isFinite(n) ? n : 0
@@ -43,15 +52,20 @@ const num = (v: unknown) => {
  * there, GeckoTerminal's fdv_usd/market_cap_usd describe `scopedTo`, not
  * each pool's base token (every ARGUS-quoted launch would show ARGUS's
  * $17M cap), so they're dropped for other bases and refilled later. */
-export function normalize(list: GtList | null, onlyDex?: string, scopedTo?: string): ArgusPool[] {
+export function normalize(list: GtList | null, onlyDex?: string | Set<string>, scopedTo?: string): ArgusPool[] {
   if (!list?.data) return []
   const tokens = new Map<string, Json>()
-  for (const inc of list.included ?? []) if (inc.type === 'token') tokens.set(inc.id, inc.attributes)
+  const dexNames = new Map<string, string>()
+  for (const inc of list.included ?? []) {
+    if (inc.type === 'token') tokens.set(inc.id, inc.attributes)
+    else if (inc.type === 'dex') dexNames.set(inc.id, str(inc.attributes.name))
+  }
+  const wanted = (dex: string) => !onlyDex || (typeof onlyDex === 'string' ? dex === onlyDex : onlyDex.has(dex))
 
   const out: ArgusPool[] = []
   for (const p of list.data) {
     const dex = p.relationships?.dex?.data?.id ?? ''
-    if (onlyDex && dex !== onlyDex) continue
+    if (!wanted(dex)) continue
     const a = p.attributes
     const base = tokens.get(p.relationships?.base_token?.data?.id ?? '')
     const quote = tokens.get(p.relationships?.quote_token?.data?.id ?? '')
@@ -78,9 +92,26 @@ export function normalize(list: GtList | null, onlyDex?: string, scopedTo?: stri
       fdvUsd: capsValid && a.fdv_usd ? num(a.fdv_usd) : null,
       txns24h: { buys: num(tx.buys), sells: num(tx.sells) },
       createdAt: (a.pool_created_at as string) ?? null,
+      launchpad: launchpadLabel(dex, dexNames.get(dex)),
     })
   }
   return out
+}
+
+/** The launch venues among GeckoTerminal's dexes on Arc (/networks/arc/dexes),
+ * Argus aside (it's listed first, its own way). */
+export function discoverLaunchpads(list: GtList | null): GtDex[] {
+  return (list?.data ?? [])
+    .filter(d => d.type === 'dex' && d.id !== 'argus')
+    .map(d => ({ id: d.id, name: str(d.attributes.name) }))
+    .filter(d => isLaunchpadDex(d.id, d.name))
+}
+
+/** Runs `fn` over `items`, at most `limit` at a time. */
+async function inBatches<T>(items: T[], limit: number, fn: (item: T) => Promise<void>) {
+  let next = 0
+  const worker = async () => { while (next < items.length) await fn(items[next++]) }
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker))
 }
 
 /** Fill in market cap / FDV for pools that lack them, from the tokens'
@@ -111,11 +142,20 @@ export function dedupe(all: ArgusPool[]): ArgusPool[] {
   return [...best.values()].sort((a, b) => b.volume24h - a.volume24h)
 }
 
-/** Sequential, not parallel: GeckoTerminal throttles bursts, and a partial
- * list beats a failed one. Most important first, and `onPartial` gets the
- * list so far after each step — so a slow (throttled) build still shows
- * the top coins within a call or two. */
-export async function buildArgusMarket(gt: GtFetcher, onPartial?: (pools: ArgusPool[]) => void): Promise<ArgusPool[]> {
+export interface MarketOptions {
+  /** Other launchpads' dexes to list after Argus (see discoverLaunchpads). */
+  launchpads?: GtDex[]
+  /** How many launchpads to fetch at once: 1 on the free API, which throttles bursts. */
+  concurrency?: number
+}
+
+/** Argus first, then every other launchpad. Sequential unless told
+ * otherwise: GeckoTerminal throttles bursts, and a partial list beats a
+ * failed one. Most important first, and `onPartial` gets the list so far
+ * after each step — so a slow (throttled) build still shows the top coins
+ * within a call or two. */
+export async function buildMarket(gt: GtFetcher, onPartial?: (pools: ArgusPool[]) => void, opts: MarketOptions = {}): Promise<ArgusPool[]> {
+  const launchpads = opts.launchpads ?? KNOWN_LAUNCHPAD_DEXES
   const rows: ArgusPool[] = []
   const emit = () => { if (onPartial && rows.length > 0) onPartial(dedupe(rows)) }
   const volumePage = async (page: number) => {
@@ -132,6 +172,7 @@ export async function buildArgusMarket(gt: GtFetcher, onPartial?: (pools: ArgusP
   const argusRows: ArgusPool[] = []
   const argusPage = async (page: number) => {
     const r = normalize(await gt(`/networks/arc/tokens/${ARGUS_TOKEN}/pools?page=${page}&${INC}`), undefined, ARGUS_TOKEN).filter(argusSide)
+    for (const p of r) p.launchpad = 'Argus'
     argusRows.push(...r)
     rows.push(...r)
   }
@@ -139,6 +180,11 @@ export async function buildArgusMarket(gt: GtFetcher, onPartial?: (pools: ArgusP
   await argusPage(1)
   emit()
   await volumePage(1) // the top 20 by volume — the Terminal's first screen
+  // Every other launchpad's top 20 by volume, so each shows up early.
+  await inBatches(launchpads, opts.concurrency ?? 1, async d => {
+    rows.push(...normalize(await gt(`/networks/arc/dexes/${d.id}/pools?page=1&sort=h24_volume_usd_desc&${INC}`), d.id))
+    emit()
+  })
   await argusPage(2)
   // Refill the ARGUS-listing rows' caps — they're the only rows whose caps
   // GeckoTerminal reported for ARGUS instead of the coin itself. (Mutates
@@ -146,7 +192,10 @@ export async function buildArgusMarket(gt: GtFetcher, onPartial?: (pools: ArgusP
   await fillCaps(argusRows, gt)
   emit()
   for (let page = 2; page <= VOLUME_PAGES; page++) await volumePage(page)
-  rows.push(...normalize(await gt(`/networks/arc/new_pools?page=1&${INC}`), 'argus'))
+  // New pools on any listed launchpad.
+  rows.push(...normalize(await gt(`/networks/arc/new_pools?page=1&${INC}`), new Set(['argus', ...launchpads.map(d => d.id)])))
+  // Caps GeckoTerminal left out elsewhere (young pools often lack them).
+  await fillCaps(rows, gt)
   emit()
   return dedupe(rows)
 }

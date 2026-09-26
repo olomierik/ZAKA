@@ -8,8 +8,12 @@
 import { type Address, type Hex, parseAbi, keccak256, encodeAbiParameters } from 'viem'
 import { client } from './launchpad'
 import type { ArcToken } from './radardex'
-import { buildArgusMarket, dedupe, type ArgusPool } from '../../../api/_argusCore'
+import { buildMarket, dedupe, type ArgusPool, type GtDex } from '../../../api/_argusCore'
+import { KNOWN_LAUNCHPAD_DEXES, launchpadLabel } from '../../../api/_launchpads'
 import { gtGet, gtDirectFetcher } from './gtClient'
+import { headBlock, hex, rpcCall, scanLogs, RECENT_RPC } from '../../../api/_arcLogs'
+import { POOL_MANAGER, signedWord, topicAddress, word } from '../../../api/_arcSwaps'
+import { NATIVE, isNativePool } from './universalRouter'
 
 export const USDC_ADDRESS = '0x3600000000000000000000000000000000000000' as Address
 export const ARGUS_TOKEN = '0xeCe5cA8bf9220718E5727754026757512212cb3c' as Address
@@ -31,11 +35,15 @@ const SERVER_WAIT_MS = 4_000
 
 interface ServerMarket { pools: ArgusPool[]; partial: boolean }
 
+// The launchpads the server found on GeckoTerminal, for the browser's own build.
+let serverLaunchpads: GtDex[] | null = null
+
 async function fetchServerMarket(): Promise<ServerMarket | null> {
   try {
     const res = await fetch('/api/argus')
     if (!res.ok) return null
-    const d = (await res.json()) as { pools?: ArgusPool[]; partial?: boolean }
+    const d = (await res.json()) as { pools?: ArgusPool[]; partial?: boolean; launchpads?: GtDex[] }
+    if (Array.isArray(d.launchpads) && d.launchpads.length) serverLaunchpads = d.launchpads
     return { pools: d.pools ?? [], partial: d.partial === true }
   } catch {
     return null
@@ -46,12 +54,14 @@ async function fetchServerMarket(): Promise<ServerMarket | null> {
  * already in flight or finished within the last minute is reused as-is). */
 function localMarket(onPartial?: (pools: ArgusPool[]) => void): Promise<ArgusPool[]> {
   if (!localBuild || Date.now() - localBuild.at > 60_000) {
-    localBuild = { at: Date.now(), pools: buildArgusMarket(gtDirectFetcher, onPartial).catch(() => []) }
+    // On the visitor's own free quota: Argus plus the biggest few launchpads.
+    const launchpads = (serverLaunchpads ?? KNOWN_LAUNCHPAD_DEXES).slice(0, 4)
+    localBuild = { at: Date.now(), pools: buildMarket(gtDirectFetcher, onPartial, { launchpads }).catch(() => []) }
   }
   return localBuild.pools
 }
 
-/** The Argus market list, as fast as it can be had. Uses the server's
+/** The market list (Argus, then every other launchpad), as fast as it can be had. Uses the server's
  * CDN-cached copy; when that's incomplete (GeckoTerminal throttles
  * Vercel's shared IPs) or slow (a cold rebuild), also builds it from the
  * visitor's own IP. Returns the first usable list; anything that lands
@@ -158,7 +168,7 @@ export function argusPoolToArcToken(p: ArgusPool): ArcToken {
     marketCap: p.marketCapUsd ?? p.fdvUsd ?? 0,
     liquidity: p.liquidityUsd,
     ageMs: Number.isFinite(created) ? Math.max(0, Date.now() - created) : 0,
-    launchpad: 'Argus',
+    launchpad: p.launchpad ?? 'Argus',
     poolAddress: p.pool,
     txCount24h: p.txns24h.buys + p.txns24h.sells,
     holderCount: 0,
@@ -227,6 +237,7 @@ export async function getArgusTokenPools(token: string): Promise<ArgusPool[]> {
   type R = { id: string; type: string; attributes: Record<string, unknown>; relationships?: Record<string, { data?: { id: string } }> }
   const d = await gecko<{ data?: R[]; included?: R[] }>(`/networks/arc/tokens/${token}/pools`, { include: 'base_token,quote_token,dex' })
   const toks = new Map((d.included ?? []).filter(i => i.type === 'token').map(i => [i.id, i.attributes]))
+  const dexNames = new Map((d.included ?? []).filter(i => i.type === 'dex').map(i => [i.id, typeof i.attributes.name === 'string' ? i.attributes.name : '']))
   const num = (v: unknown) => { const n = parseFloat(String(v ?? '')); return Number.isFinite(n) ? n : 0 }
   const pools: ArgusPool[] = []
   for (const p of d.data ?? []) {
@@ -237,9 +248,11 @@ export async function getArgusTokenPools(token: string): Promise<ArgusPool[]> {
     const pc = (a.price_change_percentage ?? {}) as Record<string, unknown>
     const tx = ((a.transactions ?? {}) as Record<string, Record<string, unknown>>).h24 ?? {}
     const img = base.image_url as string | undefined
+    const dex = p.relationships?.dex?.data?.id ?? ''
     pools.push({
       pool: String(a.address).toLowerCase(),
-      dex: p.relationships?.dex?.data?.id ?? '',
+      dex,
+      launchpad: launchpadLabel(dex, dexNames.get(dex)),
       token: { address: String(base.address).toLowerCase(), symbol: String(base.symbol), name: String(base.name), image: img && !img.includes('missing') ? img : null },
       quote: { address: String(quote.address).toLowerCase(), symbol: String(quote.symbol) },
       priceUsd: num(a.base_token_price_usd),
@@ -253,10 +266,10 @@ export async function getArgusTokenPools(token: string): Promise<ArgusPool[]> {
     })
   }
   // Only pools where this token is the base, quoted in something a USDC
-  // buy can reach (USDC directly, or ARGUS via ARGUS/USDC).
+  // buy can reach (USDC — ERC-20 or native — directly, or ARGUS via ARGUS/USDC).
   const tradable = pools.filter(p =>
     p.token.address === token.toLowerCase() &&
-    (p.quote.address === USDC_ADDRESS.toLowerCase() || p.quote.address === ARGUS_TOKEN.toLowerCase()))
+    (p.quote.address === USDC_ADDRESS.toLowerCase() || p.quote.address === NATIVE || p.quote.address === ARGUS_TOKEN.toLowerCase()))
   return tradable.sort((a, b) => b.liquidityUsd - a.liquidityUsd)
 }
 
@@ -384,10 +397,19 @@ export interface PoolKey { currency0: Address; currency1: Address; fee: number; 
 export type SwapRoute =
   | { kind: 'v4'; buyKeys: PoolKey[]; sellKeys: PoolKey[]; via: 'USDC' | 'ARGUS' }
   | { kind: 'v3'; fee: number }
+  /** A v4 pool against native USDC (Minara, SolonPad, …): through Uniswap's Universal Router (api/universalRouter.ts). */
+  | { kind: 'v4native'; key: PoolKey }
 
 const POSITION_MANAGER = '0x6049c9a0e26405C0985f9E3685C87d0aE917f82B' as Address
 const PM_ABI = parseAbi(['function poolKeys(bytes25) view returns (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks)'])
-const V3_POOL = parseAbi(['function token0() view returns (address)', 'function token1() view returns (address)', 'function fee() view returns (uint24)'])
+const V3_POOL = parseAbi(['function token0() view returns (address)', 'function token1() view returns (address)', 'function fee() view returns (uint24)', 'function factory() view returns (address)'])
+// Uniswap's SwapRouter02 on Arc — what ArcDexSwapRouter's v3 swaps go through.
+// It finds the pool by (pair, fee) in its own factory, so a v3 route is only
+// safe for pools that factory created (not a fork's look-alike).
+const SWAP_ROUTER02 = '0x53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77' as Address
+let routerFactory: Promise<Address> | null = null
+const v3Factory = () => (routerFactory ??= client.readContract({ address: SWAP_ROUTER02, abi: parseAbi(['function factory() view returns (address)']), functionName: 'factory' })
+  .catch(e => { routerFactory = null; throw e }))
 const POOLKEY_TYPE = [{ type: 'tuple', components: [
   { name: 'currency0', type: 'address' }, { name: 'currency1', type: 'address' },
   { name: 'fee', type: 'uint24' }, { name: 'tickSpacing', type: 'int24' }, { name: 'hooks', type: 'address' },
@@ -397,38 +419,100 @@ const POOLKEY_TYPE = [{ type: 'tuple', components: [
 // ARGUS-quoted launch routes through. Verified to hash to that PoolId.
 export const ARGUS_USDC_KEY: PoolKey = { currency0: USDC_ADDRESS, currency1: ARGUS_TOKEN, fee: 9850, tickSpacing: 99, hooks: ZERO as Address }
 
-async function v4KeyFor(poolId: Hex): Promise<PoolKey | null> {
+/** Never trust a key we can't prove is the pool GeckoTerminal named. */
+const keyIs = (key: PoolKey, poolId: Hex) => keccak256(encodeAbiParameters(POOLKEY_TYPE, [key])).toLowerCase() === poolId.toLowerCase()
+
+async function v4KeyFor(poolId: Hex, createdAt?: string | null): Promise<PoolKey | null> {
   const r = await client.readContract({ address: POSITION_MANAGER, abi: PM_ABI, functionName: 'poolKeys', args: [poolId.slice(0, 52) as Hex] })
   const key: PoolKey = { currency0: r[0], currency1: r[1], fee: Number(r[2]), tickSpacing: Number(r[3]), hooks: r[4] }
-  if (key.currency0 === ZERO && key.currency1 === ZERO) return null
-  // Never trust a key we can't prove is the pool GeckoTerminal named.
-  if (keccak256(encodeAbiParameters(POOLKEY_TYPE, [key])).toLowerCase() !== poolId.toLowerCase()) return null
-  return key
+  if (key.currency0 === ZERO && key.currency1 === ZERO) return v4KeyFromInitialize(poolId, createdAt)
+  return keyIs(key, poolId) ? key : null
+}
+
+// PoolManager's Initialize(PoolId indexed id, Currency indexed currency0,
+// Currency indexed currency1, uint24 fee, int24 tickSpacing, IHooks hooks,
+// uint160 sqrtPriceX96, int24 tick).
+export const V4_INITIALIZE = '0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438'
+
+/** A PoolKey from its Initialize log (the log's topics and data). */
+export function keyFromInitializeLog(log: { topics: string[]; data: string }): PoolKey {
+  return {
+    currency0: topicAddress(log.topics[2]) as Address,
+    currency1: topicAddress(log.topics[3]) as Address,
+    fee: Number(BigInt('0x' + word(log.data, 0))),
+    tickSpacing: Number(signedWord(word(log.data, 1))),
+    hooks: ('0x' + word(log.data, 2).slice(24)) as Address,
+  }
+}
+
+const blockTime = (n: number) => rpcCall<{ timestamp: string } | null>(RECENT_RPC, 'eth_getBlockByNumber', [hex(n), false], 5_000)
+  .then(b => (b ? parseInt(b.timestamp, 16) : NaN))
+
+/** The key of a v4 pool Uniswap's PositionManager doesn't know — launchpads
+ * that add liquidity through their own hook (UBI.fun's Flaunch-style one)
+ * never register it there. Read from the pool's Initialize log, looked for
+ * around the pool's creation time (GeckoTerminal's pool_created_at), and
+ * proven to hash to the pool id like any other key. */
+async function v4KeyFromInitialize(poolId: Hex, createdAt?: string | null): Promise<PoolKey | null> {
+  const created = createdAt ? Date.parse(createdAt) / 1000 : NaN
+  if (!Number.isFinite(created)) return null
+  const head = await headBlock()
+  const SAMPLE = 100_000
+  const [now, then] = await Promise.all([blockTime(head), blockTime(head - SAMPLE)])
+  const perBlock = (now - then) / SAMPLE
+  if (!(perBlock > 0)) return null
+  const guess = Math.round(head - (now - created) / perBlock)
+  const from = Math.max(0, guess - 60_000), to = Math.min(head, guess + 60_000)
+  if (from > to) return null
+  const r = await scanLogs({ address: POOL_MANAGER, topics: [V4_INITIALIZE, poolId.toLowerCase()] }, from, to, { head, reduce: l => l, deadline: Date.now() + 8_000, concurrency: 2 })
+  const log = r.parts.flat()[0]
+  if (!log) return null
+  const key = keyFromInitializeLog(log)
+  return keyIs(key, poolId) ? key : null
 }
 
 /** How to buy `token` with USDC through `pool` (and sell back). null when
- * the pool can't be routed safely — the UI says so rather than guess. */
-export async function buildSwapRoute(token: string, pool: string): Promise<SwapRoute | null> {
+ * the pool can't be routed safely — the UI says so rather than guess.
+ * `createdAt` (the pool's, from GeckoTerminal) finds the key of a v4 pool
+ * Uniswap's PositionManager doesn't know. Any Arc launchpad's coin routes
+ * when its pool is a Uniswap v3 or v4 pool paired with USDC (or ARGUS). */
+export async function buildSwapRoute(token: string, pool: string, createdAt?: string | null): Promise<SwapRoute | null> {
   const t = token.toLowerCase()
   const usdc = USDC_ADDRESS.toLowerCase()
   const argus = ARGUS_TOKEN.toLowerCase()
 
   if (pool.length === 42) {
-    const [t0, t1, fee] = await Promise.all([
+    // A bonding curve or a V2-style pair has no fee()/factory(): no route.
+    const [t0, t1, fee, factory, expected] = await Promise.all([
       client.readContract({ address: pool as Address, abi: V3_POOL, functionName: 'token0' }),
       client.readContract({ address: pool as Address, abi: V3_POOL, functionName: 'token1' }),
       client.readContract({ address: pool as Address, abi: V3_POOL, functionName: 'fee' }),
+      client.readContract({ address: pool as Address, abi: V3_POOL, functionName: 'factory' }),
+      v3Factory(),
     ])
+    if (factory.toLowerCase() !== expected.toLowerCase()) return null
     const pair = [t0.toLowerCase(), t1.toLowerCase()]
     if (!pair.includes(t) || !pair.includes(usdc)) return null
     return { kind: 'v3', fee: Number(fee) }
   }
 
-  const key = await v4KeyFor(pool as Hex)
+  const key = await v4KeyFor(pool as Hex, createdAt)
   if (!key) return null
   const sides = [key.currency0.toLowerCase(), key.currency1.toLowerCase()]
   if (!sides.includes(t)) return null
   if (sides.includes(usdc)) return { kind: 'v4', buyKeys: [key], sellKeys: [key], via: 'USDC' }
   if (sides.includes(argus)) return { kind: 'v4', buyKeys: [ARGUS_USDC_KEY, key], sellKeys: [key, ARGUS_USDC_KEY], via: 'ARGUS' }
+  // Native USDC (currency 0x0) is ArcDexSwapRouter's one gap: Uniswap's Universal Router takes it.
+  if (isNativePool(key, t)) return { kind: 'v4native', key }
+  return null
+}
+
+/** The first of a coin's pools (deepest first) that ARCDEX can route —
+ * e.g. a graduated coin's Uniswap pool when its launchpad pool is a curve. */
+export async function bestSwapRoute(token: string, pools: { pool: string; createdAt?: string | null }[]): Promise<SwapRoute | null> {
+  for (const p of pools) {
+    const r = await buildSwapRoute(token, p.pool, p.createdAt).catch(() => null)
+    if (r) return r
+  }
   return null
 }
