@@ -267,15 +267,22 @@ export interface ArgusTrade {
   tokenAmount: number
   priceUsd: number
   timestamp: number
+  block: number
+  /** The swap's log index, when GeckoTerminal's trade id carries it
+   * (…_<tx>_<logIndex>_<time>) — then it matches the chain's own id. */
+  logIndex: number | null
 }
 
-export async function getArgusTrades(pool: string, token: string): Promise<ArgusTrade[]> {
-  const d = await gecko<{ data?: { attributes: Record<string, string> }[] }>(`/networks/arc/pools/${pool}/trades`)
+/** GeckoTerminal's latest trades on a pool (newest first). `proxyOnly` for
+ * fast polling: the paid-key proxy or nothing. */
+export async function getArgusTrades(pool: string, token: string, opts: { proxyOnly?: boolean } = {}): Promise<ArgusTrade[]> {
+  const d = await gtGet<{ data?: { id?: string; attributes: Record<string, string> }[] }>(`/networks/arc/pools/${pool}/trades`, {}, opts)
   const t = token.toLowerCase()
-  return (d.data ?? []).map(({ attributes: a }) => {
+  return (d.data ?? []).map(({ id, attributes: a }) => {
     const buy = a.kind === 'buy'
     // For a buy the token is what came out; for a sell it's what went in.
     const tokenIsTo = a.to_token_address?.toLowerCase() === t
+    const li = id ? /_(0x[0-9a-fA-F]{64})_(\d+)_\d+$/.exec(id) : null
     return {
       txHash: a.tx_hash,
       maker: a.tx_from_address,
@@ -284,6 +291,8 @@ export async function getArgusTrades(pool: string, token: string): Promise<Argus
       tokenAmount: parseFloat(tokenIsTo ? a.to_token_amount : a.from_token_amount) || 0,
       priceUsd: parseFloat(tokenIsTo ? a.price_to_in_usd : a.price_from_in_usd) || 0,
       timestamp: Date.parse(a.block_timestamp),
+      block: Number(a.block_number) || 0,
+      logIndex: li && li[1].toLowerCase() === a.tx_hash?.toLowerCase() ? Number(li[2]) : null,
     }
   })
 }

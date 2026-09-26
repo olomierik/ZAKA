@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { AgoText } from '../components/Ago'
 import { openConnectModal } from '../components/ConnectWallet'
 import Avatar from '../components/Avatar'
 import ProfileEditor from '../components/ProfileEditor'
@@ -24,10 +25,7 @@ import { openTradingWallet } from '../lib/tradingWalletSheet'
 
 type Tab = 'points' | 'referrals' | 'creator' | 'history'
 const money = (n: number) => `$${n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : n.toFixed(2)}`
-function ago(iso: string) {
-  const s = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 1000))
-  return s < 60 ? T('{n}s ago', { n: s }) : s < 3600 ? T('{n}m ago', { n: Math.floor(s / 60) }) : s < 86400 ? T('{n}h ago', { n: Math.floor(s / 3600) }) : T('{n}d ago', { n: Math.floor(s / 86400) })
-}
+const ago = (iso: string) => <AgoText ts={Date.parse(iso)} />
 const USDC = '0x3600000000000000000000000000000000000000'
 
 export default function RewardsPage({ navigate }: { navigate: (p: Page) => void }) {
@@ -78,8 +76,8 @@ export default function RewardsPage({ navigate }: { navigate: (p: Page) => void 
   const name = (a: string) => { const p = profiles.get(a.toLowerCase()); return p?.username ? `@${p.username}` : shortAddr(a) }
 
   return (
-    <div className="token-page" style={{ maxWidth: 820, padding: 16 }}>
-      <h2 style={{ margin: 0, fontSize: '1.4rem' }}>{T("Rewards")}</h2>
+    <div className="token-page content-page">
+      <h2 className="page-h">{T("Rewards")}</h2>
       <div style={{ fontSize: '0.86rem', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5 }}>{T("Earn")}{' '}<b style={{ color: 'var(--text)' }}>{sharePct}{' '}{T("of the trading fees")}</b>{' '}{T("of everyone you bring to ARCDEX, in USDC, on every trade they make, for good. Launch a coin and earn 60% of its creator tax too.")}</div>
 
       {!live && (
@@ -182,9 +180,9 @@ export default function RewardsPage({ navigate }: { navigate: (p: Page) => void 
 
 function Stat({ label, value, color, big }: { label: string; value: string; color?: string; big?: boolean }) {
   return (
-    <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: '12px 14px' }}>
-      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{label}</div>
-      <div className="sensitive" style={{ fontSize: big ? '1.6rem' : '1.3rem', fontWeight: 800, fontFamily: 'var(--mono)', color, marginTop: 2 }}>{value}</div>
+    <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 10, padding: '10px 12px' }}>
+      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{label}</div>
+      <div className="sensitive" style={{ fontSize: big ? '1.3rem' : '1.1rem', fontWeight: 800, fontFamily: 'var(--mono)', color, marginTop: 2 }}>{value}</div>
     </div>
   )
 }

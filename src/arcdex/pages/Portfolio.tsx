@@ -77,24 +77,24 @@ export default function Portfolio({ navigate }: Props) {
   const dust = (holdings ?? []).length - visible.length
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 16px' }}>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: 4 }}>{T("Portfolio")}</h1>
+    <div style={{ width: '100%', maxWidth: 760, margin: '0 auto', padding: '16px 16px 28px' }}>
+      <div style={{ marginBottom: 14 }}>
+        <h1 className="page-h" style={{ marginBottom: 4 }}>{T("Portfolio")}</h1>
         <div style={{ fontFamily: 'var(--mono)', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
           {trader.kind === 'trading-wallet' ? `⚡ ${T("Trading wallet")}` : T("Wallet")} · {shortAddr(me)}{' '}{T("· Arc Mainnet")}
         </div>
       </div>
 
-      <div className="arc-card" style={{ padding: 22, marginBottom: 20, background: 'linear-gradient(135deg,rgba(59,130,246,0.1),rgba(139,92,246,0.1))' }}>
+      <div className="arc-card" style={{ padding: '14px 16px', marginBottom: 16, background: 'linear-gradient(135deg,rgba(59,130,246,0.1),rgba(139,92,246,0.1))' }}>
         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{T("Total Portfolio Value")}</div>
-        <div className="sensitive" style={{ fontSize: '2.3rem', fontWeight: 800, fontFamily: 'var(--mono)' }}>{cash === null && holdings === null ? '…' : money(total)}</div>
+        <div className="sensitive" style={{ fontSize: '1.75rem', fontWeight: 800, fontFamily: 'var(--mono)' }}>{cash === null && holdings === null ? '…' : money(total)}</div>
         <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: 6 }}>
           <span>{T("Cash (USDC)")}: <b className="sensitive" style={{ color: 'var(--text)' }}>{cash === null ? '…' : money(cash)}</b></span>
           <span>{T("Coins")}: <b className="sensitive" style={{ color: 'var(--text)' }}>{holdings === null ? '…' : money(coinsValue)}</b></span>
         </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-          <button className="btn-primary" style={{ flex: 1, padding: '10px 14px' }} onClick={() => setModal('deposit')}>{T("Deposit")}</button>
-          <button className="btn-ghost" style={{ flex: 1, padding: '10px 14px' }} onClick={() => setModal('withdraw')}>{T("Withdraw")}</button>
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <button className="btn-primary" style={{ flex: 1, padding: '8px 12px' }} onClick={() => setModal('deposit')}>{T("Deposit")}</button>
+          <button className="btn-ghost" style={{ flex: 1, padding: '8px 12px' }} onClick={() => setModal('withdraw')}>{T("Withdraw")}</button>
         </div>
       </div>
 
@@ -110,14 +110,14 @@ export default function Portfolio({ navigate }: Props) {
       )}
 
       {visible.map(h => (
-        <div key={h.address} className="arc-card" style={{ padding: '14px 16px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div key={h.address} className="arc-card" style={{ padding: '10px 12px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <button onClick={() => navigate({ name: 'argus', address: h.address, pool: h.pool ?? '' })}
             style={{ display: 'flex', alignItems: 'center', gap: 12, flex: '1 1 220px', minWidth: 0, background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
             {h.image ? (
-              <img src={h.image} width={40} height={40} style={{ borderRadius: '50%', flexShrink: 0, objectFit: 'cover' }} alt=""
+              <img src={h.image} width={34} height={34} style={{ borderRadius: '50%', flexShrink: 0, objectFit: 'cover' }} alt=""
                 onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden' }} />
             ) : (
-              <div style={{ width: 40, height: 40, borderRadius: '50%', flexShrink: 0, background: `hsl(${parseInt(h.address.slice(2, 4), 16) * 1.4}deg 60% 40%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: '#fff', fontSize: '0.85rem' }}>{h.symbol.slice(0, 2)}</div>
+              <div style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, background: `hsl(${parseInt(h.address.slice(2, 4), 16) * 1.4}deg 60% 40%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: '#fff', fontSize: '0.85rem' }}>{h.symbol.slice(0, 2)}</div>
             )}
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
@@ -131,8 +131,8 @@ export default function Portfolio({ navigate }: Props) {
             </div>
           </button>
           <div style={{ display: 'flex', gap: 6, flex: '0 0 auto', marginLeft: 'auto' }}>
-            <button onClick={() => setSell(h)} style={{ padding: '8px 14px', borderRadius: 8, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', background: 'rgba(239,68,68,0.12)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.35)' }}>{T("Sell to USDC")}</button>
-            <button onClick={() => setSend(h)} className="btn-ghost" style={{ padding: '8px 12px', fontSize: '0.8rem' }}>{T("Send")}</button>
+            <button onClick={() => setSell(h)} style={{ padding: '6px 12px', borderRadius: 8, fontWeight: 700, fontSize: '0.76rem', cursor: 'pointer', background: 'rgba(239,68,68,0.12)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.35)' }}>{T("Sell to USDC")}</button>
+            <button onClick={() => setSend(h)} className="btn-ghost" style={{ padding: '6px 10px', fontSize: '0.76rem' }}>{T("Send")}</button>
           </div>
         </div>
       ))}

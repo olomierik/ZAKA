@@ -1067,5 +1067,8 @@ const d: Record<string, string> = {
   "↑ Withdraw": "↑ Toa pesa",
   "▤ Your coins": "▤ Sarafu zako",
   "✓ This wallet funded your trading wallet — no passcode needed.": "✓ Pochi hii iliweka pesa kwenye pochi yako ya biashara — hakuna nambari ya siri inayohitajika.",
+  "{time} ago": "{time} zilizopita",
+  "Date": "Tarehe",
+  "Maker": "Pochi",
 }
 export default d

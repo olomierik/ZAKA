@@ -231,11 +231,11 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
   const needsRiskTick = impact !== null && impact >= CONFIRM_IMPACT
 
   return (
-    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className="swap-box">
       <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--adx-card-border)', background: 'var(--bg-2)' }}>
         {(['buy', 'sell'] as const).map(m => (
           <button key={m} onClick={() => { setMode(m); setAmount(''); setStep('idle'); setMsg(''); setEditing(null) }} style={{
-            flex: 1, padding: 10, fontSize: '0.875rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+            flex: 1, padding: 8, fontSize: '0.82rem', fontWeight: 700, border: 'none', cursor: 'pointer',
             background: mode === m ? (m === 'buy' ? 'var(--green)' : 'var(--red)') : 'transparent',
             color: mode === m ? '#fff' : 'var(--text-muted)',
           }}>{m === 'buy' ? T("Buy") : T("Sell")} {symbol}</button>
@@ -251,8 +251,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
             </button>
           )}
         </div>
-        <input type="number" min="0" inputMode="decimal" placeholder={mode === 'buy' ? '$0' : '0'} value={amount} onChange={e => setAmount(e.target.value)}
-          style={{ width: '100%', padding: '12px 14px', borderRadius: 8, fontSize: '1.05rem', fontFamily: 'var(--mono)', background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', outline: 'none' }} />
+        <input type="number" min="0" inputMode="decimal" placeholder={mode === 'buy' ? '$0' : '0'} value={amount} onChange={e => setAmount(e.target.value)} className="swap-input" />
         <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
           {editing ? (
             <>
@@ -274,7 +273,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         </div>
       </div>
 
-      <div style={{ padding: 12, borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div className="swap-info">
         <Row label={T("You receive (est.)")} value={estimate > 0 ? (mode === 'buy' ? `${fmtTok(estimate)} ${symbol}` : fmtUsd(estimate)) : '—'} />
         <Row label={T("Route")} value={routeLoading ? T('Finding route…') : route ? routeText : T('No routable pool')} />
         <Row label={T("Platform fee")} value={info ? T('{pct} (in USDC)', { pct: pct(info.feeBps) }) : '…'} />
@@ -327,7 +326,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       )}
 
       {me && (
-        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textAlign: 'center' }}>{T("Trading as")}{' '}{trader.kind === 'trading-wallet' ? T("⚡ trading wallet") : T("wallet")} <span style={{ fontFamily: 'var(--mono)' }}>{shortAddr(me)}</span>
+        <div className="swap-note">{T("Trading as")}{' '}{trader.kind === 'trading-wallet' ? T("⚡ trading wallet") : T("wallet")} <span style={{ fontFamily: 'var(--mono)' }}>{shortAddr(me)}</span>
           {trader.kind === 'trading-wallet' ? T(" · one-tap, no pop-ups") : ''}
         </div>
       )}
@@ -336,7 +335,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         <div style={{ fontSize: '0.7rem', color: '#fcd34d', textAlign: 'center' }}>{T("⚠ Unverified token — anyone can launch a coin with any name. Check the contract before trading.")}</div>
       )}
 
-      <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5, margin: 0 }}>{T("Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.")}</p>
+      <p className="swap-note">{T("Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.")}</p>
 
       {share && <ShareCardModal card={share.card} text={share.text} referralsLive={info?.version === 2} onClose={() => setShare(null)} />}
     </div>
@@ -353,15 +352,15 @@ function Row({ label, value, color }: { label: string; value: string; color?: st
 }
 
 function Chip({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
-  return <button onClick={onClick} style={{ flex: 1, padding: '6px 0', borderRadius: 6, fontSize: '0.78rem', fontWeight: 600, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', cursor: 'pointer' }}>{children}</button>
+  return <button onClick={onClick} style={{ flex: 1, padding: '5px 0', borderRadius: 6, fontSize: '0.74rem', fontWeight: 600, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', cursor: 'pointer' }}>{children}</button>
 }
 
 const pencil: React.CSSProperties = { padding: '5px 8px', borderRadius: 6, fontSize: '0.78rem', background: 'transparent', border: '1px solid var(--adx-card-border)', color: 'var(--text-muted)', cursor: 'pointer' }
 
 function Note({ children }: { children: React.ReactNode }) {
-  return <div style={{ padding: 10, borderRadius: 8, fontSize: '0.76rem', background: 'var(--bg-2)', border: '1px dashed var(--adx-card-border)', color: 'var(--text-muted)', textAlign: 'center' }}>{children}</div>
+  return <div style={{ padding: 8, borderRadius: 8, fontSize: '0.74rem', background: 'var(--bg-2)', border: '1px dashed var(--adx-card-border)', color: 'var(--text-muted)', textAlign: 'center' }}>{children}</div>
 }
 
 function btn(bg: string): React.CSSProperties {
-  return { width: '100%', padding: 14, borderRadius: 10, fontSize: '0.95rem', fontWeight: 700, background: bg, color: '#fff', border: 'none', cursor: 'pointer' }
+  return { width: '100%', padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, background: bg, color: '#fff', border: 'none', cursor: 'pointer' }
 }

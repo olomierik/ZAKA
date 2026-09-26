@@ -1067,5 +1067,8 @@ const d: Record<string, string> = {
   "↑ Withdraw": "↑ Retirar",
   "▤ Your coins": "▤ Tus monedas",
   "✓ This wallet funded your trading wallet — no passcode needed.": "✓ Esta billetera fondeó tu billetera de trading — no necesitas código.",
+  "{time} ago": "hace {time}",
+  "Date": "Fecha",
+  "Maker": "Billetera",
 }
 export default d

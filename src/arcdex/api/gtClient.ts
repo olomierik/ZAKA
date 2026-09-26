@@ -50,11 +50,14 @@ async function direct<T>(pathWithQuery: string): Promise<T> {
   }
 }
 
-export async function gtGet<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+/** `proxyOnly`: for fast polling (the coin page's live trades), never fall
+ * back to the visitor's own free-tier quota, which the rest of the page needs. */
+export async function gtGet<T>(path: string, params: Record<string, string> = {}, opts: { proxyOnly?: boolean } = {}): Promise<T> {
   try {
     const res = await fetch(`/api/gecko?${new URLSearchParams({ path, ...params })}`)
     if (res.ok) return await (res.json() as Promise<T>)
-  } catch { /* fall through to direct */ }
+    if (opts.proxyOnly) throw new Error(`gecko proxy ${res.status}`)
+  } catch (e) { if (opts.proxyOnly) throw e /* else fall through to direct */ }
   return direct<T>(withQuery(path, params))
 }
 

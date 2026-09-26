@@ -27,7 +27,7 @@ export default function GeckoChart({ pool, symbol }: { pool: string; symbol: str
   const mobile = useIsMobile()
   const [loaded, setLoaded] = useState(false)
   return (
-    <div style={{ position: 'relative', height: mobile ? 380 : 440, borderRadius: 8, overflow: 'hidden', background: `#${BG}` }}>
+    <div style={{ position: 'relative', height: mobile ? 340 : 400, borderRadius: 8, overflow: 'hidden', background: `#${BG}` }}>
       {!loaded && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
           {T('Loading the live GeckoTerminal chart…')}
@@ -68,7 +68,7 @@ export function ChartSourceTabs({ value, onChange }: { value: ChartSource; onCha
     }}>{label}</button>
   )
   return (
-    <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+    <div style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
       {tab('gecko', T('Live · GeckoTerminal'))}
       {tab('arcdex', T('ARCDEX chart'))}
     </div>

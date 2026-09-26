@@ -9,6 +9,8 @@ import { cachedArgusMarket, getArgusMarket, argusPoolToArcToken } from '../api/a
 import { engineEnabled, getNewTokens, marketStream, useEngineStatus } from '../api/marketStream'
 import type { LaunchInfo } from '../../../api/_marketProtocol'
 import { curateTokens, type CuratedGroup } from '../lib/curate'
+import { getHolderScans } from '../api/social'
+import { headBlock } from '../../../api/_arcLogs'
 import type { Page } from '../App'
 import { toggleWatch, usePrefs } from '../lib/prefs'
 import { t as T, N_ } from '../lib/i18n'
@@ -390,9 +392,34 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   // reset page on filter change
   useEffect(() => { setPage(1); setShown(PAGE_SIZE) }, [source, viewTab, search, sortCol, sortAsc, minMcap, maxMcap, minVol])
 
+  // Holder counts from ARCDEX's own on-chain index, for the coins it has
+  // counted within the last day (every coin page keeps its coin's count
+  // current) — the market list itself carries none.
+  const tokensRef = useRef(tokens)
+  useEffect(() => { tokensRef.current = tokens }, [tokens])
+  const [indexedHolders, setIndexedHolders] = useState<Map<string, number>>(new Map())
+  const haveTokens = tokens.length > 0
+  useEffect(() => {
+    if (!haveTokens) return
+    let alive = true
+    const load = async () => {
+      try {
+        const [scans, head] = await Promise.all([getHolderScans(tokensRef.current.map(t => t.address)), headBlock()])
+        const fresh = new Map(scans.filter(r => r.holders > 0 && r.scanned_to >= head - 172_800).map(r => [r.token, r.holders]))
+        if (alive) setIndexedHolders(fresh)
+      } catch { /* no index: the column stays as it was */ }
+    }
+    void load()
+    const id = setInterval(() => { if (!document.hidden) void load() }, 60_000)
+    return () => { alive = false; clearInterval(id) }
+  }, [haveTokens])
+  const withHolders = useMemo(() => indexedHolders.size
+    ? tokens.map(t => { const h = indexedHolders.get(t.address.toLowerCase()); return h ? { ...t, holderCount: h } : t })
+    : tokens, [tokens, indexedHolders])
+
   // ── curate: fold ticker-squatting duplicates behind an expand toggle,
   // drop fully-dead placeholder entries — see lib/curate.ts ────────────
-  const curation = useMemo(() => curateTokens(tokens), [tokens])
+  const curation = useMemo(() => curateTokens(withHolders), [withHolders])
   const groupByPrimaryAddress = useMemo(() => {
     const m = new Map<string, CuratedGroup>()
     for (const g of curation.groups) m.set(g.primary.address, g)

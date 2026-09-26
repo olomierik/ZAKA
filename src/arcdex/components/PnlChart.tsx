@@ -9,7 +9,7 @@ const money = (n: number) => `${n < 0 ? '-' : n > 0 ? '+' : ''}$${Math.abs(n) >=
 
 export default function PnlChart({ points, sinceMs }: { points: PnlPoint[]; sinceMs: number }) {
   const [hover, setHover] = useState<number | null>(null)
-  const W = 600, H = 150, PAD = 6
+  const W = 600, H = 110, PAD = 6
 
   const series = useMemo(() => {
     const before = points.filter(p => Date.parse(p.t) < sinceMs)
@@ -33,9 +33,10 @@ export default function PnlChart({ points, sinceMs }: { points: PnlPoint[]; sinc
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
-        <span style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'var(--mono)', color: shown.v >= 0 ? 'var(--green)' : 'var(--red)' }}>{money(shown.v)}</span>
+        <span style={{ fontSize: '1.2rem', fontWeight: 800, fontFamily: 'var(--mono)', color: shown.v >= 0 ? 'var(--green)' : 'var(--red)' }}>{money(shown.v)}</span>
         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{hover !== null ? new Date(shown.t).toLocaleString() : T("realized PnL")}</span>
       </div>
+      {points.length === 0 ? <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center', padding: '14px 0 10px' }}>{T("No closed trades yet")}</div> : (
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: H, display: 'block', cursor: 'crosshair' }}
         onMouseLeave={() => setHover(null)}
         onMouseMove={e => {
@@ -50,7 +51,7 @@ export default function PnlChart({ points, sinceMs }: { points: PnlPoint[]; sinc
         <path d={path} fill="none" stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" />
         {hover !== null && <circle cx={x(series[hover].t)} cy={y(series[hover].v)} r={4} fill={color} />}
       </svg>
-      {points.length === 0 && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: -H / 2 - 8, position: 'relative' }}>{T("No closed trades yet")}</div>}
+      )}
     </div>
   )
 }

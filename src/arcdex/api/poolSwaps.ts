@@ -13,6 +13,7 @@
 import { ARCHIVE_RPCS, RECENT_RPC, hex, rpcBatch, rpcCall, type RawLog } from '../../../api/_arcLogs'
 import { ARGUS, ARGUS_USDC_V3, NATIVE, POOL_MANAGER, USDC, V3_SWAP, V4_SWAP, decodeSwapLog, priceFromSqrt, word } from '../../../api/_arcSwaps'
 import { ARC_RPC_WS } from './arcRpc'
+import type { ArgusTrade } from './argusMarket'
 
 export { POOL_MANAGER }
 
@@ -41,6 +42,8 @@ export interface PoolSwap {
   priceUsd?: number | null
   usd?: number | null
   maker?: string | null
+  /** From GeckoTerminal's live feed; replaced by the chain's copy of the same swap when that lands. */
+  gecko?: boolean
 }
 
 export function poolMeta(pool: string, token: string, quote: string): PoolMeta {
@@ -73,6 +76,47 @@ export function decodeSwap(l: RawLog & { removed?: boolean }, m: PoolMeta): Pool
 
 /** Newest first. */
 export const byRecency = (a: PoolSwap, b: PoolSwap) => b.block - a.block || b.logIndex - a.logIndex
+
+/** A GeckoTerminal trade in the page's swap shape. With the log index in
+ * its id it gets the chain's own id (tx:logIndex), so the same swap from the
+ * chain or the engine replaces it instead of showing twice. */
+export function geckoSwap(t: ArgusTrade, live = true): PoolSwap {
+  const tx = t.txHash.toLowerCase()
+  return {
+    id: t.logIndex !== null ? `${tx}:${t.logIndex}` : `${tx}:gt:${t.kind}:${t.tokenAmount}`,
+    txHash: tx, block: t.block, logIndex: t.logIndex ?? 0, time: t.timestamp, kind: t.kind,
+    tokenAmount: t.tokenAmount, quoteAmount: 0, price: 0, priceUsd: t.priceUsd || null, usd: t.usd, maker: t.maker ?? null,
+    live, gecko: true,
+  }
+}
+
+/** Merge new swaps into the list (newest first): new ids are added; a swap
+ * from the chain or the engine replaces GeckoTerminal's copy of it. */
+export function mergeSwaps(prev: PoolSwap[] | null, fresh: PoolSwap[]): PoolSwap[] | null {
+  const list = prev ?? []
+  const byId = new Map(list.map(x => [x.id, x]))
+  const exactTx = new Set(list.filter(x => !x.gecko).map(x => x.txHash))
+  const add: PoolSwap[] = []
+  const replaceIds = new Set<string>()
+  const replaceTx = new Set<string>()
+  for (const x of fresh) {
+    const cur = byId.get(x.id)
+    if (x.gecko) {
+      // Already known (from any source), or the chain has this transaction.
+      if (cur || exactTx.has(x.txHash)) continue
+    } else if (cur) {
+      if (!cur.gecko) continue
+      replaceIds.add(x.id)
+    } else replaceTx.add(x.txHash)
+    byId.set(x.id, x)
+    add.push(x)
+  }
+  if (prev && add.length === 0) return prev
+  // A chain swap whose GeckoTerminal copy had no log index: drop the copy.
+  const kept = list.filter(x => !replaceIds.has(x.id) && !(x.gecko && replaceTx.has(x.txHash)))
+  return [...add, ...kept].sort(byRecency).slice(0, 6_000)
+}
+
 
 async function getLogs(url: string, m: PoolMeta, from: number, to: number): Promise<RawLog[]> {
   return rpcCall<RawLog[]>(url, 'eth_getLogs', [{ ...filterOf(m), fromBlock: hex(from), toBlock: hex(to) }], 10_000)

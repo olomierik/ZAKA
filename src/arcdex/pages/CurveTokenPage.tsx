@@ -7,6 +7,8 @@ import CurveSwapWidget from '../components/CurveSwapWidget'
 import PriceChart, { type ChartTrade } from '../components/PriceChart'
 import type { Tick } from '../lib/candles'
 import { useTrader } from '../lib/identity'
+import { useChainHolders, useLiveHolderCount } from '../api/holders'
+import { AgoText } from '../components/Ago'
 import Sheet, { TradeBar } from '../components/Sheet'
 import { useIsMobile } from '../lib/useMobile'
 import type { Page } from '../App'
@@ -36,7 +38,8 @@ export default function CurveTokenPage({ address, navigate }: Props) {
   const mobile = useIsMobile()
   const [tradeSheet, setTradeSheet] = useState<'buy' | 'sell' | null>(null)
   const [token, setToken]   = useState<LaunchpadToken | null>(null)
-  const [trades, setTrades] = useState<CurveTrade[]>([])
+  // `live`: arrived over the WebSocket after the page opened (it pops on the chart).
+  const [trades, setTrades] = useState<(CurveTrade & { live?: boolean })[]>([])
   const [loading, setLoading] = useState(true)
   const [devPct, setDevPct] = useState<number | null>(null)
   const [trust, setTrust] = useState<TrustReport | null>(null)
@@ -75,7 +78,8 @@ export default function CurveTokenPage({ address, navigate }: Props) {
 
     const unsub = subscribeLaunchpadTrades(LAUNCHPAD_ADDRESS, live => {
       if (live.token.toLowerCase() !== address.toLowerCase()) return
-      const trade: CurveTrade = {
+      const trade: CurveTrade & { live: boolean } = {
+        live: true,
         trader: live.trader as `0x${string}`,
         isBuy: live.isBuy,
         usdcAmount: BigInt(Math.round(live.usdcAmount * 1e6)),
@@ -100,9 +104,15 @@ export default function CurveTokenPage({ address, navigate }: Props) {
       id: `${t.txHash}:${t.isBuy ? 'b' : 's'}:${t.tokenAmount}`, time: t.timestamp * 1000, priceUsd: priceOf(t), usd,
       kind: t.isBuy ? 'buy' : 'sell', maker: t.trader,
       label: T(t.isBuy ? '{who} bought ${usd}' : '{who} sold ${usd}', { who: short(t.trader), usd: usd.toFixed(2) }),
-      mine: !!me && t.trader.toLowerCase() === me,
+      mine: !!me && t.trader.toLowerCase() === me, live: !!t.live,
     }
   }), [trades, me])
+
+  // Holders from ARCDEX's own index, moving live as wallets buy in and sell out.
+  const chainHolders = useChainHolders(address, token ? new Date(token.curve.launchedAt * 1000).toISOString() : null)
+  const liveHolders = useLiveHolderCount(address, !!chainHolders?.complete, trades[0]?.txHash)
+  const holdersLabel = chainHolders?.complete ? (liveHolders ?? chainHolders.holders).toLocaleString()
+    : chainHolders ? `${chainHolders.holders.toLocaleString()}…` : '—'
 
   if (loading && !token) return <div className="loading-state">{T("Loading…")}</div>
   if (!token) return <div style={{ padding: 40, color: 'var(--text-muted)' }}>{T("Token not found.")}</div>
@@ -157,6 +167,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
           [T('To graduation'), token.curve.graduated ? '100%' : `${token.bondingProgress.toFixed(1)}%`, '#3b82f6'],
           [T('Status'), token.curve.graduated ? T('Graduated') : T('Bonding'), token.curve.graduated ? '#22c55e' : '#f59e0b'],
           [T('Dev holds'), devPct === null ? '…' : `${devPct.toFixed(2)}%`, devPct !== null && devPct > 5 ? '#f59e0b' : '#22c55e'],
+          [T('Holders'), holdersLabel, 'var(--text)'],
         ].map(([label, val, color]) => (
           <div key={label}>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', marginBottom: 2 }}>{label}</div>
@@ -224,14 +235,15 @@ export default function CurveTokenPage({ address, navigate }: Props) {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
-                      {[T('Type'), 'USDC', T('Tokens'), T('Trader'), 'Tx'].map(h => (
+                      {[T('Date'), T('Type'), 'USDC', T('Tokens'), T('Trader'), 'Tx'].map(h => (
                         <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.7rem' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {trades.map((t, i) => (
-                      <tr key={t.txHash + i} style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
+                    {trades.map(t => (
+                      <tr key={`${t.txHash}:${t.isBuy ? 'b' : 's'}:${t.tokenAmount}`} className={t.live ? 'swap-row-new' : undefined} style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
+                        <td style={{ padding: '8px 12px', color: 'var(--text-muted)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}><AgoText ts={t.timestamp * 1000} /></td>
                         <td style={{ padding: '8px 12px' }}>
                           <span style={{ background: t.isBuy ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: t.isBuy ? '#22c55e' : '#ef4444', fontWeight: 700, padding: '2px 8px', borderRadius: 4, fontSize: '0.72rem' }}>
                             {t.isBuy ? T("BUY") : T("SELL")}

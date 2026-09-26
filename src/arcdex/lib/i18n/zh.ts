@@ -1067,5 +1067,8 @@ const d: Record<string, string> = {
   "↑ Withdraw": "↑ 提现",
   "▤ Your coins": "▤ 你的代币",
   "✓ This wallet funded your trading wallet — no passcode needed.": "✓ 此钱包曾为你的交易钱包充值 — 无需密码。",
+  "{time} ago": "{time}前",
+  "Date": "时间",
+  "Maker": "钱包",
 }
 export default d

@@ -17,9 +17,13 @@ export default async function handler(req: Request, ctx?: Ctx) {
   url.searchParams.forEach((v, k) => { if (k !== 'path') qs.set(k, v) })
   qs.sort()
   const target = qs.toString() ? `${path}?${qs}` : path
+  // A pool's trades are the coin page's live feed: cached ~2s at the CDN
+  // (one upstream call per pool every couple of seconds, shared by every
+  // viewer) and never kept as a "last good" copy — old trades aren't live.
+  const live = /\/trades$/.test(path)
   // Last-good copies are kept for stable paths only (not searches or
   // paged-back candles, which are one-offs).
-  const cacheKey = path === '/search/pools' || qs.has('before_timestamp') ? null : `gt:${path}?${qs}`
+  const cacheKey = live || path === '/search/pools' || qs.has('before_timestamp') ? null : `gt:${path}?${qs}`
 
   let res: Response | null = null
   try { res = await gtFetch(target, { signal: AbortSignal.timeout(8_000) }) } catch { /* upstream down */ }
@@ -35,7 +39,7 @@ export default async function handler(req: Request, ctx?: Ctx) {
       headers: {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 's-maxage=10, stale-while-revalidate=300',
+        'Cache-Control': live ? 's-maxage=2, stale-while-revalidate=4' : 's-maxage=10, stale-while-revalidate=300',
         'X-Arcdex-Upstream': gtUpstream(),
       },
     })

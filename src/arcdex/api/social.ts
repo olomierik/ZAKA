@@ -65,6 +65,36 @@ const since = (p: Period) =>
 const lc = (a: string) => a.toLowerCase()
 const num = (v: unknown) => (typeof v === 'number' ? v : Number(v ?? 0))
 
+// ── holder index (public read; /api/holders keeps it) ─────────────────
+
+export interface HolderScan { token: string; holders: number; scanned_to: number }
+
+/** Each token's indexed holder count and the last block it covers. */
+export async function getHolderScans(tokens: string[]): Promise<HolderScan[]> {
+  const c = client()
+  if (!c || tokens.length === 0) return []
+  const out: HolderScan[] = []
+  for (let i = 0; i < tokens.length; i += 100) {
+    const { data, error } = await c.from('arcdex_holder_scans').select('token,holders,scanned_to').in('token', tokens.slice(i, i + 100).map(lc))
+    if (error) throw new Error(error.message)
+    for (const r of data ?? []) out.push({ token: String(r.token), holders: num(r.holders), scanned_to: num(r.scanned_to) })
+  }
+  return out
+}
+
+/** Indexed balances (raw units) of some wallets for one token; absent = none. */
+export async function getIndexedBalances(token: string, holders: string[]): Promise<Map<string, bigint>> {
+  const c = client()
+  const m = new Map<string, bigint>()
+  if (!c || holders.length === 0) return m
+  for (let i = 0; i < holders.length; i += 60) {
+    const { data, error } = await c.from('arcdex_holder_balances').select('holder,balance::text').eq('token', lc(token)).in('holder', holders.slice(i, i + 60).map(lc))
+    if (error) throw new Error(error.message)
+    for (const r of data ?? []) m.set(String(r.holder), BigInt(String(r.balance)))
+  }
+  return m
+}
+
 // ── profiles ──────────────────────────────────────────────────────────
 
 const profileCache = new Map<string, { p: Profile | null; at: number }>()

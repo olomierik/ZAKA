@@ -32,16 +32,16 @@ export default function BurnPage({ navigate }: { navigate: (p: Page) => void }) 
   const isFeeWallet = trader.address?.toLowerCase() === FEE_WALLET
   const burnedPct = d?.burnedPct ?? 0
 
-  const card: React.CSSProperties = { background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 14, padding: 18 }
+  const card: React.CSSProperties = { background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: '12px 14px' }
   const stat = (label: string, value: string, color?: string) => (
-    <div style={card}><div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{label}</div><div style={{ fontSize: '1.45rem', fontWeight: 800, fontFamily: 'var(--mono)', color, marginTop: 4 }}>{value}</div></div>
+    <div style={card}><div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{label}</div><div style={{ fontSize: '1.15rem', fontWeight: 800, fontFamily: 'var(--mono)', color, marginTop: 2 }}>{value}</div></div>
   )
 
   return (
-    <div className="token-page" style={{ maxWidth: 980, padding: 16 }}>
+    <div className="token-page content-page" style={{ '--page-w': '980px' } as React.CSSProperties}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '1.5rem' }}>🔥 {T('$ARCD buyback & burn')}</h2>
+          <h2 className="page-h">🔥 {T('$ARCD buyback & burn')}</h2>
           <div style={{ fontSize: '0.86rem', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5, maxWidth: 640 }}>
             {T('100% of ARCDEX’s fee revenue buys back $ARCD on the open market and sends it to the burn address, where no one can ever move it again.')}
           </div>
@@ -52,7 +52,7 @@ export default function BurnPage({ navigate }: { navigate: (p: Page) => void }) 
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginTop: 18 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10, marginTop: 14 }}>
         {stat(T('$ARCD burned'), d ? compact(d.burned) : '…', '#fb923c')}
         {stat(T('Of supply burned'), d ? (burnedPct < 0.01 ? '0%' : burnedPct.toFixed(2) + '%') : '…', '#fb923c')}
         {stat(T('USDC in the fee wallet'), d?.feeWallet.usdc != null ? '$' + compact(d.feeWallet.usdc) : '…')}

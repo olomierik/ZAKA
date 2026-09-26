@@ -4,8 +4,8 @@ import {
   getArgusTokenPools, getArgusTokenInfo, getArgusTrades, getArgusOnchain, buildSwapRoute, copycatOf,
   ARGUS_TOKEN, USDC_ADDRESS, type ArgusPool, type ArgusTokenInfo, type ArgusTrade, type ArgusOnchain, type SwapRoute,
 } from '../api/argusMarket'
-import { byRecency, knownMaker, loadPoolSwaps, poolMeta, quoteUsd, resolveMakers, subscribePoolSwaps, type PoolSwap } from '../api/poolSwaps'
-import { useChainHolders } from '../api/holders'
+import { geckoSwap, knownMaker, loadPoolSwaps, mergeSwaps, poolMeta, quoteUsd, resolveMakers, subscribePoolSwaps, type PoolSwap } from '../api/poolSwaps'
+import { useChainHolders, useLiveHolderCount } from '../api/holders'
 import { engineEnabled, getEngineToken, getEngineTrades, marketStream } from '../api/marketStream'
 import type { LaunchInfo, WireTrade } from '../../../api/_marketProtocol'
 import type { Tick } from '../lib/candles'
@@ -184,18 +184,39 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     if (!activePool) return
     // Decoding swaps ourselves needs the quote side; the engine's come priced.
     const meta = quoteAddr ? poolMeta(activePool, address, quoteAddr) : null
-    if (!meta && !engineEnabled) return
     let alive = true
     const cleanups: (() => void)[] = []
     const add = (fresh: PoolSwap[]) => {
       if (!alive) return
-      setSwaps(prev => {
-        const seen = new Set((prev ?? []).map(x => x.id))
-        const next = fresh.filter(x => !seen.has(x.id))
-        if (prev && next.length === 0) return prev
-        return [...next, ...(prev ?? [])].sort(byRecency).slice(0, 6_000)
-      })
+      setSwaps(prev => mergeSwaps(prev, fresh))
     }
+    // GeckoTerminal's live trades (paid key, through the ~2s-cached proxy),
+    // every 3s: whichever of GeckoTerminal, the engine and the chain has a
+    // swap first puts it on the chart and the list; the chain's copy replaces
+    // GeckoTerminal's when it lands.
+    let gtTimer: ReturnType<typeof setTimeout> | null = null
+    let gtFails = 0
+    let gtPolled = false
+    const pollGecko = async () => {
+      if (!alive) return
+      if (!document.hidden) {
+        try {
+          const t = await getArgusTrades(activePool, address, { proxyOnly: true })
+          gtFails = 0
+          // The first page is history; after that, what's new arrived live.
+          if (alive && t.length) add(t.map(x => geckoSwap(x, gtPolled)))
+          gtPolled = true
+          if (alive) setGtLoaded(true)
+        } catch { gtFails++ }
+      }
+      // Proxy unavailable (local dev) or throttled: back off.
+      if (alive) gtTimer = setTimeout(() => void pollGecko(), gtFails ? Math.min(30_000, 5_000 * gtFails) : 3_000)
+    }
+    void pollGecko()
+    cleanups.push(() => { if (gtTimer) clearTimeout(gtTimer) })
+    // Without the quote side (still loading) and no engine, GeckoTerminal's
+    // feed is all there is until the quote is known (this effect reruns then).
+    if (!meta && !engineEnabled) return () => { alive = false; cleanups.forEach(c => c()) }
     // The chain fallbacks, each started at most once.
     let chainLive = false, chainHistory = false
     const liveFromChain = () => { if (meta && !chainLive && alive) { chainLive = true; cleanups.push(subscribePoolSwaps(meta, add)) } }
@@ -236,7 +257,9 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     const id = setInterval(() => { if (!document.hidden) load() }, 15_000)
     return () => { alive = false; clearInterval(id) }
   }, [quoteAddr])
-  const usdPerQuote = qUsd ?? (active?.priceUsd && swaps?.[0]?.price ? active.priceUsd / swaps[0].price : null)
+  // (GeckoTerminal's copies carry USD, not the pool's own price: skip them.)
+  const refSwap = swaps?.find(x => x.price > 0)
+  const usdPerQuote = qUsd ?? (active?.priceUsd && refSwap ? active.priceUsd / refSwap.price : null)
 
   // Who made each recent trade (the transaction's sender), in batches.
   useEffect(() => {
@@ -246,7 +269,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     return () => clearTimeout(id)
   }, [swaps])
 
-  // GeckoTerminal's trades, only if the chain couldn't be read.
+  // GeckoTerminal's full trade list (with the direct fallback), only if the chain couldn't be read.
   const loadGtTrades = useMemo(() => () => !activePool ? Promise.resolve() : getArgusTrades(activePool, address).then(t => { setGtTrades(t); setGtLoaded(true) }).catch(() => setGtLoaded(true)), [activePool, address])
   useEffect(() => {
     if (!onchainFailed) return
@@ -256,8 +279,9 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   }, [onchainFailed, loadGtTrades])
   const tradesLoaded = onchainFailed ? gtLoaded : swaps !== null
 
-  // Re-render every 5s so "ago" timestamps stay honest.
-  useEffect(() => { const id = setInterval(() => tick(n => n + 1), 5000); return () => clearInterval(id) }, [])
+  // Trade ages count up on their own (components/Ago); this only keeps
+  // coarser times (hold durations) honest.
+  useEffect(() => { const id = setInterval(() => tick(n => n + 1), 30_000); return () => clearInterval(id) }, [])
 
   const rows: Row[] = useMemo(() => {
     if (onchainFailed && !swaps?.length) return gtTrades.map(t => ({ ...t, live: false })).slice(0, 100)
@@ -289,7 +313,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     const who = p?.username ? `@${p.username}` : r.maker ? `${r.maker.slice(0, 6)}…${r.maker.slice(-4)}` : T('Someone')
     return [{
       id: r.txHash + r.kind + r.tokenAmount, time: r.timestamp, priceUsd: price, usd: r.usd, kind: r.kind, maker: r.maker,
-      avatarUrl: p?.avatar_url ?? null, mine: !!me && r.maker?.toLowerCase() === me,
+      avatarUrl: p?.avatar_url ?? null, mine: !!me && r.maker?.toLowerCase() === me, live: r.live,
       label: `${who} ${r.kind === 'buy' ? 'bought' : 'sold'} $${r.usd >= 1000 ? (r.usd / 1000).toFixed(1) + 'K' : r.usd.toFixed(2)}`,
     }]
   }), [rows, profiles, me])
@@ -334,10 +358,13 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
 
   // True holders from ARCDEX's own index (GeckoTerminal's is hours old).
   const chainHolders = useChainHolders(address, active?.createdAt)
+  // …moving live: +1 when a new wallet buys in, −1 when a holder sells out.
+  const liveHolders = useLiveHolderCount(address, !!chainHolders?.complete, rows[0]?.txHash)
+  const holderCount = chainHolders?.complete ? (liveHolders ?? chainHolders.holders) : null
   const infoLive = useMemo(() => info && chainHolders?.complete
-    ? { ...info, holders: chainHolders.holders, top10Pct: chainHolders.top10Pct ?? info.top10Pct }
-    : info, [info, chainHolders])
-  const holdersLabel = chainHolders?.complete ? chainHolders.holders.toLocaleString()
+    ? { ...info, holders: holderCount ?? chainHolders.holders, top10Pct: chainHolders.top10Pct ?? info.top10Pct }
+    : info, [info, chainHolders, holderCount])
+  const holdersLabel = holderCount !== null ? holderCount.toLocaleString()
     : info?.holders != null ? info.holders.toLocaleString()
     : chainHolders ? chainHolders.holders.toLocaleString() + '…' : '—'
 
@@ -359,7 +386,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   const chartCard = (
     <div className="coin-chart-card" style={{ ...card, padding: 16 }}>
       <div className="coin-chart-title" style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{T("PRICE CHART · USD")}</div>
-      {canEmbedGecko(activePool) && <ChartSourceTabs value={chartSource} onChange={setChartSource} />}
+      {canEmbedGecko(activePool) && <div className="chart-toolbar"><ChartSourceTabs value={chartSource} onChange={setChartSource} /></div>}
       {showGecko ? <GeckoChart pool={activePool} symbol={symbol} /> : (
         <PriceChart poolAddress={activePool || null} engineToken={address} ticks={onchainFailed ? undefined : ticks} live={streaming} trades={chartTrades} thesisMarks={thesisMarks} friends={friends} supply={supply} symbol={symbol}
           onTraderClick={a => navigate({ name: 'trader', address: a })} />
@@ -372,7 +399,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
       buyTaxBps={chain?.buyTaxBps} sellTaxBps={chain?.sellTaxBps} onTraded={onTraded} unverified={info ? !info.verified : false} />
   )
   const socialTabs = (
-    <TokenSocialTabs token={address} symbol={symbol} rows={rows} tradesLoaded={tradesLoaded} profiles={profiles} chainHolders={chainHolders}
+    <TokenSocialTabs token={address} symbol={symbol} rows={rows} tradesLoaded={tradesLoaded} profiles={profiles} chainHolders={chainHolders} holderCount={holderCount}
       trader={trader} positionUsd={positionUsd} creator={chain?.creator ?? null} priceUsd={priceUsd} supply={supply}
       navigate={navigate} onProfilesNeeded={needProfiles} onThesesLoaded={setTheses} />
   )

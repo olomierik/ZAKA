@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Ago from '../components/Ago'
 import Avatar from '../components/Avatar'
 import ProfileEditor from '../components/ProfileEditor'
 import PnlChart from '../components/PnlChart'
@@ -25,10 +26,7 @@ import { t as T } from '../lib/i18n'
 
 const money = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(n) >= 1e6 ? (Math.abs(n) / 1e6).toFixed(2) + 'M' : Math.abs(n) >= 1e3 ? (Math.abs(n) / 1e3).toFixed(1) + 'K' : Math.abs(n).toFixed(2)}`
 const signed = (n: number) => `${n >= 0 ? '+' : ''}${money(n)}`
-function ago(iso: string) {
-  const s = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 1000))
-  return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`
-}
+const ago = (iso: string) => <Ago ts={Date.parse(iso)} />
 const dur = (sec: number) => sec < 3600 ? `${Math.max(1, Math.round(sec / 60))}m` : sec < 172800 ? `${Math.round(sec / 3600)}h` : `${Math.round(sec / 86400)}d`
 const card: React.CSSProperties = { background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, marginTop: 16 }
 const head: React.CSSProperties = { padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', fontWeight: 700, fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }
@@ -223,7 +221,7 @@ function Profile_({ addr, navigate }: { addr: string; navigate: (p: Page) => voi
 
       <div className="token-detail-grid" style={{ marginTop: 0 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ ...card, padding: 16 }}>
+          <div style={{ ...card, padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
               <b style={{ fontSize: '0.85rem' }}>{T("PnL")}</b>
               <div style={{ display: 'flex', gap: 4 }}>
@@ -231,7 +229,7 @@ function Profile_({ addr, navigate }: { addr: string; navigate: (p: Page) => voi
               </div>
             </div>
             <PnlChart points={pnl} sinceMs={sinceMs} />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginTop: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(105px, 1fr))', gap: 8, marginTop: 10 }}>
               <Stat label={T('Realized · {period}', { period: T(since.label) })} value={pstats ? signed(pstats.realized_pnl) : '…'} color={(pstats?.realized_pnl ?? 0) >= 0 ? 'var(--green)' : 'var(--red)'} />
               <Stat label={T('Volume · {period}', { period: T(since.label) })} value={pstats ? money(pstats.volume_usdc) : '…'} />
               <Stat label={T("Open positions")} value={<span className="sensitive">{money(openValue)}</span>} />
@@ -350,9 +348,9 @@ function ThesisItem({ t, meta, openToken }: { t: Thesis; meta: Map<string, Token
 
 function Stat({ label, value, color }: { label: string; value: React.ReactNode; color?: string }) {
   return (
-    <div style={{ background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', borderRadius: 10, padding: '10px 12px' }}>
-      <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>{label}</div>
-      <div style={{ fontSize: '1rem', fontWeight: 800, fontFamily: 'var(--mono)', color, marginTop: 2 }}>{value}</div>
+    <div style={{ background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', borderRadius: 8, padding: '8px 10px' }}>
+      <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>{label}</div>
+      <div style={{ fontSize: '0.95rem', fontWeight: 800, fontFamily: 'var(--mono)', color, marginTop: 2 }}>{value}</div>
     </div>
   )
 }

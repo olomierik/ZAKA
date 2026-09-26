@@ -21,10 +21,10 @@ const STEP: Record<string, string> = {
 }
 
 const field: React.CSSProperties = {
-  padding: '12px 13px', borderRadius: 10, fontSize: '1rem', fontFamily: 'var(--mono)', background: 'var(--bg-2)',
+  padding: '9px 11px', borderRadius: 8, fontSize: '0.9rem', fontFamily: 'var(--mono)', background: 'var(--bg-2)',
   border: '1px solid var(--adx-card-border)', color: 'var(--text)', outline: 'none', width: '100%', minWidth: 0,
 }
-const label: React.CSSProperties = { fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 6, display: 'block' }
+const label: React.CSSProperties = { fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 4, display: 'block' }
 
 export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
   const { address, connector } = useAccount()
@@ -168,22 +168,22 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: '20px 16px 32px' }}>
-      <h1 style={{ fontSize: '1.3rem', fontWeight: 800, margin: '0 0 4px' }}>{T("Bridge")}</h1>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: '0 0 16px', lineHeight: 1.5 }}>{T("Move USDC between Arc and other chains with Circle's Cross-Chain Transfer Protocol (CCTP v2): native burn-and-mint, no wrapped tokens, no third-party bridge.")}</p>
+    <div className="form-page">
+      <h1 className="page-title">{T("Bridge")}</h1>
+      <p className="page-sub">{T("Move USDC between Arc and other chains with Circle's Cross-Chain Transfer Protocol (CCTP v2): native burn-and-mint, no wrapped tokens, no third-party bridge.")}</p>
 
-      <div style={{ display: 'flex', background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', borderRadius: 10, padding: 3, marginBottom: 14 }}>
+      <div style={{ display: 'flex', background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', borderRadius: 9, padding: 3, marginBottom: 10 }}>
         {(['in', 'out'] as const).map(d => (
           <button key={d} onClick={() => { if (d !== dir) flip() }} style={{
-            flex: 1, padding: '10px 6px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem',
+            flex: 1, padding: '7px 6px', borderRadius: 7, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.78rem',
             background: dir === d ? 'var(--adx-accent)' : 'transparent', color: dir === d ? '#fff' : 'var(--text-muted)',
           }}>{d === 'in' ? T('Deposit to Arc') : T('Send from Arc')}</button>
         ))}
       </div>
 
-      <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {chainBox('from')}
-        <button onClick={flip} aria-label={T("Swap direction")} style={{ alignSelf: 'center', margin: '-6px 0', width: 38, height: 38, borderRadius: '50%', border: '1px solid var(--adx-card-border)', background: 'var(--bg-2)', color: 'var(--text)', fontSize: '1.05rem', cursor: 'pointer' }}>⇅</button>
+        <button onClick={flip} aria-label={T("Swap direction")} style={{ alignSelf: 'center', margin: '-4px 0', width: 30, height: 30, borderRadius: '50%', border: '1px solid var(--adx-card-border)', background: 'var(--bg-2)', color: 'var(--text)', fontSize: '0.9rem', cursor: 'pointer' }}>⇅</button>
         {chainBox('to')}
 
         <div>
@@ -195,7 +195,7 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
           <div style={{ display: 'flex', gap: 6 }}>
             {[true, false].map(v => (
               <button key={String(v)} onClick={() => setFromTradingPref(v)} style={{
-                flex: 1, padding: '8px 6px', borderRadius: 8, fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
+                flex: 1, padding: '6px 6px', borderRadius: 7, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
                 border: `1px solid ${fromTradingPref === v ? 'var(--adx-accent)' : 'var(--adx-card-border)'}`,
                 background: fromTradingPref === v ? 'rgba(59,130,246,0.15)' : 'var(--bg-2)', color: fromTradingPref === v ? 'var(--adx-accent)' : 'var(--text-muted)',
               }}>{v ? T('From trading wallet') : T('From connected wallet')}</button>
@@ -263,12 +263,12 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
         )}
 
         {needsWallet ? (
-          <button onClick={openConnectModal} style={{ padding: 14, borderRadius: 12, fontSize: '0.95rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>
+          <button onClick={openConnectModal} style={{ padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>
             {dir === 'in' ? T('Connect the wallet holding your USDC') : T('Connect Wallet')}
           </button>
         ) : (
           <button onClick={() => void handleBridge()} disabled={!(n > 0) || !recipientOk || busy || tooSmall || passcodeMissing} style={{
-            padding: 14, borderRadius: 12, fontSize: '0.95rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%',
+            padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%',
             opacity: !(n > 0) || !recipientOk || busy || tooSmall || passcodeMissing ? 0.5 : 1,
           }}>
             {busy ? T("Bridging…") : tooSmall ? T("Amount too small to cover Circle's fees")
@@ -276,7 +276,7 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
           </button>
         )}
 
-        <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5, margin: 0 }}>
+        <p className="swap-note">
           {dir === 'in'
             ? T("You sign on {chain} (approve + burn). Circle's relayer then mints your USDC on Arc automatically — no Arc gas, usually under a minute.", { chain: otherDef.label })
             : T("You sign on Arc (approve + burn). Circle's relayer then mints your USDC on {chain} automatically — no network switch, usually under a minute.", { chain: otherDef.label })}

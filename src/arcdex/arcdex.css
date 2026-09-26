@@ -452,12 +452,32 @@ html body {
 .chart-trade.buy { color: #22c55e; }
 .chart-trade.sell { color: #ef4444; }
 .chart-trade.thesis { font-size: 13px; text-shadow: none; }
+/* Swaps list under the chart: a new swap flashes in (DexScreener-style). */
+.swap-row-new { animation: swap-row-in 1.6s ease-out; }
+/* The Swaps list under the chart. The wallet column always shows: on a
+   narrow card the market cap, then the price, then the token amount make
+   way for it (the whole list is still one scroll away). */
+.swaps-wrap { container-type: inline-size; }
+.swaps-table th, .swaps-table td { padding-left: 10px !important; padding-right: 10px !important; }
+@container (max-width: 680px) { .swaps-table .sw-mc { display: none; } }
+@container (max-width: 560px) { .swaps-table .sw-price { display: none; } }
+@container (max-width: 460px) { .swaps-table .sw-tok { display: none; } }
+@container (max-width: 400px) { .swaps-table th, .swaps-table td { padding-left: 6px !important; padding-right: 6px !important; } }
+@container (max-width: 350px) { .swaps-table .sw-tx { display: none; } }
+/* (the size is still green for a buy, red for a sell) */
+@container (max-width: 320px) { .swaps-table .sw-type { display: none; } }
+@keyframes swap-row-in { from { background: rgba(59,130,246,0.25); } to { background: transparent; } }
+/* Above the chart: GeckoTerminal / ARCDEX chart tabs. */
+.chart-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .chart-trade.mine { background: rgba(250,204,21,0.16); box-shadow: inset 0 0 0 1px rgba(250,204,21,0.6); }
-.chart-trade.pop { animation: trade-pop 0.65s cubic-bezier(0.2, 0.9, 0.3, 1.25); }
+/* A swap's pop: in with a bounce, gone within its second (PriceChart POP_MS). */
+.chart-trade.pop { animation: trade-pop 1s ease-out forwards; }
 @keyframes trade-pop {
   0%   { transform: translate(-50%, -10%) scale(0.3); opacity: 0; }
-  55%  { transform: translate(-50%, -85%) scale(1.35); opacity: 1; }
-  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  20%  { transform: translate(-50%, -85%) scale(1.3); opacity: 1; }
+  38%  { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  72%  { opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
 }
 /* Legend, top left: coin · timeframe, value under the crosshair, change */
 .chart-legend {
@@ -661,7 +681,7 @@ html body {
 
 /* profile page (fomo parity) */
 .profile-banner {
-  height: 150px; background: linear-gradient(135deg, #1e3a8a 0%, #6d28d9 55%, #0f172a 100%);
+  height: 120px; background: linear-gradient(135deg, #1e3a8a 0%, #6d28d9 55%, #0f172a 100%);
   background-size: cover; background-position: center; padding: 12px 16px; position: relative;
 }
 .profile-banner .back-btn { background: rgba(0,0,0,0.45); color: #fff; border-color: rgba(255,255,255,0.2); }
@@ -669,7 +689,7 @@ html body {
   font-size: 0.7rem; font-weight: 700; padding: 3px 9px; border-radius: 99px; cursor: pointer;
   background: rgba(168,85,247,0.15); color: #c084fc; border: 1px solid rgba(168,85,247,0.35);
 }
-@media (max-width: 600px) { .profile-banner { height: 110px; } }
+@media (max-width: 600px) { .profile-banner { height: 90px; } }
 .reward-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 4px; border-bottom: 1px solid var(--adx-card-border); }
 .row-star { background: none; border: none; padding: 0; cursor: pointer; color: var(--text-muted); font-size: 0.8rem; line-height: 1; }
 .row-star:hover, .row-star.on { color: #facc15; }
@@ -689,7 +709,7 @@ html body {
 .new-badge { margin-left: 5px; padding: 0 5px; border-radius: 4px; font-size: 0.58rem; font-weight: 800; letter-spacing: 0.04em; background: rgba(34,197,94,0.15); color: var(--green); }
 
 /* Swap page: coin picker rows (big touch targets) */
-.swap-coin-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 8px; border-radius: 10px; border: none; background: transparent; color: var(--text); cursor: pointer; min-height: 52px; }
+.swap-coin-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 8px; border-radius: 8px; border: none; background: transparent; color: var(--text); cursor: pointer; min-height: 44px; }
 .swap-coin-row:hover, .swap-coin-row:active { background: var(--bg-2); }
 .swap-tag { margin-left: 6px; padding: 1px 6px; border-radius: 99px; font-size: 0.58rem; font-weight: 800; vertical-align: middle; background: rgba(124,58,237,0.18); color: #a78bfa; }
 
@@ -833,3 +853,24 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
   .lb-table th, .lb-table td { padding: 10px 8px !important; }
   .lb-table tr > :nth-child(5) { display: none; }
 }
+
+/* ── Compact trade forms: the swap boxes, Swap and Bridge ─────────── */
+.swap-box { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.swap-input { width: 100%; min-width: 0; padding: 9px 12px; border-radius: 8px; font-size: 0.95rem; font-family: var(--mono); background: var(--bg-2); border: 1px solid var(--adx-card-border); color: var(--text); outline: none; }
+.swap-input:focus { border-color: var(--adx-accent); }
+.swap-info { padding: 8px 11px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--adx-card-border); font-size: 0.74rem; display: flex; flex-direction: column; gap: 4px; }
+.swap-note { font-size: 0.64rem; color: var(--text-muted); text-align: center; line-height: 1.45; margin: 0; }
+.form-page { width: 100%; max-width: 420px; margin: 0 auto; padding: 16px 16px 28px; }
+.page-title { font-size: 1.15rem; font-weight: 800; margin: 0 0 4px; }
+.page-sub { color: var(--text-muted); font-size: 0.76rem; margin: 0 0 12px; line-height: 1.5; }
+
+/* Content pages (Rewards, Leaderboard, Clans, Feed, Alerts, Transfers,
+   Burn): one width, centred in the main area, the same side padding
+   everywhere. The page stays its own scroll container, so the scrollbar
+   keeps to the edge of the screen. --page-w sets a page's width. */
+.content-page {
+  padding-top: 16px;
+  padding-left: max(16px, calc((100% - var(--page-w, 820px)) / 2));
+  padding-right: max(16px, calc((100% - var(--page-w, 820px)) / 2));
+}
+.page-h { margin: 0; font-size: 1.25rem; font-weight: 800; }

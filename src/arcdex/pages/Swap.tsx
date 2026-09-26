@@ -55,18 +55,18 @@ export default function Swap({ navigate }: Props) {
   }, [coins, query])
 
   return (
-    <div style={{ maxWidth: 460, margin: '0 auto', padding: '20px 16px 32px' }}>
-      <h1 style={{ fontSize: '1.3rem', fontWeight: 800, margin: '0 0 4px' }}>{T("Swap")}</h1>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: '0 0 16px', lineHeight: 1.5 }}>{T("Trade any Arc token against USDC through ARCDEX's swap router — launchpad coins trade on their bonding curve. Approvals are for the exact amount only.")}</p>
+    <div className="form-page">
+      <h1 className="page-title">{T("Swap")}</h1>
+      <p className="page-sub">{T("Trade any Arc token against USDC through ARCDEX's swap router — launchpad coins trade on their bonding curve. Approvals are for the exact amount only.")}</p>
 
       {!picked ? (
-        <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 14, padding: 14 }}>
+        <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 10 }}>
           <input
             placeholder={T("Search by symbol, name, or address…")}
             value={query}
             onChange={e => setQuery(e.target.value)}
             inputMode="search"
-            style={{ padding: '12px 13px', borderRadius: 10, fontSize: '1rem', background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', outline: 'none', width: '100%', marginBottom: 8 }}
+            className="swap-input" style={{ marginBottom: 6, fontFamily: 'inherit' }}
           />
           {!query && <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.04em', padding: '4px 6px' }}>{T("MOST TRADED")}</div>}
           {matches.map(c => {
@@ -74,8 +74,8 @@ export default function Swap({ navigate }: Props) {
             return (
               <button key={c.address} onClick={() => setPicked(c)} className="swap-coin-row">
                 {c.image
-                  ? <img src={c.image} alt="" width={34} height={34} style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0, background: 'var(--bg-3)' }} onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden' }} />
-                  : <span style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, flexShrink: 0 }}>{c.symbol.slice(0, 2).toUpperCase()}</span>}
+                  ? <img src={c.image} alt="" width={30} height={30} style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0, background: 'var(--bg-3)' }} onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden' }} />
+                  : <span style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, flexShrink: 0 }}>{c.symbol.slice(0, 2).toUpperCase()}</span>}
                 <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                   <span style={{ display: 'block', fontWeight: 700, fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {c.symbol}{c.launchpad && <span className="swap-tag">{T("Launchpad")}</span>}
@@ -94,8 +94,8 @@ export default function Swap({ navigate }: Props) {
           {!query && coins.length === 0 && <div className="loading-state" style={{ padding: 20 }}>{T("Loading…")}</div>}
         </div>
       ) : (
-        <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '12px 16px 0' }}>
+        <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '8px 14px 0' }}>
             <button onClick={() => { setPicked(null); setQuery('') }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem', padding: '6px 0' }}>{T("← Choose a different token")}</button>
             <button onClick={() => navigate(picked.launchpad ? { name: 'token', address: picked.address, symbol: picked.symbol } : { name: 'argus', address: picked.address, pool: picked.pool ?? '' })}
               style={{ background: 'none', border: 'none', color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.78rem', padding: '6px 0' }}>{T("View chart →")}</button>
