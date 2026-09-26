@@ -55,7 +55,7 @@ export function DepositModal({ trader, navigate, onClose, initial = 'crypto' }: 
               <div style={{ fontSize: '0.72rem', color: '#fcd34d', textAlign: 'center', lineHeight: 1.5 }}>{T("Send only")}{' '}<b>{T("USDC on the Arc network")}</b>{' '}{T("to this address")}{trader.kind === 'trading-wallet' ? T(" (your one-tap trading wallet)") : ''}{T(". Other tokens or networks can be lost.")}</div>
             </div>
           )}
-          {mode === 'bridge' && <button className="btn-primary" onClick={() => { onClose(); navigate({ name: 'bridge' }) }}>{T("Open Bridge")}</button>}
+          {mode === 'bridge' && <button className="btn-primary" onClick={() => { onClose(); navigate({ name: 'bridge', dir: 'in' }) }}>{T("Open Bridge")}</button>}
           {mode === 'card' && <CardDeposit trader={trader} onSettled={refresh} />}
         </>
       )}

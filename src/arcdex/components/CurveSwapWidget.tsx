@@ -1,188 +1,227 @@
-import { useState, useEffect } from 'react'
-import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useWriteContract } from 'wagmi'
 import { openConnectModal } from './ConnectWallet'
-import { parseUnits, formatUnits, maxUint256, type Address } from 'viem'
+import { parseUnits, formatUnits, type Address, type Hex } from 'viem'
 import { arc } from '../wagmi'
-import { LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, type LaunchpadToken } from '../api/launchpad'
+import { LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, client, type LaunchpadToken } from '../api/launchpad'
+import { useTrader } from '../lib/identity'
+import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
+import { triggerIndex } from '../api/social'
 import { t as T } from '../lib/i18n'
 
 const USDC_ADDR = '0x3600000000000000000000000000000000000000' as const
 
 const ERC20_ABI = [
-  { name: 'allowance', type: 'function', stateMutability: 'view',
-    inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }],
-    outputs: [{ type: 'uint256' }] },
-  { name: 'approve', type: 'function', stateMutability: 'nonpayable',
-    inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }],
-    outputs: [{ type: 'bool' }] },
+  { name: 'allowance', type: 'function', stateMutability: 'view', inputs: [{ name: 'o', type: 'address' }, { name: 's', type: 'address' }], outputs: [{ type: 'uint256' }] },
+  { name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'a', type: 'address' }], outputs: [{ type: 'uint256' }] },
+  { name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 's', type: 'address' }, { name: 'a', type: 'uint256' }], outputs: [{ type: 'bool' }] },
 ] as const
 
-type SwapMode = 'buy' | 'sell'
+/** The launchpad's custom errors, in words a trader can act on. */
+const REVERTS: Record<string, string> = {
+  ExceedsSnipeLimit: "Buys are capped at $2,000 for the first 10 minutes after launch — try a smaller amount.",
+  ExceedsBlockLimit: "Too many buys landed in this block already — try again in a second.",
+  SlippageTooHigh: "The price moved past your slippage — try again or raise slippage.",
+  InsufficientCurveLiquidity: "Not enough tokens left on the curve for this buy — try a smaller amount.",
+  NoContracts: "Smart-contract wallets can't trade on the launchpad — use a regular wallet or your trading wallet.",
+  ZeroAmount: "Enter an amount.",
+  TokenNotFound: "This token isn't on the launchpad.",
+}
+const BUY_PRESETS = [10, 25, 50, 100]
+const SELL_PRESETS = [25, 50, 100]
 
+type Step = 'idle' | 'approving' | 'checking' | 'swapping' | 'done' | 'error'
 interface Props { token: LaunchpadToken; onTraded?: () => void }
 
+const fmtTok = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toFixed(2)
+
 export default function CurveSwapWidget({ token, onTraded }: Props) {
-  const { address, isConnected } = useAccount()
-  const [mode, setMode] = useState<SwapMode>('buy')
-  const [amountIn, setAmountIn] = useState('')
-  const [step, setStep] = useState<'idle' | 'approving' | 'swapping' | 'done' | 'error'>('idle')
-  const [txHash, setTxHash] = useState('')
-  const [errMsg, setErrMsg] = useState('')
+  const trader = useTrader()
+  const me = trader.address
+  const { writeContractAsync } = useWriteContract()
+  const [mode, setMode] = useState<'buy' | 'sell'>('buy')
+  const [amount, setAmount] = useState('')
+  const [slippage, setSlippage] = useState(3)
+  const [step, setStep] = useState<Step>('idle')
+  const [msg, setMsg] = useState('')
+  const [balance, setBalance] = useState<bigint | null>(null)
+  const [allowance, setAllowance] = useState(0n)
 
-  const tokenIn    = mode === 'buy' ? USDC_ADDR : token.address
-  const decimalsIn = mode === 'buy' ? 6 : 18
+  const tokenIn = (mode === 'buy' ? USDC_ADDR : token.address) as Address
+  const decIn = mode === 'buy' ? 6 : 18
+  const amountIn = useMemo(() => { try { return amount ? parseUnits(amount, decIn) : 0n } catch { return 0n } }, [amount, decIn])
+  const configured = LAUNCHPAD_ADDRESS.length === 42
 
-  const parsedIn = amountIn ? (() => { try { return parseUnits(amountIn, decimalsIn) } catch { return 0n } })() : 0n
-
-  const { data: allowance } = useReadContract({
-    address: tokenIn as Address,
-    abi: ERC20_ABI,
-    functionName: 'allowance',
-    args: [address!, LAUNCHPAD_ADDRESS],
-    query: { enabled: !!address && LAUNCHPAD_ADDRESS.length === 42 },
-  })
-
-  const { writeContract, error: writeError } = useWriteContract()
-  const { data: receipt } = useWaitForTransactionReceipt({ hash: txHash as `0x${string}` | undefined })
-
-  // writeContract() is fire-and-forget — a rejected signature, a chain the
-  // wallet won't switch to, or an RPC error all surface here, async, not
-  // as a thrown exception at the call site. Without this, any of those
-  // leave the button stuck on "Approving…"/"Swapping…" forever with the
-  // wallet otherwise showing perfectly "connected".
+  // Balance + allowance for whichever wallet is trading (trading wallet or external).
+  const refresh = useCallback(async () => {
+    if (!me || !configured) { setBalance(null); setAllowance(0n); return }
+    const [b, a] = await Promise.all([
+      client.readContract({ address: tokenIn, abi: ERC20_ABI, functionName: 'balanceOf', args: [me] }),
+      client.readContract({ address: tokenIn, abi: ERC20_ABI, functionName: 'allowance', args: [me, LAUNCHPAD_ADDRESS] }),
+    ]).catch(() => [null, 0n] as const)
+    setBalance(b); setAllowance(a ?? 0n)
+  }, [me, tokenIn, configured])
   useEffect(() => {
-    if (!writeError) return
-    setErrMsg(writeError.message.split('\n')[0].slice(0, 160))
-    setStep('error')
-  }, [writeError])
+    void refresh()
+    const id = setInterval(() => { if (!document.hidden) void refresh() }, 12_000)
+    return () => clearInterval(id)
+  }, [refresh])
 
-  const needsApprove = parsedIn > 0n && (allowance ?? 0n) < parsedIn
-
-  // curve pricing: usdcIn -> tokensOut, or tokensIn -> usdcOut. Two additive
-  // fee layers, same as the contract: fixed 1% platform swap fee, plus this
-  // token's own fixed creator tax (0-3%, set at launch).
+  // Curve math, same as the contract: a flat 1% platform fee plus this
+  // coin's fixed creator tax (0-3%), off the input on buys, off the output on sells.
   const taxBps = BigInt(token.curve.creatorTaxBps)
-  const estimated = (() => {
-    if (parsedIn === 0n) return null
-    const { vUsdc, vToken } = token.curve
+  const estimate = useMemo(() => {
+    if (amountIn === 0n) return null
+    const { vUsdc, vToken, rUsdc } = token.curve
     const k = vUsdc * vToken
     if (mode === 'buy') {
-      const platformFee = (parsedIn * 100n) / 10_000n
-      const creatorTax = (parsedIn * taxBps) / 10_000n
-      const fee = platformFee + creatorTax
-      const netIn = parsedIn - fee
-      const newVUsdc = vUsdc + netIn
-      const newVToken = k / newVUsdc
-      const tokensOut = vToken - newVToken
-      return { out: tokensOut, decimals: 18, fee }
-    } else {
-      const newVToken = vToken + parsedIn
-      const newVUsdc = k / newVToken
-      const grossOut = vUsdc - newVUsdc
-      const platformFee = (grossOut * 100n) / 10_000n
-      const creatorTax = (grossOut * taxBps) / 10_000n
-      const fee = platformFee + creatorTax
-      return { out: grossOut - fee, decimals: 6, fee }
+      const fee = (amountIn * 100n) / 10_000n + (amountIn * taxBps) / 10_000n
+      const netIn = amountIn - fee
+      return { out: vToken - k / (vUsdc + netIn), decimals: 18, fee }
     }
-  })()
+    let gross = vUsdc - k / (vToken + amountIn)
+    if (gross > rUsdc) gross = rUsdc
+    const fee = (gross * 100n) / 10_000n + (gross * taxBps) / 10_000n
+    return { out: gross - fee, decimals: 6, fee }
+  }, [amountIn, mode, token.curve, taxBps])
 
-  async function handleSwap() {
-    if (!address || !amountIn || parsedIn === 0n) return
-    if (LAUNCHPAD_ADDRESS.length !== 42) { setErrMsg(T('Launchpad not deployed yet')); setStep('error'); return }
+  const insufficient = balance !== null && amountIn > balance
+  const needsApprove = amountIn > 0n && allowance < amountIn
 
-    setErrMsg('')
+  async function send(req: { address: Address; abi: unknown; functionName: string; args: unknown[] }): Promise<Hex> {
+    if (trader.kind === 'trading-wallet') return getEmbeddedWalletClient().writeContract(req as never)
+    return writeContractAsync({ ...req, chainId: arc.id } as never)
+  }
+
+  async function submit() {
+    if (!me || !estimate || amountIn === 0n || !configured) return
+    setMsg('')
     try {
       if (needsApprove) {
         setStep('approving')
-        writeContract({ address: tokenIn as Address, abi: ERC20_ABI, functionName: 'approve', args: [LAUNCHPAD_ADDRESS, maxUint256], chainId: arc.id })
-        return
+        // Exactly this trade's amount — the launchpad never gets more.
+        const h = await send({ address: tokenIn, abi: ERC20_ABI, functionName: 'approve', args: [LAUNCHPAD_ADDRESS, amountIn] })
+        const rc = await client.waitForTransactionReceipt({ hash: h })
+        if (rc.status !== 'success') throw new Error(T('Approval failed'))
+        setAllowance(amountIn)
       }
-
+      const minOut = (estimate.out * BigInt(Math.round((100 - slippage) * 100))) / 10_000n
+      const call = { address: LAUNCHPAD_ADDRESS, abi: LAUNCHPAD_ABI, functionName: mode, args: [token.address, amountIn, minOut] }
+      // Simulate first: the curve's limits (launch cap, per-block cap) and a
+      // moved price show up here, before anything is signed.
+      setStep('checking')
+      await client.simulateContract({ ...call, account: me } as never)
       setStep('swapping')
-      const minOut = estimated ? (estimated.out * 95n) / 100n : 0n // 5% slippage tolerance
-
-      if (mode === 'buy') {
-        writeContract({ address: LAUNCHPAD_ADDRESS, abi: LAUNCHPAD_ABI, functionName: 'buy', args: [token.address, parsedIn, minOut], chainId: arc.id })
-      } else {
-        writeContract({ address: LAUNCHPAD_ADDRESS, abi: LAUNCHPAD_ABI, functionName: 'sell', args: [token.address, parsedIn, minOut], chainId: arc.id })
-      }
+      const h = await send(call)
+      const rc = await client.waitForTransactionReceipt({ hash: h })
+      if (rc.status !== 'success') throw new Error(T('Swap reverted'))
+      const out = Number(formatUnits(estimate.out, estimate.decimals))
+      setStep('done')
+      setMsg(mode === 'buy'
+        ? T('Bought {amount} {symbol} for {usd}', { amount: fmtTok(out), symbol: token.symbol, usd: `$${Number(formatUnits(amountIn, 6)).toFixed(2)}` })
+        : T('Sold {amount} {symbol} for {usd}', { amount: fmtTok(Number(formatUnits(amountIn, 18))), symbol: token.symbol, usd: `$${out.toFixed(2)}` }))
+      setAmount('')
+      setAllowance(a => (a >= amountIn ? a - amountIn : 0n))
+      void refresh()
+      triggerIndex(true)
       onTraded?.()
-    } catch (e: unknown) {
-      setErrMsg(e instanceof Error ? e.message : T('Swap failed'))
+    } catch (e) {
+      const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
+      const known = Object.keys(REVERTS).find(k => m.includes(k))
       setStep('error')
+      setMsg(/rejected|denied/i.test(m) ? T("You cancelled the transaction.") : known ? T(REVERTS[known]) : T('Trade failed: {reason}', { reason: m }).slice(0, 220))
     }
   }
 
+  function preset(v: number) {
+    if (mode === 'buy') { setAmount(String(v)); return }
+    if (balance === null) return
+    setAmount(formatUnits((balance * BigInt(v)) / 100n, 18))
+  }
+
+  const busy = step === 'approving' || step === 'checking' || step === 'swapping'
+  const pill = (active: boolean): React.CSSProperties => ({
+    flex: 1, padding: '8px 0', borderRadius: 8, fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
+    border: `1px solid ${active ? 'var(--adx-accent)' : 'var(--adx-card-border)'}`,
+    background: active ? 'rgba(59,130,246,0.15)' : 'var(--bg-2)', color: active ? 'var(--adx-accent)' : 'var(--text)',
+  })
+
   return (
-    <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--adx-card-border)', background: 'var(--bg-2)' }}>
         {(['buy', 'sell'] as const).map(m => (
-          <button key={m} onClick={() => { setMode(m); setAmountIn('') }} style={{
-            flex: 1, padding: '10px', fontSize: '0.875rem', fontWeight: 600, border: 'none', cursor: 'pointer',
+          <button key={m} onClick={() => { setMode(m); setAmount(''); setStep('idle'); setMsg('') }} style={{
+            flex: 1, padding: 10, fontSize: '0.875rem', fontWeight: 700, border: 'none', cursor: 'pointer',
             background: mode === m ? (m === 'buy' ? 'var(--green)' : 'var(--red)') : 'transparent',
             color: mode === m ? '#fff' : 'var(--text-muted)',
-          }}>
-            {m === 'buy' ? T("Buy") : T("Sell")} {token.symbol}
-          </button>
+          }}>{m === 'buy' ? T("Buy") : T("Sell")} {token.symbol}</button>
         ))}
       </div>
 
       {!token.curve.graduated && (
-        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T("Bonding curve ·")}{' '}{token.bondingProgress.toFixed(1)}{T("% to graduation")}<div style={{ marginTop: 4, height: 5, borderRadius: 3, background: 'var(--bg-2)', overflow: 'hidden' }}>
+        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T("Bonding curve ·")}{' '}{token.bondingProgress.toFixed(1)}{T("% to graduation")}
+          <div style={{ marginTop: 4, height: 5, borderRadius: 3, background: 'var(--bg-2)', overflow: 'hidden' }}>
             <div style={{ width: `${Math.min(100, token.bondingProgress)}%`, height: '100%', background: 'linear-gradient(90deg,#3b82f6,#22c55e)' }} />
           </div>
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-          {mode === 'buy' ? T("USDC to spend") : T('{symbol} to sell', { symbol: token.symbol })}
-        </label>
-        <input type="number" min="0" placeholder="0.00" value={amountIn} onChange={e => setAmountIn(e.target.value)}
-          style={{ padding: '12px 14px', borderRadius: 8, fontSize: '1rem', fontFamily: 'var(--mono)',
-            background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', outline: 'none', width: '100%' }} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+          <span>{mode === 'buy' ? T("USDC to spend") : T('{symbol} to sell', { symbol: token.symbol })}</span>
+          {balance !== null && <span className="mono">{T("Balance")}: {mode === 'buy' ? `$${Number(formatUnits(balance, 6)).toFixed(2)}` : fmtTok(Number(formatUnits(balance, 18)))}</span>}
+        </div>
+        <input type="text" inputMode="decimal" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+          style={{ padding: '12px 14px', borderRadius: 8, fontSize: '1rem', fontFamily: 'var(--mono)', background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', outline: 'none', width: '100%' }} />
+        <div style={{ display: 'flex', gap: 6 }}>
+          {(mode === 'buy' ? BUY_PRESETS : SELL_PRESETS).map(v => (
+            <button key={v} onClick={() => preset(v)} style={pill(false)}>{mode === 'buy' ? `$${v}` : `${v}%`}</button>
+          ))}
+        </div>
       </div>
 
-      {estimated && (
-        <div style={{ padding: '12px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)',
-          fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      {estimate && (
+        <div style={{ padding: 12, borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--orange)' }}>
             <span>{T("Fee (1% +")}{' '}{(token.curve.creatorTaxBps / 100).toFixed(1)}{T("% creator tax)")}</span>
-            <span className="mono">{formatUnits(estimated.fee, 6)}{' '}{T("USDC")}</span>
+            <span className="mono">{Number(formatUnits(estimate.fee, 6)).toFixed(4)}{' '}{T("USDC")}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: 'var(--text-muted)' }}>{T("Max slippage")}</span>
+            <span style={{ display: 'flex', gap: 4 }}>
+              {[1, 3, 5, 10].map(s => <button key={s} onClick={() => setSlippage(s)} style={{ ...pill(slippage === s), flex: 'none', padding: '2px 8px', fontSize: '0.72rem' }}>{s}%</button>)}
+            </span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--adx-card-border)', paddingTop: 6, color: 'var(--text)' }}>
             <span>{T("You receive (~)")}</span>
             <span className="mono" style={{ color: 'var(--green)' }}>
-              {formatUnits(estimated.out, estimated.decimals)} {mode === 'buy' ? token.symbol : T("USDC")}
+              {mode === 'buy' ? `${fmtTok(Number(formatUnits(estimate.out, 18)))} ${token.symbol}` : `$${Number(formatUnits(estimate.out, 6)).toFixed(2)}`}
             </span>
           </div>
         </div>
       )}
 
-      {step === 'error' && (
-        <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5', fontSize: '0.8125rem' }}>
-          {errMsg}
-        </div>
+      {msg && (
+        <div style={{ padding: '10px 14px', borderRadius: 8, fontSize: '0.8125rem',
+          background: step === 'done' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', border: `1px solid ${step === 'done' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+          color: step === 'done' ? '#86efac' : '#fca5a5' }}>{msg}</div>
       )}
 
-      {receipt && (
-        <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', color: '#86efac', fontSize: '0.8125rem' }}>{T("Trade confirmed!")}</div>
-      )}
-
-      {!isConnected ? (
-        <button onClick={openConnectModal} style={{ padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>{T("Connect Wallet")}</button>
+      {!me ? (
+        <button onClick={openConnectModal} style={{ padding: 14, borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>{T("Connect Wallet")}</button>
       ) : (
-        <button onClick={handleSwap} disabled={!amountIn || parsedIn === 0n || step === 'approving' || step === 'swapping'}
-          style={{ padding: '14px', borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700,
-            background: needsApprove ? 'var(--orange)' : mode === 'buy' ? 'var(--green)' : 'var(--red)',
-            color: '#fff', border: 'none', cursor: 'pointer', width: '100%',
-            opacity: (!amountIn || parsedIn === 0n) ? 0.5 : 1, transition: 'opacity 0.15s' }}>
-          {step === 'approving' ? T("Approving…") : step === 'swapping' ? T("Swapping…") :
-           needsApprove ? T('Approve {symbol}', { symbol: mode === 'buy' ? 'USDC' : token.symbol }) : T(mode === 'buy' ? 'Buy {symbol}' : 'Sell {symbol}', { symbol: token.symbol })}
+        <button onClick={() => void submit()} disabled={!configured || amountIn === 0n || insufficient || busy}
+          style={{ padding: 14, borderRadius: 10, fontSize: '0.9375rem', fontWeight: 700, width: '100%', border: 'none', cursor: 'pointer',
+            background: needsApprove ? 'var(--orange)' : mode === 'buy' ? 'var(--green)' : 'var(--red)', color: '#fff',
+            opacity: amountIn === 0n || insufficient || busy ? 0.55 : 1 }}>
+          {step === 'approving' ? T("Approving…") : step === 'checking' ? T("Checking…") : step === 'swapping' ? T("Swapping…")
+            : insufficient ? T("Insufficient balance")
+            : needsApprove ? T('Approve {symbol}', { symbol: mode === 'buy' ? 'USDC' : token.symbol })
+            : T(mode === 'buy' ? 'Buy {symbol}' : 'Sell {symbol}', { symbol: token.symbol })}
         </button>
       )}
 
-      <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5 }}>{T("1% platform fee +")}{' '}{(token.curve.creatorTaxBps / 100).toFixed(1)}{T("% creator tax (60% of that goes straight to the creator). Liquidity lives permanently in the curve — no LP to rug.")}</p>
+      <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5, margin: 0 }}>{T("1% platform fee +")}{' '}{(token.curve.creatorTaxBps / 100).toFixed(1)}{T("% creator tax (60% of that goes straight to the creator). Liquidity lives permanently in the curve — no LP to rug.")}{' '}{T("Approvals are for the exact trade amount only.")}</p>
     </div>
   )
 }

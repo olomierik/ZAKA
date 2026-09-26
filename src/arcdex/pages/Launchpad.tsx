@@ -7,7 +7,8 @@ import { getAllLaunchpadTokens, LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, type Launchpad
 import { subscribeLaunchpadTrades, type LaunchpadLiveTrade } from '../api/launchpadRpc'
 import { isUnlocked } from '../lib/embeddedWallet'
 import { quickBuyLaunchpad } from '../lib/quickTrade'
-import { uploadTokenImage, uploadTokenMetadata, buildInlineMetadataURI, isMediaUploadConfigured } from '../lib/mediaUpload'
+import { uploadTokenImage, uploadTokenMetadata, buildInlineMetadataURI } from '../lib/mediaUpload'
+import { useTrader } from '../lib/identity'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 
@@ -34,6 +35,7 @@ function fmt(n: number, prefix = '$') {
 
 function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
   const { address, isConnected } = useAccount()
+  const trader = useTrader()
   const [open, setOpen]           = useState(false)
   const [name, setName]           = useState('')
   const [symbol, setSymbol]       = useState('')
@@ -128,26 +130,27 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
         name, symbol, description: description || undefined,
         website: website || undefined, twitter: twitter || undefined, telegram: telegram || undefined,
       }
-      try {
-        // Try Storage first (env configured doesn't guarantee the bucket
-        // actually exists — that only surfaces as a failed request), and
-        // fall back to inlining the metadata as a data: URI, which needs
-        // no hosting at all. A picked file can't be inlined without an
-        // upload path, so if the file upload itself fails, surface that
-        // clearly rather than silently dropping the image.
-        if (isMediaUploadConfigured()) {
-          const uploadedImage = imageFile ? await uploadTokenImage(imageFile) : (imageUrl || undefined)
-          metadataURI = await uploadTokenMetadata({ ...meta, image: uploadedImage })
-        } else {
-          metadataURI = buildInlineMetadataURI({ ...meta, image: imageUrl || undefined })
-        }
-      } catch {
-        if (imageFile && !imageUrl) {
-          setError(T("Image upload failed (storage not set up yet) — paste a direct image URL instead, or launch without an image."))
+      // The logo goes to /api/upload (signing in once with the wallet). The
+      // metadata is stored there too, or, if that fails, encoded straight
+      // into the URI. A picked file can't be inlined, so a failed image
+      // upload is reported rather than silently dropping the logo.
+      let image = imageUrl || undefined
+      if (imageFile) {
+        try {
+          image = await uploadTokenImage(trader, imageFile)
+        } catch (e) {
+          const reason = e instanceof Error ? e.message : ''
+          setError(/rejected|denied/i.test(reason)
+            ? T("Sign-in cancelled — the logo needs a quick wallet signature to upload.")
+            : T("Image upload failed: {reason}. Paste a direct image URL instead, or launch without an image.", { reason: reason.slice(0, 120) }))
           setStep('idle')
           return
         }
-        metadataURI = buildInlineMetadataURI({ ...meta, image: imageUrl || undefined })
+      }
+      try {
+        metadataURI = await uploadTokenMetadata(trader, { ...meta, image })
+      } catch {
+        metadataURI = buildInlineMetadataURI({ ...meta, image })
       }
     }
     setPendingMetadataURI(metadataURI)

@@ -1,49 +1,15 @@
-// ── Launchpad media upload (Supabase Storage) ──────────────────────────
-// Token logo + metadata JSON (name/symbol/description/image/socials) for
-// launchpad tokens. The contract only ever stores a `metadataURI` string
-// (in the TokenLaunched event, not even contract state) — everything
-// richer lives off-chain here, the same pattern every other launchpad
-// uses for token images/socials.
+// ── Launchpad media: logo + metadata JSON ─────────────────────────────
+// A launchpad token's logo and metadata (name/symbol/description/image/
+// socials). The contract only ever stores a `metadataURI` string (in the
+// TokenLaunched event, not even contract state) — everything richer lives
+// off-chain, the same pattern every other launchpad uses.
+//
+// Uploads go through /api/upload (signed-in wallets only; the server checks
+// the file and stores it in Supabase Storage). If that's unavailable, the
+// metadata is encoded straight into the URI instead (see below) and the
+// creator can paste an image link.
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
-const BUCKET = 'launchpad-media'
-
-export function isMediaUploadConfigured(): boolean {
-  return !!SUPABASE_URL && !!SUPABASE_ANON_KEY
-}
-
-function randomFilename(ext: string): string {
-  const rand = crypto.randomUUID().replace(/-/g, '')
-  return `${Date.now()}-${rand}.${ext}`
-}
-
-async function uploadObject(path: string, body: Blob, contentType: string): Promise<string> {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) throw new Error('Media upload not configured')
-  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
-    method: 'POST',
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      'Content-Type': contentType,
-      'x-upsert': 'false',
-    },
-    body,
-  })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`Upload failed (${res.status}): ${text.slice(0, 200)}`)
-  }
-  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${path}`
-}
-
-/** Uploads a token logo image, returns its public URL. */
-export async function uploadTokenImage(file: File): Promise<string> {
-  if (file.size > 2 * 1024 * 1024) throw new Error('Image must be under 2MB')
-  if (!file.type.startsWith('image/')) throw new Error('File must be an image')
-  const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png'
-  return uploadObject(`images/${randomFilename(ext)}`, file, file.type)
-}
+import type { Trader } from './identity'
 
 export interface TokenMetadata {
   name: string
@@ -55,43 +21,32 @@ export interface TokenMetadata {
   telegram?: string
 }
 
-/** Uploads the token's metadata JSON, returns its public URL — this is
- * what goes on-chain as `metadataURI`. */
-export async function uploadTokenMetadata(meta: TokenMetadata): Promise<string> {
-  const blob = new Blob([JSON.stringify(meta)], { type: 'application/json' })
-  return uploadObject(`metadata/${randomFilename('json')}`, blob, 'application/json')
+async function upload(trader: Trader, kind: 'image' | 'metadata', body: BodyInit, contentType: string): Promise<string> {
+  const { authedRequest } = await import('../api/social')
+  const r = await authedRequest<{ url?: string }>(trader, `/api/upload?kind=${kind}`, body, contentType)
+  if (!r.url) throw new Error('Upload failed')
+  return r.url
 }
 
-/** Encodes the metadata directly into the URI itself — no storage bucket
- * needed at all. `fetch()` resolves `data:` URIs natively, so
- * `fetchTokenMetadata` reads this back exactly like a hosted file, with
- * no code path difference. Used when Supabase Storage isn't configured
- * (or its bucket hasn't been created yet), so a creator can still attach
- * an image/socials by pasting a direct image URL instead of uploading a
- * file — same on-chain shape (`metadataURI` string), the encoding is
- * just inline rather than hosted. */
+/** Uploads a token logo image (PNG/JPEG/GIF/WebP, under 2 MB), returns its public URL. */
+export async function uploadTokenImage(trader: Trader, file: File): Promise<string> {
+  if (file.size > 2 * 1024 * 1024) throw new Error('Image must be under 2MB')
+  if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) throw new Error('Use a PNG, JPEG, GIF or WebP image')
+  return upload(trader, 'image', file, file.type)
+}
+
+/** Uploads the token's metadata JSON, returns its public URL — this is
+ * what goes on-chain as `metadataURI`. */
+export function uploadTokenMetadata(trader: Trader, meta: TokenMetadata): Promise<string> {
+  return upload(trader, 'metadata', JSON.stringify(meta), 'application/json')
+}
+
+/** Encodes the metadata directly into the URI itself — no storage needed.
+ * The launchpad index (and `fetch()`) read `data:` URIs like a hosted file,
+ * so this is the fallback when an upload isn't possible: same on-chain
+ * shape (`metadataURI` string), just inline rather than hosted. */
 export function buildInlineMetadataURI(meta: TokenMetadata): string {
   const json = JSON.stringify(meta)
   const base64 = btoa(unescape(encodeURIComponent(json))) // UTF-8 safe base64
   return `data:application/json;base64,${base64}`
-}
-
-const metadataCache = new Map<string, TokenMetadata | null>()
-
-/** Fetches and caches a token's metadata JSON from its metadataURI. Never
- * throws — a broken/missing URI just means no image/socials to show. */
-export async function fetchTokenMetadata(metadataURI: string): Promise<TokenMetadata | null> {
-  if (!metadataURI) return null
-  const cached = metadataCache.get(metadataURI)
-  if (cached !== undefined) return cached
-  try {
-    const res = await fetch(metadataURI, { signal: AbortSignal.timeout(6000) })
-    if (!res.ok) { metadataCache.set(metadataURI, null); return null }
-    const json = await res.json() as TokenMetadata
-    metadataCache.set(metadataURI, json)
-    return json
-  } catch {
-    metadataCache.set(metadataURI, null)
-    return null
-  }
 }

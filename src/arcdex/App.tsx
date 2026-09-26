@@ -47,7 +47,7 @@ export type Page =
   | { name: 'portfolio' }
   | { name: 'launchpad' }
   | { name: 'swap' }
-  | { name: 'bridge' }
+  | { name: 'bridge'; dir?: 'in' | 'out' }
 
 const fromUrl = (): Page => pathToPage(window.location.pathname, window.location.search) ?? { name: 'terminal' }
 
@@ -104,7 +104,7 @@ export default function App() {
           {page.name === 'portfolio'   && <Portfolio navigate={navigate} />}
           {page.name === 'launchpad'   && <Launchpad navigate={navigate} />}
           {page.name === 'swap'        && <Swap navigate={navigate} />}
-          {page.name === 'bridge'      && <Bridge />}
+          {page.name === 'bridge'      && <Bridge key={page.dir ?? 'out'} initialDir={page.dir ?? 'out'} />}
           {page.name === 'trader'      && <TraderPage key={page.address} address={page.address} navigate={navigate} />}
           {page.name === 'clans'       && <ClansPage navigate={navigate} />}
           {page.name === 'clan'        && <ClanPage key={page.slug} slug={page.slug} navigate={navigate} />}

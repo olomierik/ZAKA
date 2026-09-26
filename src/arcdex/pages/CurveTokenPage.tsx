@@ -11,6 +11,12 @@ import { t as T } from '../lib/i18n'
 interface Props { address: string; navigate: (p: Page) => void }
 
 function short(addr: string) { return `${addr.slice(0, 6)}…${addr.slice(-4)}` }
+/** Creators enter a full link or just a handle ("@coin"): both open the profile. */
+function socialHref(kind: 'x' | 'telegram', v: string) {
+  if (v.startsWith('https://')) return v
+  const handle = v.replace(/^@/, '')
+  return kind === 'x' ? `https://x.com/${handle}` : `https://t.me/${handle}`
+}
 const socialLinkStyle: React.CSSProperties = {
   background: 'var(--bg-2)', color: 'var(--text-muted)', fontSize: '0.65rem', fontWeight: 700,
   padding: '2px 8px', borderRadius: 99, border: '1px solid var(--adx-card-border)', textDecoration: 'none',
@@ -69,6 +75,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
         tokenAmount: BigInt(Math.round(live.tokenAmount * 1e18)),
         blockNumber: BigInt(live.blockNumber),
         txHash: live.txHash as `0x${string}`,
+        timestamp: Math.floor(live.timestamp / 1000),
       }
       setTrades(prev => prev.some(t => t.txHash === trade.txHash) ? prev : [trade, ...prev].slice(0, 200))
     })
@@ -111,10 +118,10 @@ export default function CurveTokenPage({ address, navigate }: Props) {
                 <a href={token.metadata.website} target="_blank" rel="noopener noreferrer" style={socialLinkStyle}>{T("🌐 Website")}</a>
               )}
               {token.metadata?.twitter && (
-                <a href={token.metadata.twitter} target="_blank" rel="noopener noreferrer" style={socialLinkStyle}>𝕏</a>
+                <a href={socialHref('x', token.metadata.twitter)} target="_blank" rel="noopener noreferrer" style={socialLinkStyle}>𝕏</a>
               )}
               {token.metadata?.telegram && (
-                <a href={token.metadata.telegram} target="_blank" rel="noopener noreferrer" style={socialLinkStyle}>{T("✈ Telegram")}</a>
+                <a href={socialHref('telegram', token.metadata.telegram)} target="_blank" rel="noopener noreferrer" style={socialLinkStyle}>{T("✈ Telegram")}</a>
               )}
             </div>
           </div>

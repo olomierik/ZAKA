@@ -4,7 +4,7 @@ import { subscribePair, deriveTradeInfo, ARC_EXPLORER, type LiveTrade } from '..
 import { getToken, type ArcToken } from '../api/radardex'
 import { getCurve, LAUNCHPAD_ADDRESS } from '../api/launchpad'
 import PriceChart from '../components/PriceChart'
-import SwapWidget from '../components/SwapWidget'
+import TokenSwap from '../components/TokenSwap'
 import CurveTokenPage from './CurveTokenPage'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
@@ -214,11 +214,8 @@ export default function TokenPage({ address, navigate }: Props) {
 
         {/* swap sidebar */}
         <div className="token-detail-swap" style={{ marginTop: 16, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
-          {radarToken ? (
-            <SwapWidget token={radarToken} />
-          ) : (
-            <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>{T("Loading swap…")}</div>
-          )}
+          <TokenSwap address={address} pool={radarToken?.poolAddress || undefined}
+            fallback={radarToken ? { symbol: radarToken.symbol, image: radarToken.logoUrl || null, priceUsd: radarToken.price } : undefined} />
         </div>
       </div>
     </div>

@@ -32,7 +32,9 @@ Two apps in this repo:
 
 ### ArcDexRouter — RETIRED, do not deploy to mainnet
 The old `ArcDexRouter` (testnet `0xefa4f596da0c2acfcba47b43389be26e96912516`) points at `0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45`, which is **not** a swap router on Arc, and encodes the SwapRouter (v1) struct with `deadline`. Every mainnet swap through it would revert. `scripts/deploy-mainnet.sh` now just explains this and exits. Use ArcDexSwapRouter above.
-- The old `SwapWidget.tsx` (Swap page, non-Argus token pages) used to read `VITE_ARCDEX_ROUTER_ADDRESS`. Vercel production had it set to the **testnet** address above, which is an empty account on mainnet. Users were asked for unlimited USDC approval to it, and "swaps" to it succeeded while doing nothing. The widget is now hard-disabled in code and ignores that env var.
+- The old `SwapWidget.tsx` (Swap page, non-Argus token pages) used to read `VITE_ARCDEX_ROUTER_ADDRESS`. Vercel production had it set to the **testnet** address above, which is an empty account on mainnet. Users were asked for unlimited USDC approval to it, and "swaps" to it succeeded while doing nothing. It was deleted on 2026-09-26.
+  - **Replaced by `components/TokenSwap.tsx`** (Swap page and `TokenPage`): launchpad coins trade on their curve (`CurveSwapWidget`); anything with a USDC or ARGUS pool trades through ArcDexSwapRouter (`ArgusSwapWidget`); otherwise it says there's no route.
+  - At switch-over, all 30 of the most-traded coins routed (v4 via USDC).
 - One mainnet approval to `0xefa4…2516` exists: 2 USDC from `0x2742…86Bb`. It was found by scanning 3 days of USDC `Approval` logs, and the owner should revoke it with `approve(0xefa4…, 0)`.
 
 ### ArcLaunchpad
@@ -50,6 +52,11 @@ Self-contained bonding-curve launchpad — no separate LaunchToken deploy needed
   - Platform swap fee: fixed 1%, always, 100% to `platformFeeWallet`.
   - Creator tax: 0-3%, the creator's choice, fixed forever once launched — 60% straight to the creator's wallet, 40% to `platformFeeWallet`.
   - Worst case total per trade: 4%.
+- **Launch and trade data — `/api/launchpad` (`api/_launchpadCore.ts`):** every `TokenLaunched` (with its metadata: image, description, socials) and `Trade` since the deploy block (22,461,045), kept in `arcdex_kv`, scanned incrementally, CDN-cached. `?token=` adds that coin's trades.
+  - The browser's old lookups failed on the public RPC (one getLogs over the whole chain for metadata, 50k blocks for trades): no images, trades or charts. The browser now reads the index, with a direct chain scan as fallback (local dev, outages).
+  - Tests: `bun scripts/test-launchpad-index.ts` (decoding, metadata safety, live endpoint).
+- **Logo uploads — `/api/upload`:** signed-in wallets only (the `/api/session` token), 30 a day per wallet. PNG/JPEG/GIF/WebP up to 2 MB, sniffed from the bytes (no SVG); metadata sanitized. Stored in Supabase Storage bucket `launchpad-media`, created on first use. If an upload fails, the form falls back to an image link and inline (`data:`) metadata. Tests: `bun scripts/test-upload.ts` (mocked Supabase).
+- **Approvals are exact** everywhere: `CurveSwapWidget`, one-tap `quickTrade.ts` (which also has a 5% minimum-out now, it had none), token creation. Trades are simulated before sending, and the launchpad's revert errors are shown in words.
 - **Buyback-and-burn is manual and off-contract, by design** — there is no on-chain treasury. To buy back the platform's own token: launch it through the UI like any other token, then from `platformFeeWallet` call `buy()` on ArcLaunchpad, then call `burn(amount)` on the token itself (`LaunchToken` is `ERC20Burnable`).
 - **Anti-rug / anti-bot, all enforced on-chain:**
   - Anti-snipe: buys capped at $2,000/tx for the first 10 minutes after launch (`SNIPE_MAX_BUY_USDC`, `SNIPE_WINDOW_SECONDS`).
@@ -59,8 +66,13 @@ Self-contained bonding-curve launchpad — no separate LaunchToken deploy needed
 - $25,000 real-USDC graduation threshold — a status flag only; the same curve prices every trade before and after it, so there's no migration step and no price discontinuity.
 - Once the platform's own token is launched through the UI and burns have started, set `VITE_ARC_PLATFORM_TOKEN_ADDRESS` to power the burn ticker.
 
-### Bridge fees — `src/arcdex/lib/bridgeKit.ts`
-Circle's Bridge Kit has a native mechanism for this (`kit.setCustomFeePolicy`), used instead of a hand-rolled side-transfer. `computeBridgeFee()`: 0.5% of the transfer, bounded to [$0.05, $50]. Bridge Kit adds this **on top of** the transfer amount (wallet debits `amount + fee`, shown in `Bridge.tsx` before signing) and auto-splits it 10% to Circle / 90% to `PLATFORM_FEE_WALLET` — that 10/90 split is Circle's own mechanic on `CustomFeePolicy`, not something this app controls. Only applies to USDC (Bridge Kit rejects a custom fee policy on non-USDC tokens), which is all this app bridges.
+### Bridge — `src/arcdex/pages/Bridge.tsx`, `src/arcdex/lib/bridgeKit.ts`
+Both directions, via Circle CCTP v2 (Bridge Kit), with Circle's Forwarder minting on the destination (Arc is a supported forwarder destination, domain 26):
+- **Deposit to Arc (chain X → Arc):** the external wallet signs approve + burn on X. `ensureWalletChain` switches it to X, adding X first if the wallet doesn't know it (4902), and switches back to Arc afterwards. The default recipient is the trading wallet. Deposit → "From another chain" opens `/bridge?dir=in`.
+- **Send from Arc (Arc → chain X):** from the connected wallet or, one-tap, the trading wallet (`tradingWalletAdapter`, a `ViemAdapter` over its local account, Arc only). Solana is a destination only and needs a Solana address.
+- **Quotes before signing:** `quoteBridge` prices the route with Circle's estimate (a throwaway, never-funded account; it never signs) and shows Circle's fees, our fee, what leaves the wallet and what arrives. Measured 2026-09-26 for $10: Arc → Base, Circle $0.055; Base → Arc $0.016; Arc → Ethereum $100, $1.49. Live progress (approve, burn, attestation, mint) and Retry use the kit's events and `kit.retry`.
+
+Fees: Circle's Bridge Kit has a native mechanism for this (`kit.setCustomFeePolicy`), used instead of a hand-rolled side-transfer. `computeBridgeFee()`: 0.5% of the transfer, bounded to [$0.05, $50]. Bridge Kit adds this **on top of** the transfer amount (wallet debits `amount + fee`, shown in `Bridge.tsx` before signing) and auto-splits it 10% to Circle / 90% to `PLATFORM_FEE_WALLET` — that 10/90 split is Circle's own mechanic on `CustomFeePolicy`, not something this app controls. Only applies to USDC (Bridge Kit rejects a custom fee policy on non-USDC tokens), which is all this app bridges.
 
 ## Argus integration (ARCDEX)
 
@@ -222,7 +234,7 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
   - `arcdex_holder_scans` and `arcdex_holder_balances` (public read): the holder index.
   - `arcdex_apply_holder_deltas()` (service role only): applies one contiguous block range at a time, so two scans can't double-count.
 - **Arc RPC for logs — `api/_arcLogs.ts`,** shared by edge functions, the browser and scripts. Measured endpoints:
-  - Blockdaemon: 100k-block `getLogs`, bursts OK, CORS, but only ~900k blocks of history (≈5 days); older ranges say "pruned".
+  - Blockdaemon: 100k-block `getLogs`, bursts OK, CORS, but limited history; older ranges say "pruned". That was ~900k blocks (≈5 days) on 2026-09-25, and ranges ~320k blocks back were already pruned on 2026-09-26. `scanLogs` falls back to the archives on "pruned".
   - Beam (`rpc.beamrpc.com`): full archive, 10k ranges, bursts OK.
   - public and QuickNode: full archive, 9k ranges, about 2 calls/s.
   - drpc: free plan refuses history. The explorer is behind a Cloudflare challenge.

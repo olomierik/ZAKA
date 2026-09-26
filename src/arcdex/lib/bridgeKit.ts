@@ -1,17 +1,23 @@
 // ── Cross-chain bridge (Circle CCTP v2 via official Bridge Kit) ────────
-// Arc is officially CCTP v2-supported (domain 26) — verified directly
-// against Circle's own published chain definitions in this package
-// (node_modules/@circle-fin/bridge-kit/chains.d.ts), not guessed.
+// Arc is CCTP v2 domain 26 in Circle's own chain definitions
+// (@circle-fin/bridge-kit/chains), and a supported *destination* for
+// Circle's Forwarder — so both directions work:
 //
-// The burn (source, on Arc) always needs the user's own wallet signature
-// — that's inherent to CCTP, no relayer can sign on a user's behalf. The
-// mint (destination) does NOT need a second signature or network switch:
-// Circle's Orbit relayer (`useForwarder: true`) submits it automatically
-// once the attestation is ready, so the whole bridge is one signature.
+//   Arc → chain X   the user signs approve + burn on Arc; Circle's relayer
+//                    mints on X (no second signature, no network switch)
+//   chain X → Arc   the user signs approve + burn on X (the wallet switches
+//                    to X, and adds it if it doesn't know it); the relayer
+//                    mints on Arc
+//
+// Estimated with a throwaway wallet on 2026-09-26: Arc → Base, Base → Arc,
+// Arbitrum → Arc and Arc → Ethereum all quote (see Bridge.tsx for the fees).
 
-import type { EIP1193Provider } from 'viem'
+import { createPublicClient, createWalletClient, http, type EIP1193Provider } from 'viem'
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { BridgeKit, type BridgeChain } from '@circle-fin/bridge-kit'
-import { createViemAdapterFromProvider } from '@circle-fin/adapter-viem-v2'
+import * as Chains from '@circle-fin/bridge-kit/chains'
+import { createViemAdapterFromProvider, ViemAdapter } from '@circle-fin/adapter-viem-v2'
+import { getEmbeddedWalletClient } from './embeddedWallet'
 
 export const kit = new BridgeKit()
 
@@ -34,30 +40,60 @@ export function computeBridgeFee(amount: string): number {
   return Math.min(Math.max(fee, BRIDGE_FEE_MIN_USDC), BRIDGE_FEE_MAX_USDC)
 }
 
-// Bridge Kit adds this fee ON TOP of the transfer amount (wallet debits
-// amount + fee) and auto-splits it 10% to Circle / 90% to our recipient —
-// that split is Circle's own mechanic, not something we control. It only
-// applies to USDC transfers, which is all this app bridges.
+// Bridge Kit adds this fee ON TOP of the transfer amount (the wallet debits
+// amount + fee) on the source chain and splits it 10% to Circle / 90% to our
+// recipient — Circle's own mechanic. USDC only, which is all this app bridges.
 kit.setCustomFeePolicy({
   computeFee: params => computeBridgeFee(params.amount).toFixed(6),
   resolveFeeRecipientAddress: () => PLATFORM_FEE_WALLET,
 })
 
-/** Curated subset of the 26 CCTP v2 mainnet chains — the ones with real
- * liquidity/name recognition, so the destination picker isn't a 26-item
- * wall of chains nobody's heard of. */
-export const BRIDGE_DESTINATIONS: { label: string; chain: BridgeChain }[] = [
-  { label: 'Ethereum',  chain: 'Ethereum' as BridgeChain },
-  { label: 'Base',      chain: 'Base' as BridgeChain },
-  { label: 'Arbitrum',  chain: 'Arbitrum' as BridgeChain },
-  { label: 'Optimism',  chain: 'Optimism' as BridgeChain },
-  { label: 'Polygon',   chain: 'Polygon' as BridgeChain },
-  { label: 'Avalanche', chain: 'Avalanche' as BridgeChain },
-  { label: 'Linea',     chain: 'Linea' as BridgeChain },
-  { label: 'Unichain',  chain: 'Unichain' as BridgeChain },
-  { label: 'Sonic',     chain: 'Sonic' as BridgeChain },
-  { label: 'Solana',    chain: 'Solana' as BridgeChain },
+export interface BridgeChainOption { label: string; chain: BridgeChain; evm: boolean }
+
+/** The chains offered opposite Arc (a curated subset of Circle's CCTP v2
+ * mainnet chains). Solana can only receive: bridging *from* it needs a
+ * Solana wallet, which this app doesn't connect. */
+export const BRIDGE_CHAINS: BridgeChainOption[] = [
+  { label: 'Base', chain: 'Base' as BridgeChain, evm: true },
+  { label: 'Ethereum', chain: 'Ethereum' as BridgeChain, evm: true },
+  { label: 'Arbitrum', chain: 'Arbitrum' as BridgeChain, evm: true },
+  { label: 'Optimism', chain: 'Optimism' as BridgeChain, evm: true },
+  { label: 'Polygon', chain: 'Polygon' as BridgeChain, evm: true },
+  { label: 'Avalanche', chain: 'Avalanche' as BridgeChain, evm: true },
+  { label: 'Linea', chain: 'Linea' as BridgeChain, evm: true },
+  { label: 'Unichain', chain: 'Unichain' as BridgeChain, evm: true },
+  { label: 'World Chain', chain: 'WorldChain' as BridgeChain, evm: true },
+  { label: 'Sonic', chain: 'Sonic' as BridgeChain, evm: true },
+  { label: 'Solana', chain: 'Solana' as BridgeChain, evm: false },
 ]
+/** Kept for older imports: the chains USDC can be sent to from Arc. */
+export const BRIDGE_DESTINATIONS = BRIDGE_CHAINS
+
+type EvmChainDef = { chainId: number; title: string; name: string; rpcEndpoints: readonly string[]; explorerUrl: string; nativeCurrency: { name: string; symbol: string; decimals: number } }
+const chainDef = (name: string) => (Chains as unknown as Record<string, EvmChainDef | undefined>)[name]
+
+/** Puts an external wallet on `name` before it signs there: switch, or add
+ * the chain first if the wallet doesn't know it (error 4902). */
+export async function ensureWalletChain(provider: EIP1193Provider, name: string): Promise<void> {
+  const d = chainDef(name)
+  if (!d) return
+  const hexId = `0x${d.chainId.toString(16)}` as const
+  const current = await provider.request({ method: 'eth_chainId' }).catch(() => null)
+  if (current && parseInt(String(current), 16) === d.chainId) return
+  try {
+    await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hexId }] })
+  } catch (e) {
+    const code = (e as { code?: number; data?: { originalError?: { code?: number } } }).code ?? (e as { data?: { originalError?: { code?: number } } }).data?.originalError?.code
+    if (code !== 4902 && !/unrecognized|not added|unknown chain/i.test(String((e as Error).message))) throw e
+    await provider.request({
+      method: 'wallet_addEthereumChain',
+      params: [{
+        chainId: hexId, chainName: d.title, nativeCurrency: d.nativeCurrency,
+        rpcUrls: [...d.rpcEndpoints], blockExplorerUrls: [d.explorerUrl.replace(/\/tx\/\{hash\}$/, '')],
+      }],
+    })
+  }
+}
 
 /** Builds a Bridge Kit adapter from whatever wallet is actually connected
  * (injected, WalletConnect, Coinbase, etc.) via its own EIP-1193 provider
@@ -65,4 +101,55 @@ export const BRIDGE_DESTINATIONS: { label: string; chain: BridgeChain }[] = [
  * wallets and would silently break WalletConnect sessions. */
 export async function getBridgeAdapter(provider: EIP1193Provider) {
   return createViemAdapterFromProvider({ provider })
+}
+
+/** The in-browser trading wallet as a Bridge Kit adapter — Arc only (it
+ * holds USDC on Arc, so it can send out; it has no funds elsewhere to bring
+ * in). It signs locally, like every trading-wallet trade: no pop-up. */
+export function tradingWalletAdapter() {
+  const account = getEmbeddedWalletClient().account
+  if (!account) throw new Error('Unlock your trading wallet first')
+  return new ViemAdapter({
+    getPublicClient: ({ chain }) => createPublicClient({ chain, transport: http() }),
+    getWalletClient: ({ chain }) => createWalletClient({ account, chain, transport: http() }),
+  }, { addressContext: 'user-controlled', supportedChains: [Chains.Arc] })
+}
+
+// Quotes don't need the user's wallet: a throwaway, never-funded account
+// made in this tab is enough for Bridge Kit to price a route. It never signs.
+let quoteAdapterCache: ViemAdapter | null = null
+function quoteAdapter() {
+  if (!quoteAdapterCache) {
+    const account = privateKeyToAccount(generatePrivateKey())
+    quoteAdapterCache = new ViemAdapter({
+      getPublicClient: ({ chain }) => createPublicClient({ chain, transport: http() }),
+      getWalletClient: ({ chain }) => createWalletClient({ account, chain, transport: http() }),
+    }, { addressContext: 'user-controlled', supportedChains: BRIDGE_CHAINS.filter(c => c.evm).map(c => chainDef(c.chain)).filter(Boolean).concat([Chains.Arc]) as never })
+  }
+  return quoteAdapterCache
+}
+
+export interface BridgeQuote {
+  /** Circle's fees (forwarding the mint, fast transfer), in USDC. */
+  circleUsdc: number
+  /** ARCDEX's fee, in USDC — on top of the amount. */
+  platformUsdc: number
+  /** What leaves the wallet: amount + platform fee. */
+  debitUsdc: number
+  /** What arrives: amount − Circle's fees. */
+  receiveUsdc: number
+}
+
+/** Fees for a route, from Circle's own estimate. */
+export async function quoteBridge(from: string, to: string, amount: string): Promise<BridgeQuote> {
+  const n = parseFloat(amount)
+  const e = await kit.estimate({
+    from: { adapter: quoteAdapter(), chain: from as BridgeChain },
+    to: { chain: to as BridgeChain, recipientAddress: to === 'Solana' ? '11111111111111111111111111111111' : PLATFORM_FEE_WALLET, useForwarder: true },
+    amount,
+  } as never)
+  const fees = (e.fees ?? []) as { type: string; amount: string | null }[]
+  const circleUsdc = fees.filter(f => f.type !== 'kit').reduce((s, f) => s + (parseFloat(f.amount ?? '0') || 0), 0)
+  const platformUsdc = fees.filter(f => f.type === 'kit').reduce((s, f) => s + (parseFloat(f.amount ?? '0') || 0), 0) || computeBridgeFee(amount)
+  return { circleUsdc, platformUsdc, debitUsdc: n + platformUsdc, receiveUsdc: Math.max(0, n - circleUsdc) }
 }

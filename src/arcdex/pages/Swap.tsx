@@ -1,72 +1,106 @@
-import { useState, useEffect, useMemo } from 'react'
-import { getTokens, type ArcToken } from '../api/radardex'
-import SwapWidget from '../components/SwapWidget'
+import { useEffect, useMemo, useState } from 'react'
+import { cachedArgusMarket, copycatOf, getArgusMarket, type ArgusPool } from '../api/argusMarket'
+import { getAllLaunchpadTokens } from '../api/launchpad'
+import TokenSwap from '../components/TokenSwap'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 
 interface Props { navigate: (p: Page) => void }
 
+interface Coin { address: string; symbol: string; name: string; image: string | null; priceUsd: number; volume24h: number; pool?: string; launchpad: boolean }
+
+const fromMarket = (list: ArgusPool[]): Coin[] => {
+  const best = new Map<string, ArgusPool>()
+  for (const p of list) {
+    const k = p.token.address.toLowerCase()
+    const cur = best.get(k)
+    if (!cur || p.liquidityUsd > cur.liquidityUsd) best.set(k, p)
+  }
+  return [...best.values()].map(p => ({
+    address: p.token.address.toLowerCase(), symbol: p.token.symbol, name: p.token.name, image: p.token.image,
+    priceUsd: p.priceUsd, volume24h: p.volume24h, pool: p.pool, launchpad: false,
+  }))
+}
+const price = (n: number) => !n ? '—' : n < 0.0001 ? `$${n.toExponential(2)}` : n < 1 ? `$${n.toPrecision(3)}` : `$${n.toFixed(2)}`
+
 export default function Swap({ navigate }: Props) {
-  const [tokens, setTokens] = useState<ArcToken[]>([])
-  const [query, setQuery]   = useState('')
-  const [picked, setPicked] = useState<ArcToken | null>(null)
+  const [coins, setCoins] = useState<Coin[]>(() => fromMarket(cachedArgusMarket() ?? []))
+  const [query, setQuery] = useState('')
+  const [picked, setPicked] = useState<Coin | null>(null)
 
-  useEffect(() => { void getTokens().then(setTokens) }, [])
+  useEffect(() => {
+    let cancelled = false
+    void Promise.all([
+      getArgusMarket().then(fromMarket).catch(() => [] as Coin[]),
+      getAllLaunchpadTokens().then(ts => ts.map((t): Coin => ({
+        address: t.address.toLowerCase(), symbol: t.symbol, name: t.name, image: t.metadata?.image ?? null,
+        priceUsd: t.priceUsd, volume24h: 0, launchpad: true,
+      }))).catch(() => [] as Coin[]),
+    ]).then(([market, curve]) => {
+      if (cancelled) return
+      const seen = new Set(market.map(c => c.address))
+      setCoins(prev => {
+        const next = [...market, ...curve.filter(c => !seen.has(c.address))]
+        return next.length ? next : prev
+      })
+    })
+    return () => { cancelled = true }
+  }, [])
 
+  // Most traded first; typing narrows by symbol, name or address.
   const matches = useMemo(() => {
-    if (!query || picked) return []
-    const q = query.toLowerCase()
-    return tokens
-      .filter(t => t.symbol.toLowerCase().includes(q) || t.name.toLowerCase().includes(q) || t.address.toLowerCase() === q)
-      .sort((a, b) => b.volume24h - a.volume24h)
-      .slice(0, 8)
-  }, [tokens, query, picked])
+    const q = query.trim().toLowerCase()
+    const list = q ? coins.filter(c => c.symbol.toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || c.address === q) : coins
+    return [...list].sort((a, b) => b.volume24h - a.volume24h).slice(0, q ? 20 : 12)
+  }, [coins, query])
 
   return (
-    <div style={{ maxWidth: 440, margin: '0 auto', padding: '24px 16px' }}>
-      <h1 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: 4 }}>{T("Swap")}</h1>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: 20 }}>{T("Trade any Arc mainnet token against USDC — 1% platform fee, same router as every token page.")}</p>
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: '20px 16px 32px' }}>
+      <h1 style={{ fontSize: '1.3rem', fontWeight: 800, margin: '0 0 4px' }}>{T("Swap")}</h1>
+      <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: '0 0 16px', lineHeight: 1.5 }}>{T("Trade any Arc token against USDC through ARCDEX's swap router — launchpad coins trade on their bonding curve. Approvals are for the exact amount only.")}</p>
 
       {!picked ? (
-        <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 20 }}>
+        <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 14, padding: 14 }}>
           <input
-            autoFocus
             placeholder={T("Search by symbol, name, or address…")}
             value={query}
             onChange={e => setQuery(e.target.value)}
-            style={{
-              padding: '11px 13px', borderRadius: 8, fontSize: '0.9rem',
-              background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)',
-              outline: 'none', width: '100%', marginBottom: matches.length ? 10 : 0,
-            }}
+            inputMode="search"
+            style={{ padding: '12px 13px', borderRadius: 10, fontSize: '1rem', background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', outline: 'none', width: '100%', marginBottom: 8 }}
           />
-          {matches.map(t => (
-            <div key={t.address} onClick={() => setPicked(t)}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', borderRadius: 8, cursor: 'pointer' }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-2)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, flexShrink: 0 }}>
-                {t.symbol.slice(0, 2).toUpperCase()}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.82rem' }}>{t.symbol}</div>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>${t.price < 0.01 ? t.price.toExponential(2) : t.price.toFixed(4)}</div>
-            </div>
-          ))}
+          {!query && <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.04em', padding: '4px 6px' }}>{T("MOST TRADED")}</div>}
+          {matches.map(c => {
+            const copy = copycatOf(c.symbol, c.address)
+            return (
+              <button key={c.address} onClick={() => setPicked(c)} className="swap-coin-row">
+                {c.image
+                  ? <img src={c.image} alt="" width={34} height={34} style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0, background: 'var(--bg-3)' }} onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden' }} />
+                  : <span style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, flexShrink: 0 }}>{c.symbol.slice(0, 2).toUpperCase()}</span>}
+                <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                  <span style={{ display: 'block', fontWeight: 700, fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.symbol}{c.launchpad && <span className="swap-tag">{T("Launchpad")}</span>}
+                  </span>
+                  <span style={{ display: 'block', fontSize: '0.7rem', color: copy ? '#fca5a5' : 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {copy ? T("⚠ Not real {symbol}", { symbol: copy }) : c.name}
+                  </span>
+                </span>
+                <span style={{ fontSize: '0.8rem', fontFamily: 'var(--mono)', color: 'var(--text-muted)', flexShrink: 0 }}>{price(c.priceUsd)}</span>
+              </button>
+            )
+          })}
           {query && matches.length === 0 && (
             <div style={{ padding: '16px 8px', color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center' }}>{T("No tokens match \"")}{query}"</div>
           )}
+          {!query && coins.length === 0 && <div className="loading-state" style={{ padding: 20 }}>{T("Loading…")}</div>}
         </div>
       ) : (
-        <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px 0' }}>
-            <button onClick={() => { setPicked(null); setQuery('') }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.78rem' }}>{T("← Choose a different token")}</button>
-            <button onClick={() => navigate({ name: 'token', address: picked.address, symbol: picked.symbol })} style={{ background: 'none', border: 'none', color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.72rem' }}>{T("View chart →")}</button>
+        <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 14, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '12px 16px 0' }}>
+            <button onClick={() => { setPicked(null); setQuery('') }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem', padding: '6px 0' }}>{T("← Choose a different token")}</button>
+            <button onClick={() => navigate(picked.launchpad ? { name: 'token', address: picked.address, symbol: picked.symbol } : { name: 'argus', address: picked.address, pool: picked.pool ?? '' })}
+              style={{ background: 'none', border: 'none', color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.78rem', padding: '6px 0' }}>{T("View chart →")}</button>
           </div>
-          <SwapWidget token={picked} />
+          <TokenSwap address={picked.address} pool={picked.pool} fallback={{ symbol: picked.symbol, image: picked.image, priceUsd: picked.priceUsd }} />
         </div>
       )}
     </div>

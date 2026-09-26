@@ -272,16 +272,21 @@ export async function signIn(trader: Trader): Promise<string> {
   return j.token
 }
 
+/** POSTs JSON to one of ARCDEX's signed-in endpoints as `trader`. */
+function authedPost<T>(trader: Trader, url: string, body: Record<string, unknown>): Promise<T> {
+  return authedRequest<T>(trader, url, JSON.stringify(body), 'application/json')
+}
+
 /** POSTs to one of ARCDEX's signed-in endpoints as `trader`, signing in
  * first if needed (and once more if the server rejects the token). */
-async function authedPost<T>(trader: Trader, url: string, body: Record<string, unknown>): Promise<T> {
+export async function authedRequest<T>(trader: Trader, url: string, body: BodyInit, contentType: string): Promise<T> {
   if (!trader.address) throw new Error('Connect or unlock a wallet first')
   let token = storedSession(trader.address) ?? (await signIn(trader))
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
+      headers: { 'Content-Type': contentType, Authorization: `Bearer ${token}` },
+      body,
     })
     const j = (await res.json().catch(() => ({}))) as T & { error?: string }
     if (res.status === 401 && attempt === 0) {

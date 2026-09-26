@@ -6,6 +6,8 @@
 
 import { createPublicClient, http, parseAbi, type Address } from 'viem'
 import { arc } from '../wagmi'
+import { headBlock, scanLogs, type RawLog } from '../../../api/_arcLogs'
+import { CURVE_TRADE, DEPLOY_BLOCKS, TOKEN_LAUNCHED, decodeLaunch, decodeTrade, resolveMeta, statsOf, type Launch, type LaunchStats, type TradeRow } from '../../../api/_launchpadCore'
 
 export const LAUNCHPAD_ADDRESS = (import.meta.env.VITE_ARC_LAUNCHPAD_ADDRESS ?? '') as Address
 
@@ -96,34 +98,102 @@ export function bondingProgressFromCurve(c: CurveState): number {
   return Math.min(100, (Number(c.rUsdc) / Number(GRADUATION_THRESHOLD_USDC)) * 100)
 }
 
-/** Metadata (image/website/twitter/telegram) is off-chain — the contract
- * only ever emits a metadataURI once, at creation. Resolving it costs an
- * event-log query plus a JSON fetch, so this is optional per-call and
- * always cached after the first resolution. */
-async function resolveMetadata(token: Address): Promise<import('../lib/mediaUpload').TokenMetadata | null> {
-  const { fetchTokenMetadata } = await import('../lib/mediaUpload')
-  const uri = await getTokenMetadataUri(token).catch(() => '')
-  return uri ? fetchTokenMetadata(uri) : null
+// ── launches and trades: the launchpad index ─────────────────────────
+// A coin's image, description and socials live only in its TokenLaunched
+// event (the contract never stores the metadataURI), and its history is its
+// Trade events. /api/launchpad keeps both, indexed server-side and
+// CDN-cached. (Reading them here with getLogs failed: the public RPC takes
+// ~9k blocks per call, not the whole chain.) If the endpoint can't be
+// reached — local dev, an outage — the same logs are scanned from the
+// chain in ranges the RPCs accept.
+
+export interface IndexedLaunch extends Launch { stats: LaunchStats }
+interface LaunchpadIndex { launches: IndexedLaunch[]; trades?: TradeRow[] }
+
+const INDEX_MAX_AGE_MS = 4_000
+const indexCache = new Map<string, { at: number; p: Promise<LaunchpadIndex> }>()
+
+/** The launchpad index (with `token`: plus that coin's trades, oldest first). */
+export function launchpadIndex(token?: string): Promise<LaunchpadIndex> {
+  const key = token?.toLowerCase() ?? ''
+  const hit = indexCache.get(key)
+  if (hit && Date.now() - hit.at < INDEX_MAX_AGE_MS) return hit.p
+  const p = (async (): Promise<LaunchpadIndex> => {
+    try {
+      const r = await fetch(`/api/launchpad${key ? `?token=${key}` : ''}`)
+      const j = r.ok ? (await r.json()) as LaunchpadIndex & { complete?: boolean } : null
+      if (j?.launches && (j.complete || j.launches.length)) return j
+    } catch { /* use the chain */ }
+    return indexFromChain(key)
+  })()
+  indexCache.set(key, { at: Date.now(), p })
+  p.catch(() => indexCache.delete(key))
+  return p
 }
+
+// The chain fallback keeps what it scanned and only reads new blocks next time.
+let chainLogs: { to: number; launches: Launch[]; trades: TradeRow[] } | null = null
+async function indexFromChain(token: string): Promise<LaunchpadIndex> {
+  if (!isConfigured()) return { launches: [] }
+  const head = await headBlock()
+  const lp = LAUNCHPAD_ADDRESS.toLowerCase()
+  const state = chainLogs ?? { to: (DEPLOY_BLOCKS[lp] ?? head - 600_000) - 1, launches: [], trades: [] }
+  if (state.to < head) {
+    const res = await scanLogs<RawLog[]>({ address: lp, topics: [[TOKEN_LAUNCHED, CURVE_TRADE]] }, state.to + 1, head, {
+      head, reduce: l => l, deadline: Date.now() + 20_000,
+    })
+    const known = new Set(state.launches.map(l => l.token))
+    for (const l of res.parts.flat()) {
+      const launch = decodeLaunch(l)
+      if (launch && !known.has(launch.token)) { launch.meta = await resolveMeta(launch.metadataURI); state.launches.push(launch); known.add(launch.token); continue }
+      const trade = decodeTrade(l)
+      if (trade) state.trades.push(trade)
+    }
+    state.to = res.scannedTo
+  }
+  chainLogs = state
+  const tradesOf = (t: string) => state.trades.filter(x => x[0] === t)
+  return {
+    launches: state.launches.map(l => ({ ...l, stats: statsOf(tradesOf(l.token)) })),
+    ...(token ? { trades: tradesOf(token) } : {}),
+  }
+}
+
+async function launchOf(token: Address): Promise<IndexedLaunch | null> {
+  const t = token.toLowerCase()
+  return (await launchpadIndex()).launches.find(l => l.token === t) ?? null
+}
+
+type TokenMetadata = import('../lib/mediaUpload').TokenMetadata
+const metadataOf = (l: IndexedLaunch | null): TokenMetadata | null =>
+  l?.meta ? { name: l.name, symbol: l.symbol, ...l.meta } : null
 
 export async function getAllLaunchpadTokens(includeMetadata = true): Promise<LaunchpadToken[]> {
   if (!isConfigured()) return []
-  const total = await client.readContract({ address: LAUNCHPAD_ADDRESS, abi: LAUNCHPAD_ABI, functionName: 'tokenCount' })
+  const [total, index] = await Promise.all([
+    client.readContract({ address: LAUNCHPAD_ADDRESS, abi: LAUNCHPAD_ABI, functionName: 'tokenCount' }),
+    launchpadIndex().catch(() => ({ launches: [] as IndexedLaunch[] })),
+  ])
   if (total === 0n) return []
   const addrs = await client.readContract({
     address: LAUNCHPAD_ADDRESS, abi: LAUNCHPAD_ABI, functionName: 'getTokens', args: [0n, total],
   })
+  const byToken = new Map(index.launches.map(l => [l.token, l]))
 
   const results = await Promise.all(addrs.map(async (addr): Promise<LaunchpadToken | null> => {
     try {
-      const [curve, name, symbol, metadata] = await Promise.all([
+      const launch = byToken.get(addr.toLowerCase()) ?? null
+      // Name and symbol from the index when it has the coin; the curve is always live.
+      const [curve, name, symbol] = await Promise.all([
         getCurve(addr),
-        client.readContract({ address: addr, abi: ERC20_META_ABI, functionName: 'name' }),
-        client.readContract({ address: addr, abi: ERC20_META_ABI, functionName: 'symbol' }),
-        includeMetadata ? resolveMetadata(addr).catch(() => null) : Promise.resolve(undefined),
+        launch ? launch.name : client.readContract({ address: addr, abi: ERC20_META_ABI, functionName: 'name' }),
+        launch ? launch.symbol : client.readContract({ address: addr, abi: ERC20_META_ABI, functionName: 'symbol' }),
       ])
       if (!curve) return null
-      return { address: addr, name, symbol, curve, priceUsd: priceFromCurve(curve), bondingProgress: bondingProgressFromCurve(curve), metadata }
+      return {
+        address: addr, name, symbol, curve, priceUsd: priceFromCurve(curve), bondingProgress: bondingProgressFromCurve(curve),
+        metadata: includeMetadata ? metadataOf(launch) : undefined,
+      }
     } catch { return null }
   }))
   return results.filter((t): t is LaunchpadToken => t !== null)
@@ -132,53 +202,25 @@ export async function getAllLaunchpadTokens(includeMetadata = true): Promise<Lau
 export async function getLaunchpadToken(address: Address): Promise<LaunchpadToken | null> {
   const curve = await getCurve(address)
   if (!curve) return null
-  const [name, symbol, metadata] = await Promise.all([
-    client.readContract({ address, abi: ERC20_META_ABI, functionName: 'name' }),
-    client.readContract({ address, abi: ERC20_META_ABI, functionName: 'symbol' }),
-    resolveMetadata(address).catch(() => null),
+  const launch = await launchOf(address).catch(() => null)
+  const [name, symbol] = await Promise.all([
+    launch ? launch.name : client.readContract({ address, abi: ERC20_META_ABI, functionName: 'name' }),
+    launch ? launch.symbol : client.readContract({ address, abi: ERC20_META_ABI, functionName: 'symbol' }),
   ])
-  return { address, name, symbol, curve, priceUsd: priceFromCurve(curve), bondingProgress: bondingProgressFromCurve(curve), metadata }
+  return { address, name, symbol, curve, priceUsd: priceFromCurve(curve), bondingProgress: bondingProgressFromCurve(curve), metadata: metadataOf(launch) }
 }
 
-// token address (lowercase) => its one-time TokenLaunched log, cached
-// forever — the event fires exactly once per token and never changes.
-const launchLogCache = new Map<string, { metadataURI: string; blockNumber: bigint } | null>()
-
-async function fetchTokenLaunchedLog(token: Address) {
-  const key = token.toLowerCase()
-  const cached = launchLogCache.get(key)
-  if (cached !== undefined) return cached
-  if (!isConfigured()) { launchLogCache.set(key, null); return null }
-
-  const logs = await client.getLogs({
-    address: LAUNCHPAD_ADDRESS,
-    event: LAUNCHPAD_ABI.find(e => e.type === 'event' && e.name === 'TokenLaunched')!,
-    args: { token },
-    fromBlock: 0n,
-    toBlock: 'latest',
-  })
-  const log = logs[0]
-  const result = log ? { metadataURI: (log.args as { metadataURI?: string }).metadataURI ?? '', blockNumber: log.blockNumber } : null
-  launchLogCache.set(key, result)
-  return result
-}
-
-/** Reads a token's `metadataURI` back from its one-time TokenLaunched
- * event log — the contract itself only emits this, it isn't stored in
- * state, so there's no direct view function for it. */
+/** A token's `metadataURI`, from its one-time TokenLaunched event (the
+ * contract doesn't keep it in state). */
 export async function getTokenMetadataUri(token: Address): Promise<string> {
-  const log = await fetchTokenLaunchedLog(token)
-  return log?.metadataURI ?? ''
+  return (await launchOf(token))?.metadataURI ?? ''
 }
 
-/** The exact block a token was created in. Needed to scan its true
- * earliest trading activity — `getRecentTrades`'s default lookback window
- * (last ~50k blocks) would silently miss launch-time trades for any token
- * older than that, which is exactly the data a bundling/cluster check
- * needs to be correct. */
+/** The exact block a token was created in — where its trading history
+ * (and a bundling/cluster check) starts. */
 export async function getLaunchBlock(token: Address): Promise<bigint | null> {
-  const log = await fetchTokenLaunchedLog(token)
-  return log?.blockNumber ?? null
+  const l = await launchOf(token)
+  return l ? BigInt(l.block) : null
 }
 
 export interface CurveTrade {
@@ -188,46 +230,39 @@ export interface CurveTrade {
   tokenAmount: bigint
   blockNumber: bigint
   txHash: `0x${string}`
+  /** unix seconds */
+  timestamp: number
 }
 
-/** Recent trades for a token, read directly from chain logs — no indexer. */
+/** A token's trades since `fromBlock` (default: all of them), newest first. */
 export async function getRecentTrades(token: Address, fromBlock?: bigint): Promise<CurveTrade[]> {
   if (!isConfigured()) return []
-  const latest = await client.getBlockNumber()
-  const logs = await client.getLogs({
-    address: LAUNCHPAD_ADDRESS,
-    event: LAUNCHPAD_ABI.find(e => e.type === 'event' && e.name === 'Trade')!,
-    args: { token },
-    fromBlock: fromBlock ?? (latest > 50_000n ? latest - 50_000n : 0n),
-    toBlock: latest,
-  })
-  return logs.map(l => ({
-    trader: l.args.trader as Address,
-    isBuy: l.args.isBuy as boolean,
-    usdcAmount: l.args.usdcAmount as bigint,
-    tokenAmount: l.args.tokenAmount as bigint,
-    blockNumber: l.blockNumber,
-    txHash: l.transactionHash,
-  })).reverse()
+  const rows = (await launchpadIndex(token)).trades ?? []
+  return rows
+    .filter(t => fromBlock === undefined || BigInt(t[8]) >= fromBlock)
+    .map(t => ({
+      trader: t[1] as Address, isBuy: t[2] === 1, usdcAmount: BigInt(t[3]), tokenAmount: BigInt(t[4]),
+      blockNumber: BigInt(t[8]), txHash: t[10] as `0x${string}`, timestamp: t[9],
+    }))
+    .reverse()
 }
 
 /** Maps our own launchpad tokens into the same shape RadarDex tokens use,
  * so they can sit in the unified Terminal table as a real, first-party
  * source — tagged 'ARCDEX' — instead of only existing on a separate page.
- * Volume/tx/holder counts are derived from on-chain Trade logs directly
- * (no indexer for our own contract), over the same lookback window
- * `getRecentTrades` already uses. */
+ * Volume, trade and trader counts come from the launchpad index. */
 export async function getAllLaunchpadTokensAsArcTokens(): Promise<import('./radardex').ArcToken[]> {
-  const tokens = await getAllLaunchpadTokens() // already resolves metadata per token
+  const [tokens, index] = await Promise.all([getAllLaunchpadTokens(), launchpadIndex().catch(() => ({ launches: [] as IndexedLaunch[] }))])
   if (tokens.length === 0) return []
+  const statsBy = new Map(index.launches.map(l => [l.token, l.stats]))
 
   return Promise.all(tokens.map(async (t): Promise<import('./radardex').ArcToken> => {
-    const trades = await getRecentTrades(t.address).catch(() => [])
     const meta = t.metadata
-    const volume = trades.reduce((s, tr) => s + Number(tr.usdcAmount) / 1e6, 0)
-    const buys = trades.filter(tr => tr.isBuy).length
-    const sells = trades.length - buys
-    const holderCount = new Set(trades.map(tr => tr.trader.toLowerCase())).size
+    const s = statsBy.get(t.address.toLowerCase())
+    const volume = s?.vol24 ?? 0
+    const buys = s?.buys24 ?? 0
+    const sells = s?.sells24 ?? 0
+    const holderCount = s?.traders ?? 0
 
     return {
       address: t.address,
@@ -245,7 +280,7 @@ export async function getAllLaunchpadTokensAsArcTokens(): Promise<import('./rada
       ageMs: Date.now() - t.curve.launchedAt * 1000,
       launchpad: 'ARCDEX',
       poolAddress: '',
-      txCount24h: trades.length,
+      txCount24h: s?.trades24 ?? 0,
       holderCount,
       buys24h: buys,
       sells24h: sells,
@@ -268,26 +303,17 @@ const RESOLUTION_SECONDS: Record<'1m' | '5m' | '15m' | '1h' | '4h' | '1d', numbe
   '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400,
 }
 
-/** Builds real OHLC candles from on-chain Trade events — no indexer, no
- * third party. Each trade's own execution price (usdcAmount/tokenAmount)
- * is a data point; block timestamps are fetched once per unique block
- * and cached across calls since a mined block's timestamp never changes. */
-const blockTimeCache = new Map<bigint, number>()
-
+/** Real OHLC candles from the coin's Trade events: each trade's own
+ * execution price (usdcAmount/tokenAmount) is a data point, at its block's
+ * timestamp (carried in the log, so no block lookups). */
 export async function getCurveOhlcv(token: Address, resolution: keyof typeof RESOLUTION_SECONDS): Promise<CurveCandle[]> {
   const trades = await getRecentTrades(token)
   if (trades.length === 0) return []
 
-  const uniqueBlocks = [...new Set(trades.map(t => t.blockNumber))].filter(b => !blockTimeCache.has(b))
-  if (uniqueBlocks.length > 0) {
-    const blocks = await Promise.all(uniqueBlocks.map(b => client.getBlock({ blockNumber: b })))
-    blocks.forEach((blk, i) => blockTimeCache.set(uniqueBlocks[i], Number(blk.timestamp)))
-  }
-
   const bucketSec = RESOLUTION_SECONDS[resolution]
   const points = trades
     .map(t => ({
-      time: blockTimeCache.get(t.blockNumber)!,
+      time: t.timestamp,
       price: Number(t.usdcAmount) / 1e6 / (Number(t.tokenAmount) / 1e18),
       volume: Number(t.usdcAmount) / 1e6,
     }))
@@ -351,36 +377,23 @@ export async function getDevHoldingPct(token: Address, creator: Address): Promis
 
 export interface CreatorReward { token: Address; symbol: string; creatorTaxBps: number; earnedUsdc: number; trades: number; volumeUsdc: number; windowCapped: boolean }
 
-const LOG_SPAN = 9_000n     // Arc RPC's max getLogs range
-const MAX_SPANS = 60        // ~3 days of blocks, scanned 6 at a time
-
 /** Creator rewards (fomo's "Creator rewards" tab) for coins `creator`
  * launched on ArcLaunchpad: 60% of each coin's creator tax, paid in USDC
- * on every trade. Rebuilt from the launchpad's own Trade events, so it
- * matches what the contract actually paid (to within rounding). */
+ * on every trade. Rebuilt from each coin's full trade history in the
+ * launchpad index, so it matches what the contract paid (to within rounding). */
 export async function getCreatorRewards(creator: string): Promise<CreatorReward[]> {
   if (!isConfigured()) return []
   const mine = (await getAllLaunchpadTokens(false)).filter(t => t.curve.creator.toLowerCase() === creator.toLowerCase())
   if (!mine.length) return []
-  const latest = await client.getBlockNumber()
-  const tradeEvent = LAUNCHPAD_ABI.find(e => e.type === 'event' && e.name === 'Trade')!
   return Promise.all(mine.map(async t => {
-    const launch = (await getLaunchBlock(t.address).catch(() => null)) ?? 0n
-    const spans: [bigint, bigint][] = []
-    for (let to = latest; to >= launch && spans.length < MAX_SPANS; to -= LOG_SPAN) spans.push([to - LOG_SPAN + 1n > launch ? to - LOG_SPAN + 1n : launch, to])
-    let earned = 0, volume = 0, trades = 0
-    for (let i = 0; i < spans.length; i += 6) {
-      const batch = await Promise.all(spans.slice(i, i + 6).map(([fromBlock, toBlock]) =>
-        client.getLogs({ address: LAUNCHPAD_ADDRESS, event: tradeEvent, args: { token: t.address }, fromBlock, toBlock }).catch(() => [])))
-      for (const l of batch.flat()) {
-        const a = l.args as { isBuy: boolean; usdcAmount: bigint; totalFee: bigint }
-        const gross = Number(a.isBuy ? a.usdcAmount : a.usdcAmount + a.totalFee) / 1e6
-        earned += (gross * t.curve.creatorTaxBps / 10_000) * 0.6
-        volume += gross
-        trades++
-      }
+    const rows = (await launchpadIndex(t.address).catch(() => ({ trades: [] as TradeRow[] }))).trades ?? []
+    let earned = 0, volume = 0
+    for (const r of rows) {
+      // Buys: the fee came out of usdcAmount. Sells: usdcAmount is net, the fee is on top.
+      const gross = Number(r[2] === 1 ? BigInt(r[3]) : BigInt(r[3]) + BigInt(r[5])) / 1e6
+      earned += (gross * t.curve.creatorTaxBps / 10_000) * 0.6
+      volume += gross
     }
-    const capped = spans.length === MAX_SPANS && spans[spans.length - 1][0] > launch
-    return { token: t.address, symbol: t.symbol, creatorTaxBps: t.curve.creatorTaxBps, earnedUsdc: earned, trades, volumeUsdc: volume, windowCapped: capped }
+    return { token: t.address, symbol: t.symbol, creatorTaxBps: t.curve.creatorTaxBps, earnedUsdc: earned, trades: rows.length, volumeUsdc: volume, windowCapped: false }
   }))
 }

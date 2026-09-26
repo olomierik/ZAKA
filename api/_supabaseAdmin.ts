@@ -78,6 +78,36 @@ export async function kvSet(key: string, value: unknown): Promise<void> {
   } catch { /* cache only */ }
 }
 
+// ── Storage (public buckets, written server-side only) ────────────────
+
+const readyBuckets = new Set<string>()
+
+/** Creates the bucket if it doesn't exist yet (public read, size and type limits). */
+export async function ensureBucket(id: string, opts: { fileSizeLimit: number; mimeTypes: string[] }): Promise<void> {
+  if (readyBuckets.has(id)) return
+  if (!adminReady) throw new DbError(503, 'Supabase secret key not configured')
+  const res = await fetch(`${URL}/storage/v1/bucket`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ id, name: id, public: true, file_size_limit: opts.fileSizeLimit, allowed_mime_types: opts.mimeTypes }),
+  })
+  const text = await res.text()
+  if (!res.ok && !/already exists|Duplicate/i.test(text)) throw new DbError(res.status, text)
+  readyBuckets.add(id)
+}
+
+/** Stores one object and returns its public URL. */
+export async function storageUpload(bucket: string, path: string, body: ArrayBuffer | string, contentType: string): Promise<string> {
+  if (!adminReady) throw new DbError(503, 'Supabase secret key not configured')
+  const res = await fetch(`${URL}/storage/v1/object/${bucket}/${path}`, {
+    method: 'POST',
+    headers: { ...headers(), 'Content-Type': contentType, 'x-upsert': 'false', 'Cache-Control': 'max-age=31536000' },
+    body,
+  })
+  if (!res.ok) throw new DbError(res.status, await res.text())
+  return `${URL}/storage/v1/object/public/${bucket}/${path}`
+}
+
 /** True if the owner signed out of all devices after this token was
  * issued. Missing table (v3 migration not run yet) = never revoked. */
 export async function sessionRevoked(me: string, iat: number): Promise<boolean> {

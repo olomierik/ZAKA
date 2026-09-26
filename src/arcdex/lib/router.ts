@@ -22,7 +22,7 @@ export function pageToPath(p: Page): string {
     case 'portfolio':   return '/portfolio'
     case 'launchpad':   return '/launchpad'
     case 'swap':        return '/swap'
-    case 'bridge':      return '/bridge'
+    case 'bridge':      return p.dir === 'in' ? '/bridge?dir=in' : '/bridge'
   }
 }
 
@@ -53,7 +53,7 @@ export function pathToPage(pathname: string, search: string): Page | null {
     case 'portfolio':   return { name: 'portfolio' }
     case 'launchpad':   return { name: 'launchpad' }
     case 'swap':        return { name: 'swap' }
-    case 'bridge':      return { name: 'bridge' }
+    case 'bridge':      return { name: 'bridge', dir: q.get('dir') === 'in' ? 'in' : 'out' }
     default:            return null
   }
 }
