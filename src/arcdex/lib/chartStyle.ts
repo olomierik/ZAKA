@@ -1,8 +1,9 @@
 // Line or candlesticks, for every price chart (PriceChart).
 // Line is the default: one price line with a soft fill, green while the
-// chart's window is up and red while it's down, the way fomo draws it.
-// The choice is remembered per browser.
-import { AreaSeries, CandlestickSeries, type IChartApi, type ISeriesApi } from 'lightweight-charts'
+// chart's window is up and red while it's down, the way fomo draws it —
+// with a pulsing dot on its last point and a dotted line from there to the
+// price on the axis. The choice is remembered per browser.
+import { AreaSeries, CandlestickSeries, LastPriceAnimationMode, LineStyle, type IChartApi, type ISeriesApi } from 'lightweight-charts'
 import type { Candle } from './candles'
 
 export type ChartStyle = 'line' | 'candles'
@@ -42,7 +43,12 @@ export function addMainSeries(chart: IChartApi, style: ChartStyle): MainSeries {
       upColor: UP, downColor: DOWN, borderUpColor: UP, borderDownColor: DOWN, wickUpColor: UP, wickDownColor: DOWN,
     }) as MainSeries
   }
-  return chart.addSeries(AreaSeries, { ...lineColors(true), lineWidth: 2, crosshairMarkerRadius: 4 }) as MainSeries
+  const still = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
+  return chart.addSeries(AreaSeries, {
+    ...lineColors(true), lineWidth: 2, crosshairMarkerRadius: 4,
+    lastPriceAnimation: still ? LastPriceAnimationMode.Disabled : LastPriceAnimationMode.Continuous,
+    priceLineStyle: LineStyle.Dotted,
+  }) as MainSeries
 }
 
 /** One bar in the series' own format: OHLC for candles, the close for a line. */

@@ -111,9 +111,9 @@ Why buys, swaps and bridges failed for people, and the fixes:
   - Your own trades get a yellow outline.
   - Placement: yours, then theses, then the largest trades; overlapping labels are dropped (28 on phones, 70 on desktop).
 - **Fits itself (owner's request, round 4):** every candle of the chosen timeframe fits the window, and changing the timeframe is all anyone needs to do.
-  - `fitContent()` runs on load, on each new candle and on each history refresh.
+  - A fit runs on load and on a new timeframe, coin, view or style. Since round 7, new candles walk into the room on the right, and the view re-fits only when needed (see below); a history refresh re-fits only if bars fell off the view.
   - The price axis goes back to auto on a new timeframe, coin, Price/MCap view or style.
-  - The time scale can't scroll past the first or last candle, and a resize keeps the fit (`fixLeftEdge`, `fixRightEdge`, `lockVisibleTimeRangeOnResize`).
+  - A resize keeps the fit (`lockVisibleTimeRangeOnResize`, then a re-check). The edges are no longer pinned: `fixRightEdge` glued the last point to the price axis, and `fixLeftEdge` made 5.2 slide the chart on every new bar (round 7).
   - Someone who drags, pinches or wheel-zooms keeps their view until they change the timeframe; a double-click fits it again. The old "last 140 bars" window is gone.
   - The GeckoTerminal embed opens on the timeframe that fits the coin's whole life in about 60–120 candles (`fitResolution`: under 2h → 1m … over 60 days → 1d). Its own toolbar still switches timeframe.
 - Like fomo's chart:
@@ -122,6 +122,18 @@ Why buys, swaps and bridges failed for people, and the fixes:
   - Market cap by default (remembered).
   - Caps under $100K in full dollars on the axis.
 - Launchpad coins use this chart too (the old `CurveChart` is gone), priced from the curve's reserves after each trade.
+- **The live end of the line, as on fomo (owner's request, round 7).** Pinning the right edge had glued the last point to the price axis.
+  - **Room on the right:** the line stops 64px short of the axis (40px on phones), using `rightOffsetPixels` and `LIVE_GAP` in `lib/chartMotion.ts`. Candles get the same room.
+  - **New bars walk right:** `shiftVisibleRangeOnNewBar` is off, so each new bar moves one step into that room while the chart holds still.
+  - **Re-fit before the axis:** once the last bar is within `LIVE_GAP_MIN` (14px) of the axis, the view glides back to a fit over `REFIT_MS`. The target range is `fitRange()`, and it lands on `fitContent()`. The decision is `needsRefit()`, which also fires if bars fall off the left or far too much room opens up.
+  - **The last point pulses** (`lastPriceAnimation` Continuous), with a dotted price line to the axis label (`chartStyle.ts`).
+  - **Prices glide:** each new price reaches the last point over `GLIDE_MS` (ease-out) instead of jumping. A new bar grows out of the previous price.
+    - While it glides, `autoscaleInfoProvider` stretches the price axis to the target at once. The dot moves inside a still axis, and a swap's pop is placed at its final height (pops off the axis are held at the edge until the glide lands).
+  - **Reduced motion:** no pulse, no glide, and re-fits happen at once.
+  - A drag, pinch or wheel-zoom still keeps the user's view; a double-click fits it again.
+  - **Tests:**
+    - `bun scripts/test-chart-motion.ts`: the fit, walk and re-fit math against the library's own formulas.
+    - A browser check reads the chart's canvas pixels. It covers the room, the pulse, walking and re-fitting, the glide (a drop and a new high), drag and double-click, resizes, candles, phones and reduced motion.
 
 ### Phone home and desktop nav (2026-09-26)
 - **Phone home** (`components/MobileHome.tsx`, top of the Terminal on phones), like fomo's app:
