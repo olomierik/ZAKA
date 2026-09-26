@@ -1206,5 +1206,13 @@ const d: Record<string, string> = {
   "Every trade is simulated before it's sent. The pool's own fee, set by {launchpad}, applies on top of the platform fee.": "Kila biashara huigwa kabla ya kutumwa. Ada ya pool yenyewe, iliyowekwa na {launchpad}, huongezwa juu ya ada ya jukwaa.",
   "Trade on {launchpad} ↗": "Fanya biashara kwenye {launchpad} ↗",
   "{symbol} trades on {launchpad}'s own contracts, which ARCDEX can't route yet.": "{symbol} inauzwa kwenye mikataba ya {launchpad} yenyewe, ambayo ARCDEX bado haiwezi kupitisha.",
+  "{launchpad} curve": "mkondo wa {launchpad}",
+  "Curve fee": "Ada ya mkondo",
+  "Snipe tax": "Kodi ya snipe",
+  "I accept the {pct} snipe tax on this buy.": "Nakubali kodi ya snipe ya {pct} kwenye ununuzi huu.",
+  "{symbol} launched moments ago: a {pct} snipe tax goes to the launchpad on this buy, falling to 0 shortly after launch. Tick the box to buy anyway, or wait.": "{symbol} imezinduliwa punde: kwenye ununuzi huu kodi ya snipe ya {pct} inaenda kwa launchpad, na hushuka hadi 0 muda mfupi baada ya uzinduzi. Weka alama kwenye kisanduku ili kununua hata hivyo, au subiri.",
+  "This curve has sold out and is moving to its Uniswap pool: buying reopens there shortly. You can still sell.": "Mkondo huu umeuzwa wote na unahamia kwenye pool yake ya Uniswap: ununuzi utafunguliwa huko hivi karibuni. Bado unaweza kuuza.",
+  "Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee; ARCDEX adds none.": "Kila biashara huigwa kabla ya kutumwa. Mkondo wa {launchpad} hutoza ada yake yenyewe; ARCDEX haiongezi ada yoyote.",
+  "On {launchpad}'s bonding curve: {pct} of the way to its Uniswap pool.": "Kwenye mkondo wa {launchpad}: {pct} ya njia kuelekea pool yake ya Uniswap.",
 }
 export default d

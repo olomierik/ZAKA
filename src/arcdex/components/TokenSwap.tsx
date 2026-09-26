@@ -3,17 +3,20 @@
 //   • anything with a USDC (or ARGUS) Uniswap pool — from Argus or any other
 //     Arc launchpad — trades through ARCDEX's swap router (ArgusSwapWidget:
 //     exact approvals, simulated before sending)
-//   • a coin only on its launchpad's own curve links to that launchpad
+//   • a coin on Mercuri's or SolonPad's own curve trades on that curve
+//     (api/curves.ts) until it graduates
+//   • a coin only on another launchpad's own curve links to that launchpad
 // Replaces the old SwapWidget, which targeted a router that was never
 // deployed on mainnet and asked for unlimited approvals.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Address } from 'viem'
 import ArgusSwapWidget from './ArgusSwapWidget'
 import CurveSwapWidget from './CurveSwapWidget'
 import { bestSwapRoute, buildSwapRoute, cachedArgusMarket, getArgusMarket, getArgusOnchain, getArgusTokenPools, type ArgusPool, type SwapRoute } from '../api/argusMarket'
 import { launchpadNamed } from '../../../api/_launchpads'
 import { getLaunchpadToken, type LaunchpadToken } from '../api/launchpad'
+import { getCurve, type CurveInfo } from '../api/curves'
 import { t as T } from '../lib/i18n'
 
 interface Props {
@@ -41,6 +44,17 @@ export default function TokenSwap({ address, pool, fallback, onTraded, initialMo
     getLaunchpadToken(address as Address).then(t => { if (!cancelled) setCurve(t) }).catch(() => { if (!cancelled) setCurve(null) })
     return () => { cancelled = true }
   }, [address])
+
+  // On Mercuri's or SolonPad's own curve? Traded there until it graduates.
+  const [other, setOther] = useState<CurveInfo | null | undefined>(undefined)
+  useEffect(() => {
+    let cancelled = false
+    setOther(undefined)
+    getCurve(address).then(c => { if (!cancelled) setOther(c) }).catch(() => { if (!cancelled) setOther(null) })
+    return () => { cancelled = true }
+  }, [address])
+  const onCurve = other && !other.graduated ? other : null
+  const curveRoute = useMemo<SwapRoute | null>(() => onCurve ? { kind: 'curve', curve: onCurve } : null, [onCurve])
 
   // Otherwise: its market row (price, symbol, deepest pool), route and taxes.
   useEffect(() => {
@@ -72,8 +86,15 @@ export default function TokenSwap({ address, pool, fallback, onTraded, initialMo
     return () => { cancelled = true }
   }, [curve, token, poolId, row])
 
-  if (curve === undefined) return <div className="loading-state" style={{ padding: 24 }}>{T("Loading…")}</div>
+  if (curve === undefined || other === undefined) return <div className="loading-state" style={{ padding: 24 }}>{T("Loading…")}</div>
   if (curve) return <CurveSwapWidget token={curve} onTraded={onTraded} initialMode={initialMode} />
+  if (onCurve && curveRoute) {
+    return (
+      <ArgusSwapWidget token={address as Address} symbol={row?.token.symbol ?? onCurve.symbol ?? fallback?.symbol ?? '…'} tokenImage={row?.token.image ?? fallback?.image ?? null}
+        priceUsd={onCurve.priceUsd} marketCapUsd={onCurve.supply ? onCurve.supply * onCurve.priceUsd : null}
+        route={curveRoute} routeLoading={false} onTraded={onTraded} initialMode={initialMode} venue={{ name: onCurve.venue, site: launchpadNamed(onCurve.venue)?.site }} />
+    )
+  }
 
   const symbol = row?.token.symbol ?? fallback?.symbol ?? '…'
   const lpName = row?.launchpad

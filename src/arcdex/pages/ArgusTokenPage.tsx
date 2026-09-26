@@ -4,7 +4,9 @@ import {
   getArgusTokenPools, getArgusTokenInfo, getArgusTrades, getArgusOnchain, bestSwapRoute, cachedArgusMarket, copycatOf,
   ARGUS_TOKEN, USDC_ADDRESS, type ArgusPool, type ArgusTokenInfo, type ArgusTrade, type ArgusOnchain, type SwapRoute,
 } from '../api/argusMarket'
-import { geckoSwap, knownMaker, loadPoolSwaps, mergeSwaps, poolMeta, quoteUsd, resolveMakers, subscribePoolSwaps, type PoolSwap } from '../api/poolSwaps'
+import { curveMeta, geckoSwap, knownMaker, loadPoolSwaps, mergeSwaps, poolMeta, quoteUsd, resolveMakers, subscribePoolSwaps, type PoolSwap } from '../api/poolSwaps'
+import { getCurve, type CurveInfo } from '../api/curves'
+import { NATIVE } from '../../../api/_arcSwaps'
 import { useChainHolders, useLiveHolderCount } from '../api/holders'
 import { engineEnabled, getEngineToken, getEngineTrades, marketStream } from '../api/marketStream'
 import type { LaunchInfo, WireTrade } from '../../../api/_marketProtocol'
@@ -160,6 +162,40 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     return () => { cancelled = true; clearInterval(id) }
   }, [address])
 
+  // Mercuri's or SolonPad's own bonding curve, if the coin launched on one
+  // (api/curves.ts). While it's live the curve is the coin's market: its
+  // trades are the chart and the list, and ARCDEX trades on it directly.
+  // Re-read while live (price, progress, phase), and shortly after each
+  // live trade; a coin with no curve is checked once.
+  const [curve, setCurve] = useState<CurveInfo | null | undefined>(undefined)
+  const [curveTick, setCurveTick] = useState(0)
+  useEffect(() => { setCurve(undefined) }, [address])
+  useEffect(() => {
+    let alive = true
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const load = async (retries: number) => {
+      let c: CurveInfo | null
+      try { c = await getCurve(address) } catch {
+        // The chain didn't answer: try again, then treat it as no curve.
+        if (!alive) return
+        if (retries > 0) timer = setTimeout(() => void load(retries - 1), 4_000)
+        else setCurve(prev => prev === undefined ? null : prev)
+        return
+      }
+      if (!alive) return
+      setCurve(c)
+      if (c && !c.graduated) timer = setTimeout(() => void load(2), document.hidden ? 60_000 : 15_000)
+    }
+    void load(2)
+    return () => { alive = false; if (timer) clearTimeout(timer) }
+  }, [address, curveTick])
+  // Only this coin's (never the previous page's for a frame, on in-app navigation).
+  const curveHere = curve && curve.token === address.toLowerCase() ? curve : null
+  const liveCurve = curveHere && !curveHere.graduated ? curveHere : null
+  const curveKey = liveCurve ? `${liveCurve.venue}:${liveCurve.curve}` : ''
+  const curveRef = useRef(liveCurve)
+  useEffect(() => { curveRef.current = liveCurve }, [liveCurve]) // before the trades effect below
+
   // The route: this pool first, then the coin's other pools, deepest
   // first — a launchpad's own curve can't be routed, but a graduated
   // coin's Uniswap pool can. Keyed on which pools there are, not on the
@@ -192,9 +228,14 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     return () => { cancelled = true }
   }, [address, activePool, poolList, createdAt, poolsLoaded])
 
+  // What the swap widget trades: a live curve, or the pools' route. Until the
+  // curve check answers, the route is still being found.
+  const tradeRoute = useMemo<SwapRoute | null>(() => liveCurve ? { kind: 'curve', curve: liveCurve } : route, [liveCurve, route])
+  const tradeRouteLoading = liveCurve ? false : curve === undefined || routeLoading
+
   // The pool's quote side: from GeckoTerminal's pool data, or — while that's
   // still loading — from the on-chain route.
-  const quoteAddr = active?.quote.address
+  const quoteAddr = liveCurve ? NATIVE : active?.quote.address
     ?? (route ? (route.kind === 'v4' && route.via === 'ARGUS' ? ARGUS_TOKEN.toLowerCase() : USDC_ADDRESS.toLowerCase()) : undefined)
 
   // Every swap: history first (newest drawn as soon as it arrives), then
@@ -205,9 +246,11 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   // history, and merge by trade id — no gap, no duplicates.
   useEffect(() => {
     setSwaps(null); setOnchainFailed(false)
-    if (!activePool) return
+    // A live launchpad curve is the market itself: its own Buy/Sell events.
+    const onCurve = curveKey ? curveRef.current : null
+    if (!activePool && !onCurve) return
     // Decoding swaps ourselves needs the quote side; the engine's come priced.
-    const meta = quoteAddr ? poolMeta(activePool, address, quoteAddr) : null
+    const meta = onCurve ? curveMeta(onCurve) : quoteAddr ? poolMeta(activePool, address, quoteAddr) : null
     let alive = true
     const cleanups: (() => void)[] = []
     const add = (fresh: PoolSwap[]) => {
@@ -236,7 +279,8 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
       // Proxy unavailable (local dev) or throttled: back off.
       if (alive) gtTimer = setTimeout(() => void pollGecko(), gtFails ? Math.min(30_000, 5_000 * gtFails) : 3_000)
     }
-    void pollGecko()
+    // (A curve opened by its address alone has no GeckoTerminal pool.)
+    if (activePool) void pollGecko()
     cleanups.push(() => { if (gtTimer) clearTimeout(gtTimer) })
     // Without the quote side (still loading) and no engine, GeckoTerminal's
     // feed is all there is until the quote is known (this effect reruns then).
@@ -252,7 +296,8 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         .then(r => add(r.swaps))
         .catch(() => { if (alive) { setOnchainFailed(true); setSwaps(prev => prev ?? []) } })
     }
-    if (engineEnabled) {
+    // The market engine doesn't index other launchpads' curves: those come from the chain.
+    if (engineEnabled && !onCurve) {
       cleanups.push(marketStream.subscribe({ channel: 'token', token: address }, m => {
         if (m.t === 'TRADE') { const x = engineSwap(m.d, true); if (x) add([x]) }
         else if (m.t === 'SNAPSHOT') add(m.d.trades.map(t => engineSwap(t, false)).filter((x): x is PoolSwap => x !== null))
@@ -269,7 +314,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
       cleanups.push(() => clearTimeout(t))
     } else { liveFromChain(); historyFromChain() }
     return () => { alive = false; cleanups.forEach(c => c()) }
-  }, [activePool, quoteAddr, address])
+  }, [activePool, quoteAddr, address, curveKey])
 
   // USD per quote unit: USDC = 1; ARGUS from its own pool's live price.
   useEffect(() => {
@@ -325,6 +370,13 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     })
   }, [swaps, usdPerQuote])
   const streaming = !!swaps?.some(x => x.live)
+  // A live trade on the curve moves its price and progress: re-read it.
+  const newestLive = curveKey && swaps?.[0]?.live ? swaps[0].id : null
+  useEffect(() => {
+    if (!newestLive) return
+    const id = setTimeout(() => setCurveTick(n => n + 1), 1_500)
+    return () => clearTimeout(id)
+  }, [newestLive])
 
   useEffect(() => { needProfiles(rows.flatMap(r => (r.maker ? [r.maker] : []))) }, [rows, needProfiles])
   useEffect(() => { if (chain?.creator) needProfiles([chain.creator]) }, [chain?.creator, needProfiles])
@@ -359,23 +411,26 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   // refreshes the position card.
   const onTraded = useCallback(() => { setRefreshKey(k => k + 1) }, [])
 
-  const symbol = active?.token.symbol || info?.symbol || engineMeta?.symbol || '…'
-  const name = active?.token.name || info?.name || engineMeta?.name || ''
+  const symbol = active?.token.symbol || info?.symbol || engineMeta?.symbol || curveHere?.symbol || '…'
+  const name = active?.token.name || info?.name || engineMeta?.name || curveHere?.name || ''
   const image = info?.image ?? active?.token.image ?? engineMeta?.image ?? null
   // The pool's price only changes on a swap, so the latest swap's price IS
   // the live price (GeckoTerminal's is 10-60s behind).
   const livePrice = swaps?.[0] ? (swaps[0].priceUsd ?? (usdPerQuote ? swaps[0].price * usdPerQuote : null)) : null
-  const priceUsd = livePrice ?? active?.priceUsd ?? 0
+  // A live curve's own price: Mercuri's trades carry it exactly; SolonPad's
+  // carry what each trade paid, so its reserves (re-read after each trade) lead.
+  const curveSpot = liveCurve?.priceUsd || null
+  const priceUsd = (liveCurve?.venue === 'SolonPad' ? curveSpot : null) ?? livePrice ?? curveSpot ?? active?.priceUsd ?? 0
   const copy = symbol === '…' ? null : copycatOf(symbol, address)
   // Where the coin launched (its pool's GeckoTerminal dex), for the badge,
   // the notes and — when ARCDEX can't route it — a link to trade it there.
   const listed = useMemo(() => cachedArgusMarket()?.find(p => p.token.address === address.toLowerCase()) ?? null, [address])
-  const lpName = chain?.portal ? 'Argus' : active ? (active.launchpad ?? launchpadLabel(active.dex)) : listed?.launchpad ?? null
+  const lpName = chain?.portal ? 'Argus' : curveHere ? curveHere.venue : active ? (active.launchpad ?? launchpadLabel(active.dex)) : listed?.launchpad ?? null
   const lpColor = getLaunchpadColor(lpName ?? '')
   const venue = lpName && lpName !== 'Argus' && !/uniswap/i.test(lpName) ? { name: lpName, site: launchpadNamed(lpName)?.site } : null
   const gtMcap = active?.marketCapUsd ?? active?.fdvUsd ?? null
   // Circulating supply, for MCap-at-trade and the chart's MCap mode.
-  const supply = gtMcap && active?.priceUsd ? gtMcap / active.priceUsd : null
+  const supply = gtMcap && active?.priceUsd ? gtMcap / active.priceUsd : liveCurve?.supply ?? null
   const mcap = supply && priceUsd ? supply * priceUsd : gtMcap
 
   // Tick the header price green/red as it moves.
@@ -444,7 +499,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   )
   const swapWidget = (mode?: 'buy' | 'sell') => (
     <ArgusSwapWidget key={mode ?? 'inline'} token={address as Address} symbol={symbol} tokenImage={image} priceUsd={priceUsd}
-      marketCapUsd={mcap} route={route} routeLoading={routeLoading} initialMode={mode}
+      marketCapUsd={mcap} route={tradeRoute} routeLoading={tradeRouteLoading} initialMode={mode}
       buyTaxBps={chain?.buyTaxBps} sellTaxBps={chain?.sellTaxBps} onTraded={onTraded} unverified={info ? !info.verified : false} venue={venue} />
   )
   const socialTabs = (
@@ -529,7 +584,12 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
       {copy && (
         <div style={{ ...card, padding: '12px 16px', fontSize: '0.82rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.4)', color: '#fcd34d' }}>{T("⚠ This is")}{' '}<b>{T("not")}</b>{' '}{T("the real")}{' '}{copy}{venue ? T(". It's a separate launch that reuses the") : T(". It's a separate Argus launch that reuses the")}{' '}{copy}{' '}{T("ticker — check the contract address before trading.")}</div>
       )}
-      {pools !== null && pools.length === 0 && (
+      {liveCurve ? (
+        <div style={{ ...card, padding: '12px 16px', color: 'var(--text-muted)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ flex: 1 }}>{T("On {launchpad}'s bonding curve: {pct} of the way to its Uniswap pool.", { launchpad: liveCurve.venue, pct: `${Math.floor(liveCurve.progress * 100)}%` })}</span>
+          <span style={{ flex: '0 0 120px', height: 6, borderRadius: 99, background: 'var(--bg-2)', overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${Math.min(100, liveCurve.progress * 100)}%`, background: lpColor }} /></span>
+        </div>
+      ) : pools !== null && pools.length === 0 && curve !== undefined && (
         <div style={{ ...card, padding: 16, color: 'var(--text-muted)', fontSize: '0.85rem' }}>{T("GeckoTerminal has no USDC- or ARGUS-quoted pool for this token yet.")}</div>
       )}
 

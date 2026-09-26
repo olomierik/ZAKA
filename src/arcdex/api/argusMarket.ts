@@ -14,6 +14,7 @@ import { gtGet, gtDirectFetcher } from './gtClient'
 import { headBlock, hex, rpcCall, scanLogs, RECENT_RPC } from '../../../api/_arcLogs'
 import { POOL_MANAGER, signedWord, topicAddress, word } from '../../../api/_arcSwaps'
 import { NATIVE, isNativePool } from './universalRouter'
+import type { CurveInfo } from './curves'
 
 export const USDC_ADDRESS = '0x3600000000000000000000000000000000000000' as Address
 export const ARGUS_TOKEN = '0xeCe5cA8bf9220718E5727754026757512212cb3c' as Address
@@ -399,6 +400,8 @@ export type SwapRoute =
   | { kind: 'v3'; fee: number }
   /** A v4 pool against native USDC (Minara, SolonPad, …): through Uniswap's Universal Router (api/universalRouter.ts). */
   | { kind: 'v4native'; key: PoolKey }
+  /** Mercuri's or SolonPad's own bonding curve, before the coin graduates: traded on it directly (api/curves.ts). */
+  | { kind: 'curve'; curve: CurveInfo }
 
 const POSITION_MANAGER = '0x6049c9a0e26405C0985f9E3685C87d0aE917f82B' as Address
 const PM_ABI = parseAbi(['function poolKeys(bytes25) view returns (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks)'])
