@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import Avatar from './Avatar'
-import { DepositModal } from './CashModals'
+import { DepositModal, WithdrawModal } from './CashModals'
 import { getLeaderboard, getProfiles, type LeaderRow, type Profile } from '../api/social'
 import { shortAddr, useTrader } from '../lib/identity'
 import { useCash } from '../lib/usdc'
@@ -18,6 +18,7 @@ export default function MobileHome({ navigate }: { navigate: (p: Page) => void }
   const trader = useTrader()
   const { cash } = useCash(trader.address)
   const [deposit, setDeposit] = useState(false)
+  const [withdraw, setWithdraw] = useState(false)
   const [top, setTop] = useState<LeaderRow[]>([])
   const [profiles, setProfiles] = useState<Map<string, Profile>>(new Map())
 
@@ -55,6 +56,11 @@ export default function MobileHome({ navigate }: { navigate: (p: Page) => void }
           </>
         )}
       </div>
+      {trader.address && (
+        <div className="m-home-actions">
+          <button onClick={() => setWithdraw(true)}>{T('↑ Withdraw')}</button>
+        </div>
+      )}
 
       {top.length > 0 && (
         <div className="m-home-traders" aria-label={T('Top traders this week')}>
@@ -76,6 +82,7 @@ export default function MobileHome({ navigate }: { navigate: (p: Page) => void }
       )}
 
       {deposit && trader.address && <DepositModal trader={trader} navigate={navigate} onClose={() => setDeposit(false)} />}
+      {withdraw && trader.address && <WithdrawModal trader={trader} onClose={() => setWithdraw(false)} />}
     </div>
   )
 }

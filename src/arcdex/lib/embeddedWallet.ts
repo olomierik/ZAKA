@@ -265,6 +265,16 @@ export async function exportPrivateKey(passcode: string): Promise<Hex> {
   return decryptPrivateKey(storedBlob(), passcode)
 }
 
+/** Confirms the passcode (and passkey, if on) opens the stored wallet — the
+ * one that's unlocked now. Withdrawals to an address that didn't fund the
+ * wallet ask for it, so an unlocked tab alone can't send funds elsewhere.
+ * Throws "Wrong passcode" otherwise; the key isn't kept. */
+export async function verifyPasscode(passcode: string): Promise<void> {
+  if (!unlockedAccount) throw new Error('Wallet is locked')
+  const pk = await decryptPrivateKey(storedBlob(), passcode)
+  if (privateKeyToAccount(pk).address !== unlockedAccount.address) throw new Error('Wrong passcode')
+}
+
 /** Turn on passkey 2FA: after this, unlocking needs the passcode AND the passkey. */
 export async function enablePasskey(passcode: string): Promise<void> {
   const blob = storedBlob()

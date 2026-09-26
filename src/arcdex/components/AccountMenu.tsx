@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ConnectButton } from './ConnectWallet'
 import { useDisconnect } from 'wagmi'
 import Avatar from './Avatar'
-import { DepositModal } from './CashModals'
+import { DepositModal, WithdrawModal } from './CashModals'
 import SupportModal from './SupportModal'
 import { enableAlertNotifications } from './DiscoveryPanel'
 import { getProfile, signOutEverywhere, type Profile } from '../api/social'
@@ -27,6 +27,7 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
   const { disconnect } = useDisconnect()
   const [open, setOpen] = useState(false)
   const [deposit, setDeposit] = useState(false)
+  const [withdraw, setWithdraw] = useState(false)
   const [settings, setSettings] = useState<SettingsTab | null>(null)
   const [support, setSupport] = useState(false)
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -70,6 +71,8 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
           {item('☺', t('Your profile'), () => go({ name: 'trader', address: trader.address! }))}
           {item('👤', t('Manage account'), () => { setOpen(false); setSettings('account') })}
           {item('⚙', t('Settings'), () => { setOpen(false); setSettings('trading') })}
+          {item('▤', t('Portfolio'), () => go({ name: 'portfolio' }))}
+          {item('↑', t('Withdraw'), () => { setOpen(false); setWithdraw(true) })}
           {item('⇅', t('Transfers'), () => go({ name: 'transfers' }))}
           {item('◌', t('Blur balances'), () => setPrefs(p => ({ blur: !p.blur })), <Toggle on={prefs.blur} />)}
           {item('✦', t('Rewards'), () => go({ name: 'rewards' }))}
@@ -84,6 +87,7 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
       )}
 
       {deposit && <DepositModal trader={trader} navigate={navigate} onClose={() => setDeposit(false)} />}
+      {withdraw && <WithdrawModal trader={trader} onClose={() => setWithdraw(false)} />}
       {settings && <SettingsModal initial={settings} onClose={() => setSettings(null)} onSupport={() => { setSettings(null); setSupport(true) }} />}
       {support && <SupportModal onClose={() => setSupport(false)} />}
     </div>

@@ -6,6 +6,9 @@ import {
   exportPrivateKey, deleteWallet, hasPasskey, enablePasskey, disablePasskey, passkeySupport,
 } from '../lib/embeddedWallet'
 import { t as T } from '../lib/i18n'
+import { useTrader } from '../lib/identity'
+import { DepositModal, WithdrawModal } from './CashModals'
+import type { Page } from '../App'
 
 const USDC_ADDR = '0x3600000000000000000000000000000000000000' as const
 const ERC20_BALANCE_ABI = parseAbi(['function balanceOf(address) view returns (uint256)'])
@@ -15,7 +18,9 @@ function short(addr: string) { return `${addr.slice(0, 6)}…${addr.slice(-4)}` 
 
 type View = 'locked' | 'unlocked' | 'create' | 'import' | 'export' | 'security'
 
-export default function TradingWalletPanel() {
+export default function TradingWalletPanel({ navigate }: { navigate?: (p: Page) => void } = {}) {
+  const trader = useTrader()
+  const [cashModal, setCashModal] = useState<'deposit' | 'withdraw' | null>(null)
   const [view, setView]       = useState<View>(hasStoredWallet() ? 'locked' : 'create')
   const [passcode, setPasscode] = useState('')
   const [passcode2, setPasscode2] = useState('')
@@ -120,6 +125,15 @@ export default function TradingWalletPanel() {
             <span style={{ fontSize: '0.65rem', fontWeight: 500, color: 'var(--text-muted)', marginLeft: 4 }}>{T("USDC")}</span>
           </div>
           <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: 10 }}>{T("Deposit USDC on Arc mainnet to this address to trade with one click from the terminal.")}</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <button onClick={() => setCashModal('deposit')} style={btnStyle}>{T("Deposit")}</button>
+            <button onClick={() => setCashModal('withdraw')} style={{ ...btnStyle, background: 'var(--bg-2)', color: 'var(--text)', border: '1px solid var(--adx-card-border)' }}>{T("Withdraw")}</button>
+          </div>
+          {navigate && (
+            <button onClick={() => navigate({ name: 'portfolio' })} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 8, padding: '8px 10px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', cursor: 'pointer', fontSize: '0.72rem' }}>
+              <span>{T("▤ Your coins")}</span><b style={{ color: 'var(--adx-accent)' }}>{T("Portfolio →")}</b>
+            </button>
+          )}
           <button onClick={() => { setView('security'); setError('') }} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 8, padding: '8px 10px', borderRadius: 7, background: 'var(--bg-2)', border: `1px solid ${twoFa ? 'rgba(34,197,94,0.35)' : 'var(--adx-card-border)'}`, color: 'var(--text)', cursor: 'pointer', fontSize: '0.72rem' }}>
             <span>{T("🔑 2FA (passkey)")}</span>
             <b style={{ color: twoFa ? 'var(--green)' : 'var(--text-muted)' }}>{twoFa ? T("On") : T("Off — set up")}</b>
@@ -193,6 +207,9 @@ export default function TradingWalletPanel() {
           <button onClick={() => { setView('unlocked'); setExported(''); setError('') }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.68rem', cursor: 'pointer' }}>{T("← Back")}</button>
         </div>
       )}
+
+      {cashModal === 'deposit' && trader.address && <DepositModal trader={trader} navigate={p => { setCashModal(null); navigate?.(p) }} onClose={() => { setCashModal(null); if (address) refreshBalance(address) }} />}
+      {cashModal === 'withdraw' && trader.address && <WithdrawModal trader={trader} onClose={() => setCashModal(null)} onSent={() => { if (address) refreshBalance(address) }} />}
     </div>
   )
 }

@@ -31,19 +31,26 @@ export function useCash(address: string | null): { cash: number | null; refresh:
   return { cash, refresh }
 }
 
-/** Returns a function that sends USDC from the trader's wallet and waits
- * for it to confirm. */
-export function useSendUsdc(trader: Trader) {
-  return useCallback(async (to: string, amount: string): Promise<Hex> => {
+/** Returns a function that sends an ERC-20 (USDC or a coin) from the
+ * trader's wallet and waits for it to confirm. */
+export function useSendToken(trader: Trader) {
+  return useCallback(async (token: Address, decimals: number, to: string, amount: string): Promise<Hex> => {
     if (!trader.address) throw new Error('Connect or unlock a wallet first')
     if (!/^0x[0-9a-fA-F]{40}$/.test(to)) throw new Error('That is not a valid Arc address')
     if (to.toLowerCase() === trader.address.toLowerCase()) throw new Error('That is your own wallet')
-    const value = parseUnits(amount, 6)
+    const value = parseUnits(amount, decimals)
     if (value <= 0n) throw new Error('Enter an amount')
-    const req = { address: USDC, abi: ERC20, functionName: 'transfer' as const, args: [to as Address, value] as const }
+    const req = { address: token, abi: ERC20, functionName: 'transfer' as const, args: [to as Address, value] as const }
     const hash = await sendArc(trader.kind, req as never)
     const rc = await client.waitForTransactionReceipt({ hash })
     if (rc.status !== 'success') throw new Error('Transfer failed')
     return hash
   }, [trader])
+}
+
+/** Returns a function that sends USDC from the trader's wallet and waits
+ * for it to confirm. */
+export function useSendUsdc(trader: Trader) {
+  const send = useSendToken(trader)
+  return useCallback((to: string, amount: string): Promise<Hex> => send(USDC, 6, to, amount), [send])
 }

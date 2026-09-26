@@ -118,6 +118,27 @@ Why buys, swaps and bridges failed for people, and the fixes:
   - A side-scrolling strip of the week's top traders: PnL if positive, else volume.
 - **Desktop nav** has Swap and Bridge. Below 1180px wide, Feed, Leaderboard, Clans and Rewards drop out of the top bar; they stay in the left panel and the account menu.
 
+### Trading wallet: withdraw, Portfolio, GeckoTerminal chart (2026-09-26)
+- **Withdraw from the trading wallet.** The Trading wallet panel has Deposit and Withdraw, and a link to Portfolio. The account menu has Portfolio and Withdraw. The phone home has Withdraw under the cash.
+- **Passcode rule (owner decision): money leaving the trading wallet for anywhere but the wallet that funded it needs the passcode** (and the passkey with 2FA on). This covers Withdraw, sending a coin, Send cash to a trader and Bridge → Send from Arc.
+  - Rule and funding wallets: `lib/funding.ts`. The UI is `components/WithdrawGuard.tsx`. `verifyPasscode()` is in `embeddedWallet.ts`.
+  - A funding wallet is an ordinary account (no contract code; EIP-7702 counts) that sent USDC to the trading wallet. Mints (bridge arrivals) and contracts paying out (sells) don't count.
+  - Found in the last ~2 days of USDC Transfer logs: three 100k-block calls to Blockdaemon, never the archive fallback (`lib/recentLogs.ts`).
+  - Funding wallets found are kept in localStorage, signed by the trading wallet's own key, so an edited list is rejected. Not found means the passcode is asked.
+  - Free destinations: a funding wallet, and the trading wallet's own address (bridging to itself on another chain). An external wallet is never asked, because it confirms every transfer itself.
+- **Portfolio (`pages/Portfolio.tsx`, `lib/portfolio.ts`) uses the unlocked trading wallet, else the connected wallet.** It used to only ask to connect a wallet.
+  - It shows USDC cash and every coin held, valued live, with Sell to USDC (`TokenSwap` in a sheet, sell mode) and Send on each coin.
+  - Coins checked:
+    - coins bought from this browser (`lib/held.ts`, recorded by both swap widgets and quick buys);
+    - router trades from Supabase;
+    - the market list and the launchpad coins;
+    - tokens sent to the wallet in the last ~2 days.
+  - Balances are read by multicall. Prices come from the market list, the curve, else GeckoTerminal.
+- **Coin page chart:** GeckoTerminal's own live chart is embedded by default (`components/GeckoChart.tsx`), as argus.world shows it ("Powered by GeckoTerminal"). "ARCDEX chart" switches to `PriceChart`, which keeps trade labels, theses and indicators, and the choice is remembered. `PriceChart` refreshes its GeckoTerminal candles every 30s, down from 90s (it goes through `/api/gecko`, which uses the paid key).
+- **Tests:**
+  - `bun scripts/test-withdraw-guard.ts`: the rule, funding detection and tamper-proof storage.
+  - `bun scripts/test-portfolio.ts`: which coins are checked and how they're priced.
+
 ## Argus integration (ARCDEX)
 
 Every Argus coin across all 8 Portals, live, the way argus.world does it: **GeckoTerminal is the primary data source; Arc RPC fills in only what GeckoTerminal doesn't carry.**

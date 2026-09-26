@@ -5,6 +5,7 @@ import type { BridgeChain, BridgeResult } from '@circle-fin/bridge-kit'
 import { openConnectModal } from '../components/ConnectWallet'
 import { kit, getBridgeAdapter, tradingWalletAdapter, ensureWalletChain, quoteBridge, BRIDGE_CHAINS, BRIDGE_FEE_BPS, type BridgeQuote } from '../lib/bridgeKit'
 import { useEmbeddedAddress } from '../lib/identity'
+import { PasscodeField, useWithdrawGuard } from '../components/WithdrawGuard'
 import { t as T } from '../lib/i18n'
 import { promptWallet, txErrorText } from '../lib/tx'
 import { hideWalletPrompt } from '../lib/walletPrompt'
@@ -58,6 +59,9 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
   const toSolana = dir === 'out' && !otherDef.evm
   const recipientOk = toSolana ? isSolanaAddress(recipientAddr) : isAddress(recipientAddr)
   const n = parseFloat(amount)
+  // Sending from the trading wallet to anyone but itself or the wallet that
+  // funded it asks for the passcode, like a withdrawal (WithdrawGuard).
+  const guard = useWithdrawGuard({ address: tradingAddr, kind: fromTrading ? 'trading-wallet' : null }, fromTrading ? recipientAddr : '')
 
   // Circle's fees for this route and amount (debounced; stale answers dropped).
   const quoteSeq = useRef(0)
@@ -83,6 +87,9 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
   async function handleBridge() {
     if (!sender || !(n > 0) || !recipientOk) return
     setErrMsg(''); setResult(null); setProgress([])
+    if (fromTrading) {
+      try { await guard.confirm() } catch (e) { setErrMsg(e instanceof Error ? e.message : T('Wrong passcode')); setStatus('error'); return }
+    }
     let provider: EIP1193Provider | null = null
     let prompted = false
     const onStep = (p: unknown) => {
@@ -113,7 +120,7 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
       setResult(res)
       setStatus(res.state === 'success' ? 'done' : 'error')
       if (res.state !== 'success') setErrMsg(T("The transfer didn't finish — see the steps below. If the burn went through, your USDC is safe: press Retry to finish it."))
-      if (res.state === 'success') setAmount('')
+      if (res.state === 'success') { setAmount(''); guard.setPasscode('') }
     } catch (e) {
       const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
       setErrMsg(/insufficient|exceeds balance/i.test(m) && !/allowance/i.test(m) ? T('Not enough USDC (or gas) on {chain} for this transfer.', { chain: from }) : txErrorText(e))
@@ -143,6 +150,7 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
   const busy = status === 'switching' || status === 'bridging'
   const needsWallet = !sender
   const tooSmall = quote !== null && quote.receiveUsdc <= 0
+  const passcodeMissing = fromTrading && guard.needsPasscode && !guard.passcode
   const chainBox = (side: 'from' | 'to') => {
     const isArc = (side === 'from') === (dir === 'out')
     return (
@@ -204,6 +212,8 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
           {recipient && !recipientOk && <div style={{ fontSize: '0.7rem', color: '#fca5a5', marginTop: 5 }}>{toSolana ? T("That isn't a Solana address.") : T("That isn't a valid address.")}</div>}
         </div>
 
+        {fromTrading && recipientOk && <PasscodeField guard={guard} />}
+
         {n > 0 && (
           <div style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: 5 }}>
             {quote ? (
@@ -257,9 +267,9 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
             {dir === 'in' ? T('Connect the wallet holding your USDC') : T('Connect Wallet')}
           </button>
         ) : (
-          <button onClick={() => void handleBridge()} disabled={!(n > 0) || !recipientOk || busy || tooSmall} style={{
+          <button onClick={() => void handleBridge()} disabled={!(n > 0) || !recipientOk || busy || tooSmall || passcodeMissing} style={{
             padding: 14, borderRadius: 12, fontSize: '0.95rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%',
-            opacity: !(n > 0) || !recipientOk || busy || tooSmall ? 0.5 : 1,
+            opacity: !(n > 0) || !recipientOk || busy || tooSmall || passcodeMissing ? 0.5 : 1,
           }}>
             {busy ? T("Bridging…") : tooSmall ? T("Amount too small to cover Circle's fees")
               : dir === 'in' ? T('Deposit {amount} USDC to Arc', { amount: n > 0 ? amount : '' }).replace('  ', ' ') : T('Send {amount} USDC to {chain}', { amount: n > 0 ? amount : '', chain: otherDef.label }).replace('  ', ' ')}

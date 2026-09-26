@@ -6,6 +6,7 @@ import { parseAbi } from 'viem'
 import { isUnlocked, currentAddress, getEmbeddedWalletClient } from './embeddedWallet'
 import { LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, client as publicClient, getCurve } from '../api/launchpad'
 import { waitForAllowance } from './rpc'
+import { rememberHolding } from './held'
 
 const USDC_ADDR = '0x3600000000000000000000000000000000000000' as const
 const ERC20_ABI = parseAbi([
@@ -47,5 +48,7 @@ export async function quickBuyLaunchpad(token: `0x${string}`, usdcAmount: bigint
 
   const call = { address: LAUNCHPAD_ADDRESS, abi: LAUNCHPAD_ABI, functionName: 'buy' as const, args: [token, usdcAmount, minOut] as const }
   await publicClient.simulateContract({ ...call, account: owner })
-  return wallet.writeContract(call)
+  const hash = await wallet.writeContract(call)
+  rememberHolding(owner, token)
+  return hash
 }
