@@ -1202,5 +1202,9 @@ const d: Record<string, string> = {
   "Whitepaper": "白皮书",
   "Whitepaper (PDF)": "白皮书（PDF）",
   "Why Arc’s meme market needs one fast, safe and social place to trade, what traders want, how $ARCD buyback and burn works, and the plan week by week.": "为什么 Arc 的 meme 币市场需要一个快速、安全、社交化的交易场所，交易者想要什么，$ARCD 回购与销毁如何运作，以及逐周推进的计划。",
+  ". It's a separate launch that reuses the": "。它是另一个沿用了该代码的发行币，代码为",
+  "Every trade is simulated before it's sent. The pool's own fee, set by {launchpad}, applies on top of the platform fee.": "每笔交易发送前都会先模拟。池子自身的费用（由 {launchpad} 设置）在平台费之外另计。",
+  "Trade on {launchpad} ↗": "前往 {launchpad} 交易 ↗",
+  "{symbol} trades on {launchpad}'s own contracts, which ARCDEX can't route yet.": "{symbol} 在 {launchpad} 自己的合约上交易，ARCDEX 暂时无法路由。",
 }
 export default d

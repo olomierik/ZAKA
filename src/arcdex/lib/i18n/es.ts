@@ -1202,5 +1202,9 @@ const d: Record<string, string> = {
   "Whitepaper": "Whitepaper",
   "Whitepaper (PDF)": "Whitepaper (PDF)",
   "Why Arc’s meme market needs one fast, safe and social place to trade, what traders want, how $ARCD buyback and burn works, and the plan week by week.": "Por qué el mercado de memecoins de Arc necesita un solo lugar rápido, seguro y social para operar, qué quieren los traders, cómo funciona la recompra y quema de $ARCD, y el plan semana a semana.",
+  ". It's a separate launch that reuses the": ". Es otro lanzamiento que reutiliza el ticker",
+  "Every trade is simulated before it's sent. The pool's own fee, set by {launchpad}, applies on top of the platform fee.": "Cada operación se simula antes de enviarse. La comisión propia del pool, definida por {launchpad}, se suma a la comisión de plataforma.",
+  "Trade on {launchpad} ↗": "Operar en {launchpad} ↗",
+  "{symbol} trades on {launchpad}'s own contracts, which ARCDEX can't route yet.": "{symbol} se opera en los contratos propios de {launchpad}, que ARCDEX aún no puede enrutar.",
 }
 export default d

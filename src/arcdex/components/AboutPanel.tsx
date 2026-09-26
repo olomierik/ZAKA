@@ -5,6 +5,7 @@ import { Who, type TradeRow } from './TokenSocialTabs'
 import type { Profile } from '../api/social'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import { launchpadLabel, launchpadNamed } from '../../../api/_launchpads'
 
 // fomo's "About" card: description, 5M/1H/6H/24H changes, buys vs sells,
 // buy vs sell volume, buyers vs sellers, links, and "View more" details.
@@ -35,6 +36,10 @@ export default function AboutPanel({ address, symbol, info, pool, chain, rows, s
 }) {
   const [more, setMore] = useState(false)
   const [copied, setCopied] = useState(false)
+  // Where it launched: Argus (any Portal), or another Arc launchpad.
+  const lpName = pool ? (pool.launchpad ?? launchpadLabel(pool.dex)) : null
+  const isArgus = !!chain?.portal || pool?.dex === 'argus' || lpName === 'Argus'
+  const lpSite = lpName ? launchpadNamed(lpName)?.site : undefined
   const buyVol = rows.filter(r => r.kind === 'buy').reduce((s, r) => s + r.usd, 0)
   const sellVol = rows.filter(r => r.kind === 'sell').reduce((s, r) => s + r.usd, 0)
   const buyers = new Set(rows.filter(r => r.kind === 'buy' && r.maker).map(r => r.maker!.toLowerCase())).size
@@ -72,7 +77,7 @@ export default function AboutPanel({ address, symbol, info, pool, chain, rows, s
       </div>
       {more && (
         <div style={{ marginTop: 12 }}>
-          {row(T('Launchpad'), chain?.portal ? `Argus · Portal ${chain.portal}` : pool?.dex === 'argus' ? 'Argus' : pool?.dex ?? '—')}
+          {row(T('Launchpad'), chain?.portal ? `Argus · Portal ${chain.portal}` : lpName ?? '—')}
           {row(T('Supply'), supply ? fmt(supply) : '—')}
           {row(T('Network'), 'Arc')}
           {row(T('Created'), pool?.createdAt ? ago(pool.createdAt) : '—')}
@@ -84,7 +89,7 @@ export default function AboutPanel({ address, symbol, info, pool, chain, rows, s
           {row(T('Bonded'), chain?.bonded == null ? '—' : chain.bonded ? T('Yes — graduated') : T('Not yet'))}
           {info?.gtScore != null && row(T('GT score'), `${info.gtScore.toFixed(0)} / 100`)}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-            {link(`https://argus.world/token/${address}`, 'argus.world')}
+            {isArgus ? link(`https://argus.world/token/${address}`, 'argus.world') : lpSite && link(lpSite, host(lpSite))}
             {pool && link(`https://www.geckoterminal.com/arc/pools/${pool.pool}`, 'GeckoTerminal')}
             {link(`${ARC_EXPLORER}/token/${address}`, T('Explorer'))}
           </div>

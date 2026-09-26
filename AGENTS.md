@@ -292,6 +292,44 @@ Every Argus coin across all 8 Portals, live, the way argus.world does it: **Geck
   - The owner sets the key in Vercel project `app` (Production) themselves; it takes effect on the next deployment. Set on 2026-09-25.
 - The on-chain Portal reader in `src/arcdex/api/argus.ts` is kept only as a fallback if `/api/argus` fails entirely.
 
+## Every other Arc launchpad (2026-09-26)
+
+The Argus integration above, extended to every launchpad GeckoTerminal lists on Arc: their coins are in the Terminal, open the full coin page, and trade through ArcDexSwapRouter wherever they sit in a Uniswap pool.
+
+- **Registry — `api/_launchpads.ts`** (shared by the server list and the app):
+  - Each launchpad has a name, a badge color, a site, and a regex matched against GeckoTerminal dex ids and names (`_` counts as a separator).
+  - Sites are only listed where the address is confirmed (docs, DefiLlama's adapters, the awesome-arc list). ArcPad, Arc.fun, Flipt, Onmi and NebulaPad are recognized but not linked.
+  - `isLaunchpadDex` keeps plain DEXes out (Uniswap, Curve, PEGD, …). A new venue named like a launchpad (`.fun`, `pad`, `launch`, `pump`, `meme`) is picked up without a code change.
+- **Where each launchpad's coins trade** (from its docs and DefiLlama's Arc adapters, github.com/DefiLlama/dimension-adapters `fees/<name>`):
+
+  | Venue | Launchpads | Routable by ArcDexSwapRouter |
+  |---|---|---|
+  | Uniswap v4 | Argus, Minara (fee hook), o1, SolonPad instant mode (no hook), UBI.fun (Flaunch-style hook), graduated Mercuri | yes, if the pool is paired with ERC-20 USDC and its hook allows it |
+  | Uniswap v3 | Tolly (locked 1% pools), RadarDEX (reflection tokens), Archemist, graduated Sashimi | yes, if the pool came from SwapRouter02's factory |
+  | Own curve or DEX | Sashimi, Warp/CircleWarp (native USDC; graduates to WarpDex, a Uniswap V2 fork), Mercuri and SolonPad curves | no: the coin page links to the launchpad |
+
+- **Market list** (`api/_argusCore.ts` `buildMarket`, served by `/api/argus`):
+  - Order: Argus first, as before. Then each other launchpad's top 20 by 24h volume, new pools on any listed launchpad, and missing caps filled in.
+  - Each row carries `launchpad` (the badge).
+  - The launchpads come from GeckoTerminal's `/networks/arc/dexes`, kept 6h in `arcdex_kv` (`arc:launchpads`). If that can't be read, the known ids in `KNOWN_LAUNCHPAD_DEXES` are used.
+  - The server fetches 4 launchpads at a time with a Pro key, 2 with a Demo key, and 1 on the free API.
+  - The response includes `launchpads`, so the browser's own rebuild (only when the server's copy is partial) asks for just the top 4 on the visitor's quota.
+- **App:**
+  - Terminal badges and source pills use each launchpad's color (`getLaunchpadColor`). Every non-ARCDEX coin with a pool opens `/token/<address>?pool=…`.
+  - The coin page's badge, the About panel's Launchpad row and its link (argus.world only for Argus coins), and the copycat banner all name the coin's launchpad.
+- **Trading** (`src/arcdex/api/argusMarket.ts`):
+  - `buildSwapRoute(token, pool, createdAt)` routes a v3 pool only when its `factory()` is SwapRouter02's. The router finds v3 pools by (pair, fee), so a fork's pool would be swapped somewhere else.
+  - v4 keys come from `PositionManager.poolKeys`. Launchpads that add liquidity through their own hook never register there; for those, the key is read from PoolManager's `Initialize` log within ±60k blocks of the pool's GeckoTerminal creation time. Either way, the key must hash to the pool id before it's used.
+  - `bestSwapRoute` tries the page's pool, then the coin's other pools (deepest first), so a graduated coin's Uniswap pool is found.
+  - With no route, the swap widget says the coin trades on its launchpad's own contracts and links there (`venue`). Its fee note names the launchpad's pool fee instead of Argus's creator tax.
+- **Known limits:**
+  - ArcDexSwapRouter doesn't take native-USDC (address 0) pools.
+  - A hook that only allows its own router shows up at simulation. That's after the exact-amount approval to ARCDEX's router, which can't move funds by itself.
+  - Curve trading per launchpad (Sashimi, Warp, Mercuri, SolonPad) would need each one's contract ABI. Mercuri's and SolonPad's are published: github.com/mercuri-finance/mercuri-launch-contracts and github.com/solonlend/solonpad-skill.
+- **Tests:**
+  - `bun scripts/test-launchpads.ts`: recognition, discovery, the multi-launchpad build (order, concurrency, dedupe, caps, streaming) and Initialize-log key decoding.
+  - Browser checks cover the Terminal pills and badges, a Tolly v3 route, a Minara v4 route via the Initialize fallback, the Warp link, and a fork-factory pool being refused.
+
 
 ## Social trading layer (fomo.family-style) — ARCDEX
 

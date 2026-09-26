@@ -62,6 +62,9 @@ interface Props {
   unverified?: boolean
   /** Which side opens first (the phone trade bar's Buy / Sell). */
   initialMode?: 'buy' | 'sell'
+  /** The coin's launchpad, when it isn't Argus: named in the notes, and
+   * linked when ARCDEX can't route the coin's pool. */
+  venue?: { name: string; site?: string } | null
 }
 
 type Step = 'idle' | 'approving' | 'quoting' | 'swapping' | 'done' | 'error'
@@ -69,7 +72,7 @@ type Step = 'idle' | 'approving' | 'quoting' | 'swapping' | 'done' | 'error'
 const fmtUsd = (n: number) => n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(2)}`
 const fmtTok = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toFixed(2)
 
-export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, marketCapUsd, route, routeLoading, buyTaxBps, sellTaxBps, onTraded, unverified, initialMode }: Props) {
+export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, marketCapUsd, route, routeLoading, buyTaxBps, sellTaxBps, onTraded, unverified, initialMode, venue }: Props) {
   const trader = useTrader()
   const me = trader.address
   const info = useRouterInfo()
@@ -280,7 +283,8 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         <Row label={T("You receive (est.)")} value={estimate > 0 ? (mode === 'buy' ? `${fmtTok(estimate)} ${symbol}` : fmtUsd(estimate)) : '—'} />
         <Row label={T("Route")} value={routeLoading ? T('Finding route…') : route ? routeText : T('No routable pool')} />
         <Row label={T("Platform fee")} value={info ? T('{pct} (in USDC)', { pct: pct(info.feeBps) }) : '…'} />
-        <Row label={T("Creator tax")} value={taxBps ? pct(taxBps) : '0%'} />
+        {/* An Argus creator tax; other launchpads charge through their pool's own fee (the note below). */}
+        {(!venue || taxBps > 0) && <Row label={T("Creator tax")} value={taxBps ? pct(taxBps) : '0%'} />}
         {impact !== null && (
           <Row label={T("Price impact")} value={`${impact.toFixed(2)}%`} color={impact >= CONFIRM_IMPACT ? 'var(--red)' : impact >= WARN_IMPACT ? 'var(--amber)' : undefined} />
         )}
@@ -328,6 +332,13 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         </button>
       )}
 
+      {!routeLoading && !route && venue && (
+        <Note>
+          {T("{symbol} trades on {launchpad}'s own contracts, which ARCDEX can't route yet.", { symbol, launchpad: venue.name })}
+          {venue.site && <><br /><a href={venue.site} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--adx-accent)', fontWeight: 700 }}>{T("Trade on {launchpad} ↗", { launchpad: venue.name })}</a></>}
+        </Note>
+      )}
+
       {me && (
         <div className="swap-note">{T("Trading as")}{' '}{trader.kind === 'trading-wallet' ? T("⚡ trading wallet") : T("wallet")} <span style={{ fontFamily: 'var(--mono)' }}>{shortAddr(me)}</span>
           {trader.kind === 'trading-wallet' ? T(" · one-tap, no pop-ups") : ''}
@@ -338,7 +349,9 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         <div style={{ fontSize: '0.7rem', color: '#fcd34d', textAlign: 'center' }}>{T("⚠ Unverified token — anyone can launch a coin with any name. Check the contract before trading.")}</div>
       )}
 
-      <p className="swap-note">{T("Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.")}</p>
+      <p className="swap-note">{venue
+        ? T("Every trade is simulated before it's sent. The pool's own fee, set by {launchpad}, applies on top of the platform fee.", { launchpad: venue.name })
+        : T("Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.")}</p>
 
       {share && <ShareCardModal card={share.card} text={share.text} referralsLive={info?.version === 2} onClose={() => setShare(null)} />}
     </div>

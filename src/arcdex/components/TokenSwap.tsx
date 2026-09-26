@@ -1,7 +1,9 @@
 // The right swap for any Arc token:
 //   • an ARCDEX launchpad coin trades on its bonding curve (CurveSwapWidget)
-//   • anything with a USDC (or ARGUS) pool trades through ARCDEX's swap
-//     router (ArgusSwapWidget: exact approvals, simulated before sending)
+//   • anything with a USDC (or ARGUS) Uniswap pool — from Argus or any other
+//     Arc launchpad — trades through ARCDEX's swap router (ArgusSwapWidget:
+//     exact approvals, simulated before sending)
+//   • a coin only on its launchpad's own curve links to that launchpad
 // Replaces the old SwapWidget, which targeted a router that was never
 // deployed on mainnet and asked for unlimited approvals.
 
@@ -9,7 +11,8 @@ import { useEffect, useState } from 'react'
 import type { Address } from 'viem'
 import ArgusSwapWidget from './ArgusSwapWidget'
 import CurveSwapWidget from './CurveSwapWidget'
-import { buildSwapRoute, cachedArgusMarket, getArgusMarket, getArgusOnchain, type ArgusPool, type SwapRoute } from '../api/argusMarket'
+import { bestSwapRoute, buildSwapRoute, cachedArgusMarket, getArgusMarket, getArgusOnchain, getArgusTokenPools, type ArgusPool, type SwapRoute } from '../api/argusMarket'
+import { launchpadNamed } from '../../../api/_launchpads'
 import { getLaunchpadToken, type LaunchpadToken } from '../api/launchpad'
 import { t as T } from '../lib/i18n'
 
@@ -58,7 +61,11 @@ export default function TokenSwap({ address, pool, fallback, onTraded, initialMo
     if (!poolId) { if (row === null) setRouteLoading(false); return }
     let cancelled = false
     setRouteLoading(true)
-    buildSwapRoute(token, poolId)
+    // This pool first; if ARCDEX can't route it (a launchpad's own curve),
+    // the coin's other pools, deepest first (a graduated coin's Uniswap pool).
+    buildSwapRoute(token, poolId, row?.createdAt)
+      .catch(() => null)
+      .then(async r => r ?? bestSwapRoute(token, (await getArgusTokenPools(token).catch(() => [] as ArgusPool[])).filter(p => p.pool !== poolId.toLowerCase())))
       .then(r => { if (!cancelled) setRoute(r) })
       .catch(() => { if (!cancelled) setRoute(null) })
       .finally(() => { if (!cancelled) setRouteLoading(false) })
@@ -69,6 +76,8 @@ export default function TokenSwap({ address, pool, fallback, onTraded, initialMo
   if (curve) return <CurveSwapWidget token={curve} onTraded={onTraded} initialMode={initialMode} />
 
   const symbol = row?.token.symbol ?? fallback?.symbol ?? '…'
+  const lpName = row?.launchpad
+  const venue = lpName && lpName !== 'Argus' && !/uniswap/i.test(lpName) ? { name: lpName, site: launchpadNamed(lpName)?.site } : null
   if (row === null && !poolId) {
     return (
       <div style={{ padding: 20, fontSize: '0.84rem', color: 'var(--text-muted)', lineHeight: 1.5, textAlign: 'center' }}>
@@ -79,6 +88,6 @@ export default function TokenSwap({ address, pool, fallback, onTraded, initialMo
   return (
     <ArgusSwapWidget token={address as Address} symbol={symbol} tokenImage={row?.token.image ?? fallback?.image ?? null}
       priceUsd={row?.priceUsd ?? fallback?.priceUsd ?? 0} marketCapUsd={row?.marketCapUsd ?? null}
-      route={route} routeLoading={routeLoading} buyTaxBps={tax.buy} sellTaxBps={tax.sell} onTraded={onTraded} initialMode={initialMode} />
+      route={route} routeLoading={routeLoading} buyTaxBps={tax.buy} sellTaxBps={tax.sell} onTraded={onTraded} initialMode={initialMode} venue={venue} />
   )
 }

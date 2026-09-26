@@ -1,0 +1,88 @@
+// Arc's launchpads: how ARCDEX recognises, labels and links each one.
+// Shared by the market list (api/_argusCore.ts, server and browser) and the
+// app (badges, colors, "trade on …" links). (The leading underscore keeps
+// Vercel from deploying this file as a function.)
+//
+// GeckoTerminal files a launchpad's pools under its own "dex" on Arc
+// (argus, minara-fun, tolly-arc, …). `launchpadOf` matches a dex id or name
+// to a launchpad here. Where a coin trades decides whether ARCDEX's router
+// can trade it — any Uniswap v3 or v4 pool paired with USDC can (see
+// buildSwapRoute in src/arcdex/api/argusMarket.ts):
+//   Uniswap v4: Argus, Minara, o1, SolonPad (instant), UBI.fun, graduated Mercuri
+//   Uniswap v3: Tolly (locked 1% pools), RadarDEX, Archemist, graduated Sashimi
+//   own curve or DEX: Sashimi, Warp (CircleWarp) and Mercuri before graduating;
+//     graduated Warp coins trade on WarpDex, CircleWarp's Uniswap V2 fork
+// Sources: each launchpad's docs and DefiLlama's Arc adapters
+// (github.com/DefiLlama/dimension-adapters, fees/<name>).
+
+export interface Launchpad {
+  name: string
+  color: string
+  /** Only where the address is confirmed (docs, DefiLlama, the Arc ecosystem list). */
+  site?: string
+  /** Matches a GeckoTerminal dex id or name (lowercased, "id name"). */
+  match: RegExp
+}
+
+export const LAUNCHPADS: Launchpad[] = [
+  { name: 'Argus', color: '#7c3aed', site: 'https://argus.world', match: /\bargus/ },
+  { name: 'Minara', color: '#06b6d4', site: 'https://minara.fun', match: /\bminara/ },
+  { name: 'Tolly', color: '#059669', site: 'https://tollylabs.com', match: /\btolly/ },
+  { name: 'RadarDEX', color: '#3b82f6', site: 'https://radardex.pro', match: /\bradar/ },
+  { name: 'Warp', color: '#f59e0b', site: 'https://circlewarp.fun', match: /circlewarp|\bwarp/ },
+  { name: 'Archemist', color: '#d97706', site: 'https://archemist.fun', match: /archemist/ },
+  { name: 'o1', color: '#f97316', site: 'https://o1.exchange', match: /\bo1\b/ },
+  { name: 'SolonPad', color: '#a855f7', site: 'https://solonpad.fun', match: /\bsolon/ },
+  { name: 'UBI.fun', color: '#22c55e', site: 'https://ubi.fun', match: /\bubi(\b|dot|fun)/ },
+  { name: 'Sashimi', color: '#fb7185', site: 'https://sashimi.fun', match: /sashimi/ },
+  { name: 'Mercuri', color: '#94a3b8', site: 'https://launch.mercuri.finance', match: /mercuri/ },
+  { name: 'Bozo', color: '#eab308', site: 'https://bozo.fun', match: /\bbozo/ },
+  { name: 'ArcPad', color: '#e11d48', match: /\barcpad/ },
+  { name: 'Arc.fun', color: '#ec4899', match: /\barc[.-]?fun\b|\barcfun/ },
+  { name: 'Flipt', color: '#14b8a6', match: /\bflipt/ },
+  { name: 'Onmi', color: '#8b5cf6', match: /\bonmi/ },
+  { name: 'NebulaPad', color: '#6366f1', match: /\bnebula/ },
+]
+
+/** Plain DEXes (not launch venues): their pools aren't listed as launches. */
+const GENERIC_DEX = /uniswap|pancake|sushi|curve|balancer|algebra|camelot|aerodrome|velodrome|izumi|kyber|maverick|dodo|woofi|fluid|ambient|syncswap|pegd|stable/
+/** What a launch venue GeckoTerminal adds later is likely to be called. */
+const LAUNCH_WORDS = /\bfun\b|\.fun|pad\b|launch|pump|meme/
+
+// Ids come as "tolly-arc" or "uniswap_v3": treat _ as a separator, like -.
+const text = (id: string, name = '') => `${id} ${name}`.toLowerCase().replace(/_/g, '-')
+
+/** The launchpad behind a GeckoTerminal dex (by id or name), or null. */
+export function launchpadOf(dexId: string, dexName = ''): Launchpad | null {
+  const s = text(dexId, dexName)
+  return LAUNCHPADS.find(l => l.match.test(s)) ?? null
+}
+
+/** The launchpad with this display name (as on a market row), or null. */
+export function launchpadNamed(name: string): Launchpad | null {
+  const n = name.trim().toLowerCase()
+  return LAUNCHPADS.find(l => l.name.toLowerCase() === n) ?? null
+}
+
+/** A GeckoTerminal dex whose pools are launches: a known launchpad, or a
+ * new venue named like one — not a plain DEX. */
+export function isLaunchpadDex(dexId: string, dexName = ''): boolean {
+  if (launchpadOf(dexId, dexName)) return true
+  const s = text(dexId, dexName)
+  return !GENERIC_DEX.test(s) && LAUNCH_WORDS.test(s)
+}
+
+/** A market row's badge: the launchpad's name, else GeckoTerminal's name for the dex. */
+export function launchpadLabel(dexId: string, dexName = ''): string {
+  return launchpadOf(dexId, dexName)?.name ?? (dexName.replace(/\s*\(arc\)\s*$/i, '').trim() || dexId)
+}
+
+/** Known GeckoTerminal dex ids on Arc, for when the live list can't be read. */
+export const KNOWN_LAUNCHPAD_DEXES: { id: string; name: string }[] = [
+  { id: 'minara-fun', name: 'Minara.fun' },
+  { id: 'tolly-arc', name: 'Tolly' },
+  { id: 'radardex', name: 'RadarDEX' },
+  { id: 'warp-arc', name: 'Warp' },
+  { id: 'archemist-arc', name: 'Archemist' },
+  { id: 'o1-launchpad-arc', name: 'o1 Launchpad' },
+]

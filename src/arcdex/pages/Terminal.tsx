@@ -27,8 +27,10 @@ interface Props {
 
 const ARC_EXPLORER = 'https://explorer.arc.io'
 
+// Every launchpad's coin with a pool (Argus, Minara, Tolly, …) opens the
+// full coin page; ARCDEX's own curve coins keep theirs.
 function openPage(t: ArcToken): Page {
-  return t.launchpad === 'Argus' && t.poolAddress
+  return t.launchpad !== 'ARCDEX' && t.poolAddress
     ? { name: 'argus', address: t.address, pool: t.poolAddress }
     : { name: 'token', address: t.address, symbol: t.symbol }
 }
@@ -327,8 +329,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const tickerRef = useRef<HTMLDivElement>(null)
 
-  // Focused on ARCDEX's own launches plus Argus (every Portal) rather than
-  // RadarDex's broad, unattributed multi-launchpad aggregate.
+  // ARCDEX's own launches, Argus (every Portal) and every other Arc
+  // launchpad GeckoTerminal lists (api/_launchpads.ts), each with its badge.
   const argusSeen = useRef(new Map<string, { t: ArcToken; seen: number }>())
   const oursRef = useRef<ArcToken[]>([])
   // From the market engine (when connected): launches it detected, and its

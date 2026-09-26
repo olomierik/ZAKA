@@ -1,5 +1,7 @@
 // ARCDEX — RadarDex API aggregator, all requests proxied via /api/radar
 
+import { launchpadNamed, launchpadOf } from '../../../api/_launchpads'
+
 export interface ArcToken {
   address:         string
   symbol:          string
@@ -52,19 +54,12 @@ export interface Trade {
 }
 
 export function getLaunchpadColor(lp: string): string {
-  switch (lp?.toLowerCase()) {
-    case 'arcdex':     return '#3b82f6'
-    case 'argus':      return '#7c3aed'
-    case 'tolly':      return '#059669'
-    case 'warp':       return '#f59e0b'
-    case 'archemist':  return '#d97706'
-    case 'arcpad':     return '#e11d48'
-    case 'minara':     return '#06b6d4'
-    case 'pegd':       return '#84cc16'
-    case 'arc.fun':    return '#ec4899'
-    case 'unknown':    return '#334155'
-    default:           return '#475569'
-  }
+  const l = lp?.toLowerCase() ?? ''
+  if (l === 'arcdex') return '#3b82f6'
+  if (l === '' || l === 'unknown') return '#334155'
+  if (l.includes('uniswap')) return '#ff007a'
+  // Every Arc launchpad's own color (api/_launchpads.ts).
+  return (launchpadNamed(lp) ?? launchpadOf(lp))?.color ?? '#475569'
 }
 
 // RadarDex (the data aggregator we read from — not a launchpad) tells us
