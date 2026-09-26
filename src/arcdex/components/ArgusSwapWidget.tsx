@@ -10,6 +10,7 @@ import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { SWAP_ROUTER_ADDRESS, routerConfigured, useRouterInfo, pct, type RouterInfo } from '../lib/routerInfo'
 import { referrerFor, referralLink } from '../lib/referral'
 import { getProfile, triggerIndex } from '../api/social'
+import { rememberHolding } from '../lib/held'
 import ShareCardModal from './ShareCardModal'
 import type { CardData } from '../lib/shareCard'
 import { setPrefs, usePrefs } from '../lib/prefs'
@@ -189,6 +190,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
 
       const usd = mode === 'buy' ? Number(formatUnits(amountIn, 6)) : outNum
       const tokens = mode === 'buy' ? outNum : Number(formatUnits(amountIn, 18))
+      rememberHolding(me, token)
       setLastTrade({ kind: mode, usd, tokens })
       setStep('done')
       setMsg(T(mode === 'buy' ? 'Bought {amount} {symbol} for {usd}' : 'Sold {amount} {symbol} for {usd}', { amount: fmtTok(tokens), symbol, usd: fmtUsd(usd) }))

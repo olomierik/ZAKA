@@ -6,6 +6,7 @@ import { useTrader } from '../lib/identity'
 import { sendArc, txErrorText } from '../lib/tx'
 import { waitForAllowance } from '../lib/rpc'
 import { triggerIndex } from '../api/social'
+import { rememberHolding } from '../lib/held'
 import { t as T } from '../lib/i18n'
 
 const USDC_ADDR = '0x3600000000000000000000000000000000000000' as const
@@ -114,6 +115,7 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
       const rc = await client.waitForTransactionReceipt({ hash: h })
       if (rc.status !== 'success') throw new Error(T('Swap reverted'))
       const out = Number(formatUnits(estimate.out, estimate.decimals))
+      rememberHolding(me, token.address)
       setStep('done')
       setMsg(mode === 'buy'
         ? T('Bought {amount} {symbol} for {usd}', { amount: fmtTok(out), symbol: token.symbol, usd: `$${Number(formatUnits(amountIn, 6)).toFixed(2)}` })

@@ -142,9 +142,9 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
   const needsFit = useRef(true)
   const scale = mode === 'mcap' && supply ? supply : 1
 
-  // History from GeckoTerminal. With on-chain swaps driving the recent
-  // candles it only needs an occasional refresh; without them (non-Argus
-  // pages) it's the whole chart, refreshed every 20s.
+  // History from GeckoTerminal (through /api/gecko, on the paid CoinGecko
+  // key). With on-chain swaps driving the recent candles it's refreshed every
+  // 30s; without them (non-Argus pages) it's the whole chart, every 15s.
   // (With the engine: its stored candles first — every timeframe — and
   // GeckoTerminal only if the engine has too little history for this coin.)
   useEffect(() => {
@@ -159,7 +159,7 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
         .catch(() => {})
         .finally(() => { if (!cancelled) setHistoryLoaded(true) })
       void load()
-      return setInterval(() => { if (!document.hidden) void load() }, hasTicks ? 90_000 : 20_000)
+      return setInterval(() => { if (!document.hidden) void load() }, hasTicks ? 30_000 : 15_000)
     }
     let id: ReturnType<typeof setInterval> | null = null
     if (engineMode && engineToken) {

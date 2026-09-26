@@ -1,16 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import QRCode from 'qrcode'
+import { formatUnits, parseAbi, type Address } from 'viem'
+import { client } from '../api/launchpad'
 import { socialWrite } from '../api/social'
 import CardDeposit from './CardDeposit'
 import { shortAddr, type Trader } from '../lib/identity'
-import { useCash, useSendUsdc } from '../lib/usdc'
+import { USDC, useCash, useSendToken, useSendUsdc } from '../lib/usdc'
+import { txErrorText } from '../lib/tx'
+import { FunderChips, PasscodeField, useWithdrawGuard } from './WithdrawGuard'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
 
 // fomo-style cash flows: Deposit (USDC on Arc, or bridge from another
-// chain), Withdraw (to any Arc address) and Send cash to a trader with a
-// note. Everything is plain USDC on Arc — gas is paid in USDC too.
+// chain), Withdraw (to any Arc address; a coin too, from Portfolio) and Send
+// cash to a trader with a note. Everything is plain USDC on Arc — gas is paid
+// in USDC too. From the trading wallet, anything not going back to the wallet
+// that funded it asks for the passcode (WithdrawGuard).
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -69,36 +75,64 @@ export function DepositModal({ trader, navigate, onClose, initial = 'crypto' }: 
   )
 }
 
-export function WithdrawModal({ trader, onClose }: { trader: Trader; onClose: () => void }) {
+/** A coin to send instead of USDC (Portfolio → Send). */
+export interface WithdrawAsset { address: Address; symbol: string; decimals: number }
+
+const BALANCE_ABI = parseAbi(['function balanceOf(address) view returns (uint256)'])
+
+export function WithdrawModal({ trader, onClose, asset, onSent }: { trader: Trader; onClose: () => void; asset?: WithdrawAsset; onSent?: () => void }) {
+  const coin = asset && asset.address.toLowerCase() !== USDC.toLowerCase() ? asset : null
   const { cash, refresh } = useCash(trader.address)
-  const send = useSendUsdc(trader)
+  const [coinBal, setCoinBal] = useState<bigint | null>(null)
+  const coinAddr = coin?.address ?? null
+  const refreshCoin = useCallback(() => {
+    if (!coinAddr || !trader.address) return
+    void client.readContract({ address: coinAddr, abi: BALANCE_ABI, functionName: 'balanceOf', args: [trader.address] }).then(setCoinBal).catch(() => {})
+  }, [coinAddr, trader.address])
+  useEffect(() => { refreshCoin() }, [refreshCoin])
+  const send = useSendToken(trader)
   const [to, setTo] = useState('')
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  // Anywhere but back to the wallet that funded it needs the passcode.
+  const guard = useWithdrawGuard(trader, to)
 
   async function go() {
+    if (busy) return
     setBusy(true); setMsg(null)
     try {
-      const h = await send(to.trim(), amount)
-      setMsg({ ok: true, text: `Sent $${amount} — tx ${shortAddr(h)}` }); setAmount(''); refresh()
+      await guard.confirm()
+      const h = coin ? await send(coin.address, coin.decimals, to.trim(), amount) : await send(USDC, 6, to.trim(), amount)
+      setMsg({ ok: true, text: coin ? `Sent ${amount} ${coin.symbol} — tx ${shortAddr(h)}` : `Sent $${amount} — tx ${shortAddr(h)}` })
+      setAmount(''); guard.setPasscode(''); refresh(); refreshCoin(); onSent?.()
     } catch (e) {
-      const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
-      setMsg({ ok: false, text: /rejected|denied/i.test(m) ? T('You cancelled the transaction.') : m.slice(0, 180) })
+      setMsg({ ok: false, text: txErrorText(e) })
     } finally { setBusy(false) }
   }
 
+  const available = coin
+    ? (coinBal === null ? '…' : `${Number(formatUnits(coinBal, coin.decimals)).toLocaleString(undefined, { maximumFractionDigits: 4 })} ${coin.symbol}`)
+    : (cash === null ? '…' : `$${cash.toFixed(2)}`)
+  const max = () => {
+    if (coin) { if (coinBal !== null) setAmount(formatUnits(coinBal, coin.decimals)) }
+    else if (cash !== null) setAmount(Math.max(0, cash - 0.05).toFixed(2))
+  }
+  const blocked = busy || !to || !amount || (guard.needsPasscode && !guard.passcode)
+
   return (
-    <Modal title={T("Withdraw USDC")} onClose={onClose}>
-      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{T("Available:")}{' '}<b className="sensitive" style={{ color: 'var(--text)' }}>{cash === null ? '…' : `$${cash.toFixed(2)}`}</b></div>
-      <input className="field" placeholder={T("Arc address 0x…")} value={to} onChange={e => setTo(e.target.value)} />
+    <Modal title={coin ? T('Send {symbol}', { symbol: coin.symbol }) : T("Withdraw USDC")} onClose={onClose}>
+      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{T("Available:")}{' '}<b className="sensitive" style={{ color: 'var(--text)' }}>{available}</b></div>
+      <FunderChips guard={guard} onPick={a => setTo(a)} />
+      <input className="field" placeholder={T("Arc address 0x…")} value={to} onChange={e => setTo(e.target.value.trim())} />
       <div style={{ display: 'flex', gap: 8 }}>
-        <input className="field" type="number" min="0" placeholder={T("Amount (USDC)")} value={amount} onChange={e => setAmount(e.target.value)} />
-        <button className="btn-ghost" onClick={() => cash !== null && setAmount(Math.max(0, cash - 0.05).toFixed(2))}>{T("Max")}</button>
+        <input className="field" type="number" min="0" placeholder={coin ? T('Amount ({symbol})', { symbol: coin.symbol }) : T("Amount (USDC)")} value={amount} onChange={e => setAmount(e.target.value)} />
+        <button className="btn-ghost" onClick={max}>{T("Max")}</button>
       </div>
-      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T("Arc gas is paid in USDC — Max leaves $0.05 for it. Only send to an address on the Arc network.")}</div>
+      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{coin ? T("Arc gas is paid in USDC, so keep a little USDC for it. Only send to an address on the Arc network.") : T("Arc gas is paid in USDC — Max leaves $0.05 for it. Only send to an address on the Arc network.")}</div>
+      <PasscodeField guard={guard} onEnter={() => { if (!blocked) void go() }} />
       {msg && <div style={{ fontSize: '0.78rem', color: msg.ok ? '#86efac' : '#fca5a5' }}>{msg.text}</div>}
-      <button className="btn-primary" disabled={busy || !to || !amount} onClick={() => void go()} style={{ opacity: busy || !to || !amount ? 0.5 : 1 }}>{busy ? T("Sending…") : T("Withdraw")}</button>
+      <button className="btn-primary" disabled={blocked} onClick={() => void go()} style={{ opacity: blocked ? 0.5 : 1 }}>{busy ? T("Sending…") : coin ? T('Send {symbol}', { symbol: coin.symbol }) : T("Withdraw")}</button>
     </Modal>
   )
 }
@@ -110,18 +144,22 @@ export function SendCashModal({ trader, to, toName, onClose }: { trader: Trader;
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  // Cash leaving the trading wallet for someone else needs the passcode.
+  const guard = useWithdrawGuard(trader, to)
 
   async function go() {
+    if (busy) return
     setBusy(true); setMsg(null)
     try {
+      await guard.confirm()
       const h = await send(to, amount)
       if (note.trim()) await socialWrite(trader, 'transfer.note', { tx_hash: h, note: note.trim() }).catch(() => {})
-      setMsg({ ok: true, text: `Sent $${amount} to ${toName}` }); setAmount(''); setNote(''); refresh()
+      setMsg({ ok: true, text: `Sent $${amount} to ${toName}` }); setAmount(''); setNote(''); guard.setPasscode(''); refresh()
     } catch (e) {
-      const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
-      setMsg({ ok: false, text: /rejected|denied/i.test(m) ? T('You cancelled the transaction.') : m.slice(0, 180) })
+      setMsg({ ok: false, text: txErrorText(e) })
     } finally { setBusy(false) }
   }
+  const blocked = busy || !amount || !trader.address || (guard.needsPasscode && !guard.passcode)
 
   return (
     <Modal title={T('Send cash to {name}', { name: toName })} onClose={onClose}>
@@ -129,8 +167,9 @@ export function SendCashModal({ trader, to, toName, onClose }: { trader: Trader;
       <input className="field" type="number" min="0" placeholder="$0" value={amount} onChange={e => setAmount(e.target.value)} style={{ fontSize: '1.2rem', fontFamily: 'var(--mono)' }} />
       <textarea className="field" placeholder={T("Add a note (optional)")} maxLength={200} rows={2} value={note} onChange={e => setNote(e.target.value)} style={{ resize: 'vertical', fontFamily: 'inherit' }} />
       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{note.length}{T("/200 · Sent instantly as USDC on Arc to")}{' '}{shortAddr(to)}.</div>
+      <PasscodeField guard={guard} onEnter={() => { if (!blocked) void go() }} />
       {msg && <div style={{ fontSize: '0.78rem', color: msg.ok ? '#86efac' : '#fca5a5' }}>{msg.text}</div>}
-      <button className="btn-primary" disabled={busy || !amount || !trader.address} onClick={() => void go()} style={{ opacity: busy || !amount || !trader.address ? 0.5 : 1 }}>{!trader.address ? T("Connect a wallet to send") : busy ? T("Sending…") : T("Send")}</button>
+      <button className="btn-primary" disabled={blocked} onClick={() => void go()} style={{ opacity: blocked ? 0.5 : 1 }}>{!trader.address ? T("Connect a wallet to send") : busy ? T("Sending…") : T("Send")}</button>
     </Modal>
   )
 }

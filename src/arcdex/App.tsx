@@ -31,7 +31,7 @@ import { t as T, N_, useLang } from './lib/i18n'
 import { ConnectModalHost } from './components/ConnectWallet'
 import { NetworkGuard, WalletPromptHost } from './components/WalletPrompt'
 import MobileTabBar from './components/MobileTabBar'
-import Sheet from './components/Sheet'
+import Sheet, { afterSheetClose } from './components/Sheet'
 import { sheetHistory } from './lib/sheetHistory'
 import { OPEN_TRADING_WALLET } from './lib/tradingWalletSheet'
 
@@ -152,7 +152,7 @@ export default function App() {
 
         {/* right: cash / trading wallet + who to follow */}
         <aside className="feed-panel" style={{ overflowY: 'auto' }}>
-          <TradingWalletPanel />
+          <TradingWalletPanel navigate={navigate} />
           <FollowTopTraders navigate={navigate} />
           <DiscoverClans navigate={navigate} />
         </aside>
@@ -161,7 +161,7 @@ export default function App() {
       <TickerBar navigate={navigate} />
       {!detail && <MobileTabBar page={page} navigate={navigate} onOpenLists={() => setNavOpen(true)} />}
       <Sheet open={walletSheet} onClose={() => setWalletSheet(false)}>
-        <TradingWalletPanel />
+        <TradingWalletPanel navigate={p => { setWalletSheet(false); afterSheetClose(() => navigate(p)) }} />
       </Sheet>
       <ConnectModalHost />
       <WalletPromptHost />
