@@ -1133,5 +1133,21 @@ const d: Record<string, string> = {
   "🔍 Name, ticker or address": "🔍 Nome, ticker ou endereço",
   "🔥 Trending": "🔥 Em alta",
   "🚀 Graduating": "🚀 Graduando",
+  // Launchpad: trend, search and launch preview (round 6)
+  "24h": "24h",
+  "since launch": "desde o lançamento",
+  "Price change ({window})": "Variação do preço ({window})",
+  "Price trend ({window}): {pct}": "Tendência do preço ({window}): {pct}",
+  "How your coin will look on the launchpad. It changes as you type.": "É assim que sua moeda vai aparecer no launchpad. Muda enquanto você digita.",
+  "Launch it first": "Lance-a primeiro",
+  "Live preview": "Pré-visualização ao vivo",
+  "No coin matches \"{q}\". Check the spelling, or paste its full contract address.": "Nenhuma moeda corresponde a \"{q}\". Verifique a ortografia ou cole o endereço completo do contrato.",
+  "Show all coins": "Mostrar todas as moedas",
+  "Sort: 24h change": "Ordem: variação 24h",
+  "View all {n} matches": "Ver os {n} resultados",
+  "Your coin": "Sua moeda",
+  "you": "você",
+  "↑↓ to move · Enter to open · Esc to close": "↑↓ para navegar · Enter para abrir · Esc para fechar",
+  "🟢 Live": "🟢 Ativas",
 }
 export default d

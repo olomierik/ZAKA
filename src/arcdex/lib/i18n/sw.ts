@@ -1133,5 +1133,21 @@ const d: Record<string, string> = {
   "🔍 Name, ticker or address": "🔍 Jina, tika au anwani",
   "🔥 Trending": "🔥 Zinazovuma",
   "🚀 Graduating": "🚀 Zinakaribia kuhitimu",
+  // Launchpad: trend, search and launch preview (round 6)
+  "24h": "saa 24",
+  "since launch": "tangu kuzinduliwa",
+  "Price change ({window})": "Mabadiliko ya bei ({window})",
+  "Price trend ({window}): {pct}": "Mwenendo wa bei ({window}): {pct}",
+  "How your coin will look on the launchpad. It changes as you type.": "Hivi ndivyo sarafu yako itakavyoonekana kwenye launchpad. Inabadilika unapoandika.",
+  "Launch it first": "Izindue kwanza",
+  "Live preview": "Muonekano mubashara",
+  "No coin matches \"{q}\". Check the spelling, or paste its full contract address.": "Hakuna sarafu inayolingana na \"{q}\". Angalia tahajia, au bandika anwani kamili ya mkataba wake.",
+  "Show all coins": "Onyesha sarafu zote",
+  "Sort: 24h change": "Panga: mabadiliko ya saa 24",
+  "View all {n} matches": "Tazama matokeo yote {n}",
+  "Your coin": "Sarafu yako",
+  "you": "wewe",
+  "↑↓ to move · Enter to open · Esc to close": "↑↓ kusogea · Enter kufungua · Esc kufunga",
+  "🟢 Live": "🟢 Hai",
 }
 export default d

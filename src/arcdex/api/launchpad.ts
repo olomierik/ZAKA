@@ -161,7 +161,7 @@ async function indexFromChain(token: string): Promise<LaunchpadIndex> {
   chainLogs = state
   const tradesOf = (t: string) => state.trades.filter(x => x[0] === t)
   return {
-    launches: state.launches.map(l => ({ ...l, stats: statsOf(tradesOf(l.token)) })),
+    launches: state.launches.map(l => ({ ...l, stats: statsOf(tradesOf(l.token), undefined, l.ts) })),
     ...(token ? { trades: tradesOf(token) } : {}),
   }
 }
@@ -282,7 +282,7 @@ export async function getAllLaunchpadTokensAsArcTokens(): Promise<import('./rada
       price: t.priceUsd,
       priceChange5m: 0,
       priceChange1h: 0,
-      priceChange24h: 0,
+      priceChange24h: s?.change24 ?? 0,
       volume24h: volume,
       marketCap: t.priceUsd * 1_000_000_000,
       liquidity: Number(t.curve.rUsdc) / 1e6,

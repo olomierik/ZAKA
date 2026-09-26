@@ -10,8 +10,11 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { LaunchpadToken } from '../api/launchpad'
 import RiskBadge from './RiskBadge'
 import Ago from './Ago'
+import Sparkline from './Sparkline'
 import { riskOf } from '../lib/risk'
 import { useNow } from '../lib/ago'
+import { pctText } from '../lib/spark'
+import { GRADUATING_PCT } from '../lib/launchpadCoins'
 import { t as T } from '../lib/i18n'
 
 /** A live trade to flash on the card; `n` counts them (each flash restarts). */
@@ -26,9 +29,10 @@ interface Props {
   onOpen: () => void
   /** Quick buy ($5); rejects with a message to show. */
   onBuy: () => Promise<void>
+  /** The launch form's preview: NEW with no age and no star, the description
+   * always shown, and "by you" until a wallet is connected. */
+  preview?: boolean
 }
-
-const GRADUATING = 70
 
 /** A stable number per coin, for its colors and its motion. */
 function hashOf(s: string): number {
@@ -53,6 +57,9 @@ const social = (kind: 'x' | 'tg', v?: string) => {
   return kind === 'x' ? `https://x.com/${handle}` : `https://t.me/${handle}`
 }
 
+/** Under a day old: its change and trend run from its launch, not 24h back. */
+const underADay = (launchedMs: number) => launchedMs > 0 && Date.now() - launchedMs < 86_400_000
+
 /** "NEW" while a coin is under an hour old (off the shared 1s clock, so only
  * this badge re-renders). */
 function NewBadge({ since }: { since: number }) {
@@ -60,7 +67,7 @@ function NewBadge({ since }: { since: number }) {
   return since > 0 && now - since < 3_600_000 ? <span className="coin-badge new">{T('NEW')}</span> : null
 }
 
-function CoinCard({ token: t, flash, starred, featured = false, onStar, onOpen, onBuy }: Props) {
+function CoinCard({ token: t, flash, starred, featured = false, onStar, onOpen, onBuy, preview = false }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const h = useMemo(() => hashOf(t.address.toLowerCase()), [t.address])
   const [imgOk, setImgOk] = useState(true)
@@ -72,6 +79,9 @@ function CoinCard({ token: t, flash, starred, featured = false, onStar, onOpen, 
   const launchedMs = t.curve.launchedAt * 1000
   const s = t.stats
   const mc = t.priceUsd * 1_000_000_000
+  const chg = s?.change24
+  const since = underADay(launchedMs) ? T('since launch') : T('24h')
+  const byYou = preview && /^0x0{40}$/i.test(t.curve.creator)
 
   const risk = useMemo(() => riskOf({
     liquidityUsd: Number(t.curve.rUsdc) / 1e6, marketCapUsd: mc, launchedAt: launchedMs,
@@ -118,7 +128,8 @@ function CoinCard({ token: t, flash, starred, featured = false, onStar, onOpen, 
   const cls = [
     'coin-card',
     featured ? 'featured' : '',
-    graduated ? 'graduated' : progress >= GRADUATING ? 'graduating' : '',
+    preview ? 'preview' : '',
+    graduated ? 'graduated' : progress >= GRADUATING_PCT ? 'graduating' : '',
     flash ? `flash-${flash.side}-${flash.n % 2}` : '',
   ].filter(Boolean).join(' ')
   const vars = {
@@ -145,21 +156,33 @@ function CoinCard({ token: t, flash, starred, featured = false, onStar, onOpen, 
         <div className="coin-top">
           <div className="coin-badges">
             {graduated ? <span className="coin-badge grad">{T('✓ Graduated')}</span>
-              : progress >= GRADUATING ? <span className="coin-badge hot">🔥 {T('Graduating')}</span>
+              : progress >= GRADUATING_PCT ? <span className="coin-badge hot">🔥 {T('Graduating')}</span>
               : null}
-            <NewBadge since={launchedMs} />
-            {launchedMs > 0 && <span className="coin-badge age"><Ago ts={launchedMs} /></span>}
+            {preview ? <span className="coin-badge new">{T('NEW')}</span> : <NewBadge since={launchedMs} />}
+            {!preview && launchedMs > 0 && <span className="coin-badge age"><Ago ts={launchedMs} /></span>}
           </div>
-          <button className={`coin-star${starred ? ' on' : ''}`} title={starred ? T('Remove from watchlist') : T('Add to watchlist')}
-            onClick={e => { e.stopPropagation(); onStar() }}>{starred ? '★' : '☆'}</button>
+          {!preview && (
+            <button className={`coin-star${starred ? ' on' : ''}`} title={starred ? T('Remove from watchlist') : T('Add to watchlist')}
+              onClick={e => { e.stopPropagation(); onStar() }}>{starred ? '★' : '☆'}</button>
+          )}
         </div>
 
         <div className="coin-body">
+          <div className="coin-trend">
+            <Sparkline points={s?.spark} label={T('Price trend ({window}): {pct}', { window: since, pct: pctText(chg ?? 0) })} />
+          </div>
           <div className="coin-title">
             <span className="coin-ticker">${t.symbol}</span>
             <span className="coin-mc">{usd(mc)}<small>{T('MC')}</small></span>
           </div>
-          <div className="coin-name">{t.name}<span> · {T('by')} {short(t.curve.creator)}</span></div>
+          <div className="coin-name">
+            <span className="coin-name-text">{t.name}<span> · {T('by')} {byYou ? T('you') : short(t.curve.creator)}</span></span>
+            {chg !== undefined && (
+              <span className={`coin-chg ${chg > 0.05 ? 'up' : chg < -0.05 ? 'down' : 'flat'}`} title={T('Price change ({window})', { window: since })}>
+                {chg > 0.05 ? '▲' : chg < -0.05 ? '▼' : ''}{pctText(chg)}
+              </span>
+            )}
+          </div>
           {t.metadata?.description && <div className="coin-desc">{t.metadata.description}</div>}
           {!graduated && (
             <div className="coin-progress" title={T('{pct}% of the way to graduating', { pct: progress.toFixed(1) })}>

@@ -1133,5 +1133,21 @@ const d: Record<string, string> = {
   "🔍 Name, ticker or address": "🔍 名称、代码或地址",
   "🔥 Trending": "🔥 热门",
   "🚀 Graduating": "🚀 即将毕业",
+  // Launchpad: trend, search and launch preview (round 6)
+  "24h": "24 小时",
+  "since launch": "自发射以来",
+  "Price change ({window})": "价格变化（{window}）",
+  "Price trend ({window}): {pct}": "价格走势（{window}）：{pct}",
+  "How your coin will look on the launchpad. It changes as you type.": "这就是你的币在发射台上的样子，会随你的输入实时变化。",
+  "Launch it first": "请先发射",
+  "Live preview": "实时预览",
+  "No coin matches \"{q}\". Check the spelling, or paste its full contract address.": "没有与“{q}”匹配的币。请检查拼写，或粘贴完整的合约地址。",
+  "Show all coins": "显示全部币",
+  "Sort: 24h change": "排序：24 小时涨跌",
+  "View all {n} matches": "查看全部 {n} 个结果",
+  "Your coin": "你的币",
+  "you": "你",
+  "↑↓ to move · Enter to open · Esc to close": "↑↓ 移动 · Enter 打开 · Esc 关闭",
+  "🟢 Live": "🟢 交易中",
 }
 export default d

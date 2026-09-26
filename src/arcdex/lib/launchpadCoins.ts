@@ -7,6 +7,10 @@
 // opens the launchpad coin page instead. The list is small (/api/launchpad,
 // CDN-cached) and fetched once, early.
 
+/** Still on its curve and at least this far (%) to graduating: a
+ * "Graduating" coin, as Argus defines it. */
+export const GRADUATING_PCT = 50
+
 let known: Set<string> | null = null
 let loading: Promise<Set<string>> | null = null
 
