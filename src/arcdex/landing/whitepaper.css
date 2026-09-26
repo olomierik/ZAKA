@@ -1,0 +1,187 @@
+/* The ARCDEX whitepaper (/whitepaper): on screen in the landing page's dark
+   style; printed (the downloadable PDF) with a dark cover page, then light
+   pages that read well on paper and phones; and the X image cards. */
+
+/* ── on screen ── */
+.wp-doc { max-width: 880px; margin: 0 auto; padding: 0 20px 40px; text-align: left; }
+.wp-cover { padding: 72px 0 36px; text-align: center; }
+.wp-cover-logo { border-radius: 16px; display: block; margin: 0 auto 18px; }
+.wp-cover h1 { font-size: clamp(2.2rem, 5vw, 3.6rem); line-height: 1.06; margin: 18px 0 16px; background: linear-gradient(180deg, #fff 30%, #b6c6e3); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.wp-lead { font-size: 1.15rem; line-height: 1.6; color: #c3d0e4; max-width: 680px; margin: 0 auto; }
+.wp-cover .ld-cta { justify-content: center; }
+.wp-cover-foot { display: none; }
+
+.wp-toc { margin: 24px 0 8px; padding: 20px 24px; background: var(--ld-card); border: 1px solid var(--ld-border); border-radius: 18px; }
+.wp-toc h2 { font-size: 1.1rem; margin-bottom: 8px; }
+.wp-toc ol { margin: 0; padding-left: 22px; columns: 2; column-gap: 32px; color: #b4c3da; line-height: 1.9; font-size: 0.95rem; }
+.wp-toc a:hover { color: #fff; }
+
+.wp-sec { padding-top: 48px; scroll-margin-top: 70px; }
+.wp-sec h2 { font-size: clamp(1.5rem, 3vw, 2rem); display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.wp-sec h2 span { flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; font-size: 1rem; background: linear-gradient(135deg, var(--ld-blue), var(--ld-violet)); color: #fff; }
+.wp-sec h3 { font-size: 1.15rem; margin: 26px 0 10px; }
+.wp-sec p { color: #c3d0e4; line-height: 1.7; font-size: 1rem; margin: 0 0 12px; }
+.wp-sec code { font-size: 0.82rem; word-break: break-all; color: #dbe7ff; }
+.wp-sec a { color: #93c5fd; }
+.wp-list { margin: 0 0 12px; padding-left: 20px; color: #c3d0e4; line-height: 1.7; }
+.wp-list li { margin-bottom: 8px; }
+.wp-list b { color: #eef3fa; }
+.wp-callout { padding: 16px 18px; border-radius: 14px; border-left: 4px solid var(--ld-violet); background: rgba(124, 58, 237, 0.12); color: #e6ecf7 !important; font-weight: 600; }
+.wp-note { color: var(--ld-muted) !important; font-size: 0.88rem !important; }
+.wp-small { font-size: 0.86rem !important; color: var(--ld-muted) !important; }
+
+.wp-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0 18px; }
+.wp-stats div { padding: 16px; border-radius: 14px; background: var(--ld-card); border: 1px solid var(--ld-border); display: flex; flex-direction: column; gap: 4px; }
+.wp-stats b { font-family: 'Space Grotesk', sans-serif; font-size: 1.6rem; color: #fff; }
+.wp-stats span { color: var(--ld-muted); font-size: 0.82rem; }
+
+.wp-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 14px 0; }
+.wp-grid-4 { grid-template-columns: repeat(2, 1fr); }
+.wp-box { padding: 16px 18px; border-radius: 14px; background: var(--ld-card); border: 1px solid var(--ld-border); }
+.wp-box b { color: #fff; font-family: 'Space Grotesk', sans-serif; }
+.wp-box p { margin: 6px 0 0; font-size: 0.92rem; }
+
+.wp-roadmap { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 16px 0 8px; }
+.wp-phase { padding: 16px 18px; border-radius: 14px; background: var(--ld-card); border: 1px solid var(--ld-border); break-inside: avoid; }
+.wp-phase-live { border-color: rgba(34, 197, 94, 0.35); background: linear-gradient(160deg, rgba(34, 197, 94, 0.12), var(--ld-card) 60%); }
+.wp-phase-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.wp-phase-top b { font-family: 'Space Grotesk', sans-serif; color: #93c5fd; }
+.wp-chip { font-size: 0.72rem; font-weight: 700; padding: 3px 9px; border-radius: 99px; border: 1px solid var(--ld-border-hi); color: var(--ld-muted); white-space: nowrap; font-family: 'JetBrains Mono', monospace; }
+.wp-chip.live { color: #86efac; border-color: rgba(34, 197, 94, 0.4); font-family: inherit; }
+.wp-phase h4 { font-family: 'Space Grotesk', sans-serif; font-size: 1.05rem; margin: 8px 0 6px; color: #fff; }
+.wp-phase ul { margin: 0; padding-left: 18px; color: #b4c3da; font-size: 0.88rem; line-height: 1.55; }
+
+.wp-split { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; align-items: start; }
+.wp-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; color: #c3d0e4; background: var(--ld-card); border: 1px solid var(--ld-border); border-radius: 14px; overflow: hidden; }
+.wp-table th, .wp-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--ld-border); vertical-align: top; }
+.wp-table tr:last-child th, .wp-table tr:last-child td { border-bottom: none; }
+.wp-table th { color: var(--ld-muted); font-weight: 600; white-space: nowrap; }
+.wp-fees thead th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.wp-flow { display: flex; flex-direction: column; gap: 10px; }
+.wp-step { display: flex; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--ld-card); border: 1px solid var(--ld-border); }
+.wp-step > span { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: linear-gradient(135deg, var(--ld-fire), #ef4444); color: #fff; }
+.wp-step b { color: #fff; }
+.wp-step p { margin: 2px 0 0; font-size: 0.86rem; }
+
+.wp-sources { color: var(--ld-muted); font-size: 0.84rem; line-height: 1.7; padding-left: 20px; }
+.wp-url { display: none; }
+
+@media (max-width: 720px) {
+  .wp-stats { grid-template-columns: 1fr 1fr; }
+  .wp-roadmap, .wp-split, .wp-grid, .wp-grid-4 { grid-template-columns: 1fr; }
+  .wp-toc ol { columns: 1; }
+  .wp-cover { padding-top: 44px; }
+  .wp-fees thead { display: none; }
+  .wp-fees tr { display: grid; }
+  .wp-fees td { border-bottom: none; padding: 4px 12px; }
+  .wp-fees tr { border-bottom: 1px solid var(--ld-border); padding: 8px 0; }
+}
+@media (max-width: 560px) {
+  .wp-doc { padding: 0 16px 32px; }
+}
+
+/* ── print: the downloadable PDF ── */
+/* Page numbers in the margin, on every page but the full-bleed cover. */
+@page {
+  size: A4; margin: 16mm 16mm 18mm;
+  @bottom-left { content: "ARCDEX Whitepaper · arcdex.online/whitepaper"; font: 7.5pt 'DM Sans', sans-serif; color: #94a3b8; }
+  @bottom-right { content: counter(page) " / " counter(pages); font: 7.5pt 'DM Sans', sans-serif; color: #94a3b8; }
+}
+@page :first {
+  margin: 0;
+  @bottom-left { content: none; }
+  @bottom-right { content: none; }
+}
+@media print {
+  /* The site is dark (color-scheme: dark), which would paint the page margins dark. */
+  html { color-scheme: light !important; }
+  html, body { background: #fff !important; }
+  .ld.wp { background: #fff; color: #0f172a; min-height: 0; overflow: visible; }
+  .wp .ld-glow, .wp-nav, .wp-noprint { display: none !important; }
+  .wp-doc { max-width: none; padding: 0; }
+  /* The cover: a full dark page. */
+  .wp-cover { box-sizing: border-box; height: 297mm; width: 210mm; margin: 0; padding: 70mm 22mm 0; position: relative; break-after: page;
+    background: radial-gradient(circle at 20% 15%, rgba(59, 130, 246, 0.55), transparent 55%), radial-gradient(circle at 85% 60%, rgba(124, 58, 237, 0.5), transparent 55%), #060d18;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .wp-cover h1 { font-size: 34pt; background: none; -webkit-background-clip: border-box; background-clip: border-box; color: #fff; }
+  .wp-lead { font-size: 13pt; }
+  .wp-cover-foot { display: block; position: absolute; left: 22mm; right: 22mm; bottom: 20mm; color: #8ca3c0; font-size: 10pt; border-top: 1px solid rgba(255, 255, 255, 0.15); padding-top: 8mm; }
+  .wp-toc { background: #f5f7fb; border-color: #e2e8f0; margin-top: 0; }
+  .wp-toc h2, .wp-sec h2, .wp-sec h3, .wp-box b, .wp-phase h4, .wp-step b, .wp-stats b { color: #0f172a; }
+  .wp-toc ol, .wp-toc a { color: #334155; }
+  .wp-sec { padding-top: 7mm; break-inside: auto; }
+  .wp-break { break-before: page; }
+  .wp-sec h2 { font-size: 18pt; break-after: avoid; }
+  /* Keep a heading with its first lines, and never split a note or a callout. */
+  .wp-sec h2 + p { break-after: avoid; }
+  .wp-sec p { orphans: 3; widows: 3; }
+  .wp-small, .wp-callout { break-inside: avoid; }
+  .wp-sec p, .wp-list, .wp-table, .wp-phase ul, .wp-box p, .wp-step p { color: #334155; }
+  .wp-list b, .wp-table td b { color: #0f172a; }
+  .wp-sec p, .wp-list { font-size: 10pt; line-height: 1.5; }
+  .wp-list li { margin-bottom: 1.3mm; }
+  .wp-sec code { color: #1e3a8a; }
+  .wp-sec a { color: #1d4ed8; }
+  .wp-callout { background: #f1ecff; color: #3b1d8f !important; border-left-color: #7c3aed; }
+  .wp-note, .wp-small { color: #64748b !important; }
+  .wp-stats div, .wp-box, .wp-phase, .wp-step, .wp-table { background: #f8fafc; border-color: #e2e8f0; break-inside: avoid; }
+  .wp-phase-live { background: #effaf3; border-color: #bbe7c9; }
+  .wp-phase-top b { color: #1d4ed8; }
+  .wp-chip { color: #475569; border-color: #cbd5e1; }
+  .wp-chip.live { color: #15803d; border-color: #86efac; }
+  .wp-table th { color: #64748b; }
+  .wp-table th, .wp-table td { border-bottom-color: #e2e8f0; }
+  .wp-stats { grid-template-columns: repeat(4, 1fr); }
+  /* The whole roadmap on one page: three columns, smaller type. */
+  .wp-roadmap { grid-template-columns: repeat(3, 1fr); gap: 3mm; }
+  .wp-phase { padding: 3mm 3.5mm; }
+  .wp-phase h4 { font-size: 11pt; margin: 1.5mm 0 1mm; }
+  .wp-phase ul { font-size: 8.6pt; line-height: 1.4; padding-left: 4mm; }
+  .wp-chip { font-size: 7pt; padding: 0.5mm 2mm; }
+  .wp-phase-top { flex-wrap: wrap; justify-content: flex-start; gap: 1mm 2mm; }
+  .wp-phase-top b { white-space: nowrap; }
+  .wp-grid { grid-template-columns: repeat(2, 1fr); }
+  .wp-grid-4 { grid-template-columns: repeat(4, 1fr); }
+  .wp-split { grid-template-columns: 1.25fr 1fr; }
+  .wp-sources { color: #475569; }
+  .wp-url { display: inline; color: #94a3b8; font-size: 8pt; word-break: break-all; }
+  .wp-sec h2 span, .wp-step > span, .wp-cover *, .wp-phase-live { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+/* ── the images for X (?card=cover | ?card=roadmap) ── */
+.xcard { position: relative; overflow: hidden; background: #060d18; color: #eef3fa; font-family: 'DM Sans', system-ui, sans-serif; box-sizing: border-box; display: flex; flex-direction: column; }
+.xcard > *:not(.ld-glow) { position: relative; z-index: 1; }
+.xcard h1, .xcard b, .xcard-top span { font-family: 'Space Grotesk', 'DM Sans', sans-serif; letter-spacing: -0.02em; }
+.xcard-top { display: flex; align-items: center; gap: 16px; }
+.xcard-top img { border-radius: 14px; }
+.xcard-top span { font-weight: 700; font-size: 34px; }
+.xcard-top em { margin-left: auto; font-style: normal; font-weight: 700; font-size: 22px; padding: 10px 18px; border-radius: 99px; background: rgba(59, 130, 246, 0.16); border: 1px solid rgba(96, 165, 250, 0.45); color: #bfdbfe; }
+.xcard-foot { margin-top: auto; display: flex; align-items: center; gap: 24px; font-size: 22px; color: #b4c3da; padding-top: 22px; border-top: 1px solid rgba(255, 255, 255, 0.12); }
+.xcard-foot b { margin-left: auto; font-size: 26px; background: linear-gradient(90deg, #60a5fa, #a78bfa); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+.xcard-cover { width: 1600px; height: 900px; padding: 64px 80px 56px; }
+.xcard-cover .ld-glow-a { width: 900px; height: 900px; top: -380px; left: -260px; opacity: 0.4; }
+.xcard-cover .ld-glow-b { width: 800px; height: 800px; top: 120px; right: -300px; opacity: 0.35; }
+.xcard-cover h1 { font-size: 92px; line-height: 1.02; margin: auto 0 22px; max-width: none; background: linear-gradient(180deg, #fff 35%, #b6c6e3); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.xcard-cover p { font-size: 32px; color: #c3d0e4; margin: 0; max-width: 1150px; line-height: 1.35; }
+.xcard-pillars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-top: 48px; }
+.xcard-pillars div { padding: 22px 22px; border-radius: 22px; background: rgba(15, 26, 45, 0.78); border: 1px solid rgba(255, 255, 255, 0.12); display: flex; flex-direction: column; gap: 6px; }
+.xcard-pillars span { font-size: 34px; }
+.xcard-pillars b { font-size: 28px; }
+.xcard-pillars small { font-size: 20px; color: #8ca3c0; }
+
+.xcard-roadmap { width: 1080px; height: 1350px; padding: 56px 60px 48px; }
+.xcard-roadmap .ld-glow-a { width: 800px; height: 800px; top: -320px; left: -260px; opacity: 0.38; }
+.xcard-roadmap .ld-glow-b { width: 700px; height: 700px; top: 520px; right: -300px; opacity: 0.3; }
+.xcard-roadmap .xcard-top span { font-size: 38px; }
+.xcard-roadmap .xcard-top em { font-size: 20px; }
+.xcard-phases { display: flex; flex-direction: column; gap: 14px; margin-top: 34px; }
+.xcard-phase { display: flex; gap: 18px; align-items: flex-start; padding: 16px 20px; border-radius: 20px; background: rgba(15, 26, 45, 0.8); border: 1px solid rgba(255, 255, 255, 0.1); }
+.xcard-phase i { flex-shrink: 0; width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-weight: 800; font-size: 24px; font-family: 'Space Grotesk', sans-serif; background: linear-gradient(135deg, #3b82f6, #7c3aed); }
+.xcard-phase.live { border-color: rgba(34, 197, 94, 0.45); background: linear-gradient(160deg, rgba(34, 197, 94, 0.16), rgba(15, 26, 45, 0.8) 60%); }
+.xcard-phase.live i { background: linear-gradient(135deg, #22c55e, #0ea5e9); }
+.xcard-phase b { display: flex; align-items: baseline; gap: 14px; font-size: 27px; }
+.xcard-phase b em { font-style: normal; font-weight: 600; font-size: 19px; color: #93c5fd; font-family: 'JetBrains Mono', monospace; }
+.xcard-phase small { display: block; margin-top: 4px; font-size: 18.5px; line-height: 1.35; color: #b4c3da; }
+.xcard-roadmap .xcard-foot { font-size: 18px; }
+.xcard-roadmap .xcard-foot b { font-size: 24px; }

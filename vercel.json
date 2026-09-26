@@ -5,6 +5,7 @@
   "framework": "vite",
   "rewrites": [
     { "source": "/arcdex(.*)", "destination": "/arcdex.html" },
+    { "source": "/whitepaper", "destination": "/whitepaper.html" },
     { "source": "/(.*)",       "destination": "/index.html"  }
   ]
 }

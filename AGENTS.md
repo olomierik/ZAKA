@@ -415,6 +415,22 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
 - **`/burn` (in the app):** a public dashboard. When the connected wallet is the fee wallet, it also shows owner controls: "Buy back $ARCD" (opens the coin page) and "Burn $ARCD" (transfer to `0x…dEaD`, with confirmation).
   - The navbar 🔥 ticker shows $ARCD burned and links here.
 
+## Whitepaper + roadmap (2026-09-26)
+
+- **Roadmap data:** `src/arcdex/landing/roadmap.ts` is the one source for the landing page's `#roadmap` section (translated), the whitepaper and the X images.
+  - `ROADMAP_START` (Phase 1's Monday, UTC) and `PHASE_DAYS` set every date. To move the plan, change `ROADMAP_START`. Each card's status (Planned, In progress, Done) follows the clock.
+  - Items with `dep: true` get a †: they're built in the phase but go live only once a partner, an audit or a regulator allows it.
+  - Strings are marked with `N_()`; new ones go into all six dictionaries.
+- **Landing:** a `#roadmap` section (Phase 0 "Live now" + 7 phases) and a `#whitepaper` card (read, download the PDF, share on X), with links in the nav and footer.
+- **Whitepaper:** `/whitepaper` (`landing/Whitepaper.tsx` + `whitepaper.css`, English only; `VERSION` and `PUBLISHED` at the top).
+  - `whitepaper.html` is its own Vite entry, so X link previews read its OG/Twitter tags. `vercel.json` rewrites `/whitepaper` to it, and `src/main.tsx` routes it in dev.
+  - The print styles make the PDF: a full-bleed dark cover, then A4 pages numbered by `@page` margin boxes.
+  - `?card=cover` (1600×900) and `?card=roadmap` (1080×1350) render the images for X.
+- **Files in `public/`:** `arcdex-whitepaper.pdf`, `arcdex-whitepaper-x.png` (also the link-preview image) and `arcdex-roadmap-x.png`. They're committed, not built, so regenerate them after editing the whitepaper or the roadmap:
+  - build, run `vite preview --port 4173`, then `node scripts/whitepaper-assets.mjs` (options in its header);
+  - check the PDF has no near-empty page (v1.0 is 8 pages).
+- **Phase 1 needs the owner:** the 2% → 1% swap fee is `setFeeBps(100)` on the swap router (owner key), and cashback is paid from the fee wallet. The site doesn't do either by itself.
+
 ## Speed + live data (2026-09-25)
 
 - **Database v4:** `supabase/migrations/20260927000000_arcdex_speed.sql`, tested on PGlite. **The owner must run it** after v3. Until then, `/api/holders` answers 503 (pages show GeckoTerminal's count), and `/api/argus` and `/api/gecko` work as before, without their stored copies.
