@@ -17,6 +17,7 @@ import { setPrefs, usePrefs } from '../lib/prefs'
 import { t as T } from '../lib/i18n'
 import { waitForReceipt } from '../lib/receipts'
 import { onBalances } from '../lib/balances'
+import { PERMIT2, PERMIT2_ABI, UR_ABI, encodeNativeBuy, encodeNativeSell, feeShares, netAfterFees, permit2Allowance, quoteExactIn, universalRouter } from '../api/universalRouter'
 
 export { SWAP_ROUTER_ADDRESS }
 
@@ -45,6 +46,19 @@ const ROUTER_V2 = [
   { name: 'swapExactInV3', type: 'function', stateMutability: 'nonpayable', inputs: [...V3_IN, REF], outputs: OUT },
 ] as const
 
+// ArcDexSwapRouter's fee wallet and on-chain referrer bindings, which the
+// Universal Router path (native-USDC pools) pays the same way.
+const ROUTER_FEES = [
+  { name: 'feeWallet', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+  { name: 'referrerOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'a', type: 'address' }], outputs: [{ type: 'address' }] },
+] as const
+/** USDC that Cash (max) leaves on a buy, for gas (6 decimals). Arc's gas is
+ * paid from the same USDC balance, charged up front (gas limit × max fee)
+ * before the trade runs, so a buy of all of it passes the simulation, then
+ * reverts on-chain. A swap is ~250k gas; at 160 gwei with a wallet's fee and
+ * gas headroom that is up to ~$0.12, and selling later needs a little more. */
+const GAS_RESERVE = 150_000n
+const ZERO_ADDR = '0x0000000000000000000000000000000000000000' as Address
 const WARN_IMPACT = 5
 const CONFIRM_IMPACT = 15
 
@@ -107,14 +121,26 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
 
   // Balance + allowance for whichever wallet is trading (works for both the
   // trading wallet and an external one — no wagmi hooks tied to one).
+  // A native-USDC pool trades through Uniswap's Universal Router: a buy
+  // pays in native USDC (no approval), a sell goes through Permit2.
+  const native = route?.kind === 'v4native'
   const refresh = useCallback(async () => {
     if (!me || !routerConfigured) { setBalance(null); setAllowance(0n); return }
+    const allowanceOf = async (): Promise<bigint> => {
+      if (!native) return client.readContract({ address: tokenIn, abi: ERC20_ABI, functionName: 'allowance', args: [me, SWAP_ROUTER_ADDRESS] })
+      if (mode === 'buy') return 2n ** 255n
+      const [toPermit2, toRouter] = await Promise.all([
+        client.readContract({ address: tokenIn, abi: ERC20_ABI, functionName: 'allowance', args: [me, PERMIT2] }),
+        universalRouter().then(ur => permit2Allowance(me, tokenIn, ur)),
+      ])
+      return toPermit2 < toRouter ? toPermit2 : toRouter
+    }
     const [b, a] = await Promise.all([
       client.readContract({ address: tokenIn, abi: ERC20_ABI, functionName: 'balanceOf', args: [me] }),
-      client.readContract({ address: tokenIn, abi: ERC20_ABI, functionName: 'allowance', args: [me, SWAP_ROUTER_ADDRESS] }),
+      allowanceOf(),
     ]).catch(() => [null, 0n] as const)
     setBalance(b); setAllowance(a ?? 0n)
-  }, [me, tokenIn])
+  }, [me, tokenIn, native, mode])
   useEffect(() => {
     void refresh()
     const id = setInterval(() => { if (!document.hidden) void refresh() }, 12_000)
@@ -134,6 +160,9 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
 
   const insufficient = balance !== null && amountIn > balance
   const needsApprove = amountIn > 0n && allowance < amountIn
+  // Cash (max) on a buy leaves some USDC for gas — this trade's and the
+  // later sell's (as Withdraw's Max does, components/CashModals.tsx).
+  const maxIn = balance === null ? null : mode === 'buy' ? (balance > GAS_RESERVE ? balance - GAS_RESERVE : 0n) : balance
 
   function callFor(r: RouterInfo, minOut: bigint, referrer: Address) {
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
@@ -144,18 +173,105 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       const keys = mode === 'buy' ? route.buyKeys : route.sellKeys
       return { abi, functionName: 'swapExactInV4' as const, args: [keys, tokenIn, amountIn, minOut, deadline, ...tail] }
     }
+    if (route.kind !== 'v3') throw new Error(T('No route'))
     const tokenOut = mode === 'buy' ? token : USDC_ADDRESS
     return { abi, functionName: 'swapExactInV3' as const, args: [tokenIn, tokenOut, route.fee, amountIn, minOut, deadline, ...tail] }
   }
 
   // One-tap with the trading wallet (signs locally, no pop-up); an external
   // wallet is put on Arc first (lib/tx.ts).
-  const send = (req: { address: Address; abi: unknown; functionName: string; args: unknown[] }): Promise<Hex> => sendArc(trader.kind, req as never)
+  const send = (req: { address: Address; abi: unknown; functionName: string; args: unknown[]; value?: bigint }): Promise<Hex> => sendArc(trader.kind, req as never)
+
+  /** The trade's outcome, shown and remembered the same way for both routers. */
+  function finish(outNum: number) {
+    if (!me) return
+    const usd = mode === 'buy' ? Number(formatUnits(amountIn, 6)) : outNum
+    const tokens = mode === 'buy' ? outNum : Number(formatUnits(amountIn, 18))
+    rememberHolding(me, token)
+    setLastTrade({ kind: mode, usd, tokens })
+    setStep('done')
+    setMsg(T(mode === 'buy' ? 'Bought {amount} {symbol} for {usd}' : 'Sold {amount} {symbol} for {usd}', { amount: fmtTok(tokens), symbol, usd: fmtUsd(usd) }))
+    setAmount('')
+    void refresh()
+    triggerIndex(true)
+    onTraded?.()
+  }
+
+  /** Is the price impact past the confirm line (and not yet confirmed)? Says so if it is. */
+  function holdForImpact(outNum: number): boolean {
+    const imp = estimate > 0 ? Math.max(0, (1 - outNum / estimate) * 100) : 0
+    setImpact(imp)
+    if (imp < CONFIRM_IMPACT || riskOk) return false
+    setStep('idle')
+    setMsg(T("This trade moves the price {pct}% — you'd get {out}. Tick the box to confirm, or trade a smaller amount.", { pct: imp.toFixed(1), out: mode === 'buy' ? fmtTok(outNum) + ' ' + symbol : fmtUsd(outNum) }))
+    return true
+  }
+
+  /** A native-USDC pool, through Uniswap's Universal Router: ARCDEX's fee and
+   * the referrer's share come off the USDC side in the same transaction. */
+  async function submitNative(r: RouterInfo, key: Extract<SwapRoute, { kind: 'v4native' }>['key']) {
+    if (!me) return
+    const ur = await universalRouter()
+    if (mode === 'sell') {
+      // Permit2: the token to Permit2 (exact amount), then Permit2 to the router for 30 minutes.
+      const toPermit2 = await client.readContract({ address: token, abi: ERC20_ABI, functionName: 'allowance', args: [me, PERMIT2] })
+      if (toPermit2 < amountIn) {
+        setStep('approving')
+        const h = await send({ address: token, abi: ERC20_ABI, functionName: 'approve', args: [PERMIT2, amountIn] })
+        if ((await waitForReceipt(h)).status !== 'success') throw new Error(T('Approval failed'))
+        await waitForAllowance(client, token, me, PERMIT2, amountIn)
+      }
+      if (await permit2Allowance(me, token, ur) < amountIn) {
+        setStep('approving')
+        const h = await send({ address: PERMIT2, abi: PERMIT2_ABI, functionName: 'approve', args: [token, ur, amountIn, Math.floor(Date.now() / 1000) + 1800] })
+        if ((await waitForReceipt(h)).status !== 'success') throw new Error(T('Approval failed'))
+        for (let i = 0; i < 20 && await permit2Allowance(me, token, ur) < amountIn; i++) await new Promise(res => setTimeout(res, 500))
+      }
+    }
+
+    setStep('quoting')
+    // The fee goes where ArcDexSwapRouter would send it: the referrer bound
+    // there (or the one this visitor arrived with) and the fee wallet.
+    const [feeWallet, bound] = await Promise.all([
+      client.readContract({ address: SWAP_ROUTER_ADDRESS, abi: ROUTER_FEES, functionName: 'feeWallet' }),
+      r.version === 2 ? client.readContract({ address: SWAP_ROUTER_ADDRESS, abi: ROUTER_FEES, functionName: 'referrerOf', args: [me] }).catch(() => ZERO_ADDR) : Promise.resolve(ZERO_ADDR),
+    ])
+    const referrer = bound !== ZERO_ADDR ? bound : r.version === 2 ? await referrerFor(me) : ZERO_ADDR
+    // ArcDexSwapRouter ignores a trader named as their own referrer; so does this.
+    const paidReferrer = referrer === ZERO_ADDR || referrer.toLowerCase() === me.toLowerCase() ? null : referrer
+    const shares = feeShares(r.feeBps, r.referralShareBps, feeWallet, paidReferrer)
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+    const keep = (x: bigint) => (x * BigInt(Math.round((100 - slippage) * 100))) / 10_000n
+
+    let call: { commands: Hex; inputs: Hex[] }, value: bigint | undefined, outNum: number
+    if (mode === 'buy') {
+      value = amountIn * 10n ** 12n // native USDC has 18 decimals
+      const out = await quoteExactIn(key, true, encodeNativeBuy(key, value, shares, 0n, me).swapIn)
+      outNum = Number(formatUnits(out, 18))
+      if (holdForImpact(outNum)) return
+      call = encodeNativeBuy(key, value, shares, keep(out), me)
+    } else {
+      const proceeds = netAfterFees(await quoteExactIn(key, false, amountIn), shares)
+      outNum = Number(formatUnits(proceeds, 18))
+      if (holdForImpact(outNum)) return
+      call = encodeNativeSell(key, amountIn, shares, keep(proceeds), me)
+    }
+    const args = [call.commands, call.inputs, deadline] as const
+    // Simulate the exact transaction first: a revert (a hook that won't
+    // trade with the router, a moved price) stops here, before signing.
+    await client.simulateContract({ address: ur, abi: UR_ABI, functionName: 'execute', args, value, account: me })
+
+    setStep('swapping')
+    const h = await send({ address: ur, abi: UR_ABI, functionName: 'execute', args: [...args], value })
+    if ((await waitForReceipt(h)).status !== 'success') throw new Error(T('Swap reverted'))
+    finish(outNum)
+  }
 
   async function submit() {
     if (!me || !info || !route || amountIn === 0n) return
     setMsg('')
     try {
+      if (route.kind === 'v4native') { await submitNative(info, route.key); return }
       if (needsApprove) {
         setStep('approving')
         // Exact amount only — the router never needs more than this trade.
@@ -179,13 +295,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       // Price impact vs. the market price (after fee and tax, so it's the
       // cost of size alone).
       const outNum = Number(formatUnits(out, mode === 'buy' ? 18 : 6))
-      const imp = estimate > 0 ? Math.max(0, (1 - outNum / estimate) * 100) : 0
-      setImpact(imp)
-      if (imp >= CONFIRM_IMPACT && !riskOk) {
-        setStep('idle')
-        setMsg(T("This trade moves the price {pct}% — you'd get {out}. Tick the box to confirm, or trade a smaller amount.", { pct: imp.toFixed(1), out: mode === 'buy' ? fmtTok(outNum) + ' ' + symbol : fmtUsd(outNum) }))
-        return
-      }
+      if (holdForImpact(outNum)) return
 
       const minOut = (out * BigInt(Math.round((100 - slippage) * 100))) / 10_000n
       setStep('swapping')
@@ -194,17 +304,8 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       const rc = await waitForReceipt(h)
       if (rc.status !== 'success') throw new Error(T('Swap reverted'))
 
-      const usd = mode === 'buy' ? Number(formatUnits(amountIn, 6)) : outNum
-      const tokens = mode === 'buy' ? outNum : Number(formatUnits(amountIn, 18))
-      rememberHolding(me, token)
-      setLastTrade({ kind: mode, usd, tokens })
-      setStep('done')
-      setMsg(T(mode === 'buy' ? 'Bought {amount} {symbol} for {usd}' : 'Sold {amount} {symbol} for {usd}', { amount: fmtTok(tokens), symbol, usd: fmtUsd(usd) }))
-      setAmount('')
       setAllowance(a => (a >= amountIn ? a - amountIn : 0n))
-      void refresh()
-      triggerIndex(true)
-      onTraded?.()
+      finish(outNum)
     } catch (e) {
       setStep('error')
       setMsg(txErrorText(e))
@@ -252,7 +353,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 6 }}>
           <span>{mode === 'buy' ? T("You pay (USDC)") : T('You sell ({symbol})', { symbol })}</span>
           {balance !== null && (
-            <button onClick={() => setAmount(formatUnits(balance, decIn))} style={{ background: 'none', border: 'none', color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.72rem' }}>
+            <button onClick={() => maxIn !== null && setAmount(formatUnits(maxIn, decIn))} style={{ background: 'none', border: 'none', color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.72rem' }}>
               {mode === 'buy' ? T("Cash") : T("Holding")}: {mode === 'buy' ? fmtUsd(Number(formatUnits(balance, 6))) : fmtTok(Number(formatUnits(balance, 18)))}
             </button>
           )}

@@ -13,6 +13,7 @@ import { KNOWN_LAUNCHPAD_DEXES, launchpadLabel } from '../../../api/_launchpads'
 import { gtGet, gtDirectFetcher } from './gtClient'
 import { headBlock, hex, rpcCall, scanLogs, RECENT_RPC } from '../../../api/_arcLogs'
 import { POOL_MANAGER, signedWord, topicAddress, word } from '../../../api/_arcSwaps'
+import { NATIVE, isNativePool } from './universalRouter'
 
 export const USDC_ADDRESS = '0x3600000000000000000000000000000000000000' as Address
 export const ARGUS_TOKEN = '0xeCe5cA8bf9220718E5727754026757512212cb3c' as Address
@@ -265,10 +266,10 @@ export async function getArgusTokenPools(token: string): Promise<ArgusPool[]> {
     })
   }
   // Only pools where this token is the base, quoted in something a USDC
-  // buy can reach (USDC directly, or ARGUS via ARGUS/USDC).
+  // buy can reach (USDC — ERC-20 or native — directly, or ARGUS via ARGUS/USDC).
   const tradable = pools.filter(p =>
     p.token.address === token.toLowerCase() &&
-    (p.quote.address === USDC_ADDRESS.toLowerCase() || p.quote.address === ARGUS_TOKEN.toLowerCase()))
+    (p.quote.address === USDC_ADDRESS.toLowerCase() || p.quote.address === NATIVE || p.quote.address === ARGUS_TOKEN.toLowerCase()))
   return tradable.sort((a, b) => b.liquidityUsd - a.liquidityUsd)
 }
 
@@ -396,6 +397,8 @@ export interface PoolKey { currency0: Address; currency1: Address; fee: number; 
 export type SwapRoute =
   | { kind: 'v4'; buyKeys: PoolKey[]; sellKeys: PoolKey[]; via: 'USDC' | 'ARGUS' }
   | { kind: 'v3'; fee: number }
+  /** A v4 pool against native USDC (Minara, SolonPad, …): through Uniswap's Universal Router (api/universalRouter.ts). */
+  | { kind: 'v4native'; key: PoolKey }
 
 const POSITION_MANAGER = '0x6049c9a0e26405C0985f9E3685C87d0aE917f82B' as Address
 const PM_ABI = parseAbi(['function poolKeys(bytes25) view returns (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks)'])
@@ -499,6 +502,8 @@ export async function buildSwapRoute(token: string, pool: string, createdAt?: st
   if (!sides.includes(t)) return null
   if (sides.includes(usdc)) return { kind: 'v4', buyKeys: [key], sellKeys: [key], via: 'USDC' }
   if (sides.includes(argus)) return { kind: 'v4', buyKeys: [ARGUS_USDC_KEY, key], sellKeys: [key, ARGUS_USDC_KEY], via: 'ARGUS' }
+  // Native USDC (currency 0x0) is ArcDexSwapRouter's one gap: Uniswap's Universal Router takes it.
+  if (isNativePool(key, t)) return { kind: 'v4native', key }
   return null
 }
 

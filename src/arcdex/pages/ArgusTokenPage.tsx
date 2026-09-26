@@ -169,15 +169,25 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   const poolList = (pools ?? []).map(p => p.pool).join(',')
   const poolsLoaded = pools !== null
   const createdAt = active?.createdAt ?? null
+  const routedFor = useRef('')
+  const routeRef = useRef(route)
+  useEffect(() => { routeRef.current = route }, [route]) // before the route effect below
   useEffect(() => {
     let cancelled = false
-    setRouteLoading(true); setRoute(null)
+    // A new coin or pool starts over ("Finding route…"). The same pool after
+    // a pool-list refresh (a new pool, a new order) is re-checked in the
+    // background: a route it has stays tradable meanwhile, and only a route
+    // found replaces it — so a click during a refresh isn't lost.
+    const fresh = routedFor.current !== `${address}:${activePool}`
+    routedFor.current = `${address}:${activePool}`
+    if (fresh) { setRouteLoading(true); setRoute(null) }
+    else if (!routeRef.current) setRouteLoading(true) // nothing to keep: show it's looking
     // Opened from a bare /token/<address> URL: wait for the pool list.
     if (!activePool) { setRouteLoading(poolsRef.current === null); return }
     const others = (poolsRef.current ?? []).filter(p => p.pool !== activePool)
     bestSwapRoute(address, [{ pool: activePool, createdAt }, ...others])
-      .then(r => { if (!cancelled) setRoute(r) })
-      .catch(() => { if (!cancelled) setRoute(null) })
+      .then(r => { if (!cancelled && (r || fresh)) setRoute(r) })
+      .catch(() => { if (!cancelled && fresh) setRoute(null) })
       .finally(() => { if (!cancelled) setRouteLoading(false) })
     return () => { cancelled = true }
   }, [address, activePool, poolList, createdAt, poolsLoaded])
