@@ -150,6 +150,35 @@ Why buys, swaps and bridges failed for people, and the fixes:
   - `bun scripts/test-withdraw-guard.ts`: the rule, funding detection and tamper-proof storage.
   - `bun scripts/test-portfolio.ts`: which coins are checked and how they're priced.
 
+### Launchpad coin cards and filters (2026-09-26, round 5)
+- **Owner's request:** Argus-style launch cards, with the coin's image covering the whole card and cards that are never still, plus coin filtering. argus.world itself was out of reach from the build sandbox (blocked by its network policy); compare once it's allowed.
+- **`components/CoinCard.tsx`:** the coin's image fills the card. A coin without an image gets gradient art in its own colors, with its ticker.
+  - Overlaid:
+    - ticker and market cap;
+    - name and creator;
+    - the description (on hover; always on the featured card);
+    - a striped progress bar;
+    - 24h volume and trades;
+    - the risk badge (`riskOf` with the curve's data);
+    - socials;
+    - ⚡ Buy $5 (the trading wallet's quick buy);
+    - a watchlist star, age, NEW (under 1h), GRADUATING (70%+) and GRADUATED.
+  - **Motion:**
+    - the art drifts (slow zoom and pan, varied per card from its address);
+    - a sheen sweeps across;
+    - the card tilts toward the mouse with a glare;
+    - graduating coins get a spinning conic glow border, graduated ones a gold glow.
+  - **Live trades:** each one flashes its card green or red and floats the amount up ("+$250").
+  - **Motion pauses** while a card is off screen (IntersectionObserver, `data-live`) and stops with reduced motion.
+- **`pages/Launchpad.tsx`:**
+  - Tabs, each with a count: 🔥 Trending, ✨ New, 🚀 Graduating (70%+), 🎓 Graduated, ★ Watchlist, 👤 My coins.
+  - Search by name, ticker or address.
+  - Sort: best for the tab, market cap, 24h volume, newest, progress, 24h trades or last trade.
+  - Age filter (1h, 24h, 7d), "Has socials", "Low risk", and big/small cards. The choice is remembered per browser (`arcdex:launch-view`).
+  - The hottest coin is a landscape hero card on Trending.
+  - A live tape of every launchpad trade replaces the old activity list. Each trade moves its card's price and progress at once (`LaunchpadLiveTrade.rUsdcAfter`, new). The list still refreshes every 10s.
+  - `LaunchpadToken.stats` (new) carries the index's 24h numbers.
+
 ### Risk scores, faster confirmations, a live Terminal (2026-09-26, round 3)
 - **Risk score on every coin (`lib/risk.ts`, `components/RiskBadge.tsx`):** 0–100, higher is riskier. Low under 30, Medium 30–59, High 60+. Hovering the badge lists the reasons; the Safety check spells them out for phones.
   - **Terminal rows and phone cards** are scored from the market data they already carry, with no extra requests: liquidity, market cap ÷ liquidity, age, holders, 24h trades, the 24h move, sells vs buys, copycat tickers, and "a bigger coin uses the same ticker".

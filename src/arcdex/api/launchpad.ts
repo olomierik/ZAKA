@@ -78,6 +78,8 @@ export interface LaunchpadToken {
   priceUsd: number
   bondingProgress: number // 0-100
   metadata?: import('../lib/mediaUpload').TokenMetadata | null
+  /** 24h volume, trades, traders… from the launchpad index (absent until it has the coin). */
+  stats?: LaunchStats
 }
 
 const GRADUATION_THRESHOLD_USDC = 25_000_000_000n
@@ -197,7 +199,7 @@ export async function getAllLaunchpadTokens(includeMetadata = true): Promise<Lau
       if (!curve) return null
       return {
         address: addr, name, symbol, curve, priceUsd: priceFromCurve(curve), bondingProgress: bondingProgressFromCurve(curve),
-        metadata: includeMetadata ? metadataOf(launch) : undefined,
+        metadata: includeMetadata ? metadataOf(launch) : undefined, stats: launch?.stats,
       }
     } catch { return null }
   }))
