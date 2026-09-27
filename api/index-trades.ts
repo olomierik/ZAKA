@@ -13,6 +13,7 @@
 
 import { keccak256, stringToBytes } from 'viem'
 import { adminReady, db, insertIgnore, json, upsert } from './_supabaseAdmin'
+import { CURVE_ROUTER, curveRouterFrom } from './_curves'
 
 export const config = { runtime: 'edge' }
 
@@ -102,8 +103,10 @@ export default async function handler(): Promise<Response> {
   const latest = parseInt(await rpc<string>('eth_blockNumber', []), 16)
 
   const routers = [V1.address]
-  for (const name of ['VITE_ARCDEX_SWAP_ROUTER_ADDRESS', 'VITE_ARCDEX_CURVE_ROUTER_ADDRESS']) {
-    const address = (process.env[name] ?? '').trim().toLowerCase()
+  // The swap router, the curve router in force, and the deployed curve
+  // router even when routing is off: its trades stay indexed.
+  for (const a of [process.env.VITE_ARCDEX_SWAP_ROUTER_ADDRESS, curveRouterFrom(process.env.VITE_ARCDEX_CURVE_ROUTER_ADDRESS), CURVE_ROUTER]) {
+    const address = (a ?? '').trim().toLowerCase()
     if (/^0x[0-9a-f]{40}$/.test(address) && !routers.includes(address)) routers.push(address)
   }
 

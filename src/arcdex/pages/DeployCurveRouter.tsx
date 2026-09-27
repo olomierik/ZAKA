@@ -3,6 +3,7 @@ import { formatEther, getAddress, isAddress, type Address, type Hash } from 'vie
 import { useAccount } from 'wagmi'
 import { openConnectModal } from '../components/ConnectWallet'
 import { ARC_EXPLORER } from '../lib/arcd'
+import { curveRouterFrom } from '../../../api/_curves'
 import { ARCDEX_DEPLOYER, deployCost, deployRouter, ROUTER_SETUP, shortAddress, simulate, verifyRouter, why, type Check, type Coins, type DeployCost, type SimOutcome, type Verified } from '../lib/curveRouterDeploy'
 import { t as T } from '../lib/i18n'
 import { useEmbeddedAddress } from '../lib/identity'
@@ -13,15 +14,15 @@ import { arc } from '../wagmi'
 // /deploy/curve-router — not linked from anywhere: the owner deploys
 // ArcDexCurveRouter (2% on Mercuri and SolonPad curve trades) from their own
 // wallet, in three steps: simulate it against the live curves, deploy it
-// with one signature, and check the deployed contract. Nothing on ARCDEX
-// changes until its address is set as VITE_ARCDEX_CURVE_ROUTER_ADDRESS.
-// The work is in lib/curveRouterDeploy.ts.
+// with one signature, and check the deployed contract. A new router changes
+// nothing on ARCDEX until it's named (api/_curves.ts CURVE_ROUTER, or
+// VITE_ARCDEX_CURVE_ROUTER_ADDRESS). The work is in lib/curveRouterDeploy.ts.
 
-// The router ARCDEX routes curve trades through now, if any: the variable
-// api/curves.ts reads (not imported from there, so the coin pages' code
-// stays in their own chunk).
-const CONFIGURED = String(import.meta.env.VITE_ARCDEX_CURVE_ROUTER_ADDRESS ?? '').trim()
-const CURRENT: Address | null = isAddress(CONFIGURED, { strict: false }) ? getAddress(CONFIGURED) : null
+// The router ARCDEX routes curve trades through now, if any: chosen as
+// api/curves.ts chooses it (not imported from there, so the coin pages'
+// code stays in their own chunk).
+const CONFIGURED = curveRouterFrom(import.meta.env.VITE_ARCDEX_CURVE_ROUTER_ADDRESS as string | undefined)
+const CURRENT: Address | null = CONFIGURED ? getAddress(CONFIGURED) : null
 
 const SAVED = 'arcdex:curveRouterDeployed'
 interface Saved { address: Address; hash: Hash; owner: Address }

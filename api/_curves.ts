@@ -25,6 +25,21 @@ export const MERCURI_FACTORY = '0x8f5dfa0c48e14ccd03ae01795b8a95759ba859eb'
 export const MERCURI_FEE_MANAGER = '0x31d1bfe59b783f4c077f853f962d1355afb52580'
 export const SOLONPAD_FACTORY = '0xd6b86b9b1bb64b941b21aaa6a0e3a673e8405a3b'
 
+// ArcDexCurveRouter (contracts/ArcDexCurveRouter.sol, VERSION 1), deployed on
+// Arc mainnet 2026-09-27 by the owner from /deploy/curve-router. Mercuri and
+// SolonPad curve trades go through it and pay ARCDEX's fee.
+export const CURVE_ROUTER = '0xf8e8c8e2159e5bb8af91fd342bfe5b9db7a06441'
+
+/** The curve router in force, lower-cased, from VITE_ARCDEX_CURVE_ROUTER_ADDRESS:
+ * an address overrides CURVE_ROUTER, `off` turns routing off ('': curve
+ * trades then go to the curve directly, with no ARCDEX fee), and anything
+ * else (unset, empty, not an address) keeps CURVE_ROUTER. */
+export function curveRouterFrom(env: string | undefined): string {
+  const v = (env ?? '').trim().toLowerCase()
+  if (v === 'off') return ''
+  return /^0x[0-9a-f]{40}$/.test(v) ? v : CURVE_ROUTER
+}
+
 // topic0 of each event (checked against the published sources in scripts/test-curves.ts)
 export const MERCURI_TOKEN_CREATED = '0xd5059fc6aff1582502301b2f0e055effd0b2f5858717eaa699c7b23ec3c87676'
 export const MERCURI_BUY = '0x2c5cc05b9a7b53e2478a9af1c94ec079b5be7c669be3df98ad86d28237f689e7'

@@ -109,4 +109,14 @@ ok(decodeSwap({ ...mBuy, address: '0x' + 'dd'.repeat(20) }, meta) === null, 'the
 const viaRouter = decodeSwap({ ...mBuy, topics: [c.MERCURI_BUY, topic(ROUTER)] }, meta)
 ok(viaRouter?.kind === 'buy' && viaRouter.maker === null, 'a trade through the curve router names the router: no maker yet, so the page looks up the transaction\'s sender')
 
+console.log('which curve router is in force (api/_curves.ts)')
+const { CURVE_ROUTER, curveRouterFrom } = await import('../api/_curves')
+const { getAddress } = await import('viem')
+// As the owner copied it from /deploy/curve-router: its checksum catches a mistyped character.
+ok(getAddress(CURVE_ROUTER) === '0xF8e8C8E2159e5Bb8af91fD342BfE5b9DB7a06441', 'the deployed router, 0xF8e8…6441 (checksum matches)')
+ok(curveRouterFrom(undefined) === CURVE_ROUTER && curveRouterFrom('') === CURVE_ROUTER && curveRouterFrom('  ') === CURVE_ROUTER, 'unset or empty: the deployed router')
+ok(curveRouterFrom(' 0x8A791620dd6260079BF849Dc5567aDC3F2FdC318 ') === ROUTER, 'an address overrides it (trimmed, lower-cased)')
+ok(curveRouterFrom('off') === '' && curveRouterFrom(' OFF ') === '', '`off` turns routing off')
+ok(curveRouterFrom('0x1234') === CURVE_ROUTER && curveRouterFrom('router') === CURVE_ROUTER, 'anything else keeps the deployed router')
+
 console.log('ALL CURVE CHECKS PASSED')
