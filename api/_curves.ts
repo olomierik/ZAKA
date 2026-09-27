@@ -24,6 +24,9 @@
 export const MERCURI_FACTORY = '0x8f5dfa0c48e14ccd03ae01795b8a95759ba859eb'
 export const MERCURI_FEE_MANAGER = '0x31d1bfe59b783f4c077f853f962d1355afb52580'
 export const SOLONPAD_FACTORY = '0xd6b86b9b1bb64b941b21aaa6a0e3a673e8405a3b'
+/** Each factory's deploy block: where its launch history starts. */
+export const MERCURI_DEPLOY_BLOCK = 22_060_881
+export const SOLONPAD_DEPLOY_BLOCK = 21_134_269
 
 // ArcDexCurveRouter (contracts/ArcDexCurveRouter.sol, VERSION 1), deployed on
 // Arc mainnet 2026-09-27 by the owner from /deploy/curve-router. Mercuri and
@@ -48,7 +51,7 @@ export const SOLON_TOKEN_LAUNCHED = '0x8d4aad4953d0ca700d468f3753aa14432d1b35b43
 export const SOLON_BUY = '0xec36bf571f136799e8dc0b0b8bea4b04d8bd3d43de838aab0d5fc21d4cbfc455'
 export const SOLON_SELL = '0x8113d738abdcb6b38357e9d53a54a7157861a09031b453651f0fe7fe151f59df'
 
-// Function selectors the engine reads with.
+// Function selectors the engine and the coin index (api/_curveIndex.ts) read with.
 export const SEL = {
   token: '0xfc0c546a',            // token()
   curveOf: '0x05adc47e',          // Mercuri factory curveOf(address)
@@ -56,6 +59,15 @@ export const SEL = {
   virtualTokens: '0x1d3dad09',    // Mercuri curve virtualTokens()
   getLaunchedToken: '0x3cf28b5a', // SolonPad factory getLaunchedToken(address)
   getReserves: '0x0902f1ac',      // SolonPad curve getReserves()
+  phase: '0xb1c9fe6e',            // Mercuri curve phase(): 0 trading, 1 graduating, 2 graduated
+  price: '0xa035b1fe',            // Mercuri curve price(): native wei per whole token
+  progressBps: '0x6c1eba15',      // Mercuri curve progressBps()
+  graduated: '0xe7c2b772',        // SolonPad curve graduated()
+  realQuoteReserve: '0x4f1f58fd', // SolonPad curve realQuoteReserve()
+  totalSupply: '0x18160ddd',      // ERC-20 totalSupply()
+  name: '0x06fdde03',             // ERC-20 name()
+  symbol: '0x95d89b41',           // ERC-20 symbol()
+  decimals: '0x313ce567',         // ERC-20 decimals()
 } as const
 
 export type CurveVenue = 'Mercuri' | 'SolonPad'

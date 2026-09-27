@@ -2,6 +2,7 @@
 //
 //   GET /api/launchpad            → { launchpad, head, scannedTo, complete, launches: [Launch & { stats }] }
 //   GET /api/launchpad?token=0x…  → the same, plus that token's `trades` (oldest first)
+//   GET /api/launchpad?of=curves  → Mercuri's and SolonPad's coins instead (api/_curvesRoute.ts)
 //
 // The public Arc RPC answers getLogs for ~9k blocks at a time, so the
 // browser's own lookups (one getLogs over the whole chain for a coin's
@@ -14,6 +15,7 @@ import { adminReady, json, kvGet, kvSet } from './_supabaseAdmin'
 import { headBlock, scanLogs, type RawLog } from './_arcLogs'
 import { creationBlock } from './_holdersCore'
 import { ARC_LAUNCHPAD, CURVE_TRADE, DEPLOY_BLOCKS, TOKEN_LAUNCHED, decodeLaunch, decodeTrade, resolveMeta, statsOf, type Launch, type TradeRow } from './_launchpadCore'
+import { curvesHandler } from './_curvesRoute'
 
 export const config = { runtime: 'edge' }
 declare const process: { env: Record<string, string | undefined> }
@@ -42,6 +44,7 @@ async function load(head: number): Promise<State | null> {
 
 export default async function handler(req: Request, ctx?: Ctx): Promise<Response> {
   const url = new URL(req.url)
+  if (url.searchParams.get('of') === 'curves') return curvesHandler(ctx)
   const token = (url.searchParams.get('token') ?? '').toLowerCase()
   if (token && !/^0x[0-9a-f]{40}$/.test(token)) return json(400, { error: 'bad token' })
   if (!/^0x[0-9a-f]{40}$/.test(LAUNCHPAD)) return json(503, { error: 'Launchpad not configured' })

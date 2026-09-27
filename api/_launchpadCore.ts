@@ -49,7 +49,7 @@ export type TradeRow = [string, string, 0 | 1, string, string, string, string, s
 const hexToBytes = (h: string) => Uint8Array.from(h.match(/../g) ?? [], b => parseInt(b, 16))
 
 /** The `i`-th head slot of ABI-encoded data, read as a dynamic string. */
-function abiString(data: string, i: number): string | null {
+export function abiString(data: string, i: number): string | null {
   try {
     const off = Number(BigInt('0x' + word(data, i)))
     if (off % 32 !== 0) return null

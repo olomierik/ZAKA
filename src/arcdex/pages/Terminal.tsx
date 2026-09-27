@@ -7,6 +7,7 @@ import { getAllLaunchpadTokensAsArcTokens, LAUNCHPAD_ADDRESS } from '../api/laun
 import { subscribeMarketPulse } from '../api/marketPulse'
 import { getArgusTokens } from '../api/argus'
 import { cachedArgusMarket, getArgusMarket, argusPoolToArcToken } from '../api/argusMarket'
+import { curveRowToArcToken, getCurveMarket } from '../api/curveMarket'
 import { engineEnabled, getNewTokens, marketStream, useEngineStatus } from '../api/marketStream'
 import type { LaunchInfo } from '../../../api/_marketProtocol'
 import { curateTokens, type CuratedGroup } from '../lib/curate'
@@ -48,6 +49,7 @@ const QUOTE_SYMBOL: Record<string, string> = {
   '0x3600000000000000000000000000000000000000': 'USDC', '0x0000000000000000000000000000000000000000': 'USDC',
   '0xece5ca8bf9220718e5727754026757512212cb3c': 'ARGUS', '0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1': 'EURC', '0x93ffd195481e8c08eb25a158689e4d9e61313111': 'WETH',
 }
+const NATIVE_USDC = '0x0000000000000000000000000000000000000000'
 const QUOTE_BY_SYMBOL: Record<string, string> = {
   USDC: '0x3600000000000000000000000000000000000000', ARGUS: '0xece5ca8bf9220718e5727754026757512212cb3c',
 }
@@ -333,6 +335,9 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   // launchpad GeckoTerminal lists (api/_launchpads.ts), each with its badge.
   const argusSeen = useRef(new Map<string, { t: ArcToken; seen: number }>())
   const oursRef = useRef<ArcToken[]>([])
+  // Mercuri's and SolonPad's coins: on their bonding curves GeckoTerminal
+  // has no pool for them (api/curveMarket.ts).
+  const curvesRef = useRef<ArcToken[]>([])
   // From the market engine (when connected): launches it detected, and its
   // once-a-second price/volume ticks, laid over the rows above.
   const launchesRef = useRef(new Map<string, LaunchInfo>())
@@ -361,8 +366,10 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     for (const t of fresh) seen.set(t.address.toLowerCase(), { t, seen: now })
     for (const [k, v] of seen) if (now - v.seen > 10 * 60_000) seen.delete(k)
     const listed = new Set([...oursRef.current.map(t => t.address.toLowerCase()), ...seen.keys()])
+    const curves = curvesRef.current.filter(t => !listed.has(t.address))
+    for (const t of curves) listed.add(t.address)
     const launched = [...launchesRef.current.values()].filter(l => !listed.has(l.token)).map(launchToArcToken)
-    const data = [...oursRef.current, ...[...seen.values()].map(v => v.t), ...launched].map(withTick)
+    const data = [...oursRef.current, ...[...seen.values()].map(v => v.t), ...curves, ...launched].map(withTick)
     setTokens(data)
     // Keep the loading state until there's something to show — the first
     // source to land may be an empty one.
@@ -389,8 +396,11 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     const ours = getAllLaunchpadTokensAsArcTokens()
       .then(t => { oursRef.current = t; publish([]) })
       .catch(() => {})
-    await Promise.all([argus, ours])
-    setLoading(false) // both done — even if everything came back empty
+    const curves = getCurveMarket()
+      .then(rows => { const now = Date.now(); curvesRef.current = rows.map(r => curveRowToArcToken(r, now)); publish([]) })
+      .catch(() => {})
+    await Promise.all([argus, ours, curves])
+    setLoading(false) // all done — even if everything came back empty
   }, [publish])
 
   // The last list this browser saw, at once; the fresh one replaces it.
@@ -457,7 +467,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     curveRef.current = curve
   }, [tokens])
   // The listed v3 pools (a v3 pool is a contract address; v4 pools are ids).
-  const v3Pools = useMemo(() => [...new Set(tokens.filter(t => /^0x[0-9a-fA-F]{40}$/.test(t.poolAddress)).map(t => t.poolAddress.toLowerCase()))].sort().join(','), [tokens])
+  // Rows quoted in native USDC trade on a launchpad's curve or a v4 pool, never v3.
+  const v3Pools = useMemo(() => [...new Set(tokens.filter(t => /^0x[0-9a-fA-F]{40}$/.test(t.poolAddress) && t.quoteAddress?.toLowerCase() !== NATIVE_USDC).map(t => t.poolAddress.toLowerCase()))].sort().join(','), [tokens])
   useEffect(() => subscribeMarketPulse(LAUNCHPAD_ADDRESS, {
     pool: id => poolsRef.current.get(id),
     curve: token => curveRef.current.has(token),
