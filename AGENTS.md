@@ -42,7 +42,18 @@ Two apps in this repo:
   - **Safety:** the router holds nothing between transactions (every amount is a balance change) and accepts native USDC only mid-trade. A referrer that can't take native USDC within 30k gas has its share sent to `feeWallet`. `feeWallet` itself must accept native USDC; the deploy script checks this.
   - **Events:** ArcDexSwapRouter's `Swapped`, `ReferrerBound` and `ReferralPaid`, naming USDC as `0x3600…` in its 6-decimal units. `/api/index-trades` indexes it with the swap routers once the variable below is set, so leaderboards, PnL, fee totals and referral earnings include curve trades.
   - **Owner:** pause, fee (at most 2%), referral share (at most 50%), fee wallet, and rescue of tokens and native USDC.
-- **Deploy (owner):**
+- **Deploy (owner), from the browser (no Foundry, no key in a terminal):** open `arcdex.online/deploy/curve-router`. It isn't linked anywhere; the page is `pages/DeployCurveRouter.tsx` and the work is in `lib/curveRouterDeploy.ts`. Connect the wallet that will own the router: an external wallet, not the in-browser trading wallet.
+  1. **Simulate.** A fresh router, built from exactly the code the page deploys, trades each launchpad's latest live coin inside one `eth_call`: a 5 USDC buy, then a referred buy and sell-back. `ArcDexCurveRouterSimHarness` is injected with a state override, as in the script below, and every fee, referral share and leftover is checked. Nothing is sent. If the RPC won't take state overrides, the page says so and still offers the deploy.
+  2. **Deploy.** One transaction from the wallet: owner = that wallet, fee wallet `0x2742…86Bb`. After a failed simulation the button reads "Deploy anyway" and asks first.
+  3. **Check.** This runs by itself after deploying, and works for any address (a router deployed by the script below included). The on-chain code must equal the build byte for byte, apart from its immutables. The settings are read back: owner, fee wallet, 2%, 15%, not paused, both factories. Then the same simulated trades run through the deployed router (`buyVia` / `roundTripVia`).
+  4. **Switch on.** Once every check passes, the page shows the address to set as `VITE_ARCDEX_CURVE_ROUTER_ADDRESS` (step 3 of the terminal route below).
+  - **The code it deploys** is `src/arcdex/lib/curveRouterBuild.ts`, generated from `forge build` by `scripts/gen-curve-router-build.mjs`. After changing the router or the harness, run `forge build && node scripts/gen-curve-router-build.mjs` and commit the result. Add `--check` to fail on a stale build. Foundry 1.5.1 and 1.7.1 compile identical bytes.
+  - **Checked in a real browser (2026-09-27)** against anvil (chain 5042, the Mercuri and SolonPad stand-ins at their real addresses) with an injected wallet:
+    - simulate, a cancelled signature, deploy, and the automatic checks, all passing;
+    - a router deployed by the script (passes), a token and an empty address (both refused);
+    - an RPC without state overrides, and a fee wallet that refuses USDC (the simulation names `NativeTransferFailed()`, and "Deploy anyway" asks first);
+    - no sideways scroll at 390px.
+- **Deploy (owner), from a terminal:**
   1. Simulate first: `forge build && node scripts/sim-curve-router.mjs`. It trades real Mercuri and SolonPad curves through a fresh router via `eth_call` state overrides; nothing is sent.
      - It picks each launchpad's latest coin still on its curve, searching back to the launchpad's first block. Name coins with `MERCURI_TOKEN=0x…` / `SOLON_TOKEN=0x…`.
      - A launchpad with no coin on its curve is skipped; at least one must be tested. A revert is named (e.g. `UnknownToken(0x…)`, `Error(Slippage)`), not shown as raw data.

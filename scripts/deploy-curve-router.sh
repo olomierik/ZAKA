@@ -1,7 +1,12 @@
 #!/bin/bash
 # Deploy ArcDexCurveRouter (2% fee on Mercuri and SolonPad bonding-curve
 # trades, 15% of it to referrers) to Arc MAINNET (chain 5042).
-# Run this yourself, in a real Git Bash window, with your own deployer key.
+#
+# Easier: deploy it from your browser wallet at
+# https://arcdex.online/deploy/curve-router (no Foundry, no key in a
+# terminal). It simulates, deploys and checks the router in one page.
+#
+# Or run this yourself, in a real Git Bash window, with your own deployer key.
 # The key never needs to leave your machine — don't paste it anywhere else.
 #
 #   export PATH="$PATH:/d/foundry-home/bin"
@@ -100,5 +105,6 @@ forge create \
   --constructor-args "$MERCURI_FACTORY" "$SOLON_FACTORY" "$USDC" "$FEE_WALLET" "$OWNER"
 
 echo ""
-echo "Next: send the 'Deployed to:' address above back to Claude to wire into the app"
-echo "(it becomes VITE_ARCDEX_CURVE_ROUTER_ADDRESS)."
+echo "Next: check the address forge printed above at https://arcdex.online/deploy/curve-router"
+echo "(step 3), then send it back to Claude to wire into the app (it becomes"
+echo "VITE_ARCDEX_CURVE_ROUTER_ADDRESS)."
