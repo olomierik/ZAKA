@@ -6,10 +6,11 @@
 // Uniswap v4 pool, and the usual routes (argusMarket.buildSwapRoute) take over.
 //
 // ARCDEX's fee on a curve trade comes from ArcDexCurveRouter
-// (contracts/ArcDexCurveRouter.sol) once it's deployed and named in
-// VITE_ARCDEX_CURVE_ROUTER_ADDRESS: the trade goes through it and it takes
-// the fee (2%, 15% of it to the trader's referrer) in the same transaction.
-// Until then trades go to the curve directly and ARCDEX adds no fee.
+// (contracts/ArcDexCurveRouter.sol, deployed at api/_curves.ts CURVE_ROUTER):
+// the trade goes through it and it takes the fee (2%, 15% of it to the
+// trader's referrer) in the same transaction. VITE_ARCDEX_CURVE_ROUTER_ADDRESS
+// can name another router, or `off`: trades then go to the curve directly
+// and ARCDEX adds no fee.
 // Mercuri shares 0.20% of each trade (out of its own 1% fee) with the
 // referrer a trader names on its first Mercuri trade: ARCDEX's fee wallet,
 // both for a wallet trading directly and for the router (Mercuri's trader
@@ -21,7 +22,7 @@
 
 import { parseAbi, type Address } from 'viem'
 import { client } from './launchpad'
-import { MERCURI_FACTORY as M_FACTORY, MERCURI_FEE_MANAGER as M_FEES, SOLONPAD_FACTORY as S_FACTORY } from '../../../api/_curves'
+import { MERCURI_FACTORY as M_FACTORY, MERCURI_FEE_MANAGER as M_FEES, SOLONPAD_FACTORY as S_FACTORY, curveRouterFrom } from '../../../api/_curves'
 
 // Addresses, events and trade decoding are shared with the market engine (api/_curves.ts).
 export { MERCURI_BUY, MERCURI_SELL, SOLON_BUY, SOLON_SELL, curveTradeFilter, decodeCurveTrade, type CurveTrade, type CurveVenue } from '../../../api/_curves'
@@ -223,9 +224,10 @@ export function curveSellCall(c: CurveInfo, tokensIn: bigint, minOut: bigint, me
 
 // ── ARCDEX's curve router ────────────────────────────────────────────
 
-/** ArcDexCurveRouter, once deployed (scripts/deploy-curve-router.sh). Unset,
- * curve trades go to the curve directly and ARCDEX takes no fee on them. */
-export const CURVE_ROUTER_ADDRESS = String(import.meta.env.VITE_ARCDEX_CURVE_ROUTER_ADDRESS ?? '').trim().toLowerCase() as Address
+/** ArcDexCurveRouter: the deployed one, unless VITE_ARCDEX_CURVE_ROUTER_ADDRESS
+ * names another. `off` leaves it '': curve trades then go to the curve
+ * directly and ARCDEX takes no fee on them. */
+export const CURVE_ROUTER_ADDRESS = curveRouterFrom(import.meta.env.VITE_ARCDEX_CURVE_ROUTER_ADDRESS as string | undefined) as Address
 export const curveRouterConfigured = /^0x[0-9a-f]{40}$/.test(CURVE_ROUTER_ADDRESS)
 
 export const CURVE_ROUTER_ABI = parseAbi([
