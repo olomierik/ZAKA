@@ -158,11 +158,10 @@ Why buys, swaps and bridges failed for people, and the fixes:
   - The price axis goes back to auto on a new timeframe, coin, Price/MCap view or style.
   - A resize keeps the fit (`lockVisibleTimeRangeOnResize`, then a re-check). The edges are no longer pinned: `fixRightEdge` glued the last point to the price axis, and `fixLeftEdge` made 5.2 slide the chart on every new bar (round 7).
   - Someone who drags, pinches or wheel-zooms keeps their view until they change the timeframe; a double-click fits it again. The old "last 140 bars" window is gone.
-  - The GeckoTerminal embed opens on the timeframe that fits the coin's whole life in about 60–120 candles (`fitResolution`: under 2h → 1m … over 60 days → 1d). Its own toolbar still switches timeframe.
 - Like fomo's chart:
   - A legend: coin · timeframe, then the value under the crosshair and its change from the bar before.
   - % / log / auto scale buttons and a UTC clock under the chart.
-  - Market cap by default (remembered).
+  - Price by default, with a switch to market cap (see "Coin page chart" below).
   - Caps under $100K in full dollars on the axis.
 - Launchpad coins use this chart too (the old `CurveChart` is gone), priced from the curve's reserves after each trade.
 - **The live end of the line, as on fomo (owner's request, round 7).** Pinning the right edge had glued the last point to the price axis.
@@ -200,7 +199,9 @@ Why buys, swaps and bridges failed for people, and the fixes:
     - the market list and the launchpad coins;
     - tokens sent to the wallet in the last ~2 days.
   - Balances are read by multicall. Prices come from the market list, the curve, else GeckoTerminal.
-- **Coin page chart:** GeckoTerminal's own live chart is embedded by default (`components/GeckoChart.tsx`), as argus.world shows it ("Powered by GeckoTerminal"). "ARCDEX chart" switches to `PriceChart` (trade pops, theses, indicators), and the choice is remembered. `PriceChart` refreshes its GeckoTerminal candles every 30s, down from 90s (it goes through `/api/gecko`, which uses the paid key).
+- **Coin page chart (owner's request, 2026-09-27):** only ARCDEX's own `PriceChart`. The embedded GeckoTerminal chart and its "Live · GeckoTerminal / ARCDEX chart" tabs are gone.
+  - Every coin opens on 15m, Line and Price. A switch holds while that coin is open and isn't remembered, so choices an older build saved in the browser are ignored.
+  - `PriceChart` still draws GeckoTerminal's candles, refreshed every 30s through `/api/gecko` (the paid key), or the engine's. Every swap is live on top.
 - **Tests:**
   - `bun scripts/test-withdraw-guard.ts`: the rule, funding detection and tamper-proof storage.
   - `bun scripts/test-portfolio.ts`: which coins are checked and how they're priced.
@@ -299,7 +300,7 @@ Why buys, swaps and bridges failed for people, and the fixes:
 - Not changed: at 1181–1340px wide the coin page's chart column is narrow (both side panels are open). Collapsing the Tokens panel on coin pages would fix it; that's a layout decision for the owner.
 - **Tests:**
   - `bun scripts/test-live-trades.ts`: ages, merging GeckoTerminal's swaps with the chain's, and the live holder count.
-  - `bun scripts/test-chart-motion.ts`: pop flights and the embed's timeframe by age.
+  - `bun scripts/test-chart-motion.ts`: pop flights and the live end of the line.
 
 ## Argus integration (ARCDEX)
 
@@ -488,7 +489,8 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
 - **Coin page (`ArgusTokenPage`):**
   - Header: watchlist star, copy CA, website, X, and search on X. The tab title reads `$MC | SYMBOL | ARCDEX`. The badge says ARGUS only for real Argus launches.
   - `PriceChart`:
-    - Line or Candles (Line by default), Price/MCap switch, screenshot, fullscreen. The line is green while the visible window is up and red while it's down, following pans and zooms. The style lives in `lib/chartStyle.ts`: remembered per browser (`arcdex:chart-style`) and shared with the launchpad's `CurveChart`.
+    - Line or Candles, Price/MCap switch, screenshot, fullscreen. The line is green while the visible window is up and red while it's down, following pans and zooms.
+    - Every coin opens on 15m, Line and Price (owner's request, 2026-09-27). A switch holds while the coin is open and isn't remembered. `lib/chartStyle.ts` keeps every chart on the page on one style.
     - Overlays: Trades, My swaps, Thesis marks, Friends only, Min size.
   - `TokenSocialTabs`:
     - Holders: position, PnL, avg entry MC, hold time, thesis.

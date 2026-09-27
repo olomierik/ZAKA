@@ -1,8 +1,8 @@
 // Offline test of how the charts move on their own (lib/chartMotion.ts):
-// where each trade's pop flies, and the GeckoTerminal embed's timeframe.
+// where each trade's pop flies, and the live end of the line.
 // Run: bun scripts/test-chart-motion.ts
 
-const { flightOf, fitResolution, fitRange, roomRight, needsRefit, easeOut, LIVE_GAP, LIVE_GAP_MIN } = await import('../src/arcdex/lib/chartMotion')
+const { flightOf, fitRange, roomRight, needsRefit, easeOut, LIVE_GAP, LIVE_GAP_MIN } = await import('../src/arcdex/lib/chartMotion')
 const ok = (c: unknown, m: string) => { if (!c) throw new Error('FAIL: ' + m); console.log('  ✓', m) }
 
 console.log('pop flights')
@@ -18,12 +18,6 @@ ok(Math.abs(Math.hypot(small.fx, small.fy) - Math.hypot(full.fx, full.fy) / 2) <
 const pairs = keys.slice(0, 50).map((k, i) => [flightOf(k), flightOf(keys[i + 1])])
 ok(pairs.filter(([a, b]) => Math.sign(a.fx) !== Math.sign(b.fx)).length >= 15, 'back-to-back trades often go different ways')
 
-console.log('embed timeframe by the coin\'s age')
-const now = Date.UTC(2026, 8, 26, 12)
-const at = (h: number) => new Date(now - h * 3_600_000).toISOString()
-const cases: [number, string][] = [[0.5, '1m'], [1.9, '1m'], [3, '5m'], [9, '5m'], [20, '15m'], [48, '1h'], [4 * 24, '1h'], [10 * 24, '4h'], [40 * 24, '12h'], [200 * 24, '1d']]
-for (const [h, r] of cases) ok(fitResolution(at(h), now) === r, `${h < 24 ? h + 'h' : h / 24 + 'd'} old → ${r}`)
-ok(fitResolution(null, now) === '15m' && fitResolution('not a date', now) === '15m', 'age unknown → 15m')
 console.log('the live end of the line: room on the right, walking in, re-fit')
 // lightweight-charts draws bar i at x = width − (offset + ½)·spacing − 1, where
 // offset = range.to − i and spacing = width ÷ (range.to − range.from + 1).

@@ -12,7 +12,6 @@ import { engineEnabled, getEngineToken, getEngineTrades, marketStream } from '..
 import type { LaunchInfo, WireTrade } from '../../../api/_marketProtocol'
 import type { Tick } from '../lib/candles'
 import PriceChart, { type ChartTrade } from '../components/PriceChart'
-import GeckoChart, { ChartSourceTabs, canEmbedGecko, useChartSource } from '../components/GeckoChart'
 import ArgusSwapWidget from '../components/ArgusSwapWidget'
 import TokenSocialTabs, { type TradeRow } from '../components/TokenSocialTabs'
 import SafetyPanel, { useDevPct } from '../components/SafetyPanel'
@@ -82,7 +81,6 @@ function TokenImage({ src, symbol }: { src: string | null; symbol: string }) {
 
 export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   const mobile = useIsMobile()
-  const [chartSource, setChartSource] = useChartSource()
   const [tradeSheet, setTradeSheet] = useState<'buy' | 'sell' | null>(null)
   const [pools, setPools] = useState<ArgusPool[] | null>(null)
   const [info, setInfo] = useState<ArgusTokenInfo | null>(null)
@@ -485,19 +483,14 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     return () => { document.title = prev }
   }, [symbol, mcap])
 
-  // GeckoTerminal's live chart (as on argus.world) when it can chart this
-  // pool; ARCDEX's own chart one tap away, with trade labels and indicators.
-  // A live curve has no GeckoTerminal pool to embed: ARCDEX's chart, from the curve's trades.
-  const geckoChart = canEmbedGecko(activePool) && !liveCurve
-  const showGecko = chartSource === 'gecko' && geckoChart
+  // ARCDEX's own chart, the only one (owner's choice): history from
+  // GeckoTerminal's API or the market engine, every swap live on top, trade
+  // labels, theses and indicators. A live curve charts the curve's trades.
   const chartCard = (
     <div className="coin-chart-card" style={{ ...card, padding: 16 }}>
       <div className="coin-chart-title" style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{T("PRICE CHART · USD")}</div>
-      {geckoChart && <div className="chart-toolbar"><ChartSourceTabs value={chartSource} onChange={setChartSource} /></div>}
-      {showGecko ? <GeckoChart key={activePool} pool={activePool} symbol={symbol} createdAt={active?.createdAt} /> : (
-        <PriceChart poolAddress={activePool || null} engineToken={address} ticks={onchainFailed ? undefined : ticks} live={streaming} trades={chartTrades} thesisMarks={thesisMarks} friends={friends} supply={supply} symbol={symbol}
-          onTraderClick={a => navigate({ name: 'trader', address: a })} />
-      )}
+      <PriceChart poolAddress={activePool || null} engineToken={address} ticks={onchainFailed ? undefined : ticks} live={streaming} trades={chartTrades} thesisMarks={thesisMarks} friends={friends} supply={supply} symbol={symbol}
+        onTraderClick={a => navigate({ name: 'trader', address: a })} />
     </div>
   )
   const swapWidget = (mode?: 'buy' | 'sell') => (

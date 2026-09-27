@@ -486,7 +486,6 @@ html body {
 @container (max-width: 320px) { .swaps-table .sw-type { display: none; } }
 @keyframes swap-row-in { from { background: rgba(59,130,246,0.25); } to { background: transparent; } }
 /* Above the chart: GeckoTerminal / ARCDEX chart tabs. */
-.chart-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .chart-trade.mine { background: rgba(250,204,21,0.16); box-shadow: inset 0 0 0 1px rgba(250,204,21,0.6); }
 /* A swap's pop: in with a bounce at its candle, then it flies off upward —
    each in its own direction (--fly-x / --fly-y, set per trade by

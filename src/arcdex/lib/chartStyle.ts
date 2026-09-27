@@ -1,24 +1,20 @@
 // Line or candlesticks, for every price chart (PriceChart).
-// Line is the default: one price line with a soft fill, green while the
-// chart's window is up and red while it's down, the way fomo draws it —
-// with a pulsing dot on its last point and a dotted line from there to the
-// price on the axis. The choice is remembered per browser.
+// Every coin opens on Line (owner's choice): one price line with a soft
+// fill, green while the chart's window is up and red while it's down, the
+// way fomo draws it — with a pulsing dot on its last point and a dotted line
+// from there to the price on the axis. A switch to candles holds while the
+// coin is open.
 import { AreaSeries, CandlestickSeries, LastPriceAnimationMode, LineStyle, type IChartApi, type ISeriesApi } from 'lightweight-charts'
 import type { Candle } from './candles'
 
 export type ChartStyle = 'line' | 'candles'
 export type MainSeries = ISeriesApi<'Area' | 'Candlestick'>
 
-const KEY = 'arcdex:chart-style'
+export const DEFAULT_CHART_STYLE: ChartStyle = 'line'
 const EVENT = 'arcdex:chart-style'
 
-export function loadChartStyle(): ChartStyle {
-  try { return localStorage.getItem(KEY) === 'candles' ? 'candles' : 'line' } catch { return 'line' }
-}
-
-/** Saves the choice and tells every chart on the page. */
-export function saveChartStyle(s: ChartStyle) {
-  try { localStorage.setItem(KEY, s) } catch { /* storage blocked */ }
+/** Switches every chart on the page. */
+export function setChartStyle(s: ChartStyle) {
   window.dispatchEvent(new CustomEvent(EVENT, { detail: s }))
 }
 
