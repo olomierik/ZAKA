@@ -20,3 +20,8 @@ base_sepolia = "https://base-sepolia-rpc.publicnode.com"
 arbitrum = "https://arbitrum-one-rpc.publicnode.com"
 polygon = "https://polygon-bor-rpc.publicnode.com"
 optimism = "https://optimism-rpc.publicnode.com"
+
+[lint]
+# Run lints with `forge lint`. On every build their warnings (style hints on
+# existing contracts) read like errors in the deploy scripts' output.
+lint_on_build = false

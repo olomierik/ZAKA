@@ -43,10 +43,15 @@ Two apps in this repo:
   - **Events:** ArcDexSwapRouter's `Swapped`, `ReferrerBound` and `ReferralPaid`, naming USDC as `0x3600…` in its 6-decimal units. `/api/index-trades` indexes it with the swap routers once the variable below is set, so leaderboards, PnL, fee totals and referral earnings include curve trades.
   - **Owner:** pause, fee (at most 2%), referral share (at most 50%), fee wallet, and rescue of tokens and native USDC.
 - **Deploy (owner):**
-  1. Simulate first: `forge build && node scripts/sim-curve-router.mjs`. It trades real Mercuri and SolonPad curves through a fresh router via `eth_call` state overrides; nothing is sent. Name coins with `MERCURI_TOKEN=0x…` / `SOLON_TOKEN=0x…`, or it picks the latest ones still on their curves.
+  1. Simulate first: `forge build && node scripts/sim-curve-router.mjs`. It trades real Mercuri and SolonPad curves through a fresh router via `eth_call` state overrides; nothing is sent.
+     - It picks each launchpad's latest coin still on its curve, searching back to the launchpad's first block. Name coins with `MERCURI_TOKEN=0x…` / `SOLON_TOKEN=0x…`.
+     - A launchpad with no coin on its curve is skipped; at least one must be tested. A revert is named (e.g. `UnknownToken(0x…)`, `Error(Slippage)`), not shown as raw data.
   2. `PRIVATE_KEY=… bash scripts/deploy-curve-router.sh` (owner = the deploying wallet; `FEE_WALLET` and `RPC_URL` are optional overrides).
+     - It checks first, and names what's missing: Foundry on PATH, the ZAKA folder on the latest main, `node_modules`, the key, the RPC answering as chain 5042, a fee wallet that takes native USDC (a contract wallet is tried with a simulated 1-wei transfer), and enough USDC for gas.
   3. Set `VITE_ARCDEX_CURVE_ROUTER_ADDRESS` in Vercel project `app` (Production), and redeploy.
   - Until that variable is set, curve trades go straight to the curve with no ARCDEX fee, as before.
+  - **Lint warnings:** `foundry.toml` sets `lint_on_build = false` (checked with Foundry v1.7.1, the version `.foundry-version` pins). Without it, every `forge build` printed 26 `warning[…]` lint blocks (style hints on existing contracts) that read like errors in the deploy output. Run `forge lint` to see them.
+  - **Line endings:** `.gitattributes` keeps `*.sh` LF, so bash in Git Bash doesn't trip over the carriage returns a Windows checkout would otherwise add.
 - **Tests:** `forge test --match-contract ArcDexCurveRouterTest` runs 43 tests against mocks of both curves as published. They cover the fee split, partial-fill refunds, referrals (including a referrer that refuses native USDC or burns gas), unknown, foreign and ERC-20-quoted tokens, deadline, pause, reentrancy and the admin caps, plus fuzzed value conservation. Each of 15 deliberately planted bugs failed a test.
 - **Checked end to end on a local chain (2026-09-27):** anvil ran with Mercuri and SolonPad stand-ins at their real addresses, the router deployed by the deploy script, and the site built with the variable set.
   - The coin page bought and sold both launchpads' coins through the router: exactly 2% to the fee wallet, approvals to the router, nothing left behind, and the wallet (not the router) listed as the trader.

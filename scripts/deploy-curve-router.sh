@@ -19,8 +19,31 @@ SOLON_FACTORY="0xd6b86b9B1bB64b941b21AaA6a0e3A673e8405A3b"    # SolonPad's Pons 
 USDC="0x3600000000000000000000000000000000000000"              # named in the router's events only
 FEE_WALLET="${FEE_WALLET:-0x274262A0321A0701b0A46a3576e07aE881c286Bb}"
 
+# Everything the deploy needs, checked first so a missing piece is named
+# plainly instead of failing halfway.
+if ! command -v forge >/dev/null 2>&1 || ! command -v cast >/dev/null 2>&1; then
+  echo "Error: Foundry (forge and cast) isn't on PATH. In Git Bash: export PATH=\"\$PATH:/d/foundry-home/bin\"" >&2
+  exit 1
+fi
+if [ ! -f contracts/ArcDexCurveRouter.sol ]; then
+  echo "Error: run this from the ZAKA folder, on the latest main: git checkout main && git pull origin main" >&2
+  exit 1
+fi
+if [ ! -d node_modules/@openzeppelin/contracts ]; then
+  echo "Error: node_modules is missing (the contracts import OpenZeppelin from it). Run: bun install   (or: npm install)" >&2
+  exit 1
+fi
 if [ -z "$PRIVATE_KEY" ]; then
   echo "Error: PRIVATE_KEY env var not set" >&2
+  exit 1
+fi
+if ! CHAIN=$(cast chain-id --rpc-url "$RPC_URL"); then
+  echo "Error: can't reach $RPC_URL (the error is above)." >&2
+  exit 1
+fi
+CHAIN=$(echo "$CHAIN" | tr -d '[:space:]')
+if [ "$CHAIN" != "5042" ]; then
+  echo "Error: $RPC_URL is chain $CHAIN, not Arc mainnet (5042)." >&2
   exit 1
 fi
 
@@ -30,15 +53,21 @@ echo "  Owner (deployer):  $OWNER"
 echo "  Fee wallet:        $FEE_WALLET   (receives the 2% curve-trade fee in native USDC, minus 15% to referrers)"
 echo "  Mercuri factory:   $MERCURI_FACTORY"
 echo "  SolonPad factory:  $SOLON_FACTORY"
+echo "  Foundry:           $(forge --version | head -1)"
 echo ""
 
-# Every curve trade pays the fee wallet in native USDC: a wallet that can't
-# receive it would make every trade revert.
-if ! cast call --rpc-url "$RPC_URL" --from "$OWNER" --value 1 "$FEE_WALLET" --data 0x >/dev/null 2>&1; then
-  echo "Error: the fee wallet $FEE_WALLET can't receive native USDC — set FEE_WALLET to one that can." >&2
-  exit 1
+# Every curve trade pays the fee wallet in native USDC, so it must be able to
+# take it. A plain wallet (no code) always can; a contract wallet is checked
+# with a simulated 1-wei transfer from the deployer (nothing is sent).
+FEE_WALLET_CODE=$(cast code "$FEE_WALLET" --rpc-url "$RPC_URL" | tr -d '[:space:]')
+if [ "$FEE_WALLET_CODE" != "0x" ]; then
+  if ! cast rpc --rpc-url "$RPC_URL" eth_call "{\"from\":\"$OWNER\",\"to\":\"$FEE_WALLET\",\"value\":\"0x1\"}" latest >/dev/null; then
+    echo "Error: the fee wallet $FEE_WALLET is a contract that won't take native USDC (the error is above), so every curve trade would fail. Set FEE_WALLET to a wallet that can." >&2
+    exit 1
+  fi
 fi
 
+echo "Compiling (a minute or two). Notes and warnings the compiler prints are fine; only a line starting with Error stops the deploy."
 forge build
 
 # Gas on Arc is paid in USDC (native balance, 18 decimals). Check the wallet
