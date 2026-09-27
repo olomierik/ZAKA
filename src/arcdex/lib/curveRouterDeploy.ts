@@ -17,7 +17,7 @@
 
 import { decodeErrorResult, decodeFunctionResult, encodeDeployData, encodeFunctionData, formatEther, getAddress, parseAbi, parseEther, type Abi, type Address, type Hash, type Hex } from 'viem'
 import { deployContract } from 'wagmi/actions'
-import { MERCURI_FACTORY, MERCURI_TOKEN_CREATED, SOLONPAD_FACTORY, SOLON_TOKEN_LAUNCHED, type CurveVenue } from '../../../api/_curves'
+import { MERCURI_DEPLOY_BLOCK, MERCURI_FACTORY, MERCURI_TOKEN_CREATED, SOLONPAD_DEPLOY_BLOCK, SOLONPAD_FACTORY, SOLON_TOKEN_LAUNCHED, type CurveVenue } from '../../../api/_curves'
 import { scanLogs, type RawLog } from '../../../api/_arcLogs'
 import { client } from '../api/launchpad'
 import { arc, USDC_ADDRESS, wagmiConfig } from '../wagmi'
@@ -56,8 +56,8 @@ export type Coins = Partial<Record<CurveVenue, Coin | null>>
 
 interface Venue { name: CurveVenue; factory: Address; deployBlock: number; launched: string }
 const VENUES: Venue[] = [
-  { name: 'Mercuri', factory: ROUTER_SETUP.mercuriFactory, deployBlock: 22_060_881, launched: MERCURI_TOKEN_CREATED },
-  { name: 'SolonPad', factory: ROUTER_SETUP.solonFactory, deployBlock: 21_134_269, launched: SOLON_TOKEN_LAUNCHED },
+  { name: 'Mercuri', factory: ROUTER_SETUP.mercuriFactory, deployBlock: MERCURI_DEPLOY_BLOCK, launched: MERCURI_TOKEN_CREATED },
+  { name: 'SolonPad', factory: ROUTER_SETUP.solonFactory, deployBlock: SOLONPAD_DEPLOY_BLOCK, launched: SOLON_TOKEN_LAUNCHED },
 ]
 
 const MERCURI_ABI = parseAbi([
