@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createChart, type AutoscaleInfo, type IChartApi, type ISeriesApi, type SeriesType, type CandlestickData, type Logical, type MouseEventParams, LineSeries, HistogramSeries, PriceScaleMode } from 'lightweight-charts'
-import { addMainSeries, lineColors, loadChartStyle, onChartStyle, saveChartStyle, type ChartStyle, type MainSeries } from '../lib/chartStyle'
+import { addMainSeries, DEFAULT_CHART_STYLE, lineColors, onChartStyle, setChartStyle, type ChartStyle, type MainSeries } from '../lib/chartStyle'
 import { useIsMobile } from '../lib/useMobile'
 import { getPoolOhlcv } from '../api/gecko'
 import { candlesFromTicks, mergeCandles, type Candle, type Tick } from '../lib/candles'
@@ -26,14 +26,11 @@ const RESOLUTIONS: { label: string; value: Resolution }[] = [
 const RES_SECONDS: Record<Resolution, number> = { '1s': 1, '5s': 5, '15s': 15, '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14_400, '1d': 86_400 }
 /** Sub-minute candles exist only on-chain (GeckoTerminal's finest is 1m). */
 const onChainOnly = (r: Resolution) => RES_SECONDS[r] < 60
-const RES_KEY = 'arcdex:chart-res'
-function loadRes(hasTicks: boolean): Resolution {
-  try {
-    const r = localStorage.getItem(RES_KEY) as Resolution | null
-    if (r && r in RES_SECONDS && (hasTicks || !onChainOnly(r))) return r
-  } catch { /* storage blocked */ }
-  return hasTicks ? '1m' : '1h'
-}
+/** Every coin opens on 15m candles, drawn as a line of its price (owner's
+ * choice). A switch holds while the coin is open; the next coin opens on
+ * these again. */
+const DEFAULT_RES: Resolution = '15m'
+const DEFAULT_MODE = 'price' as const
 const fromWireCandle = (c: WireCandle): Candle => ({ time: c[0], open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5] })
 /** History with live candles laid over it, by bucket. */
 function overlay(history: Candle[], live: Candle[]): Candle[] {
@@ -105,7 +102,6 @@ const compactValue = (x: number) => x >= 1e9 ? (x / 1e9).toFixed(2) + 'B' : x >=
 const GLIDE_MS = 420
 const REFIT_MS = 380
 const still = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
-const MODE_KEY = 'arcdex:chart-mode'
 const SCALE_MODES = { normal: PriceScaleMode.Normal, log: PriceScaleMode.Logarithmic, pct: PriceScaleMode.Percentage } as const
 
 // Price axis: 2 decimals for $1+ coins, 4 significant digits for micro-caps.
@@ -116,16 +112,13 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
   const engineStatus = useEngineStatus()
   const engineMode = engineEnabled && !!engineToken && engineStatus === 'open'
   const hasTicks = ticks !== undefined || engineMode
-  const [res, setResState] = useState<Resolution>(() => loadRes(hasTicks))
-  const setRes = (r: Resolution) => { setResState(r); try { localStorage.setItem(RES_KEY, r) } catch { /* storage blocked */ } }
+  const [res, setRes] = useState<Resolution>(DEFAULT_RES)
   const [history, setHistory] = useState<Candle[]>([])
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const [engineHistory, setEngineHistory] = useState(false)
   const [liveCandles, setLiveCandles] = useState<Candle[]>([])
-  // Market cap by default, like fomo; the choice is remembered per browser.
-  const [mode, setModeState] = useState<'price' | 'mcap'>(() => { try { return localStorage.getItem(MODE_KEY) === 'price' ? 'price' : 'mcap' } catch { return 'mcap' } })
-  const setMode = (m: 'price' | 'mcap') => { setModeState(m); try { localStorage.setItem(MODE_KEY, m) } catch { /* storage blocked */ } }
-  const [style, setStyle] = useState<ChartStyle>(loadChartStyle)
+  const [mode, setMode] = useState<'price' | 'mcap'>(DEFAULT_MODE)
+  const [style, setStyle] = useState<ChartStyle>(DEFAULT_CHART_STYLE)
   useEffect(() => onChartStyle(setStyle), [])
   const styleRef = useRef(style)
   styleRef.current = style
@@ -218,9 +211,9 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
   // timeframe is all anyone needs to do.
   useEffect(() => { needsFit.current = true; userMoved.current = false; setAutoScale(true) }, [poolAddress, res, mode, style])
   // Without on-chain swaps there are no sub-minute candles.
-  useEffect(() => { if (!hasTicks && onChainOnly(res)) setResState('1h') }, [hasTicks, res])
+  useEffect(() => { if (!hasTicks && onChainOnly(res)) setRes(DEFAULT_RES) }, [hasTicks, res])
   // 5s candles exist only in the engine.
-  useEffect(() => { if (!engineMode && res === '5s') setResState('15s') }, [engineMode, res])
+  useEffect(() => { if (!engineMode && res === '5s') setRes('15s') }, [engineMode, res])
   // Wheel zoom only in fullscreen, where there's no page to scroll.
   useEffect(() => {
     chartRef.current?.applyOptions({ handleScroll: { mouseWheel: isFull }, handleScale: { mouseWheel: isFull } })
@@ -696,7 +689,7 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
       {live && <span title={T("Every swap appears the moment its block lands")} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 6, fontSize: '0.68rem', fontWeight: 800, color: 'var(--green)', letterSpacing: '0.05em' }}><span className="pulse-dot" />{T("LIVE")}</span>}
       <span style={{ flex: 1 }} />
       <span title={T("Chart style")} style={{ display: 'inline-flex', border: '1px solid var(--adx-card-border)', borderRadius: 6, overflow: 'hidden' }}>
-        {(['line', 'candles'] as const).map(s => <button key={s} onClick={() => saveChartStyle(s)} style={{ ...pill(style === s), border: 'none', borderRadius: 0 }}>{s === 'line' ? T("Line") : T("Candles")}</button>)}
+        {(['line', 'candles'] as const).map(s => <button key={s} onClick={() => setChartStyle(s)} style={{ ...pill(style === s), border: 'none', borderRadius: 0 }}>{s === 'line' ? T("Line") : T("Candles")}</button>)}
       </span>
       {supply ? (
         <span style={{ display: 'inline-flex', border: '1px solid var(--adx-card-border)', borderRadius: 6, overflow: 'hidden' }}>
