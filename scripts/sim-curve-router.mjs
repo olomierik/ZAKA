@@ -7,16 +7,26 @@
 //
 //   forge build && node scripts/sim-curve-router.mjs
 //
-// It trades the latest launch on each launchpad that's still on its curve,
-// or the coins you name: MERCURI_TOKEN=0x… SOLON_TOKEN=0x… node scripts/sim-curve-router.mjs
-import { readFileSync } from 'node:fs'
-import { createPublicClient, http, encodeFunctionData, decodeFunctionResult, parseAbi, parseEther, formatEther } from 'viem'
+// It trades the latest launch on each launchpad that's still on its curve
+// (searching back to the launchpad's first block), or the coins you name:
+//   MERCURI_TOKEN=0x… SOLON_TOKEN=0x… node scripts/sim-curve-router.mjs
+// A launchpad with no coin on its curve is skipped; at least one must be tested.
+import { existsSync, readFileSync } from 'node:fs'
+
+// What the run needs, checked first so a missing piece is named plainly.
+const fail = msg => { console.error(`Error: ${msg}`); process.exit(1) }
+if (Number(process.versions.node.split('.')[0]) < 18) fail(`Node 18 or newer is needed (this is ${process.version}).`)
+const viem = await import('viem').catch(() => fail('viem is missing: run `bun install` (or `npm install`) in the ZAKA folder first.'))
+const { createPublicClient, http, encodeFunctionData, decodeFunctionResult, decodeErrorResult, parseAbi, parseEther, formatEther } = viem
 
 const RPC = process.env.ARC_RPC_URL ?? 'https://rpc.mainnet.arc.io'
 const client = createPublicClient({ transport: http(RPC, { retryCount: 6, retryDelay: 1500 }) })
 
 const OUT = process.env.FORGE_OUT ?? 'contracts/out' // where forge build wrote its artifacts
-const artifact = JSON.parse(readFileSync(`${OUT}/ArcDexCurveRouterSimHarness.sol/ArcDexCurveRouterSimHarness.json`, 'utf8'))
+const HARNESS_JSON = `${OUT}/ArcDexCurveRouterSimHarness.sol/ArcDexCurveRouterSimHarness.json`
+const ROUTER_JSON = `${OUT}/ArcDexCurveRouter.sol/ArcDexCurveRouter.json`
+if (!existsSync(HARNESS_JSON) || !existsSync(ROUTER_JSON)) fail(`${HARNESS_JSON} not found: run \`forge build\` in the ZAKA folder first (on the latest main).`)
+const artifact = JSON.parse(readFileSync(HARNESS_JSON, 'utf8'))
 const abi = artifact.abi
 const code = artifact.deployedBytecode.object
 const HARNESS = '0x00000000000000000000000000000000000c0de5'
@@ -59,6 +69,33 @@ const SOLON_ABI = parseAbi([
   'function buy(uint256 quoteIn, uint256 minTokensOut, address recipient) payable returns (uint256 tokensOut)',
 ])
 
+// Every error the router and the two curves revert with, to name a revert in words.
+const routerErrors = JSON.parse(readFileSync(ROUTER_JSON, 'utf8')).abi.filter(x => x.type === 'error')
+const ERRORS = [...routerErrors, ...parseAbi([
+  // Mercuri's BondingCurve (v1.0.0)
+  'error Expired()', 'error NotTrading()', 'error NotPending()', 'error Slippage()', 'error Unauthorized()',
+  'error InitialBuyTooLarge()', 'error TransferFailed()', 'error InsufficientGasForGraduation()',
+  // SolonPad's Pons V2 curve (abis/PonsV2BondingCurve.json)
+  'error AlreadyGraduated()', 'error CurveGraduated()', 'error InsufficientInputAmount()', 'error InsufficientLiquidity()',
+  'error InsufficientOutputAmount()', 'error InternalSwapRequiresOperator()', 'error MinimumOutputRequired()',
+  'error NativeValueMismatch(uint256 supplied, uint256 expected)', 'error NotInitialized()',
+  'error SlippageExceeded(uint256 actual, uint256 minimum)', 'error UnexpectedNativeValue()',
+]).filter(e => !routerErrors.some(r => r.name === e.name))]
+
+/** What went wrong, in words: the revert's error when it's one of the above. */
+function why(e) {
+  for (let c = e; c; c = c.cause) {
+    const data = typeof c.data === 'string' ? c.data : typeof c.data?.data === 'string' ? c.data.data : null
+    if (data?.startsWith('0x') && data.length >= 10) {
+      try {
+        const d = decodeErrorResult({ abi: ERRORS, data })
+        return `reverted with ${d.errorName}(${(d.args ?? []).map(String).join(', ')})`
+      } catch { return `reverted with unknown error ${data.slice(0, 10)}` }
+    }
+  }
+  return (e.shortMessage ?? e.message ?? String(e)).split('\n')[0]
+}
+
 const ZERO = /^0x0{40}$/
 const hex = n => '0x' + n.toString(16)
 const sleep = ms => new Promise(r => setTimeout(r, ms))
@@ -69,7 +106,7 @@ const check = (cond, msg) => { if (cond) console.log(`  ✓ ${msg}`); else { fai
 
 async function run(name, fn) {
   console.log(`\n${name}`)
-  try { await fn() } catch (e) { failures++; console.log(`  ✗ reverted: ${e.shortMessage ?? e.message}`.slice(0, 400)) }
+  try { await fn() } catch (e) { failures++; console.log(`  ✗ ${why(e)}`.slice(0, 400)) }
   await sleep(1200) // stay under the public RPC's rate limit
 }
 
@@ -100,10 +137,13 @@ async function liveCurve(venue, token, blockNumber) {
   return !graduated && real * 10n < threshold * 9n ? t.curve : null
 }
 
-/** The latest launch still on its curve, scanning back up to ~3 days of blocks. */
+/** The latest launch still on its curve, searching back from the head to
+ * the launchpad's first block; null if none is. */
 async function findLaunch(venue, blockNumber) {
   const WINDOW = 9_000n // Arc's node rejects getLogs ranges of 10,000+ blocks
-  for (let to = blockNumber, i = 0; to >= venue.deployBlock && i < 60; to -= WINDOW, i++) {
+  const windows = (blockNumber - venue.deployBlock) / WINDOW + 1n
+  let scanned = 0n
+  for (let to = blockNumber; to >= venue.deployBlock; to -= WINDOW) {
     const from = to - WINDOW + 1n > venue.deployBlock ? to - WINDOW + 1n : venue.deployBlock
     const logs = await client.request({ method: 'eth_getLogs', params: [{ address: venue.factory, topics: [venue.launched], fromBlock: hex(from), toBlock: hex(to) }] })
     for (const l of logs.reverse()) {
@@ -111,7 +151,8 @@ async function findLaunch(venue, blockNumber) {
       const curve = await liveCurve(venue, token, blockNumber)
       if (curve) return { token, curve }
     }
-    await sleep(250)
+    if (++scanned % 25n === 0n) console.log(`  … searched ${scanned} of ${windows} stretches of 9,000 blocks`)
+    await sleep(150)
   }
   return null
 }
@@ -152,18 +193,26 @@ function checkSell(label, r, referred) {
   check(r.routerLeftNative === 0n && r.routerLeftTokens === 0n, 'router holds nothing afterwards')
 }
 
-const blockNumber = await client.getBlockNumber()
+const blockNumber = await client.getBlockNumber().catch(e => fail(`can't reach ${RPC}: ${why(e)}`))
 console.log(`block ${blockNumber} via ${RPC}`)
 
+let tested = 0
 for (const venue of [MERCURI, SOLON]) {
   const mercuri = venue === MERCURI
   let launch = null
   await run(`${venue.name}: a coin still on its curve`, async () => {
     const named = process.env[venue.env]?.trim().toLowerCase()
-    launch = named ? { token: named, curve: await liveCurve(venue, named, blockNumber) } : await findLaunch(venue, blockNumber)
-    check(!!launch?.curve, launch?.curve ? `${launch.token} (curve ${launch.curve})` : `none found — name one with ${venue.env}=0x…`)
+    if (named) {
+      launch = { token: named, curve: await liveCurve(venue, named, blockNumber) }
+      check(!!launch.curve, launch.curve ? `${named} (curve ${launch.curve})` : `${named} isn't on a ${venue.name} curve (not launched there, or already graduated)`)
+      return
+    }
+    launch = await findLaunch(venue, blockNumber)
+    if (launch) check(true, `${launch.token} (curve ${launch.curve})`)
+    else console.log(`  – none of ${venue.name}'s coins is on its curve now: skipped (name one with ${venue.env}=0x… to test it)`)
   })
   if (!launch?.curve) continue
+  tested++
 
   await run(`${venue.name}: buy ${usdc(VALUE)} through the router`, async () => {
     const r = await sim('buy', [mercuri, launch.token, VALUE, NO_REF], blockNumber)
@@ -181,5 +230,6 @@ for (const venue of [MERCURI, SOLON]) {
   })
 }
 
+if (tested === 0) { failures++; console.log('\n✗ no coin on either launchpad\'s curve to trade: nothing was simulated') }
 console.log(failures === 0 ? '\nALL CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`)
 process.exit(failures === 0 ? 0 : 1)
