@@ -1,7 +1,9 @@
 // GET/POST /api/index-trades
-// Copies ArcDexSwapRouter events (v1 and the current router) from Arc into
-// Supabase so leaderboards, trader profiles, PnL and referral earnings are
-// a fast SQL read instead of thousands of RPC log queries per visitor.
+// Copies ArcDexSwapRouter events (v1 and the current router), and
+// ArcDexCurveRouter's (Mercuri and SolonPad curve trades, the same events
+// with USDC in its 6-decimal units), from Arc into Supabase so leaderboards,
+// trader profiles, PnL and referral earnings are a fast SQL read instead of
+// thousands of RPC log queries per visitor.
 //
 // It only ever writes what the router itself emitted on-chain, keyed by
 // (tx hash, log index), so it's idempotent: any number of overlapping
@@ -100,8 +102,10 @@ export default async function handler(): Promise<Response> {
   const latest = parseInt(await rpc<string>('eth_blockNumber', []), 16)
 
   const routers = [V1.address]
-  const current = (process.env.VITE_ARCDEX_SWAP_ROUTER_ADDRESS ?? '').trim().toLowerCase()
-  if (/^0x[0-9a-f]{40}$/.test(current) && current !== V1.address) routers.push(current)
+  for (const name of ['VITE_ARCDEX_SWAP_ROUTER_ADDRESS', 'VITE_ARCDEX_CURVE_ROUTER_ADDRESS']) {
+    const address = (process.env[name] ?? '').trim().toLowerCase()
+    if (/^0x[0-9a-f]{40}$/.test(address) && !routers.includes(address)) routers.push(address)
+  }
 
   const report: Record<string, unknown>[] = []
   for (const router of routers) {

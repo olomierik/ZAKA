@@ -30,6 +30,29 @@ Two apps in this repo:
 - **Tests:** `forge test --match-contract ArcDexSwapRouterTest` (16 unit tests, incl. fuzz: fee ≤ 1%, router never retains funds).
 - **Real-pool simulation:** `forge build && node scripts/sim-swap-router.mjs`. It injects `contracts/test/sim/ArcDexRouterSimHarness.sol` via `eth_call` state overrides against Arc mainnet: real Argus hooks, real pools, no funds or keys. It checks buy, sell round trips and the 2-hop route, and that the fee wallet gets exactly 1%. A Foundry fork test can't be used: Arc USDC forwards transfers to a precompile at `0x1800…` that Foundry doesn't implement.
 
+### ArcDexCurveRouter — 2% on Mercuri and SolonPad curve trades (written 2026-09-27, NOT deployed yet)
+- **What:** `contracts/ArcDexCurveRouter.sol` (VERSION 1). It trades a Mercuri or SolonPad coin on its own bonding curve, before it graduates, and takes ARCDEX's fee in native USDC in the same transaction.
+  - **Fees:** `feeBps` 200 (hard cap 2%). `referralShareBps` 1500 (15% of the fee, capped at 50%) goes to the trader's referrer, bound on a wallet's first referred trade (its own `referrerOf`, same rules as ArcDexSwapRouter).
+  - **Functions:** `buyMercuri(token, minTokensOut, deadline, referrer)` and `buySolon(…)`, payable. `sellMercuri(token, tokensIn, minUsdcOut, deadline, referrer)` and `sellSolon(…)`, after an approval to the router.
+  - **Only the launchpads' own curves:** callers name a token, and the curve is the one its factory records. For Mercuri that's `curveOf`, and the curve must name the token back. For SolonPad it's `getLaunchedToken`, native-USDC curves only. Anything else reverts `UnknownToken`.
+  - **Buy:** the fee comes off `msg.value` and the rest goes to the curve. A buy that sells a curve out is partly refunded, and the fee is charged only on the part used (the rest of it goes back with the refund). Anything a buy pays back beyond what it sent goes to the trader too, fee-free.
+  - **Sell:** the proceeds come to the router, the fee comes off them, and the trader's minimum applies after the fee.
+  - **Who gets what:** Mercuri pays tokens, refunds and proceeds to its caller, and the router forwards them. A SolonPad buy pays the trader directly, so its snipe tax is the trader's (a creator stays exempt).
+  - **Mercuri's referral share:** Mercuri's FeeManager binds a referrer to the router on its first trade. The router always names `feeWallet`, so Mercuri's 0.20% referral share of every trade through the router accrues to the fee wallet. The fee wallet claims it from FeeManager `0x31D1…2580` with `claim(to)`.
+  - **Safety:** the router holds nothing between transactions (every amount is a balance change) and accepts native USDC only mid-trade. A referrer that can't take native USDC within 30k gas has its share sent to `feeWallet`. `feeWallet` itself must accept native USDC; the deploy script checks this.
+  - **Events:** ArcDexSwapRouter's `Swapped`, `ReferrerBound` and `ReferralPaid`, naming USDC as `0x3600…` in its 6-decimal units. `/api/index-trades` indexes it with the swap routers once the variable below is set, so leaderboards, PnL, fee totals and referral earnings include curve trades.
+  - **Owner:** pause, fee (at most 2%), referral share (at most 50%), fee wallet, and rescue of tokens and native USDC.
+- **Deploy (owner):**
+  1. Simulate first: `forge build && node scripts/sim-curve-router.mjs`. It trades real Mercuri and SolonPad curves through a fresh router via `eth_call` state overrides; nothing is sent. Name coins with `MERCURI_TOKEN=0x…` / `SOLON_TOKEN=0x…`, or it picks the latest ones still on their curves.
+  2. `PRIVATE_KEY=… bash scripts/deploy-curve-router.sh` (owner = the deploying wallet; `FEE_WALLET` and `RPC_URL` are optional overrides).
+  3. Set `VITE_ARCDEX_CURVE_ROUTER_ADDRESS` in Vercel project `app` (Production), and redeploy.
+  - Until that variable is set, curve trades go straight to the curve with no ARCDEX fee, as before.
+- **Tests:** `forge test --match-contract ArcDexCurveRouterTest` runs 43 tests against mocks of both curves as published. They cover the fee split, partial-fill refunds, referrals (including a referrer that refuses native USDC or burns gas), unknown, foreign and ERC-20-quoted tokens, deadline, pause, reentrancy and the admin caps, plus fuzzed value conservation. Each of 15 deliberately planted bugs failed a test.
+- **Checked end to end on a local chain (2026-09-27):** anvil ran with Mercuri and SolonPad stand-ins at their real addresses, the router deployed by the deploy script, and the site built with the variable set.
+  - The coin page bought and sold both launchpads' coins through the router: exactly 2% to the fee wallet, approvals to the router, nothing left behind, and the wallet (not the router) listed as the trader.
+  - `sim-curve-router.mjs` passed there, and failed on a deliberately broken router.
+  - Arc's RPC was out of the build sandbox's reach, so run the simulation against mainnet before deploying.
+
 ### ArcDexRouter — RETIRED, do not deploy to mainnet
 The old `ArcDexRouter` (testnet `0xefa4f596da0c2acfcba47b43389be26e96912516`) points at `0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45`, which is **not** a swap router on Arc, and encodes the SwapRouter (v1) struct with `deadline`. Every mainnet swap through it would revert. `scripts/deploy-mainnet.sh` now just explains this and exits. Use ArcDexSwapRouter above.
 - The old `SwapWidget.tsx` (Swap page, non-Argus token pages) used to read `VITE_ARCDEX_ROUTER_ADDRESS`. Vercel production had it set to the **testnet** address above, which is an empty account on mainnet. Users were asked for unlimited USDC approval to it, and "swaps" to it succeeded while doing nothing. It was deleted on 2026-09-26.
@@ -367,17 +390,22 @@ Before graduating, a Mercuri coin, or a SolonPad coin launched in curve mode, tr
     - No quote view: buys and sells are quoted by simulating them from the trader, with `minOut` 1 (a zero minimum can revert, `MinimumOutputRequired`).
     - Curves quoted in another ERC-20 (`isNativeQuote() == false`) aren't traded here.
   - Both take native USDC (18 decimals) as `msg.value`. Mercuri's refund on a buy that sells the curve out, and SolonPad's partial-fill refund near graduation, go to the caller: the trader.
-- **Fee:** ARCDEX adds none on a curve. ArcDexSwapRouter can't call one, and a fee sent in a second transaction wouldn't be atomic. The widget shows Platform fee 0% and the curve's own fee (1%), plus SolonPad's creator tax.
-  - Mercuri pays 0.20% of each trade (out of its 1% fee) to the referrer a wallet names on its first Mercuri trade, for all of that wallet's later Mercuri trades, on the curve and in the graduated pool. ARCDEX names its fee wallet (`ArcDexSwapRouter.feeWallet()`).
+- **Fee:** ARCDEX's 2% comes from ArcDexCurveRouter ("Deployed Contracts" above) once `VITE_ARCDEX_CURVE_ROUTER_ADDRESS` is set.
+  - **With it:** trades go through the router, and the fee is taken in the same transaction. Sells are approved to the router. The widget shows Platform fee 2% (read from the router) and the curve's own fee.
+    - Quotes: a buy is the curve's quote for what's left after the fee. A Mercuri sell is the curve's `quoteSell` minus the fee. A SolonPad sell is the router's own `sellSolon`, simulated after the approval.
+    - `api/curves.ts`: `loadCurveRouter`, `quoteRouterBuy`/`quoteRouterSell`, `routerBuyCall`/`routerSellCall`, `curveSpender`. A configured router that can't be read stops the trade; it's never skipped.
+  - **Without it (until the owner deploys it):** ARCDEX adds no fee. ArcDexSwapRouter can't call a curve, and a fee sent in a second transaction wouldn't be atomic. The widget shows Platform fee 0% and the curve's own fee (1%), plus SolonPad's creator tax.
+  - Mercuri pays 0.20% of each trade (out of its 1% fee) to the referrer a trader names on its first Mercuri trade, for all of that trader's later Mercuri trades, on the curve and in the graduated pool. ARCDEX names its fee wallet: from the widget for a wallet trading directly (`ArcDexSwapRouter.feeWallet()`), and from the router for the router itself (Mercuri's trader for everything routed).
   - Those shares accrue in Mercuri's FeeManager `0x31D1…2580`: the fee wallet claims them with `claim(to)`.
   - After graduation the coins trade in their Uniswap v4 pools with ARCDEX's 2%: Mercuri's pools pair with ERC-20 USDC (ArcDexSwapRouter), SolonPad's with native USDC (the Universal Router).
 - **Snipe tax:** buys right after launch pay a launch snipe tax (Mercuri: from 99%, to 0 over 120 blocks; SolonPad: `currentSnipeTaxBps(recipient)`). The quote shows it; buying needs its own tick box ("I accept the X% snipe tax"), and the price-impact check sets it aside.
 - **Coin page:** with a live curve, the curve is the market.
-  - Its Buy/Sell events are the chart and the trades list (`poolSwaps.curveMeta`: from the chain, not the market engine, which doesn't index these curves).
+  - Its Buy/Sell events are the chart and the trades list (`poolSwaps.curveMeta`), read from the chain: they're the curve's complete list. The market engine indexes these curves too, for the Terminal.
+  - A trade through the curve router names the router in the curve's event, so the page lists the transaction's sender as its maker (`resolveMakers`, as for pool swaps).
   - Its price leads (Mercuri's events carry it exactly; SolonPad's reserves are re-read after each trade). Supply, name and symbol come from the token when GeckoTerminal has none.
   - A banner shows the way to graduation, and the curve is re-read every 15s while live.
   - Portfolio values held curve coins on their curve, and its Sell sheet (`TokenSwap`) trades them there.
-- **Tests:** `bun scripts/test-curves.ts`: every selector and event topic against the published sources, the calls byte for byte, and trades decoded from both launchpads' events. Browser checks cover a Mercuri coin opened by address (curve route, fees, price, its trades from its events) and its buy (value, min out, the fee wallet as referrer) and sell (exact approval to the curve). They also cover the snipe-tax confirmation, a graduating curve taking sells only, a SolonPad coin's buy and sell, and the Portfolio's value and Sell sheet.
+- **Tests:** `bun scripts/test-curves.ts`: every selector and event topic against the published sources, the calls byte for byte (straight to the curve and through the router), and trades decoded from both launchpads' events. Browser checks cover a Mercuri coin opened by address (curve route, fees, price, its trades from its events) and its buy (value, min out, the fee wallet as referrer) and sell (exact approval to the curve). They also cover the snipe-tax confirmation, a graduating curve taking sells only, a SolonPad coin's buy and sell, and the Portfolio's value and Sell sheet.
 
 ## Social trading layer (fomo.family-style) — ARCDEX
 
@@ -392,7 +420,7 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
 **Server (Vercel `api/`).**
 - `/api/session`: wallet signs a sign-in message (EOA + ERC-1271/6492) and gets a 30-day HMAC token. Needs `ARCDEX_SESSION_SECRET`, which is set. Tests: `bun scripts/test-session.ts`.
 - `/api/social`: profile, follow, thesis and like writes for the token's own address only; 20 theses/day.
-- `/api/index-trades`: idempotent, throttled indexer of router `Swapped`/`ReferrerBound`/`ReferralPaid` events (v1 from block 22548761, plus the current router) into Supabase. Pages call it opportunistically. Tests: `bun scripts/test-index-decode.ts`.
+- `/api/index-trades`: idempotent, throttled indexer of router `Swapped`/`ReferrerBound`/`ReferralPaid` events (v1 from block 22548761, the current router, and ArcDexCurveRouter once `VITE_ARCDEX_CURVE_ROUTER_ADDRESS` is set) into Supabase. Pages call it opportunistically. Tests: `bun scripts/test-index-decode.ts`.
 - **Live end-to-end check:** `bun scripts/test-social-live.ts` signs in two throwaway wallets against arcdex.online and exercises follow, thesis, like and permissions, then undoes every write. Passed on 2026-09-25.
 - Writes and the indexer need `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`) in Vercel. The owner sets it; until then they return 503 and the UI shows empty states.
 
@@ -558,7 +586,13 @@ One breakpoint, `max-width: 767px` (`lib/useMobile.ts`, and the last block of `a
 ## Real-time market engine — `engine/` (2026-09-25)
 
 A long-running Bun service (not on Vercel) that ingests Arc directly and pushes to the site over WebSocket. See `engine/README.md` for architecture, deployment, protocol and tests.
-- **Pipeline:** Arc WebSocket + getLogs (`chain/stream.ts`) → launchpad adapters (Argus Portals 7 & 8, ArcLaunchpad) and the swap parser (v4 PoolManager + v3 factory pools) → `MarketEngine` (hot state, 1s–1d candles) → Redis (hot), Postgres (history) and WebSocket/REST.
+- **Pipeline:** Arc WebSocket + getLogs (`chain/stream.ts`) → launchpad adapters (Argus Portals 7 & 8, ArcLaunchpad, Mercuri, SolonPad) and the swap parser (v4 PoolManager + v3 factory pools) → `MarketEngine` (hot state, 1s–1d candles) → Redis (hot), Postgres (history) and WebSocket/REST.
+- **Mercuri and SolonPad (2026-09-27, `launchpads/mercuri.ts`, `solonpad.ts`, `curveBook.ts`):** their launches (`TokenCreated`, `TokenLaunched`) reach the Terminal as new tokens, and their curve trades stream live, until the coin graduates to its pool, which the swap parser reads like any other.
+  - Each launch has its own curve contract, so the stream takes every Buy/Sell-shaped event on the chain (address-less topic filters, as for v3 swaps). A curve counts once its factory names it back.
+  - Curves come from launch events, or are checked on their first trade: one launched before the engine's window. Each is checked once, however many trades ask at the same time. Definite "not a curve" answers are remembered; a check the chain couldn't answer is retried at the next trade (`curve_check_errors`).
+  - SolonPad curves quoted in another ERC-20 (tokenized stocks) are left out.
+  - The trade's wallet is the transaction's sender (a router in between names itself in the event). Prices are in native USDC: Mercuri's from the reserves each event carries, SolonPad's from what the trade paid on the curve.
+  - Events and addresses are shared with the site: `api/_curves.ts`.
 - **Argus launches (measured 2026-09-25):**
   - Portal 7 `0xB021…97Da` handles ~3,000 launches/day. Its event `0x1d891723…` carries token, creator, name, symbol and poolId.
   - Portal 8 `0xeed7…5D93` handles ~125/day through `Launched` + `LaunchMetadata`.
@@ -579,7 +613,7 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
   - **PriceChart:** engine candles + `CANDLE_UPDATE`, with a 5s timeframe in engine mode.
   - **Terminal:** `new_tokens` rows with a NEW badge, visible before their first trade; `market` ticks update prices; list polling slows to 60s.
   - **Search:** includes fresh launches.
-- **Tests:** `bun run engine:test` — 40 tests (+2 Postgres ones that need `PG_TEST_URL`), including catch-up backpressure, live batching, replays of recorded mainnet data (`engine/test/fixtures/mainnet.json`) and a RESP3 Redis round-trip against Bun's client. Live latency: `bun engine/scripts/latency-check.ts <ws-url> 60`.
+- **Tests:** `bun run engine:test` — 53 tests (+2 Postgres ones that need `PG_TEST_URL`; `engine/test/curves.test.ts` covers Mercuri and SolonPad), including catch-up backpressure, live batching, replays of recorded mainnet data (`engine/test/fixtures/mainnet.json`) and a RESP3 Redis round-trip against Bun's client. Live latency: `bun engine/scripts/latency-check.ts <ws-url> 60`.
 
 ## Hosting — arcdex.online only
 
@@ -587,7 +621,7 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
 
 - **Project:** Vercel project `app` (`prj_cvHmYqjjLNXDMycZfQTbV4JKmkW2`), serving **arcdex.online** and `www.arcdex.online`. It builds automatically from GitHub `olomierik/ZAKA` `main`, so to ship you commit and push, then check the new `app` deployment (`vercel ls app`). Don't use `vercel --prod` for normal releases.
 - **Local link:** `.vercel/project.json` is linked to `app`, so any Vercel CLI command run here targets arcdex.online.
-- **Env vars:** only `app`'s Vercel settings are used. `.env` isn't committed, so GitHub builds never see it. `app` production has `VITE_ARC_LAUNCHPAD_ADDRESS`, `VITE_ARCDEX_SWAP_ROUTER_ADDRESS`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_WC_PROJECT_ID`. A new `VITE_*` var must be added there, and it only takes effect on the next build.
+- **Env vars:** only `app`'s Vercel settings are used. `.env` isn't committed, so GitHub builds never see it. `app` production has `VITE_ARC_LAUNCHPAD_ADDRESS`, `VITE_ARCDEX_SWAP_ROUTER_ADDRESS`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_WC_PROJECT_ID`. `VITE_ARCDEX_CURVE_ROUTER_ADDRESS` joins them once ArcDexCurveRouter is deployed. A new `VITE_*` var must be added there, and it only takes effect on the next build.
   - To verify a var reached the site, fetch the live JS chunks and grep for the value. `vercel env pull` shows sensitive vars as empty.
 - **Retired project:** `zaka_app` (`zakaapp-drab.vercel.app`) is disconnected from GitHub. Its production deployment is only a 307 redirect of every path to the same path on arcdex.online. The source for that deployment isn't in this repo; it's just a `vercel.json` with `redirects`.
   - History: until 2026-09-24, every push built **both** projects, and CLI deploys went to `zaka_app` with `.env` baked in. arcdex.online had no env vars, so the Launchpad showed "contract not configured".

@@ -1,10 +1,15 @@
 // Offline test of trading Mercuri's and SolonPad's own bonding curves
 // (src/arcdex/api/curves.ts): the contracts' functions and events as
-// published, the buy and sell calls ARCDEX sends, and the coin page's trades
-// decoded from the curves' events.
+// published, the buy and sell calls ARCDEX sends (straight to a curve, and
+// through ARCDEX's curve router), and the coin page's trades decoded from
+// the curves' events.
 // Run: bun scripts/test-curves.ts
 
 import { encodeAbiParameters, encodeFunctionData, parseAbi, parseAbiParameters, toFunctionSelector, type AbiFunction, type Address, type Hex } from 'viem'
+
+// ARCDEX's curve router, named before the modules load, as a build names it.
+const ROUTER = '0x8a791620dd6260079bf849dc5567adc3f2fdc318' as Address
+process.env.VITE_ARCDEX_CURVE_ROUTER_ADDRESS = '0x8A791620dd6260079BF849Dc5567aDC3F2FdC318'
 
 const c = await import('../src/arcdex/api/curves')
 const { curveMeta, decodeSwap } = await import('../src/arcdex/api/poolSwaps')
@@ -51,6 +56,28 @@ const ss = c.curveSellCall(solon, 7n * 10n ** 20n, 5n, ME, WALLET, deadline)
 ok(ss.value === undefined && encodeFunctionData(ss as never) === encodeFunctionData({ abi: parseAbi(['function sell(uint256,uint256,address)']), functionName: 'sell', args: [7n * 10n ** 20n, 5n, ME] }),
   'SolonPad sell: tokens in, min USDC out, the trader as recipient; no value')
 
+console.log('through ARCDEX\'s curve router (contracts/ArcDexCurveRouter.sol)')
+// Selectors from the compiled contract (forge inspect ArcDexCurveRouter methodIdentifiers).
+const ROUTER_SEL = { buyMercuri: '0xed547f55', sellMercuri: '0xc3d2df3f', buySolon: '0xc5f0a0e8', sellSolon: '0x3e799daa', feeBps: '0x24a9d853', referralShareBps: '0x47c9bc2d' }
+for (const [f, s] of Object.entries(ROUTER_SEL)) ok(sel(c.CURVE_ROUTER_ABI, f) === s, `router ${f} = ${s}`)
+ok(c.curveRouterConfigured && c.CURVE_ROUTER_ADDRESS === ROUTER, 'VITE_ARCDEX_CURVE_ROUTER_ADDRESS is read (lower-cased)')
+ok(c.curveSpender(mercuri) === ROUTER && c.curveSpender(solon) === ROUTER, 'a sell is approved to the router, not the curve')
+const router = { address: ROUTER, feeBps: 200, referralShareBps: 1_500 }
+const REF = '0x7777777777777777777777777777777777777777' as Address
+ok(c.routerSpend(router, value) === 245n * 10n ** 17n, 'the curve gets 98% of the value: 24.50 of 25 USDC (the router keeps 2%)')
+const rmb = c.routerBuyCall(mercuri, router, value, minOut, REF, deadline)
+ok(rmb.address === ROUTER && rmb.value === value && encodeFunctionData(rmb as never) === encodeFunctionData({ abi: parseAbi(['function buyMercuri(address,uint256,uint256,address) payable']), functionName: 'buyMercuri', args: [TOKEN, minOut, deadline, REF] }),
+  'Mercuri buy: buyMercuri(token, min tokens out, deadline, referrer) with the whole value (the router takes its fee from it)')
+const rsb = c.routerBuyCall(solon, router, value, minOut, REF, deadline)
+ok(rsb.value === value && encodeFunctionData(rsb as never) === encodeFunctionData({ abi: parseAbi(['function buySolon(address,uint256,uint256,address) payable']), functionName: 'buySolon', args: [TOKEN, minOut, deadline, REF] }),
+  'SolonPad buy: buySolon(token, min tokens out, deadline, referrer)')
+const rms = c.routerSellCall(mercuri, router, 7n * 10n ** 20n, 5n, REF, deadline)
+ok(rms.value === undefined && encodeFunctionData(rms as never) === encodeFunctionData({ abi: parseAbi(['function sellMercuri(address,uint256,uint256,uint256,address)']), functionName: 'sellMercuri', args: [TOKEN, 7n * 10n ** 20n, 5n, deadline, REF] }),
+  'Mercuri sell: sellMercuri(token, tokens in, min USDC out after the fee, deadline, referrer); no value')
+const rss = c.routerSellCall(solon, router, 7n * 10n ** 20n, 5n, REF, deadline)
+ok(rss.value === undefined && encodeFunctionData(rss as never) === encodeFunctionData({ abi: parseAbi(['function sellSolon(address,uint256,uint256,uint256,address)']), functionName: 'sellSolon', args: [TOKEN, 7n * 10n ** 20n, 5n, deadline, REF] }),
+  'SolonPad sell: sellSolon(token, tokens in, min USDC out after the fee, deadline, referrer); no value')
+
 console.log('trades from the curves\' events')
 const topic = (a: string) => ('0x' + a.slice(2).padStart(64, '0')) as Hex
 const log = (topics: string[], data: Hex, address = CURVE) => ({ address, topics, data, blockNumber: '0x10', transactionHash: '0x' + 'ab'.repeat(32), logIndex: '0x3', blockTimestamp: '0x66f5a000' })
@@ -79,5 +106,7 @@ ok(meta.pool === CURVE && meta.quote === '0x000000000000000000000000000000000000
 const sw = decodeSwap(mBuy, meta)
 ok(sw?.kind === 'buy' && sw.maker === ME && sw.id === `${'0x' + 'ab'.repeat(32)}:3` && sw.block === 16 && sw.time === 0x66f5a000 * 1000 && Math.abs(sw.quoteAmount - 10.5) < 1e-9, 'a Buy becomes a swap with its maker, id, block and time')
 ok(decodeSwap({ ...mBuy, address: '0x' + 'dd'.repeat(20) }, meta) === null, 'the same event from another contract (a copycat curve) is ignored')
+const viaRouter = decodeSwap({ ...mBuy, topics: [c.MERCURI_BUY, topic(ROUTER)] }, meta)
+ok(viaRouter?.kind === 'buy' && viaRouter.maker === null, 'a trade through the curve router names the router: no maker yet, so the page looks up the transaction\'s sender')
 
 console.log('ALL CURVE CHECKS PASSED')

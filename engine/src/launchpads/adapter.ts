@@ -12,6 +12,9 @@ import type { PoolRegistry } from '../dex/pools'
 export interface AdapterContext {
   rpc: Rpc
   pools: PoolRegistry
+  /** A transaction's sender (batched lookups): a trade's wallet when the
+   * event names a contract in between (a router) rather than the trader. */
+  sender?: (txHash: string) => Promise<string | null>
 }
 
 export interface LaunchpadAdapter {

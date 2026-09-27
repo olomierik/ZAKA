@@ -18,7 +18,7 @@ import { t as T } from '../lib/i18n'
 import { waitForReceipt } from '../lib/receipts'
 import { onBalances } from '../lib/balances'
 import { PERMIT2, PERMIT2_ABI, UR_ABI, encodeNativeBuy, encodeNativeSell, feeShares, netAfterFees, permit2Allowance, quoteExactIn, universalRouter } from '../api/universalRouter'
-import { curveBuyCall, curveSellCall, quoteCurveBuy, quoteCurveSell, type CurveCall, type CurveInfo } from '../api/curves'
+import { curveBuyCall, curveRouterConfigured, curveSellCall, curveSpender, loadCurveRouter, quoteCurveBuy, quoteCurveSell, quoteRouterBuy, quoteRouterSell, routerBuyCall, routerSellCall, type CurveCall, type CurveInfo, type CurveRouter } from '../api/curves'
 
 export { SWAP_ROUTER_ADDRESS }
 
@@ -120,18 +120,26 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
   const tokenIn = mode === 'buy' ? USDC_ADDRESS : token
   const decIn = mode === 'buy' ? 6 : 18
   const amountIn = useMemo(() => { try { return amount ? parseUnits(amount, decIn) : 0n } catch { return 0n } }, [amount, decIn])
-  // Mercuri's or SolonPad's own curve: its fee and creator tax instead of ARCDEX's fee.
+  // Mercuri's or SolonPad's own curve: its fee and creator tax, and ARCDEX's
+  // fee once the curve router is deployed (api/curves.ts; none before).
   const curve = route?.kind === 'curve' ? route.curve : null
-  const feeBps = curve ? curve.feeBps : info?.feeBps ?? 0
+  const [curveRouter, setCurveRouter] = useState<CurveRouter | null>(null)
+  const onCurve = !!curve
+  useEffect(() => { if (onCurve) void loadCurveRouter().then(setCurveRouter).catch(() => {}) }, [onCurve])
+  // ARCDEX's fee, as the router in force charges it (null while it loads).
+  const platformBps = curve ? (curveRouterConfigured ? curveRouter?.feeBps ?? null : 0) : info?.feeBps ?? null
+  const feeBps = platformBps ?? 0
+  const curveFeeBps = curve?.feeBps ?? 0
   const taxBps = curve ? curve.creatorTaxBps : (mode === 'buy' ? buyTaxBps : sellTaxBps) ?? 0
 
   // Balance + allowance for whichever wallet is trading (works for both the
   // trading wallet and an external one — no wagmi hooks tied to one).
   // A native-USDC pool trades through Uniswap's Universal Router: a buy
   // pays in native USDC (no approval), a sell goes through Permit2. A curve
-  // takes native USDC for a buy and an approval of itself for a sell.
+  // takes native USDC for a buy; a sell is approved to the curve router (or
+  // to the curve itself, before there is one).
   const native = route?.kind === 'v4native'
-  const curveAddr = curve?.curve ?? null
+  const curveAddr = curve ? curveSpender(curve) : null
   const refresh = useCallback(async () => {
     if (!me || !routerConfigured) { setBalance(null); setAllowance(0n); return }
     const allowanceOf = async (): Promise<bigint> => {
@@ -159,10 +167,10 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
 
   useEffect(() => { setImpact(null); setRiskOk(false); setSnipe(null); setSnipeOk(false) }, [amount, mode])
 
-  // Pre-trade estimate from the market price, net of the fee (ARCDEX's, or a
-  // curve's own) and the coin's creator tax. The exact figure comes from
+  // Pre-trade estimate from the market price, net of ARCDEX's fee, a curve's
+  // own fee and the coin's creator tax. The exact figure comes from
   // simulating the real transaction just before it's sent.
-  const net = (1 - feeBps / 10_000) * (1 - taxBps / 10_000)
+  const net = (1 - feeBps / 10_000) * (1 - curveFeeBps / 10_000) * (1 - taxBps / 10_000)
   const estimate = amountIn > 0n && priceUsd > 0
     ? mode === 'buy' ? (Number(formatUnits(amountIn, 6)) * net) / priceUsd : Number(formatUnits(amountIn, 18)) * priceUsd * net
     : 0
@@ -278,24 +286,32 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
     finish(outNum)
   }
 
-  /** Mercuri's or SolonPad's own bonding curve, traded from this wallet
-   * directly. ARCDEX adds no fee here (api/curves.ts); the curve charges its
-   * own fee and taxes, all inside its quote. */
+  /** Mercuri's or SolonPad's own bonding curve: through ARCDEX's curve
+   * router once it's deployed, which takes ARCDEX's fee in the same
+   * transaction; straight to the curve from this wallet before that, with no
+   * ARCDEX fee (api/curves.ts). The curve's own fee and taxes are inside its
+   * quote either way. */
   async function submitCurve(c: CurveInfo) {
     if (!me) return
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
     const keep = (x: bigint) => (x * BigInt(Math.round((100 - slippage) * 100))) / 10_000n
-    // Mercuri binds the referrer a wallet names on its first Mercuri trade
-    // (and ignores it after that): ARCDEX's fee wallet.
-    const referrer = c.venue === 'Mercuri'
-      ? await client.readContract({ address: SWAP_ROUTER_ADDRESS, abi: ROUTER_FEES, functionName: 'feeWallet' }).catch(() => ZERO_ADDR)
-      : ZERO_ADDR
+    // A configured router that can't be read stops the trade (try again): it's never skipped.
+    const r = await loadCurveRouter()
+    // Through the router: the referrer this visitor arrived with, bound there
+    // on their first referred trade. Directly: Mercuri binds the referrer a
+    // wallet names on its first Mercuri trade (and ignores it after that),
+    // ARCDEX's fee wallet.
+    const referrer = r
+      ? await referrerFor(me)
+      : c.venue === 'Mercuri'
+        ? await client.readContract({ address: SWAP_ROUTER_ADDRESS, abi: ROUTER_FEES, functionName: 'feeWallet' }).catch(() => ZERO_ADDR)
+        : ZERO_ADDR
     let req: CurveCall, outNum: number
     if (mode === 'buy') {
       if (!c.canBuy) throw new Error(T('This curve has sold out and is moving to its Uniswap pool: buying reopens there shortly. You can still sell.'))
       setStep('quoting')
       const value = amountIn * 10n ** 12n // native USDC has 18 decimals
-      const q = await quoteCurveBuy(c, value, me)
+      const q = r ? await quoteRouterBuy(c, r, value, me) : await quoteCurveBuy(c, value, me)
       outNum = Number(formatUnits(q.tokensOut, 18))
       // A launch snipe tax is its own confirmation, not a price impact.
       setSnipe(q.snipeBps || null)
@@ -305,21 +321,23 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         return
       }
       if (holdForImpact(outNum, 1 - q.snipeBps / 10_000)) return
-      req = curveBuyCall(c, value, keep(q.tokensOut), me, referrer, deadline)
+      req = r ? routerBuyCall(c, r, value, keep(q.tokensOut), referrer, deadline) : curveBuyCall(c, value, keep(q.tokensOut), me, referrer, deadline)
     } else {
-      const approved = await client.readContract({ address: token, abi: ERC20_ABI, functionName: 'allowance', args: [me, c.curve] })
+      // Exact amount only: to ARCDEX's curve router, or to the curve the
+      // launchpad's factory names for this token.
+      const spender = r ? r.address : c.curve
+      const approved = await client.readContract({ address: token, abi: ERC20_ABI, functionName: 'allowance', args: [me, spender] })
       if (approved < amountIn) {
         setStep('approving')
-        // Exact amount only, to the curve the launchpad's factory names for this token.
-        const h = await send({ address: token, abi: ERC20_ABI, functionName: 'approve', args: [c.curve, amountIn] })
+        const h = await send({ address: token, abi: ERC20_ABI, functionName: 'approve', args: [spender, amountIn] })
         if ((await waitForReceipt(h)).status !== 'success') throw new Error(T('Approval failed'))
-        await waitForAllowance(client, token, me, c.curve, amountIn)
+        await waitForAllowance(client, token, me, spender, amountIn)
       }
       setStep('quoting')
-      const out = await quoteCurveSell(c, amountIn, me)
+      const out = r ? await quoteRouterSell(c, r, amountIn, me) : await quoteCurveSell(c, amountIn, me)
       outNum = Number(formatUnits(out, 18))
       if (holdForImpact(outNum)) return
-      req = curveSellCall(c, amountIn, keep(out), me, referrer, deadline)
+      req = r ? routerSellCall(c, r, amountIn, keep(out), referrer, deadline) : curveSellCall(c, amountIn, keep(out), me, referrer, deadline)
     }
     // Simulate the exact transaction first: a moved price or a curve that
     // just graduated stops here, before signing.
@@ -451,7 +469,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       <div className="swap-info">
         <Row label={T("You receive (est.)")} value={estimate > 0 ? (mode === 'buy' ? `${fmtTok(estimate)} ${symbol}` : fmtUsd(estimate)) : '—'} />
         <Row label={T("Route")} value={routeLoading ? T('Finding route…') : route ? routeText : T('No routable pool')} />
-        <Row label={T("Platform fee")} value={curve ? '0%' : info ? T('{pct} (in USDC)', { pct: pct(info.feeBps) }) : '…'} />
+        <Row label={T("Platform fee")} value={platformBps === null ? '…' : curve && !curveRouterConfigured ? '0%' : T('{pct} (in USDC)', { pct: pct(platformBps) })} />
         {curve && <Row label={T("Curve fee")} value={pct(curve.feeBps)} />}
         {/* An Argus creator tax; other launchpads charge through their pool's own fee (the note below). */}
         {(!venue || taxBps > 0) && <Row label={T("Creator tax")} value={taxBps ? pct(taxBps) : '0%'} />}
@@ -527,7 +545,9 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       )}
 
       <p className="swap-note">{curve
-        ? T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee; ARCDEX adds none.", { launchpad: curve.venue })
+        ? curveRouterConfigured
+          ? T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee on top of the platform fee.", { launchpad: curve.venue })
+          : T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee; ARCDEX adds none.", { launchpad: curve.venue })
         : venue
           ? T("Every trade is simulated before it's sent. The pool's own fee, set by {launchpad}, applies on top of the platform fee.", { launchpad: venue.name })
           : T("Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.")}</p>

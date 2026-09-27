@@ -14,7 +14,7 @@ import { ARCHIVE_RPCS, RECENT_RPC, hex, rpcBatch, rpcCall, type RawLog } from '.
 import { ARGUS, ARGUS_USDC_V3, NATIVE, POOL_MANAGER, USDC, V3_SWAP, V4_SWAP, decodeSwapLog, priceFromSqrt, word } from '../../../api/_arcSwaps'
 import { ARC_RPC_WS } from './arcRpc'
 import type { ArgusTrade } from './argusMarket'
-import { curveTradeFilter, decodeCurveTrade, type CurveInfo, type CurveVenue } from './curves'
+import { CURVE_ROUTER_ADDRESS, curveTradeFilter, decodeCurveTrade, type CurveInfo, type CurveVenue } from './curves'
 
 export { POOL_MANAGER }
 
@@ -76,10 +76,12 @@ export function decodeSwap(l: RawLog & { removed?: boolean }, m: PoolMeta): Pool
     time: l.blockTimestamp ? parseInt(l.blockTimestamp, 16) * 1000 : Date.now(),
   }
   if (m.curve) {
-    // Only this curve's own events; they name the trader (no router in between).
+    // Only this curve's own events. They name the trader, or ARCDEX's curve
+    // router for a trade through it: then the maker is the transaction's
+    // sender, looked up like a pool swap's (resolveMakers).
     if (l.address.toLowerCase() !== m.pool) return null
     const c = decodeCurveTrade(l, m.curve.venue, m.curve.virtual)
-    return c ? { ...at, kind: c.kind, tokenAmount: c.tokenAmount, quoteAmount: c.usdc, price: c.price, maker: c.trader } : null
+    return c ? { ...at, kind: c.kind, tokenAmount: c.tokenAmount, quoteAmount: c.usdc, price: c.price, maker: c.trader === CURVE_ROUTER_ADDRESS ? null : c.trader } : null
   }
   const d = decodeSwapLog(l, { v4: isV4(m), baseIs0: m.token < m.quote, baseDecimals: m.tokenDecimals, quoteDecimals: m.quoteDecimals })
   if (!d) return null

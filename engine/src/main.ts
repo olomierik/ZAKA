@@ -26,6 +26,8 @@ import { MakerResolver, QuoteOracle, TradeParser, isSwapLog, poolKeyOf } from '.
 import { AdapterRegistry } from './launchpads/adapter'
 import { ArcLaunchpadAdapter } from './launchpads/arcLaunchpad'
 import { ArgusAdapter } from './launchpads/argus'
+import { MercuriAdapter } from './launchpads/mercuri'
+import { SolonPadAdapter } from './launchpads/solonpad'
 import { log, errMsg, setLogLevel } from './log'
 import { MarketEngine, type Publisher } from './market/engine'
 import { metrics } from './metrics'
@@ -135,7 +137,9 @@ async function main() {
   const oracle = new QuoteOracle()
   await oracle.seed(rpc)
   const makers = new MakerResolver(rpc)
-  const adapters = new AdapterRegistry([new ArgusAdapter(), new ArcLaunchpadAdapter()])
+  const adapters = new AdapterRegistry([new ArgusAdapter(), new ArcLaunchpadAdapter(), new MercuriAdapter(), new SolonPadAdapter()])
+  // Adapters see the transaction's sender too: a trade through a router names the router in its event.
+  const adapterCtx = { rpc, pools, sender: (txHash: string) => makers.get(txHash) }
 
   let srv: ReturnType<typeof startServer> | null = null
   let publisher: Publisher
@@ -166,13 +170,14 @@ async function main() {
       if (isInitialize(l)) return null // registered in the pre-pass
       const ad = adapters.find(l)
       if (ad) {
-        const launch = await ad.parseLaunch(l, { rpc, pools })
+        const launch = await ad.parseLaunch(l, adapterCtx)
         if (launch) {
           const p = launch.pool ? pools.get(launch.pool) : undefined
           const q = launch.quote ? oracle.usd(launch.quote) : null
-          return { launch, initialPriceUsd: p?.initialPrice && q ? p.initialPrice * q : null }
+          // A pool's initial price; a launchpad curve states its own opening price.
+          return { launch, initialPriceUsd: (p?.initialPrice && q ? p.initialPrice * q : null) ?? launch.priceUsd ?? null }
         }
-        const trade = await ad.parseTrade?.(l, { rpc, pools })
+        const trade = await ad.parseTrade?.(l, adapterCtx)
         return trade ? { trade } : null
       }
       if (isSwapLog(l)) { const trade = await parser.parse(l); return trade ? { trade } : null }

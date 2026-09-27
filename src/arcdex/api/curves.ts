@@ -5,23 +5,31 @@
 // the token out, and back. Once a curve graduates the coin trades in its
 // Uniswap v4 pool, and the usual routes (argusMarket.buildSwapRoute) take over.
 //
-// ARCDEX adds no fee on a curve: ArcDexSwapRouter can't call one, and a fee
-// sent in a separate transaction wouldn't be atomic with the trade. Mercuri
-// shares 0.20% of each trade (out of its own 1% fee) with the referrer a
-// wallet names on its first Mercuri trade — ARCDEX's fee wallet — on every
-// Mercuri trade of that wallet from then on, claimable from its FeeManager.
+// ARCDEX's fee on a curve trade comes from ArcDexCurveRouter
+// (contracts/ArcDexCurveRouter.sol) once it's deployed and named in
+// VITE_ARCDEX_CURVE_ROUTER_ADDRESS: the trade goes through it and it takes
+// the fee (2%, 15% of it to the trader's referrer) in the same transaction.
+// Until then trades go to the curve directly and ARCDEX adds no fee.
+// Mercuri shares 0.20% of each trade (out of its own 1% fee) with the
+// referrer a trader names on its first Mercuri trade: ARCDEX's fee wallet,
+// both for a wallet trading directly and for the router (Mercuri's trader
+// then), claimable from Mercuri's FeeManager.
 //
 // Sources: github.com/mercuri-finance/mercuri-launch-contracts (v1.0.0 as
 // deployed, deployments/5042.json) and github.com/solonlend/solonpad-skill
 // (addresses.json, abis/, AGENT-GUIDE.md §2–4).
 
-import { keccak256, parseAbi, toHex, type Address } from 'viem'
+import { parseAbi, type Address } from 'viem'
 import { client } from './launchpad'
+import { MERCURI_FACTORY as M_FACTORY, MERCURI_FEE_MANAGER as M_FEES, SOLONPAD_FACTORY as S_FACTORY } from '../../../api/_curves'
 
-export const MERCURI_FACTORY = '0x8f5DfA0c48E14cCD03AE01795B8a95759BA859EB' as Address
+// Addresses, events and trade decoding are shared with the market engine (api/_curves.ts).
+export { MERCURI_BUY, MERCURI_SELL, SOLON_BUY, SOLON_SELL, curveTradeFilter, decodeCurveTrade, type CurveTrade, type CurveVenue } from '../../../api/_curves'
+import type { CurveVenue } from '../../../api/_curves'
+export const MERCURI_FACTORY = M_FACTORY as Address
 /** Where Mercuri referrers (ARCDEX's fee wallet) claim their share: `claim(to)`. */
-export const MERCURI_FEE_MANAGER = '0x31D1bfe59B783f4c077F853f962D1355AfB52580' as Address
-export const SOLONPAD_FACTORY = '0xd6b86b9B1bB64b941b21AaA6a0e3A673e8405A3b' as Address
+export const MERCURI_FEE_MANAGER = M_FEES as Address
+export const SOLONPAD_FACTORY = S_FACTORY as Address
 const ZERO = '0x0000000000000000000000000000000000000000'
 
 export const MERCURI_FACTORY_ABI = parseAbi(['function curveOf(address token) view returns (address)'])
@@ -60,14 +68,6 @@ const ERC20_META = parseAbi([
   'function symbol() view returns (string)',
   'function totalSupply() view returns (uint256)',
 ])
-
-// Trade events, for the coin page's chart and trades list (api/poolSwaps.ts).
-export const MERCURI_BUY = keccak256(toHex('Buy(address,uint256,uint256,uint256,uint256,uint256,uint256)'))
-export const MERCURI_SELL = keccak256(toHex('Sell(address,uint256,uint256,uint256,uint256,uint256)'))
-export const SOLON_BUY = keccak256(toHex('CurveBuy(address,address,uint256,uint256,uint256,uint256)'))
-export const SOLON_SELL = keccak256(toHex('CurveSell(address,address,uint256,uint256,uint256,uint256)'))
-
-export type CurveVenue = 'Mercuri' | 'SolonPad'
 
 export interface CurveInfo {
   venue: CurveVenue
@@ -199,8 +199,8 @@ export async function quoteCurveSell(c: CurveInfo, tokensIn: bigint, me: Address
 
 export interface CurveCall {
   address: Address
-  abi: typeof MERCURI_CURVE_ABI | typeof SOLONPAD_CURVE_ABI
-  functionName: 'buy' | 'sell'
+  abi: typeof MERCURI_CURVE_ABI | typeof SOLONPAD_CURVE_ABI | typeof CURVE_ROUTER_ABI
+  functionName: 'buy' | 'sell' | 'buyMercuri' | 'sellMercuri' | 'buySolon' | 'sellSolon'
   args: readonly unknown[]
   value?: bigint
 }
@@ -221,51 +221,78 @@ export function curveSellCall(c: CurveInfo, tokensIn: bigint, minOut: bigint, me
     : { address: c.curve, abi: SOLONPAD_CURVE_ABI, functionName: 'sell', args: [tokensIn, minOut, me] }
 }
 
-// ── trade events → the coin page's trades ────────────────────────────
+// ── ARCDEX's curve router ────────────────────────────────────────────
 
-export interface CurveTrade {
-  kind: 'buy' | 'sell'
-  trader: string
-  tokenAmount: number
-  /** USDC paid in (buy, fees included) or received (sell, after fees). */
-  usdc: number
-  /** Price right after the trade (Mercuri, from the reserves in the event)
-   * or the trade's own price on the curve, fees aside (SolonPad), USDC per token. */
-  price: number
+/** ArcDexCurveRouter, once deployed (scripts/deploy-curve-router.sh). Unset,
+ * curve trades go to the curve directly and ARCDEX takes no fee on them. */
+export const CURVE_ROUTER_ADDRESS = String(import.meta.env.VITE_ARCDEX_CURVE_ROUTER_ADDRESS ?? '').trim().toLowerCase() as Address
+export const curveRouterConfigured = /^0x[0-9a-f]{40}$/.test(CURVE_ROUTER_ADDRESS)
+
+export const CURVE_ROUTER_ABI = parseAbi([
+  'function feeBps() view returns (uint256)',
+  'function referralShareBps() view returns (uint256)',
+  'function buyMercuri(address token, uint256 minTokensOut, uint256 deadline, address referrer) payable returns (uint256 tokensOut)',
+  'function sellMercuri(address token, uint256 tokensIn, uint256 minUsdcOut, uint256 deadline, address referrer) returns (uint256 usdcOut)',
+  'function buySolon(address token, uint256 minTokensOut, uint256 deadline, address referrer) payable returns (uint256 tokensOut)',
+  'function sellSolon(address token, uint256 tokensIn, uint256 minUsdcOut, uint256 deadline, address referrer) returns (uint256 usdcOut)',
+])
+
+export interface CurveRouter {
+  address: Address
+  /** ARCDEX's fee on a curve trade, on the USDC side (at most 2%). */
+  feeBps: number
+  /** The trader's referrer's share of that fee. */
+  referralShareBps: number
 }
 
-const w = (data: string, i: number) => BigInt('0x' + data.slice(2 + i * 64, 2 + (i + 1) * 64))
-const addr = (topic: string) => ('0x' + topic.slice(26)).toLowerCase()
-
-/** One of a curve's Buy/Sell logs, or null for any other log. */
-export function decodeCurveTrade(l: { topics: string[]; data: string }, venue: CurveVenue, virtual?: { usdc: bigint; tokens: bigint }): CurveTrade | null {
-  const t0 = l.topics[0]
-  if (venue === 'Mercuri') {
-    // Buy(trader indexed | usdcIn (net), tokensOut, fee, tax, realUsdc, sold)
-    // Sell(trader indexed | tokensIn, usdcOut (net), fee, realUsdc, sold)
-    const buy = t0 === MERCURI_BUY
-    if ((!buy && t0 !== MERCURI_SELL) || l.topics.length < 2 || !virtual || l.data.length < 2 + 64 * (buy ? 6 : 5)) return null
-    const tokens = buy ? w(l.data, 1) : w(l.data, 0)
-    // What the trader paid (usdcIn + fee + tax) or received (usdcOut).
-    const usdc = buy ? w(l.data, 0) + w(l.data, 2) + w(l.data, 3) : w(l.data, 1)
-    const realUsdc = w(l.data, buy ? 4 : 3), sold = w(l.data, buy ? 5 : 4)
-    const y = virtual.tokens - sold
-    if (tokens === 0n || y <= 0n) return null
-    return { kind: buy ? 'buy' : 'sell', trader: addr(l.topics[1]), tokenAmount: Number(tokens) / 1e18, usdc: Number(usdc) / 1e18, price: Number(virtual.usdc + realUsdc) / Number(y) }
+let routerRead: Promise<CurveRouter | null> | null = null
+/** The curve router and the fee it charges now, read from the chain; null
+ * when none is configured. Rejects if the chain can't be read (and reads
+ * again next time): a configured router is never skipped. */
+export function loadCurveRouter(): Promise<CurveRouter | null> {
+  if (!curveRouterConfigured) return Promise.resolve(null)
+  if (!routerRead) {
+    routerRead = Promise.all([
+      client.readContract({ address: CURVE_ROUTER_ADDRESS, abi: CURVE_ROUTER_ABI, functionName: 'feeBps' }),
+      client.readContract({ address: CURVE_ROUTER_ADDRESS, abi: CURVE_ROUTER_ABI, functionName: 'referralShareBps' }),
+    ]).then(([fee, share]) => ({ address: CURVE_ROUTER_ADDRESS, feeBps: Number(fee), referralShareBps: Number(share) }))
+    routerRead.catch(() => { routerRead = null })
   }
-  // CurveBuy(buyer indexed, recipient indexed, quoteIn (gross), tokensOut, fee, tax)
-  // CurveSell(seller indexed, recipient indexed, tokensIn, quoteOut (net), fee, tax)
-  const buy = t0 === SOLON_BUY
-  if ((!buy && t0 !== SOLON_SELL) || l.topics.length < 3 || l.data.length < 2 + 64 * 4) return null
-  const [a, b, fee, tax] = [0, 1, 2, 3].map(i => w(l.data, i))
-  const tokens = buy ? b : a
-  if (tokens === 0n) return null
-  // The curve's side of the trade, fees and taxes aside.
-  const onCurve = buy ? a - fee - tax : b + fee + tax
-  return { kind: buy ? 'buy' : 'sell', trader: addr(l.topics[2]), tokenAmount: Number(tokens) / 1e18, usdc: Number(buy ? a : b) / 1e18, price: Number(onCurve) / Number(tokens) }
+  return routerRead
 }
 
-/** The log filter for a curve's trades. */
-export function curveTradeFilter(curve: string, venue: CurveVenue) {
-  return { address: curve.toLowerCase(), topics: [venue === 'Mercuri' ? [MERCURI_BUY, MERCURI_SELL] : [SOLON_BUY, SOLON_SELL]] }
+/** Who a sell's tokens are approved to: the router when there is one, else the curve. */
+export const curveSpender = (c: CurveInfo): Address => curveRouterConfigured ? CURVE_ROUTER_ADDRESS : c.curve
+
+/** What of `value` reaches the curve once the router has taken its fee. */
+export const routerSpend = (r: CurveRouter, value: bigint) => value - (value * BigInt(r.feeBps)) / 10_000n
+
+/** A buy of `value` native USDC through the router: the curve's quote for
+ * what's left after ARCDEX's fee, the tokens going to `me` as the router
+ * delivers them (SolonPad's snipe tax is `me`'s either way). */
+export function quoteRouterBuy(c: CurveInfo, r: CurveRouter, value: bigint, me: Address): Promise<CurveBuyQuote> {
+  return quoteCurveBuy(c, routerSpend(r, value), me)
+}
+
+/** Native USDC (18 decimals) `me` receives for `tokensIn` through the
+ * router, after every fee. SolonPad's is simulated, so the router must
+ * already be approved for the amount. */
+export async function quoteRouterSell(c: CurveInfo, r: CurveRouter, tokensIn: bigint, me: Address): Promise<bigint> {
+  if (c.venue === 'Mercuri') {
+    const proceeds = await quoteCurveSell(c, tokensIn, me)
+    return proceeds - (proceeds * BigInt(r.feeBps)) / 10_000n
+  }
+  const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+  const { result } = await client.simulateContract({ address: r.address, abi: CURVE_ROUTER_ABI, functionName: 'sellSolon', args: [c.token, tokensIn, 1n, deadline, ZERO], account: me })
+  return result
+}
+
+/** Buy through the router with `value` native USDC: at least `minOut` tokens to the caller. */
+export function routerBuyCall(c: CurveInfo, r: CurveRouter, value: bigint, minOut: bigint, referrer: Address, deadline: bigint): CurveCall {
+  return { address: r.address, abi: CURVE_ROUTER_ABI, functionName: c.venue === 'Mercuri' ? 'buyMercuri' : 'buySolon', args: [c.token, minOut, deadline, referrer], value }
+}
+
+/** Sell `tokensIn` (approved to the router, exact amount) through it: at least `minOut` native USDC to the caller. */
+export function routerSellCall(c: CurveInfo, r: CurveRouter, tokensIn: bigint, minOut: bigint, referrer: Address, deadline: bigint): CurveCall {
+  return { address: r.address, abi: CURVE_ROUTER_ABI, functionName: c.venue === 'Mercuri' ? 'sellMercuri' : 'sellSolon', args: [c.token, tokensIn, minOut, deadline, referrer] }
 }
