@@ -1,5 +1,6 @@
 // Mercuri's and SolonPad's coins — every one on its launchpad's bonding
-// curve or graduated from it — from the server's index
+// curve or graduated from it, and SolonPad's instant launches (born in a
+// Uniswap v4 pool) — from the server's index
 // (/api/launchpad?of=curves, api/_curveIndex.ts). GeckoTerminal's market
 // list has none of them: a coin on a bonding curve has no DEX pool, and a
 // graduated one's plain Uniswap pool isn't filed under its launchpad.
@@ -21,7 +22,10 @@ function rowOf(v: unknown): CurveMarketRow | null {
   if (!v || typeof v !== 'object') return null
   const r = v as Record<string, unknown>
   const token = text(r.token, 42).toLowerCase(), curve = text(r.curve, 42).toLowerCase(), pool = text(r.pool, 66).toLowerCase()
-  if (!ADDRESS.test(token) || !ADDRESS.test(curve) || !POOL.test(pool) || (r.launchpad !== 'Mercuri' && r.launchpad !== 'SolonPad')) return null
+  if (!ADDRESS.test(token) || !POOL.test(pool) || (r.launchpad !== 'Mercuri' && r.launchpad !== 'SolonPad')) return null
+  // A curve coin names its curve; a SolonPad instant launch has none, only its v4 pool.
+  const instant = r.mode === 'instant'
+  if (instant ? r.launchpad !== 'SolonPad' || pool.length !== 66 : !ADDRESS.test(curve)) return null
   const symbol = text(r.symbol, 24)
   if (!symbol) return null
   const image = text(r.image, 500)
@@ -29,7 +33,7 @@ function rowOf(v: unknown): CurveMarketRow | null {
   const quote = text(r.quote, 42).toLowerCase()
   const progress = num(r.progress)
   return {
-    token, curve, pool, launchpad: r.launchpad,
+    token, curve: instant ? null : curve, mode: instant ? 'instant' : 'curve', pool, launchpad: r.launchpad,
     // Its market's quote: native USDC unless a graduated coin's pool says otherwise.
     quote: ADDRESS.test(quote) || quote === NATIVE ? quote : NATIVE,
     name: text(r.name, 64) || symbol, symbol,
@@ -39,8 +43,8 @@ function rowOf(v: unknown): CurveMarketRow | null {
     priceUsd: num(r.priceUsd), marketCapUsd: num(r.marketCapUsd), liquidityUsd: num(r.liquidityUsd),
     volume24h: num(r.volume24h) ?? 0, buys24h: num(r.buys24h) ?? 0, sells24h: num(r.sells24h) ?? 0,
     change24h: num(r.change24h) ?? 0,
-    progress: progress === null ? null : Math.min(1, Math.max(0, progress)),
-    graduated: r.graduated === true,
+    progress: progress === null || instant ? null : Math.min(1, Math.max(0, progress)),
+    graduated: !instant && r.graduated === true,
     lastTradeAt: num(r.lastTradeAt),
   }
 }

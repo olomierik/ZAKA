@@ -14,17 +14,23 @@
 //   - its curve's state, read from the chain: price, the USDC in it, how far
 //     it is to graduation, and whether it has graduated;
 //   - once graduated, its Uniswap pool's market, from GeckoTerminal.
+// SolonPad's instant launches (its default mode: no curve, the coin is born
+// in a native-USDC Uniswap v4 pool) come from its InstantLaunchStrategy's
+// events; their price and liquidity from Uniswap's StateView, their market
+// from GeckoTerminal, like a graduated coin's.
 // Pure logic, plus `updateIndex` over injected I/O (the endpoint wires the
 // network; scripts/test-curve-index.ts fakes it).
 
+import { keccak256, type Hex } from 'viem'
 import type { RawLog } from './_arcLogs'
-import { NATIVE, topicAddress, word } from './_arcSwaps'
+import { NATIVE, liquidityUsd, priceFromSqrt, topicAddress, word } from './_arcSwaps'
 import {
   MERCURI_BUY, MERCURI_DEPLOY_BLOCK, MERCURI_FACTORY, MERCURI_SELL, MERCURI_TOKEN_CREATED, SEL,
-  SOLONPAD_DEPLOY_BLOCK, SOLONPAD_FACTORY, SOLON_BUY, SOLON_SELL, SOLON_TOKEN_LAUNCHED,
+  SOLONPAD_DEPLOY_BLOCK, SOLONPAD_FACTORY, SOLON_BUY, SOLON_INSTANT_DEPLOY_BLOCK, SOLON_INSTANT_LAUNCHED,
+  SOLON_INSTANT_OPEN_TICK, SOLON_INSTANT_SPLITTER, SOLON_INSTANT_STRATEGY, SOLON_SELL, SOLON_TOKEN_LAUNCHED, STATE_VIEW,
   curveVenueOfTopic, decodeCurveTrade, type CurveVenue,
 } from './_curves'
-import { abiString, cleanText, resolveMeta, safeUrl } from './_launchpadCore'
+import { abiString, cleanText, resolveMeta, safeUrl, sanitizeMeta } from './_launchpadCore'
 
 /** Trades are bucketed by 10 minutes, and a bucket kept for 26 hours. */
 export const BUCKET_S = 600
@@ -36,8 +42,10 @@ const NEW_S = 3 * DAY_S
 const MIN_LIQUIDITY_USD = 10
 /** Arc's block time, for a log that doesn't carry its block's timestamp. */
 const BLOCK_S = 0.5
-/** A live curve's state is re-read at least this often. */
+/** A listed coin's state is re-read at least this often; one without a row
+ * (curve trades are seen as they happen; an instant launch's are not) hourly. */
 const STATE_TTL_MS = 15 * 60_000
+const IDLE_STATE_TTL_MS = 60 * 60_000
 /** A graduated coin's pool market is re-read this often. */
 const GECKO_TTL_MS = 2 * 60_000
 /** A metadata file that didn't answer is retried this often. */
@@ -48,12 +56,20 @@ export const TRADE_HISTORY_BLOCKS = 200_000
 export const MAX_ROWS = 1_000
 /** Calls per JSON-RPC batch (providers cap batches at 100 or so). */
 export const BATCH_CALLS = 80
+/** An instant launch's opening price, USDC per coin (~$4.2K for the 1B supply). */
+export const INSTANT_OPEN_PRICE = 1.0001 ** -SOLON_INSTANT_OPEN_TICK
+/** An older, quiet instant launch is listed once it's worth this much (bought well past its opening). */
+const INSTANT_MIN_CAP_USD = 10_000
+/** A pool market not listed yet is re-read this often (listed ones every GECKO_TTL_MS). */
+const GECKO_IDLE_TTL_MS = 30 * 60_000
 
 /** [start (unix s), volume USD, buys, sells, price after the bucket's last trade] */
 export type Bucket = [number, number, number, number, number]
 
 export interface CurveCoin {
   launchpad: CurveVenue
+  /** SolonPad's instant launches: no curve ('' here); they trade in `pool` from birth. */
+  mode?: 'instant'
   token: string
   curve: string
   name: string
@@ -66,7 +82,7 @@ export interface CurveCoin {
   /** Mercuri: the curve's virtual reserves (18-decimal integers, as strings), which price its trade events. */
   vu?: string
   vt?: string
-  /** Mercuri: its metadata's location (the coin's image). */
+  /** Its metadata's location (the coin's image): Mercuri's launch event, an instant launch's tokenURI(). */
   uri?: string
   /** SolonPad: native USDC raised at which the curve graduates (18 decimals, as a string). */
   goal?: string
@@ -82,7 +98,7 @@ export interface CurveCoin {
   progress?: number | null
   graduated?: boolean
   stateAt?: number
-  /** Once graduated: its Uniswap pool, and that pool's market (GeckoTerminal). */
+  /** Once graduated (an instant launch: from birth), its Uniswap pool, and that pool's market (GeckoTerminal). */
   pool?: string | null
   gecko?: { price: number; mcap: number | null; vol: number; liq: number; chg: number; buys: number; sells: number; at: number }
   /** Its pool's quote token (native USDC unless GeckoTerminal says otherwise). */
@@ -98,8 +114,10 @@ export interface CurveCoin {
 /** One coin as the Terminal gets it. */
 export interface CurveMarketRow {
   token: string
-  curve: string
-  /** Where it trades: its curve, or once graduated its Uniswap pool when known. */
+  /** Its bonding curve (null for an instant launch, which has none). */
+  curve: string | null
+  mode: 'curve' | 'instant'
+  /** Where it trades: its curve, or its Uniswap pool (graduated, when known, or an instant launch's). */
   pool: string
   /** That market's quote token: native USDC (0x0) on a curve. */
   quote: string
@@ -140,6 +158,8 @@ export const LAUNCH_FILTER = { address: [MERCURI_FACTORY, SOLONPAD_FACTORY], top
 export const FIRST_BLOCK = Math.min(MERCURI_DEPLOY_BLOCK, SOLONPAD_DEPLOY_BLOCK)
 /** Every curve's trades (any address: a curve counts once a factory has named it). */
 export const TRADE_FILTER = { topics: [[MERCURI_BUY, MERCURI_SELL, SOLON_BUY, SOLON_SELL]] }
+/** SolonPad's instant launches. */
+export const INSTANT_FILTER = { address: [SOLON_INSTANT_STRATEGY], topics: [[SOLON_INSTANT_LAUNCHED]] }
 
 /** A factory's launch event → the coin, or null for anything else (and for
  * SolonPad curves quoted in another ERC-20, a tokenized stock: not traded here). */
@@ -184,6 +204,28 @@ export function decodeCurveLaunch(l: RawLog): CurveCoin | null {
     }
   }
   return null
+}
+
+/** SolonPad's InstantLaunchStrategy TokenLaunched → the coin, or null for
+ * anything else. Its own launches only: the LP position goes to SolonPad's
+ * fee splitter, and the pool is native USDC / the coin, 1%, spacing 100, no
+ * hooks — the key the event carries, whose hash must be the pool it names. */
+export function decodeInstantLaunch(l: RawLog): CurveCoin | null {
+  if (l.topics[0] !== SOLON_INSTANT_LAUNCHED || l.address.toLowerCase() !== SOLON_INSTANT_STRATEGY || l.topics.length < 4 || l.data.length !== 2 + 64 * 5) return null
+  const pool = l.topics[1].toLowerCase(), token = topicAddress(l.topics[2]), recipient = topicAddress(l.topics[3])
+  if (recipient !== SOLON_INSTANT_SPLITTER || !isAddr(token)) return null
+  const addr = (i: number) => ('0x' + word(l.data, i).slice(24)).toLowerCase()
+  if (addr(0) !== NATIVE || addr(1) !== token || big(word(l.data, 2)) !== 10_000n || big(word(l.data, 3)) !== 100n || addr(4) !== NATIVE) return null
+  if (keccak256(l.data.toLowerCase() as Hex) !== pool) return null
+  return {
+    launchpad: 'SolonPad', mode: 'instant', token, curve: '', pool, quote: NATIVE,
+    block: parseInt(l.blockNumber, 16),
+    ts: l.blockTimestamp ? parseInt(l.blockTimestamp, 16) : 0,
+    tx: l.transactionHash.toLowerCase(),
+    // Named from the token itself, on the first state read.
+    name: '', symbol: '', creator: null, decimals: 18,
+    open: INSTANT_OPEN_PRICE, supply: 1_000_000_000,
+  }
 }
 
 // ── trades ───────────────────────────────────────────────────────────
@@ -273,6 +315,33 @@ const quantity = (r: string | null | undefined) => (r && /^0x[0-9a-fA-F]+$/.test
  * didn't answer: the coin keeps its last state and is read again soon. */
 export function stateRead(c: CurveCoin): { calls: RpcCallSpec[]; apply: (r: (string | null)[], nowMs: number) => boolean } {
   const needSupply = c.supply == null
+  if (c.mode === 'instant') {
+    // Its pool, from Uniswap's StateView; the first time also its name and metadata.
+    const id = (c.pool ?? '').slice(2)
+    const needName = !c.symbol
+    const calls = [ethCall(STATE_VIEW, SEL.getSlot0 + id), ethCall(STATE_VIEW, SEL.getLiquidity + id)]
+    if (needName) calls.push(ethCall(c.token, SEL.decimals), ethCall(c.token, SEL.name), ethCall(c.token, SEL.symbol), ethCall(c.token, SEL.tokenURI))
+    return {
+      calls,
+      apply(r, nowMs) {
+        const sqrtPrice = word0(r[0]), liquidity = word0(r[1])
+        if (sqrtPrice === null || sqrtPrice === 0n || liquidity === null) return false
+        if (needName) {
+          const dec = word0(r[2]), name = erc20Text(r[3]), symbol = erc20Text(r[4]), uri = erc20Text(r[5])
+          if (dec === null && !symbol) return false
+          if (dec !== null && dec <= 36n) c.decimals = Number(dec)
+          c.name = cleanText(name ?? '') || 'Unknown'
+          c.symbol = cleanText(symbol ?? '', 24) || '???'
+          if (uri && uri.length <= 12_000) c.uri = uri.trim()
+        }
+        // currency0 is native USDC (18 decimals), currency1 the coin.
+        c.priceUsd = priceFromSqrt(sqrtPrice, false, c.decimals, 18)
+        c.liquidityUsd = liquidityUsd(liquidity, sqrtPrice, true, 18, 1) ?? 0
+        c.stateAt = nowMs
+        return true
+      },
+    }
+  }
   if (c.launchpad === 'Mercuri') {
     const calls = [ethCall(c.curve, SEL.phase), ethCall(c.curve, SEL.price), ethCall(c.curve, SEL.progressBps), { method: 'eth_getBalance', params: [c.curve, 'latest'] }]
     if (needSupply) calls.push(ethCall(c.token, SEL.totalSupply))
@@ -332,11 +401,13 @@ export function stateRead(c: CurveCoin): { calls: RpcCallSpec[]; apply: (r: (str
  * (newest first), curves that just traded, curves about to graduate, then
  * the stalest live ones. A graduated curve no longer changes. */
 export function pickForRefresh(coins: CurveCoin[], traded: Set<string>, nowMs: number, max: number): CurveCoin[] {
+  const nowSec = Math.floor(nowMs / 1000)
   const never = coins.filter(c => c.stateAt === undefined).sort((a, b) => b.block - a.block)
   const rest = coins.filter(c => c.stateAt !== undefined && !c.graduated)
   const hot = rest.filter(c => traded.has(c.curve))
   const closing = rest.filter(c => !traded.has(c.curve) && (c.progress ?? 0) >= 0.98)
-  const stale = rest.filter(c => !traded.has(c.curve) && (c.progress ?? 0) < 0.98 && nowMs - (c.stateAt ?? 0) > STATE_TTL_MS)
+  const stale = rest.filter(c => !traded.has(c.curve) && (c.progress ?? 0) < 0.98
+    && nowMs - (c.stateAt ?? 0) > (isListed(c, nowSec) ? STATE_TTL_MS : IDLE_STATE_TTL_MS))
     .sort((a, b) => (a.stateAt ?? 0) - (b.stateAt ?? 0))
   return [...never, ...hot, ...closing, ...stale].slice(0, max)
 }
@@ -349,9 +420,12 @@ export interface GtTokens { data?: GtItem[]; included?: GtItem[] }
 
 export const geckoPath = (tokens: string[]) => `/networks/arc/tokens/multi/${tokens.join(',')}?include=top_pools`
 
-/** Graduated coins whose pool market is due for a refresh. */
+/** Coins trading in a Uniswap pool (graduated, or instant launches) whose
+ * pool market is due for a refresh; one without a row yet less often. */
 export function dueForGecko(coins: CurveCoin[], nowMs: number, max: number): CurveCoin[] {
-  return coins.filter(c => c.graduated && (!c.gecko || nowMs - c.gecko.at > GECKO_TTL_MS))
+  const nowSec = Math.floor(nowMs / 1000)
+  return coins.filter(c => (c.graduated || c.mode === 'instant')
+    && (!c.gecko || nowMs - c.gecko.at > (isListed(c, nowSec) ? GECKO_TTL_MS : GECKO_IDLE_TTL_MS)))
     .sort((a, b) => (a.gecko?.at ?? 0) - (b.gecko?.at ?? 0)).slice(0, max)
 }
 
@@ -381,7 +455,8 @@ export function applyGecko(byToken: Map<string, CurveCoin>, res: GtTokens | null
       buys: num(tx.buys), sells: num(tx.sells),
       at: nowMs,
     }
-    if (/^0x[0-9a-f]{40}([0-9a-f]{24})?$/.test(poolAddr)) {
+    // (An instant launch keeps the pool it was born in.)
+    if (c.mode !== 'instant' && /^0x[0-9a-f]{40}([0-9a-f]{24})?$/.test(poolAddr)) {
       c.pool = poolAddr
       c.quote = /^0x[0-9a-f]{40}$/.test(quote) ? quote : undefined
     }
@@ -392,9 +467,11 @@ export function applyGecko(byToken: Map<string, CurveCoin>, res: GtTokens | null
 
 // ── image ────────────────────────────────────────────────────────────
 
-/** A Mercuri coin's image: its metadata JSON's `image`, or the URI itself when it is one. */
+/** A coin's image: its metadata JSON's `image` (hosted, a data: URI, or the
+ * JSON itself), or the URI itself when it is one. */
 export async function coinImage(uri: string, fetchImpl: typeof fetch = fetch): Promise<string | null> {
   if (!uri) return null
+  if (/^\s*\{/.test(uri)) { try { return sanitizeMeta(JSON.parse(uri))?.image ?? null } catch { return null } }
   const direct = safeUrl(uri)
   if (direct && /\.(png|jpe?g|gif|webp|avif|svg)(\?.*)?$/i.test(direct)) return direct
   return (await resolveMeta(uri, fetchImpl))?.image ?? null
@@ -409,9 +486,17 @@ export function dueForImage(coins: CurveCoin[], nowSec: number, nowMs: number, m
 // ── the list ─────────────────────────────────────────────────────────
 
 /** Worth a row: named, and graduated, traded in the last day, holding $10
- * or more, or launched in the last three days. */
+ * or more, or launched in the last three days. An instant launch (always
+ * holding its whole supply in its pool): launched in the last three days,
+ * traded in the last day, or worth $10K or more. */
 export function isListed(c: CurveCoin, nowSec: number): boolean {
   if (!c.symbol) return false
+  if (c.mode === 'instant') {
+    if (c.ts > 0 && nowSec - c.ts < NEW_S) return true
+    if ((c.gecko?.vol ?? 0) > 0) return true
+    const price = (c.gecko?.price ?? 0) || (c.priceUsd ?? 0)
+    return price * (c.supply ?? 0) >= INSTANT_MIN_CAP_USD
+  }
   if (c.graduated) return true
   if (coinStats(c, nowSec).vol24 > 0) return true
   if ((c.liquidityUsd ?? 0) >= MIN_LIQUIDITY_USD) return true
@@ -420,14 +505,16 @@ export function isListed(c: CurveCoin, nowSec: number): boolean {
 
 export function toRow(c: CurveCoin, nowSec: number): CurveMarketRow {
   const s = coinStats(c, nowSec)
-  const g = c.graduated ? c.gecko : undefined
+  const instant = c.mode === 'instant'
+  const g = c.graduated || instant ? c.gecko : undefined
   const price = g && g.price > 0 ? g.price : s.price
   const cap = g?.mcap ?? (price && c.supply ? price * c.supply : null)
   return {
     token: c.token,
-    curve: c.curve,
-    pool: (c.graduated && c.pool) || c.curve,
-    quote: (c.graduated && c.pool && c.quote) || NATIVE,
+    curve: instant ? null : c.curve,
+    mode: instant ? 'instant' : 'curve',
+    pool: instant ? c.pool ?? '' : (c.graduated && c.pool) || c.curve,
+    quote: !instant && c.graduated && c.pool && c.quote ? c.quote : NATIVE,
     launchpad: c.launchpad,
     name: c.name,
     symbol: c.symbol,
@@ -441,7 +528,7 @@ export function toRow(c: CurveCoin, nowSec: number): CurveMarketRow {
     buys24h: s.buys24 + (g?.buys ?? 0),
     sells24h: s.sells24 + (g?.sells ?? 0),
     change24h: g ? g.chg : s.change24,
-    progress: c.graduated ? null : c.progress ?? null,
+    progress: c.graduated || instant ? null : c.progress ?? null,
     graduated: !!c.graduated,
     lastTradeAt: c.last ? c.last * 1000 : null,
   }
@@ -459,6 +546,8 @@ export function listRows(coins: CurveCoin[], nowSec: number): CurveMarketRow[] {
 export interface IndexState {
   /** Last block of the launch history read (FIRST_BLOCK - 1 before any). */
   launchesTo: number
+  /** Last block of SolonPad's instant launches read (absent in an index from before they were). */
+  instantTo?: number
   /** Last block of curve trades read. */
   tradesTo: number
   coins: CurveCoin[]
@@ -477,7 +566,7 @@ export interface IndexIO {
 }
 
 export function emptyState(head: number): IndexState {
-  return { launchesTo: FIRST_BLOCK - 1, tradesTo: Math.max(FIRST_BLOCK, head - TRADE_HISTORY_BLOCKS) - 1, coins: [], head, updatedAt: 0 }
+  return { launchesTo: FIRST_BLOCK - 1, instantTo: SOLON_INSTANT_DEPLOY_BLOCK - 1, tradesTo: Math.max(FIRST_BLOCK, head - TRADE_HISTORY_BLOCKS) - 1, coins: [], head, updatedAt: 0 }
 }
 
 /** Launches and trades up to the chain's head, then state reads, pool
@@ -488,19 +577,30 @@ export async function updateIndex(s: IndexState, io: IndexIO, budgetMs: number, 
   const head = await io.head()
   s.head = Math.max(s.head, head)
 
-  // 1. Launches (the factories' whole history on a first build, in steps).
-  if (s.launchesTo < head) {
-    const r = await io.scan(LAUNCH_FILTER, s.launchesTo + 1, head, head, start + budgetMs * 0.6)
-    const known = new Set(s.coins.map(c => c.token))
+  // 1. Launches (the whole history on a first build, in steps): the curve
+  // factories', then SolonPad's instant launches (on a cursor of their own).
+  const known = new Set(s.coins.map(c => c.token))
+  const addLaunches = (logs: RawLog[], decode: (l: RawLog) => CurveCoin | null) => {
     const nowSec = Math.floor(now() / 1000)
-    for (const l of r.logs) {
-      const c = decodeCurveLaunch(l)
+    for (const l of logs) {
+      const c = decode(l)
       if (!c || known.has(c.token)) continue
       if (!c.ts) c.ts = logTime(l, nowSec, head)
       s.coins.push(c)
       known.add(c.token)
     }
+  }
+  if (s.launchesTo < head) {
+    const r = await io.scan(LAUNCH_FILTER, s.launchesTo + 1, head, head, start + budgetMs * 0.6)
+    addLaunches(r.logs, decodeCurveLaunch)
     s.launchesTo = Math.max(s.launchesTo, r.scannedTo)
+  }
+  const instantTo = s.instantTo ?? SOLON_INSTANT_DEPLOY_BLOCK - 1
+  s.instantTo = instantTo
+  if (instantTo < head && left() > 1_500) {
+    const r = await io.scan(INSTANT_FILTER, instantTo + 1, head, head, start + budgetMs * 0.65)
+    addLaunches(r.logs, decodeInstantLaunch)
+    s.instantTo = Math.max(instantTo, r.scannedTo)
   }
 
   // 2. Trades, once every curve they could come from is known.
@@ -530,7 +630,7 @@ export async function updateIndex(s: IndexState, io: IndexIO, budgetMs: number, 
     for (const g of group) { g.apply(res.slice(k, k + g.calls.length), t); k += g.calls.length }
   }
 
-  // 4. Graduated coins' pool markets.
+  // 4. Pool markets: graduated coins and instant launches.
   if (io.gecko && left() > 1_500) {
     const due = dueForGecko(s.coins, now(), 60)
     const byToken = new Map(due.map(c => [c.token, c]))
@@ -540,7 +640,7 @@ export async function updateIndex(s: IndexState, io: IndexIO, budgetMs: number, 
     }
   }
 
-  // 5. Images for listed Mercuri coins.
+  // 5. Images for listed coins with metadata (Mercuri, instant launches).
   if (io.image && left() > 2_000) {
     const due = dueForImage(s.coins, nowSec, now(), 6)
     await Promise.all(due.map(async c => {

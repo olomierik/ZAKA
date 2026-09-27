@@ -29,11 +29,12 @@ const toMeta = (p: ArgusPool): TokenMeta => ({
   volume24h: p.volume24h, liquidityUsd: p.liquidityUsd, bonded: p.bonded ?? null, createdAt: p.createdAt,
 })
 
-/** A Mercuri or SolonPad coin (api/curveMarket.ts): "bonded" once it has graduated. */
+/** A Mercuri or SolonPad coin (api/curveMarket.ts): "bonded" once it has
+ * graduated; an instant launch never had a curve (neither bonding nor graduated). */
 const curveMeta = (c: CurveMarketRow): TokenMeta => ({
   address: c.token, symbol: c.symbol, name: c.name, image: c.image, priceUsd: c.priceUsd ?? 0,
   pool: c.pool, change24h: c.change24h, change1h: 0, marketCapUsd: c.marketCapUsd,
-  volume24h: c.volume24h, liquidityUsd: c.liquidityUsd ?? 0, bonded: c.graduated,
+  volume24h: c.volume24h, liquidityUsd: c.liquidityUsd ?? 0, bonded: c.mode === 'instant' ? null : c.graduated,
   createdAt: c.launchedAt ? new Date(c.launchedAt).toISOString() : null,
 })
 

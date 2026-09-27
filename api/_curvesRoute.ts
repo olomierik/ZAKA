@@ -69,7 +69,7 @@ function snapshotOf(s: IndexState): Snapshot {
   return {
     updatedAt: s.updatedAt,
     head: s.head,
-    complete: s.launchesTo >= s.head && s.tradesTo >= s.head - 50,
+    complete: s.launchesTo >= s.head && (s.instantTo ?? 0) >= s.head && s.tradesTo >= s.head - 50,
     indexed: s.coins.length,
     coins: listRows(s.coins, Math.floor(Date.now() / 1000)),
   }
