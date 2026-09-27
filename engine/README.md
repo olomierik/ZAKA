@@ -5,7 +5,7 @@ Detects new Arc token launches and every DEX trade the moment their block lands.
 ```
 Arc chain (WebSocket + getLogs)
   → ChainStream        live logs · reconcile · backfill · dedupe · cursor
-  → launchpad adapters Argus (Portals 7 & 8), ArcLaunchpad, …
+  → launchpad adapters Argus (Portals 7 & 8), ArcLaunchpad, Mercuri, SolonPad, …
   → trade parser       v4 PoolManager / v3 pool swaps → normalized trades
   → MarketEngine       hot state (price, 24h stats) · candle engine
   → Redis (hot) · Postgres (history, batched) · WebSocket/REST → browsers
@@ -27,6 +27,9 @@ Everything runs in one Bun process by default. For scale-out, split it into `ENG
 | `src/launchpads/adapter.ts` | `LaunchpadAdapter` interface + shared ABI/sanitizing helpers |
 | `src/launchpads/argus.ts` | Argus Portal 7 & 8 launch detection |
 | `src/launchpads/arcLaunchpad.ts` | ARCDEX's own bonding-curve launchpad (launches + curve trades) |
+| `src/launchpads/mercuri.ts` | Mercuri launches and trades on each launch's own bonding curve |
+| `src/launchpads/solonpad.ts` | SolonPad (Pons V2 curve mode) launches and curve trades, native-USDC curves only |
+| `src/launchpads/curveBook.ts` | What those two share: curves verified against their factory (once each), trade shaping |
 | `src/market/tokenState.ts` | Per-token hot state; rolling 24h stats in 1,440 minute buckets |
 | `src/market/candles.ts` | 1s/5s/15s/1m/5m/15m/1h/4h/1d candles, late-trade handling |
 | `src/market/engine.ts` | Applies trades/launches; publishes events; ticks; warm restart |
@@ -36,6 +39,7 @@ Everything runs in one Bun process by default. For scale-out, split it into `ENG
 | `src/ws/server.ts` | WebSocket + REST + `/health` + `/metrics` |
 | `../api/_marketProtocol.ts` | Wire protocol shared with the frontend |
 | `../api/_arcSwaps.ts`, `../api/_arcLogs.ts` | Swap decoding and log scanning, shared with the site |
+| `../api/_curves.ts` | Mercuri/SolonPad addresses, events and trade decoding, shared with the site |
 
 ## Run locally
 
@@ -115,13 +119,13 @@ REST: `GET /v1/tokens/new`, `/v1/tokens/:token`, `/v1/tokens/:token/trades?limit
 - **Chain data validation:**
   - v4 events are accepted only from the PoolManager, with keys verified against the PoolId.
   - v3 pools must be the factory's.
-  - Adapters only read their own portal contracts.
+  - Adapters only read their own launchpads' contracts. Mercuri's and SolonPad's curve events are taken from any address (each launch has its own curve), but count only once that launchpad's factory names the curve.
 - **Untrusted metadata:** launch names, symbols and images are sanitized (control and bidi characters stripped, lengths capped; images must be `https://` or `ipfs://`).
 
 ## Tests
 
 ```bash
-bun test engine/test                       # 40 tests: candles, 24h state, protocol, real-mainnet replays (Argus launches, v3/v4 swaps), stream/provider reliability (incl. catch-up backpressure, live batching), Redis (RESP3), WebSocket/REST end-to-end
+bun test engine/test                       # 53 tests: candles, 24h state, protocol, real-mainnet replays (Argus launches, v3/v4 swaps), Mercuri/SolonPad launches and curve trades, stream/provider reliability (incl. catch-up backpressure, live batching), Redis (RESP3), WebSocket/REST end-to-end
 PG_TEST_URL=postgres://… bun test engine/test/postgres.test.ts   # +2: the Postgres history backend, against a scratch database
 bun engine/scripts/capture-fixtures.ts     # refresh the recorded mainnet fixtures
 ```

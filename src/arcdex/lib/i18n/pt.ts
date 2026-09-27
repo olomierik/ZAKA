@@ -1213,6 +1213,7 @@ const d: Record<string, string> = {
   "{symbol} launched moments ago: a {pct} snipe tax goes to the launchpad on this buy, falling to 0 shortly after launch. Tick the box to buy anyway, or wait.": "{symbol} acabou de ser lançado: nesta compra, uma taxa anti-snipe de {pct} vai para o launchpad, e cai para 0 pouco depois do lançamento. Marque a caixa para comprar mesmo assim, ou aguarde.",
   "This curve has sold out and is moving to its Uniswap pool: buying reopens there shortly. You can still sell.": "Esta curva esgotou e está migrando para o seu pool na Uniswap: as compras reabrem lá em breve. Você ainda pode vender.",
   "Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee; ARCDEX adds none.": "Cada trade é simulado antes do envio. A curva da {launchpad} cobra a própria taxa; a ARCDEX não adiciona nenhuma.",
+  "Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee on top of the platform fee.": "Cada trade é simulado antes do envio. A curva da {launchpad} cobra a própria taxa, que é somada à taxa da plataforma.",
   "On {launchpad}'s bonding curve: {pct} of the way to its Uniswap pool.": "Na curva da {launchpad}: {pct} do caminho até o seu pool na Uniswap.",
 }
 export default d

@@ -1213,6 +1213,7 @@ const d: Record<string, string> = {
   "{symbol} launched moments ago: a {pct} snipe tax goes to the launchpad on this buy, falling to 0 shortly after launch. Tick the box to buy anyway, or wait.": "{symbol} imezinduliwa punde: kwenye ununuzi huu kodi ya snipe ya {pct} inaenda kwa launchpad, na hushuka hadi 0 muda mfupi baada ya uzinduzi. Weka alama kwenye kisanduku ili kununua hata hivyo, au subiri.",
   "This curve has sold out and is moving to its Uniswap pool: buying reopens there shortly. You can still sell.": "Mkondo huu umeuzwa wote na unahamia kwenye pool yake ya Uniswap: ununuzi utafunguliwa huko hivi karibuni. Bado unaweza kuuza.",
   "Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee; ARCDEX adds none.": "Kila biashara huigwa kabla ya kutumwa. Mkondo wa {launchpad} hutoza ada yake yenyewe; ARCDEX haiongezi ada yoyote.",
+  "Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee on top of the platform fee.": "Kila biashara huigwa kabla ya kutumwa. Mkondo wa {launchpad} hutoza ada yake yenyewe, inayoongezwa juu ya ada ya jukwaa.",
   "On {launchpad}'s bonding curve: {pct} of the way to its Uniswap pool.": "Kwenye mkondo wa {launchpad}: {pct} ya njia kuelekea pool yake ya Uniswap.",
 }
 export default d

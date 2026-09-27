@@ -1213,6 +1213,7 @@ const d: Record<string, string> = {
   "{symbol} launched moments ago: a {pct} snipe tax goes to the launchpad on this buy, falling to 0 shortly after launch. Tick the box to buy anyway, or wait.": "{symbol} 刚刚发行：本次买入的 {pct} 将作为狙击税归发射平台，该税率会在发行后不久降至 0。勾选方框仍然买入，或稍候再买。",
   "This curve has sold out and is moving to its Uniswap pool: buying reopens there shortly. You can still sell.": "该曲线已售罄，正在迁移到其 Uniswap 池：稍后即可在那里继续买入。你仍然可以卖出。",
   "Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee; ARCDEX adds none.": "每笔交易发送前都会先模拟。{launchpad} 的曲线收取自己的手续费；ARCDEX 不额外收费。",
+  "Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee on top of the platform fee.": "每笔交易发送前都会先模拟。{launchpad} 的曲线收取自己的手续费，在平台费之外另计。",
   "On {launchpad}'s bonding curve: {pct} of the way to its Uniswap pool.": "在 {launchpad} 的联合曲线上：距离迁移到其 Uniswap 池已完成 {pct}。",
 }
 export default d

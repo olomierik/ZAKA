@@ -279,8 +279,9 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
       // Proxy unavailable (local dev) or throttled: back off.
       if (alive) gtTimer = setTimeout(() => void pollGecko(), gtFails ? Math.min(30_000, 5_000 * gtFails) : 3_000)
     }
-    // (A curve opened by its address alone has no GeckoTerminal pool.)
-    if (activePool) void pollGecko()
+    // A live curve's own events are its complete trade list (and GeckoTerminal
+    // doesn't know a curve by its address, as the Terminal's engine rows link it).
+    if (activePool && !onCurve) void pollGecko()
     cleanups.push(() => { if (gtTimer) clearTimeout(gtTimer) })
     // Without the quote side (still loading) and no engine, GeckoTerminal's
     // feed is all there is until the quote is known (this effect reruns then).
@@ -486,11 +487,13 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
 
   // GeckoTerminal's live chart (as on argus.world) when it can chart this
   // pool; ARCDEX's own chart one tap away, with trade labels and indicators.
-  const showGecko = chartSource === 'gecko' && canEmbedGecko(activePool)
+  // A live curve has no GeckoTerminal pool to embed: ARCDEX's chart, from the curve's trades.
+  const geckoChart = canEmbedGecko(activePool) && !liveCurve
+  const showGecko = chartSource === 'gecko' && geckoChart
   const chartCard = (
     <div className="coin-chart-card" style={{ ...card, padding: 16 }}>
       <div className="coin-chart-title" style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{T("PRICE CHART · USD")}</div>
-      {canEmbedGecko(activePool) && <div className="chart-toolbar"><ChartSourceTabs value={chartSource} onChange={setChartSource} /></div>}
+      {geckoChart && <div className="chart-toolbar"><ChartSourceTabs value={chartSource} onChange={setChartSource} /></div>}
       {showGecko ? <GeckoChart key={activePool} pool={activePool} symbol={symbol} createdAt={active?.createdAt} /> : (
         <PriceChart poolAddress={activePool || null} engineToken={address} ticks={onchainFailed ? undefined : ticks} live={streaming} trades={chartTrades} thesisMarks={thesisMarks} friends={friends} supply={supply} symbol={symbol}
           onTraderClick={a => navigate({ name: 'trader', address: a })} />
