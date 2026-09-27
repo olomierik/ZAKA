@@ -20,6 +20,7 @@ const ClanPage        = lazy(() => import('./pages/ClanPage'))
 const TransfersPage   = lazy(() => import('./pages/TransfersPage'))
 const BurnPage        = lazy(() => import('./pages/BurnPage'))
 const AlertsPage      = lazy(() => import('./pages/AlertsPage'))
+const DeployCurveRouter = lazy(() => import('./pages/DeployCurveRouter'))
 import TradingWalletPanel from './components/TradingWalletPanel'
 import DiscoveryPanel from './components/DiscoveryPanel'
 import { DiscoverClans, FollowTopTraders, TickerBar } from './components/Rails'
@@ -57,6 +58,7 @@ export type Page =
   | { name: 'launchpad' }
   | { name: 'swap' }
   | { name: 'bridge'; dir?: 'in' | 'out' }
+  | { name: 'deploy-curve-router' }
 
 const fromUrl = (): Page => pathToPage(window.location.pathname, window.location.search) ?? { name: 'terminal' }
 
@@ -147,6 +149,7 @@ export default function App() {
           {page.name === 'rewards'     && <RewardsPage navigate={navigate} />}
           {page.name === 'transfers'   && <TransfersPage navigate={navigate} />}
           {page.name === 'burn'        && <BurnPage navigate={navigate} />}
+          {page.name === 'deploy-curve-router' && <DeployCurveRouter />}
           </Suspense>
         </main>
 
