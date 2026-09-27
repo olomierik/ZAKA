@@ -28,6 +28,20 @@ export const SOLONPAD_FACTORY = '0xd6b86b9b1bb64b941b21aaa6a0e3a673e8405a3b'
 export const MERCURI_DEPLOY_BLOCK = 22_060_881
 export const SOLONPAD_DEPLOY_BLOCK = 21_134_269
 
+// SolonPad's default mode since 2026-09-16, "instant v4": a coin is born
+// straight into a native-USDC Uniswap v4 pool (no curve, no graduation) by
+// Uniswap's Liquidity Launcher and SolonPad's own InstantLaunchStrategy,
+// whose LP position goes to SolonPad's fee splitter. The pool key is fixed:
+// { currency0: native USDC, currency1: the coin, fee 1%, tickSpacing 100, no hooks },
+// and the whole 1B supply opens at tick 123,800 (~$4.2K fully diluted).
+// Source: github.com/solonlend/solonpad-skill (addresses.json → instantV4, AGENT-GUIDE.md §V4-0).
+export const SOLON_INSTANT_STRATEGY = '0xfa5997445db1e9fb7f7664fd176379b6b26497f0'
+export const SOLON_INSTANT_SPLITTER = '0xd6b05564cea990b69abf10b433279093758e2a54'
+export const SOLON_INSTANT_DEPLOY_BLOCK = 21_158_000
+export const SOLON_INSTANT_OPEN_TICK = 123_800
+/** Uniswap v4's StateView on Arc: a pool's price and liquidity by PoolId. */
+export const STATE_VIEW = '0xf3334192d15450cdd385c8b70e03f9a6bd9e673b'
+
 // ArcDexCurveRouter (contracts/ArcDexCurveRouter.sol, VERSION 1), deployed on
 // Arc mainnet 2026-09-27 by the owner from /deploy/curve-router. Mercuri and
 // SolonPad curve trades go through it and pay ARCDEX's fee.
@@ -50,6 +64,8 @@ export const MERCURI_SELL = '0x20a7fc03b19d7f251cc907f177ff82194c6aebe9a2b47e1cd
 export const SOLON_TOKEN_LAUNCHED = '0x8d4aad4953d0ca700d468f3753aa14432d1b35b43ec6409f051fb6aa43a89607'
 export const SOLON_BUY = '0xec36bf571f136799e8dc0b0b8bea4b04d8bd3d43de838aab0d5fc21d4cbfc455'
 export const SOLON_SELL = '0x8113d738abdcb6b38357e9d53a54a7157861a09031b453651f0fe7fe151f59df'
+/** InstantLaunchStrategy: TokenLaunched(bytes32 indexed poolId, address indexed token, address indexed finalPositionRecipient, PoolKey key) */
+export const SOLON_INSTANT_LAUNCHED = '0x3b3d2bafdcae274a232217e1f80ee4305d3af6aa25c8b14b1681bd68d18042a4'
 
 // Function selectors the engine and the coin index (api/_curveIndex.ts) read with.
 export const SEL = {
@@ -68,6 +84,9 @@ export const SEL = {
   name: '0x06fdde03',             // ERC-20 name()
   symbol: '0x95d89b41',           // ERC-20 symbol()
   decimals: '0x313ce567',         // ERC-20 decimals()
+  tokenURI: '0x3c130d90',         // UERC20 tokenURI(): the coin's metadata JSON
+  getSlot0: '0xc815641c',         // StateView getSlot0(bytes32 poolId)
+  getLiquidity: '0xfa6793d5',     // StateView getLiquidity(bytes32 poolId)
 } as const
 
 export type CurveVenue = 'Mercuri' | 'SolonPad'
