@@ -265,6 +265,15 @@ export async function exportPrivateKey(passcode: string): Promise<Hex> {
   return decryptPrivateKey(storedBlob(), passcode)
 }
 
+/** Checks the passcode (and the passkey, when 2FA is on) against the stored
+ * wallet — for withdrawals to a wallet that didn't fund this one. Throws
+ * "Wrong passcode" when it doesn't open the unlocked wallet. */
+export async function verifyPasscode(passcode: string): Promise<void> {
+  if (!unlockedAccount) throw new Error('Wallet is locked')
+  const pk = await decryptPrivateKey(storedBlob(), passcode)
+  if (privateKeyToAccount(pk).address !== unlockedAccount.address) throw new Error('Wrong passcode')
+}
+
 /** Turn on passkey 2FA: after this, unlocking needs the passcode AND the passkey. */
 export async function enablePasskey(passcode: string): Promise<void> {
   const blob = storedBlob()

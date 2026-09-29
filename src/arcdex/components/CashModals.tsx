@@ -3,7 +3,10 @@ import QRCode from 'qrcode'
 import { socialWrite } from '../api/social'
 import CardDeposit from './CardDeposit'
 import { shortAddr, type Trader } from '../lib/identity'
-import { useCash, useSendUsdc } from '../lib/usdc'
+import { needsPasscode, useCash, useSendUsdc } from '../lib/usdc'
+import { useFunders } from '../lib/funders'
+import { hasPasskey } from '../lib/embeddedWallet'
+import { txErrorText } from '../lib/tx'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
@@ -11,6 +14,8 @@ import { openTradingWallet } from '../lib/tradingWalletSheet'
 // fomo-style cash flows: Deposit (USDC on Arc, or bridge from another
 // chain), Withdraw (to any Arc address) and Send cash to a trader with a
 // note. Everything is plain USDC on Arc — gas is paid in USDC too.
+// From the trading wallet, cash goes back to a wallet that funded it
+// freely; anywhere else needs the passcode (lib/funders.ts).
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -69,36 +74,67 @@ export function DepositModal({ trader, navigate, onClose, initial = 'crypto' }: 
   )
 }
 
+/** From the trading wallet: the passcode field for a destination that
+ * didn't fund it, or a note that no passcode is needed (lib/funders.ts). */
+function PasscodeGate({ trader, to, passcode, setPasscode }: { trader: Trader; to: string; passcode: string; setPasscode: (v: string) => void }) {
+  if (trader.kind !== 'trading-wallet' || !/^0x[0-9a-fA-F]{40}$/.test(to)) return null
+  if (!needsPasscode(trader, to)) return <div style={{ fontSize: '0.74rem', color: '#86efac' }}>{T("✓ Back to a wallet that funded this one — no passcode needed.")}</div>
+  return (
+    <>
+      <div style={{ fontSize: '0.74rem', color: '#fcd34d', lineHeight: 1.5 }}>
+        🔒 {T("This wallet didn't fund your trading wallet. Enter your passcode to send here")}{hasPasskey() ? T(" (and confirm with your passkey)") : ''}.
+      </div>
+      <input className="field" type="password" autoComplete="current-password" placeholder={T("Passcode")} value={passcode} onChange={e => setPasscode(e.target.value)} />
+    </>
+  )
+}
+
 export function WithdrawModal({ trader, onClose }: { trader: Trader; onClose: () => void }) {
   const { cash, refresh } = useCash(trader.address)
   const send = useSendUsdc(trader)
+  const { funders, scanning } = useFunders(trader.kind === 'trading-wallet' ? trader.address : null)
   const [to, setTo] = useState('')
   const [amount, setAmount] = useState('')
+  const [passcode, setPasscode] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const dest = to.trim()
+  const locked = needsPasscode(trader, dest)
 
   async function go() {
     setBusy(true); setMsg(null)
     try {
-      const h = await send(to.trim(), amount)
-      setMsg({ ok: true, text: `Sent $${amount} — tx ${shortAddr(h)}` }); setAmount(''); refresh()
+      const h = await send(dest, amount, locked ? passcode : undefined)
+      setMsg({ ok: true, text: T('Sent {usd} — tx {tx}', { usd: `$${amount}`, tx: shortAddr(h) }) }); setAmount(''); setPasscode(''); refresh()
     } catch (e) {
-      const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
-      setMsg({ ok: false, text: /rejected|denied/i.test(m) ? T('You cancelled the transaction.') : m.slice(0, 180) })
+      setMsg({ ok: false, text: T(txErrorText(e)) })
     } finally { setBusy(false) }
   }
 
+  const blocked = busy || !dest || !amount || (locked && !passcode)
   return (
     <Modal title={T("Withdraw USDC")} onClose={onClose}>
       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{T("Available:")}{' '}<b className="sensitive" style={{ color: 'var(--text)' }}>{cash === null ? '…' : `$${cash.toFixed(2)}`}</b></div>
+      {trader.kind === 'trading-wallet' && (funders.size > 0 || scanning) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{funders.size ? T("Back to a wallet that funded this one:") : T("Finding the wallets that funded this one…")}</span>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {[...funders].map(f => (
+              <button key={f} className={`funder-chip${dest.toLowerCase() === f ? ' on' : ''}`} onClick={() => setTo(f)}>↩ {shortAddr(f)}</button>
+            ))}
+          </div>
+          {funders.size > 0 && <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>{T("Funded from an exchange? Send to your exchange deposit address instead — it isn't the address the USDC came from.")}</span>}
+        </div>
+      )}
       <input className="field" placeholder={T("Arc address 0x…")} value={to} onChange={e => setTo(e.target.value)} />
       <div style={{ display: 'flex', gap: 8 }}>
         <input className="field" type="number" min="0" placeholder={T("Amount (USDC)")} value={amount} onChange={e => setAmount(e.target.value)} />
         <button className="btn-ghost" onClick={() => cash !== null && setAmount(Math.max(0, cash - 0.05).toFixed(2))}>{T("Max")}</button>
       </div>
+      <PasscodeGate trader={trader} to={dest} passcode={passcode} setPasscode={setPasscode} />
       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T("Arc gas is paid in USDC — Max leaves $0.05 for it. Only send to an address on the Arc network.")}</div>
       {msg && <div style={{ fontSize: '0.78rem', color: msg.ok ? '#86efac' : '#fca5a5' }}>{msg.text}</div>}
-      <button className="btn-primary" disabled={busy || !to || !amount} onClick={() => void go()} style={{ opacity: busy || !to || !amount ? 0.5 : 1 }}>{busy ? T("Sending…") : T("Withdraw")}</button>
+      <button className="btn-primary" disabled={blocked} onClick={() => void go()} style={{ opacity: blocked ? 0.5 : 1 }}>{busy ? (locked && hasPasskey() ? T("Confirm with your passkey…") : T("Sending…")) : T("Withdraw")}</button>
     </Modal>
   )
 }
@@ -106,31 +142,35 @@ export function WithdrawModal({ trader, onClose }: { trader: Trader; onClose: ()
 export function SendCashModal({ trader, to, toName, onClose }: { trader: Trader; to: string; toName: string; onClose: () => void }) {
   const { cash, refresh } = useCash(trader.address)
   const send = useSendUsdc(trader)
+  useFunders(trader.kind === 'trading-wallet' ? trader.address : null)
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
+  const [passcode, setPasscode] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const locked = needsPasscode(trader, to)
 
   async function go() {
     setBusy(true); setMsg(null)
     try {
-      const h = await send(to, amount)
+      const h = await send(to, amount, locked ? passcode : undefined)
       if (note.trim()) await socialWrite(trader, 'transfer.note', { tx_hash: h, note: note.trim() }).catch(() => {})
-      setMsg({ ok: true, text: `Sent $${amount} to ${toName}` }); setAmount(''); setNote(''); refresh()
+      setMsg({ ok: true, text: T('Sent {usd} to {name}', { usd: `$${amount}`, name: toName }) }); setAmount(''); setNote(''); setPasscode(''); refresh()
     } catch (e) {
-      const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
-      setMsg({ ok: false, text: /rejected|denied/i.test(m) ? T('You cancelled the transaction.') : m.slice(0, 180) })
+      setMsg({ ok: false, text: T(txErrorText(e)) })
     } finally { setBusy(false) }
   }
 
+  const blocked = busy || !amount || !trader.address || (locked && !passcode)
   return (
     <Modal title={T('Send cash to {name}', { name: toName })} onClose={onClose}>
       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{T("Your cash:")}{' '}<b className="sensitive" style={{ color: 'var(--text)' }}>{cash === null ? '…' : `$${cash.toFixed(2)}`}</b></div>
       <input className="field" type="number" min="0" placeholder="$0" value={amount} onChange={e => setAmount(e.target.value)} style={{ fontSize: '1.2rem', fontFamily: 'var(--mono)' }} />
       <textarea className="field" placeholder={T("Add a note (optional)")} maxLength={200} rows={2} value={note} onChange={e => setNote(e.target.value)} style={{ resize: 'vertical', fontFamily: 'inherit' }} />
       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{note.length}{T("/200 · Sent instantly as USDC on Arc to")}{' '}{shortAddr(to)}.</div>
+      <PasscodeGate trader={trader} to={to} passcode={passcode} setPasscode={setPasscode} />
       {msg && <div style={{ fontSize: '0.78rem', color: msg.ok ? '#86efac' : '#fca5a5' }}>{msg.text}</div>}
-      <button className="btn-primary" disabled={busy || !amount || !trader.address} onClick={() => void go()} style={{ opacity: busy || !amount || !trader.address ? 0.5 : 1 }}>{!trader.address ? T("Connect a wallet to send") : busy ? T("Sending…") : T("Send")}</button>
+      <button className="btn-primary" disabled={blocked} onClick={() => void go()} style={{ opacity: blocked ? 0.5 : 1 }}>{!trader.address ? T("Connect a wallet to send") : busy ? T("Sending…") : T("Send")}</button>
     </Modal>
   )
 }

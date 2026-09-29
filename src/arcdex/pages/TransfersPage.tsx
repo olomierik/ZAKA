@@ -14,6 +14,12 @@ import { t as T } from '../lib/i18n'
 // straight from Arc, plus cash sent between traders with its note.
 
 const TRANSFER = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)')
+/** Native USDC sends (what most wallets do on Arc) are logged only by this
+ * system address, in 18 decimals. An ERC-20 USDC transfer is logged twice:
+ * by it and by the USDC contract (6 decimals) — so both are read and the
+ * pair is counted once (measured 2026-09-26). */
+const NATIVE_LOGGER = '0xfffffffffffffffffffffffffffffffffffffffe'
+const usdcAmount = (l: { address: string; args: { value?: bigint } }) => Number(l.args.value ?? 0n) / (l.address.toLowerCase() === NATIVE_LOGGER ? 1e18 : 1e6)
 const WINDOW = 9_000n       // Arc's node rejects getLogs ranges of 10,000+ blocks
 const STEP_WINDOWS = 8      // ~9.6h of history per "Load older"
 
@@ -40,16 +46,18 @@ export default function TransfersPage({ navigate }: { navigate: (p: Page) => voi
       for (let i = 0; i < STEP_WINDOWS && to > 0n; i++) {
         const from = to > WINDOW ? to - WINDOW + 1n : 0n
         const [outs, ins] = await Promise.all([
-          client.getLogs({ address: USDC, event: TRANSFER, args: { from: me as `0x${string}` }, fromBlock: from, toBlock: to }),
-          client.getLogs({ address: USDC, event: TRANSFER, args: { to: me as `0x${string}` }, fromBlock: from, toBlock: to }),
+          client.getLogs({ address: [USDC, NATIVE_LOGGER], event: TRANSFER, args: { from: me as `0x${string}` }, fromBlock: from, toBlock: to }),
+          client.getLogs({ address: [USDC, NATIVE_LOGGER], event: TRANSFER, args: { to: me as `0x${string}` }, fromBlock: from, toBlock: to }),
         ])
-        for (const l of outs) found.push({ hash: l.transactionHash, block: l.blockNumber, dir: 'out', other: String(l.args.to).toLowerCase(), amount: Number(l.args.value) / 1e6, time: Number((l as { blockTimestamp?: bigint }).blockTimestamp ?? 0) * 1000 || undefined })
-        for (const l of ins) found.push({ hash: l.transactionHash, block: l.blockNumber, dir: 'in', other: String(l.args.from).toLowerCase(), amount: Number(l.args.value) / 1e6, time: Number((l as { blockTimestamp?: bigint }).blockTimestamp ?? 0) * 1000 || undefined })
+        for (const l of outs) found.push({ hash: l.transactionHash, block: l.blockNumber, dir: 'out', other: String(l.args.to).toLowerCase(), amount: usdcAmount(l), time: Number((l as { blockTimestamp?: bigint }).blockTimestamp ?? 0) * 1000 || undefined })
+        for (const l of ins) found.push({ hash: l.transactionHash, block: l.blockNumber, dir: 'in', other: String(l.args.from).toLowerCase(), amount: usdcAmount(l), time: Number((l as { blockTimestamp?: bigint }).blockTimestamp ?? 0) * 1000 || undefined })
         to = from - 1n
       }
       cursor.current = to
       setScannedTo(to)
-      setRows(r => [...r, ...found].sort((a, b) => Number(b.block - a.block)))
+      const seen = new Set<string>()
+      const once = found.filter(x => { const k = `${x.hash}:${x.dir}:${x.other}:${x.amount.toFixed(6)}`; if (seen.has(k)) return false; seen.add(k); return true })
+      setRows(r => [...r, ...once].sort((a, b) => Number(b.block - a.block)))
       setProfiles(await getProfiles(found.map(f => f.other)).catch(() => new Map()))
     } finally { setLoading(false) }
   }, [me])

@@ -8,6 +8,8 @@ import { useEmbeddedAddress } from '../lib/identity'
 import { t as T } from '../lib/i18n'
 import { promptWallet, txErrorText } from '../lib/tx'
 import { hideWalletPrompt } from '../lib/walletPrompt'
+import { addFunder, useFunders } from '../lib/funders'
+import { hasPasskey, verifyPasscode } from '../lib/embeddedWallet'
 
 type Dir = 'out' | 'in'
 type Adapter = Awaited<ReturnType<typeof getBridgeAdapter>> | ReturnType<typeof tradingWalletAdapter>
@@ -39,7 +41,10 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
   const [progress, setProgress] = useState<string[]>([])
   const [result, setResult] = useState<BridgeResult | null>(null)
   const [errMsg, setErrMsg] = useState('')
+  const [passcode, setPasscode] = useState('')
   const adapterRef = useRef<Adapter | null>(null)
+  // Wallets that funded the trading wallet: sending back to them needs no passcode (lib/funders.ts).
+  const { funders } = useFunders(tradingAddr)
 
   const otherDef = BRIDGE_CHAINS.find(c => c.chain === other) ?? BRIDGE_CHAINS[0]
   // Solana can only receive: bringing USDC in from it needs a Solana wallet.
@@ -52,11 +57,19 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
   // on the other chain, so an external wallet signs there.
   const fromTrading = dir === 'out' && fromTradingPref && !!tradingAddr
   const sender = fromTrading ? tradingAddr : address ?? null
-  // Arriving on Arc, the trading wallet is where USDC is traded, so it's the default recipient.
-  const defaultRecipient = dir === 'in' ? (tradingAddr ?? address ?? '') : (otherDef.evm ? (sender ?? '') : '')
+  // Arriving on Arc, the trading wallet is where USDC is traded, so it's the
+  // default recipient. Leaving from the trading wallet, it's the connected
+  // wallet or one that funded it — the trading wallet's own address on
+  // another chain is only reachable by exporting its key.
+  const defaultRecipient = dir === 'in' ? (tradingAddr ?? address ?? '')
+    : !otherDef.evm ? ''
+    : fromTrading ? (address ?? [...funders][0] ?? '')
+    : (sender ?? '')
   const recipientAddr = recipient.trim() || defaultRecipient
   const toSolana = dir === 'out' && !otherDef.evm
   const recipientOk = toSolana ? isSolanaAddress(recipientAddr) : isAddress(recipientAddr)
+  // From the trading wallet to anywhere but a wallet that funded it: passcode.
+  const locked = fromTrading && !!tradingAddr && recipientOk && recipientAddr.toLowerCase() !== tradingAddr.toLowerCase() && !funders.has(recipientAddr.toLowerCase())
   const n = parseFloat(amount)
 
   // Circle's fees for this route and amount (debounced; stale answers dropped).
@@ -92,6 +105,10 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
       if (m === 'burn' && prompted) { hideWalletPrompt(); prompted = false }
     }
     try {
+      if (locked) {
+        if (!passcode) throw new Error(T('Enter your passcode to send to a wallet that did not fund this one'))
+        await verifyPasscode(passcode)
+      }
       let adapter: Adapter
       if (fromTrading) adapter = tradingWalletAdapter()
       else {
@@ -111,6 +128,9 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
       // MetaMask users to switch to a smart account first.
       const res = await kit.bridge({ from: { adapter, chain: from as BridgeChain }, to: { chain: to as BridgeChain, recipientAddress: recipientAddr, useForwarder: true }, amount, config: { batchTransactions: false } } as never)
       setResult(res)
+      // A deposit from your own wallet into the trading wallet: that wallet funded it.
+      if (dir === 'in' && tradingAddr && address && recipientAddr.toLowerCase() === tradingAddr.toLowerCase() && res.steps?.some(st => st.name === 'burn' && st.state === 'success')) addFunder(tradingAddr, address)
+      if (res.state === 'success') setPasscode('')
       setStatus(res.state === 'success' ? 'done' : 'error')
       if (res.state !== 'success') setErrMsg(T("The transfer didn't finish — see the steps below. If the burn went through, your USDC is safe: press Retry to finish it."))
       if (res.state === 'success') setAmount('')
@@ -202,7 +222,16 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
           <input placeholder={toSolana ? T("Solana address") : defaultRecipient || '0x…'} value={recipient} onChange={e => setRecipient(e.target.value.trim())} style={{ ...field, fontSize: '0.85rem' }} />
           {dir === 'in' && !recipient && tradingAddr && <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 5 }}>{T("Arrives in your trading wallet, ready to trade.")}</div>}
           {recipient && !recipientOk && <div style={{ fontSize: '0.7rem', color: '#fca5a5', marginTop: 5 }}>{toSolana ? T("That isn't a Solana address.") : T("That isn't a valid address.")}</div>}
+          {fromTrading && !recipientAddr && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 5 }}>{T("Enter the wallet that should receive it on {chain}.", { chain: otherDef.label })}</div>}
+          {fromTrading && recipientOk && !locked && recipientAddr.toLowerCase() !== tradingAddr?.toLowerCase() && <div style={{ fontSize: '0.72rem', color: '#86efac', marginTop: 5 }}>{T("✓ Back to a wallet that funded this one — no passcode needed.")}</div>}
         </div>
+
+        {locked && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontSize: '0.74rem', color: '#fcd34d', lineHeight: 1.5 }}>🔒 {T("This wallet didn't fund your trading wallet. Enter your passcode to send here")}{hasPasskey() ? T(" (and confirm with your passkey)") : ''}.</div>
+            <input type="password" autoComplete="current-password" placeholder={T("Passcode")} value={passcode} onChange={e => setPasscode(e.target.value)} style={{ ...field, fontSize: '0.9rem' }} />
+          </div>
+        )}
 
         {n > 0 && (
           <div style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -257,9 +286,9 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
             {dir === 'in' ? T('Connect the wallet holding your USDC') : T('Connect Wallet')}
           </button>
         ) : (
-          <button onClick={() => void handleBridge()} disabled={!(n > 0) || !recipientOk || busy || tooSmall} style={{
+          <button onClick={() => void handleBridge()} disabled={!(n > 0) || !recipientOk || busy || tooSmall || (locked && !passcode)} style={{
             padding: 14, borderRadius: 12, fontSize: '0.95rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%',
-            opacity: !(n > 0) || !recipientOk || busy || tooSmall ? 0.5 : 1,
+            opacity: !(n > 0) || !recipientOk || busy || tooSmall || (locked && !passcode) ? 0.5 : 1,
           }}>
             {busy ? T("Bridging…") : tooSmall ? T("Amount too small to cover Circle's fees")
               : dir === 'in' ? T('Deposit {amount} USDC to Arc', { amount: n > 0 ? amount : '' }).replace('  ', ' ') : T('Send {amount} USDC to {chain}', { amount: n > 0 ? amount : '', chain: otherDef.label }).replace('  ', ' ')}

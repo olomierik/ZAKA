@@ -6,6 +6,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { parseAbi, parseUnits, type Address, type Hex } from 'viem'
 import { client } from '../api/launchpad'
 import { sendArc } from './tx'
+import { verifyPasscode } from './embeddedWallet'
+import { isFunder } from './funders'
 import type { Trader } from './identity'
 
 export const USDC = '0x3600000000000000000000000000000000000000' as Address
@@ -31,15 +33,26 @@ export function useCash(address: string | null): { cash: number | null; refresh:
   return { cash, refresh }
 }
 
+/** From the trading wallet, only a wallet that funded it can receive cash
+ * without the passcode (lib/funders.ts). */
+export function needsPasscode(trader: Trader, to: string): boolean {
+  return trader.kind === 'trading-wallet' && !!trader.address && /^0x[0-9a-fA-F]{40}$/.test(to) && !isFunder(trader.address, to)
+}
+
 /** Returns a function that sends USDC from the trader's wallet and waits
- * for it to confirm. */
+ * for it to confirm. From the trading wallet to a wallet that didn't fund
+ * it, `passcode` must open the wallet (and its passkey, with 2FA on). */
 export function useSendUsdc(trader: Trader) {
-  return useCallback(async (to: string, amount: string): Promise<Hex> => {
+  return useCallback(async (to: string, amount: string, passcode?: string): Promise<Hex> => {
     if (!trader.address) throw new Error('Connect or unlock a wallet first')
     if (!/^0x[0-9a-fA-F]{40}$/.test(to)) throw new Error('That is not a valid Arc address')
     if (to.toLowerCase() === trader.address.toLowerCase()) throw new Error('That is your own wallet')
     const value = parseUnits(amount, 6)
     if (value <= 0n) throw new Error('Enter an amount')
+    if (needsPasscode(trader, to)) {
+      if (!passcode) throw new Error('Enter your passcode to send to a wallet that did not fund this one')
+      await verifyPasscode(passcode)
+    }
     const req = { address: USDC, abi: ERC20, functionName: 'transfer' as const, args: [to as Address, value] as const }
     const hash = await sendArc(trader.kind, req as never)
     const rc = await client.waitForTransactionReceipt({ hash })

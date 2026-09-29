@@ -1,22 +1,30 @@
 import { useEffect, useState, useCallback } from 'react'
-import { createPublicClient, http, parseAbi, formatUnits } from 'viem'
-import { arc } from '../wagmi'
+import { parseAbi, formatUnits } from 'viem'
+import { client } from '../api/launchpad'
 import {
   hasStoredWallet, isUnlocked, currentAddress, createWallet, unlock, lock,
-  exportPrivateKey, deleteWallet, hasPasskey, enablePasskey, disablePasskey, passkeySupport,
+  exportPrivateKey, deleteWallet, hasPasskey, enablePasskey, disablePasskey, passkeySupport, WALLET_EVENT,
 } from '../lib/embeddedWallet'
+import { noteWalletBorn } from '../lib/funders'
+import { DepositModal, WithdrawModal } from './CashModals'
+import { useTrader } from '../lib/identity'
+import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 
 const USDC_ADDR = '0x3600000000000000000000000000000000000000' as const
 const ERC20_BALANCE_ABI = parseAbi(['function balanceOf(address) view returns (uint256)'])
-const client = createPublicClient({ chain: arc, transport: http(arc.rpcUrls.default.http[0]) })
 
 function short(addr: string) { return `${addr.slice(0, 6)}…${addr.slice(-4)}` }
 
 type View = 'locked' | 'unlocked' | 'create' | 'import' | 'export' | 'security'
 
-export default function TradingWalletPanel() {
-  const [view, setView]       = useState<View>(hasStoredWallet() ? 'locked' : 'create')
+/** `navigate`: where Portfolio and Deposit → Bridge go (the sheet on phones
+ * closes itself first). Without it, those buttons are hidden. */
+export default function TradingWalletPanel({ navigate }: { navigate?: (p: Page) => void } = {}) {
+  // Already unlocked (from another panel or the sheet): open straight to it.
+  const [view, setView]       = useState<View>(isUnlocked() ? 'unlocked' : hasStoredWallet() ? 'locked' : 'create')
+  const [modal, setModal]     = useState<'deposit' | 'withdraw' | null>(null)
+  const trader = useTrader() // the trading wallet itself once unlocked (identity.ts)
   const [passcode, setPasscode] = useState('')
   const [passcode2, setPasscode2] = useState('')
   const [importKey, setImportKey] = useState('')
@@ -29,6 +37,16 @@ export default function TradingWalletPanel() {
   const [support, setSupport] = useState<'yes' | 'maybe' | 'no'>('maybe')
   const [busy, setBusy]       = useState(false)
   useEffect(() => { void passkeySupport().then(setSupport) }, [])
+  // Unlocked or locked somewhere else (another panel, the sheet): follow it.
+  useEffect(() => {
+    const sync = () => {
+      const a = currentAddress()
+      setAddress(a)
+      setView(v => (a ? (v === 'locked' || v === 'create' ? 'unlocked' : v) : hasStoredWallet() ? 'locked' : 'create'))
+    }
+    window.addEventListener(WALLET_EVENT, sync)
+    return () => window.removeEventListener(WALLET_EVENT, sync)
+  }, [])
 
   const refreshBalance = useCallback((addr: string) => {
     void client.readContract({ address: USDC_ADDR, abi: ERC20_BALANCE_ABI, functionName: 'balanceOf', args: [addr as `0x${string}`] })
@@ -45,6 +63,7 @@ export default function TradingWalletPanel() {
     if (passcode !== passcode2) { setError(T("Passcodes do not match")); return }
     try {
       const addr = await createWallet(passcode)
+      void noteWalletBorn(addr) // nothing older can have funded it (lib/funders.ts)
       setAddress(addr); setView('unlocked'); setPasscode(''); setPasscode2('')
     } catch (e) { setError(e instanceof Error ? e.message : T("Failed to create wallet")) }
   }
@@ -119,7 +138,12 @@ export default function TradingWalletPanel() {
             ${balance ? Number(balance).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}
             <span style={{ fontSize: '0.65rem', fontWeight: 500, color: 'var(--text-muted)', marginLeft: 4 }}>{T("USDC")}</span>
           </div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: 10 }}>{T("Deposit USDC on Arc mainnet to this address to trade with one click from the terminal.")}</div>
+          <div className="tw-actions">
+            <button onClick={() => setModal('deposit')}>{T("Deposit")}</button>
+            <button onClick={() => setModal('withdraw')}>{T("Withdraw")}</button>
+            {navigate && <button onClick={() => navigate({ name: 'portfolio' })}>{T("Portfolio")}</button>}
+          </div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: 10 }}>{T("Deposit USDC on Arc mainnet to this address to trade with one click from the terminal.")}{' '}{T("Withdrawals back to the wallet you funded from need no passcode; anywhere else asks for it.")}</div>
           <button onClick={() => { setView('security'); setError('') }} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 8, padding: '8px 10px', borderRadius: 7, background: 'var(--bg-2)', border: `1px solid ${twoFa ? 'rgba(34,197,94,0.35)' : 'var(--adx-card-border)'}`, color: 'var(--text)', cursor: 'pointer', fontSize: '0.72rem' }}>
             <span>{T("🔑 2FA (passkey)")}</span>
             <b style={{ color: twoFa ? 'var(--green)' : 'var(--text-muted)' }}>{twoFa ? T("On") : T("Off — set up")}</b>
@@ -130,6 +154,10 @@ export default function TradingWalletPanel() {
           </div>
         </div>
       )}
+
+      {modal && address && trader.kind === 'trading-wallet' && (modal === 'deposit'
+        ? <DepositModal trader={trader} navigate={p => { setModal(null); navigate?.(p) }} onClose={() => setModal(null)} />
+        : <WithdrawModal trader={trader} onClose={() => { setModal(null); refreshBalance(address) }} />)}
 
       {view === 'locked' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
