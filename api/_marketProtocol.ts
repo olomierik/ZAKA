@@ -150,6 +150,11 @@ export interface LaunchInfo {
   chain: 'ARC'
   status: 'LIVE'
   portal?: number
+  /** The contract the launch transaction was sent to (generic v4 launches). */
+  entry?: string
+  /** Found from the pool's Initialize (engine/src/launchpads/v4Launches.ts),
+   * not a launchpad's own adapter; an adapter's report replaces it. */
+  generic?: boolean
   image?: string | null
   /** Opening price (the pool's initial price) / latest known, and market cap — when known. */
   priceUsd?: number | null

@@ -28,6 +28,7 @@ import { ArcLaunchpadAdapter } from './launchpads/arcLaunchpad'
 import { ArgusAdapter } from './launchpads/argus'
 import { MercuriAdapter } from './launchpads/mercuri'
 import { SolonPadAdapter } from './launchpads/solonpad'
+import { V4LaunchDetector } from './launchpads/v4Launches'
 import { log, errMsg, setLogLevel } from './log'
 import { MarketEngine, type Publisher } from './market/engine'
 import { metrics } from './metrics'
@@ -163,11 +164,20 @@ async function main() {
   const eng = engine
   await eng.warmStart()
   const parser = new TradeParser(pools, oracle, makers, eng.launchpadOf)
+  // Launches on launchpads without an adapter, found from their pool's Initialize.
+  const v4Launches = new V4LaunchDetector(rpc, token => eng.metas.has(token))
 
   const isInitialize = (l: RawLog) => l.topics[0] === V4_INITIALIZE && l.address.toLowerCase() === POOL_MANAGER
   const parseOne = async (l: RawLog) => {
     try {
-      if (isInitialize(l)) return null // registered in the pre-pass
+      if (isInitialize(l)) {
+        // Registered in the pre-pass; a coin created in this block is a launch.
+        const info = pools.get(l.topics[1])
+        const launch = info ? await v4Launches.detect(l, info) : null
+        if (!launch || !info) return null
+        const q = oracle.usd(info.quote)
+        return { launch, initialPriceUsd: info.initialPrice && q ? info.initialPrice * q : null }
+      }
       const ad = adapters.find(l)
       if (ad) {
         const launch = await ad.parseLaunch(l, adapterCtx)

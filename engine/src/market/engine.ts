@@ -105,7 +105,16 @@ export class MarketEngine {
   }
 
   onLaunch(l: LaunchInfo, ctx: { replay: boolean; initialPriceUsd?: number | null }) {
-    if (this.metas.has(l.token)) return // idempotent (replays, duplicate events)
+    const had = this.metas.get(l.token)
+    if (had) {
+      // Idempotent (replays, duplicate events), except that a launchpad
+      // adapter's report replaces one found generically from the pool.
+      if (!had.generic || l.generic) return
+      const merged: LaunchInfo = { ...l, pool: l.pool ?? had.pool, quote: l.quote ?? had.quote }
+      this.metas.set(l.token, merged)
+      this.hot.putMeta(l.token, merged)
+      return
+    }
     this.metas.set(l.token, l)
     this.hot.putMeta(l.token, l)
     this.hot.pushLaunch(l)

@@ -42,6 +42,15 @@ export const LAUNCHPADS: Launchpad[] = [
   { name: 'Flipt', color: '#14b8a6', match: /\bflipt/ },
   { name: 'Onmi', color: '#8b5cf6', match: /\bonmi/ },
   { name: 'NebulaPad', color: '#6366f1', match: /\bnebula/ },
+  // Found on GeckoTerminal's Arc venues and traced to their launch contracts
+  // on 2026-09-30 (engine/scripts/discover-launchpads.ts). Sites unconfirmed.
+  { name: 'Peach', color: '#fb923c', match: /\bpeach\b/ },
+  { name: 'Faze', color: '#0ea5e9', match: /\bfaze\b/ },
+  { name: 'Aka.fun', color: '#f43f5e', match: /\baka[.-]?fun\b/ },
+  { name: 'Long.supply', color: '#84cc16', match: /\blong[.-]?supply\b/ },
+  { name: 'Virtuals', color: '#10b981', match: /\bvirtuals?\b/ },
+  { name: 'Foci', color: '#a3a3a3', match: /\bfoci\b/ },
+  { name: 'Lunya', color: '#c084fc', match: /\blunya\b/ },
 ]
 
 /** Plain DEXes (not launch venues): their pools aren't listed as launches. */
@@ -78,11 +87,13 @@ export function launchpadLabel(dexId: string, dexName = ''): string {
 }
 
 /** Known GeckoTerminal dex ids on Arc, for when the live list can't be read. */
+// Checked 2026-09-30: Tolly, RadarDEX, Warp and Archemist had no pools listed
+// any more and are out; Peach ($840k/day then), Faze and Aka.fun are in.
 export const KNOWN_LAUNCHPAD_DEXES: { id: string; name: string }[] = [
-  { id: 'minara-fun', name: 'Minara.fun' },
-  { id: 'tolly-arc', name: 'Tolly' },
-  { id: 'radardex', name: 'RadarDEX' },
-  { id: 'warp-arc', name: 'Warp' },
-  { id: 'archemist-arc', name: 'Archemist' },
+  { id: 'peach', name: 'Peach' },
+  { id: 'faze', name: 'Faze' },
   { id: 'o1-launchpad-arc', name: 'o1 Launchpad' },
+  { id: 'minara-fun', name: 'Minara.fun' },
+  { id: 'aka-fun', name: 'Aka.fun' },
+  { id: 'long-supply', name: 'Long.supply' },
 ]
