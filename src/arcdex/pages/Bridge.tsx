@@ -6,6 +6,7 @@ import { openConnectModal } from '../components/ConnectWallet'
 import { kit, getBridgeAdapter, tradingWalletAdapter, ensureWalletChain, quoteBridge, BRIDGE_CHAINS, BRIDGE_FEE_BPS, type BridgeQuote } from '../lib/bridgeKit'
 import { useEmbeddedAddress } from '../lib/identity'
 import { PasscodeField, useWithdrawGuard } from '../components/WithdrawGuard'
+import { addBridgeDeposit } from '../lib/funding'
 import { t as T } from '../lib/i18n'
 import { promptWallet, txErrorText } from '../lib/tx'
 import { hideWalletPrompt } from '../lib/walletPrompt'
@@ -84,6 +85,16 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
     setRecipient(''); setResult(null); setErrMsg(''); setStatus('idle'); setProgress([])
   }
 
+  /** USDC burned elsewhere and minted to the trading wallet on Arc: the
+   * wallet that burned it funded the trading wallet (lib/funding.ts). */
+  function noteDeposit(res: BridgeResult) {
+    const burn = res.steps.find(s => s.name === 'burn' && s.state === 'success' && s.txHash)
+    const recipient = (res.destination.recipientAddress ?? res.destination.address).toLowerCase()
+    if (!burn?.txHash || !tradingAddr || res.destination.chain.chain !== 'Arc' || recipient !== tradingAddr.toLowerCase()) return
+    const mint = res.steps.find(s => s.name === 'mint' && s.state === 'success')
+    void addBridgeDeposit(tradingAddr, { from: res.source.address, usd: Number(res.amount), burnTx: burn.txHash, mintTx: mint?.txHash })
+  }
+
   async function handleBridge() {
     if (!sender || !(n > 0) || !recipientOk) return
     setErrMsg(''); setResult(null); setProgress([])
@@ -118,6 +129,7 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
       // MetaMask users to switch to a smart account first.
       const res = await kit.bridge({ from: { adapter, chain: from as BridgeChain }, to: { chain: to as BridgeChain, recipientAddress: recipientAddr, useForwarder: true }, amount, config: { batchTransactions: false } } as never)
       setResult(res)
+      noteDeposit(res)
       setStatus(res.state === 'success' ? 'done' : 'error')
       if (res.state !== 'success') setErrMsg(T("The transfer didn't finish — see the steps below. If the burn went through, your USDC is safe: press Retry to finish it."))
       if (res.state === 'success') { setAmount(''); guard.setPasscode('') }
@@ -139,6 +151,7 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
     try {
       const res = await kit.retry(result, { from: adapterRef.current } as never)
       setResult(res)
+      noteDeposit(res)
       setStatus(res.state === 'success' ? 'done' : 'error')
       if (res.state !== 'success') setErrMsg(T("Still not finished — Circle's attestation can take a few minutes. Try again shortly."))
     } catch (e) {

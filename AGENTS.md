@@ -187,9 +187,12 @@ Why buys, swaps and bridges failed for people, and the fixes:
 - **Withdraw from the trading wallet.** The Trading wallet panel has Deposit and Withdraw, and a link to Portfolio. The account menu has Portfolio and Withdraw. The phone home has Withdraw under the cash.
 - **Passcode rule (owner decision): money leaving the trading wallet for anywhere but the wallet that funded it needs the passcode** (and the passkey with 2FA on). This covers Withdraw, sending a coin, Send cash to a trader and Bridge → Send from Arc.
   - Rule and funding wallets: `lib/funding.ts`. The UI is `components/WithdrawGuard.tsx`. `verifyPasscode()` is in `embeddedWallet.ts`.
-  - A funding wallet is an ordinary account (no contract code; EIP-7702 counts) that sent USDC to the trading wallet. Mints (bridge arrivals) and contracts paying out (sells) don't count.
-  - Found in the last ~2 days of USDC Transfer logs: three 100k-block calls to Blockdaemon, never the archive fallback (`lib/recentLogs.ts`).
-  - Funding wallets found are kept in localStorage, signed by the trading wallet's own key, so an edited list is rejected. Not found means the passcode is asked.
+  - A funding wallet is an ordinary account (no contract code; EIP-7702 counts) that sent the trading wallet **at least $1 and at least 5% of everything that funded it** (2026-09-29). The share stops a dust attack: someone sends $0.01 from their own wallet, then uses the unlocked phone to "send it back" with everything else. It raises the attack's price rather than ruling it out: a wallet that sent 5% still qualifies.
+    - Contracts paying out (sells, refunds) aren't funding and don't count toward the total.
+    - Mints (bridge arrivals) count toward the total but aren't a funder. A deposit through the Bridge page records the wallet that burned the USDC (`addBridgeDeposit`, keyed by the burn, with the mint's transaction so it counts once); that wallet is then a funder under the same rule.
+  - Deposits are read from both USDC log sources: the USDC contract (6 decimals) and `0xff…fe`, which logs native sends (18 decimals). Most wallets send natively, so only reading the contract missed them. An ERC-20 transfer is logged by both, so each (transaction, sender) counts once. The Transfers page reads both the same way.
+  - Scans cover what Blockdaemon serves (`RECENT_DEPTH`, ~3.5 days), never the archive fallback (`recentLogsSince` in `lib/recentLogs.ts`), then only the blocks since the last scan. `useFundingScan` in `App.tsx` scans when the trading wallet is unlocked and every 5 minutes after, so a deposit is recorded while it's in range. A deposit that aged out before the wallet was ever unlocked isn't seen (passcode asked).
+  - Deposits found are kept in localStorage as a ledger (amounts, last block scanned, contracts seen), signed by the trading wallet's own key, so an edited ledger is dropped and rescanned. Not found means the passcode is asked. Ledgers from before 2026-09-29 (`funding:v1`, addresses without amounts) are replaced by a rescan.
   - Free destinations: a funding wallet, and the trading wallet's own address (bridging to itself on another chain). An external wallet is never asked, because it confirms every transfer itself.
 - **Portfolio (`pages/Portfolio.tsx`, `lib/portfolio.ts`) uses the unlocked trading wallet, else the connected wallet.** It used to only ask to connect a wallet.
   - It shows USDC cash and every coin held, valued live, with Sell to USDC (`TokenSwap` in a sheet, sell mode) and Send on each coin.
@@ -203,7 +206,8 @@ Why buys, swaps and bridges failed for people, and the fixes:
   - Every coin opens on 15m, Line and Price. A switch holds while that coin is open and isn't remembered, so choices an older build saved in the browser are ignored.
   - `PriceChart` still draws GeckoTerminal's candles, refreshed every 30s through `/api/gecko` (the paid key), or the engine's. Every swap is live on top.
 - **Tests:**
-  - `bun scripts/test-withdraw-guard.ts`: the rule, funding detection and tamper-proof storage.
+  - `bun scripts/test-withdraw-guard.ts`: the rule, the share rule, native and ERC-20 logs (one real mainnet pair), bridge deposits counted once, resuming scans, and tamper-proof storage. 14 of 15 deliberately planted bugs failed it; the 15th (a locked wallet writing its ledger) is blocked by the signer anyway.
+  - `bun scripts/test-recent-logs.ts`: Blockdaemon ranges and where a scan that lost a slice resumes.
   - `bun scripts/test-portfolio.ts`: which coins are checked and how they're priced.
 
 ### Launchpad coin cards and filters (2026-09-26, round 5)

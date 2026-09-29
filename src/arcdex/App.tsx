@@ -35,6 +35,8 @@ import MobileTabBar from './components/MobileTabBar'
 import Sheet, { afterSheetClose } from './components/Sheet'
 import { sheetHistory } from './lib/sheetHistory'
 import { OPEN_TRADING_WALLET } from './lib/tradingWalletSheet'
+import { useEmbeddedAddress } from './lib/identity'
+import { useFundingScan } from './lib/funding'
 
 // Remember ?ref= or /r/<name> before anything renders (first-touch attribution).
 captureReferral()
@@ -104,6 +106,10 @@ export default function App() {
     if (depth.current > 0) window.history.back()
     else navigate({ name: 'terminal' })
   }, [navigate])
+
+  // While the trading wallet is unlocked, record what funds it, so sending
+  // back there needs no passcode (lib/funding.ts).
+  useFundingScan(useEmbeddedAddress())
 
   // The trading wallet as a sheet, from any "trading wallet" link.
   const [walletSheet, setWalletSheet] = useState(false)
