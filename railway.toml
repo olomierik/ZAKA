@@ -4,7 +4,7 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "engine/Dockerfile"
-watchPatterns = ["engine/**", "api/_arcLogs.ts", "api/_arcSwaps.ts", "api/_marketProtocol.ts", "api/_supabaseAdmin.ts", "railway.toml"]
+watchPatterns = ["engine/**", "api/_arcLogs.ts", "api/_arcSwaps.ts", "api/_curves.ts", "api/_marketProtocol.ts", "api/_supabaseAdmin.ts", "railway.toml"]
 
 [deploy]
 healthcheckPath = "/health"
