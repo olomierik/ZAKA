@@ -26,7 +26,9 @@ import { MakerResolver, QuoteOracle, TradeParser, isSwapLog, poolKeyOf } from '.
 import { AdapterRegistry } from './launchpads/adapter'
 import { ArcLaunchpadAdapter } from './launchpads/arcLaunchpad'
 import { ArgusAdapter } from './launchpads/argus'
+import { FazeAdapter } from './launchpads/faze'
 import { MercuriAdapter } from './launchpads/mercuri'
+import { PeachAdapter } from './launchpads/peach'
 import { SolonPadAdapter } from './launchpads/solonpad'
 import { V4LaunchDetector } from './launchpads/v4Launches'
 import { log, errMsg, setLogLevel } from './log'
@@ -138,7 +140,7 @@ async function main() {
   const oracle = new QuoteOracle()
   await oracle.seed(rpc)
   const makers = new MakerResolver(rpc)
-  const adapters = new AdapterRegistry([new ArgusAdapter(), new ArcLaunchpadAdapter(), new MercuriAdapter(), new SolonPadAdapter()])
+  const adapters = new AdapterRegistry([new ArgusAdapter(), new ArcLaunchpadAdapter(), new MercuriAdapter(), new SolonPadAdapter(), new PeachAdapter(), new FazeAdapter()])
   // Adapters see the transaction's sender too: a trade through a router names the router in its event.
   const adapterCtx = { rpc, pools, sender: (txHash: string) => makers.get(txHash) }
 

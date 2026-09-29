@@ -73,8 +73,9 @@ export async function checked<T>(fn: () => Promise<T | null>): Promise<T | null>
 
 /** A curve trade in the engine's shape. The wallet is the transaction's
  * sender when known (a router in between names itself in the event), else
- * the trader the event names. */
-export async function curveTradeOf(l: RawLog, d: CurveTrade, token: string, curve: string, dex: string, launchpad: string, ctx: AdapterContext): Promise<Trade> {
+ * the trader the event names. `quote` is what the curve is priced in, a
+ * dollar either way: native USDC (Mercuri, SolonPad) or the USDC ERC-20 (Peach). */
+export async function curveTradeOf(l: RawLog, d: CurveTrade, token: string, curve: string, dex: string, launchpad: string, ctx: AdapterContext, quote = NATIVE): Promise<Trade> {
   const logIndex = parseInt(l.logIndex, 16)
   const txHash = l.transactionHash.toLowerCase()
   const sender = ctx.sender ? await Promise.race([ctx.sender(txHash).catch(() => null), new Promise<null>(r => setTimeout(() => r(null), 1_500))]) : null
@@ -83,9 +84,9 @@ export async function curveTradeOf(l: RawLog, d: CurveTrade, token: string, curv
     tradeId: `${txHash}:${logIndex}`,
     chain: 'ARC',
     token,
-    pair: `${token}/${NATIVE}`,
+    pair: `${token}/${quote}`,
     pool: curve,
-    quote: NATIVE,
+    quote,
     side: d.kind === 'buy' ? 'BUY' : 'SELL',
     baseAmount: d.tokenAmount,
     quoteAmount: d.usdc,

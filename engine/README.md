@@ -5,7 +5,7 @@ Detects new Arc token launches and every DEX trade the moment their block lands.
 ```
 Arc chain (WebSocket + getLogs)
   → ChainStream        live logs · reconcile · backfill · dedupe · cursor
-  → launchpad adapters Argus (Portals 7 & 8), ArcLaunchpad, Mercuri, SolonPad, …
+  → launchpad adapters Argus (Portals 7 & 8), ArcLaunchpad, Mercuri, SolonPad, Peach, Faze, any v4 launch
   → trade parser       v4 PoolManager / v3 pool swaps → normalized trades
   → MarketEngine       hot state (price, 24h stats) · candle engine
   → Redis (hot) · Postgres (history, batched) · WebSocket/REST → browsers
@@ -30,6 +30,10 @@ Everything runs in one Bun process by default. For scale-out, split it into `ENG
 | `src/launchpads/mercuri.ts` | Mercuri launches and trades on each launch's own bonding curve |
 | `src/launchpads/solonpad.ts` | SolonPad (Pons V2 curve mode) launches and curve trades, native-USDC curves only |
 | `src/launchpads/curveBook.ts` | What those two share: curves verified against their factory (once each), trade shaping |
+| `src/launchpads/peach.ts` | Peach: launches and trades on each coin's own curve (USDC-quoted), curves verified by code template |
+| `src/launchpads/faze.ts` | Faze: launches and trades on its one curve contract (native-USDC coins only) |
+| `src/launchpads/v4Launches.ts` | Any other launchpad that opens a v4 pool at launch (Aka.fun, o1, Minara, Long.supply, and unlisted ones as "Other") |
+| `src/intel/templates.ts` | Contract code templates: "is this the launchpad's own contract?" (`templateData.ts` from `scripts/learn-templates.ts`) |
 | `src/market/tokenState.ts` | Per-token hot state; rolling 24h stats in 1,440 minute buckets |
 | `src/market/candles.ts` | 1s/5s/15s/1m/5m/15m/1h/4h/1d candles, late-trade handling |
 | `src/market/engine.ts` | Applies trades/launches; publishes events; ticks; warm restart |

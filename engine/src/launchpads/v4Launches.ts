@@ -21,6 +21,8 @@ import { metrics } from '../metrics'
 import { cleanText, tokenMeta } from './adapter'
 import { ARC_LAUNCHPAD } from './arcLaunchpad'
 import { PORTAL7, PORTAL8 } from './argus'
+import { FAZE } from './faze'
+import { PEACH_LAUNCHER } from './peach'
 
 /** Launch transactions' destination → launchpad (names as in api/_launchpads.ts). */
 export const LAUNCH_ENTRY: Record<string, string> = {
@@ -31,7 +33,7 @@ export const LAUNCH_ENTRY: Record<string, string> = {
 }
 
 /** Launchpads whose own adapter reports their launches. */
-export const ADAPTER_ENTRY = new Set([PORTAL7, PORTAL8, ARC_LAUNCHPAD, MERCURI_FACTORY, SOLONPAD_FACTORY])
+export const ADAPTER_ENTRY = new Set([PORTAL7, PORTAL8, ARC_LAUNCHPAD, MERCURI_FACTORY, SOLONPAD_FACTORY, PEACH_LAUNCHER, FAZE, '0x7b9720bc177e8b6f96962e9b15891f27108cad40'])
 
 const hex = (n: number) => '0x' + n.toString(16)
 

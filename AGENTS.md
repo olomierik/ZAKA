@@ -633,6 +633,13 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
   - SolonPad curves quoted in another ERC-20 (tokenized stocks) are left out.
   - The trade's wallet is the transaction's sender (a router in between names itself in the event). Prices are in native USDC: Mercuri's from the reserves each event carries, SolonPad's from what the trade paid on the curve.
   - Events and addresses are shared with the site: `api/_curves.ts`.
+- **Every Arc launchpad (2026-09-30).** GeckoTerminal's Arc venues were traced to their launch contracts from real coins (`engine/scripts/discover-launchpads.ts`). 24h volume then: Argus $4.36M, Peach $840k, Faze $147k, o1 $91k, Minara $20k. Tolly, RadarDEX, Warp and Archemist list no pools any more.
+  - **Any launchpad that opens a Uniswap v4 pool at launch** (`launchpads/v4Launches.ts`): a coin whose pool is initialized in the block that created it is a launch. It's named from the contract the transaction went to (`LAUNCH_ENTRY`: Aka.fun, o1, Minara, Long.supply), else "Other" with `entry` set, so new launchpads show up without a code change. Launchpads with their own adapter are skipped (`ADAPTER_ENTRY`), and an adapter's report replaces a generic one.
+  - **Peach** (`launchpads/peach.ts`): no published ABI; its events were decoded against each transaction's transfers. Every coin has its own curve contract, priced in the USDC ERC-20, until it graduates to a v4 pool. A curve counts if a launch named it, or if its code matches Peach's curve template and was deployed with USDC as its quote. Curves quoted in other tokens (cirBTC, …) are left out.
+  - **Faze** (`launchpads/faze.ts`): one contract launches and trades every coin. `getCoin(token)` gives each coin's quote; only native-USDC coins are indexed (some are quoted in Faze's own FAZE token). Its contract has a sniper tax and buy/sell-window fees, which the safety scanner should read.
+  - **Code templates** (`intel/templates.ts`): a launchpad deploys the same contract for every coin, differing only where each deployment fills in its own values. `engine/scripts/learn-templates.ts` learns those byte ranges from real instances and writes `intel/templateData.ts`. Run it with `--check` to see whether today's contracts still match.
+  - **Not yet:** Virtuals (Uniswap v2 pairs priced in its VIRTUAL token; the engine reads no v2 swaps yet).
+  - Tests: `engine/test/v4Launches.test.ts`, `peach.test.ts`, `faze.test.ts`, on recorded mainnet data (`engine/scripts/capture-*.ts`).
 - **Argus launches (measured 2026-09-25):**
   - Portal 7 `0xB021…97Da` handles ~3,000 launches/day. Its event `0x1d891723…` carries token, creator, name, symbol and poolId.
   - Portal 8 `0xeed7…5D93` handles ~125/day through `Launched` + `LaunchMetadata`.

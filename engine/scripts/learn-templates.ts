@@ -1,0 +1,111 @@
+// Learns code templates (engine/src/intel/templates.ts) from real contracts
+// on Arc mainnet and writes engine/src/intel/templateData.ts. Each template
+// needs several deployments of one contract: the bytes that differ between
+// them are the values each deployment fills in, and everything else must
+// match exactly for a contract to count as that launchpad's.
+//
+//   bun engine/scripts/learn-templates.ts            # write templateData.ts
+//   bun engine/scripts/learn-templates.ts --check    # do today's contracts still match?
+//
+// Read-only (Blockdaemon getLogs, recent blocks).
+
+import { writeFileSync } from 'node:fs'
+import { RECENT_RPC, headBlock, hex, rpcBatch, rpcCall, scanLogs, type RawLog } from '../../api/_arcLogs'
+import { topicAddress } from '../../api/_arcSwaps'
+import { filledIn, learnTemplate, matchesTemplate, type CodeTemplate } from '../src/intel/templates'
+
+const check = process.argv.includes('--check')
+const SAMPLE = 8
+
+/** Recent logs of one event, newest last, over up to `blocks` blocks. */
+async function recent(address: string, topic: string, blocks = 400_000): Promise<RawLog[]> {
+  const head = await headBlock()
+  const out: RawLog[] = []
+  for (let to = head; to > head - blocks && out.length < SAMPLE * 3; to -= 100_000) {
+    out.unshift(...await rpcCall<RawLog[]>(RECENT_RPC, 'eth_getLogs', [{ address, topics: [topic], fromBlock: hex(Math.max(0, to - 99_999)), toBlock: hex(to) }], 20_000))
+  }
+  return out
+}
+const codesOf = async (addrs: string[]) => (await rpcBatch<string>(RECENT_RPC, addrs.map(a => ({ method: 'eth_getCode', params: [a, 'latest'] })))).map(c => c ?? '0x')
+
+interface Source {
+  name: string
+  /** Deployments to learn from: as varied as possible, so every value a deployment fills in varies. */
+  addresses: () => Promise<string[]>
+  /** Name masked ranges by a value known to sit there in a given deployment. */
+  fields?: () => Promise<Record<string, { address: string; value: string }>>
+}
+
+// Peach: the launch event names each coin's own curve contract (topic 2).
+const PEACH_LAUNCHER = '0x7e462d220b6b0a4c55b205b613133dc1c1cc9dc1'
+const PEACH_LAUNCHED = '0x091220c7b93dbf022367afb0756ee792b7be2ca40436aa65722f233607784d62'
+
+const PEACH_TRADE = '0xeab3e828d2fd17855f356495b10e91df9ddf7d934563edb3895cab88239f3596'
+const USDC = '0x3600000000000000000000000000000000000000'
+/** Contracts that emitted `topic` recently, from any address. */
+async function emitters(topic: string, blocks = 500_000): Promise<string[]> {
+  const head = await headBlock()
+  const r = await scanLogs<string[]>({ topics: [topic] }, head - blocks, head, { head, reduce: logs => logs.map(l => l.address.toLowerCase()), deadline: Date.now() + 120_000 })
+  return [...new Set(r.parts.flat())]
+}
+
+const SOURCES: Source[] = [
+  {
+    // New launches and every curve that traded over ~3 days: curves quoted in
+    // USDC and in other tokens, with different fee settings.
+    name: 'Peach curve',
+    addresses: async () => [
+      ...(await recent(PEACH_LAUNCHER, PEACH_LAUNCHED)).map(l => topicAddress(l.topics[2])),
+      ...await emitters(PEACH_TRADE),
+    ],
+    // The quote token: a launch whose event names USDC.
+    fields: async () => {
+      const l = (await recent(PEACH_LAUNCHER, PEACH_LAUNCHED)).find(x => ('0x' + x.data.slice(26, 66)).toLowerCase() === USDC)!
+      return { quote: { address: topicAddress(l.topics[2]), value: USDC } }
+    },
+  },
+]
+
+const learned: Record<string, CodeTemplate> = {}
+let failures = 0
+for (const src of SOURCES) {
+  const addrs = [...new Set(await src.addresses())].slice(-SAMPLE * 6)
+  const codes = (await codesOf(addrs)).filter(c => c !== '0x')
+  if (check) {
+    const { TEMPLATES } = await import('../src/intel/templateData')
+    const t = TEMPLATES[src.name]
+    const ok = codes.filter(c => t && matchesTemplate(c, t)).length
+    console.log(`${src.name}: ${ok}/${codes.length} of today's contracts match the stored template`)
+    if (ok < codes.length) failures++
+    continue
+  }
+  // Learn from all but a few, confirm the template on those it didn't see.
+  const learnFrom = codes.slice(0, Math.max(3, codes.length - 4)), confirm = codes.slice(learnFrom.length)
+  const t = learnTemplate(src.name, learnFrom)
+  if (src.fields) {
+    t.fields = {}
+    for (const [name, { address, value }] of Object.entries(await src.fields())) {
+      const [code] = await codesOf([address])
+      const i = filledIn(code, t).findIndex(v => v === value.toLowerCase())
+      if (i < 0) { console.log(`${src.name}: couldn't find ${name} (${value}) in ${address}`); failures++; continue }
+      t.fields[name] = i
+    }
+  }
+  const ok = confirm.filter(c => matchesTemplate(c, t)).length
+  console.log(`${src.name}: ${t.size}B, ${t.mask.length} varying ranges ${JSON.stringify(t.mask)}; ${ok}/${confirm.length} unseen instances match`)
+  if (ok < confirm.length) { failures++; continue }
+  learned[src.name] = t
+}
+
+if (!check) {
+  const body = `// Generated by engine/scripts/learn-templates.ts from contracts on Arc mainnet: do not edit.
+// Learned ${new Date().toISOString().slice(0, 10)}. Still current? bun engine/scripts/learn-templates.ts --check
+
+import type { CodeTemplate } from './templates'
+
+export const TEMPLATES: Record<string, CodeTemplate> = ${JSON.stringify(learned, null, 2)}
+`
+  writeFileSync(new URL('../src/intel/templateData.ts', import.meta.url), body)
+  console.log(`wrote engine/src/intel/templateData.ts (${Object.keys(learned).length} templates)`)
+}
+if (failures) { console.error(`${failures} template(s) failed`); process.exit(1) }
