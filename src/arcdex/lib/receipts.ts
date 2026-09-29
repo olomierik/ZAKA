@@ -6,15 +6,16 @@
 // checks whether the transaction was replaced. A trade that had confirmed
 // was noticed up to 4s late, twice over for approve + swap.
 //
-// This asks for the receipt itself every 250ms, from two endpoints at once
-// (Arc's public RPC and Blockdaemon), and takes whichever has it first: the
+// This asks for the receipt itself every 250ms, from every endpoint at once
+// (the dedicated one if the build has it, Arc's public RPC and Blockdaemon),
+// and takes whichever has it first: the
 // public RPC's load-balanced nodes can trail by a block. A slow endpoint is
 // never asked again while it still owes an answer. When the receipt lands,
 // every balance on screen refreshes (lib/balances.ts).
 
 import { formatTransactionReceipt, WaitForTransactionReceiptTimeoutError, type Hash, type TransactionReceipt } from 'viem'
 import { RECENT_RPC, rpcCall } from '../../../api/_arcLogs'
-import { ARC_RPC } from './rpc'
+import { ARC_RPC, FAST_RPC, benchFast, benchFor, fastUp } from './rpc'
 import { notifyBalances } from './balances'
 
 type RpcReceipt = Parameters<typeof formatTransactionReceipt>[0]
@@ -43,11 +44,12 @@ export function waitForReceipt(hash: Hash, { timeoutMs = 180_000 }: { timeoutMs?
         reject(new WaitForTransactionReceiptTimeoutError({ hash }))
         return
       }
-      for (const url of [ARC_RPC, RECENT_RPC]) {
-        if (busy.has(url)) continue
+      for (const url of [FAST_RPC && fastUp() ? FAST_RPC : null, ARC_RPC, RECENT_RPC]) {
+        if (!url || busy.has(url)) continue
         busy.add(url)
         rpcCall<RpcReceipt | null>(url, 'eth_getTransactionReceipt', [hash], 5_000)
-          .then(r => { if (r) finish(r) }, () => { /* this endpoint missed a beat; the other is asked too */ })
+          // A receipt request never reverts: any failure of the dedicated endpoint benches it.
+          .then(r => { if (r) finish(r) }, e => { if (url === FAST_RPC) benchFast(Math.max(benchFor(e), 30_000)) /* else: the others are asked too */ })
           .finally(() => busy.delete(url))
       }
       timer = setTimeout(tick, delayAt(elapsed))

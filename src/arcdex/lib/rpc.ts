@@ -47,13 +47,61 @@ export function lagTolerant(inner: Transport, { retries = 3, delayMs = 600 } = {
 
 export const ARC_RPC = 'https://rpc.mainnet.arc.io'
 
-/** Arc over the public RPC, lag-tolerant. */
+// A dedicated Arc endpoint (QuickNode, 2026-09-29), when the build has one:
+// tried first for reads, receipts and the live feeds, with the public RPC
+// behind it. Its URL carries its token and ships in the page, so QuickNode
+// only answers pages from arcdex.online and localhost (referrer whitelist).
+// Unset, everything uses the public endpoints as before.
+const env = (v: string | undefined) => (typeof v === 'string' && /^(https|wss):\/\//.test(v.trim()) ? v.trim() : null)
+export const FAST_RPC = env(import.meta.env.VITE_ARC_RPC_URL as string | undefined)
+export const FAST_WS = env(import.meta.env.VITE_ARC_WSS_URL as string | undefined)
+
+// Throttled, out of credits, refusing this page or down: the dedicated
+// endpoint is left alone for a while and the public RPC answers instead,
+// so it can make things faster but never slower.
+let benchedUntil = 0
+export const fastUp = () => FAST_RPC !== null && Date.now() >= benchedUntil
+/** How long to leave the dedicated endpoint alone after this failure (0: it
+ * answered, e.g. a revert). */
+export function benchFor(e: unknown): number {
+  const x = e as { status?: unknown; code?: unknown; name?: unknown }
+  const status = typeof x?.status === 'number' ? x.status : x?.code === 429 ? 429 : 0
+  if (status === 401 || status === 402 || status === 403) return 10 * 60_000 // refused / out of credits
+  // (Not every message mentioning a limit: a revert can say "slippage limit".)
+  if (status === 429 || x?.code === -32005 || x?.code === -32029 || /rate limit|credits|capacity|too many requests/i.test(errText(e))) return 60_000
+  if (status >= 500 || x?.name === 'TimeoutError' || x?.name === 'HttpRequestError' || x?.name === 'TypeError') return 30_000
+  return 0
+}
+export function benchFast(ms: number) { if (ms > 0) benchedUntil = Math.max(benchedUntil, Date.now() + ms) }
+
+/** The dedicated endpoint as the first of a fallback: while benched it
+ * steps aside at once, and a failure benches it. (viem's fallback gives the
+ * transports in it no retries of their own.) */
+function fastTransport(url: string): Transport {
+  const inner = lagTolerant(http(url, { timeout: 4_000 }))
+  return (opts => {
+    const t = inner(opts)
+    const request = (async (args: unknown, options?: unknown) => {
+      if (!fastUp()) throw new Error('dedicated Arc RPC benched')
+      try { return await (t.request as (a: unknown, o?: unknown) => Promise<unknown>)(args, options) }
+      catch (e) { benchFast(benchFor(e)); throw e }
+    }) as typeof t.request
+    return { ...t, request }
+  }) as Transport
+}
+
+/** Arc over the public RPC, lag-tolerant. (Transactions are sent here, not
+ * through the dedicated endpoint: a fallback could send one twice.) */
 export const arcTransport = () => lagTolerant(http(ARC_RPC))
-/** Reads on Arc (balances, quotes, simulations): the public RPC, and
- * Blockdaemon the moment it throttles or fails — instead of backing off
- * and retrying the same busy node. A revert is an answer, not a failure:
- * it's never retried elsewhere. Lag-tolerant either way. */
-export const arcReadTransport = () => fallback([lagTolerant(http(ARC_RPC)), lagTolerant(http(RECENT_RPC))], { retryCount: 1 })
+/** Reads on Arc (balances, quotes, simulations): the dedicated endpoint if
+ * there is one, then the public RPC, and Blockdaemon the moment it throttles
+ * or fails — instead of backing off and retrying the same busy node. A
+ * revert is an answer, not a failure: it's never retried elsewhere.
+ * Lag-tolerant either way. */
+export const arcReadTransport = () => fallback([
+  ...(FAST_RPC ? [fastTransport(FAST_RPC)] : []),
+  lagTolerant(http(ARC_RPC)), lagTolerant(http(RECENT_RPC)),
+], { retryCount: 1 })
 /** Any chain over its default RPC, lag-tolerant. */
 export const chainTransport = (url?: string) => lagTolerant(http(url))
 

@@ -12,7 +12,7 @@
 
 import { ARCHIVE_RPCS, RECENT_RPC, hex, rpcBatch, rpcCall, type RawLog } from '../../../api/_arcLogs'
 import { ARGUS, ARGUS_USDC_V3, NATIVE, POOL_MANAGER, USDC, V3_SWAP, V4_SWAP, decodeSwapLog, priceFromSqrt, word } from '../../../api/_arcSwaps'
-import { ARC_RPC_WS } from './arcRpc'
+import { openArcSocket } from './arcRpc'
 import type { ArgusTrade } from './argusMarket'
 import { CURVE_ROUTER_ADDRESS, curveTradeFilter, decodeCurveTrade, type CurveInfo, type CurveVenue } from './curves'
 
@@ -260,7 +260,7 @@ export function subscribePoolSwaps(m: PoolMeta, onSwaps: (s: PoolSwap[]) => void
 
   const connect = () => {
     if (closed) return
-    ws = new WebSocket(ARC_RPC_WS)
+    ws = openArcSocket()
     ws.onopen = () => {
       backoff = 1_000
       ws?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_subscribe', params: ['logs', filterOf(m)] }))

@@ -11,7 +11,7 @@
 import { NATIVE, POOL_MANAGER, USDC, V3_SWAP, V4_SWAP, decodeSwapLog, topicAddress, word } from '../../../api/_arcSwaps'
 import { CURVE_TRADE } from '../../../api/_launchpadCore'
 import type { RawLog } from '../../../api/_arcLogs'
-import { ARC_RPC_WS } from './arcRpc'
+import { openArcSocket } from './arcRpc'
 
 export interface Pulse {
   token: string
@@ -74,7 +74,7 @@ export function subscribeMarketPulse(launchpad: string, lookup: PulseLookup, onP
   const connect = () => {
     if (closed) return
     kindOfSub.clear()
-    const sock = new WebSocket(ARC_RPC_WS)
+    const sock = openArcSocket()
     ws = sock
     sock.onopen = () => {
       backoff = 1_000

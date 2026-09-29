@@ -5,7 +5,7 @@
 // `isBuy`, `usdcAmount`, `tokenAmount` are named, not inferred from
 // token0/token1 ordering — so no separate "which side is quote" step.
 
-import { ARC_RPC_WS } from './arcRpc'
+import { openArcSocket } from './arcRpc'
 import { spotPrice } from '../../../api/_launchpadCore'
 
 // keccak256("Trade(address,address,bool,uint256,uint256,uint256,uint256,uint256)")
@@ -47,7 +47,7 @@ function connect() {
   if (!launchpadAddress) return
   if (ws && ws.readyState < 2) return // CONNECTING or OPEN
 
-  ws = new WebSocket(ARC_RPC_WS)
+  ws = openArcSocket()
 
   ws.onopen = () => {
     ws?.send(JSON.stringify({

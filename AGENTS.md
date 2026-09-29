@@ -129,6 +129,18 @@ Both directions, via Circle CCTP v2 (Bridge Kit), with Circle's Forwarder mintin
 
 Fees: Circle's Bridge Kit has a native mechanism for this (`kit.setCustomFeePolicy`), used instead of a hand-rolled side-transfer. `computeBridgeFee()`: 0.5% of the transfer, bounded to [$0.05, $50]. Bridge Kit adds this **on top of** the transfer amount (wallet debits `amount + fee`, shown in `Bridge.tsx` before signing) and auto-splits it 10% to Circle / 90% to `PLATFORM_FEE_WALLET` — that 10/90 split is Circle's own mechanic on `CustomFeePolicy`, not something this app controls. Only applies to USDC (Bridge Kit rejects a custom fee policy on non-USDC tokens), which is all this app bridges.
 
+### Dedicated Arc RPC — QuickNode (2026-09-29)
+- **Endpoint:** QuickNode account "ARCDEX", endpoint `prettiest-cosmological-seed` (Arc Mainnet), on the **free trial**: 10M API credits for one month, 15 requests/s, no overage. Arc costs 20 credits a call, so that's ~500k calls a month for every visitor together. WebSocket events are billed as they arrive.
+- **Referrer whitelist (on):** `arcdex.online`, `www.arcdex.online`, `localhost`. The URL carries its token and ships in the page, so this is what keeps other sites from using it. Vercel preview URLs aren't on it: previews fall back to the public RPC. A non-browser client can fake a referrer, so the whitelist stops casual reuse, not abuse.
+- **Wiring (`VITE_ARC_RPC_URL`, `VITE_ARC_WSS_URL`; both optional, unset = public endpoints only):**
+  - Reads (`arcReadTransport`, the shared `client`): the endpoint first, then the public RPC, then Blockdaemon.
+  - Receipts (`lib/receipts.ts`): polled from all three at once.
+  - Live feeds (Terminal pulse, coin-page swaps, launchpad trades, `openArcSocket` in `api/arcRpc.ts`): its socket first.
+  - Transactions are still sent through the public RPC: a fallback could send one twice.
+- **It never makes things slower:** throttled (429 or "limit exceeded"), out of credits or refused (401/402/403), or down, it's benched for 1 / 10 minutes / 30s and the public RPC answers the same request. A revert is an answer and doesn't bench it. A socket that's refused or answers a subscription with an error sends every feed to the public socket for 5 minutes.
+- **When the trial ends** the endpoint refuses and the app runs on the public endpoints. Watch usage under the endpoint's Metrics tab.
+- **Tests:** `bun scripts/test-fast-rpc.ts` (fetch and WebSocket stubbed): first choice, throttling, refusal, reverts, sockets.
+
 ### Sending transactions — `lib/tx.ts`, `lib/rpc.ts` (2026-09-26)
 Why buys, swaps and bridges failed for people, and the fixes:
 - **Wrong network.** wagmi refuses to send while the wallet is on another chain ("does not match the target chain"). `sendArc()` (used by every trade, launch, cash send and burn) first puts an external wallet on Arc (`ensureArc`, adding Arc if needed). A slim `NetworkGuard` bar offers "Switch to Arc" (hidden on /bridge, which switches on purpose).
@@ -647,7 +659,7 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
 
 - **Project:** Vercel project `app` (`prj_cvHmYqjjLNXDMycZfQTbV4JKmkW2`), serving **arcdex.online** and `www.arcdex.online`. It builds automatically from GitHub `olomierik/ZAKA` `main`, so to ship you commit and push, then check the new `app` deployment (`vercel ls app`). Don't use `vercel --prod` for normal releases.
 - **Local link:** `.vercel/project.json` is linked to `app`, so any Vercel CLI command run here targets arcdex.online.
-- **Env vars:** only `app`'s Vercel settings are used. `.env` isn't committed, so GitHub builds never see it. `app` production has `VITE_ARC_LAUNCHPAD_ADDRESS`, `VITE_ARCDEX_SWAP_ROUTER_ADDRESS`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_WC_PROJECT_ID`. `VITE_ARCDEX_CURVE_ROUTER_ADDRESS` isn't needed: the deployed curve router is the default (`api/_curves.ts`). Set it only to name another router, or to `off`. A new `VITE_*` var must be added there, and it only takes effect on the next build.
+- **Env vars:** only `app`'s Vercel settings are used. `.env` isn't committed, so GitHub builds never see it. `app` production has `VITE_ARC_LAUNCHPAD_ADDRESS`, `VITE_ARCDEX_SWAP_ROUTER_ADDRESS`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_WC_PROJECT_ID`. `VITE_ARCDEX_CURVE_ROUTER_ADDRESS` isn't needed: the deployed curve router is the default (`api/_curves.ts`). Set it only to name another router, or to `off`. `VITE_ARC_RPC_URL` / `VITE_ARC_WSS_URL` switch on the dedicated Arc endpoint ("Dedicated Arc RPC"). A new `VITE_*` var must be added there, and it only takes effect on the next build.
   - To verify a var reached the site, fetch the live JS chunks and grep for the value. `vercel env pull` shows sensitive vars as empty.
 - **Retired project:** `zaka_app` (`zakaapp-drab.vercel.app`) is disconnected from GitHub. Its production deployment is only a 307 redirect of every path to the same path on arcdex.online. The source for that deployment isn't in this repo; it's just a `vercel.json` with `redirects`.
   - History: until 2026-09-24, every push built **both** projects, and CLI deploys went to `zaka_app` with `.env` baked in. arcdex.online had no env vars, so the Launchpad showed "contract not configured".

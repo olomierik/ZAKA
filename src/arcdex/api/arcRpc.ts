@@ -8,8 +8,35 @@
 //      uint160 sqrtPriceX96, uint128 liquidity, int24 tick)
 // topic0: 0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67
 
+import { FAST_WS } from '../lib/rpc'
+
 export const ARC_RPC_WS  = 'wss://rpc.mainnet.arc.io'
 export const SWAP_TOPIC  = '0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67'
+
+// The dedicated endpoint (VITE_ARC_WSS_URL, lib/rpc.ts) is used first. If it
+// refuses the connection (over its limit, out of credits, not this site) or
+// answers a subscription with an error, every feed opens the public socket
+// instead for the next 5 minutes. The feeds already reconnect on close.
+const WS_BENCH_MS = 5 * 60_000
+let wsBenchedUntil = 0
+
+/** A WebSocket to Arc, for eth_subscribe: the dedicated endpoint when
+ * there is one and it's behaving, else Arc's public RPC. */
+export function openArcSocket(): WebSocket {
+  const fast = FAST_WS && Date.now() >= wsBenchedUntil ? FAST_WS : null
+  const sock = new WebSocket(fast ?? ARC_RPC_WS)
+  if (fast) {
+    let opened = false
+    const bench = () => { wsBenchedUntil = Date.now() + WS_BENCH_MS }
+    sock.addEventListener('open', () => { opened = true })
+    sock.addEventListener('message', ev => {
+      // An error answer to a request (feeds only send eth_subscribe).
+      if (typeof ev.data === 'string' && ev.data.includes('"error"') && !ev.data.includes('"eth_subscription"')) { bench(); sock.close() }
+    })
+    sock.addEventListener('close', () => { if (!opened) bench() })
+  }
+  return sock
+}
 export const ARC_EXPLORER = 'https://explorer.arc.io'
 
 export interface LiveTrade {
@@ -45,7 +72,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 function connect() {
   if (ws && ws.readyState < 2) return  // CONNECTING or OPEN
 
-  ws = new WebSocket(ARC_RPC_WS)
+  ws = openArcSocket()
 
   ws.onopen = () => {
     console.log('[ArcRPC] connected')
