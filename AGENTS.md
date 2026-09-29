@@ -135,7 +135,7 @@ Fees: Circle's Bridge Kit has a native mechanism for this (`kit.setCustomFeePoli
 - **Measured from the owner's machine** (`bun scripts/bench-arc-rpc.ts`): requests ~291 ms median against the public RPC's ~326 ms and Blockdaemon's ~297 ms. The slowest 10% took ~305 ms against the public RPC's 365–463 ms. It had the newest block 9 times in 10, the public RPC 6. Most of the ~300 ms is distance to the servers. On the Terminal, most load-time requests are log scans through the archive endpoints (`api/_arcLogs.ts`), where the public RPC answered 429s. The dedicated endpoint isn't in that path.
 - **Referrer whitelist (on):** `arcdex.online`, `www.arcdex.online`, `localhost`. The URL carries its token and ships in the page, so this is what keeps other sites from using it. Vercel preview URLs aren't on it: previews fall back to the public RPC. A non-browser client can fake a referrer, so the whitelist stops casual reuse, not abuse.
 - **Wiring (`VITE_ARC_RPC_URL`, `VITE_ARC_WSS_URL`; both optional, unset = public endpoints only):**
-  - Reads (`arcReadTransport`, the shared `client`): the endpoint first, then the public RPC, then Blockdaemon.
+  - Reads (`arcReadTransport`, the shared `client`): the endpoint first, then Blockdaemon, then the public RPC. Blockdaemon moved ahead of the public RPC on 2026-09-29: it measured as fast and as fresh as the endpoint, so reads stay fast after the trial.
   - Receipts (`lib/receipts.ts`): polled from all three at once.
   - Live feeds (Terminal pulse, coin-page swaps, launchpad trades, `openArcSocket` in `api/arcRpc.ts`): its socket first.
   - Transactions are still sent through the public RPC: a fallback could send one twice.
@@ -299,7 +299,7 @@ Why buys, swaps and bridges failed for people, and the fixes:
     - It never asks an endpoint again while that endpoint still owes an answer.
     - Simulated with 0.5s blocks: about 0.56s to notice a confirmation, against about 4.26s before.
   - **`lib/balances.ts`:** when a receipt lands, every balance on screen refreshes at once (header cash, the Trading wallet panel, both swap widgets and Portfolio). It fires again 1.2s later in case the first read hit a node one block behind.
-  - **The shared read client (`api/launchpad.ts` `client`)** batches concurrent reads into one Multicall3 call (`batch: { multicall: true }`). It uses `arcReadTransport()`, which falls back to Blockdaemon when the public RPC throttles or fails.
+  - **The shared read client (`api/launchpad.ts` `client`)** batches concurrent reads into one Multicall3 call (`batch: { multicall: true }`). It uses `arcReadTransport()`: the dedicated endpoint if set, then Blockdaemon, then the public RPC, each taking over when the one before throttles or fails ("Dedicated Arc RPC").
     - A revert is never retried on the other endpoint.
     - Writes (the trading wallet and wagmi) still go only to the public RPC.
 - **A live Terminal (`api/marketPulse.ts`).**

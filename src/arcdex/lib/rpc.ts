@@ -94,13 +94,16 @@ function fastTransport(url: string): Transport {
  * through the dedicated endpoint: a fallback could send one twice.) */
 export const arcTransport = () => lagTolerant(http(ARC_RPC))
 /** Reads on Arc (balances, quotes, simulations): the dedicated endpoint if
- * there is one, then the public RPC, and Blockdaemon the moment it throttles
- * or fails — instead of backing off and retrying the same busy node. A
- * revert is an answer, not a failure: it's never retried elsewhere.
- * Lag-tolerant either way. */
+ * there is one, then Blockdaemon, then the public RPC the moment one
+ * throttles or fails — instead of backing off and retrying the same busy
+ * node. Blockdaemon comes before the public RPC (2026-09-29): measured as
+ * fast as the dedicated endpoint and as fresh, where the public RPC's slowest
+ * answers took 365–463 ms and it trailed a block 4 times in 10. So when the
+ * dedicated endpoint's trial ends, reads stay fast. A revert is an answer,
+ * not a failure: it's never retried elsewhere. Lag-tolerant either way. */
 export const arcReadTransport = () => fallback([
   ...(FAST_RPC ? [fastTransport(FAST_RPC)] : []),
-  lagTolerant(http(ARC_RPC)), lagTolerant(http(RECENT_RPC)),
+  lagTolerant(http(RECENT_RPC)), lagTolerant(http(ARC_RPC)),
 ], { retryCount: 1 })
 /** Any chain over its default RPC, lag-tolerant. */
 export const chainTransport = (url?: string) => lagTolerant(http(url))

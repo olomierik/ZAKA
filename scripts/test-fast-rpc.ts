@@ -37,11 +37,15 @@ ok(await ask() === '0x10' && hits.join() === 'fast:eth_blockNumber', 'a read goe
 
 answers = { fast: () => ({ status: 429, body: 'Too Many Requests' }) }
 hits = []
-ok(await ask() === '0x10' && hits.join() === 'fast:eth_blockNumber,public:eth_blockNumber', 'throttled (429): the same read is answered by the public RPC, no retries on the busy one')
+ok(await ask() === '0x10' && hits.join() === 'fast:eth_blockNumber,blockdaemon:eth_blockNumber', 'throttled (429): the same read is answered by Blockdaemon, no retries on the busy one')
 hits = []
 await ask()
-ok(hits.join() === 'public:eth_blockNumber', '… and the next reads skip it while it cools off')
+ok(hits.join() === 'blockdaemon:eth_blockNumber', '… and the next reads skip it while it cools off')
 ok(!rpc.fastUp(), '… (benched)')
+answers = { fast: () => ({ status: 429, body: 'Too Many Requests' }), blockdaemon: () => ({ status: 429, body: 'Too Many Requests' }) }
+hits = []
+ok(await ask() === '0x10' && hits.join() === 'blockdaemon:eth_blockNumber,public:eth_blockNumber', 'Blockdaemon throttled too: the public RPC answers')
+answers = {}
 
 console.log('why it steps aside')
 ok(rpc.benchFor({ name: 'HttpRequestError', status: 429 }) === 60_000, '429: a minute')
@@ -64,7 +68,7 @@ console.log('reverts')
   ok(rpc2.fastUp(), '… and does not bench it')
   answers = { fast: () => ({ status: 403, body: 'Forbidden: referrer not allowed' }) }
   hits = []
-  ok(await t2.request({ method: 'eth_blockNumber', params: [] } as never) === '0x10' && hits.join() === 'fast:eth_blockNumber,public:eth_blockNumber', 'a page it refuses (403, e.g. a preview URL) still gets its answer from the public RPC')
+  ok(await t2.request({ method: 'eth_blockNumber', params: [] } as never) === '0x10' && hits.join() === 'fast:eth_blockNumber,blockdaemon:eth_blockNumber', 'a page it refuses (403, e.g. a preview URL) still gets its answer from Blockdaemon')
   ok(!rpc2.fastUp(), '… and stops asking it')
 }
 
