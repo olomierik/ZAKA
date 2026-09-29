@@ -27,7 +27,7 @@ async function call(url: string, headers: Record<string, string>, method: string
     if (!r.ok) return { ms, error: `HTTP ${r.status}` }
     const j = await r.json() as { result?: unknown; error?: { message?: string } }
     return j.error ? { ms, error: j.error.message ?? 'rpc error' } : { ms, result: j.result }
-  } catch (e) { return { ms: performance.now() - t, error: (e as Error).name } }
+  } catch (e) { return { ms: performance.now() - t, error: `${(e as Error).name}: ${(e as Error).message}`.slice(0, 80) } }
 }
 
 const pct = (xs: number[], p: number) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : NaN }
@@ -39,14 +39,15 @@ console.log('                 median     p90       median     p90')
 for (const [name, url, h] of HTTP) {
   await call(url, h, 'eth_chainId', [])
   const bn: number[] = [], ec: number[] = []
-  const errors = new Set<string>()
+  const errors = new Map<string, number>()
+  const fail = (m: string) => errors.set(m, (errors.get(m) ?? 0) + 1)
   for (let i = 0; i < 15; i++) {
     const a = await call(url, h, 'eth_blockNumber', [])
-    if (a.error) errors.add(a.error); else bn.push(a.ms)
+    if (a.error) fail(a.error); else bn.push(a.ms)
     const b = await call(url, h, 'eth_call', [USDC_BALANCE, 'latest'])
-    if (b.error) errors.add(b.error); else ec.push(b.ms)
+    if (b.error) fail(b.error); else ec.push(b.ms)
   }
-  console.log(`${name.padEnd(14)}${f(pct(bn, 0.5))}${f(pct(bn, 0.9))}  ${f(pct(ec, 0.5))}${f(pct(ec, 0.9))}   ${errors.size ? [...errors].join(', ') : 'none'}`)
+  console.log(`${name.padEnd(14)}${f(pct(bn, 0.5))}${f(pct(bn, 0.9))}  ${f(pct(ec, 0.5))}${f(pct(ec, 0.9))}   ${errors.size ? [...errors].map(([m, n]) => `${n}× ${m}`).join('; ') : 'none'}`)
 }
 
 console.log('\nFreshness (10 rounds, all asked at once): blocks behind the newest answer')
