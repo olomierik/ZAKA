@@ -283,6 +283,13 @@ export class LiveExecutor {
     return { hash: r.transactionHash, tokens: -d.tokens, usd: usdOf18(d.usdc18 > 0n ? d.usdc18 : 0n), gasUsd: gasUsdOf(r), at: Date.now() }
   }
 
+  /** Sends `usd` of USDC (native) to `to`: a fee on a winning trade, a withdrawal. */
+  async sendUsdc(to: Address, usd: number): Promise<Fill> {
+    if (!(usd > 0)) throw new LiveError('nothing to send')
+    const r = await this.send({ to, data: '0x', value: BigInt(Math.round(usd * 1e6)) * 10n ** 12n }, 'transfer')
+    return { hash: r.transactionHash, tokens: 0n, usd, gasUsd: gasUsdOf(r), at: Date.now() }
+  }
+
   private deadline() { return BigInt(Math.floor(Date.now() / 1000) + 120) }
 
   /** One transaction at a time: simulated (retried briefly: a lagging node may not see the last approval yet), sent with the next nonce, confirmed. */

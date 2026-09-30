@@ -3,7 +3,9 @@
 import { describe, expect, test } from 'bun:test'
 import type { LaunchInfo } from '../../api/_marketProtocol'
 import { MemoryBotStore } from '../src/bot/store'
-import { keyHash, PaperAccounts, PAPER_LIMITS, sizeFor, type PaperSignal } from '../src/bot/paperAccounts'
+import { defaultTuning } from '../src/bot/learner'
+import { keyHash, PaperAccounts, PAPER_LIMITS, type PaperAccount, type PaperSignal } from '../src/bot/paperAccounts'
+import { sizeForTarget, TARGETS } from '../src/bot/sizing'
 import { failing, ScanFeed } from '../src/bot/scanFeed'
 import { STRATEGIES } from '../src/trading/paper'
 
@@ -14,10 +16,11 @@ describe('paper accounts', () => {
   const setup = (price: () => number | null = () => 1) => {
     const store = new MemoryBotStore()
     const accts = new PaperAccounts({ store, priceOf: price, params: s => STRATEGIES[s] })
-    const { key, account } = accts.create(now)!
+    const { key, account } = accts.create(now, { name: 'Hunter 1', strategies: ['snipe', 'scalp'] }) as { key: string; account: PaperAccount }
     return { store, accts, key, a: account }
   }
   const signal = (o: Partial<PaperSignal> = {}): PaperSignal => ({ id: 's1', token: T, symbol: 'C', launchpad: 'ARGUS', price: 1, strategy: 'snipe', roundTripPct: 2, liquidityUsd: 100_000, ...o })
+  const sizeOf = (s: 'snipe' | 'scalp', liq = 100_000) => sizeForTarget({ targetUsd: TARGETS[s].target, takeProfit: defaultTuning(s).takeProfit, roundTripPct: 2, liquidityUsd: liq })!.sizeUsd
 
   test('a key opens its account; the engine keeps only its hash', () => {
     const { accts, key, a } = setup()
@@ -27,8 +30,9 @@ describe('paper accounts', () => {
     expect(accts.byKey('ab'.repeat(32))).toBeNull()
     expect(accts.byKey(null)).toBeNull()
     expect(accts.view(a).id).toBe(a.id.slice(0, 8)) // never the whole hash
+    expect(accts.view(a).name).toBe('Hunter 1')
   })
-  test('deposits, strategies, size and start are checked', () => {
+  test('deposits, strategies and start are checked; the amount per trade is not the visitor\'s', () => {
     const { accts, a } = setup()
     expect(accts.act(a, { action: 'start' }, now)).toMatch(/deposit/)
     expect(accts.act(a, { action: 'deposit', amount: -5 }, now)).toMatch(/above/)
@@ -37,67 +41,72 @@ describe('paper accounts', () => {
     expect(accts.act(a, { action: 'strategies', strategies: [] }, now)).toMatch(/at least one/)
     expect(accts.act(a, { action: 'strategies', strategies: ['snipe', 'bogus' as never, 'second-leg'] }, now)).toBeNull()
     expect(a.strategies).toEqual(['snipe', 'second-leg'])
-    expect(accts.act(a, { action: 'size', usd: 0 }, now)).toMatch(/\$1/)
-    expect(accts.act(a, { action: 'size', usd: 50 }, now)).toBeNull()
+    expect(accts.act(a, { action: 'size', usd: 50 }, now)).toMatch(/automatically/)
     expect(accts.act(a, { action: 'start' }, now)).toBeNull()
-    expect(a).toMatchObject({ running: true, cash: 1_000, tradeUsd: 50, startedAt: now })
+    expect(a).toMatchObject({ running: true, cash: 1_000, startedAt: now })
   })
-  test('a running account buys the signals of the strategies it follows', () => {
+  test('a running account buys the signals of the strategies it follows, each sized for its profit target', () => {
     const { accts, a } = setup()
     accts.act(a, { action: 'deposit', amount: 100 }, now)
     accts.onSignal(signal(), now) // not started yet
     expect(a.positions).toEqual([])
-    accts.act(a, { action: 'start' }, now) // follows snipe and scalp by default
+    accts.act(a, { action: 'start' }, now)
     accts.onSignal(signal({ id: 's2', strategy: 'second-leg' }), now) // not followed
     expect(a.positions).toEqual([])
     accts.onSignal(signal({ id: 's3' }), now)
     expect(a.positions).toHaveLength(1)
-    expect(a.cash).toBe(75) // $25 a trade
+    expect(a.cash).toBeCloseTo(100 - sizeOf('snipe'), 6)
     accts.onSignal(signal({ id: 's4', token: '0x' + 'c2'.repeat(20), strategy: 'scalp' }), now)
-    expect(a.cash).toBe(70) // a scalp is a fifth: $5
-    expect(sizeFor(a, 'scalp')).toBe(5)
+    expect(a.cash).toBeCloseTo(100 - sizeOf('snipe') - sizeOf('scalp'), 6)
+    expect(a.positions[1]).toMatchObject({ targetUsd: TARGETS.scalp.target, tuningVersion: 1 })
   })
   test('no cash, no trade; the same coin once per 6 hours', () => {
     const { accts, a } = setup()
-    accts.act(a, { action: 'deposit', amount: 30 }, now); accts.act(a, { action: 'start' }, now)
+    const size = sizeOf('snipe')
+    accts.act(a, { action: 'deposit', amount: size + 1 }, now); accts.act(a, { action: 'start' }, now)
     accts.onSignal(signal(), now)
     accts.onSignal(signal({ id: 's2' }), now) // same coin
-    accts.onSignal(signal({ id: 's3', token: '0x' + 'c2'.repeat(20) }), now) // $5 left, needs $25
+    accts.onSignal(signal({ id: 's3', token: '0x' + 'c2'.repeat(20) }), now) // $1 left
     expect(a.positions).toHaveLength(1)
+    expect(accts.view(a).skips.map(x => x.text).join(' | ')).toMatch(/has \$1\.00 in cash/)
   })
-  test('exits pay back into cash; the creator selling closes a scalp', () => {
+  test('exits pay back into cash; the creator selling closes a position at once', () => {
     const { accts, a } = setup()
     accts.act(a, { action: 'deposit', amount: 100 }, now); accts.act(a, { action: 'start' }, now)
     accts.onSignal(signal({ strategy: 'scalp' }), now)
     const p = a.positions[0]
-    accts.onPrice(T, 1.4, now + 1_000, false, true) // +40%: 75% taken
-    expect(p.tp1Done).toBe(true)
-    expect(a.cash).toBeGreaterThan(95)
-    accts.onPrice(T, 1.2, now + 2_000, true, true) // the creator sells
-    expect(p).toMatchObject({ status: 'closed', exitReason: 'creator' })
-    expect(a.cash).toBeGreaterThan(100) // a small win on $5
-    expect(accts.view(a).stats).toMatchObject({ closed: 1, wins: 1 })
+    accts.onPrice(T, 1.05, now + 1_000, false, true) // +5%: short of the take-profit
+    expect(p.status).toBe('open')
+    accts.onPrice(T, 1.04, now + 2_000, true, true) // the creator sells
+    expect(p).toMatchObject({ status: 'closed', exitReason: 'creator', note: 'The creator sold: out at once' })
+    expect(accts.view(a).stats).toMatchObject({ closed: 1 })
   })
   test('equity counts open positions at the current price; reset empties it', () => {
     let price = 1
     const { accts, a } = setup(() => price)
     accts.act(a, { action: 'deposit', amount: 100 }, now); accts.act(a, { action: 'start' }, now)
     accts.onSignal(signal(), now)
-    price = 0.5
+    price = 0.9
     const v = accts.view(a)
-    expect(v.cash).toBe(75)
-    expect(v.openValue).toBeGreaterThan(11)
-    expect(v.openValue).toBeLessThan(12.5)
+    expect(v.cash).toBeCloseTo(100 - sizeOf('snipe'), 6)
+    expect(v.openValue).toBeGreaterThan(sizeOf('snipe') * 0.85)
+    expect(v.openValue).toBeLessThan(sizeOf('snipe') * 0.9)
     expect(accts.act(a, { action: 'reset' }, now)).toBeNull()
-    expect(a).toMatchObject({ cash: 0, deposited: 0, positions: [], running: false })
+    expect(a).toMatchObject({ cash: 0, deposited: 0, positions: [], running: false, name: 'Hunter 1' })
   })
-  test('accounts are saved and loaded back', async () => {
+  test('accounts are saved and loaded back; rows from before named bots get a name and settings', async () => {
     const { store, accts, a, key } = setup()
     accts.act(a, { action: 'deposit', amount: 42 }, now)
     accts.flush()
+    const old = { id: keyHash('cd'.repeat(32)), createdAt: now, running: false, startedAt: null, strategies: ['snipe'], tradeUsd: 25, cash: 10, deposited: 10, positions: [], updatedAt: now }
+    store.savePaperAccount(old as never)
     const again = new PaperAccounts({ store, priceOf: () => 1, params: s => STRATEGIES[s] })
     await again.load()
     expect(again.byKey(key)?.cash).toBe(42)
+    const migrated = again.byKey('cd'.repeat(32))!
+    expect(migrated.name).toMatch(/^Bot [0-9A-F]{4}$/)
+    expect(migrated.tuning.scalp.takeProfit).toBe(defaultTuning('scalp').takeProfit)
+    expect(again.view(migrated).tuning.snipe.sizeUsd).toBeGreaterThan(0)
   })
 })
 

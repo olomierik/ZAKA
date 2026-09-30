@@ -157,7 +157,9 @@ describe('the safety report', () => {
   })
   test('anything not yet known keeps it pending, never passed', () => {
     expect(assess(trusted, { ...clean, honeypot: undefined }).verdict).toBe('pending')
-    expect(assess(trusted, { ...clean, clusters: null }).verdict).toBe('pending')
+    // Funding not traced in time (2026-09-30): a risk flag, not a block, so a signal isn't held for minutes.
+    expect(assess(trusted, { ...clean, clusters: null }).verdict).toBe('risky')
+    expect(assess(trusted, { ...clean, clusters: undefined }).verdict).toBe('pending')
     expect(assess(trusted, { ...clean, liquidityUsd: null }).verdict).toBe('pending')
   })
   test('honeypot, untradeable, and a tax in a deep pool fail', () => {

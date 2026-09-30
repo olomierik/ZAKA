@@ -11,7 +11,7 @@
 // subscription is re-sent, and the engine answers each with a fresh snapshot.
 
 import { useSyncExternalStore } from 'react'
-import { botControlMessage, type BotControl, type BotPosition, type BotStatus, type PaperAccountView, type PaperAction, type ScanRow, type ScanStats, type SearchHit, type Interval, type LaunchInfo, type SafetyCheck, type ServerMessage, type TokenStats, type TradeSignal, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
+import { botControlMessage, type BotControl, type BotPosition, type BotStatus, type PaperAccountView, type PaperAction, type ScanRow, type ScanStats, type SearchHit, type Interval, type LaunchInfo, type NewPaperAccount, type BotUserView, type MeResponse, type MarketBot, type MarketBotDetail, type RejectionStats, type SafetyCheck, type ServerMessage, type TokenStats, type TradeSignal, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
 
 const WS_URL = (import.meta.env.VITE_ARCDEX_WS_URL as string | undefined) || undefined
 const API_URL = ((import.meta.env.VITE_ARCDEX_API_URL as string | undefined) || (WS_URL ? WS_URL.replace(/^ws/, 'http').replace(/\/ws\/?$/, '') : '')).replace(/\/$/, '')
@@ -166,14 +166,78 @@ async function paperFetch(path: string, init: RequestInit & { key?: string | nul
   if (!res.ok || !body.account) throw new Error(body.error ?? `the engine answered ${res.status}`)
   return body as { key?: string; account: PaperAccountView }
 }
-/** A new paper account for this browser. */
-export async function createPaperAccount(): Promise<PaperAccountView> {
-  const r = await paperFetch('/v1/paper/accounts', { method: 'POST', body: '{}' })
+/** A new bot for this browser: its name and strategies. */
+export async function createPaperAccount(bot: NewPaperAccount): Promise<PaperAccountView> {
+  const r = await paperFetch('/v1/paper/accounts', { method: 'POST', body: JSON.stringify(bot) })
   if (r.key) setPaperKey(r.key)
   return r.account
 }
 export const getPaperAccount = (key: string) => paperFetch('/v1/paper/account', { key }).then(r => r.account)
 export const paperAction = (key: string, action: PaperAction) => paperFetch('/v1/paper/account', { method: 'POST', key, body: JSON.stringify(action) }).then(r => r.account)
+/** The bot's trade log: every closed trade, newest first (`before`: a closing time, for the next page). */
+export async function getPaperTrades(key: string, limit = 100, before?: number): Promise<{ trades: BotPosition[]; total: number }> {
+  const res = await fetch(`${API_URL}/v1/paper/trades?limit=${limit}${before ? `&before=${before}` : ''}`, { headers: { 'X-Paper-Key': key }, signal: AbortSignal.timeout(10_000) })
+  const body = await res.json().catch(() => ({})) as { trades?: BotPosition[]; total?: number; error?: string }
+  if (!res.ok || !body.trades) throw new Error(body.error ?? `the engine answered ${res.status}`)
+  return { trades: body.trades, total: body.total ?? body.trades.length }
+}
+
+// ── Autotrade accounts, owners' bots and the marketplace (engine/src/ws/botApi.ts) ──
+
+const SESSION_KEY = 'arcdex:bot-session'
+/** This browser's Autotrade session (email + passcode sign-in); the engine checks its signature. */
+export function botSession(): string | null {
+  try { return localStorage.getItem(SESSION_KEY) } catch { return null }
+}
+function setBotSession(t: string | null) {
+  try { if (t) localStorage.setItem(SESSION_KEY, t); else localStorage.removeItem(SESSION_KEY) } catch { /* storage blocked */ }
+  window.dispatchEvent(new Event('arcdex:bot-session'))
+}
+export function botSignOut() { setBotSession(null) }
+
+async function botFetch<T>(path: string, init: { method?: 'GET' | 'POST'; body?: unknown; auth?: boolean; withKey?: boolean } = {}): Promise<T> {
+  const token = init.auth ? botSession() : null
+  if (init.auth && !token) throw new Error('sign in first')
+  const key = init.withKey ? paperKey() : null
+  const res = await fetch(`${API_URL}${path}`, {
+    method: init.method ?? 'GET', signal: AbortSignal.timeout(15_000),
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(key ? { 'X-Paper-Key': key } : {}) },
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+  })
+  const body = await res.json().catch(() => ({})) as T & { error?: string }
+  if (res.status === 401 && init.auth) setBotSession(null) // expired or signed out elsewhere
+  if (!res.ok) throw new Error(body.error ?? `the engine answered ${res.status}`)
+  return body
+}
+async function signedIn(path: string, email: string, passcode: string) {
+  const r = await botFetch<{ token: string; user: BotUserView; claimed: string | null }>(path, { method: 'POST', body: { email, passcode }, withKey: true })
+  setBotSession(r.token)
+  if (r.claimed) setPaperKey(null) // this browser's old bot joined the account
+  return r
+}
+export const botSignup = (email: string, passcode: string) => signedIn('/v1/auth/signup', email, passcode)
+export const botLogin = (email: string, passcode: string) => signedIn('/v1/auth/login', email, passcode)
+export const botForgot = (email: string) => botFetch<{ message: string }>('/v1/auth/forgot', { method: 'POST', body: { email } }).then(r => r.message)
+export const botVerifySend = () => botFetch<{ ok: true }>('/v1/auth/verify/send', { method: 'POST', body: {}, auth: true })
+export const botVerify = (code: string) => botFetch<{ user: BotUserView }>('/v1/auth/verify', { method: 'POST', body: { code }, auth: true }).then(r => r.user)
+export async function botChangePasscode(current: string, next: string) {
+  const r = await botFetch<{ token: string }>('/v1/auth/passcode', { method: 'POST', body: { current, next }, auth: true })
+  setBotSession(r.token)
+}
+export async function botSignOutAll() { await botFetch('/v1/auth/logout-all', { method: 'POST', body: {}, auth: true }); setBotSession(null) }
+export const botMe = () => botFetch<MeResponse>('/v1/me', { auth: true })
+export const botCreate = (bot: NewPaperAccount) => botFetch<{ account: PaperAccountView }>('/v1/me/bots', { method: 'POST', body: bot, auth: true }).then(r => r.account)
+export const botAction = (slug: string, action: PaperAction) => botFetch<{ account: PaperAccountView }>(`/v1/me/bots/${encodeURIComponent(slug)}`, { method: 'POST', body: action, auth: true }).then(r => r.account)
+export const botTrades = (slug: string, limit = 100, before?: number) =>
+  botFetch<{ trades: BotPosition[]; total: number }>(`/v1/me/bots/${encodeURIComponent(slug)}/trades?limit=${limit}${before ? `&before=${before}` : ''}`, { auth: true })
+export const botWithdrawCode = (slug: string, to: string, amountUsd: number) =>
+  botFetch<{ message: string }>(`/v1/me/bots/${encodeURIComponent(slug)}/withdraw/code`, { method: 'POST', body: { to, amountUsd }, auth: true }).then(r => r.message)
+export const botWithdraw = (slug: string, code: string) =>
+  botFetch<{ hash: string; account: PaperAccountView }>(`/v1/me/bots/${encodeURIComponent(slug)}/withdraw`, { method: 'POST', body: { code }, auth: true })
+/** The marketplace: every bot, public. */
+export const getMarket = (sort: 'pnl' | 'winrate' | 'new' | 'live' = 'pnl', limit = 100) => botFetch<{ bots: MarketBot[]; total: number }>(`/v1/bots?sort=${sort}&limit=${limit}`)
+export const getMarketBot = (slug: string) => botFetch<{ bot: MarketBotDetail }>(`/v1/bots/${encodeURIComponent(slug)}`).then(r => r.bot)
+export const getRejections = () => get<RejectionStats>('/v1/bot/rejections')
 
 /** The owner's signed switch: paper/live, or sell every live position (engine/src/bot/control.ts). */
 export async function sendBotControl(control: BotControl, sign: (message: string) => Promise<`0x${string}`>): Promise<BotStatus> {

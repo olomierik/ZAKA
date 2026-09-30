@@ -36,9 +36,16 @@ Everything runs in one Bun process by default. For scale-out, split it into `ENG
 | `src/intel/templates.ts` | Contract code templates: "is this the launchpad's own contract?" (`templateData.ts` from `scripts/learn-templates.ts`) |
 | `src/intel/scanner.ts` | The safety report: contract, hook, honeypot probe, liquidity, holders, bundling, clusters, wash, creator, copycat |
 | `src/intel/honeypot.ts` | The honeypot probe (buy, pass on, sell, in one eth_call with state overrides) |
-| `src/signals/rules.ts` | Snipe and second-leg rules |
+| `src/signals/rules.ts` | Snipe, momentum fast-scalp and second-leg rules |
 | `src/trading/paper.ts` | Paper positions, exits, costs, risk limits, stats |
-| `src/bot/bot.ts` | Ties it together: watches launches, fires signals, paper-trades; `/v1/signals`, `/v1/bot/*`, `signals` channel |
+| `src/bot/bot.ts` | Ties it together: watches launches, sweeps every trading coin every 3s, fires signals (with the coin's numbers), paper-trades; `/v1/signals`, `/v1/bot/*`, `signals` channel |
+| `src/bot/rugGuard.ts` | The rug guard: liquidity pulled, insider or whale dumps, crashes on heavy selling close every position in the coin at once |
+| `src/bot/paperAccounts.ts` | Visitors' named bots: automatic trade sizes, rug and drain protection, a trade log (`/v1/paper/*`) |
+| `src/bot/sizing.ts` | Each trade's size: the smallest that nets the strategy's profit target ($1–2 scalps, $1–4 otherwise) after costs |
+| `src/bot/learner.ts` | Each bot reads its losing trades and adjusts its own filters and take-profit, with rollback and loosening |
+| `src/bot/users.ts`, `src/bot/mailer.ts` | Accounts: email + 4-character passcode, lockouts, sessions; verification, resets and withdrawal codes by email (Resend) |
+| `src/bot/userLive.ts` | Live bots: encrypted per-bot wallets (`BOT_WALLET_SECRET`), readiness from the paper record, the 2% profit fee, withdrawals |
+| `src/ws/botApi.ts` | `/v1/auth/*`, `/v1/me/*` (owners' bots) and `/v1/bots` (the marketplace) |
 | `src/market/tokenState.ts` | Per-token hot state; rolling 24h stats in 1,440 minute buckets |
 | `src/market/candles.ts` | 1s/5s/15s/1m/5m/15m/1h/4h/1d candles, late-trade handling |
 | `src/market/engine.ts` | Applies trades/launches; publishes events; ticks; warm restart |

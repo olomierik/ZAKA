@@ -183,6 +183,80 @@ export interface TradeSignal {
   safety: { verdict: 'pass' | 'risky' | 'fail' | 'pending'; score: number; checks: SafetyCheck[] }
   /** Whether ARCDEX can trade it today. */
   executable: boolean
+  /** Which rule fired: a scalp comes from a snipe on a risky coin or from a momentum burst (missing on older signals). */
+  rule?: 'snipe' | 'second-leg' | 'momentum'
+  /** The coin at the signal, in numbers: what a bot's learned filters read (missing on older signals). */
+  features?: SignalFeatures
+}
+
+/** A coin at a signal, in numbers (engine/src/bot/bot.ts). Visitors' bots filter on these and learn from them. */
+export interface SignalFeatures {
+  ageSec: number
+  liquidityUsd: number | null
+  marketCapUsd: number | null
+  /** Distinct buyers in the rule's window (since launch for a snipe, the last 2 minutes for a momentum scalp). */
+  buyers: number
+  /** Buy volume ÷ sell volume in that window (null: no sells). */
+  buySellRatio: number | null
+  /** How far the price has already run in that window (1.2 = +20%). */
+  runUp: number | null
+  /** The largest buyer's share of buy volume, %. */
+  topBuyerPct: number
+  /** The safety score, 0–100 (higher is safer). */
+  score: number
+  /** Risk checks the coin didn't pass (holders, serial, copycat). */
+  flags: string[]
+  /** What a $1 round trip cost in the honeypot probe, %. */
+  roundTripPct: number | null
+}
+
+/** The entry filters a visitor's bot has learned, per strategy (engine/src/bot/learner.ts). */
+export interface BotFilters {
+  minLiquidityUsd: number
+  minBuyers: number
+  minBuySellRatio: number
+  /** Skip a coin whose price already ran more than this in the rule's window. */
+  maxRunUp: number
+  minScore: number
+  maxTopBuyerPct: number
+  /** Risk flags it no longer trades. */
+  avoidFlags: string[]
+}
+
+/** A visitor's bot's settings for one strategy: exits, the profit each trade is sized for, and its filters. */
+export interface StrategyTuning {
+  version: number
+  /** Sell everything at this multiple of the entry price (1.15 = +15%). */
+  takeProfit: number
+  /** Sell everything at this multiple (0.9 = −10%). */
+  stopLoss: number
+  /** Out after this many minutes unless it's moving, and after `maxHoldMin` whatever happens. */
+  timeStopMin: number
+  maxHoldMin: number
+  /** The profit a winning trade secures: each trade's size is the smallest that nets it at `takeProfit`. */
+  targetUsd: number
+  filters: BotFilters
+  changedAt: number | null
+  /** Closed trades and wins behind the version before this one (a change that did worse is rolled back). */
+  basis: { trades: number; wins: number } | null
+}
+
+/** Something a visitor's bot learned or changed, in words. */
+export interface LearnNote {
+  at: number
+  strategy: 'snipe' | 'second-leg' | 'scalp'
+  version: number
+  kind: 'tighten' | 'loosen' | 'exit' | 'revert'
+  text: string
+}
+
+/** A line in a visitor's bot's activity log. */
+export interface PaperEvent {
+  at: number
+  kind: 'buy' | 'sell' | 'rug' | 'skip' | 'learn' | 'pause' | 'stop'
+  text: string
+  token?: string
+  symbol?: string
 }
 
 /** A (paper) position the bot opened on a signal (engine/src/trading/paper.ts). */
@@ -210,9 +284,21 @@ export interface BotPosition {
   /** paper (missing on older rows) or live: the bot wallet's real trade. */
   mode?: 'paper' | 'live'
   /** Live: its transactions, the gas they cost, and a sale that keeps failing. */
-  txs?: { kind: 'buy' | 'approve' | 'sell'; hash: string; at: number; usd?: number; gasUsd?: number }[]
+  txs?: { kind: 'buy' | 'approve' | 'sell' | 'fee'; hash: string; at: number; usd?: number; gasUsd?: number }[]
   gasUsd?: number
   stuck?: string | null
+  /** A visitor's bot: the exits it traded with, the profit its size was chosen to secure, and the tuning version. */
+  exits?: { stopLoss: number; tp1Multiple: number; timeStopMin: number; maxHoldMin?: number }
+  targetUsd?: number
+  tuningVersion?: number
+  /** The coin at entry, and the lowest price while open. */
+  features?: SignalFeatures
+  low?: number
+  /** Why it closed, in words. */
+  note?: string
+  /** A visitor's bot: the platform's 2% of a winning trade's profit (already out of pnlUsd); live, a fee still to send. */
+  feeUsd?: number
+  feeDue?: number
 }
 
 /** The bot's mode and live wallet (GET /v1/bot/status). */
@@ -242,7 +328,7 @@ export interface ScanRow {
    * safety scan hasn't finished; rejected: a hard safety check failed; signal: it fired. */
   status: 'new' | 'watching' | 'checking' | 'rejected' | 'signal'
   /** Which rule the reasons are about. */
-  stage: 'snipe' | 'second-leg' | 'safety'
+  stage: 'snipe' | 'scalp' | 'second-leg' | 'safety'
   /** Why, in words: unmet rules or failing checks (✗ marks a failure). */
   reasons: string[]
   strategy?: 'snipe' | 'second-leg' | 'scalp'
@@ -252,6 +338,8 @@ export interface ScanRow {
   /** When it was last evaluated, and how many times. */
   at: number
   evals: number
+  /** What stops it, as keys ("snipe:buyers", "safety:honeypot"), for counting (GET /v1/bot/rejections). */
+  keys?: string[]
 }
 
 export interface ScanStats {
@@ -293,13 +381,13 @@ export function searchScore(c: { symbol: string; name: string; address: string }
   return 0
 }
 
-/** A visitor's paper-trading account on the engine (virtual USDC; GET/POST /v1/paper/account). */
+/** A visitor's bot: a paper-trading account on the engine (virtual USDC; GET/POST /v1/paper/account). */
 export interface PaperAccountView {
   id: string
+  /** The name its owner gave it. */
+  name: string
   running: boolean
   strategies: ('snipe' | 'second-leg' | 'scalp')[]
-  /** USD per trade (scalps use a fifth of it). */
-  tradeUsd: number
   cash: number
   deposited: number
   /** Cash plus open positions at the current price. */
@@ -309,15 +397,119 @@ export interface PaperAccountView {
   startedAt: number | null
   positions: BotPosition[]
   stats: { closed: number; open: number; wins: number; losses: number; winRate: number | null; totalPnlUsd: number; profitFactor: number | null; expectancyUsd: number | null; maxDrawdownUsd: number }
+  /** Per strategy: its learned settings, what a trade costs now (about), and its own results. */
+  tuning: Record<'snipe' | 'second-leg' | 'scalp', StrategyTuning & { sizeUsd: number | null; closed: number; winRate: number | null }>
+  /** The profit range each strategy's trades are sized for. */
+  targets: Record<'snipe' | 'second-leg' | 'scalp', [number, number]>
+  /** What it learned (newest first), its activity, and the signals it passed over lately. */
+  learnLog: LearnNote[]
+  events: PaperEvent[]
+  skips: PaperEvent[]
+  /** What keeps the account from being drained. */
+  protections: { pausedUntil: number | null; lossStreak: number; pauseAfterLosses: number; dailyLossLimitUsd: number; todayPnlUsd: number; stopBelowPct: number }
+  /** Every closed trade it has made (GET /v1/paper/trades lists them all). */
+  tradesLogged: number
+  /** Its unique id on the platform (from its name): /bots/<slug>. */
+  slug?: string
+  /** paper: virtual USDC; live: its own wallet trades real USDC. */
+  mode?: 'paper' | 'live'
+  /** The platform's 2% of winning trades' profit: virtual (paper) and sent (live). */
+  feesPaidUsd?: number
+  /** Whether its paper record is good enough to trade live, and how far it is. */
+  ready?: BotReadiness
+  /** Its live wallet and results, once it has a wallet. */
+  live?: BotLiveView | null
+  /** Whether this engine can trade live for visitors' bots at all. */
+  liveAvailable?: { ok: boolean; why: string | null }
 }
 
-/** What a visitor can do with their paper account (POST /v1/paper/account). */
+/** A bot's paper record against what trading live needs (engine/src/bot/userLive.ts READY). */
+export interface BotReadiness {
+  ok: boolean
+  trades: number
+  winRate: number | null
+  profitFactor: number | null
+  pnlUsd: number
+  need: { minTrades: number; minWinRate: number; minProfitFactor: number }
+}
+
+/** A bot's live side: its own wallet, balance and results. */
+export interface BotLiveView {
+  wallet: string
+  balanceUsd: number | null
+  /** Realized live P&L (after gas and the 2% fee), closed and open trades, win rate. */
+  pnlUsd: number
+  closed: number
+  open: number
+  winRate: number | null
+  feesPaidUsd: number
+  limits: { maxTradeUsd: number; minBalanceUsd: number; reserveUsd: number; maxOpen: number; dailyLossUsd: number }
+  events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
+}
+
+/** A signed-in bot owner (GET /v1/me). */
+export interface BotUserView { email: string; verified: boolean; createdAt: number }
+
+export interface MeResponse {
+  user: BotUserView
+  bots: PaperAccountView[]
+  /** Email (Resend) is set up: verification, resets and withdrawal codes work. */
+  email: boolean
+  maxBots: number
+  liveAvailable: { ok: boolean; why: string | null }
+}
+
+/** A bot in the marketplace (GET /v1/bots): public, no owner details. */
+export interface MarketBot {
+  slug: string
+  name: string
+  strategies: ('snipe' | 'second-leg' | 'scalp')[]
+  mode: 'paper' | 'live'
+  running: boolean
+  createdAt: number
+  /** Paper: account value minus deposits (realized and open); live: realized live P&L plus open trades. */
+  pnlUsd: number
+  pnlPct: number | null
+  winRate: number | null
+  closed: number
+  /** Its open positions, valued now. */
+  positions: { token: string; symbol: string; strategy: 'snipe' | 'second-leg' | 'scalp'; mode: 'paper' | 'live'; sizeUsd: number; entry: number; price: number | null; pnlUsd: number | null; openedAt: number }[]
+  /** Its paper record, always (for a live bot, what earned it the switch). */
+  paper: { pnlUsd: number; winRate: number | null; closed: number }
+  /** Learned changes so far, and whether it could go live. */
+  learned: number
+  ready: boolean
+  wallet: string | null
+}
+
+export interface MarketBotDetail extends MarketBot {
+  trades: BotPosition[]
+  learnLog: LearnNote[]
+  live: { pnlUsd: number; closed: number; winRate: number | null } | null
+}
+
+/** Why coins are passed over right now (GET /v1/bot/rejections). */
+export interface RejectionStats {
+  /** Coins watched in the last 48h that aren't signals, by their main reason. */
+  top: { key: string; label: string; coins: number }[]
+  watching: number
+  at: number
+}
+
+/** What a visitor can do with their bot (POST /v1/paper/account). The amount per trade isn't one: each trade is sized for its profit target. */
 export type PaperAction =
   | { action: 'deposit'; amount: number }
   | { action: 'start' } | { action: 'stop' }
   | { action: 'strategies'; strategies: ('snipe' | 'second-leg' | 'scalp')[] }
-  | { action: 'size'; usd: number }
+  | { action: 'rename'; name: string }
   | { action: 'reset' }
+  /** Signed-in owners only (POST /v1/me/bots/:slug): */
+  | { action: 'mode'; mode: 'paper' | 'live' }
+  | { action: 'live-wallet' }
+  | { action: 'sell-live' }
+
+/** A new bot (POST /v1/paper/accounts). */
+export interface NewPaperAccount { name: string; strategies: ('snipe' | 'second-leg' | 'scalp')[] }
 
 /** What the owner can tell the bot (POST /v1/bot/control, signed). */
 export type BotControl = { action: 'mode'; mode: 'paper' | 'live' } | { action: 'close-live' }

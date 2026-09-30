@@ -7,8 +7,9 @@ import { log, errMsg } from '../log'
 import type { Position } from '../trading/paper'
 import type { PaperAccount, PaperAccountStore } from './paperAccounts'
 import type { Signal } from './types'
+import type { User, UserStore } from './users'
 
-export interface BotStore extends PaperAccountStore {
+export interface BotStore extends PaperAccountStore, UserStore {
   readonly kind: 'memory' | 'postgres'
   saveSignal(s: Signal): void
   savePosition(p: Position): void
@@ -37,6 +38,18 @@ export class MemoryBotStore implements BotStore {
   private accounts = new Map<string, PaperAccount>()
   async paperAccounts() { return [...this.accounts.values()].map(a => structuredClone(a)) }
   savePaperAccount(a: PaperAccount) { this.accounts.set(a.id, structuredClone(a)) }
+  private trades = new Map<string, Map<string, Position>>()
+  savePaperTrade(accountId: string, p: Position) {
+    const m = this.trades.get(accountId) ?? this.trades.set(accountId, new Map()).get(accountId)!
+    m.set(p.id, structuredClone(p))
+  }
+  private userRows = new Map<string, User>()
+  async users() { return [...this.userRows.values()].map(u => structuredClone(u)) }
+  saveUser(u: User) { this.userRows.set(u.id, structuredClone(u)) }
+  async paperTrades(accountId: string, limit: number, before?: number) {
+    return [...(this.trades.get(accountId)?.values() ?? [])].filter(p => before === undefined || (p.closedAt ?? 0) < before)
+      .sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)).slice(0, limit).map(p => structuredClone(p))
+  }
 }
 
 const SCHEMA = `
@@ -51,6 +64,9 @@ create table if not exists arcdex_bot_positions (
 create index if not exists arcdex_bot_positions_open on arcdex_bot_positions (status, closed_at desc);
 create table if not exists arcdex_bot_settings (key text primary key, value text not null, at timestamptz not null default now());
 create table if not exists arcdex_paper_accounts (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
+create table if not exists arcdex_paper_trades (id text primary key, account text not null, closed_at timestamptz not null, data jsonb not null);
+create index if not exists arcdex_paper_trades_account on arcdex_paper_trades (account, closed_at desc);
+create table if not exists arcdex_bot_users (id text primary key, email text not null unique, data jsonb not null, updated_at timestamptz not null default now());
 `
 
 export class PostgresBotStore implements BotStore {
@@ -99,5 +115,25 @@ export class PostgresBotStore implements BotStore {
   savePaperAccount(a: PaperAccount) {
     this.write('paper account', () => this.sql`insert into arcdex_paper_accounts (id, data, updated_at) values (${a.id}, ${JSON.stringify(a)}::jsonb, now())
       on conflict (id) do update set data = excluded.data, updated_at = excluded.updated_at`)
+  }
+  savePaperTrade(accountId: string, p: Position) {
+    this.write('paper trade', () => this.sql`insert into arcdex_paper_trades (id, account, closed_at, data) values (${`${accountId.slice(0, 16)}:${p.id}`}, ${accountId}, ${new Date(p.closedAt ?? Date.now())}, ${JSON.stringify(p)}::jsonb)
+      on conflict (id) do update set data = excluded.data`)
+  }
+  async users() {
+    await this.ready
+    const rows = await this.sql`select data from arcdex_bot_users`
+    return rows.map((r: { data: User | string }) => (typeof r.data === 'string' ? JSON.parse(r.data) : r.data) as User)
+  }
+  saveUser(u: User) {
+    this.write('user', () => this.sql`insert into arcdex_bot_users (id, email, data, updated_at) values (${u.id}, ${u.email}, ${JSON.stringify(u)}::jsonb, now())
+      on conflict (id) do update set email = excluded.email, data = excluded.data, updated_at = excluded.updated_at`)
+  }
+  async paperTrades(accountId: string, limit: number, before?: number) {
+    await this.ready
+    const rows = before === undefined
+      ? await this.sql`select data from arcdex_paper_trades where account = ${accountId} order by closed_at desc limit ${limit}`
+      : await this.sql`select data from arcdex_paper_trades where account = ${accountId} and closed_at < ${new Date(before)} order by closed_at desc limit ${limit}`
+    return rows.map((r: { data: Position | string }) => (typeof r.data === 'string' ? JSON.parse(r.data) : r.data) as Position)
   }
 }
