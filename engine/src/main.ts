@@ -13,6 +13,7 @@
 //
 //   bun engine/src/main.ts          (see engine/README.md)
 
+import { every, keepAliveOnUnhandled, startWithRetry } from './lifecycle'
 import { randomBytes } from 'node:crypto'
 import { RedisClient } from 'bun'
 import { scanLogs, setLogEndpoints, type RawLog } from '../../api/_arcLogs'
@@ -76,7 +77,9 @@ const health = () => {
   const head = ws.lastHead?.number ?? (metrics.gauges.chain_head as number | undefined) ?? 0
   const lag = stream && head ? head - stream.handledTo : null
   const db = history.status()
-  const chainDown = cfg.role !== 'gateway' && (ws.status === 'down' || ws.status === 'stale') && (lag === null || lag > 100)
+  // Not started yet (still trying: see startWithRetry) counts as down, so a redeploy that can't reach the chain fails its health check and the running deployment stays.
+  const notStarted = cfg.role !== 'gateway' && (!stream || stream.mode === 'starting')
+  const chainDown = cfg.role !== 'gateway' && (notStarted || ((ws.status === 'down' || ws.status === 'stale') && (lag === null || lag > 100)))
   const degraded = (lag !== null && lag > 20) || !redisOk || (history.enabled && db.lastError !== null) || stream?.mode === 'catching_up'
   return {
     status: chainDown ? 'down' as const : degraded ? 'degraded' as const : 'ok' as const,
@@ -228,7 +231,7 @@ async function main() {
   // Linked wallets' $ARCD, read at start and every 10 minutes (and again whenever an account's tier is asked with a stale balance).
   const readHoldings = () => { for (const w of users?.linkedWallets() ?? []) void tiers.read(w) }
   readHoldings()
-  setInterval(readHoldings, 10 * 60_000)
+  every(10 * 60_000, 'tier holdings', readHoldings)
   const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => botRef?.priceOf(token) ?? eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s), live: userLive, paperSignals: cfg.botSignals.paper, access: ownerId => tiers.access(users?.get(ownerId) ?? null) })
   if (accounts) await accounts.load().catch(e => log.error('paper accounts: load failed', { error: errMsg(e) }))
   const bot = cfg.botMode === 'off' ? null : new Bot({
@@ -332,19 +335,24 @@ async function main() {
   stream = new ChainStream(ws, rpc, fetchLogs, cursors, handler, {
     filters, reconcileMs: cfg.reconcileMs, backfillOnStartBlocks: cfg.backfillOnStartBlocks, backfillMaxBlocks: cfg.backfillMaxBlocks,
   })
-  await stream.start()
+  // The chain stream starts in the background, retried until it does. A
+  // failed start (an RPC answering with an error page while Railway
+  // redeployed) used to end the process: "engine failed to start", restarted
+  // into the same failure, then left down. The API, the bots' pages and their
+  // time exits keep running meanwhile; /health says "down" until it starts.
+  void startWithRetry('chain stream', () => stream!.start())
 
-  setInterval(() => eng.tick(), 1_000)
+  every(1_000, 'market tick', () => eng.tick())
   // Time exits, visitors' bots and cleanup every 5s; every coin trading right now is evaluated every 3s.
-  if (bot) setInterval(() => bot.tick(), 5_000)
-  if (bot) setInterval(() => bot.sweep(), 3_000)
+  if (bot) every(5_000, 'bot tick', () => bot.tick())
+  if (bot) every(3_000, 'bot sweep', () => { bot.sweep() })
   // Signals replayed at live speed on their coins' stored trades (signals/liveSpeed.ts): what live bots may trade.
-  if (bot) setInterval(() => void bot.replayDue().catch(e => log.warn('bot: replay failed', { error: errMsg(e) })), 30_000)
+  if (bot) every(30_000, 'bot replay', () => void bot.replayDue().catch(e => log.warn('bot: replay failed', { error: errMsg(e) })))
   // The live scanner on the site: what changed, every 2s.
-  if (bot) setInterval(() => bot.pushScan(), 2_000)
-  setInterval(() => void hot.ping().then(() => { redisOk = true }, () => { redisOk = false; log.warn('redis ping failed') }), 10_000)
-  setInterval(() => void history.cleanup(cfg.tradeRetentionHours), 3_600_000)
-  if (srv) setInterval(() => hot.putSubscriptions(srv!.subscriptionCounts()), 10_000)
+  if (bot) every(2_000, 'scan push', () => bot.pushScan())
+  every(10_000, 'redis ping', () => void hot.ping().then(() => { redisOk = true }, () => { redisOk = false; log.warn('redis ping failed') }))
+  every(3_600_000, 'history cleanup', () => void history.cleanup(cfg.tradeRetentionHours))
+  if (srv) every(10_000, 'subscription counts', () => hot.putSubscriptions(srv!.subscriptionCounts()))
 
   const s = stream
   shutdownOn(async () => {
@@ -371,4 +379,5 @@ function shutdownOn(fn: () => Promise<void>) {
   process.on('SIGINT', () => void go('SIGINT'))
 }
 
+keepAliveOnUnhandled()
 main().catch(e => { log.error('engine failed to start', { error: errMsg(e) }); process.exit(1) })
