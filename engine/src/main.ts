@@ -227,7 +227,7 @@ async function main() {
     rpc, engine: eng, pools, mode: cfg.botMode, sizeUsd: cfg.botSizeUsd ?? undefined, scalpSizeUsd: cfg.botScalpSizeUsd ?? undefined,
     store: botStore, accounts,
     publish: (topics, msg) => publisher.publish(topics, msg),
-    live, owner: cfg.botOwner,
+    live, owner: cfg.botOwner, history: history.enabled ? history : null,
   })
   botRef = bot
   if (bot) {
@@ -330,6 +330,8 @@ async function main() {
   // Time exits, visitors' bots and cleanup every 5s; every coin trading right now is evaluated every 3s.
   if (bot) setInterval(() => bot.tick(), 5_000)
   if (bot) setInterval(() => bot.sweep(), 3_000)
+  // Signals replayed at live speed on their coins' stored trades (signals/liveSpeed.ts): what live bots may trade.
+  if (bot) setInterval(() => void bot.replayDue().catch(e => log.warn('bot: replay failed', { error: errMsg(e) })), 30_000)
   // The live scanner on the site: what changed, every 2s.
   if (bot) setInterval(() => bot.pushScan(), 2_000)
   setInterval(() => void hot.ping().then(() => { redisOk = true }, () => { redisOk = false; log.warn('redis ping failed') }), 10_000)

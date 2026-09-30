@@ -1809,5 +1809,18 @@ const d: Record<string, string> = {
   "Sells all at {tp} · stop {sl} · out after {m} min unless moving, {x} min at most": "在 {tp} 全部卖出 · 止损 {sl} · {m} 分钟无波动即退出，最长 {x} 分钟",
   "Live-grade · tier {t} · {q}": "实盘级 · {t} 级 · {q}",
   "Paper only · {q}": "仅模拟 · {q}",
+  "Every signal gets a quality score and is ranked against the last 50: the top 80% can go to live bots, the lowest 20% to paper bots only, where they are still measured. A live bot also needs the kind of signal to make money at live speed (above). Tier A (the top 40%) takes 20% of a bot's capital, the rest 10%.": "每个信号都有质量分，并与最近 50 个信号比较排名：前 80% 可发给实盘机器人，最低的 20% 只发给模拟机器人继续衡量。实盘机器人还要求该类信号在实盘速度下赚钱（见上）。A 级（前 40%）使用机器人资金的 20%，其余 10%。",
+  "Clean-coin snipes": "干净币狙击",
+  "Snipes on risky coins": "风险币狙击",
+  "Live now for: {k}. The other kinds of signal go to paper bots until they make money at live speed.": "现在实盘交易：{k}。其他类型的信号只发给模拟机器人，直到它们在实盘速度下赚钱。",
+  "Waiting for proof: no kind of signal this bot follows has made money at live speed yet (every signal is replayed on the coin's real trades, bought 2.5s after it and sold 2s after each trigger, as a live bot would). Its money stays in the wallet; it trades by itself once one does.": "等待验证：此机器人跟随的信号类型在实盘速度下尚未赚钱（每个信号都在该币的真实成交上重放：信号后 2.5 秒买入，每次触发后 2 秒卖出，与实盘机器人相同）。资金留在钱包中；一旦某类信号达标，它会自动开始交易。",
+  "At live speed": "实盘速度",
+  "Every signal is replayed on its coin's real trades as a live bot trades it: bought 2.5s after the signal, sold 2s after each trigger, costs included. Live bots trade a kind of signal only once its last 10 or more replays average +0.5% a trade or better.": "每个信号都按实盘机器人的方式在该币的真实成交上重放：信号后 2.5 秒买入，每次触发后 2 秒卖出，含成本。只有当某类信号最近 10 次以上的重放平均每笔达到 +0.5% 或更好时，实盘机器人才会交易它。",
+  "Replaying the recent signals…": "正在重放最近的信号…",
+  "{n} replays": "{n} 次重放",
+  "a trade": "每笔",
+  "live bots trade it": "实盘机器人交易",
+  "paper only": "仅模拟",
+  "at live speed: {n} replays, {a} a trade": "实盘速度：{n} 次重放，每笔 {a}",
 }
 export default d

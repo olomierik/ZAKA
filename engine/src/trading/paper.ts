@@ -110,6 +110,8 @@ export interface Position {
   features?: SignalFeatures
   /** The lowest market price while open (with `peak`: how far it went each way). */
   low?: number
+  /** Paper at live speed: exits triggered, filled at the first price `LIVE_SPEED.exitMs` after `at`. */
+  pendingExit?: { at: number; exits: Exit[]; note?: string }
   /** Why it closed, in words. */
   note?: string
   /** A visitor's bot: the platform's 2% of a winning trade's profit (already taken from pnlUsd); live, a fee still to send. */
@@ -172,17 +174,65 @@ export function exitsAt(pos: Position, price: number, now: number, fallback = ST
   return out
 }
 
-/** A new market price for an open paper position: returns the fills its exits made. */
-export function onPrice(pos: Position, price: number, now: number, params = STRATEGIES[pos.strategy]): Fill[] {
+/**
+ * Paper at live speed (2026-09-30, owner: "the live bots are making losses:
+ * find out the reason"). A live bot's buy lands about 2.5s after its signal,
+ * and a sale about 2s after its trigger. Paper filled both at once, at the
+ * signal's price and at the trigger's. Snipes make their move in those
+ * seconds, so paper showed wins a live bot can't get: LUMOIN made +40% on
+ * paper within 5s, and loses 67% bought and sold at live speed. Replayed on
+ * the coins' real trades, the last 40 signals averaged −5.6% a trade at
+ * instant fills and −3.7% at live speed; the snipes alone, +16% and −1.3%.
+ * So paper now fills as live does: an entry at the first price 2.5s after the
+ * signal (skipped, as live bots skip it, if the price moved more than 5% by
+ * then), an exit at the first price 2s after its trigger.
+ */
+export const LIVE_SPEED = { entryMs: 2_500, exitMs: 2_000, maxDrift: 0.05 }
+
+/** A new market price for an open paper position: returns the fills its exits made. With `lagMs`, a triggered exit fills at the first price `lagMs` later. */
+export function onPrice(pos: Position, price: number, now: number, params = STRATEGIES[pos.strategy], lagMs = 0): Fill[] {
+  if (pos.status !== 'open' || !(price > 0)) return []
+  if (pos.pendingExit) {
+    track(pos, price)
+    return now - pos.pendingExit.at >= lagMs ? settle(pos, price, now) : []
+  }
   const exits = exitsAt(pos, price, now, params)
-  if (pos.status === 'open' && price > 0) { pos.peak = Math.max(pos.peak, price); pos.low = Math.min(pos.low ?? pos.marketEntry, price) }
+  track(pos, price)
+  if (!exits.length) return []
+  if (lagMs > 0) { pos.pendingExit = { at: now, exits }; return [] }
   return exits.map(e => recordSell(pos, e.qty, e.qty * price * (1 - pos.cost), now, e.reason))
 }
 
-/** Close a paper position at the last price (a later safety failure, a rug alarm, say). */
-export function closeNow(pos: Position, price: number, now: number, reason: ExitReason, note?: string): Fill[] {
+const track = (pos: Position, price: number) => { pos.peak = Math.max(pos.peak, price); pos.low = Math.min(pos.low ?? pos.marketEntry, price) }
+
+/** Fills a triggered exit at `price` (what a sale sent at the trigger gets). */
+function settle(pos: Position, price: number, now: number): Fill[] {
+  const pe = pos.pendingExit!
+  pos.pendingExit = undefined
+  if (pe.note) pos.note = pe.note
+  const out: Fill[] = []
+  for (const e of pe.exits) {
+    const qty = Math.min(e.qty, pos.remaining)
+    if (qty > pos.qty * 1e-9) out.push(recordSell(pos, qty, qty * price * (1 - pos.cost), now, e.reason))
+  }
+  return out
+}
+
+/** A triggered exit whose coin hasn't traded since: filled at the last price once `lagMs` has passed (the engine's tick). */
+export function settleDue(pos: Position, price: number, now: number, lagMs: number): Fill[] {
+  if (pos.status !== 'open' || !pos.pendingExit || !(price > 0) || now - pos.pendingExit.at < lagMs) return []
+  return settle(pos, price, now)
+}
+
+/** Close a paper position at the last price (a later safety failure, a rug alarm, say); with `lagMs`, at the first price that much later. */
+export function closeNow(pos: Position, price: number, now: number, reason: ExitReason, note?: string, lagMs = 0): Fill[] {
   if (pos.status !== 'open' || !(price > 0)) return []
   pos.low = Math.min(pos.low ?? pos.marketEntry, price)
+  if (lagMs > 0) {
+    // Everything goes: a pending take-profit becomes a full close, from when it was first triggered.
+    pos.pendingExit = { at: pos.pendingExit?.at ?? now, exits: [{ qty: pos.remaining, reason }], note: note ?? pos.pendingExit?.note }
+    return []
+  }
   if (note) pos.note = note
   return [recordSell(pos, pos.remaining, pos.remaining * price * (1 - pos.cost), now, reason)]
 }

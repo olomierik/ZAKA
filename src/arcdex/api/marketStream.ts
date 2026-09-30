@@ -137,7 +137,10 @@ export interface BotStatsResponse extends BotStatsSet {
   mode: 'paper' | 'live' | 'off'; live?: BotStatsSet; watching: number
   /** The engine's paper results by the rule that fired each signal (engines since 2026-10-01). */
   byRule?: { momentum: BotStats; snipe: BotStats; 'second-leg': BotStats }
+  /** Each kind of signal (`rule/strategy`) replayed on real trades at live speed; live bots trade only those `ok` (engine/src/signals/liveSpeed.ts). */
+  liveSpeed?: LiveSpeedRow[]
 }
+export interface LiveSpeedRow { key: string; trades: number; wins: number; winRate: number | null; avgReturn: number | null; ok: boolean }
 export interface SafetyReport { token: string; launchpad: string; at: number; verdict: 'pass' | 'risky' | 'fail' | 'pending'; score: number; checks: SafetyCheck[]; template: string | null }
 
 export const getSignals = (limit = 100) => get<{ signals: TradeSignal[] }>(`/v1/signals?limit=${limit}`).then(r => r.signals)

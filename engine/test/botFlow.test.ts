@@ -34,11 +34,11 @@ function setup() {
   const pools = { get: () => null } as unknown as PoolRegistry
   const store = new MemoryBotStore()
   const sent: ServerMessage[] = []
-  const accounts = new PaperAccounts({ store, priceOf: () => st.priceUsd, params: s => STRATEGIES[s] })
+  const accounts = new PaperAccounts({ speed: null, store, priceOf: () => st.priceUsd, params: s => STRATEGIES[s] })
   const made = accounts.create(Date.now(), { name: 'Tester', strategies: ['scalp'] }) as { account: PaperAccount }
   accounts.act(made.account, { action: 'deposit', amount: 500 })
   accounts.act(made.account, { action: 'start' })
-  const bot = new TestBot({ rpc, engine, pools, store, publish: (_t, m) => sent.push(m), mode: 'paper', accounts })
+  const bot = new TestBot({ rpc, engine, pools, store, publish: (_t, m) => sent.push(m), mode: 'paper', accounts, speed: null })
   let i = 0
   /** A trade, as the engine would apply it: the coin's price and liquidity first, then the observers. */
   const trade = (o: { side?: 'BUY' | 'SELL'; price: number; usd?: number; liquidity?: number; wallet?: string; at?: number }) => {
@@ -68,7 +68,9 @@ describe('the bot, end to end', () => {
     const pos = account.positions[0]
     expect(pos).toMatchObject({ status: 'open', strategy: 'scalp', tuningVersion: 1 })
     // Sized from the bot's capital: 20% of its $500 on a tier-A signal, 10% on B (the first signals rank by score alone).
-    expect(sig?.t === 'SIGNAL' && sig.d.quality).toMatchObject({ grade: 'live', rank: null })
+    // Ranked live-grade, but paper only until this kind of signal makes money at live speed (no replays yet): paper bots take it.
+    expect(sig?.t === 'SIGNAL' && sig.d.quality).toMatchObject({ grade: 'paper', rank: null, liveSpeed: { trades: 0, ok: false } })
+    expect(sig?.t === 'SIGNAL' && sig.d.reasons.join(' ')).toMatch(/not traded live until it proves itself at live speed \(0 of 10 replays/)
     expect([50, 100]).toContain(pos.sizeUsd)
     expect(bot.positions.filter(p => p.status === 'open')).toHaveLength(1) // the bot's own paper book too
     expect(bot.scan.get(T)).toMatchObject({ status: 'signal', stage: 'scalp', strategy: 'scalp' })
@@ -125,7 +127,7 @@ describe('after a restart', () => {
     // The engine's buffer: newest first, as the engine keeps it.
     const kept = [0, 1, 2].map(k => ({ id: `t${k}`, k: fresh.token, pl: 'pool1', q: '0x36', s: 'B', ba: 100, qa: 60, p: 1 + k / 20, pu: 1 + k / 20, u: 60, w: `0x${'a'.repeat(39)}${k}`, tx: `0x${k}`, b: 10 + k, li: 0, ts: now - (3 - k) * 30_000, dx: 'uniswap-v4', lp: 'ARGUS', lq: 20_000 })).reverse()
     const engine = { metas: new Map([[fresh.token, fresh], [old.token, old]]), tokens: new Map([[fresh.token, st]]), recentTrades: (t: string) => (t === fresh.token ? kept : []) } as unknown as MarketEngine
-    const bot = new Bot({ rpc: {} as Rpc, engine, pools: { get: () => null } as unknown as PoolRegistry, store: new MemoryBotStore(), publish: () => {}, mode: 'paper' })
+    const bot = new Bot({ rpc: {} as Rpc, engine, pools: { get: () => null } as unknown as PoolRegistry, store: new MemoryBotStore(), publish: () => {}, mode: 'paper', speed: null })
     expect(bot.seed(now)).toBe(1) // the 3-day-old launch stays off the list
     expect(bot.scan.get(fresh.token)).toMatchObject({ status: 'new' })
     expect(bot.scan.get(old.token)).toBeUndefined()

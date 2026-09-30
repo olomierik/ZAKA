@@ -52,7 +52,7 @@ describe('sizing: a thin pool gets the size for $1, not a skip', () => {
 
 describe('every signal a bot passes over says why, and is counted', () => {
   const setup = () => {
-    const accts = new PaperAccounts({ store: new MemoryBotStore(), priceOf: () => 1, params: s => STRATEGIES[s] })
+    const accts = new PaperAccounts({ speed: null, store: new MemoryBotStore(), priceOf: () => 1, params: s => STRATEGIES[s] })
     const make = (name: string, strategies: ('snipe' | 'scalp' | 'second-leg')[]) => (accts.create(now, { name, strategies }) as { account: PaperAccount }).account
     return { accts, make }
   }

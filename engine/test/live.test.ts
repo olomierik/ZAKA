@@ -180,6 +180,15 @@ describe('the live trader (stand-in wallet)', () => {
     expect(positions).toEqual([])
     expect(lt.events[0].text).toMatch(/at most 20% of it, under the \$1 minimum/)
   })
+  test('no buy once the price moved more than 5% since the signal (BAGEY was 15% down 2.5s after its signal)', async () => {
+    const { lt, calls, meta } = setup({ balance: 100 })
+    const sig = { id: 'd1', token: T, strategy: 'snipe', price: 1 } as never
+    await lt.open(sig, 'snipe', pool, meta, { priceNow: () => 0.85 })
+    expect(calls).toEqual([])
+    expect(lt.events[0].text).toMatch(/not bought \(the price moved -15\.0% since the signal\)/)
+    await lt.open({ ...(sig as object), id: 'd2' } as never, 'snipe', pool, meta, { priceNow: () => 1.03 })
+    expect(calls[0]).toMatch(/^buy /) // within 5%: bought
+  })
   test('a $10 wallet trades: 20% of it, $2', async () => {
     const { lt, calls, meta, signal } = setup({ balance: 10 })
     await lt.open(signal('s1'), 'scalp', pool, meta, { sizeUsd: 5 })

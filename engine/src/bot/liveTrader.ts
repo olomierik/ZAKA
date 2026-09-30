@@ -31,7 +31,7 @@ import type { LaunchInfo } from '../../../api/_marketProtocol'
 import type { PoolInfo } from '../dex/pools'
 import { errMsg, log } from '../log'
 import { metrics } from '../metrics'
-import { canOpen, exitsAt, recordSell, RISK, type Exit, type ExitReason, type Position, type Strategy, type StrategyParams } from '../trading/paper'
+import { canOpen, exitsAt, LIVE_SPEED, recordSell, RISK, type Exit, type ExitReason, type Position, type Strategy, type StrategyParams } from '../trading/paper'
 import { keyOf, LiveError, reason, usdcSide, type Fill, type LiveExecutor } from '../trading/live'
 import type { RoundTrip } from '../trading/preflight'
 import type { Address, Hex } from 'viem'
@@ -124,7 +124,8 @@ export class LiveTrader {
    * profit target), an id suffix, and the exits and entry numbers the
    * position keeps (`extra`).
    */
-  async open(signal: Signal, strategy: Strategy, pool: PoolInfo | null, meta: LaunchInfo, opts: { sizeUsd?: number; idSuffix?: string; extra?: Partial<Position> } = {}) {
+  /** `priceNow`: the coin's price as the buy goes out; with it, no buy once the price moved more than 5% since the signal (trading/paper.ts LIVE_SPEED). */
+  async open(signal: Signal, strategy: Strategy, pool: PoolInfo | null, meta: LaunchInfo, opts: { sizeUsd?: number; idSuffix?: string; extra?: Partial<Position>; priceNow?: () => number | null } = {}) {
     const token = signal.token as Address, symbol = meta.symbol
     const key = keyOf(pool)
     if (!pool || !key || !usdcSide(key, token)) { this.event({ kind: 'skip', token, symbol, text: `$${symbol}: live trading can't reach this coin's venue yet (paper only)` }); return }
@@ -139,6 +140,12 @@ export class LiveTrader {
     try {
       // The balance, read now: no trade over its share of what the wallet is worth.
       await this.refreshBalance()
+      // The price, as the buy goes out: a coin already dumping (BAGEY was 15% down 2.5s after its signal) or running away isn't bought.
+      const pn = opts.priceNow?.() ?? null
+      if (pn && signal.price > 0 && Math.abs(pn / signal.price - 1) > LIVE_SPEED.maxDrift) {
+        this.event({ kind: 'skip', token, symbol, text: `$${symbol}: not bought (the price moved ${pn > signal.price ? '+' : ''}${((pn / signal.price - 1) * 100).toFixed(1)}% since the signal)` })
+        return
+      }
       const bal = this.balance!.usd
       const share = this.o.limits.maxShareOfBalance ?? 0.2
       const worth = bal + this.live().filter(p => p.status === 'open').reduce((sum, p) => sum + p.sizeUsd * (p.remaining / (p.qty || 1)), 0)

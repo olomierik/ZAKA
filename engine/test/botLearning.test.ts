@@ -248,7 +248,7 @@ describe('the learner reads the losing trades', () => {
 describe('a visitor\'s bot, all together', () => {
   const setup = (price: () => number = () => 1) => {
     const store = new MemoryBotStore()
-    const accts = new PaperAccounts({ store, priceOf: price, params: st => STRATEGIES[st] })
+    const accts = new PaperAccounts({ speed: null, store, priceOf: price, params: st => STRATEGIES[st] })
     const made = accts.create(now, { name: 'Scalper', strategies: ['scalp'] }) as { key: string; account: PaperAccount }
     accts.act(made.account, { action: 'deposit', amount: 1_000 }, now)
     accts.act(made.account, { action: 'start' }, now)
@@ -257,7 +257,7 @@ describe('a visitor\'s bot, all together', () => {
   const sig = (i: number, o: Partial<PaperSignal> = {}): PaperSignal => ({ id: `s${i}`, token: `0x${String(i).padStart(40, '0')}`, symbol: `C${i}`, launchpad: 'ARGUS', price: 1, strategy: 'scalp', roundTripPct: 3, liquidityUsd: 30_000, ...o })
 
   test('names are checked; a bot is created with its name and strategies', () => {
-    const accts = new PaperAccounts({ store: new MemoryBotStore(), priceOf: () => 1, params: st => STRATEGIES[st] })
+    const accts = new PaperAccounts({ speed: null, store: new MemoryBotStore(), priceOf: () => 1, params: st => STRATEGIES[st] })
     expect(accts.create(now, { name: 'x', strategies: ['scalp'] })).toEqual({ error: expect.stringMatching(/name your bot/) })
     expect(accts.create(now, { name: 'Ok bot', strategies: [] })).toEqual({ error: 'choose at least one strategy' })
     const made = accts.create(now, { name: '  Moon   Hunter ', strategies: ['second-leg'] }) as { account: PaperAccount }

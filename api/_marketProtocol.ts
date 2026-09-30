@@ -202,6 +202,8 @@ export interface SignalQuality {
   rank: number | null
   /** The score's parts, in words. */
   parts: string[]
+  /** What this kind of signal made at live speed (replayed on real trades: engine/src/signals/liveSpeed.ts); live bots trade it only while `ok`. */
+  liveSpeed?: { trades: number; winRate: number | null; avgPct: number | null; ok: boolean }
 }
 
 /** Which rule fired a signal. Momentum bursts count buyers over two minutes, snipes since launch: they're learned apart. */

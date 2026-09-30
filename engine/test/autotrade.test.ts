@@ -15,7 +15,7 @@ const now = Date.UTC(2026, 8, 30, 12)
 describe('paper accounts', () => {
   const setup = (price: () => number | null = () => 1) => {
     const store = new MemoryBotStore()
-    const accts = new PaperAccounts({ store, priceOf: price, params: s => STRATEGIES[s] })
+    const accts = new PaperAccounts({ speed: null, store, priceOf: price, params: s => STRATEGIES[s] })
     const { key, account } = accts.create(now, { name: 'Hunter 1', strategies: ['snipe', 'scalp'] }) as { key: string; account: PaperAccount }
     return { store, accts, key, a: account }
   }
@@ -124,7 +124,7 @@ describe('paper accounts', () => {
     accts.flush()
     const old = { id: keyHash('cd'.repeat(32)), createdAt: now, running: false, startedAt: null, strategies: ['snipe'], tradeUsd: 25, cash: 10, deposited: 10, positions: [], updatedAt: now }
     store.savePaperAccount(old as never)
-    const again = new PaperAccounts({ store, priceOf: () => 1, params: s => STRATEGIES[s] })
+    const again = new PaperAccounts({ speed: null, store, priceOf: () => 1, params: s => STRATEGIES[s] })
     await again.load()
     expect(again.byKey(key)?.cash).toBe(42)
     const migrated = again.byKey('cd'.repeat(32))!

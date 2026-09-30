@@ -23,7 +23,7 @@ function trade(o: { win: boolean; strategy?: Strategy; rule?: 'snipe' | 'momentu
   recordSell(p, p.qty, p.qty * (o.win ? 1.2 : 0.9), at + 60_000, o.win ? 'tp1' : 'stop')
   return p
 }
-const setup = () => new PaperAccounts({ store: new MemoryBotStore(), priceOf: () => 1, params: s => STRATEGIES[s] })
+const setup = () => new PaperAccounts({ speed: null, store: new MemoryBotStore(), priceOf: () => 1, params: s => STRATEGIES[s] })
 const bot = (accts: PaperAccounts, name: string, strategies: Strategy[] = ['scalp']) => (accts.create(now, { name, strategies }, 'owner') as { account: PaperAccount }).account
 
 describe('going live on the team\'s record', () => {

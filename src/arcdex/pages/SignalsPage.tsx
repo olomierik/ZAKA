@@ -23,7 +23,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
 import type { BotControl, BotFilters, BotPosition, BotStatus, LearnNote, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, SignalOutcomes, SignalRule, TeamView, TradeSignal } from '../../../api/_marketProtocol'
 import { getLaunchpadColor } from '../api/radardex'
-import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botFunders, botWithdraw, botWithdrawCode, botWithdrawPasscode, engineEnabled, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse } from '../api/marketStream'
+import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botFunders, botWithdraw, botWithdrawCode, botWithdrawPasscode, engineEnabled, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse, type LiveSpeedRow } from '../api/marketStream'
 import { AgoText } from '../components/Ago'
 import { openConnectModal } from '../components/ConnectWallet'
 import { PasscodeField, useWithdrawGuard } from '../components/WithdrawGuard'
@@ -131,12 +131,13 @@ export default function SignalsPage({ navigate, view: pageView, bot }: { navigat
               </button>
             ))}
           </div>
-          {view === 'mine' && <MyBots navigate={navigate} />}
+          {view === 'mine' && <MyBots navigate={navigate} liveSpeed={stats?.liveSpeed} />}
           {view === 'market' && <Marketplace navigate={navigate} slug={bot ?? null} />}
           {view === 'scanner' && <><RejectionsCard /><ScannerPanel scan={scan} navigate={navigate} /></>}
+          {view === 'signals' && stats?.liveSpeed && <LiveSpeedCard rows={stats.liveSpeed} />}
           {view === 'signals' && (
             <Section title={T('Live signals')}>
-              <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>{T('Every signal gets a quality score and is ranked against the last 50: the top 80% go to live bots and paper bots, the lowest 20% to paper bots only, where they are still measured. Tier A (the top 40%) takes 20% of a bot\'s capital, the rest 10%.')}</div>
+              <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>{T('Every signal gets a quality score and is ranked against the last 50: the top 80% can go to live bots, the lowest 20% to paper bots only, where they are still measured. A live bot also needs the kind of signal to make money at live speed (above). Tier A (the top 40%) takes 20% of a bot\'s capital, the rest 10%.')}</div>
               {signals.length === 0 ? <Empty>{T('No signals yet. Most launches fail a safety check; a signal appears the moment one passes them all.')}</Empty>
                 : signals.map(s => <SignalRow key={s.id} s={s} navigate={navigate} />)}
             </Section>
@@ -298,7 +299,7 @@ function ProfitNotifySwitch() {
   )
 }
 
-function MyBots({ navigate }: { navigate: (p: Page) => void }) {
+function MyBots({ navigate, liveSpeed }: { navigate: (p: Page) => void; liveSpeed?: LiveSpeedRow[] }) {
   const [session, setSession] = useState<string | null>(() => botSession())
   const [me, setMe] = useState<MeResponse | null>(null)
   const [sel, setSel] = useState<string | null>(null)
@@ -355,7 +356,7 @@ function MyBots({ navigate }: { navigate: (p: Page) => void }) {
       )}
       {creating || !acct
         ? <CreateBot busy={busy} loading={false} error={error} onCreate={b => void create(b)} onCancel={bots.length ? () => setCreating(false) : undefined} team={me.team} />
-        : <BotDashboard key={acct.slug} acct={acct} act={act} busy={busy} error={error} setError={setError} me={me} onMe={() => void reload()} navigate={navigate} />}
+        : <BotDashboard key={acct.slug} acct={acct} act={act} busy={busy} error={error} setError={setError} me={me} onMe={() => void reload()} navigate={navigate} liveSpeed={liveSpeed} />}
       <TiersNote />
     </>
   )
@@ -475,7 +476,7 @@ type WalletPanel = 'fund-paper' | 'fund-live' | 'withdraw' | null
  * (paper: virtual USDC; live: its own wallet on Arc), each with Fund; then
  * the book in use in four numbers; then tabs for everything else.
  */
-function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate }: { acct: PaperAccountView; act: (a: PaperAction) => Promise<void>; busy: boolean; error: string | null; setError: (e: string | null) => void; me: MeResponse; onMe: () => void; navigate: (p: Page) => void }) {
+function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, liveSpeed }: { acct: PaperAccountView; act: (a: PaperAction) => Promise<void>; busy: boolean; error: string | null; setError: (e: string | null) => void; me: MeResponse; onMe: () => void; navigate: (p: Page) => void; liveSpeed?: LiveSpeedRow[] }) {
   const [tab, setTab] = useState<BotTab>('overview')
   const [panel, setPanel] = useState<WalletPanel>(null)
   const [goLive, setGoLive] = useState(false)
@@ -601,6 +602,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate }: 
 
       {tab === 'overview' && (
         <>
+          {isLive && liveSpeed && <LiveGateNote rows={liveSpeed} strategies={acct.strategies} />}
           {acct.team && <TeamCard team={acct.team} acct={acct} onStrategy={() => setTab('strategy')} />}
           <Section title={T('Open trades') + ` · ${open.length}`}>
             {open.length === 0 ? <Empty>{acct.running ? T('Waiting for the next signal. The scanner shows what it is checking.') : T('No open trades. Press Start to trade.')}</Empty> : open.map(p => <PositionRow key={p.id} p={p} navigate={navigate} />)}
@@ -690,6 +692,47 @@ function TeamCard({ team, acct, onStrategy }: { team: TeamView; acct: PaperAccou
       {missing.length > 0 && <div className="at-note" style={{ background: 'rgba(45,212,191,0.08)', border: '1px solid rgba(45,212,191,0.35)', color: '#99f6e4' }}>
         {T('The team is winning with {s}, which this bot doesn\'t follow.', { s: missing.map(s => T(STRATEGY[s])).join(', ') })} <button className="link-btn" onClick={onStrategy}>{T('Add it')} →</button>
       </div>}
+    </Section>
+  )
+}
+
+const KIND_NAME: Record<string, string> = { 'snipe/snipe': N_('Clean-coin snipes'), 'snipe/scalp': N_('Snipes on risky coins'), 'momentum/scalp': N_('Momentum bursts'), 'second-leg/second-leg': N_('Dip rebounds') }
+const kindName = (k: string) => T(KIND_NAME[k] ?? k)
+
+/**
+ * Why a live bot may be quiet: live bots trade only the kinds of signal that
+ * make money at live speed, replayed on real trades (engine/src/signals/liveSpeed.ts).
+ */
+function LiveGateNote({ rows, strategies }: { rows: LiveSpeedRow[]; strategies: Strategy[] }) {
+  const mine = rows.filter(r => strategies.includes(r.key.split('/')[1] as Strategy))
+  const open = mine.filter(r => r.ok)
+  return (
+    <div className={`at-note ${open.length ? '' : 'warn'}`} style={{ marginTop: 12 }}>
+      {open.length
+        ? T('Live now for: {k}. The other kinds of signal go to paper bots until they make money at live speed.', { k: open.map(r => kindName(r.key)).join(', ') })
+        : T('Waiting for proof: no kind of signal this bot follows has made money at live speed yet (every signal is replayed on the coin\'s real trades, bought 2.5s after it and sold 2s after each trigger, as a live bot would). Its money stays in the wallet; it trades by itself once one does.')}
+    </div>
+  )
+}
+
+/** Each kind of signal at live speed: what a live bot would have made on its last replays, and whether live bots trade it. */
+function LiveSpeedCard({ rows }: { rows: LiveSpeedRow[] }) {
+  return (
+    <Section title={T('At live speed')}>
+      <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>{T('Every signal is replayed on its coin\'s real trades as a live bot trades it: bought 2.5s after the signal, sold 2s after each trigger, costs included. Live bots trade a kind of signal only once its last 10 or more replays average +0.5% a trade or better.')}</div>
+      {rows.length === 0 ? <Empty>{T('Replaying the recent signals…')}</Empty> : (
+        <div className="at-team">
+          {rows.map(r => (
+            <div key={r.key} className="at-team-row">
+              <b style={{ color: 'var(--text)', minWidth: 150 }}>{kindName(r.key)}</b>
+              <span>{T('{n} replays', { n: r.trades })}</span>
+              <span>{r.winRate === null ? '—' : T('{w} won', { w: `${Math.round(r.winRate * 100)}%` })}</span>
+              <b style={{ fontFamily: 'var(--mono)', color: (r.avgReturn ?? 0) >= 0 ? 'var(--green)' : '#fca5a5' }}>{r.avgReturn === null ? '—' : `${r.avgReturn >= 0 ? '+' : ''}${(r.avgReturn * 100).toFixed(1)}% ${T('a trade')}`}</b>
+              {r.ok ? <span className="at-quality live">{T('live bots trade it')}</span> : <span className="at-quality paper">{T('paper only')}</span>}
+            </div>
+          ))}
+        </div>
+      )}
     </Section>
   )
 }
@@ -1395,7 +1438,7 @@ function SignalRow({ s, navigate }: { s: TradeSignal; navigate: (p: Page) => voi
         <Pill color={getLaunchpadColor(s.launchpad)}>{s.launchpad}</Pill>
         <Pill color={STRATEGY_COLOR[s.strategy] ?? '#64748b'}>{T(STRATEGY[s.strategy] ?? s.strategy)}</Pill>
         {s.probation && <span className="at-probation" title={s.probation.why}>{T('On probation: bots sit it out')}</span>}
-        {s.quality && !s.probation && <span className={`at-quality ${s.quality.grade}`} title={s.quality.parts.join(' · ')}>{s.quality.grade === 'live' ? T('Live-grade · tier {t} · {q}', { t: s.quality.tier, q: s.quality.score }) : T('Paper only · {q}', { q: s.quality.score })}</span>}
+        {s.quality && !s.probation && <span className={`at-quality ${s.quality.grade}`} title={[...s.quality.parts, ...(s.quality.liveSpeed ? [T('at live speed: {n} replays, {a} a trade', { n: s.quality.liveSpeed.trades, a: s.quality.liveSpeed.avgPct === null ? '—' : `${s.quality.liveSpeed.avgPct}%` })] : [])].join(' · ')}>{s.quality.grade === 'live' ? T('Live-grade · tier {t} · {q}', { t: s.quality.tier, q: s.quality.score }) : T('Paper only · {q}', { q: s.quality.score })}</span>}
         {s.strategy === 'scalp' && s.rule === 'snipe' && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }} title={T('The snipe rule fired, but the coin carries a risk, so it trades small and sells fast')}>{T('from a snipe on a risky coin')}</span>}
         {!s.executable && <Pill color="#64748b">{T('Paper only')}</Pill>}
         <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)' }}><AgoText ts={s.at} /></span>

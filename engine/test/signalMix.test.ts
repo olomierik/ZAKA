@@ -71,7 +71,7 @@ function setup(ageMin: number) {
   const engine = { metas: new Map([[T, meta]]), tokens: new Map([[T, st]]) } as unknown as MarketEngine
   const rpc = { call: async () => { throw new Error('no chain here') }, batch: async () => [] } as unknown as Rpc
   const sent: ServerMessage[] = []
-  const bot = new TestBot({ rpc, engine, pools: { get: () => null } as unknown as PoolRegistry, store: new MemoryBotStore(), publish: (_t, m) => sent.push(m), mode: 'paper' })
+  const bot = new TestBot({ rpc, engine, pools: { get: () => null } as unknown as PoolRegistry, store: new MemoryBotStore(), publish: (_t, m) => sent.push(m), mode: 'paper', speed: null })
   let i = 0
   const trade = (o: { side?: 'BUY' | 'SELL'; price: number; usd?: number; at: number; wallet?: string }) => {
     i++

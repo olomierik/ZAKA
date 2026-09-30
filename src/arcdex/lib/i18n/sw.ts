@@ -1809,5 +1809,18 @@ const d: Record<string, string> = {
   "Sells all at {tp} · stop {sl} · out after {m} min unless moving, {x} min at most": "Huuza yote kwa {tp} · kikomo {sl} · hutoka baada ya dakika {m} isipoenda, dakika {x} zaidi",
   "Live-grade · tier {t} · {q}": "Daraja halisi · {t} · {q}",
   "Paper only · {q}": "Karatasi pekee · {q}",
+  "Every signal gets a quality score and is ranked against the last 50: the top 80% can go to live bots, the lowest 20% to paper bots only, where they are still measured. A live bot also needs the kind of signal to make money at live speed (above). Tier A (the top 40%) takes 20% of a bot's capital, the rest 10%.": "Kila ishara hupata alama ya ubora na hulinganishwa na 50 za mwisho: asilimia 80 bora zinaweza kwenda kwa bot halisi, asilimia 20 za chini kwa bot za karatasi pekee, ambako bado hupimwa. Bot halisi pia inahitaji aina hiyo ya ishara ipate faida kwa kasi halisi (juu). Daraja A (asilimia 40 bora) hutumia asilimia 20 ya mtaji wa bot, nyingine asilimia 10.",
+  "Clean-coin snipes": "Snipes kwenye sarafu safi",
+  "Snipes on risky coins": "Snipes kwenye sarafu hatari",
+  "Live now for: {k}. The other kinds of signal go to paper bots until they make money at live speed.": "Halisi sasa kwa: {k}. Aina nyingine za ishara huenda kwa bot za karatasi hadi zipate faida kwa kasi halisi.",
+  "Waiting for proof: no kind of signal this bot follows has made money at live speed yet (every signal is replayed on the coin's real trades, bought 2.5s after it and sold 2s after each trigger, as a live bot would). Its money stays in the wallet; it trades by itself once one does.": "Inasubiri uthibitisho: hakuna aina ya ishara ambayo bot hii inafuata iliyopata faida kwa kasi halisi bado (kila ishara hurudiwa kwenye biashara halisi za sarafu, ikinunuliwa sekunde 2.5 baadaye na kuuzwa sekunde 2 baada ya kila kichocheo, kama bot halisi). Pesa zake zinabaki kwenye pochi; itafanya biashara yenyewe pale moja itakapofaulu.",
+  "At live speed": "Kwa kasi halisi",
+  "Every signal is replayed on its coin's real trades as a live bot trades it: bought 2.5s after the signal, sold 2s after each trigger, costs included. Live bots trade a kind of signal only once its last 10 or more replays average +0.5% a trade or better.": "Kila ishara hurudiwa kwenye biashara halisi za sarafu yake kama bot halisi inavyoifanya: kununuliwa sekunde 2.5 baada ya ishara, kuuzwa sekunde 2 baada ya kila kichocheo, gharama zikiwemo. Bot halisi hufanya biashara ya aina ya ishara pale tu marudio yake 10 au zaidi ya mwisho yanapokuwa na wastani wa +0.5% kwa biashara au zaidi.",
+  "Replaying the recent signals…": "Inarudia ishara za karibuni…",
+  "{n} replays": "marudio {n}",
+  "a trade": "kwa biashara",
+  "live bots trade it": "bot halisi huifanyia biashara",
+  "paper only": "karatasi pekee",
+  "at live speed: {n} replays, {a} a trade": "kwa kasi halisi: marudio {n}, {a} kwa biashara",
 }
 export default d

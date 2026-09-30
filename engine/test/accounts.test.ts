@@ -118,7 +118,7 @@ function setupBots(o: { live?: boolean; balance?: number; sellAt?: number; rpc?:
   const wallet = stubWallet({ balance: o.balance ?? 100, sellAt: o.sellAt ?? 1.2 })
   const live = new UserLive({ vault: o.live === false ? null : new WalletVault('11'.repeat(32)), makeExec: () => wallet.exec, pools: () => pool, rpc: o.rpc })
   let price = 1
-  const accounts = new PaperAccounts({ store, priceOf: () => price, params: s => STRATEGIES[s], live })
+  const accounts = new PaperAccounts({ speed: null, store, priceOf: () => price, params: s => STRATEGIES[s], live })
   return { store, accounts, wallet, live, setPrice: (p: number) => { price = p } }
 }
 const sig = (o: Partial<PaperSignal> = {}): PaperSignal => ({ id: 's1', token: T, symbol: 'COIN', launchpad: 'Argus', price: 1, strategy: 'scalp', roundTripPct: 2, liquidityUsd: 50_000, ...o })

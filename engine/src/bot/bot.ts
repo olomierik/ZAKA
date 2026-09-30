@@ -42,7 +42,10 @@ import { metrics } from '../metrics'
 import { PricePath, RULES, scalpReady, secondLegReady, snipeReady, tooCostly } from '../signals/rules'
 import type { BotStatus, ScanRow, SignalFeatures, SignalQuality, SignalRule } from '../../../api/_marketProtocol'
 import { QUALITY, QualityRank, qualityScore, type RuleRecord } from '../signals/quality'
-import { canOpen, closeNow, costPerSide, onPrice, openPosition, RISK, STRATEGIES, stats, type Position, type Strategy, type StrategyParams } from '../trading/paper'
+import { LIVE_GATE, liveKey, LiveSpeedBook, replayAtLiveSpeed, type LiveSpeedRecord } from '../signals/liveSpeed'
+import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, RISK, STRATEGIES, stats, type Position, type Strategy, type StrategyParams } from '../trading/paper'
+import type { HistoryStore } from '../store/history'
+import { defaultTuning, toParams } from './learner'
 import type { LiveTrader } from './liveTrader'
 import type { PaperAccounts } from './paperAccounts'
 import { probationOf } from './probation'
@@ -101,6 +104,12 @@ const ratio = (buy: number, sell: number) => (sell > 0 ? Math.round((buy / sell)
 const flowFeatures = (f: Flow): RuleFeatures => ({ buyers: f.organic.buyers, buySellRatio: ratio(f.organic.buyUsd, f.organic.sellUsd), runUp: f.organic.firstPrice && f.organic.lastPrice ? f.organic.lastPrice / f.organic.firstPrice : null, topBuyerPct: f.organic.topBuyerPct })
 const windowFeatures = (w: Window): RuleFeatures => ({ buyers: w.buyers, buySellRatio: ratio(w.buyUsd, w.sellUsd), runUp: w.firstPrice && w.lastPrice ? w.lastPrice / w.firstPrice : null, topBuyerPct: w.topBuyerPct })
 
+/** Why live bots don't trade a kind of signal yet, in words. */
+function liveWhy(ls: LiveSpeedRecord): string {
+  if (ls.trades < LIVE_GATE.minTrades) return `not traded live until it proves itself at live speed (${ls.trades} of ${LIVE_GATE.minTrades} replays on real trades so far)`
+  return `not profitable at live speed: its last ${ls.trades} replays on real trades averaged ${((ls.avgReturn ?? 0) * 100).toFixed(1)}% a trade (${ls.wins} won)`
+}
+
 export class Bot implements EngineObserver {
   readonly tapes = new Tapes()
   /** Every watched coin's last 3 minutes, and the rug guard reading them. */
@@ -135,7 +144,16 @@ export class Bot implements EngineObserver {
   mode: BotMode
 
   /** `sizeUsd` sizes snipes and second legs; `scalpSizeUsd` sizes scalps. `live` is set when a bot wallet is configured. */
-  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null }) {
+  /** Each kind of signal replayed on its coin's real trades at live speed; live bots trade only the kinds that make money (signals/liveSpeed.ts). */
+  readonly liveSpeed = new LiveSpeedBook()
+  private replaying = false
+  /** The paper book's buys waiting for their live-speed fill, by token. */
+  private pendingHouse = new Map<string, { signal: Signal; strategy: Strategy; params: StrategyParams; cost: number; features: SignalFeatures; rule: SignalRule; due: number }>()
+  private speed: typeof LIVE_SPEED | null
+
+  /** `history`: the coins' stored trades (replays); `speed`: the paper book at live speed (the default; null: at once). */
+  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null; history?: Pick<HistoryStore, 'trades'> | null; speed?: typeof LIVE_SPEED | null }) {
+    this.speed = o.speed === undefined ? LIVE_SPEED : o.speed
     this.mode = o.mode === 'live' && !o.live ? 'paper' : o.mode
     o.live?.setPools(token => { const mp = this.o.engine.tokens.get(token)?.mainPool; return mp ? this.o.pools.get(mp) ?? null : null })
   }
@@ -250,7 +268,8 @@ export class Bot implements EngineObserver {
     // The creator selling, in any pool, closes a scalp (and every visitor's bot) at the coin's price after the sale.
     const creatorSold = t.side === 'SELL' && !!meta.creator && t.wallet?.toLowerCase() === meta.creator.toLowerCase()
     const price = this.o.engine.tokens.get(t.token)?.priceUsd ?? null
-    const held = this.positions.some(p => p.status === 'open' && p.token === t.token) || !!this.o.accounts?.holds(t.token)
+    const held = this.positions.some(p => p.status === 'open' && p.token === t.token) || this.pendingHouse.has(t.token) || !!this.o.accounts?.holds(t.token)
+    if (priced) this.fillHouse(t.token, price, now)
     if (alarm && held) { metrics.inc('bot_rug_exits'); log.info('bot: rug guard', { token: t.token, symbol: meta.symbol, alarm: alarm.text }) }
     for (const p of this.positions) {
       if (p.status !== 'open' || p.token !== t.token || !price) continue
@@ -259,9 +278,10 @@ export class Bot implements EngineObserver {
         else if (priced || creatorSold) this.o.live?.onPrice(p, price, now, creatorSold)
         continue
       }
-      if (alarm) this.fills(p, closeNow(p, price, now, 'rug', `Rug guard: ${alarm.text}`))
-      else if (creatorSold && this.params(p.strategy).exitOnCreatorSell) this.fills(p, closeNow(p, price, now, 'creator'))
-      else if (priced) this.fills(p, onPrice(p, price, now, this.params(p.strategy)))
+      const lag = this.speed?.exitMs ?? 0
+      if (alarm) this.fills(p, closeNow(p, price, now, 'rug', `Rug guard: ${alarm.text}`, lag))
+      else if (creatorSold && this.params(p.strategy).exitOnCreatorSell) this.fills(p, closeNow(p, price, now, 'creator', undefined, lag))
+      else if (priced) this.fills(p, onPrice(p, price, now, this.params(p.strategy), lag))
     }
     if (price) this.o.accounts?.onPrice(t.token, price, now, creatorSold, priced, alarm)
     if (!priced) return
@@ -310,8 +330,9 @@ export class Bot implements EngineObserver {
     for (const p of this.positions) {
       if (p.status !== 'open' || p.mode === 'live') continue
       const price = this.priceOf(p.token)
-      if (price) this.fills(p, onPrice(p, price, now, this.params(p.strategy)))
+      if (price) this.fills(p, onPrice(p, price, now, this.params(p.strategy), this.speed?.exitMs ?? 0))
     }
+    for (const token of [...this.pendingHouse.keys()]) this.fillHouse(token, this.priceOf(token), now)
     this.o.live?.tick(now, token => this.priceOf(token))
     this.o.accounts?.tick(now)
     for (const [token, path] of this.paths) {
@@ -340,7 +361,7 @@ export class Bot implements EngineObserver {
         log.info('bot: closing on a safety failure', { token, failed: failed.map(c => c.id) })
         for (const p of openHere) {
           if (p.mode === 'live') this.o.live?.closeNow(p, 'safety')
-          else this.fills(p, closeNow(p, st.priceUsd, now, 'safety'))
+          else this.fills(p, closeNow(p, st.priceUsd, now, 'safety', undefined, this.speed?.exitMs ?? 0))
         }
         this.o.accounts?.closeToken(token, st.priceUsd, now, 'safety', `A safety re-check failed: ${failed.map(c => `${c.id} (${c.detail})`).join('; ').slice(0, 200)}`)
       }
@@ -466,10 +487,19 @@ export class Bot implements EngineObserver {
       topBuyerPct: Math.round(feats.topBuyerPct * 10) / 10, score: r.score,
       flags: r.checks.filter(c => c.risk && c.ok !== true).map(c => c.id), roundTripPct: r.honeypot?.roundTripLossPct ?? null,
     }
-    // Its quality, ranked against the last signals: the top 80% are live-grade, the rest paper only.
-    const scored = qualityScore(features, this.ruleRecord(rule, now))
-    const quality: SignalQuality = { score: scored.score, ...(probation ? { grade: 'paper' as const, tier: 'B' as const, rank: null } : this.qualityRank.grade(scored.score)), parts: scored.parts }
-    reasons = [...reasons, quality.grade === 'live' ? `quality ${quality.score}: live-grade, tier ${quality.tier}` : `quality ${quality.score}: paper only (the lowest ${Math.round((1 - QUALITY.liveShare) * 100)}% of recent signals)`]
+    // What this kind of signal makes at live speed (replayed on real trades): live bots trade it only while that's a profit.
+    const ls = this.liveSpeed.record(liveKey(rule, strategy), now)
+    // Its quality, ranked against the last signals: the top 80% are live-grade, the rest paper only. The rule's record is
+    // its live-speed one once it has 5 replays (what a live bot would have got), else the team's.
+    const scored = qualityScore(features, ls.trades >= QUALITY.ruleMinTrades ? { trades: ls.trades, winRate: ls.winRate } : this.ruleRecord(rule, now))
+    const ranked = probation ? { grade: 'paper' as const, tier: 'B' as const, rank: null } : this.qualityRank.grade(scored.score)
+    const quality: SignalQuality = {
+      score: scored.score, ...ranked, ...(ranked.grade === 'live' && !ls.ok ? { grade: 'paper' as const } : {}), parts: scored.parts,
+      liveSpeed: { trades: ls.trades, winRate: ls.winRate, avgPct: ls.avgReturn === null ? null : Math.round(ls.avgReturn * 1_000) / 10, ok: ls.ok },
+    }
+    reasons = [...reasons, quality.grade === 'live' ? `quality ${quality.score}: live-grade, tier ${quality.tier}`
+      : ranked.grade === 'live' ? `quality ${quality.score}: paper only, ${liveWhy(ls)}`
+      : `quality ${quality.score}: paper only (the lowest ${Math.round((1 - QUALITY.liveShare) * 100)}% of recent signals)`]
     metrics.inc(`bot_signals_grade_${quality.grade}`)
     const signal: Signal = {
       id: `${strategy}:${token}:${now}`, strategy, token, symbol: meta.symbol, name: meta.name, launchpad: meta.launchpad, at: now,
@@ -491,18 +521,73 @@ export class Bot implements EngineObserver {
     this.o.accounts?.onSignal({ id: signal.id, token, symbol: meta.symbol, launchpad: meta.launchpad, price: signal.price, strategy, roundTripPct: r.honeypot?.roundTripLossPct ?? null, liquidityUsd: st.liquidityUsd, features, rule, probation, quality }, now, { signal, pool, meta })
     if (this.mode === 'live' && this.o.live) {
       if (probation) this.o.live.event({ kind: 'skip', text: `$${meta.symbol}: not bought live, ${probation.why}` })
-      else if (quality.grade === 'paper') this.o.live.event({ kind: 'skip', text: `$${meta.symbol}: not bought live, quality ${quality.score} is in the lowest ${Math.round((1 - QUALITY.liveShare) * 100)}% of recent signals` })
-      else void this.o.live.open(signal, strategy, pool, meta)
+      else if (quality.grade === 'paper') this.o.live.event({ kind: 'skip', text: `$${meta.symbol}: not bought live, ${ls.ok ? `quality ${quality.score} is in the lowest ${Math.round((1 - QUALITY.liveShare) * 100)}% of recent signals` : liveWhy(ls)}` })
+      else void this.o.live.open(signal, strategy, pool, meta, { priceNow: () => this.priceOf(token) })
     }
     const allowed = canOpen(this.positions.filter(p => p.mode !== 'live'), token, now, RISK, strategy)
     if (!allowed.ok) { this.outcomes.add(signal.id, allowed.key ?? 'max-open', now); log.info('bot: not opening', { token, strategy, why: allowed.why }); return fired }
     this.outcomes.add(signal.id, 'traded', now)
     const params = this.params(strategy)
     const cost = costPerSide(r.honeypot?.roundTripLossPct ?? null, params.sizeUsd, st.liquidityUsd)
-    const p: Position = { ...openPosition({ id: `${signal.id}:paper`, strategy, token, symbol: meta.symbol, launchpad: meta.launchpad, signalId: signal.id, price: signal.price, cost, now, params }), mode: 'paper', features, rule }
+    if (this.speed) { this.pendingHouse.set(token, { signal, strategy, params, cost, features, rule, due: now + this.speed.entryMs }); return fired }
+    this.openHouse(signal, strategy, params, cost, features, rule, signal.price, now)
+    return fired
+  }
+
+  private openHouse(signal: Signal, strategy: Strategy, params: StrategyParams, cost: number, features: SignalFeatures, rule: SignalRule, price: number, now: number) {
+    const p: Position = { ...openPosition({ id: `${signal.id}:paper`, strategy, token: signal.token, symbol: signal.symbol, launchpad: signal.launchpad, signalId: signal.id, price, cost, now, params }), mode: 'paper', features, rule }
     this.positions.push(p)
     this.fills(p, [])
-    return fired
+  }
+
+  /** The paper book's buy of `token`, once due: at the first price 2.5s after the signal, unless it moved more than 5% by then. */
+  private fillHouse(token: string, price: number | null, now: number) {
+    const e = this.pendingHouse.get(token)
+    if (!e || now < e.due || !this.speed) return
+    if (!price) { if (now - e.due > 60_000) this.pendingHouse.delete(token); return }
+    this.pendingHouse.delete(token)
+    if (Math.abs(price / e.signal.price - 1) > this.speed.maxDrift) { log.info('bot: not bought (moved first)', { token, symbol: e.signal.symbol, move: price / e.signal.price - 1 }); return }
+    this.openHouse(e.signal, e.strategy, e.params, e.cost, e.features, e.rule, price, now)
+  }
+
+  /**
+   * Every minute: signals not yet replayed at live speed are, on their coin's
+   * stored trades, a few at a time (the stored signals first, after a restart).
+   */
+  async replayDue(now = Date.now(), batch = 8) {
+    const h = this.o.history
+    if (!h || this.replaying) return
+    this.replaying = true
+    try {
+      const due = this.recentSignals.filter(sg => !this.liveSpeed.has(sg.id) && now - sg.at >= 60_000 && now - sg.at <= LIVE_GATE.days * 86_400_000).slice(0, batch)
+      for (const sg of due) {
+        // The exits a new bot trades with (what live bots trade with before they learn).
+        if (!(sg.strategy in STRATEGIES)) { this.liveSpeed.skip(sg.id); continue }
+        const exits = toParams(defaultTuning(sg.strategy), 100)
+        const until = Math.min(now, sg.at + ((exits.maxHoldMin ?? 60) + 2) * 60_000)
+        const rows = await this.tradesBetween(sg.token, sg.at - 5_000, until).catch(() => null)
+        if (!rows) continue
+        const r = replayAtLiveSpeed(rows, { at: sg.at, price: sg.price, roundTripPct: sg.features?.roundTripPct ?? null, exits, now })
+        if (!r.final) continue
+        if (r.ret === null) this.liveSpeed.skip(sg.id)
+        else this.liveSpeed.add({ signalId: sg.id, key: liveKey(sg.rule, sg.strategy), at: sg.at, ret: r.ret })
+      }
+    } finally { this.replaying = false }
+  }
+
+  /** A coin's stored trades between two times, oldest first (paged back from `to`). */
+  private async tradesBetween(token: string, from: number, to: number) {
+    const out: { ts: number; price: number }[] = []
+    let before = to + 1
+    for (let page = 0; page < 10; page++) {
+      const got = await this.o.history!.trades(token, 500, before)
+      for (const t of got) if (t.timestamp >= from && t.timestamp <= to && (t.priceUsd ?? 0) > 0) out.push({ ts: t.timestamp, price: t.priceUsd! })
+      if (got.length < 500) break
+      const oldest = Math.min(...got.map(t => t.timestamp))
+      if (oldest <= from) break
+      before = oldest
+    }
+    return out.sort((a, b) => a.ts - b.ts)
   }
 
   /** Every 2s: the scan rows that changed, and the scan's numbers, to the site. */
@@ -661,7 +746,8 @@ export class Bot implements EngineObserver {
     const ruleOf = new Map(this.recentSignals.map(s => [s.id, s.rule]))
     const byRule = Object.fromEntries((['momentum', 'snipe', 'second-leg'] as const).map(k => [k, stats(paper.filter(p => (p.rule ?? ruleOf.get(p.signalId)) === k))]))
     const probation = Object.fromEntries((['momentum', 'snipe', 'second-leg'] as const).map(k => [k, this.probation(k)?.why ?? null]))
-    return { mode: this.mode, ...of(paper), byRule, probation, live: of(this.positions.filter(p => p.mode === 'live')), params: { snipe: this.params('snipe'), 'second-leg': this.params('second-leg'), scalp: this.params('scalp') }, risk: RISK, rules: RULES, watching: this.paths.size }
+    const liveSpeed = this.liveSpeed.keys().map(k => this.liveSpeed.record(k))
+    return { mode: this.mode, ...of(paper), byRule, probation, liveSpeed, live: of(this.positions.filter(p => p.mode === 'live')), params: { snipe: this.params('snipe'), 'second-leg': this.params('second-leg'), scalp: this.params('scalp') }, risk: RISK, rules: RULES, watching: this.paths.size }
   }
 
   status(): BotStatus {

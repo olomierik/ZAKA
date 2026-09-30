@@ -1809,5 +1809,18 @@ const d: Record<string, string> = {
   "Sells all at {tp} · stop {sl} · out after {m} min unless moving, {x} min at most": "Vende tudo a {tp} · stop {sl} · sai após {m} min se não andar, {x} min no máximo",
   "Live-grade · tier {t} · {q}": "Grau real · nível {t} · {q}",
   "Paper only · {q}": "Só papel · {q}",
+  "Every signal gets a quality score and is ranked against the last 50: the top 80% can go to live bots, the lowest 20% to paper bots only, where they are still measured. A live bot also needs the kind of signal to make money at live speed (above). Tier A (the top 40%) takes 20% of a bot's capital, the rest 10%.": "Cada sinal recebe uma nota de qualidade e é comparado aos últimos 50: os 80% melhores podem ir para os bots reais, os 20% mais fracos só para os de papel, onde continuam sendo medidos. Um bot real também precisa que esse tipo de sinal ganhe dinheiro na velocidade real (acima). O nível A (os 40% melhores) usa 20% do capital de um bot, o resto 10%.",
+  "Clean-coin snipes": "Snipes em moedas limpas",
+  "Snipes on risky coins": "Snipes em moedas arriscadas",
+  "Live now for: {k}. The other kinds of signal go to paper bots until they make money at live speed.": "Real agora para: {k}. Os outros tipos de sinal vão para os bots de papel até ganharem dinheiro na velocidade real.",
+  "Waiting for proof: no kind of signal this bot follows has made money at live speed yet (every signal is replayed on the coin's real trades, bought 2.5s after it and sold 2s after each trigger, as a live bot would). Its money stays in the wallet; it trades by itself once one does.": "Aguardando prova: nenhum tipo de sinal que este bot segue ganhou dinheiro na velocidade real ainda (cada sinal é reproduzido nas operações reais da moeda, comprado 2,5 s depois e vendido 2 s após cada gatilho, como um bot real). O dinheiro fica na carteira; ele opera sozinho assim que um tipo conseguir.",
+  "At live speed": "Na velocidade real",
+  "Every signal is replayed on its coin's real trades as a live bot trades it: bought 2.5s after the signal, sold 2s after each trigger, costs included. Live bots trade a kind of signal only once its last 10 or more replays average +0.5% a trade or better.": "Cada sinal é reproduzido nas operações reais da sua moeda como um bot real o opera: comprado 2,5 s após o sinal, vendido 2 s após cada gatilho, custos incluídos. Os bots reais só operam um tipo de sinal quando as últimas 10 ou mais reproduções têm média de +0,5% por operação ou melhor.",
+  "Replaying the recent signals…": "Reproduzindo os sinais recentes…",
+  "{n} replays": "{n} reproduções",
+  "a trade": "por operação",
+  "live bots trade it": "os bots reais operam",
+  "paper only": "só papel",
+  "at live speed: {n} replays, {a} a trade": "na velocidade real: {n} reproduções, {a} por operação",
 }
 export default d

@@ -1809,5 +1809,18 @@ const d: Record<string, string> = {
   "Sells all at {tp} · stop {sl} · out after {m} min unless moving, {x} min at most": "Verkauft alles bei {tp} · Stopp {sl} · raus nach {m} Min ohne Bewegung, höchstens {x} Min",
   "Live-grade · tier {t} · {q}": "Live-Stufe · {t} · {q}",
   "Paper only · {q}": "Nur Papier · {q}",
+  "Every signal gets a quality score and is ranked against the last 50: the top 80% can go to live bots, the lowest 20% to paper bots only, where they are still measured. A live bot also needs the kind of signal to make money at live speed (above). Tier A (the top 40%) takes 20% of a bot's capital, the rest 10%.": "Jedes Signal bekommt eine Qualitätsbewertung und wird mit den letzten 50 verglichen: die besten 80 % können an Live-Bots gehen, die schwächsten 20 % nur an Papier-Bots, wo sie weiter gemessen werden. Ein Live-Bot braucht zudem, dass diese Art Signal bei Live-Tempo Geld verdient (oben). Stufe A (die besten 40 %) nimmt 20 % des Kapitals eines Bots, der Rest 10 %.",
+  "Clean-coin snipes": "Snipes auf saubere Coins",
+  "Snipes on risky coins": "Snipes auf riskante Coins",
+  "Live now for: {k}. The other kinds of signal go to paper bots until they make money at live speed.": "Jetzt live für: {k}. Die anderen Signalarten gehen an Papier-Bots, bis sie bei Live-Tempo Geld verdienen.",
+  "Waiting for proof: no kind of signal this bot follows has made money at live speed yet (every signal is replayed on the coin's real trades, bought 2.5s after it and sold 2s after each trigger, as a live bot would). Its money stays in the wallet; it trades by itself once one does.": "Warten auf den Beweis: Noch keine Signalart, der dieser Bot folgt, hat bei Live-Tempo Geld verdient (jedes Signal wird auf den echten Trades des Coins nachgespielt, 2,5 s danach gekauft und 2 s nach jedem Auslöser verkauft, wie ein Live-Bot). Sein Geld bleibt im Wallet; er handelt von selbst, sobald eine es tut.",
+  "At live speed": "Bei Live-Tempo",
+  "Every signal is replayed on its coin's real trades as a live bot trades it: bought 2.5s after the signal, sold 2s after each trigger, costs included. Live bots trade a kind of signal only once its last 10 or more replays average +0.5% a trade or better.": "Jedes Signal wird auf den echten Trades seines Coins so nachgespielt, wie ein Live-Bot es handelt: 2,5 s nach dem Signal gekauft, 2 s nach jedem Auslöser verkauft, inklusive Kosten. Live-Bots handeln eine Signalart erst, wenn ihre letzten 10 oder mehr Wiederholungen im Schnitt +0,5 % pro Trade oder besser bringen.",
+  "Replaying the recent signals…": "Die letzten Signale werden nachgespielt…",
+  "{n} replays": "{n} Wiederholungen",
+  "a trade": "pro Trade",
+  "live bots trade it": "Live-Bots handeln es",
+  "paper only": "nur Papier",
+  "at live speed: {n} replays, {a} a trade": "bei Live-Tempo: {n} Wiederholungen, {a} pro Trade",
 }
 export default d

@@ -39,7 +39,7 @@ import type { Address } from 'viem'
 import type { BotProfit, LaunchInfo, LearnNote, MarketBot, MarketBotDetail, NewPaperAccount, PaperAccountView, PaperAction, PaperEvent, SignalFeatures, SignalQuality, SignalRule, TeamView } from '../../../api/_marketProtocol'
 import type { PoolInfo } from '../dex/pools'
 import { errMsg, log } from '../log'
-import { canOpen, closeNow, costPerSide, onPrice, openPosition, RISK, stats, type Fill, type Position, type RiskRules, type Strategy, type StrategyParams } from '../trading/paper'
+import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, RISK, stats, type Fill, type Position, type RiskRules, type Strategy, type StrategyParams } from '../trading/paper'
 import { QUALITY } from '../signals/quality'
 import { admits, defaultTuning, learn, migrateTuning, relax, toParams, type Tuning } from './learner'
 import type { LiveTrader } from './liveTrader'
@@ -87,6 +87,9 @@ export interface PaperAccount {
   /** Older rows only: the visitor's own trade size, from before sizing became automatic. Ignored. */
   tradeUsd?: number
 }
+
+/** A paper buy waiting for its live-speed fill. */
+interface PendingEntry { accountId: string; sig: PaperSignal; sizeUsd: number; profitUsd: number; share: number; tier: 'A' | 'B'; params: StrategyParams; tuningVersion: number; takeProfit: number; stopLoss: number; balanceUsd: number; at: number; due: number }
 
 /** The team (2026-09-30): a new bot's playbook needs a teammate with this many trades on the strategy; each bot reads the team's new trades every 10 minutes, once 5 have closed. */
 export const TEAM = { playbookMinTrades: 10, syncEveryMs: 10 * 60_000, syncMinTrades: 5 }
@@ -184,7 +187,14 @@ export class PaperAccounts {
   private teamSyncAt = new Map<string, number>()
   private teamCache: { at: number; value: TeamView } | null = null
 
-  constructor(private o: { store: PaperAccountStore; priceOf: (token: string) => number | null; params: (s: Strategy) => StrategyParams; live?: UserLive | null }) {}
+  /** Paper buys waiting for their live-speed fill (trading/paper.ts LIVE_SPEED), by token. */
+  private pending = new Map<string, PendingEntry[]>()
+  private speed: typeof LIVE_SPEED | null
+
+  /** `speed`: paper fills at live speed (the default); null fills at once (tests of other things). */
+  constructor(private o: { store: PaperAccountStore; priceOf: (token: string) => number | null; params: (s: Strategy) => StrategyParams; live?: UserLive | null; speed?: typeof LIVE_SPEED | null }) {
+    this.speed = o.speed === undefined ? LIVE_SPEED : o.speed
+  }
 
   async load() {
     let backfilled = 0
@@ -270,7 +280,7 @@ export class PaperAccounts {
   }
 
   /** Whether any bot has a position open in `token` (its safety is re-checked, its rugs watched). */
-  holds(token: string) { return (this.byToken.get(token)?.size ?? 0) > 0 }
+  holds(token: string) { return (this.byToken.get(token)?.size ?? 0) > 0 || (this.pending.get(token)?.length ?? 0) > 0 }
 
   private strategiesOf(list: unknown): Strategy[] {
     return [...new Set((Array.isArray(list) ? list : []).filter((s): s is Strategy => STRATEGIES.includes(s as Strategy)))]
@@ -319,6 +329,7 @@ export class PaperAccounts {
         if (a.positions.some(p => isLive(p) && p.status === 'open')) return 'sell its live positions first'
         if (a.mode === 'live') return 'switch it back to paper first'
         for (const p of a.positions) if (p.status === 'open') this.byToken.get(p.token)?.delete(a.id)
+        for (const [token, list] of this.pending) { const rest = list.filter(e => e.accountId !== a.id); if (rest.length) this.pending.set(token, rest); else this.pending.delete(token) }
         Object.assign(a, {
           running: false, startedAt: null, cash: 0, deposited: 0, positions: [],
           tuning: { snipe: defaultTuning('snipe'), scalp: defaultTuning('scalp'), 'second-leg': defaultTuning('second-leg') },
@@ -467,10 +478,7 @@ export class PaperAccounts {
    */
   onSignal(sig: PaperSignal, now = Date.now(), ctx: LiveContext | null = null) {
     for (const a of this.accounts.values()) {
-      const skip = (key: string, why: string) => {
-        a.skips = [{ at: now, kind: 'skip' as const, token: sig.token, symbol: sig.symbol, text: `${LABEL[sig.strategy]}: ${why}` }, ...a.skips].slice(0, PAPER_LIMITS.keepSkips)
-        this.outcomes.add(sig.id, key, now)
-      }
+      const skip = (key: string, why: string) => this.passOver(a, sig, key, why, now)
       // A stopped bot that was never funded is someone's abandoned try: left out.
       if (!a.running) { if (a.mode === 'live' || a.cash >= SIZE_LIMITS.minUsd) skip('not-running', 'not traded: the bot is stopped (press Start)'); continue }
       if (!a.strategies.includes(sig.strategy)) { skip('strategy', `not traded: this bot follows ${a.strategies.map(x => LABEL[x]).join(', ')}`); continue }
@@ -494,32 +502,91 @@ export class PaperAccounts {
         a.lastBuyAt[sig.strategy] = now
         a.filterSkips[sig.strategy] = 0
         this.outcomes.add(sig.id, 'live-order', now)
-        void trader.open(ctx.signal, sig.strategy, ctx.pool, ctx.meta, { sizeUsd: sized.sizeUsd, idSuffix: a.id.slice(0, 12), extra: { exits: params, targetUsd: sized.profitUsd, tuningVersion: t.version, features: sig.features, rule: sig.rule } })
+        void trader.open(ctx.signal, sig.strategy, ctx.pool, ctx.meta, { sizeUsd: sized.sizeUsd, idSuffix: a.id.slice(0, 12), priceNow: () => this.o.priceOf(sig.token), extra: { exits: params, targetUsd: sized.profitUsd, tuningVersion: t.version, features: sig.features, rule: sig.rule } })
           .catch(e => log.warn('user live: open failed', { bot: a.slug, error: errMsg(e) }))
         continue
       }
       if (a.cash < sized.sizeUsd) { skip('cash', `needs ${money(sized.sizeUsd)}, has ${money(a.cash)} in cash`); continue }
-      const allowed = canOpen(a.positions.filter(p => !isLive(p)), sig.token, now, riskFor(a), sig.strategy)
+      // Buys waiting for their fill count as open: no second buy of the same coin, and the open-trade limits hold.
+      const waiting = this.pendingOf(a.id).map(e => ({ status: 'open', token: e.sig.token, strategy: e.sig.strategy, openedAt: e.at, mode: 'paper' }) as Position)
+      const allowed = canOpen([...a.positions.filter(p => !isLive(p)), ...waiting], sig.token, now, riskFor(a), sig.strategy)
       if (!allowed.ok) { skip(allowed.key ?? 'max-open', allowed.why); continue }
-      const cost = costPerSide(sig.roundTripPct, sized.sizeUsd, sig.liquidityUsd)
-      const p: Position = {
-        ...openPosition({ id: `${sig.id}:${a.id.slice(0, 12)}`, strategy: sig.strategy, token: sig.token, symbol: sig.symbol, launchpad: sig.launchpad, signalId: sig.id, price: sig.price, cost, now, params }),
-        mode: 'paper', exits: params, targetUsd: sized.profitUsd, tuningVersion: t.version, features: sig.features, rule: sig.rule,
-      }
+      const entry: PendingEntry = { accountId: a.id, sig, sizeUsd: sized.sizeUsd, profitUsd: sized.profitUsd, share: sized.share, tier, params, tuningVersion: t.version, takeProfit: t.takeProfit, stopLoss: t.stopLoss, balanceUsd, at: now, due: now + (this.speed?.entryMs ?? 0) }
       a.cash -= sized.sizeUsd
-      a.positions.push(p)
       a.lastBuyAt[sig.strategy] = now
       a.filterSkips[sig.strategy] = 0
-      this.outcomes.add(sig.id, 'traded', now)
-      this.track(a, p)
-      const why = `${Math.round(sized.share * 100)}% of its ${money(balanceUsd)}${sig.quality ? `, a tier-${tier} signal (quality ${sig.quality.score})` : ''}`
-      this.event(a, { at: now, kind: 'buy', token: sig.token, symbol: sig.symbol, text: `Bought $${sig.symbol} for ${money(sized.sizeUsd)} (${LABEL[sig.strategy]}; ${why}): sells all at ${move(t.takeProfit)} to make about ${money(sized.profitUsd)}, stop at ${move(t.stopLoss)}` })
+      if (!this.speed) { this.fill(a, entry, sig.price, now); continue }
+      // At live speed: the buy fills at the first price 2.5s from now, as a live bot's would.
+      this.pending.set(sig.token, [...(this.pending.get(sig.token) ?? []), entry])
       this.save(a, now)
     }
   }
 
+  /** A signal a bot passes over: in its list, with why, and counted (GET /v1/bot/rejections). */
+  private passOver(a: PaperAccount, sig: PaperSignal, key: string, why: string, now: number) {
+    a.skips = [{ at: now, kind: 'skip' as const, token: sig.token, symbol: sig.symbol, text: `${LABEL[sig.strategy]}: ${why}` }, ...a.skips].slice(0, PAPER_LIMITS.keepSkips)
+    this.outcomes.add(sig.id, key, now)
+  }
+
+  private pendingOf(accountId: string): PendingEntry[] {
+    const out: PendingEntry[] = []
+    for (const list of this.pending.values()) for (const e of list) if (e.accountId === accountId) out.push(e)
+    return out
+  }
+
+  /**
+   * The paper buys of `token` that are due: each fills at `price`, the first
+   * one 2.5s after its signal, unless the price moved more than 5% since the
+   * signal (a live bot skips those too: BAGEY was 15% down by then).
+   */
+  private fillDue(token: string, price: number | null, now: number) {
+    const list = this.pending.get(token)
+    if (!list?.length || !this.speed) return
+    const keep: PendingEntry[] = []
+    for (const e of list) {
+      const a = this.accounts.get(e.accountId)
+      if (!a) continue
+      if (now < e.due) { keep.push(e); continue }
+      if (!price) {
+        // No price for a minute: dropped.
+        if (now - e.due < 60_000) { keep.push(e); continue }
+        a.cash += e.sizeUsd
+        this.passOver(a, e.sig, 'no-price', 'not bought: the coin stopped trading before the buy could fill', now)
+        continue
+      }
+      const drift = price / e.sig.price - 1
+      if (Math.abs(drift) > this.speed.maxDrift) {
+        a.cash += e.sizeUsd
+        this.passOver(a, e.sig, 'drift', `not bought: the price moved ${drift > 0 ? '+' : ''}${(drift * 100).toFixed(1)}% in the 2.5 seconds a buy takes (a live bot skips it too)`, now)
+        this.save(a, now)
+        continue
+      }
+      this.fill(a, e, price, now)
+    }
+    if (keep.length) this.pending.set(token, keep)
+    else this.pending.delete(token)
+  }
+
+  /** Opens a paper buy at `price` (cash already set aside). */
+  private fill(a: PaperAccount, e: PendingEntry, price: number, now: number) {
+    const sig = e.sig
+    const cost = costPerSide(sig.roundTripPct, e.sizeUsd, sig.liquidityUsd)
+    const p: Position = {
+      ...openPosition({ id: `${sig.id}:${a.id.slice(0, 12)}`, strategy: sig.strategy, token: sig.token, symbol: sig.symbol, launchpad: sig.launchpad, signalId: sig.id, price, cost, now, params: e.params }),
+      mode: 'paper', exits: e.params, targetUsd: e.profitUsd, tuningVersion: e.tuningVersion, features: sig.features, rule: sig.rule,
+    }
+    a.positions.push(p)
+    this.outcomes.add(sig.id, 'traded', now)
+    this.track(a, p)
+    const why = `${Math.round(e.share * 100)}% of its ${money(e.balanceUsd)}${sig.quality ? `, a tier-${e.tier} signal (quality ${sig.quality.score})` : ''}`
+    const at = price !== sig.price ? `, ${((price / sig.price - 1) * 100).toFixed(1)}% from the signal's price after the 2.5s a buy takes` : ''
+    this.event(a, { at: now, kind: 'buy', token: sig.token, symbol: sig.symbol, text: `Bought $${sig.symbol} for ${money(e.sizeUsd)} (${LABEL[sig.strategy]}; ${why}${at}): sells all at ${move(e.takeProfit)} to make about ${money(e.profitUsd)}, stop at ${move(e.stopLoss)}` })
+    this.save(a, now)
+  }
+
   /** A trade in `token`: rug alarms, the creator selling, and exits, for the bots holding it (live ones through their wallet). */
   onPrice(token: string, price: number, now: number, creatorSold: boolean, priced: boolean, rug: RugAlarm | null = null) {
+    if (priced) this.fillDue(token, price, now)
     const ids = this.byToken.get(token)
     if (!ids?.size) return
     for (const id of [...ids]) {
@@ -534,9 +601,10 @@ export class PaperAccounts {
           continue
         }
         const params = p.exits ?? this.o.params(p.strategy)
-        const fills: Fill[] = rug ? closeNow(p, price, now, 'rug', `Rug guard: ${rug.text}`)
-          : creatorSold && params.exitOnCreatorSell ? closeNow(p, price, now, 'creator')
-          : priced ? onPrice(p, price, now, params) : []
+        const lag = this.speed?.exitMs ?? 0
+        const fills: Fill[] = rug ? closeNow(p, price, now, 'rug', `Rug guard: ${rug.text}`, lag)
+          : creatorSold && params.exitOnCreatorSell ? closeNow(p, price, now, 'creator', undefined, lag)
+          : priced ? onPrice(p, price, now, params, lag) : []
         this.credit(a, p, fills, now)
       }
     }
@@ -552,7 +620,7 @@ export class PaperAccounts {
       for (const p of a.positions) {
         if (p.status !== 'open' || p.token !== token) continue
         if (isLive(p)) { if (note) p.note = note; this.trader(a)?.closeNow(p, reason); continue }
-        this.credit(a, p, closeNow(p, price, now, reason, note), now)
+        this.credit(a, p, closeNow(p, price, now, reason, note, this.speed?.exitMs ?? 0), now)
       }
     }
   }
@@ -565,9 +633,11 @@ export class PaperAccounts {
       for (const id of [...ids]) {
         const a = this.accounts.get(id)
         if (!a) continue
-        for (const p of a.positions) if (p.status === 'open' && p.token === token && !isLive(p)) this.credit(a, p, onPrice(p, price, now, p.exits ?? this.o.params(p.strategy)), now)
+        for (const p of a.positions) if (p.status === 'open' && p.token === token && !isLive(p)) this.credit(a, p, onPrice(p, price, now, p.exits ?? this.o.params(p.strategy), this.speed?.exitMs ?? 0), now)
       }
     }
+    // Paper buys whose coin hasn't traded since their signal: filled at its last price.
+    for (const token of [...this.pending.keys()]) this.fillDue(token, this.o.priceOf(token), now)
     for (const a of this.accounts.values()) {
       if (a.live && (a.mode === 'live' || a.positions.some(p => (isLive(p) && p.status === 'open') || (p.feeDue ?? 0) > 0))) this.tickLive(a, now)
       if (!a.running) continue
@@ -624,6 +694,7 @@ export class PaperAccounts {
   equity(a: PaperAccount) {
     let openValue = 0
     for (const p of a.positions) if (p.status === 'open' && !isLive(p)) openValue += p.remaining * (this.o.priceOf(p.token) ?? p.marketEntry) * (1 - p.cost)
+    for (const e of this.pendingOf(a.id)) openValue += e.sizeUsd
     return { equity: a.cash + openValue, openValue }
   }
 

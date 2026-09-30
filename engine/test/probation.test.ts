@@ -42,7 +42,7 @@ describe('probation', () => {
 
 describe('bots and a rule on probation', () => {
   const setup = () => {
-    const accts = new PaperAccounts({ store: new MemoryBotStore(), priceOf: () => 1, params: s => STRATEGIES[s] })
+    const accts = new PaperAccounts({ speed: null, store: new MemoryBotStore(), priceOf: () => 1, params: s => STRATEGIES[s] })
     const made = accts.create(revised, { name: 'Prober', strategies: ['scalp'] }) as { account: PaperAccount }
     accts.act(made.account, { action: 'deposit', amount: 1_000 }, revised)
     accts.act(made.account, { action: 'start' }, revised)
