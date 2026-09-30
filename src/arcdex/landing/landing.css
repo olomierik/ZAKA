@@ -229,3 +229,12 @@ html { scroll-behavior: smooth; color-scheme: dark; }
   .ld-cta .ld-btn { flex: 1; }
   .ld-final { margin-left: 16px; margin-right: 16px; }
 }
+
+/* ── Autotrade ─────────────────────────────────────────── */
+.ld-pill-auto { background: rgba(245, 158, 11, 0.1); color: #fcd34d; border-color: rgba(245, 158, 11, 0.35); }
+.ld-auto-live { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 22px; margin-top: 22px; color: var(--ld-muted); font-size: 0.92rem; }
+.ld-auto-live b { color: #fff; font-family: 'Space Grotesk', sans-serif; }
+.ld-flow-3 { grid-template-columns: repeat(3, 1fr); }
+.ld-step-auto { background: linear-gradient(135deg, #f59e0b, #8b5cf6); }
+.ld-auto-note { margin: 18px auto 0; max-width: 640px; text-align: center; color: var(--ld-muted); font-size: 0.8rem; line-height: 1.5; }
+@media (max-width: 720px) { .ld-flow-3 { grid-template-columns: 1fr; } }

@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { TradeSignal } from '../../../api/_marketProtocol'
 import { DepositModal, WithdrawModal } from './CashModals'
-import { AgoText } from './Ago'
-import { engineEnabled, getBotStatus, getSignals } from '../api/marketStream'
+import { engineEnabled, getBotStatus, getPaperAccount, getScan, paperKey } from '../api/marketStream'
 import { useTrader } from '../lib/identity'
 import { useCash } from '../lib/usdc'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
@@ -10,25 +8,32 @@ import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 
 const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-const STRATEGY: Record<TradeSignal['strategy'], string> = { snipe: 'Snipe', scalp: 'Fast scalp', 'second-leg': 'Second leg' }
 
 /** The top of the phone home: only what matters. Your cash with Deposit
- * and Withdraw (or, with no wallet yet, one tap to get one), and the signal
- * bot's latest pick. The coin list follows. */
+ * and Withdraw (or, with no wallet yet, one tap to get one), and the
+ * AUTOTRADE button: your paper account if it's running, else the scanner at
+ * work. The coin list follows. */
 export default function MobileHome({ navigate }: { navigate: (p: Page) => void }) {
   const trader = useTrader()
   const { cash } = useCash(trader.address)
   const [deposit, setDeposit] = useState(false)
   const [withdraw, setWithdraw] = useState(false)
-  const [latest, setLatest] = useState<TradeSignal | null>(null)
   const [live, setLive] = useState(false)
+  const [scanning, setScanning] = useState<number | null>(null)
+  const [mine, setMine] = useState<{ running: boolean; equity: number } | null>(null)
 
   useEffect(() => {
     if (!engineEnabled) return
     let alive = true
-    void getSignals(1).then(s => { if (alive) setLatest(s[0] ?? null) }).catch(() => {})
-    void getBotStatus().then(s => { if (alive) setLive(s.mode === 'live') }).catch(() => {})
-    return () => { alive = false }
+    const load = () => {
+      void getScan(1).then(s => { if (alive) setScanning(s.stats.watching) }).catch(() => {})
+      void getBotStatus().then(s => { if (alive) setLive(s.mode === 'live') }).catch(() => {})
+      const key = paperKey()
+      if (key) void getPaperAccount(key).then(a => { if (alive) setMine({ running: a.running, equity: a.equity }) }).catch(() => {})
+    }
+    load()
+    const id = setInterval(() => { if (!document.hidden) load() }, 30_000)
+    return () => { alive = false; clearInterval(id) }
   }, [])
 
   return (
@@ -59,15 +64,18 @@ export default function MobileHome({ navigate }: { navigate: (p: Page) => void }
       )}
 
       {engineEnabled && (
-        <button className="m-home-signal" onClick={() => navigate({ name: 'signals' })}>
-          <span className="m-home-signal-icon">⚡</span>
-          <span className="m-home-signal-text">
-            {latest
-              ? <>{T('Latest signal')} <b>${latest.symbol}</b> · {T(STRATEGY[latest.strategy] ?? latest.strategy)} · <AgoText ts={latest.at} /></>
-              : T("Signals: the bot's picks and results")}
+        <button className="m-autotrade" onClick={() => navigate({ name: 'signals' })}>
+          <span className="m-autotrade-bolt">⚡</span>
+          <span className="m-autotrade-text">
+            <b>AUTOTRADE</b>
+            <span>
+              {mine?.running ? <><span className="m-autotrade-dot" />{T('Running · {v} virtual', { v: usd(mine.equity) })}</>
+                : scanning !== null ? <><span className="m-autotrade-dot" />{T('Scanning {n} coins · start with virtual USDC', { n: scanning.toLocaleString() })}</>
+                : T('Start with virtual USDC')}
+            </span>
           </span>
           {live && <span className="m-home-live">{T('LIVE')}</span>}
-          <span aria-hidden>›</span>
+          <span className="m-autotrade-go" aria-hidden>›</span>
         </button>
       )}
 

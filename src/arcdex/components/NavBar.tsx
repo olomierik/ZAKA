@@ -31,13 +31,13 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
 
   // Secondary links drop out on narrower desktops (they're also in the
   // left panel and the account menu); trading links always show.
-  const navLinks: { label: string; page: Page; secondary?: boolean }[] = [
+  const navLinks: { label: string; page: Page; secondary?: boolean; accent?: boolean }[] = [
     { label: T('Terminal'),    page: { name: 'terminal' } },
+    { label: '⚡ AUTOTRADE',   page: { name: 'signals' }, accent: true },
     { label: T('Swap'),        page: { name: 'swap' } },
     { label: T('Bridge'),      page: { name: 'bridge' } },
     { label: T('Launchpad'),   page: { name: 'launchpad' } },
     { label: T('Portfolio'),   page: { name: 'portfolio' } },
-    { label: T('Signals'),     page: { name: 'signals' }, secondary: true },
     { label: T('Feed'),        page: { name: 'feed' }, secondary: true },
     { label: T('Leaderboard'), page: { name: 'leaderboard' }, secondary: true },
     { label: T('Clans'),       page: { name: 'clans' }, secondary: true },
@@ -60,10 +60,10 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
 
       {/* Nav links */}
       <nav className="navbar-links">
-        {navLinks.map(({ label, page: p, secondary }) => (
+        {navLinks.map(({ label, page: p, secondary, accent }) => (
           <button
             key={label}
-            className={`navbar-link${page.name === p.name ? ' active' : ''}${secondary ? ' nav-secondary' : ''}`}
+            className={`navbar-link${page.name === p.name ? ' active' : ''}${secondary ? ' nav-secondary' : ''}${accent ? ' navbar-autotrade' : ''}`}
             onClick={() => navigate(p)}
           >
             {label}

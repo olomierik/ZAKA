@@ -11,14 +11,14 @@
 // subscription is re-sent, and the engine answers each with a fresh snapshot.
 
 import { useSyncExternalStore } from 'react'
-import { botControlMessage, type BotControl, type BotPosition, type BotStatus, type Interval, type LaunchInfo, type SafetyCheck, type ServerMessage, type TokenStats, type TradeSignal, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
+import { botControlMessage, type BotControl, type BotPosition, type BotStatus, type PaperAccountView, type PaperAction, type ScanRow, type ScanStats, type Interval, type LaunchInfo, type SafetyCheck, type ServerMessage, type TokenStats, type TradeSignal, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
 
 const WS_URL = (import.meta.env.VITE_ARCDEX_WS_URL as string | undefined) || undefined
 const API_URL = ((import.meta.env.VITE_ARCDEX_API_URL as string | undefined) || (WS_URL ? WS_URL.replace(/^ws/, 'http').replace(/\/ws\/?$/, '') : '')).replace(/\/$/, '')
 
 export const engineEnabled = Boolean(WS_URL)
 
-type Sub = { channel: 'token' | 'candles' | 'new_tokens' | 'market' | 'signals'; token?: string; interval?: Interval }
+type Sub = { channel: 'token' | 'candles' | 'new_tokens' | 'market' | 'signals' | 'scan'; token?: string; interval?: Interval }
 export type EngineStatus = 'off' | 'connecting' | 'open' | 'closed'
 
 const keyOf = (s: Sub) => s.channel === 'candles' ? `candles:${s.token}:${s.interval}` : s.token ? `${s.channel}:${s.token}` : s.channel
@@ -83,6 +83,7 @@ class MarketStream {
         : m.t === 'NEW_TOKEN' ? 'new_tokens'
         : m.t === 'TICKS' ? 'market'
         : m.t === 'SIGNAL' || m.t === 'BOT_POSITION' ? 'signals'
+        : m.t === 'SCAN' ? 'scan'
         : k ? `token:${k}` : null
       if (target) this.subs.get(target)?.handlers.forEach(h => h(m))
     }
@@ -141,6 +142,36 @@ export const getBotPositions = (status: 'open' | 'closed' | 'all' = 'all', limit
   get<{ positions: BotPosition[] }>(`/v1/bot/positions?status=${status}&limit=${limit}`).then(r => r.positions)
 export const getSafety = (token: string) => get<{ report: SafetyReport }>(`/v1/safety/${token.toLowerCase()}`).then(r => r.report)
 export const getBotStatus = () => get<BotStatus>('/v1/bot/status')
+export const getScan = (limit = 200, status?: ScanRow['status']) => get<{ rows: ScanRow[]; stats: ScanStats }>(`/v1/bot/scan?limit=${limit}${status ? `&status=${status}` : ''}`)
+
+// ── visitors' paper accounts (virtual USDC; engine/src/bot/paperAccounts.ts) ──
+
+const PAPER_KEY = 'arcdex:paper-key'
+/** This browser's paper account key (the engine keeps only its hash). */
+export function paperKey(): string | null {
+  try { return localStorage.getItem(PAPER_KEY) } catch { return null }
+}
+function setPaperKey(k: string | null) {
+  try { if (k) localStorage.setItem(PAPER_KEY, k); else localStorage.removeItem(PAPER_KEY) } catch { /* storage blocked */ }
+}
+async function paperFetch(path: string, init: RequestInit & { key?: string | null } = {}): Promise<{ key?: string; account: PaperAccountView }> {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init, signal: AbortSignal.timeout(10_000),
+    headers: { 'Content-Type': 'application/json', ...(init.key ? { 'X-Paper-Key': init.key } : {}) },
+  })
+  const body = await res.json().catch(() => ({})) as { key?: string; account?: PaperAccountView; error?: string }
+  if (res.status === 404 && init.key) setPaperKey(null) // the account is gone: start over
+  if (!res.ok || !body.account) throw new Error(body.error ?? `the engine answered ${res.status}`)
+  return body as { key?: string; account: PaperAccountView }
+}
+/** A new paper account for this browser. */
+export async function createPaperAccount(): Promise<PaperAccountView> {
+  const r = await paperFetch('/v1/paper/accounts', { method: 'POST', body: '{}' })
+  if (r.key) setPaperKey(r.key)
+  return r.account
+}
+export const getPaperAccount = (key: string) => paperFetch('/v1/paper/account', { key }).then(r => r.account)
+export const paperAction = (key: string, action: PaperAction) => paperFetch('/v1/paper/account', { method: 'POST', key, body: JSON.stringify(action) }).then(r => r.account)
 
 /** The owner's signed switch: paper/live, or sell every live position (engine/src/bot/control.ts). */
 export async function sendBotControl(control: BotControl, sign: (message: string) => Promise<`0x${string}`>): Promise<BotStatus> {

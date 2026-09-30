@@ -194,7 +194,7 @@ Why buys, swaps and bridges failed for people, and the fixes:
 ### Phone home and desktop nav (2026-09-26)
 - **Phone home** (`components/MobileHome.tsx`, top of the Terminal on phones): only what matters (owner's request, 2026-09-30).
   - Your cash with Deposit and Withdraw; with no wallet yet, "Get started" opens the trading wallet.
-  - One line to Signals: the bot's latest signal (coin, strategy, age), with a LIVE badge in live mode.
+  - The AUTOTRADE button (redesigned 2026-09-30): your paper account's value while it runs, else how many coins the scanner is checking; a LIVE badge in live mode.
   - The week's top-traders strip was removed (owner's request); the leaderboard stays under More.
 - **Desktop nav** has Swap and Bridge. Below 1180px wide, Feed, Leaderboard, Clans and Rewards drop out of the top bar; they stay in the left panel and the account menu.
 
@@ -689,7 +689,26 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
       - `bun engine/scripts/check-live-trade.ts`: the exact buy and sell calls, simulated on mainnet from a throwaway address (balance, token and Permit2 storage overrides), in the busiest ERC-20 USDC and native-USDC pools. Each goes through with its minimum and is refused with a minimum of twice the quote. It passed for both on 2026-09-30.
       - A local engine with throwaway, unfunded keys: status, a stranger's, stale, replayed and altered signatures refused, and the owner's live, sell-all and paper accepted.
       - Not checked yet: a real funded trade (that's the owner's first live trade), and the owner switching from the page with their own wallet (the page signs the same message the script did).
-  - **Site: `/signals` (`pages/SignalsPage.tsx`; nav, and a tab on phones).**
+  - **Autotrade for everyone (2026-09-30, owner's request).**
+    - **Paper accounts (`bot/paperAccounts.ts`):** any visitor gets one (no wallet): deposit virtual USDC, choose one or more strategies (Snipe, Fast scalp, Second leg), set the amount per trade (scalps use a fifth), press Start.
+      - Every signal of a followed strategy opens a position in each running account that has the cash, with the bot's exits and modelled costs and its risk rules (open positions, a coin once per 6 hours, the daily loss stop). Accounts run on the engine, so they keep trading with the browser closed.
+      - Reached with a random key kept in the browser (`localStorage` `arcdex:paper-key`); the engine stores only its SHA-256, in Postgres (`arcdex_paper_accounts`).
+      - Caps: 20,000 accounts, 5 new accounts an hour per IP, $100,000 per deposit, $1,000,000 per account, $1–$10,000 a trade, the last 200 closed trades kept.
+      - `POST /v1/paper/accounts` (the key, once); `GET|POST /v1/paper/account` with `X-Paper-Key` (deposit, start, stop, strategies, size, reset).
+    - **The scanner (`bot/scanFeed.ts`):** every coin launched in the last 48h, with its status and why:
+      - `new` (no trade yet);
+      - `watching` (which market rules aren't met, and the snipe window left, or why it's waiting for a second leg);
+      - `checking` (safety checks still running);
+      - `rejected` (the failed hard checks);
+      - `signal`.
+      - A signal or rejection stays the coin's verdict.
+      - `GET /v1/bot/scan?status=` and the `scan` WebSocket channel: the rows that changed, and the numbers (coins, checks a minute, signals and rejections in 24h), every 2s, so the site shows the engine working.
+    - Tests: `engine/test/autotrade.test.ts`.
+  - **Site: `/autotrade` (`/signals` still works; `pages/SignalsPage.tsx`).** Named AUTOTRADE in the app (owner's request): "⚡ AUTOTRADE", highlighted, in the top bar; Autotrade in the phone tab bar; and the AUTOTRADE button on the phone home (your paper account's value while it runs, else the coins being scanned).
+    - A live scanner strip on every tab (a pulsing dot, coins scanned, checks a minute, the last check counting up, signals and rejections today).
+    - Tabs: **My autotrade** (the paper account: value, cash, P&L, win rate, deposit, strategy cards, amount per trade, Start/Stop, its trades, reset), **Scanner** (every coin with its status and reasons, filtered by status), **Signals**, and **Bot results** (below).
+  - **Landing (`landing/Landing.tsx`, `#autotrade`):** an Autotrade section (scan, choose strategies, trades around the clock; paper with virtual USDC; results measured, not promised), its live numbers from `/v1/bot/scan`, a feature card, a hero button, a nav link and an FAQ entry.
+  - **Bot results tab (was the whole `/signals` page).**
     - A PAPER/LIVE badge, and the bot panel: the mode switch (only the owner's wallet, signed; live asks to confirm, with the limits shown), the bot wallet, its balance, today's live P&L, the limits, "Sell all live positions", and the live activity log.
     - Results per strategy (Snipe, Fast scalp, Second leg), for Paper or Live.
     - Live signals with their checks (a scalp's risk flags in amber). Open and closed positions of the chosen book; live ones carry their transactions (explorer links), the gas, and a sale that keeps failing.

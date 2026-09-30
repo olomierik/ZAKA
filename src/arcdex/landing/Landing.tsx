@@ -33,9 +33,14 @@ function ago(ms: number) {
   return s < 3600 ? t('{n} min ago', { n: Math.max(1, Math.floor(s / 60)) }) : s < 86400 ? t('{n} hours ago', { n: Math.floor(s / 3600) }) : t('{n} days ago', { n: Math.floor(s / 86400) })
 }
 
+/** The market engine's REST base (Autotrade's live numbers), when the site has one. */
+const ENGINE = ((import.meta.env.VITE_ARCDEX_API_URL as string | undefined) || ((import.meta.env.VITE_ARCDEX_WS_URL as string | undefined) ?? '').replace(/^ws/, 'http').replace(/\/ws\/?$/, '')).replace(/\/$/, '')
+interface ScanNumbers { watching: number; evalsPerMin: number; signals24h: number; rejected24h: number }
+
 export default function Landing() {
   const lang = useLang()
   const [d, setD] = useState<ArcdStats | null>(null)
+  const [scan, setScan] = useState<ScanNumbers | null>(null)
   const [menu, setMenu] = useState(false)
   const navRef = useRef<HTMLElement>(null)
 
@@ -62,6 +67,16 @@ export default function Landing() {
     return () => clearInterval(id)
   }, [])
 
+  // Autotrade's scanner, live: how many coins it's checking right now.
+  useEffect(() => {
+    if (!ENGINE) return
+    const load = () => void fetch(`${ENGINE}/v1/bot/scan?limit=1`, { signal: AbortSignal.timeout(6_000) })
+      .then(r => (r.ok ? r.json() : null)).then((j: { stats?: ScanNumbers } | null) => { if (j?.stats) setScan(j.stats) }).catch(() => {})
+    load()
+    const id = setInterval(() => { if (!document.hidden) load() }, 15_000)
+    return () => clearInterval(id)
+  }, [])
+
   const m = d?.market
   const burnedPct = d?.burnedPct ?? 0
   const stats: [string, string][] = [
@@ -73,6 +88,7 @@ export default function Landing() {
   ]
 
   const FEATURES: [string, string, string][] = [
+    ['🤖', t('Autotrade'), t('A signal engine scans every new coin on every Arc launchpad, rejects the unsafe ones and trades the rest for you. Start free with virtual USDC.')],
     ['⚡', t('One-tap trading'), t('A trading wallet in your browser: buy and sell in one tap, no pop-ups. Protect it with a passkey.')],
     ['👀', t("See who's buying"), t('Every trade on the chart is a trader’s avatar. Follow the best traders and get an alert the moment they move.')],
     ['⚑', t('Clans, leaderboards & points'), t('Team up in clans, climb the leaderboard and earn ARCDEX Points every season.')],
@@ -96,7 +112,14 @@ export default function Landing() {
     [t('Bridge (Circle CCTP)'), t('0.5% of the transfer (min $0.05, max $50)'), t('90% — Circle keeps 10%')],
   ]
 
+  const AUTOTRADE: [string, string, string][] = [
+    ['1', t('It scans every coin'), t('Every new coin on every Arc launchpad is checked the moment it trades: a real buy-and-sell honeypot test, mint, freeze and pause powers, the creator’s stake, bundled launches, wallet clusters and wash trading.')],
+    ['2', t('You choose the strategies'), t('Snipe, Fast scalp, Second leg: use one, or several at once, and set how much goes into each trade.')],
+    ['3', t('It trades around the clock'), t('Deposit virtual USDC and press Start. Autotrade takes every matching signal with automatic take-profits and stops, even while you’re away, and shows why it skipped every other coin.')],
+  ]
+
   const FAQ: [string, string][] = [
+    [t('What is Autotrade?'), t('Autotrade is ARCDEX’s signal engine. It scans every new coin on Arc, rejects the unsafe ones with the reason shown, and trades the rest with the strategies you pick. You start with virtual USDC (paper trading), so you can see how it does before risking anything. Results are measured, never promised: most new coins go to zero.')],
     [t('What is ARCDEX?'), t('ARCDEX is the social trading app for Arc: a terminal for every new coin, one-tap trading, live trader activity, clans, leaderboards and a launchpad. Everything settles on-chain in USDC, and you always keep your own keys.')],
     [t('What is $ARCD?'), t('$ARCD is the one official ARCDEX coin, launched on Argus on Arc mainnet. Its supply is fixed at 1,000,000,000 — the contract has no mint function — and ARCDEX’s fees are used to buy it back and burn it.')],
     [t('Which fees buy back and burn $ARCD?'), t('All of ARCDEX’s own fee revenue: its share of swap fees, launchpad fees and bridge fees. Referral rewards and creators’ shares are paid to them first; everything the platform keeps goes to buyback and burn.')],
@@ -120,6 +143,7 @@ export default function Landing() {
         <a href="/" className="ld-brand"><img src="/arcdex-logo.svg" alt="" width={30} height={30} />ARCDEX</a>
         <nav className={`ld-links${menu ? ' open' : ''}`} onClick={() => setMenu(false)}>
           <a href="#features">{t('Features')}</a>
+          <a href="#autotrade">{t('Autotrade')}</a>
           <a href="#arcd">$ARCD</a>
           <a href="#burn">{t('Buyback & burn')}</a>
           <a href="#roadmap">{t('Roadmap')}</a>
@@ -149,6 +173,7 @@ export default function Landing() {
           <p className="ld-lead">{t('Trade every new coin on Arc in one tap, see who’s buying in real time and follow the best traders. Every fee the platform earns buys back and burns $ARCD.')}</p>
           <div className="ld-cta">
             <a className="ld-btn ld-btn-primary" href="/app">{t('Launch app')} →</a>
+            <a className="ld-btn ld-btn-ghost" href="/autotrade">⚡ {t('Try Autotrade')}</a>
             <a className="ld-btn ld-btn-ghost" href={ARCD_APP_PATH}>🔥 {t('Buy $ARCD')}</a>
           </div>
           <div className="ld-trust">{t('USDC-native · gas paid in USDC · self-custody')}</div>
@@ -195,6 +220,31 @@ export default function Landing() {
             <div key={title} className="ld-card ld-feature"><div className="ld-icon">{icon}</div><h3>{title}</h3><p>{body}</p></div>
           ))}
         </div>
+      </section>
+
+      {/* ── Autotrade ───────────────────────────────────── */}
+      <section className="ld-section" id="autotrade">
+        <span className="ld-pill ld-pill-auto">⚡ {t('New')} · Autotrade</span>
+        <h2>{t('Autotrade: a safety scanner that trades for you')}</h2>
+        <p className="ld-sub">{t('Most new coins are traps. Autotrade checks every one, skips the unsafe ones and trades the rest with your strategies. Try it free with virtual USDC.')}</p>
+        {scan && (
+          <div className="ld-auto-live">
+            <span className="ld-dot" />
+            <span><b>{scan.watching.toLocaleString()}</b> {t('coins being scanned right now')}</span>
+            <span><b>{scan.evalsPerMin.toLocaleString()}</b> {t('checks a minute')}</span>
+            <span><b>{scan.signals24h.toLocaleString()}</b> {t('signals in 24h')}</span>
+            <span><b>{scan.rejected24h.toLocaleString()}</b> {t('rejected in 24h')}</span>
+          </div>
+        )}
+        <div className="ld-flow ld-flow-3">
+          {AUTOTRADE.map(([n, title, body]) => (
+            <div key={n} className="ld-card ld-step"><div className="ld-step-n ld-step-auto">{n}</div><h3>{title}</h3><p>{body}</p></div>
+          ))}
+        </div>
+        <div className="ld-cta" style={{ justifyContent: 'center' }}>
+          <a className="ld-btn ld-btn-primary" href="/autotrade">⚡ {t('Try Autotrade free')} →</a>
+        </div>
+        <p className="ld-auto-note">{t('Paper trading uses virtual USDC: no money moves. Results are measured, never promised, and most new coins go to zero. Not financial advice.')}</p>
       </section>
 
       {/* ── $ARCD ───────────────────────────────────────── */}

@@ -1,4 +1,4 @@
-// Phones: a native-style bottom tab bar (Home · Signals · Swap · Portfolio ·
+// Phones: a native-style bottom tab bar (Home · Autotrade · Swap · Portfolio ·
 // More) instead of a hamburger drawer. "More" opens a sheet with every other
 // page, plus the lists panel (watchlist, trending, most held…).
 // Hidden on coin pages, which have their own sticky Buy/Sell bar.
@@ -11,7 +11,7 @@ import { t as T, N_ } from '../lib/i18n'
 
 const TABS: { page: Page['name']; icon: string; label: string; to: Page }[] = [
   { page: 'terminal', icon: '◈', label: N_('Home'), to: { name: 'terminal' } },
-  { page: 'signals', icon: '⚡', label: N_('Signals'), to: { name: 'signals' } },
+  { page: 'signals', icon: '⚡', label: N_('Autotrade'), to: { name: 'signals' } },
   { page: 'swap', icon: '⇄', label: N_('Swap'), to: { name: 'swap' } },
   { page: 'portfolio', icon: '▤', label: N_('Portfolio'), to: { name: 'portfolio' } },
 ]

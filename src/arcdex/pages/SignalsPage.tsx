@@ -1,15 +1,23 @@
-// Signals: what the market engine's signal bot sees and does (engine/src/bot).
-// Every signal opens a paper position (simulated at live prices, no money
-// moves); in live mode the bot wallet also trades it with real money. The
-// owner's wallet switches modes (a signed message); everyone sees the mode,
-// the bot wallet, its trades and both sets of results. The numbers are
-// measured results, never a promise.
+// Autotrade (/autotrade; /signals still works): the market engine's signal
+// bot, for everyone (engine/src/bot).
+//
+//   My autotrade  a paper account on the engine for this browser: deposit
+//                 virtual USDC, pick one or more strategies, Start; it trades
+//                 every matching signal, with the bot's exits, 24/7
+//   Scanner       every coin being scanned, live, and why it isn't a signal
+//                 (rules not met yet, a failed safety check)
+//   Signals       the signals, with every check behind them
+//   Bot results   the bot's own paper and live results, and the owner's
+//                 live switch (a signed message)
+//
+// A strip at the top shows the scanner working (the `scan` channel, every 2s).
+// The numbers are measured results, never a promise.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
-import type { BotControl, BotPosition, BotStatus, SafetyCheck, TradeSignal } from '../../../api/_marketProtocol'
+import type { BotControl, BotPosition, BotStatus, PaperAccountView, PaperAction, SafetyCheck, ScanRow, ScanStats, TradeSignal } from '../../../api/_marketProtocol'
 import { getLaunchpadColor } from '../api/radardex'
-import { engineEnabled, getBotPositions, getBotStats, getBotStatus, getSignals, marketStream, sendBotControl, type BotStats, type BotStatsResponse } from '../api/marketStream'
+import { createPaperAccount, engineEnabled, getBotPositions, getBotStats, getBotStatus, getPaperAccount, getScan, getSignals, marketStream, paperAction, paperKey, sendBotControl, type BotStats, type BotStatsResponse } from '../api/marketStream'
 import { AgoText } from '../components/Ago'
 import type { Page } from '../App'
 import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
@@ -18,107 +26,316 @@ import { shortAddr, useEmbeddedAddress } from '../lib/identity'
 
 type Tab = 'all' | 'snipe' | 'scalp' | 'secondLeg'
 type Book = 'paper' | 'live'
+type View = 'mine' | 'scanner' | 'signals' | 'bot'
 const EXPLORER = 'https://explorer.arc.io'
 const LIVE_RED = '#ef4444'
+const VIEW_KEY = 'arcdex:autotrade-view'
 
 const usd = (n: number | null | undefined, digits = 2) => n === null || n === undefined || !Number.isFinite(n) ? '—' : `${n < 0 ? '−' : ''}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
 const price = (n: number) => n >= 1 ? `$${n.toFixed(4)}` : `$${n.toPrecision(3)}`
 const big = (n: number | null) => n === null ? '—' : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(0)}`
 const STRATEGY: Record<TradeSignal['strategy'], string> = { snipe: 'Snipe', scalp: 'Fast scalp', 'second-leg': 'Second leg' }
 const STRATEGY_COLOR: Record<TradeSignal['strategy'], string> = { snipe: '#3b82f6', scalp: '#f59e0b', 'second-leg': '#a855f7' }
+const STRATEGY_HELP: Record<TradeSignal['strategy'], string> = {
+  snipe: 'New coins in their first 10 minutes that pass every safety check and show real buying. Half sold at 2×, the rest trails.',
+  scalp: 'Snipes on coins with a risk flag (the creator holds a big stake, launches coin after coin). A fifth of the size, most sold at +30%, out when the creator sells.',
+  'second-leg': 'Coins that ran 10× or more, fell 50–85% and are climbing back on real buying. Held up to 6 hours.',
+}
+const SCAN_STATUS: Record<ScanRow['status'], [string, string]> = {
+  new: ['New', '#64748b'], watching: ['Watching', '#3b82f6'], checking: ['Checking', '#f59e0b'], rejected: ['Rejected', '#ef4444'], signal: ['Signal', '#22c55e'],
+}
 
 export default function SignalsPage({ navigate }: { navigate: (p: Page) => void }) {
   const [stats, setStats] = useState<BotStatsResponse | null>(null)
   const [signals, setSignals] = useState<TradeSignal[]>([])
   const [positions, setPositions] = useState<BotPosition[]>([])
-  const [tab, setTab] = useState<Tab>('all')
-  const [book, setBook] = useState<Book>('paper')
+  const [scan, setScan] = useState<{ rows: ScanRow[]; stats: ScanStats } | null>(null)
   const [status, setStatus] = useState<BotStatus | null>(null)
   const [down, setDown] = useState(false)
+  const [view, setViewState] = useState<View>(() => { try { return (localStorage.getItem(VIEW_KEY) as View) || 'mine' } catch { return 'mine' } })
+  const setView = (v: View) => { setViewState(v); try { localStorage.setItem(VIEW_KEY, v) } catch { /* storage blocked */ } }
 
   useEffect(() => {
     if (!engineEnabled) return
     let alive = true
-    // Engines from before live trading have no /v1/bot/status: the page still works without it.
-    const load = () => Promise.all([getBotStats(), getSignals(100), getBotPositions('all', 200), getBotStatus().catch(() => null)])
-      .then(([s, sig, pos, st]) => { if (!alive) return; setStats(s); setSignals(sig); setPositions(pos); setStatus(st); setDown(false) })
+    // Engines from before these features lack some endpoints: the page shows what it gets.
+    const load = () => Promise.all([getBotStats(), getSignals(100), getBotPositions('all', 200), getBotStatus().catch(() => null), getScan(200).catch(() => null)])
+      .then(([s, sig, pos, st, sc]) => { if (!alive) return; setStats(s); setSignals(sig); setPositions(pos); setStatus(st); if (sc) setScan(sc); setDown(false) })
       .catch(() => { if (alive) setDown(true) })
     void load()
-    const id = setInterval(() => { if (!document.hidden) void load() }, 15_000)
-    const off = marketStream.subscribe({ channel: 'signals' }, m => {
+    const id = setInterval(() => { if (!document.hidden) void load() }, 30_000)
+    const offSignals = marketStream.subscribe({ channel: 'signals' }, m => {
       if (m.t === 'SIGNAL') setSignals(list => [m.d, ...list.filter(x => x.id !== m.d.id)].slice(0, 100))
       if (m.t === 'BOT_POSITION') setPositions(list => [m.d, ...list.filter(x => x.id !== m.d.id)])
     })
-    return () => { alive = false; clearInterval(id); off() }
+    // The scanner, live: what changed every 2s.
+    const offScan = marketStream.subscribe({ channel: 'scan' }, m => {
+      if (m.t !== 'SCAN') return
+      setScan(prev => {
+        const byToken = new Map((prev?.rows ?? []).map(r => [r.token, r]))
+        for (const r of m.d.rows) byToken.set(r.token, r)
+        return { rows: [...byToken.values()].sort((a, b) => b.at - a.at).slice(0, 400), stats: m.d.stats }
+      })
+    })
+    return () => { alive = false; clearInterval(id); offSignals(); offScan() }
   }, [])
 
-  const set = book === 'live' ? stats?.live : stats
-  const shown: BotStats | null = set ? set[tab] ?? null : null
-  const mine = useMemo(() => positions.filter(p => (p.mode === 'live') === (book === 'live')), [positions, book])
-  const open = useMemo(() => mine.filter(p => p.status === 'open'), [mine])
-  const closed = useMemo(() => mine.filter(p => p.status === 'closed').sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)), [mine])
   const mode = status?.mode ?? stats?.mode ?? 'paper'
+  const VIEWS: [View, string][] = [['mine', T('My autotrade')], ['scanner', T('Scanner')], ['signals', T('Signals')], ['bot', T('Bot results')]]
 
   return (
     <div className="token-page content-page">
       <h2 className="page-h" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        {T('Signals')}
+        ⚡ {T('Autotrade')}
         {engineEnabled && !down && stats && <ModeBadge mode={mode} />}
       </h2>
       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.5 }}>
-        {T('New coins that pass every hard safety check and show real buying, from every Arc launchpad.')}{' '}
-        <b style={{ color: 'var(--text)' }}>{T('Paper trading:')}</b>{' '}{T('each signal opens a simulated position at the live price, with real costs. No money moves.')}{' '}
-        <b style={{ color: LIVE_RED }}>{T('Live mode:')}</b>{' '}{T('the bot wallet also buys and sells each signal with real USDC, within hard limits.')}
-      </div>
-      <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5 }}>
-        <Pill color={STRATEGY_COLOR.scalp}>{T('Fast scalp')}</Pill>{' '}
-        {T('Coins with a risk flag (the creator holds a big stake, launches coin after coin, or copies a ticker) are traded small and fast: a fifth of the size, most of it sold at +30%, out the moment the creator sells, never held over 15 minutes.')}
-      </div>
-      <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', fontSize: '0.74rem', color: '#fcd34d', lineHeight: 1.45 }}>
-        {T('These are measured results, not a promise: no strategy can guarantee a win rate, and most new coins go to zero. Not financial advice.')}
+        {T('Autotrade scans every new coin on every Arc launchpad, rejects the unsafe ones and trades the rest with the strategies you choose. Start with virtual USDC: paper trading, no money moves.')}
       </div>
 
       {!engineEnabled || down ? (
         <Empty>{T("The signal engine isn't reachable right now. Signals and results appear here when it's back.")}</Empty>
       ) : (
         <>
-          {status && <BotPanel status={status} onStatus={setStatus} navigate={navigate} />}
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 18, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 800 }}>{T('Results')}</span>
-            <Segmented value={book} onChange={v => setBook(v as Book)} options={[['paper', T('Paper')], ['live', T('Live')]]} />
-            {book === 'live' && !stats?.live && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('No live trades yet.')}</span>}
-          </div>
-          <div style={{ display: 'flex', gap: 4, marginTop: 8, borderBottom: '1px solid var(--adx-card-border)', overflowX: 'auto' }}>
-            {([['all', T('All strategies')], ['snipe', T('Snipe')], ['scalp', T('Fast scalp')], ['secondLeg', T('Second leg')]] as [Tab, string][]).map(([k, l]) => (
-              <button key={k} onClick={() => setTab(k)} style={{ padding: '8px 14px', background: 'none', border: 'none', borderBottom: `2px solid ${tab === k ? 'var(--adx-accent)' : 'transparent'}`, color: tab === k ? 'var(--text)' : 'var(--text-muted)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>{l}</button>
+          <ScanStrip stats={scan?.stats ?? null} />
+          <div style={{ display: 'flex', gap: 4, marginTop: 14, borderBottom: '1px solid var(--adx-card-border)', overflowX: 'auto' }}>
+            {VIEWS.map(([k, l]) => (
+              <button key={k} onClick={() => setView(k)} style={{ padding: '9px 14px', background: 'none', border: 'none', borderBottom: `2px solid ${view === k ? 'var(--adx-accent)' : 'transparent'}`, color: view === k ? 'var(--text)' : 'var(--text-muted)', fontWeight: 800, fontSize: '0.84rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                {l}{k === 'scanner' && scan ? ` · ${scan.stats.watching}` : k === 'signals' && signals.length ? ` · ${signals.length}` : ''}
+              </button>
             ))}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginTop: 12 }}>
-            <Stat label={T('Win rate')} value={shown?.winRate === null || !shown ? '—' : `${(shown.winRate * 100).toFixed(0)}%`} sub={shown ? T('{w} won · {l} lost', { w: shown.wins, l: shown.losses }) : ''} />
-            <Stat label={T('Profit factor')} value={!shown || shown.profitFactor === null ? '—' : shown.profitFactor === Infinity ? '∞' : shown.profitFactor.toFixed(2)} sub={T('won ÷ lost; above 1 makes money')} />
-            <Stat label={T('Per trade, on average')} value={usd(shown?.expectancyUsd)} color={(shown?.expectancyUsd ?? 0) >= 0 ? 'var(--green)' : '#fca5a5'} />
-            <Stat label={T('Total P&L')} value={usd(shown?.totalPnlUsd)} color={(shown?.totalPnlUsd ?? 0) >= 0 ? 'var(--green)' : '#fca5a5'} sub={T('{n} closed · {o} open', { n: shown?.closed ?? 0, o: shown?.open ?? 0 })} />
-            <Stat label={T('Worst drawdown')} value={usd(shown ? -shown.maxDrawdownUsd : null)} />
-            <Stat label={T('Average win / loss')} value={`${usd(shown?.avgWinUsd)} / ${usd(shown?.avgLossUsd)}`} small />
-          </div>
-          {stats && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 6 }}>{T('Watching {n} coins launched in the last 48 hours.', { n: stats.watching })}</div>}
-
-          <Section title={T('Live signals')}>
-            {signals.length === 0 ? <Empty>{T('No signals yet. Most launches fail a safety check; a signal appears the moment one passes them all.')}</Empty>
-              : signals.map(s => <SignalRow key={s.id} s={s} navigate={navigate} />)}
-          </Section>
-
-          <Section title={(book === 'live' ? T('Open live positions') : T('Open positions')) + ` · ${open.length}`}>
-            {open.length === 0 ? <Empty>{T('No open positions.')}</Empty> : open.map(p => <PositionRow key={p.id} p={p} navigate={navigate} />)}
-          </Section>
-
-          <Section title={(book === 'live' ? T('Closed live positions') : T('Closed positions')) + ` · ${closed.length}`}>
-            {closed.length === 0 ? <Empty>{T('Nothing closed yet.')}</Empty> : closed.slice(0, 50).map(p => <PositionRow key={p.id} p={p} navigate={navigate} />)}
-          </Section>
+          {view === 'mine' && <MyAutotrade navigate={navigate} />}
+          {view === 'scanner' && <ScannerPanel scan={scan} navigate={navigate} />}
+          {view === 'signals' && (
+            <Section title={T('Live signals')}>
+              {signals.length === 0 ? <Empty>{T('No signals yet. Most launches fail a safety check; a signal appears the moment one passes them all.')}</Empty>
+                : signals.map(s => <SignalRow key={s.id} s={s} navigate={navigate} />)}
+            </Section>
+          )}
+          {view === 'bot' && <BotResults stats={stats} positions={positions} status={status} onStatus={setStatus} navigate={navigate} />}
         </>
       )}
+      <div style={{ marginTop: 16, padding: '8px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', fontSize: '0.74rem', color: '#fcd34d', lineHeight: 1.45 }}>
+        {T('These are measured results, not a promise: no strategy can guarantee a win rate, and most new coins go to zero. Not financial advice.')}
+      </div>
     </div>
+  )
+}
+
+/** The scanner working: coins watched, checks a minute, the last check (counting up), today's signals and rejections. */
+function ScanStrip({ stats }: { stats: ScanStats | null }) {
+  const live = !!stats?.lastEvalAt && Date.now() - stats.lastEvalAt < 120_000
+  return (
+    <div className="at-strip">
+      <span className={`at-dot${live ? ' on' : ''}`} />
+      {stats ? (
+        <>
+          <span><b>{T('Scanning {n} coins', { n: stats.watching.toLocaleString() })}</b></span>
+          <span>{T('{n} checks/min', { n: stats.evalsPerMin })}</span>
+          {stats.lastEvalAt && <span>{T('last check')} <AgoText ts={stats.lastEvalAt} /></span>}
+          <span style={{ color: '#86efac' }}>{T('{n} signals today', { n: stats.signals24h })}</span>
+          <span style={{ color: '#fca5a5' }}>{T('{n} rejected today', { n: stats.rejected24h })}</span>
+        </>
+      ) : <span>{T('Connecting to the scanner…')}</span>}
+    </div>
+  )
+}
+
+function ScannerPanel({ scan, navigate }: { scan: { rows: ScanRow[]; stats: ScanStats } | null; navigate: (p: Page) => void }) {
+  const [filter, setFilter] = useState<ScanRow['status'] | 'all'>('all')
+  const rows = useMemo(() => (scan?.rows ?? []).filter(r => filter === 'all' || r.status === filter).slice(0, 150), [scan, filter])
+  const by = scan?.stats.byStatus
+  const chips: [ScanRow['status'] | 'all', string, number | undefined][] = [
+    ['all', T('All'), scan?.stats.watching], ['signal', T('Signals'), by?.signal], ['rejected', T('Rejected'), by?.rejected],
+    ['checking', T('Checking'), by?.checking], ['watching', T('Watching'), by?.watching], ['new', T('New'), by?.new],
+  ]
+  return (
+    <Section title={T('Every coin being scanned, and why')}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '6px 0 4px' }}>
+        {chips.map(([k, l, n]) => (
+          <button key={k} onClick={() => setFilter(k)} className={`at-chip${filter === k ? ' on' : ''}`}>{l}{n !== undefined ? ` ${n}` : ''}</button>
+        ))}
+      </div>
+      {rows.length === 0 ? <Empty>{scan ? T('No coins here right now.') : T('Connecting to the scanner…')}</Empty> : rows.map(r => {
+        const [label, color] = SCAN_STATUS[r.status]
+        return (
+          <div key={r.token} className="at-scan-row">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+              <button className="link-btn" onClick={() => navigate({ name: 'argus', address: r.token, pool: '' })} style={{ textDecoration: 'none', fontWeight: 800 }}>${r.symbol}</button>
+              <Pill color={getLaunchpadColor(r.launchpad)}>{r.launchpad}</Pill>
+              <Pill color={color}>{T(label)}{r.status === 'signal' && r.strategy ? ` · ${T(STRATEGY[r.strategy])}` : ''}</Pill>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T('launched')} <AgoText ts={r.launchedAt} /> · MC {big(r.marketCapUsd)}</span>
+              {r.evals > 0 && <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--text-muted)' }}>{T('checked')} <AgoText ts={r.at} /></span>}
+            </div>
+            <div className="at-reasons">
+              {r.reasons.slice(0, 3).map((x, i) => <span key={i} className={x.startsWith('✗') ? 'bad' : x.startsWith('…') ? 'wait' : ''}>{x}</span>)}
+            </div>
+          </div>
+        )
+      })}
+    </Section>
+  )
+}
+
+/** This browser's paper account: virtual USDC, strategies, start/stop, positions. */
+function MyAutotrade({ navigate }: { navigate: (p: Page) => void }) {
+  const [key, setKey] = useState<string | null>(() => paperKey())
+  const [acct, setAcct] = useState<PaperAccountView | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [amount, setAmount] = useState('1000')
+  const [size, setSize] = useState('')
+  const [resetting, setResetting] = useState(false)
+
+  useEffect(() => {
+    if (!key) return
+    let alive = true
+    const load = () => getPaperAccount(key).then(a => { if (alive) { setAcct(a); setError(null) } }).catch((e: Error) => { if (!alive) return; if (!paperKey()) { setKey(null); setAcct(null) } else setError(e.message) })
+    void load()
+    const id = setInterval(() => { if (!document.hidden) void load() }, 5_000)
+    return () => { alive = false; clearInterval(id) }
+  }, [key])
+
+  const act = async (a: PaperAction) => {
+    if (!key) return
+    setBusy(true); setError(null)
+    try { setAcct(await paperAction(key, a)) } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+  const create = async () => {
+    setBusy(true); setError(null)
+    try { const a = await createPaperAccount(); setAcct(a); setKey(paperKey()) } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
+  if (!key || !acct) {
+    return (
+      <div className="at-card at-hero">
+        <div className="at-hero-title">{T('Try Autotrade with virtual USDC')}</div>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          {T('Get a paper account, deposit virtual USDC, pick your strategies and press Start. It trades every matching signal around the clock, even with this page closed. No wallet or real money needed.')}
+        </div>
+        <button className="at-big" disabled={busy || (!!key && !acct)} onClick={() => void create()}>{busy || (key && !acct) ? T('Loading…') : T('Create my paper account')}</button>
+        {error && <div className="at-error">⚠ {error}</div>}
+      </div>
+    )
+  }
+
+  const pnl = acct.equity - acct.deposited
+  const open = acct.positions.filter(p => p.status === 'open')
+  const closed = acct.positions.filter(p => p.status === 'closed')
+  const toggle = (s: TradeSignal['strategy']) => {
+    const next = acct.strategies.includes(s) ? acct.strategies.filter(x => x !== s) : [...acct.strategies, s]
+    if (next.length) void act({ action: 'strategies', strategies: next })
+    else setError(T('Keep at least one strategy.'))
+  }
+
+  return (
+    <>
+      <div className="at-card" style={{ marginTop: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span className={`at-run${acct.running ? ' on' : ''}`}>{acct.running ? `● ${T('Running')}` : T('Stopped')}</span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('Paper account')} {acct.id} · {T('virtual USDC')}</span>
+          {acct.running && acct.startedAt && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>· {T('started')} <AgoText ts={acct.startedAt} /></span>}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginTop: 10 }}>
+          <Stat label={T('Account value')} value={usd(acct.equity)} />
+          <Stat label={T('Cash')} value={usd(acct.cash)} sub={T('{v} in open trades', { v: usd(acct.openValue) })} />
+          <Stat label={T('Profit / loss')} value={usd(pnl)} color={pnl >= 0 ? 'var(--green)' : '#fca5a5'} sub={T('on {d} deposited', { d: usd(acct.deposited, 0) })} />
+          <Stat label={T('Win rate')} value={acct.stats.winRate === null ? '—' : `${(acct.stats.winRate * 100).toFixed(0)}%`} sub={T('{w} won · {l} lost', { w: acct.stats.wins, l: acct.stats.losses })} />
+        </div>
+
+        <div className="at-label">{T('Deposit virtual USDC')}</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {[100, 1_000, 10_000].map(v => <button key={v} className="at-chip" disabled={busy} onClick={() => void act({ action: 'deposit', amount: v })}>+{usd(v, 0)}</button>)}
+          <input className="at-input" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} aria-label={T('Amount')} />
+          <button className="btn-ghost" disabled={busy || !Number(amount)} onClick={() => void act({ action: 'deposit', amount: Number(amount) })}>{T('Deposit')}</button>
+        </div>
+
+        <div className="at-label">{T('Strategies')} <span style={{ fontWeight: 500, color: 'var(--text-muted)' }}>· {T('use one, or several at once')}</span></div>
+        <div className="at-strats">
+          {(['snipe', 'scalp', 'second-leg'] as const).map(s => {
+            const on = acct.strategies.includes(s)
+            return (
+              <button key={s} className={`at-strat${on ? ' on' : ''}`} style={{ borderColor: on ? STRATEGY_COLOR[s] : undefined }} disabled={busy} onClick={() => toggle(s)} aria-pressed={on}>
+                <span className="at-strat-head"><span className="at-check" style={{ background: on ? STRATEGY_COLOR[s] : 'transparent', borderColor: STRATEGY_COLOR[s] }}>{on ? '✓' : ''}</span>{T(STRATEGY[s])}</span>
+                <span className="at-strat-help">{T(STRATEGY_HELP[s])}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="at-label">{T('Amount per trade')}</div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input className="at-input" inputMode="decimal" placeholder={String(acct.tradeUsd)} value={size} onChange={e => setSize(e.target.value.replace(/[^0-9.]/g, ''))} aria-label={T('Amount per trade')} />
+          <button className="btn-ghost" disabled={busy || !Number(size)} onClick={() => { void act({ action: 'size', usd: Number(size) }); setSize('') }}>{T('Save')}</button>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('Now {v} a trade; fast scalps use a fifth of it.', { v: usd(acct.tradeUsd) })}</span>
+        </div>
+
+        <button className={`at-big${acct.running ? ' stop' : ''}`} disabled={busy} onClick={() => void act({ action: acct.running ? 'stop' : 'start' })}>
+          {acct.running ? `■ ${T('Stop trading')}` : `▶ ${T('Start trading')}`}
+        </button>
+        {!acct.running && acct.cash < acct.tradeUsd / 5 && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>{T('Deposit virtual USDC first.')}</div>}
+        {error && <div className="at-error">⚠ {error}</div>}
+      </div>
+
+      <Section title={T('Open trades') + ` · ${open.length}`}>
+        {open.length === 0 ? <Empty>{acct.running ? T('Waiting for the next signal. The scanner above shows what it is checking.') : T('No open trades.')}</Empty> : open.map(p => <PositionRow key={p.id} p={p} navigate={navigate} />)}
+      </Section>
+      <Section title={T('Closed trades') + ` · ${closed.length}`}>
+        {closed.length === 0 ? <Empty>{T('Nothing closed yet.')}</Empty> : closed.map(p => <PositionRow key={p.id} p={p} navigate={navigate} />)}
+      </Section>
+      <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+        {resetting ? (
+          <>{T('Start over with an empty account?')}{' '}
+            <button className="link-btn" onClick={() => { void act({ action: 'reset' }); setResetting(false) }}>{T('Yes, reset it')}</button>{' · '}
+            <button className="link-btn" onClick={() => setResetting(false)}>{T('Cancel')}</button></>
+        ) : <button className="link-btn" onClick={() => setResetting(true)}>{T('Reset my paper account')}</button>}
+      </div>
+    </>
+  )
+}
+
+/** The bot's own results (paper and live), its positions, and the owner's panel. */
+function BotResults({ stats, positions, status, onStatus, navigate }: { stats: BotStatsResponse | null; positions: BotPosition[]; status: BotStatus | null; onStatus: (s: BotStatus) => void; navigate: (p: Page) => void }) {
+  const [tab, setTab] = useState<Tab>('all')
+  const [book, setBook] = useState<Book>('paper')
+  const set = book === 'live' ? stats?.live : stats
+  const shown: BotStats | null = set ? set[tab] ?? null : null
+  const mine = useMemo(() => positions.filter(p => (p.mode === 'live') === (book === 'live')), [positions, book])
+  const open = useMemo(() => mine.filter(p => p.status === 'open'), [mine])
+  const closed = useMemo(() => mine.filter(p => p.status === 'closed').sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)), [mine])
+  return (
+    <>
+      <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.5 }}>
+        <b style={{ color: 'var(--text)' }}>{T('Paper trading:')}</b>{' '}{T('each signal opens a simulated position at the live price, with real costs. No money moves.')}{' '}
+        <b style={{ color: LIVE_RED }}>{T('Live mode:')}</b>{' '}{T('the bot wallet also buys and sells each signal with real USDC, within hard limits.')}
+      </div>
+      {status && <BotPanel status={status} onStatus={onStatus} navigate={navigate} />}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 18, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '0.8rem', fontWeight: 800 }}>{T('Results')}</span>
+        <Segmented value={book} onChange={v => setBook(v as Book)} options={[['paper', T('Paper')], ['live', T('Live')]]} />
+        {book === 'live' && !stats?.live && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('No live trades yet.')}</span>}
+      </div>
+      <div style={{ display: 'flex', gap: 4, marginTop: 8, borderBottom: '1px solid var(--adx-card-border)', overflowX: 'auto' }}>
+        {([['all', T('All strategies')], ['snipe', T('Snipe')], ['scalp', T('Fast scalp')], ['secondLeg', T('Second leg')]] as [Tab, string][]).map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)} style={{ padding: '8px 14px', background: 'none', border: 'none', borderBottom: `2px solid ${tab === k ? 'var(--adx-accent)' : 'transparent'}`, color: tab === k ? 'var(--text)' : 'var(--text-muted)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>{l}</button>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginTop: 12 }}>
+        <Stat label={T('Win rate')} value={shown?.winRate === null || !shown ? '—' : `${(shown.winRate * 100).toFixed(0)}%`} sub={shown ? T('{w} won · {l} lost', { w: shown.wins, l: shown.losses }) : ''} />
+        <Stat label={T('Profit factor')} value={!shown || shown.profitFactor === null ? '—' : shown.profitFactor === Infinity ? '∞' : shown.profitFactor.toFixed(2)} sub={T('won ÷ lost; above 1 makes money')} />
+        <Stat label={T('Per trade, on average')} value={usd(shown?.expectancyUsd)} color={(shown?.expectancyUsd ?? 0) >= 0 ? 'var(--green)' : '#fca5a5'} />
+        <Stat label={T('Total P&L')} value={usd(shown?.totalPnlUsd)} color={(shown?.totalPnlUsd ?? 0) >= 0 ? 'var(--green)' : '#fca5a5'} sub={T('{n} closed · {o} open', { n: shown?.closed ?? 0, o: shown?.open ?? 0 })} />
+        <Stat label={T('Worst drawdown')} value={usd(shown ? -shown.maxDrawdownUsd : null)} />
+        <Stat label={T('Average win / loss')} value={`${usd(shown?.avgWinUsd)} / ${usd(shown?.avgLossUsd)}`} small />
+      </div>
+      <Section title={(book === 'live' ? T('Open live positions') : T('Open positions')) + ` · ${open.length}`}>
+        {open.length === 0 ? <Empty>{T('No open positions.')}</Empty> : open.map(p => <PositionRow key={p.id} p={p} navigate={navigate} />)}
+      </Section>
+      <Section title={(book === 'live' ? T('Closed live positions') : T('Closed positions')) + ` · ${closed.length}`}>
+        {closed.length === 0 ? <Empty>{T('Nothing closed yet.')}</Empty> : closed.slice(0, 50).map(p => <PositionRow key={p.id} p={p} navigate={navigate} />)}
+      </Section>
+    </>
   )
 }
 
