@@ -573,7 +573,9 @@ export class PaperAccounts {
       if (a.mode === 'live' && sig.quality?.liveOk === false) { skip('grade-live', `not traded live: ${sig.quality.liveWhy ?? 'its grade isn\'t proven at live speed yet'}`); continue }
       if (a.mode !== 'live' && !this.paperSignals) { skip('live-only', 'not traded: signals go to live bots only for now (the platform\'s setting)'); continue }
       if (a.pausedUntil && now < a.pausedUntil) { skip('paused', `paused after ${PROTECT.pauseAfterLosses} losses in a row`); continue }
-      const t = a.tuning[st]
+      // Live bots trade the platform's proven settings, not their own tuning (2026-10-01: per-bot learning only ever
+      // tightened, from 3-6 losses under exits that no longer exist). Paper bots keep learning.
+      const t = a.mode === 'live' ? defaultTuning(st) : a.tuning[st]
       if (sig.probation) { skip('probation', `not traded: ${sig.probation.why}`); continue }
       // The bottom 20% of signals by quality go to paper bots only (signals/quality.ts): still measured, no real money.
       if (a.mode === 'live' && sig.quality?.grade === 'paper') { skip('paper-grade', `not traded live: in the lowest ${Math.round((1 - QUALITY.liveShare) * 100)}% of recent signals by quality (score ${sig.quality.score}); paper bots take it`); continue }
@@ -1039,6 +1041,8 @@ export class PaperAccounts {
       this.event(a, { at: now, kind: 'pause', text: `${a.lossStreak} losses in a row: no new trades for ${PROTECT.pauseMin} minutes while it learns from them` })
     }
     this.trim(a)
+    // A live trade doesn't retune the bot: live bots trade the platform's settings.
+    if (isLive(p)) return
     const trades = a.positions.filter(x => x.strategy === p.strategy && x.status === 'closed').sort((x, y) => (x.closedAt ?? 0) - (y.closedAt ?? 0))
     const r = learn(a.tuning[p.strategy], p.strategy, trades, now, this.shared.get(p.strategy) ?? [])
     if (r) { a.tuning[p.strategy] = r.tuning; this.learned(a, r.notes, now) }
