@@ -1830,5 +1830,16 @@ const d: Record<string, string> = {
   "15% profit fee {v}": "15% 利润费 {v}",
   "after the 15% profit fee": "扣除 15% 利润费后",
   "Half the profit fee: 7.5% instead of 15%": "利润费减半：7.5% 而非 15%",
+  "New coins in their first 10 minutes that pass every safety check and show real buying. Half sold at +10%, then the stop moves to break-even and the rest trails 25% under its peak; −10% stop, an hour at most.": "上线 10 分钟内、通过全部安全检查且有真实买盘的新币。+10% 时卖出一半，随后止损移至保本，剩余部分在峰值下方 25% 跟踪止盈；止损 −10%，最长持有一小时。",
+  "Quick in and out: bursts of real buying on any safe coin, and new coins with a risk flag. Half sold at +10%, then the stop moves to break-even and the rest trails 25% under its peak; −10% stop, an hour at most, and out at once if the creator sells.": "快进快出：任何安全币上的真实买盘爆发，以及带风险标记的新币。+10% 时卖出一半，随后止损移至保本，剩余部分在峰值下方 25% 跟踪止盈；止损 −10%，最长一小时，创建者一卖出即刻离场。",
+  "Coins that ran 2× or more, pulled back 25–70% and are being bought again. Half sold at the take-profit (+35% to start), then the stop moves to break-even and the rest trails; held up to 6 hours.": "涨了 2 倍以上、回调 25–70% 后再次被买入的币。止盈时卖出一半（初始 +35%），随后止损移至保本，剩余部分跟踪止盈；最长持有 6 小时。",
+  "Half sold at {tp}, the rest trails 25% under its peak with the stop at break-even · stop {sl} · out after {m} min unless moving, {x} min at most": "{tp} 时卖出一半，其余在峰值下方 25% 跟踪、止损位于保本 · 止损 {sl} · {m} 分钟不动即离场，最长 {x} 分钟",
+  "half taken, the rest at break-even": "已止盈一半，其余保本离场",
+  "half sold, the rest trailing": "已卖出一半，其余跟踪中",
+  "about {v} on a safe coin": "安全币上约 {v}",
+  "Each trade is {a}% of what the bot is worth on a safe coin, {b}% on one with a risk flag (now at most {m}), at least {min}: a small bot trades small.": "每笔交易为机器人价值的 {a}%（安全币）或 {b}%（带风险标记的币），当前最多 {m}，至少 {min}：小机器人小额交易。",
+  "Each trade is a share of what the bot is worth now (at the start, its capital): {a}% on a safe coin (it passed every check), {b}% on one with a risk flag, at least {m}. A $10 bot trades $2 or $1. Never more than 1.5% of the coin's pool, and never a trade whose costs eat the take-profit. Half is sold at the take-profit; then the stop moves to break-even and the rest trails 25% under its peak.": "每笔交易是机器人当前价值（起初即其本金）的一部分：安全币（通过全部检查）{a}%，带风险标记的币 {b}%，至少 {m}。10 美元的机器人每笔交易 2 美元或 1 美元。绝不超过该币池子的 1.5%，也绝不做成本吃掉止盈的交易。止盈时卖出一半；随后止损移至保本，剩余部分在峰值下方 25% 跟踪止盈。",
+  "Name it and pick its strategies: it starts trading at once with $1,000 of virtual USDC and the team's best settings. Each trade is a share of what the bot is worth: 20% on a safe coin, 10% on one with a risk flag, at least $1, so even a $10 bot trades. It gets out of rugs at once and learns from its own trades and every other bot's. It keeps trading with this page closed. No wallet or real money needed.": "给它起个名字并选择策略：它会立即用 1,000 美元虚拟 USDC 和团队的最佳设置开始交易。每笔交易是机器人价值的一部分：安全币 20%，带风险标记的币 10%，至少 1 美元，所以即使 10 美元的机器人也能交易。遇到跑路会立即离场，并从自己和其他所有机器人的交易中学习。关闭此页面后仍会继续交易。无需钱包或真实资金。",
+  "Every signal gets a quality score and is ranked against the last 50: the top 80% can go to live bots, the lowest 20% to paper bots only, where they are still measured. A live bot also needs the kind of signal to make money at live speed (above). A trade takes 20% of a bot's capital on a safe coin, 10% on one with a risk flag.": "每个信号都会获得质量分，并与最近 50 个信号比较排名：前 80% 可交给实盘机器人，最低 20% 只交给模拟机器人，在那里继续被衡量。实盘机器人还需要此类信号在实盘速度下能赚钱（见上方）。安全币每笔交易占机器人本金的 20%，带风险标记的币占 10%。",
 }
 export default d

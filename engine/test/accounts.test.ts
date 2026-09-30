@@ -161,12 +161,18 @@ describe('bots: unique names, owners and the marketplace', () => {
     accounts.act(a, { action: 'deposit', amount: 100 }, now); accounts.act(a, { action: 'start' }, now)
     accounts.onSignal(sig(), now)
     setPrice(1.2)
-    accounts.onPrice(T, 1.2, now + 1_000, false, true)
+    accounts.onPrice(T, 1.2, now + 1_000, false, true) // half sold at the take-profit
     const p = a.positions[0]
+    expect(p.status).toBe('open')
+    expect(p.feeUsd).toBeUndefined() // the fee is on the trade's profit, once it's closed
+    setPrice(1.0)
+    accounts.onPrice(T, 1.0, now + 1_500, false, true) // the rest at the break-even stop
+    expect(p.status).toBe('closed')
     const gross = (p.pnlUsd ?? 0) + (p.feeUsd ?? 0)
+    expect(gross).toBeGreaterThan(0)
     expect(p.feeUsd).toBeCloseTo(gross * 0.15, 4)
     expect(a.feesPaidUsd).toBeCloseTo(p.feeUsd!, 6)
-    expect(p.note).toMatch(/Took the profit/)
+    expect(p.note).toMatch(/Took half the profit/)
     accounts.onSignal(sig({ id: 's2', token: '0x' + 'c3'.repeat(20) }), now + 2_000)
     accounts.onPrice('0x' + 'c3'.repeat(20), 0.8, now + 3_000, false, true)
     expect(a.positions[1]).toMatchObject({ exitReason: 'stop' })
@@ -223,7 +229,7 @@ describe('live: the same bot, from paper to its own wallet', () => {
     notReady.accounts.createWallet(b, now)
     expect(await notReady.accounts.setMode(b, 'live', owner, now)).toMatch(/not ready yet: it needs 20\+ closed paper trades \(has 0\)/)
   })
-  test('a live bot buys from its wallet at its own size, sells at its take-profit, and sends 2% of the profit to the fee wallet', async () => {
+  test('a live bot buys from its wallet at its own size, sells half at its take-profit and the rest later, and sends 15% of the profit to the fee wallet', async () => {
     const { accounts, a, wallet } = readyBot({ balance: 100, sellAt: 1.2 })
     accounts.createWallet(a, now)
     await accounts.setMode(a, 'live', owner, now)
@@ -235,11 +241,16 @@ describe('live: the same bot, from paper to its own wallet', () => {
     expect(wallet.calls[0]).toMatch(/^buy \d+(\.\d+)?$/)
     expect(p).toMatchObject({ status: 'open', strategy: 'scalp', sizeUsd: 20, tuningVersion: 1 }) // 20% of its $100 wallet
     expect(p.targetUsd).toBeGreaterThan(0)
-    expect(p.exits?.tp1Multiple).toBe(1.15)
+    expect(p.exits).toMatchObject({ tp1Multiple: 1.1, tp1SellPct: 0.5, breakevenAfterTp1: true })
     expect(accounts.holds(T)).toBe(true)
     accounts.onPrice(T, 1.2, Date.now(), false, true)
     await settle()
-    expect(p).toMatchObject({ status: 'closed', exitReason: 'tp1' })
+    expect(p.status).toBe('open') // half sold
+    expect(p.feeUsd).toBeUndefined()
+    accounts.onPrice(T, 0.99, Date.now(), false, true) // under what it paid: the rest goes at break-even
+    await settle()
+    expect(p).toMatchObject({ status: 'closed', exitReason: 'stop' })
+    expect(p.fills.some(f => f.reason === 'tp1')).toBe(true)
     expect(p.feeUsd).toBeGreaterThan(0)
     expect(wallet.calls).toContain(`send ${p.feeUsd} to ${PROFIT_FEE.wallet}`)
     expect(p.txs?.some(t => t.kind === 'fee')).toBe(true)
@@ -258,8 +269,10 @@ describe('live: the same bot, from paper to its own wallet', () => {
     await settle()
     accounts.onPrice(T, 1.2, Date.now(), false, true)
     await settle()
+    accounts.onPrice(T, 0.99, Date.now(), false, true)
+    await settle()
     const p = a.positions.find(x => x.mode === 'live')!
-    expect(p).toMatchObject({ status: 'closed', exitReason: 'tp1' })
+    expect(p).toMatchObject({ status: 'closed', exitReason: 'stop' })
     expect(p.feeUsd).toBeGreaterThan(0)
     expect(p.feeDue).toBe(p.feeUsd) // owed: the send failed
     expect(p.txs?.some(t => t.kind === 'fee')).toBe(false)

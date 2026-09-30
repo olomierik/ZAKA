@@ -76,27 +76,45 @@ describe('paper trading', () => {
     expect(p.entryPrice).toBeCloseTo(1.02, 9)
     expect(p.qty).toBeCloseTo(25 / 1.02, 9)
   })
-  test('stop loss at −35%', () => {
+  test('stop loss at −10%', () => {
     const p = open()
-    expect(onPrice(p, 0.7, now + 1)).toEqual([])
-    const f = onPrice(p, 0.64, now + 2)
+    expect(onPrice(p, 0.91, now + 1)).toEqual([])
+    const f = onPrice(p, 0.89, now + 2)
     expect(f[0].reason).toBe('stop')
     expect(p.status).toBe('closed')
-    expect(p.pnlUsd!).toBeLessThan(-8)
+    expect(p.pnlUsd!).toBeLessThan(-3)
   })
-  test('half at 2×, then trail 35% under the peak', () => {
+  test('half at +10%, then the rest trails 25% under the peak', () => {
     const p = open()
-    expect(onPrice(p, 2.1, now + 1)[0].reason).toBe('tp1')
+    expect(onPrice(p, 1.09, now + 1)).toEqual([])
+    expect(onPrice(p, 1.11, now + 2)[0].reason).toBe('tp1')
     expect(p.remaining).toBeCloseTo(p.qty / 2, 9)
-    onPrice(p, 4, now + 2)
-    expect(onPrice(p, 2.7, now + 3)).toEqual([]) // 32.5% under the peak: holds
-    expect(onPrice(p, 2.59, now + 4)[0].reason).toBe('trail')
-    expect(p.pnlUsd!).toBeGreaterThan(25) // sold half near 2×, half near 2.6×
+    expect(p.status).toBe('open')
+    onPrice(p, 2, now + 3)
+    expect(onPrice(p, 1.6, now + 4)).toEqual([]) // 20% under the peak: holds
+    expect(onPrice(p, 1.49, now + 5)[0].reason).toBe('trail')
+    expect(p.pnlUsd!).toBeGreaterThan(5) // half near +10%, half near +49%
   })
-  test('time stop after 45 minutes when not up 10%', () => {
+  test('once half is sold, the stop is at break-even after costs: the rest can\'t make it a loss', () => {
+    const p = open(1, 0.02)
+    onPrice(p, 1.11, now + 1)
+    const even = 1.02 / 0.98 // paid 2% on the way in, 2% on the way out
+    expect(onPrice(p, even + 0.005, now + 2)).toEqual([]) // above −10%, and above break-even: holds
+    expect(onPrice(p, even - 0.001, now + 3)[0].reason).toBe('stop')
+    expect(p.status).toBe('closed')
+    expect(p.pnlUsd!).toBeGreaterThan(0)
+  })
+  test('without the take-profit, the stop stays at −10%', () => {
     const p = open()
-    expect(onPrice(p, 1.05, now + 44 * 60_000)).toEqual([])
-    expect(onPrice(p, 1.05, now + 46 * 60_000)[0].reason).toBe('time')
+    expect(onPrice(p, 0.95, now + 1)).toEqual([])
+  })
+  test('time stop after 3 minutes when not up 3%; never held past an hour', () => {
+    const p = open()
+    expect(onPrice(p, 1.02, now + 2 * 60_000)).toEqual([])
+    expect(onPrice(p, 1.02, now + 3 * 60_000 + 1)[0].reason).toBe('time')
+    const up = open()
+    expect(onPrice(up, 1.05, now + 59 * 60_000)).toEqual([])
+    expect(onPrice(up, 1.05, now + 60 * 60_000)[0].reason).toBe('time')
   })
   test('a safety failure closes it', () => {
     const p = open()
@@ -118,11 +136,12 @@ describe('paper trading', () => {
     expect(canOpen([], A(2), now).ok).toBe(true)
   })
   test('the default snipe size and exits are what the strategy says', () => {
-    expect(STRATEGIES.snipe).toMatchObject({ sizeUsd: 25, stopLoss: 0.65, tp1Multiple: 2 })
+    expect(STRATEGIES.snipe).toMatchObject({ sizeUsd: 25, stopLoss: 0.9, tp1Multiple: 1.1, tp1SellPct: 0.5, trailFromPeak: 0.25, breakevenAfterTp1: true, maxHoldMin: 60 })
+    expect(STRATEGIES['second-leg'].breakevenAfterTp1).toBeUndefined()
   })
 })
 
-describe('fast scalp: small, sold in full at +15%, out fast', () => {
+describe('fast scalp: small, half at +10%, out fast', () => {
   const now = Date.UTC(2026, 8, 30, 12)
   const scalp = (price = 1) => openPosition({ id: 'p', strategy: 'scalp', token: A(1), symbol: 'C', launchpad: 'ARGUS', signalId: 's', price, cost: 0.02, now })
   const P = STRATEGIES.scalp
@@ -131,13 +150,16 @@ describe('fast scalp: small, sold in full at +15%, out fast', () => {
     expect(scalp().sizeUsd).toBe(5)
     expect(P.sizeUsd).toBe(STRATEGIES.snipe.sizeUsd / 5)
   })
-  test('sells everything at +15%: the profit is secured and the trade closed', () => {
+  test('sells half at +10%; the rest can\'t turn the trade into a loss', () => {
     const p = scalp()
-    expect(onPrice(p, 1.14, now + 1, P)).toEqual([])
-    const f = onPrice(p, 1.16, now + 2, P)
+    expect(onPrice(p, 1.09, now + 1, P)).toEqual([])
+    const f = onPrice(p, 1.11, now + 2, P)
     expect(f.map(x => x.reason)).toEqual(['tp1'])
-    expect(p).toMatchObject({ status: 'closed', remaining: 0, exitReason: 'tp1' })
-    expect(p.pnlUsd!).toBeGreaterThan(0.4) // $5 at +16%, less 2% each way
+    expect(p.status).toBe('open')
+    expect(p.remaining).toBeCloseTo(p.qty / 2, 9)
+    expect(onPrice(p, 1.04, now + 3, P)[0].reason).toBe('stop') // under break-even after costs
+    expect(p).toMatchObject({ status: 'closed', remaining: 0 })
+    expect(p.pnlUsd!).toBeGreaterThan(0)
   })
   test('stop at −10%', () => {
     const p = scalp()
@@ -151,10 +173,10 @@ describe('fast scalp: small, sold in full at +15%, out fast', () => {
     const up = scalp()
     expect(onPrice(up, 1.05, now + 4 * 60_000, P)).toEqual([])
   })
-  test('never held past 10 minutes', () => {
+  test('never held past an hour', () => {
     const p = scalp()
-    expect(onPrice(p, 1.05, now + 9 * 60_000, P)).toEqual([])
-    expect(onPrice(p, 1.05, now + 10 * 60_000, P)[0].reason).toBe('time')
+    expect(onPrice(p, 1.05, now + 59 * 60_000, P)).toEqual([])
+    expect(onPrice(p, 1.05, now + 60 * 60_000, P)[0].reason).toBe('time')
     expect(p.status).toBe('closed')
   })
   test('a position trades with its own exits when it has them (a visitor\'s learned tuning)', () => {
@@ -169,7 +191,8 @@ describe('fast scalp: small, sold in full at +15%, out fast', () => {
   })
   test('the creator selling closes it (the bot calls closeNow on their sale)', () => {
     expect(P.exitOnCreatorSell).toBe(true)
-    expect(STRATEGIES.snipe.exitOnCreatorSell).toBeUndefined()
+    expect(STRATEGIES.snipe.exitOnCreatorSell).toBe(true)
+    expect(STRATEGIES['second-leg'].exitOnCreatorSell).toBeUndefined()
     const p = scalp()
     expect(closeNow(p, 0.3, now + 1, 'creator')[0].reason).toBe('creator')
     expect(p.pnlUsd!).toBeGreaterThan(-5) // at most the $5 it put in

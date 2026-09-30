@@ -41,7 +41,7 @@ import type { PoolInfo } from '../dex/pools'
 import { errMsg, log } from '../log'
 import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, RISK, stats, type Fill, type Position, type RiskRules, type Strategy, type StrategyParams } from '../trading/paper'
 import { QUALITY } from '../signals/quality'
-import { admits, defaultTuning, learn, migrateTuning, relax, toParams, type Tuning } from './learner'
+import { admits, defaultTuning, learn, migrateTuning, relax, toParams, upgradeExits, type Tuning } from './learner'
 import type { LiveTrader } from './liveTrader'
 import type { RugAlarm } from './rugGuard'
 import { CAPITAL_SIZING, maxTradeFor, SIZE_LIMITS, sizeFromCapital, TARGETS } from './sizing'
@@ -143,6 +143,17 @@ export function closeNote(p: Position): string {
   const last = p.fills[p.fills.length - 1]
   const m = p.marketEntry > 0 && last ? last.price / p.entryPrice : 1
   const held = minutes((p.closedAt ?? p.openedAt) - p.openedAt)
+  // Half sold at the take-profit, the rest later (the exit plan: a break-even stop and a trail).
+  const tp = p.exitReason !== 'tp1' ? p.fills.find(f => f.reason === 'tp1') : undefined
+  if (tp && p.entryPrice > 0) {
+    const first = `Took half the profit at ${move(tp.price / p.entryPrice)}`
+    switch (p.exitReason) {
+      case 'stop': return `${first}, then sold the rest at its break-even stop (${move(m)}) after ${held}`
+      case 'trail': return `${first}, then the rest on its trailing stop at ${move(m)} after ${held}`
+      case 'time': return `${first}, then the rest at the time limit (${move(m)}) after ${held}`
+      default: return `${first}; then ${closeNote({ ...p, fills: p.fills.filter(f => f !== tp) }).replace(/^./, ch => ch.toLowerCase())}`
+    }
+  }
   switch (p.exitReason) {
     case 'tp1': return `Took the profit at ${move(m)} after ${held}`
     case 'stop': return `Stopped out at ${move(m)} after ${held}`
@@ -159,12 +170,18 @@ export function closeNote(p: Position): string {
 /** Fills in what older rows lack (named bots, owners, learning, the log and live came later). */
 function normalize(a: PaperAccount): PaperAccount {
   const tuning = { ...(a.tuning ?? {}) } as Record<Strategy, Tuning>
-  for (const s of STRATEGIES) tuning[s] = migrateTuning(tuning[s] ?? defaultTuning(s), s)
+  const notes: LearnNote[] = []
+  for (const s of STRATEGIES) {
+    // Older bots: learned filters per kind of signal, then the exit plan (half at the take-profit, the rest trailing).
+    const up = upgradeExits(migrateTuning(tuning[s] ?? defaultTuning(s), s), s)
+    tuning[s] = up.tuning
+    if (up.note && (a.strategies ?? []).includes(s)) notes.push(up.note)
+  }
   const name = cleanName(a.name) ?? `Bot ${a.id.slice(0, 4).toUpperCase()}`
   return {
     ...a,
     name, slug: a.slug || slugOf(name), ownerId: a.ownerId ?? null, mode: a.mode === 'live' ? 'live' : 'paper',
-    tuning, learnLog: a.learnLog ?? [], events: a.events ?? [], skips: a.skips ?? [],
+    tuning, learnLog: [...notes, ...(a.learnLog ?? [])], events: a.events ?? [], skips: a.skips ?? [],
     lossStreak: a.lossStreak ?? 0, pausedUntil: a.pausedUntil ?? null, filterSkips: a.filterSkips ?? {}, lastBuyAt: a.lastBuyAt ?? {},
     tradesLogged: a.tradesLogged ?? 0, feesPaidUsd: a.feesPaidUsd ?? 0, live: a.live ?? null,
   }
@@ -494,10 +511,11 @@ export class PaperAccounts {
       if (a.mode === 'live' && sig.quality?.grade === 'paper') { skip('paper-grade', `not traded live: in the lowest ${Math.round((1 - QUALITY.liveShare) * 100)}% of recent signals by quality (score ${sig.quality.score}); paper bots take it`); continue }
       const filtered = admits(t, sig.features, sig.rule)
       if (filtered) { a.filterSkips[sig.strategy] = (a.filterSkips[sig.strategy] ?? 0) + 1; skip('filters', filtered); continue }
-      // Sized from the bot's capital (bot/sizing.ts): 20% of what it's worth on a tier-A signal, 10% otherwise, at least $1.
+      // Sized from the bot's capital (bot/sizing.ts): 20% of what it's worth on a safe coin, 10% on one with a risk flag, at least $1.
       const balanceUsd = this.balanceOf(a)
       if (balanceUsd === null) { skip('live-unavailable', 'its wallet\'s balance couldn\'t be read yet'); continue }
-      const tier = sig.quality?.grade === 'live' && sig.quality.tier === 'A' ? 'A' : sig.quality ? 'B' : 'A'
+      const risky = (sig.features?.flags.length ?? 0) > 0
+      const tier = risky ? 'B' : 'A'
       const sized = sizeFromCapital({ capitalUsd: balanceUsd, tier, takeProfit: t.takeProfit, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd, maxUsd: a.mode === 'live' ? USER_LIVE.maxTradeUsd : undefined })
       if (!('sizeUsd' in sized)) { skip(sized.key, sized.why); continue }
       const params = toParams(t, sized.sizeUsd)
@@ -583,9 +601,9 @@ export class PaperAccounts {
     a.positions.push(p)
     this.outcomes.add(sig.id, 'traded', now)
     this.track(a, p)
-    const why = `${Math.round(e.share * 100)}% of its ${money(e.balanceUsd)}${sig.quality ? `, a tier-${e.tier} signal (quality ${sig.quality.score})` : ''}`
+    const why = `${Math.round(e.share * 100)}% of its ${money(e.balanceUsd)}${e.tier === 'B' ? ', a coin with a risk flag' : ', a safe coin'}${sig.quality ? ` (quality ${sig.quality.score})` : ''}`
     const at = price !== sig.price ? `, ${((price / sig.price - 1) * 100).toFixed(1)}% from the signal's price after the 2.5s a buy takes` : ''
-    this.event(a, { at: now, kind: 'buy', token: sig.token, symbol: sig.symbol, text: `Bought $${sig.symbol} for ${money(e.sizeUsd)} (${LABEL[sig.strategy]}; ${why}${at}): sells all at ${move(e.takeProfit)} to make about ${money(e.profitUsd)}, stop at ${move(e.stopLoss)}` })
+    this.event(a, { at: now, kind: 'buy', token: sig.token, symbol: sig.symbol, text: `Bought $${sig.symbol} for ${money(e.sizeUsd)} (${LABEL[sig.strategy]}; ${why}${at}): sells half at ${move(e.takeProfit)}, then the rest trails 25% below its peak with the stop at break-even; stop at ${move(e.stopLoss)}` })
     this.save(a, now)
   }
 

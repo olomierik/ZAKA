@@ -7,7 +7,7 @@
 import { describe, expect, test } from 'bun:test'
 import { PaperAccounts, type PaperAccount, type PaperSignal } from '../src/bot/paperAccounts'
 import { OutcomeTally } from '../src/bot/scanFeed'
-import { sizeForTarget, sizeForTrade, TARGETS } from '../src/bot/sizing'
+import { netAtTakeProfit, sizeForTarget, sizeForTrade, sizeFromCapital, TARGETS } from '../src/bot/sizing'
 import { MemoryBotStore } from '../src/bot/store'
 import { canOpen, exitsAt, openPosition, RISK, STRATEGIES } from '../src/trading/paper'
 
@@ -16,10 +16,10 @@ const T = (n: number) => '0x' + n.toString(16).padStart(40, '0')
 
 describe('the engine\'s own book: no position stays open for good', () => {
   const open = (s: 'snipe' | 'second-leg', i = 0) => openPosition({ id: `p${i}`, strategy: s, token: T(i), symbol: 'C', launchpad: 'Argus', signalId: 's', price: 1, cost: 0.02, now })
-  test('a snipe up 20% whose coin stopped trading closes at its longest hold (3 hours)', () => {
+  test('a snipe up 5% whose coin stopped trading closes at its longest hold (an hour)', () => {
     const p = open('snipe')
-    expect(exitsAt(p, 1.2, now + 179 * 60_000, STRATEGIES.snipe)).toEqual([])
-    expect(exitsAt(p, 1.2, now + 180 * 60_000, STRATEGIES.snipe)).toEqual([{ qty: p.remaining, reason: 'time' }])
+    expect(exitsAt(p, 1.05, now + 59 * 60_000, STRATEGIES.snipe)).toEqual([])
+    expect(exitsAt(p, 1.05, now + 60 * 60_000, STRATEGIES.snipe)).toEqual([{ qty: p.remaining, reason: 'time' }])
   })
   test('a second leg up 30%: at 12 hours', () => {
     const p = open('second-leg')
@@ -69,7 +69,18 @@ describe('every signal a bot passes over says why, and is counted', () => {
     const big = make('Big Bot', ['scalp'])
     accts.act(big, { action: 'deposit', amount: 10_000 }, now); accts.act(big, { action: 'start' }, now)
     accts.onSignal(sig({ id: 's9', token: T(9) }), now)
-    expect(big.positions[0].sizeUsd).toBe(30) // not $2,000: 1.5% of the pool
+    // Not $2,000: 1.5% of the pool is $30, and at +10% a $30 trade's price impact in a $2,000 pool eats the
+    // take-profit, so it comes down to the most that still nets something.
+    const size = big.positions[0].sizeUsd
+    expect(size).toBeLessThan(30)
+    expect(size).toBeGreaterThan(20)
+    expect(netAtTakeProfit(size, 1.1, 4, 2_000)).toBeGreaterThan(0)
+    expect(netAtTakeProfit(size + 0.1, 1.1, 4, 2_000)).toBeLessThanOrEqual(0)
+  })
+  test('sized from capital: a size whose costs eat the take-profit comes down to one that nets something, else it\'s skipped', () => {
+    const s = sizeFromCapital({ capitalUsd: 10_000, tier: 'A', takeProfit: 1.1, roundTripPct: 4, liquidityUsd: 2_000 })
+    expect('sizeUsd' in s && s.sizeUsd < 30 && s.profitUsd >= 0).toBe(true)
+    expect(sizeFromCapital({ capitalUsd: 100, tier: 'A', takeProfit: 1.1, roundTripPct: 20, liquidityUsd: 50_000 })).toMatchObject({ key: 'costly' })
   })
   test('a funded bot that isn\'t started, and one that doesn\'t follow the strategy, say so', () => {
     const { accts, make } = setup()

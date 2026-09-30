@@ -28,22 +28,35 @@ export interface StrategyParams {
   maxHoldMin?: number
   /** Out the moment the coin's creator sells any of it. */
   exitOnCreatorSell?: boolean
+  /** Once the take-profit sold its share, the stop moves up to break-even after costs: what's left can't turn the trade into a loss. */
+  breakevenAfterTp1?: boolean
 }
 
+// Profit taken while it's rising (2026-09-30, owner: "secure a bit of profit on
+// every live trade; hold longer or take a share while it's still rising?").
+// Fast scalps and snipes sell half at +10%, then the stop moves to break-even
+// and the other half trails 25% below its peak, for an hour at most. Replayed
+// at live speed on the 23 signals live bots took over 16 hours, selling all at
+// +15% averaged −7.4% a trade (−10.1% and −3.3% in each half); this plan −1.1%
+// (−1.7% and −0.2%), and its trailing half caught runners of +108%. Still not
+// a profit on that sample: the average is sunk by sudden crashes of 27–80%
+// that no stop can catch, which is why coins with a risk flag trade smaller
+// (bot/sizing.ts).
+//
 // Every strategy has a longest hold (2026-09-30). Snipes and second legs had
 // none: one up 10–99% whose coin then stopped trading never hit a stop, a
 // take-profit or a time stop, stayed open for good, and five of them filled
 // every slot, so the bot stopped taking signals ("5 positions open").
 export const STRATEGIES: Record<Strategy, StrategyParams> = {
-  snipe: { sizeUsd: 25, stopLoss: 0.65, tp1Multiple: 2, tp1SellPct: 0.5, trailFromPeak: 0.35, timeStopMin: 45, timeStopMinGain: 1.1, maxHoldMin: 180 },
+  snipe: { sizeUsd: 25, stopLoss: 0.9, tp1Multiple: 1.1, tp1SellPct: 0.5, trailFromPeak: 0.25, breakevenAfterTp1: true, timeStopMin: 3, timeStopMinGain: 1.03, maxHoldMin: 60, exitOnCreatorSell: true },
   'second-leg': { sizeUsd: 25, stopLoss: 0.8, tp1Multiple: 1.8, tp1SellPct: 0.5, trailFromPeak: 0.25, timeStopMin: 360, timeStopMinGain: 1.1, maxHoldMin: 720 },
   // Fast scalp (owner's request, 2026-09-30: "fast scalp for 1 to 2 dollar
   // profits"): a snipe on a coin that passed every hard check but not a risk
   // check (the creator's stake, serial launches, a copycat ticker), or a
-  // momentum burst on any safe coin (signals/rules.ts scalpReady). All of it
-  // sold at +15%, −10% stop, out after 3 minutes unless up 3%, never held
-  // past 10, and out when the creator sells.
-  scalp: { sizeUsd: 5, stopLoss: 0.9, tp1Multiple: 1.15, tp1SellPct: 1, trailFromPeak: 0.15, timeStopMin: 3, timeStopMinGain: 1.03, maxHoldMin: 10, exitOnCreatorSell: true },
+  // momentum burst on any safe coin (signals/rules.ts scalpReady). Half sold at
+  // +10%, the rest trailing 25% with the stop at break-even; −10% stop, out
+  // after 3 minutes unless up 3%, an hour at most, and out when the creator sells.
+  scalp: { sizeUsd: 5, stopLoss: 0.9, tp1Multiple: 1.1, tp1SellPct: 0.5, trailFromPeak: 0.25, breakevenAfterTp1: true, timeStopMin: 3, timeStopMinGain: 1.03, maxHoldMin: 60, exitOnCreatorSell: true },
 }
 
 export const RISK = {
@@ -163,7 +176,9 @@ export function exitsAt(pos: Position, price: number, now: number, fallback = ST
   const params = pos.exits ?? fallback
   const peak = Math.max(pos.peak, price)
   const x = price / pos.marketEntry
-  if (x <= params.stopLoss) return [{ qty: pos.remaining, reason: 'stop' }]
+  // After the take-profit, the stop is at break-even after costs (paid 1 + cost on the way in, get 1 − cost out).
+  const stop = params.breakevenAfterTp1 && pos.tp1Done ? Math.max(params.stopLoss, (1 + pos.cost) / (1 - pos.cost)) : params.stopLoss
+  if (x <= stop) return [{ qty: pos.remaining, reason: 'stop' }]
   const out: Exit[] = []
   let left = pos.remaining, tp1Done = pos.tp1Done
   const open = () => left > pos.qty * 1e-9

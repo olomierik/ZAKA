@@ -263,6 +263,8 @@ export interface StrategyTuning {
   /** Learned filters per kind of signal: a fast scalp comes from momentum bursts and from snipes, which count buyers differently. */
   rules?: Partial<Record<SignalRule, BotFilters>>
   changedAt: number | null
+  /** Its exit plan (2: half at the take-profit, the rest trailing with a break-even stop; missing: all sold at the take-profit). */
+  plan?: number
   /** Closed trades and wins behind the version before this one (a change that did worse is rolled back). */
   basis: { trades: number; wins: number } | null
 }

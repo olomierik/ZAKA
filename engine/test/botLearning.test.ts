@@ -3,7 +3,7 @@
 // scalp rule, and how bot/paperAccounts.ts puts them together.
 import { describe, expect, test } from 'bun:test'
 import type { SignalFeatures, SignalRule } from '../../api/_marketProtocol'
-import { admits, defaultTuning, learn, LEARN, migrateTuning, OPEN_FILTERS, relax, toParams, type Tuning } from '../src/bot/learner'
+import { admits, defaultTuning, EXIT_PLAN, learn, LEARN, migrateTuning, OPEN_FILTERS, relax, toParams, upgradeExits, type Tuning } from '../src/bot/learner'
 import { PaperAccounts, PROTECT, riskFor, type PaperAccount, type PaperSignal } from '../src/bot/paperAccounts'
 import { RugWatch } from '../src/bot/rugGuard'
 import { netAtTakeProfit, sizeForTarget, TARGETS } from '../src/bot/sizing'
@@ -128,7 +128,7 @@ describe('the learner reads the losing trades', () => {
     expect(r.tuning.takeProfit).toBeLessThan(t.takeProfit)
     expect(r.tuning.takeProfit).toBeGreaterThanOrEqual(1.06)
     expect(r.tuning.version).toBe(2)
-    expect(r.notes.map(n => n.text).join(' ')).toMatch(/rose most of the way to \+15%.*takes profit at \+13%/)
+    expect(r.notes.map(n => n.text).join(' ')).toMatch(/rose most of the way to \+10%.*takes profit at \+8%/)
     expect(r.tuning.prev?.takeProfit).toBe(t.takeProfit)
   })
   test('rugs: more liquidity and safety needed, and the flag the rugged coins shared is skipped', () => {
@@ -265,15 +265,38 @@ describe('a visitor\'s bot, all together', () => {
     expect(accts.act(made.account, { action: 'rename', name: '<script>' }, now)).toMatch(/2–24/)
     expect(accts.act(made.account, { action: 'rename', name: 'Night Owl' }, now)).toBeNull()
   })
-  test('a take-profit sells everything, for about what its size makes there', () => {
+  test('the take-profit sells half; the rest trails, and closes at break-even at worst', () => {
     const { accts, a } = setup()
     accts.onSignal(sig(1), now)
     const p = a.positions[0]
-    accts.onPrice(p.token, 1.2, now + 30_000, false, true)
-    expect(p).toMatchObject({ status: 'closed', exitReason: 'tp1' })
-    expect(p.pnlUsd!).toBeGreaterThan(p.targetUsd! * 0.9) // sold at or above the take-profit, less the 2% fee
-    expect(p.pnlUsd!).toBeLessThan(p.sizeUsd * 0.2)
-    expect(p.note).toMatch(/Took the profit/)
+    accts.onPrice(p.token, 1.12, now + 30_000, false, true)
+    expect(p.status).toBe('open')
+    expect(p.remaining).toBeCloseTo(p.qty / 2, 9)
+    accts.onPrice(p.token, 1.5, now + 60_000, false, true) // the rest rides
+    expect(p.status).toBe('open')
+    accts.onPrice(p.token, 1.1, now + 90_000, false, true) // 27% under its peak: the trail sells it
+    expect(p).toMatchObject({ status: 'closed', exitReason: 'trail' })
+    expect(p.pnlUsd!).toBeGreaterThan(0)
+    expect(p.note).toMatch(/Took half the profit at \+\d+%, then the rest on its trailing stop/)
+    // Up 12%, then back to where it was bought: the half sold keeps the trade in profit.
+    accts.onSignal(sig(2), now + 100_000)
+    const q = a.positions[1]
+    accts.onPrice(q.token, 1.12, now + 110_000, false, true)
+    accts.onPrice(q.token, 1.0, now + 120_000, false, true)
+    expect(q).toMatchObject({ status: 'closed', exitReason: 'stop' })
+    expect(q.pnlUsd!).toBeGreaterThan(0)
+    expect(q.note).toMatch(/break-even stop/)
+  })
+  test('bots from before the exit plan move to it when they load, with a note', () => {
+    const old = { ...defaultTuning('scalp'), takeProfit: 1.13, maxHoldMin: 10, version: 4 }
+    delete (old as { plan?: number }).plan
+    const up = upgradeExits(old, 'scalp', now)
+    expect(up.tuning).toMatchObject({ takeProfit: 1.1, maxHoldMin: 60, plan: EXIT_PLAN.version, version: 5, filters: old.filters })
+    expect(up.note?.text).toMatch(/half sold at \+10%.*break-even.*25%/)
+    expect(upgradeExits(up.tuning, 'scalp', now).note).toBeNull() // once
+    expect(toParams(up.tuning, 5)).toMatchObject({ tp1Multiple: 1.1, tp1SellPct: 0.5, trailFromPeak: 0.25, breakevenAfterTp1: true })
+    const leg = upgradeExits({ ...defaultTuning('second-leg'), plan: undefined, takeProfit: 1.4 }, 'second-leg', now)
+    expect(leg.tuning.takeProfit).toBe(1.4) // a dip rebound keeps its own take-profit
   })
   test('a rug alarm closes the position at once; every closed trade is in the log', async () => {
     const { store, accts, a } = setup()

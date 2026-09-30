@@ -208,18 +208,26 @@ describe('the live trader (stand-in wallet)', () => {
     expect(calls).toEqual([])
     expect(lt.events[0].text).toMatch(/paper only/)
   })
-  test('a scalp\'s take-profit sells the whole balance: the profit is secured and the trade closed', async () => {
+  test('a scalp\'s take-profit sells half; the rest is sold at break-even if the coin turns', async () => {
     const { lt, calls, positions, meta, signal } = setup()
     await lt.open(signal('s1'), 'scalp', pool, meta)
     const p = positions[0]
-    lt.onPrice(p, p.marketEntry * 1.1, Date.now(), false) // short of +15%
+    lt.onPrice(p, p.marketEntry * 1.08, Date.now(), false) // short of +10%
     await settle()
     expect(calls.slice(2)).toEqual([])
-    lt.onPrice(p, p.marketEntry * 1.16, Date.now(), false)
+    lt.onPrice(p, p.marketEntry * 1.11, Date.now(), false)
     await settle()
-    expect(calls.slice(2)).toEqual(['sell 5000 @1500'])
-    expect(p).toMatchObject({ status: 'closed', exitReason: 'tp1' })
-    expect(p.pnlUsd!).toBeCloseTo(5 * 1.3 - 5 - 0.02, 6) // proceeds − size − gas (buy + sell)
+    expect(calls.slice(2)).toEqual(['sell 2500 @1500'])
+    expect(p.status).toBe('open')
+    expect(p.remaining).toBeCloseTo(p.qty / 2, 6)
+    lt.onPrice(p, p.marketEntry * 1.02, Date.now(), false) // above break-even: holds
+    await settle()
+    expect(calls.slice(2)).toEqual(['sell 2500 @1500'])
+    lt.onPrice(p, p.marketEntry * 0.99, Date.now(), false) // under what it paid: the rest goes
+    await settle()
+    expect(calls.slice(2)).toEqual(['sell 2500 @1500', 'sell 2500 @1500'])
+    expect(p).toMatchObject({ status: 'closed', exitReason: 'stop' })
+    expect(p.pnlUsd!).toBeCloseTo(5 * 1.3 - 5 - 0.03, 6) // proceeds − size − gas (a buy, two sales)
   })
   test('the creator selling, or a rug alarm, sells everything at once', async () => {
     for (const how of ['creator', 'rug'] as const) {

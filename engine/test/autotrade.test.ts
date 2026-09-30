@@ -20,9 +20,11 @@ describe('paper accounts', () => {
     return { store, accts, key, a: account }
   }
   const signal = (o: Partial<PaperSignal> = {}): PaperSignal => ({ id: 's1', token: T, symbol: 'C', launchpad: 'ARGUS', price: 1, strategy: 'snipe', roundTripPct: 2, liquidityUsd: 100_000, ...o })
-  /** A trade from `capital`: 20% on a tier-A signal (one without a grade counts as A), 10% on B (bot/sizing.ts). */
+  /** A trade from `capital`: 20% on a safe coin, 10% on one with a risk flag (bot/sizing.ts). */
   const sizeOf = (capital: number, tier: 'A' | 'B' = 'A') => Math.floor(capital * (tier === 'A' ? CAPITAL_SIZING.shareA : CAPITAL_SIZING.shareB) * 10 + 1e-9) / 10
   const quality = (grade: 'live' | 'paper', tier: 'A' | 'B') => ({ score: grade === 'live' ? 85 : 55, grade, tier, rank: null, parts: [] })
+  /** A coin's numbers at the signal; `flags` are the risk checks it didn't pass. */
+  const features = (flags: string[] = []) => ({ ageSec: 120, liquidityUsd: 100_000, marketCapUsd: 200_000, buyers: 20, buySellRatio: 3, runUp: 1.1, topBuyerPct: 10, score: 90, flags, roundTripPct: 2 })
 
   test('a key opens its account; the engine keeps only its hash', () => {
     const { accts, key, a } = setup()
@@ -65,25 +67,35 @@ describe('paper accounts', () => {
     expect(a.positions[1].tuningVersion).toBe(1)
     expect(a.events[0].text).toMatch(/20% of its \$\d+\.\d\d/)
   })
-  test('the signal\'s tier sets the share: 20% on tier A, 10% on tier B; a live bot passes over paper-only signals', () => {
+  test('the coin\'s risk sets the share: 20% on a safe coin, 10% on one with a risk flag, whatever its quality tier', () => {
+    const { accts, a } = setup()
+    accts.act(a, { action: 'deposit', amount: 100 }, now); accts.act(a, { action: 'start' }, now)
+    accts.onSignal(signal({ id: 'b1', quality: quality('live', 'B'), features: features() }), now)
+    expect(a.positions[0].sizeUsd).toBe(sizeOf(100)) // a tier-B signal on a safe coin: 20%
+    expect(a.events[0].text).toMatch(/a safe coin/)
+    accts.onSignal(signal({ id: 'r1', token: '0x' + 'c6'.repeat(20), quality: quality('live', 'A'), features: features(['holders']) }), now)
+    expect(a.positions[1].sizeUsd).toBeGreaterThanOrEqual(9.8) // a tier-A signal on a coin with a risk flag: 10% of what it's worth now
+    expect(a.positions[1].sizeUsd).toBeLessThanOrEqual(10)
+    expect(a.events[0].text).toMatch(/a coin with a risk flag/)
+  })
+  test('a live bot passes over paper-only signals', () => {
     const { accts, a } = setup()
     accts.act(a, { action: 'deposit', amount: 100 }, now); accts.act(a, { action: 'start' }, now)
     accts.onSignal(signal({ id: 'b1', quality: quality('live', 'B') }), now)
-    expect(a.positions[0].sizeUsd).toBe(sizeOf(100, 'B'))
     accts.onSignal(signal({ id: 'p1', token: '0x' + 'c3'.repeat(20), quality: quality('paper', 'B') }), now)
     expect(a.positions).toHaveLength(2) // a paper bot takes a paper-only signal
     a.mode = 'live'
     accts.onSignal(signal({ id: 'p2', token: '0x' + 'c4'.repeat(20), quality: quality('paper', 'B') }), now)
     expect(accts.view(a).skips[0].text).toMatch(/not traded live: in the lowest 20% of recent signals by quality \(score 55\)/)
   })
-  test('a $10 bot trades: $2 on tier A, $1 on tier B; the same coin once per 6 hours', () => {
+  test('a $10 bot trades: $2 on a safe coin, $1 on a risky one; the same coin once per 6 hours', () => {
     const { accts, a } = setup()
     accts.act(a, { action: 'deposit', amount: 10 }, now); accts.act(a, { action: 'start' }, now)
-    accts.onSignal(signal({ quality: quality('live', 'A') }), now)
+    accts.onSignal(signal({ features: features() }), now)
     expect(a.positions[0].sizeUsd).toBe(2)
     accts.onSignal(signal({ id: 's2' }), now) // same coin
     expect(a.positions).toHaveLength(1)
-    accts.onSignal(signal({ id: 's3', token: '0x' + 'c5'.repeat(20), quality: quality('live', 'B') }), now)
+    accts.onSignal(signal({ id: 's3', token: '0x' + 'c5'.repeat(20), features: features(['serial']) }), now)
     expect(a.positions[1].sizeUsd).toBe(1)
     expect(accts.view(a).protections).toMatchObject({ maxTradeSharePct: 20, tradeSharePct: { a: 20, b: 10 }, minTradeUsd: 1 })
   })

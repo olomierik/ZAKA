@@ -53,9 +53,9 @@ const big = (n: number | null) => n === null ? '—' : n >= 1e6 ? `$${(n / 1e6).
 const STRATEGY: Record<TradeSignal['strategy'], string> = { snipe: 'Snipe', scalp: 'Fast scalp', 'second-leg': 'Dip rebound' }
 const STRATEGY_COLOR: Record<TradeSignal['strategy'], string> = { snipe: '#3b82f6', scalp: '#f59e0b', 'second-leg': '#a855f7' }
 const STRATEGY_HELP: Record<TradeSignal['strategy'], string> = {
-  snipe: 'New coins in their first 10 minutes that pass every safety check and show real buying. Sold in full at the take-profit (+40% to start), aiming for $1–5 a trade.',
-  scalp: 'Quick in and out for $1–2: bursts of real buying on any safe coin, and new coins with a risk flag. Sold in full at +15% to start, −10% stop, out within 10 minutes, and at once if the creator sells.',
-  'second-leg': 'Coins that ran 2× or more, pulled back 25–70% and are being bought again. Sold in full at the take-profit (+35% to start), aiming for $1–5, held up to 6 hours.',
+  snipe: 'New coins in their first 10 minutes that pass every safety check and show real buying. Half sold at +10%, then the stop moves to break-even and the rest trails 25% under its peak; −10% stop, an hour at most.',
+  scalp: 'Quick in and out: bursts of real buying on any safe coin, and new coins with a risk flag. Half sold at +10%, then the stop moves to break-even and the rest trails 25% under its peak; −10% stop, an hour at most, and out at once if the creator sells.',
+  'second-leg': 'Coins that ran 2× or more, pulled back 25–70% and are being bought again. Half sold at the take-profit (+35% to start), then the stop moves to break-even and the rest trails; held up to 6 hours.',
 }
 /** A bot's name: as the engine checks it (bot/paperAccounts.ts cleanName). */
 const BOT_NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._'-]{0,22}[\p{L}\p{N}.]$/u
@@ -137,7 +137,7 @@ export default function SignalsPage({ navigate, view: pageView, bot }: { navigat
           {view === 'signals' && stats?.liveSpeed && <LiveSpeedCard rows={stats.liveSpeed} all={stats.routing?.liveSignals === 'all'} />}
           {view === 'signals' && (
             <Section title={T('Live signals')}>
-              <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>{T('Every signal gets a quality score and is ranked against the last 50: the top 80% can go to live bots, the lowest 20% to paper bots only, where they are still measured. A live bot also needs the kind of signal to make money at live speed (above). Tier A (the top 40%) takes 20% of a bot\'s capital, the rest 10%.')}</div>
+              <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>{T('Every signal gets a quality score and is ranked against the last 50: the top 80% can go to live bots, the lowest 20% to paper bots only, where they are still measured. A live bot also needs the kind of signal to make money at live speed (above). A trade takes 20% of a bot\'s capital on a safe coin, 10% on one with a risk flag.')}</div>
               {signals.length === 0 ? <Empty>{T('No signals yet. Most launches fail a safety check; a signal appears the moment one passes them all.')}</Empty>
                 : signals.map(s => <SignalRow key={s.id} s={s} navigate={navigate} />)}
             </Section>
@@ -219,7 +219,7 @@ function CreateBot({ busy, loading, error, onCreate, onCancel, team }: { busy: b
     <div className="at-card at-hero">
       <div className="at-hero-title">{T('Create your Autotrade bot')}</div>
       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-        {T('Name it and pick its strategies: it starts trading at once with $1,000 of virtual USDC and the team\'s best settings. Each trade is a share of what the bot is worth: 20% on the best signals, 10% on the rest, at least $1, so even a $10 bot trades. It gets out of rugs at once and learns from its own trades and every other bot\'s. It keeps trading with this page closed. No wallet or real money needed.')}
+        {T('Name it and pick its strategies: it starts trading at once with $1,000 of virtual USDC and the team\'s best settings. Each trade is a share of what the bot is worth: 20% on a safe coin, 10% on one with a risk flag, at least $1, so even a $10 bot trades. It gets out of rugs at once and learns from its own trades and every other bot\'s. It keeps trading with this page closed. No wallet or real money needed.')}
       </div>
       <div className="at-label">{T('Bot name')}</div>
       <input className="at-input at-name" value={name} maxLength={24} placeholder={T('e.g. Night Owl')} onChange={e => setName(e.target.value)} aria-label={T('Bot name')} />
@@ -633,7 +633,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, li
           }} />
           <div className="at-label">{T('Trade size: from the bot\'s capital')}</div>
           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            {T('Each trade is a share of what the bot is worth now (at the start, its capital): {a}% on the best signals (tier A), {b}% on the rest, at least {m}. A $10 bot trades $2 or $1. Never more than 1.5% of the coin\'s pool, and never a trade whose costs eat the take-profit.', { a: acct.protections?.tradeSharePct?.a ?? 20, b: acct.protections?.tradeSharePct?.b ?? 10, m: usd(acct.protections?.minTradeUsd ?? 1, 0) })}
+            {T('Each trade is a share of what the bot is worth now (at the start, its capital): {a}% on a safe coin (it passed every check), {b}% on one with a risk flag, at least {m}. A $10 bot trades $2 or $1. Never more than 1.5% of the coin\'s pool, and never a trade whose costs eat the take-profit. Half is sold at the take-profit; then the stop moves to break-even and the rest trails 25% under its peak.', { a: acct.protections?.tradeSharePct?.a ?? 20, b: acct.protections?.tradeSharePct?.b ?? 10, m: usd(acct.protections?.minTradeUsd ?? 1, 0) })}
           </div>
           {acct.tuning && acct.strategies.map(s => <TuningLine key={s} s={s} t={acct.tuning[s]} />)}
         </Section>
@@ -1039,7 +1039,7 @@ function SettingsTab({ acct, act, busy, onRename }: { acct: PaperAccountView; ac
         <Section title={T('Protection')}>
           <ul className="at-protect">
             <li>🛡 {T('Rug guard: out at once when liquidity is pulled, an early insider or a whale dumps, the price crashes on heavy selling, or the creator sells.')}</li>
-            {prot.maxTradeSharePct !== undefined && <li>⚖ {T('Each trade is {a}% of what the bot is worth on the best signals, {b}% on the rest (now at most {m}), at least {min}: a small bot trades small.', { a: prot.tradeSharePct?.a ?? prot.maxTradeSharePct, b: prot.tradeSharePct?.b ?? 10, m: prot.maxTradeUsd == null ? '—' : usd(prot.maxTradeUsd), min: usd(prot.minTradeUsd ?? 1, 0) })}</li>}
+            {prot.maxTradeSharePct !== undefined && <li>⚖ {T('Each trade is {a}% of what the bot is worth on a safe coin, {b}% on one with a risk flag (now at most {m}), at least {min}: a small bot trades small.', { a: prot.tradeSharePct?.a ?? prot.maxTradeSharePct, b: prot.tradeSharePct?.b ?? 10, m: prot.maxTradeUsd == null ? '—' : usd(prot.maxTradeUsd), min: usd(prot.minTradeUsd ?? 1, 0) })}</li>}
             <li>⏸ {T('Pauses new trades for 30 minutes after {n} losses in a row (now {s} in a row).', { n: prot.pauseAfterLosses, s: prot.lossStreak })}</li>
             <li>📉 {T('Daily loss limit {l}: no new trades after it until tomorrow (UTC). Today: {t}.', { l: usd(prot.dailyLossLimitUsd, 0), t: usd(prot.todayPnlUsd) })}</li>
             <li>🛑 {T('Stops if the account falls {p}% below what was deposited.', { p: prot.stopBelowPct })}</li>
@@ -1100,11 +1100,13 @@ function TuningLine({ s, t }: { s: Strategy; t: PaperAccountView['tuning'][Strat
     <div className="at-tune">
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         <Pill color={STRATEGY_COLOR[s]}>{T(STRATEGY[s])} · v{t.version}</Pill>
-        <b style={{ fontFamily: 'var(--mono)' }}>{t.sizeUsd === null ? '—' : T('about {v} on a top signal', { v: usd(t.sizeUsd) })}</b>
+        <b style={{ fontFamily: 'var(--mono)' }}>{t.sizeUsd === null ? '—' : T('about {v} on a safe coin', { v: usd(t.sizeUsd) })}</b>
         {t.closed > 0 && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T('{n} trades, {w} won', { n: t.closed, w: t.winRate === null ? '—' : `${Math.round(t.winRate * 100)}%` })}</span>}
       </div>
       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
-        {T('Sells all at {tp} · stop {sl} · out after {m} min unless moving, {x} min at most', {
+        {T((t.plan ?? 1) >= 2
+          ? 'Half sold at {tp}, the rest trails 25% under its peak with the stop at break-even · stop {sl} · out after {m} min unless moving, {x} min at most'
+          : 'Sells all at {tp} · stop {sl} · out after {m} min unless moving, {x} min at most', {
           tp: pctMove(t.takeProfit), sl: pctMove(t.stopLoss), m: t.timeStopMin, x: t.maxHoldMin,
         })}
       </div>
@@ -1497,8 +1499,8 @@ function PositionRow({ p, navigate }: { p: BotPosition; navigate: (p: Page) => v
         <span>{T('in')} {price(p.marketEntry)} · {usd(p.sizeUsd, p.sizeUsd < 100 ? 2 : 0)}</span>
         {sold.length > 0 && <span>{T('sold')} {sold.map(f => price(f.price)).join(', ')}</span>}
         {p.status === 'closed'
-          ? <b style={{ color: (p.pnlUsd ?? 0) >= 0 ? 'var(--green)' : '#fca5a5' }}>{usd(p.pnlUsd)} ({pnlPct! >= 0 ? '+' : ''}{pnlPct!.toFixed(0)}%) · {T(EXIT[p.exitReason ?? ''] ?? p.exitReason ?? '')}{p.feeUsd ? <span style={{ fontWeight: 500, color: 'var(--text-muted)' }}> · {T('15% profit fee {v}', { v: usd(p.feeUsd, 4) })}</span> : null}</b>
-          : <span style={{ color: 'var(--text)' }}>{p.tp1Done ? T('profit taken, trailing') : T('open')}</span>}
+          ? <b style={{ color: (p.pnlUsd ?? 0) >= 0 ? 'var(--green)' : '#fca5a5' }}>{usd(p.pnlUsd)} ({pnlPct! >= 0 ? '+' : ''}{pnlPct!.toFixed(0)}%) · {T(p.tp1Done && p.exitReason === 'stop' ? 'half taken, the rest at break-even' : EXIT[p.exitReason ?? ''] ?? p.exitReason ?? '')}{p.feeUsd ? <span style={{ fontWeight: 500, color: 'var(--text-muted)' }}> · {T('15% profit fee {v}', { v: usd(p.feeUsd, 4) })}</span> : null}</b>
+          : <span style={{ color: 'var(--text)' }}>{p.tp1Done ? T('half sold, the rest trailing') : T('open')}</span>}
       </div>
       {p.status === 'closed' && p.note && <div style={{ width: '100%', fontSize: '0.72rem', color: p.exitReason === 'rug' ? '#fcd34d' : 'var(--text-muted)' }}>{p.exitReason === 'rug' ? '🛡 ' : ''}{p.note}</div>}
       {p.stuck && p.status === 'open' && <div style={{ width: '100%', fontSize: '0.72rem', color: '#fca5a5' }}>⚠ {T('Sale failing, retrying:')} {p.stuck}</div>}

@@ -56,13 +56,21 @@ export const RULES_OF: Record<Strategy, SignalRule[]> = { scalp: ['momentum', 's
 export const RULE_LABEL: Record<SignalRule, string> = { momentum: 'momentum bursts', snipe: 'snipes', 'second-leg': 'dip rebounds' }
 
 const EXITS: Record<Strategy, Pick<StrategyTuning, 'takeProfit' | 'stopLoss' | 'timeStopMin' | 'maxHoldMin'>> = {
-  scalp: { takeProfit: 1.15, stopLoss: 0.9, timeStopMin: 3, maxHoldMin: 10 },
-  snipe: { takeProfit: 1.4, stopLoss: 0.8, timeStopMin: 20, maxHoldMin: 60 },
+  scalp: { takeProfit: 1.1, stopLoss: 0.9, timeStopMin: 3, maxHoldMin: 60 },
+  snipe: { takeProfit: 1.1, stopLoss: 0.9, timeStopMin: 3, maxHoldMin: 60 },
   'second-leg': { takeProfit: 1.35, stopLoss: 0.85, timeStopMin: 120, maxHoldMin: 360 },
 }
 
 /** How far learning may move a take-profit. */
-export const TP_BOUNDS: Record<Strategy, [number, number]> = { scalp: [1.06, 1.3], snipe: [1.15, 2], 'second-leg': [1.15, 1.8] }
+export const TP_BOUNDS: Record<Strategy, [number, number]> = { scalp: [1.06, 1.3], snipe: [1.06, 1.6], 'second-leg': [1.15, 1.8] }
+
+/**
+ * The exit plan (2026-09-30): half sold at the take-profit, then the stop at
+ * break-even and the rest trailing 25% below its peak (trading/paper.ts). Bots
+ * from before (`plan` missing: all sold at +15%, or +40% for snipes) move to it
+ * when they load (`upgradeExits`).
+ */
+export const EXIT_PLAN = { version: 2, sellPct: 0.5, trailFromPeak: 0.25 }
 export const FILTER_CAPS = { minLiquidityUsd: 25_000, minBuyers: 40, minBuySellRatio: 4, maxRunUp: 1.02, minScore: 90, maxTopBuyerPct: 10 }
 
 export const LEARN = {
@@ -86,7 +94,19 @@ export const LEARN = {
 }
 
 export function defaultTuning(s: Strategy): Tuning {
-  return { version: 1, ...EXITS[s], targetUsd: TARGETS[s].target, filters: { ...OPEN_FILTERS, avoidFlags: [] }, rules: {}, changedAt: null, basis: null, prev: null }
+  return { version: 1, ...EXITS[s], targetUsd: TARGETS[s].target, filters: { ...OPEN_FILTERS, avoidFlags: [] }, rules: {}, changedAt: null, basis: null, prev: null, plan: EXIT_PLAN.version }
+}
+
+/** A tuning from before the exit plan: its exits become the plan's (its learned filters stay), with a note saying so. */
+export function upgradeExits(t: Tuning, s: Strategy, now = Date.now()): { tuning: Tuning; note: LearnNote | null } {
+  if ((t.plan ?? 1) >= EXIT_PLAN.version) return { tuning: t, note: null }
+  const exits = s === 'second-leg' ? {} : EXITS[s]
+  const version = t.version + 1
+  const tuning: Tuning = { ...t, ...exits, plan: EXIT_PLAN.version, version, changedAt: now, basis: null, prev: null }
+  return {
+    tuning,
+    note: { at: now, strategy: s, version, kind: 'exit', text: `New exits: half sold at ${gain(tuning.takeProfit)}, then the stop moves to break-even and the rest trails 25% below its peak (an hour at most). Replayed at live speed on the last signals, this lost far less than selling everything at once, and it lets the trailing half run.` },
+  }
 }
 
 /** The kind of signal a position came from; an older one without it: what its strategy implies (a fast scalp's is unknown). */
@@ -99,10 +119,10 @@ export function filtersFor(t: StrategyTuning, rule: SignalRule | null | undefine
   return (rule && t.rules?.[rule]) || t.filters
 }
 
-/** The exits a position opened with this tuning trades with: everything sold at the take-profit. */
+/** The exits a position opened with this tuning trades with: half sold at the take-profit, the rest trailing with the stop at break-even. */
 export function toParams(t: StrategyTuning, sizeUsd: number): StrategyParams {
   return {
-    sizeUsd, stopLoss: t.stopLoss, tp1Multiple: t.takeProfit, tp1SellPct: 1, trailFromPeak: 0.2,
+    sizeUsd, stopLoss: t.stopLoss, tp1Multiple: t.takeProfit, tp1SellPct: EXIT_PLAN.sellPct, trailFromPeak: EXIT_PLAN.trailFromPeak, breakevenAfterTp1: true,
     // A time stop keeps a position only if it's a fifth of the way to the take-profit.
     timeStopMin: t.timeStopMin, timeStopMinGain: 1 + (t.takeProfit - 1) * 0.2, maxHoldMin: t.maxHoldMin,
     exitOnCreatorSell: true,

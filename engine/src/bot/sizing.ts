@@ -115,13 +115,14 @@ export function noSizeWhy(o: { strategy: Strategy; takeProfit: number; roundTrip
 // sizes according to the bot's initial capital, not a default; let even bots
 // with $10 run trades"). Replaces the profit-target sizing above for every
 // bot's trades: a share of what the bot is worth (its capital at the start;
-// then what it has grown or shrunk to), by the signal's tier
-// (signals/quality.ts):
+// then what it has grown or shrunk to), by the coin's risk (since
+// 2026-09-30, owner-approved: the crashes that sink the average come on coins
+// with a risk flag; before, by the signal's quality tier):
 //
-//   tier A (the top of the live-grade signals)   20% of the bot
-//   tier B (the rest, and paper-only signals)    10%
+//   a safe coin (passed every check, no risk flag)   20% of the bot ('A')
+//   a coin with a risk flag                          10% ('B')
 //
-// at least $1, so a $10 bot trades $2 (A) or $1 (B). Never more than 1.5% of
+// at least $1, so a $10 bot trades $2 (safe) or $1 (risky). Never more than 1.5% of
 // the pool's liquidity (a bigger trade moves a thin pool against itself), and
 // never a trade whose round trip eats the take-profit.
 
@@ -145,7 +146,12 @@ export function sizeFromCapital(o: { capitalUsd: number; tier: 'A' | 'B'; takePr
     if (poolCap < c.minUsd) return { key: 'too-thin', why: `the pool ($${Math.round(o.liquidityUsd).toLocaleString('en-US')}) is too thin for even a $${c.minUsd} trade` }
     size = Math.min(size, poolCap)
   }
-  const net = netAtTakeProfit(size, o.takeProfit, o.roundTripPct, o.liquidityUsd)
+  let net = netAtTakeProfit(size, o.takeProfit, o.roundTripPct, o.liquidityUsd)
+  // Price impact grows with the size: one whose costs eat the take-profit comes down, $0.10 at a time, to one that nets something.
+  while (net <= 0 && size - 0.1 >= c.minUsd - 1e-9) {
+    size = Math.round((size - 0.1) * 10) / 10
+    net = netAtTakeProfit(size, o.takeProfit, o.roundTripPct, o.liquidityUsd)
+  }
   const pct = `${Math.round((o.takeProfit - 1) * 100)}%`
   if (net <= 0) return { key: 'costly', why: `buying and selling back costs more than its +${pct} take-profit` }
   return { sizeUsd: size, profitUsd: Math.round(net * 100) / 100, costPct: Math.round(costPerSide(o.roundTripPct, size, o.liquidityUsd) * 10_000) / 100, share }
