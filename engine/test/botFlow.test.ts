@@ -112,3 +112,22 @@ describe('the bot, end to end', () => {
     expect(bot.sweep(Date.now() + 10 * 60_000)).toBe(0) // gone quiet
   })
 })
+
+describe('after a restart', () => {
+  test('every launch of the last 48 hours is back on the scanner at once, with the trades the engine kept', () => {
+    const now = Date.now()
+    const coin = (n: number, ageMin: number): LaunchInfo => ({ token: '0x' + String(n).padStart(40, '0'), name: `C${n}`, symbol: `C${n}`, decimals: 18, creator: null, txHash: '0x', blockNumber: 1, timestamp: now - ageMin * 60_000, pool: null, quote: null, launchpad: 'ARGUS', chain: 'ARC', status: 'LIVE' })
+    const fresh = coin(1, 30), old = coin(2, 3 * 24 * 60)
+    const st = new TokenState(fresh.token)
+    Object.assign(st, { priceUsd: 1.1, mainPool: 'pool1' })
+    // The engine's buffer: newest first, as the engine keeps it.
+    const kept = [0, 1, 2].map(k => ({ id: `t${k}`, k: fresh.token, pl: 'pool1', q: '0x36', s: 'B', ba: 100, qa: 60, p: 1 + k / 20, pu: 1 + k / 20, u: 60, w: `0x${'a'.repeat(39)}${k}`, tx: `0x${k}`, b: 10 + k, li: 0, ts: now - (3 - k) * 30_000, dx: 'uniswap-v4', lp: 'ARGUS', lq: 20_000 })).reverse()
+    const engine = { metas: new Map([[fresh.token, fresh], [old.token, old]]), tokens: new Map([[fresh.token, st]]), recentTrades: (t: string) => (t === fresh.token ? kept : []) } as unknown as MarketEngine
+    const bot = new Bot({ rpc: {} as Rpc, engine, pools: { get: () => null } as unknown as PoolRegistry, store: new MemoryBotStore(), publish: () => {}, mode: 'paper' })
+    expect(bot.seed(now)).toBe(1) // the 3-day-old launch stays off the list
+    expect(bot.scan.get(fresh.token)).toMatchObject({ status: 'new' })
+    expect(bot.scan.get(old.token)).toBeUndefined()
+    expect(bot.tapes.get(fresh.token).map(t => t.price)).toEqual([1, 1.05, 1.1]) // oldest first
+    expect(bot.recent.window(fresh.token, now, 120_000)).toHaveLength(3)
+  })
+})

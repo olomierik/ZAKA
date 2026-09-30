@@ -235,6 +235,8 @@ async function main() {
     dataApi?.attachBot(bot, new ControlVerifier(cfg.botOwner as `0x${string}` | null, cfg.httpUrls), accounts, users)
   }
   await eng.warmStart()
+  // The scanner lists every launch of the last 48h at once, not only coins that trade after a restart.
+  bot?.seed()
   const parser = new TradeParser(pools, oracle, makers, eng.launchpadOf)
   // Launches on launchpads without an adapter, found from their pool's Initialize.
   const v4Launches = new V4LaunchDetector(rpc, token => eng.metas.has(token))

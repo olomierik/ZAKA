@@ -171,9 +171,49 @@ export class Bot implements EngineObserver {
 
   onLaunch(l: LaunchInfo) {
     if (Date.now() - l.timestamp <= WATCH_MS) this.scan.launch(l)
+    this.index(l)
+  }
+
+  /** Copycat and serial-launcher checks read these. */
+  private index(l: LaunchInfo) {
     const sym = l.symbol.trim().toLowerCase()
     if (sym) this.bySymbol.set(sym, (this.bySymbol.get(sym) ?? new Set()).add(l.token))
-    if (l.creator) this.byCreator.set(l.creator, [...(this.byCreator.get(l.creator) ?? []), l.timestamp].slice(-50))
+    if (l.creator) {
+      const seen = this.byCreator.get(l.creator) ?? []
+      if (!seen.includes(l.timestamp)) this.byCreator.set(l.creator, [...seen, l.timestamp].slice(-50))
+    }
+  }
+
+  /**
+   * After the engine's warm start (2026-10-01): every launch of the last 48h
+   * back on the scanner, with the trades the engine kept (its last 100 each)
+   * in the tapes, price paths and rug guard. Before, a restart (every deploy)
+   * emptied the scanner until each coin traded again: 4 coins watched right
+   * after one, 68 an hour later.
+   */
+  seed(now = Date.now()) {
+    let listed = 0, trades = 0
+    for (const [token, meta] of this.o.engine.metas) {
+      this.index(meta)
+      if (now - meta.timestamp > WATCH_MS) continue
+      this.scan.launch(meta)
+      listed++
+      const mainPool = this.o.engine.tokens.get(token)?.mainPool
+      let path = this.paths.get(token)
+      if (!path) { path = new PricePath(meta.timestamp); this.paths.set(token, path) }
+      for (const w of [...this.o.engine.recentTrades(token, 100)].reverse()) {
+        const priced = w.pu !== null && (!mainPool || w.pl === mainPool)
+        const side = w.s === 'B' ? 'BUY' as const : w.s === 'S' ? 'SELL' as const : 'UNKNOWN' as const
+        const tape = { block: w.b, ts: w.ts, wallet: w.w?.toLowerCase() ?? null, side, usd: w.u ?? 0, tokens: w.ba, price: priced ? w.pu : null }
+        this.tapes.add(token, tape)
+        this.recent.add(token, tape, now)
+        this.rug.onTrade(token, tape, priced ? w.lq : null, priced, w.ts)
+        if (priced) path.add(w.ts, w.pu, side, tape.usd)
+        trades++
+      }
+    }
+    log.info('bot: scanner seeded after the restart', { coins: listed, trades })
+    return listed
   }
 
   onTrade(t: Trade, ctx: { replay: boolean }) {
