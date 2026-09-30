@@ -4,7 +4,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { LaunchInfo } from '../../api/_marketProtocol'
 import { analyzeCode } from '../src/intel/bytecode'
-import { firstFunders, firstFunding, groupFunders, resolveFunders } from '../src/intel/clusters'
+import { clustersOf, firstFunders, firstFunding, groupFunders, resolveFunders } from '../src/intel/clusters'
 import { computeFlow, type TapeTrade } from '../src/intel/flow'
 import { holdersFromLogs } from '../src/intel/holders'
 import { assess, type ScanInput, type StaticFacts } from '../src/intel/scanner'
@@ -95,6 +95,45 @@ describe('clusters', () => {
     const c = groupFunders(new Map([[A(1), A(99)], [A(2), A(99)], [A(3), A(60)], [A(4), A(60)]]), A(99), A(60), new Set())
     expect(c.creatorFunded).toEqual([A(1), A(2)])
     expect(c.sameSourceAsCreator).toEqual([A(3), A(4)])
+  })
+})
+
+describe('clusters over the chain (stubbed)', () => {
+  // Seen 2026-09-30: a funder that paid 482 wallets in the window got no
+  // answer over the whole window from the endpoint asked, and counting only
+  // the last 10k blocks found none (it paid these buyers hours earlier), so a
+  // clean coin was blocked as a cluster. Now the window is counted in slices.
+  const BLOCK = 200_000, F = A(0xf00d)
+  const pad = (a: string) => '0x' + a.slice(2).padStart(64, '0')
+  const buyers = [A(1), A(2), A(3), A(4)]
+  const rpc = (o: { wholeWindow: boolean; paidInSlices: number; failSlice?: boolean }) => ({
+    async call<T>(): Promise<T> { throw new Error('unused') },
+    async batch<T>(calls: { method: string; params: unknown[] }[]): Promise<(T | null)[]> {
+      return calls.map(c => {
+        if (c.method === 'eth_getCode') return '0x' as T // the funder is a person
+        const q = c.params[0] as { topics: (string | null)[]; fromBlock: string; toBlock: string }
+        const from = parseInt(q.fromBlock, 16), to = parseInt(q.toBlock, 16)
+        if (q.topics[1] === null) // a buyer's funding: F paid it ~3 hours before the coin
+          return [{ topics: ['0x', pad(F), q.topics[2]], blockNumber: '0x' + (BLOCK - 20_000).toString(16), logIndex: '0x0', transactionHash: '0x1' }] as T
+        if (to - from > 50_000) return (o.wholeWindow ? [] : null) as T // the whole window: no answer (shorter ranges are answered)
+        if (o.failSlice && from === BLOCK - 99_999) return null
+        // F's payouts, all ~3 hours back: `paidInSlices` wallets
+        return (from <= BLOCK - 20_000 && BLOCK - 20_000 <= to
+          ? Array.from({ length: o.paidInSlices }, (_, k) => ({ topics: ['0x', pad(F), pad(A(100 + k))] })) : []) as T
+      })
+    },
+  })
+  test('a hub counted in slices is a hub, not a cluster', async () => {
+    const c = await clustersOf(rpc({ wholeWindow: false, paidInSlices: 482 }), buyers, null, BLOCK)
+    expect(c.groups).toEqual([])
+  })
+  test('a small funder counted in slices is a cluster', async () => {
+    const c = await clustersOf(rpc({ wholeWindow: false, paidInSlices: 4 }), buyers, null, BLOCK)
+    expect(c.groups).toEqual([{ funder: F, wallets: buyers }])
+  })
+  test('a slice without an answer: counted as a hub', async () => {
+    const c = await clustersOf(rpc({ wholeWindow: false, paidInSlices: 4, failSlice: true }), buyers, null, BLOCK)
+    expect(c.groups).toEqual([])
   })
 })
 

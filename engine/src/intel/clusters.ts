@@ -23,8 +23,8 @@ const ZERO = '0x0000000000000000000000000000000000000000'
 const LOOKBACK = 99_999
 /** A source that paid more wallets than this in the window is a hub, not a cluster. */
 export const HUB_WALLETS = 25
-/** The shorter window a hub's payments are counted over when the whole one is too much to return. */
-const RETRY_SPAN = 10_000
+/** Slices a funder's payouts are counted in when the whole window gets no answer (every Arc endpoint takes 9k blocks). */
+const SLICE = 9_000
 
 export interface Clusters {
   /** Sources that funded 3 or more of the wallets. */
@@ -114,19 +114,23 @@ export async function clustersOf(rpc: Rpc, wallets: string[], creator: string | 
   const shared = [...counts].filter(([f, n]) => n >= 3 && f !== ZERO).map(([f]) => f)
   const hubs = new Set<string>()
   if (shared.length) {
-    const paid = (who: string[], from: number) => rpc.batch<RawLog[]>(who.map(f => ({
-      method: 'eth_getLogs',
-      params: [{ address: [USDC, NATIVE_LOGGER], topics: [TRANSFER, pad(f)], fromBlock: hex(Math.max(0, from)), toBlock: hex(block) }],
-    })))
-    const sent = await paid(shared, block - LOOKBACK)
-    // No answer over the whole window usually means too many transfers to
-    // return; count the last stretch instead, and if even that fails, it's a hub.
-    const retry = shared.filter((_, i) => !sent[i])
-    const short = retry.length ? await paid(retry, block - RETRY_SPAN) : []
-    shared.forEach((f, i) => {
-      const logs = sent[i] ?? (retry.includes(f) ? short[retry.indexOf(f)] : null) ?? null
-      if (!logs || new Set(logs.map(l => l.topics[2])).size > HUB_WALLETS) hubs.add(f)
-    })
+    const from = Math.max(0, block - LOOKBACK)
+    const query = (f: string, a: number, b: number) => ({ method: 'eth_getLogs', params: [{ address: [USDC, NATIVE_LOGGER], topics: [TRANSFER, pad(f)], fromBlock: hex(a), toBlock: hex(b) }] })
+    const sent = await rpc.batch<RawLog[]>(shared.map(f => query(f, from, block)))
+    for (const [i, f] of shared.entries()) {
+      // No answer over the whole window: an endpoint that takes shorter ranges,
+      // or too many transfers to return. Count the same window in slices (the
+      // funder's payouts to these wallets may be hours old, so a shorter window
+      // would miss them). Any slice unanswered: a hub.
+      let paid: Set<string> | null = sent[i] ? new Set(sent[i]!.map(l => l.topics[2])) : null
+      if (!paid) {
+        const slices: [number, number][] = []
+        for (let a = from; a <= block; a += SLICE) slices.push([a, Math.min(block, a + SLICE - 1)])
+        const parts = await rpc.batch<RawLog[]>(slices.map(([a, b]) => query(f, a, b)))
+        paid = parts.every(p => p !== null) ? new Set(parts.flatMap(p => p!.map(l => l.topics[2]))) : null
+      }
+      if (!paid || paid.size > HUB_WALLETS) hubs.add(f)
+    }
   }
   const c = creator?.toLowerCase() ?? null
   const creatorFunder = c ? funders.get(c) ?? null : null
