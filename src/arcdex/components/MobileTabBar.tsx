@@ -18,6 +18,7 @@ const TABS: { page: Page['name']; icon: string; label: string; to: Page }[] = [
 
 const MORE: { icon: string; label: string; to: Page }[] = [
   { icon: '◆', label: N_('Launchpad'), to: { name: 'launchpad' } },
+  { icon: '⚡', label: N_('Signals'), to: { name: 'signals' } },
   { icon: '◎', label: N_('Bridge'), to: { name: 'bridge' } },
   { icon: '♛', label: N_('Leaderboard'), to: { name: 'leaderboard' } },
   { icon: '⚑', label: N_('Clans'), to: { name: 'clans' } },
