@@ -1623,5 +1623,13 @@ const d: Record<string, string> = {
   "checking: funding trace": "inakagua: ufuatiliaji wa fedha",
   "checking: liquidity": "inakagua: ukwasi",
   "safety scan unavailable": "ukaguzi wa usalama haupatikani",
+  "No trade over {p}% of what the bot is worth (now at most {m} a trade): a small bot trades smaller and aims for a smaller profit.": "Hakuna biashara inayozidi {p}% ya thamani ya boti (sasa isizidi {m} kwa biashara): boti ndogo hufanya biashara ndogo na hulenga faida ndogo.",
+  "It reads its balance before every buy and never puts more than {p}% of what it is worth into one trade.": "Husoma salio lake kabla ya kila ununuzi na kamwe haweki zaidi ya {p}% ya thamani yake katika biashara moja.",
+  "no trade over {p}% of the wallet (read before each buy)": "hakuna biashara inayozidi {p}% ya pochi (husomwa kabla ya kila ununuzi)",
+  "By signal rule": "Kwa kanuni ya ishara",
+  "Momentum burst": "Msukumo wa kasi",
+  "{n} closed": "{n} zimefungwa",
+  "won": "zimeshinda",
+  "none closed yet": "hakuna iliyofungwa bado",
 }
 export default d

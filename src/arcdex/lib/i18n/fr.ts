@@ -1623,5 +1623,13 @@ const d: Record<string, string> = {
   "checking: funding trace": "vérification : traçage des fonds",
   "checking: liquidity": "vérification : liquidité",
   "safety scan unavailable": "analyse de sécurité indisponible",
+  "No trade over {p}% of what the bot is worth (now at most {m} a trade): a small bot trades smaller and aims for a smaller profit.": "Aucun trade au-delà de {p}% de la valeur du bot (au plus {m} par trade actuellement) : un petit bot trade plus petit et vise un gain plus modeste.",
+  "It reads its balance before every buy and never puts more than {p}% of what it is worth into one trade.": "Il lit son solde avant chaque achat et ne met jamais plus de {p}% de sa valeur dans un seul trade.",
+  "no trade over {p}% of the wallet (read before each buy)": "aucun trade au-delà de {p}% du portefeuille (lu avant chaque achat)",
+  "By signal rule": "Par règle de signal",
+  "Momentum burst": "Poussée de momentum",
+  "{n} closed": "{n} clôturés",
+  "won": "gagnés",
+  "none closed yet": "aucun clôturé pour l'instant",
 }
 export default d

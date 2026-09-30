@@ -1623,5 +1623,13 @@ const d: Record<string, string> = {
   "checking: funding trace": "检查中：资金追踪",
   "checking: liquidity": "检查中：流动性",
   "safety scan unavailable": "安全扫描不可用",
+  "No trade over {p}% of what the bot is worth (now at most {m} a trade): a small bot trades smaller and aims for a smaller profit.": "单笔交易不超过机器人价值的 {p}%（目前每笔最多 {m}）：小额机器人交易更小，目标利润也更低。",
+  "It reads its balance before every buy and never puts more than {p}% of what it is worth into one trade.": "每次买入前都会读取余额，单笔交易绝不超过其价值的 {p}%。",
+  "no trade over {p}% of the wallet (read before each buy)": "单笔不超过钱包的 {p}%（每次买入前读取）",
+  "By signal rule": "按信号规则",
+  "Momentum burst": "动量爆发",
+  "{n} closed": "{n} 笔已平仓",
+  "won": "盈利",
+  "none closed yet": "尚无平仓",
 }
 export default d

@@ -473,7 +473,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate }: 
         <button className={`at-big${acct.running ? ' stop' : ''}`} disabled={busy} onClick={() => void act({ action: acct.running ? 'stop' : 'start' })}>
           {acct.running ? `■ ${T('Stop trading')}` : `▶ ${T('Start trading')}`}
         </button>
-        {!acct.running && acct.cash < 5 && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>{T('Deposit virtual USDC first.')}</div>}
+        {!acct.running && acct.cash < 2 && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>{T('Deposit virtual USDC first.')}</div>}
         {error && <div className="at-error">⚠ {error}</div>}
       </div>
 
@@ -497,6 +497,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate }: 
         <Section title={T('Protection')}>
           <ul className="at-protect">
             <li>🛡 {T('Rug guard: out at once when liquidity is pulled, an early insider or a whale dumps, the price crashes on heavy selling, or the creator sells.')}</li>
+            {prot.maxTradeSharePct !== undefined && <li>⚖ {T('No trade over {p}% of what the bot is worth (now at most {m} a trade): a small bot trades smaller and aims for a smaller profit.', { p: prot.maxTradeSharePct, m: prot.maxTradeUsd == null ? '—' : usd(prot.maxTradeUsd) })}</li>}
             <li>⏸ {T('Pauses new trades for 30 minutes after {n} losses in a row (now {s} in a row).', { n: prot.pauseAfterLosses, s: prot.lossStreak })}</li>
             <li>📉 {T('Daily loss limit {l}: no new trades after it until tomorrow (UTC). Today: {t}.', { l: usd(prot.dailyLossLimitUsd, 0), t: usd(prot.todayPnlUsd) })}</li>
             <li>🛑 {T('Stops if the account falls {p}% below what was deposited.', { p: prot.stopBelowPct })}</li>
@@ -691,6 +692,7 @@ function LivePanel({ acct, act, busy, me, onMe }: { acct: PaperAccountView; act:
           </div>
           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
             {T('Send USDC on Arc to this address: at least {m} to go live. It trades up to {x} a trade and keeps {r} for gas. Only this bot uses it.', { m: usd(live.limits.minBalanceUsd, 0), x: usd(live.limits.maxTradeUsd, 0), r: usd(live.limits.reserveUsd, 0) })}
+            {live.limits.maxSharePct !== undefined && <> {T('It reads its balance before every buy and never puts more than {p}% of what it is worth into one trade.', { p: live.limits.maxSharePct })}</>}
           </div>
           {live.limits.preflight && (
             <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 4 }}>
@@ -955,6 +957,20 @@ function BotResults({ stats, positions, status, onStatus, navigate }: { stats: B
         <Stat label={T('Worst drawdown')} value={usd(shown ? -shown.maxDrawdownUsd : null)} />
         <Stat label={T('Average win / loss')} value={`${usd(shown?.avgWinUsd)} / ${usd(shown?.avgLossUsd)}`} small />
       </div>
+      {book === 'paper' && stats?.byRule && (
+        <div className="at-byrule">
+          <span className="at-byrule-h">{T('By signal rule')}</span>
+          {([['momentum', T('Momentum burst')], ['snipe', T('Snipe')], ['second-leg', T('Dip rebound')]] as const).map(([k, l]) => {
+            const r = stats.byRule![k]
+            return (
+              <span key={k}>
+                <b>{l}</b> {r.closed ? `${T('{n} closed', { n: r.closed })} · ${r.winRate === null ? '—' : `${Math.round(r.winRate * 100)}%`} ${T('won')} · ` : `${T('none closed yet')} `}
+                {r.closed > 0 && <span style={{ color: r.totalPnlUsd >= 0 ? 'var(--green)' : '#fca5a5' }}>{usd(r.totalPnlUsd)}</span>}
+              </span>
+            )
+          })}
+        </div>
+      )}
       <Section title={(book === 'live' ? T('Open live positions') : T('Open positions')) + ` · ${open.length}`}>
         {open.length === 0 ? <Empty>{T('No open positions.')}</Empty> : open.map(p => <PositionRow key={p.id} p={p} navigate={navigate} />)}
       </Section>
@@ -1168,7 +1184,8 @@ function BotPanel({ status, onStatus }: { status: BotStatus; onStatus: (s: BotSt
 }
 
 function limitsText(x: NonNullable<BotStatus['live']['limits']>): string {
-  const text = T('Limits: up to ${a} a trade · {o} open at once ({s} scalps) · stops for the day after a ${d} loss · keeps ${r} for gas · buys at most {b}% under the quote', { a: x.maxTradeUsd, o: x.maxOpen, s: x.maxOpenScalp, d: x.dailyLossUsd, r: x.reserveUsd, b: x.slippageBps / 100 })
+  const base = T('Limits: up to ${a} a trade · {o} open at once ({s} scalps) · stops for the day after a ${d} loss · keeps ${r} for gas · buys at most {b}% under the quote', { a: x.maxTradeUsd, o: x.maxOpen, s: x.maxOpenScalp, d: x.dailyLossUsd, r: x.reserveUsd, b: x.slippageBps / 100 })
+  const text = x.maxShareOfBalance ? `${base} · ${T('no trade over {p}% of the wallet (read before each buy)', { p: Math.round(x.maxShareOfBalance * 100) })}` : base
   return x.preflight ? `${text} · ${T('each buy simulated with its sale first (round trip at most {p}%)', { p: x.maxRoundTripPct ?? 20 })}` : text
 }
 

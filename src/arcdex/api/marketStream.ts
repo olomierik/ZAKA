@@ -133,7 +133,11 @@ export interface BotStats {
 }
 export interface BotStatsSet { all: BotStats; snipe: BotStats; secondLeg: BotStats; /** Missing from engines before scalps (2026-09-30). */ scalp?: BotStats }
 /** Top level: paper results; `live`: the bot wallet's real trades (engines before live trading lack it). */
-export interface BotStatsResponse extends BotStatsSet { mode: 'paper' | 'live' | 'off'; live?: BotStatsSet; watching: number }
+export interface BotStatsResponse extends BotStatsSet {
+  mode: 'paper' | 'live' | 'off'; live?: BotStatsSet; watching: number
+  /** The engine's paper results by the rule that fired each signal (engines since 2026-10-01). */
+  byRule?: { momentum: BotStats; snipe: BotStats; 'second-leg': BotStats }
+}
 export interface SafetyReport { token: string; launchpad: string; at: number; verdict: 'pass' | 'risky' | 'fail' | 'pending'; score: number; checks: SafetyCheck[]; template: string | null }
 
 export const getSignals = (limit = 100) => get<{ signals: TradeSignal[] }>(`/v1/signals?limit=${limit}`).then(r => r.signals)
