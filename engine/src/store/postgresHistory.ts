@@ -178,6 +178,17 @@ export class PostgresHistoryStore extends BatchedHistoryStore {
     const rows = (await this.sql.unsafe(`select * from arcdex_mkt_tokens where token = $1 limit 1`, [token])) as Row[]
     return rows.length ? rowToLaunch(rows[0]) : null
   }
+  async searchTokens(q: string, limit: number): Promise<LaunchInfo[]> {
+    await this.ready
+    // LIKE's own wildcards in the query are matched literally.
+    const like = q.replace(/[\\%_]/g, c => '\\' + c)
+    const rows = (await this.sql.unsafe(
+      `select * from arcdex_mkt_tokens where lower(symbol) like $1 || '%' or lower(name) like '%' || $1 || '%'
+       order by (lower(symbol) = $2) desc, (lower(symbol) like $1 || '%') desc, launched_at desc nulls last limit $3`,
+      [like, q, Math.min(50, limit)],
+    )) as Row[]
+    return rows.map(rowToLaunch)
+  }
   async cleanup(tradeRetentionHours: number) {
     try {
       await this.ready

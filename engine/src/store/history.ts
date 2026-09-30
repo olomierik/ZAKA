@@ -38,6 +38,8 @@ export interface HistoryStore {
   candles(token: string, interval: Interval, limit: number, beforeTs?: number): Promise<WireCandle[]>
   launches(limit: number): Promise<LaunchInfo[]>
   token(token: string): Promise<LaunchInfo | null>
+  /** Launches whose ticker or name matches `q` (lowercase, no $), exact tickers first. */
+  searchTokens(q: string, limit: number): Promise<LaunchInfo[]>
   cleanup(tradeRetentionHours: number): Promise<void>
   flush(): Promise<void>
   close(): void
@@ -131,6 +133,7 @@ export abstract class BatchedHistoryStore implements HistoryStore {
   abstract candles(token: string, interval: Interval, limit: number, beforeTs?: number): Promise<WireCandle[]>
   abstract launches(limit: number): Promise<LaunchInfo[]>
   abstract token(token: string): Promise<LaunchInfo | null>
+  abstract searchTokens(q: string, limit: number): Promise<LaunchInfo[]>
   abstract cleanup(tradeRetentionHours: number): Promise<void>
 
   trade(t: Trade) {
@@ -246,6 +249,10 @@ export class SupabaseHistoryStore extends BatchedHistoryStore {
     const rows = await db<Row[]>(`arcdex_mkt_tokens?token=eq.${token}&limit=1`)
     return rows.length ? rowToLaunch(rows[0]) : null
   }
+  async searchTokens(q: string, limit: number) {
+    const v = encodeURIComponent(`*${q.replace(/[*,()]/g, '')}*`)
+    return (await db<Row[]>(`arcdex_mkt_tokens?or=(symbol.ilike.${v},name.ilike.${v})&order=launched_at.desc&limit=${Math.min(50, limit)}`)).map(rowToLaunch)
+  }
   async cleanup(tradeRetentionHours: number) {
     if (this.paused) return
     try { log.info('history cleanup', { result: await db<unknown>('rpc/arcdex_mkt_cleanup', { method: 'POST', body: { p_trade_hours: tradeRetentionHours } }) }) }
@@ -263,6 +270,7 @@ export class NullHistoryStore implements HistoryStore {
   async candles() { return [] }
   async launches() { return [] }
   async token() { return null }
+  async searchTokens() { return [] }
   async cleanup() {}
   async flush() {}
   close() {}

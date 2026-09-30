@@ -19,6 +19,7 @@
 //   GET /v1/bot/status                          mode, bot wallet, live limits and activity
 //   POST /v1/bot/control                        the owner's signed switch (bot/control.ts)
 //   GET /v1/bot/scan?limit=200&status=…         every coin being scanned, and why (bot/scanFeed.ts)
+//   GET /v1/search?q=…&limit=20                 coins by name, ticker or address: every launch this engine has seen
 //   POST /v1/paper/accounts                     a new paper account: its key, once (bot/paperAccounts.ts)
 //   GET|POST /v1/paper/account                  the account behind the X-Paper-Key header; POST acts on it
 //   GET /health           summary (200 ok/degraded, 503 down)
@@ -26,8 +27,8 @@
 
 import type { Server, ServerWebSocket } from 'bun'
 import {
-  INTERVALS, isInterval, parseClientMessage, toWire, topicOf,
-  type Interval, type LaunchInfo, type ServerMessage, type TokenStats, type WireCandle, type WireTrade,
+  INTERVALS, isInterval, parseClientMessage, searchScore, toWire, topicOf,
+  type Interval, type LaunchInfo, type SearchHit, type ServerMessage, type TokenStats, type WireCandle, type WireTrade,
 } from '../../../api/_marketProtocol'
 import type { Config } from '../config'
 import { log, errMsg } from '../log'
@@ -105,6 +106,29 @@ export class DataApi {
     }
     // With their current price and market cap, when this process tracks them.
     return list.map(l => { const s = this.engine?.statsOf(l.token); return s ? { ...l, priceUsd: s.priceUsd, marketCapUsd: s.marketCapUsd } : l })
+  }
+
+  /** Coins by name, ticker (with or without $) or address: the ones in memory, then stored launches; best matches first, bigger coins first among equals. */
+  async search(query: string, limit: number): Promise<SearchHit[]> {
+    const q = query.trim().toLowerCase().replace(/^\$+/, '').trim().slice(0, 64)
+    if (q.length < 2) return []
+    const found = new Map<string, LaunchInfo>()
+    if (/^0x[0-9a-f]{40}$/.test(q)) {
+      const m = await this.meta(q)
+      if (m) found.set(q, m)
+    } else {
+      for (const m of this.engine?.metas.values() ?? []) if (searchScore({ symbol: m.symbol, name: m.name, address: m.token }, q) > 1) found.set(m.token, m)
+      for (const m of await this.history.searchTokens(q, 50).catch(() => [] as LaunchInfo[])) if (!found.has(m.token)) found.set(m.token, m)
+    }
+    const hits = [...found.values()].map(m => {
+      const s = this.engine?.statsOf(m.token) ?? null
+      return {
+        score: searchScore({ symbol: m.symbol, name: m.name, address: m.token }, q),
+        hit: { token: m.token, symbol: m.symbol, name: m.name, launchpad: m.launchpad, image: m.image ?? null, pool: m.pool ?? null, launchedAt: m.timestamp ?? null,
+          priceUsd: s?.priceUsd ?? null, marketCapUsd: s?.marketCapUsd ?? null, liquidityUsd: s?.liquidityUsd ?? null, volume24h: s?.vol24 ?? null } as SearchHit,
+      }
+    })
+    return hits.filter(h => h.score > 0).sort((a, b) => b.score - a.score || (b.hit.marketCapUsd ?? 0) - (a.hit.marketCapUsd ?? 0) || (b.hit.launchedAt ?? 0) - (a.hit.launchedAt ?? 0)).slice(0, limit).map(h => h.hit)
   }
 
   async market(limit: number) {
@@ -240,6 +264,7 @@ export function startServer({ cfg, api, health }: ServerDeps) {
       try {
         if (url.pathname === '/v1/tokens/new') return json(req, 200, { launches: await api.launches(limit(50, 500)) }, 'public, max-age=1')
         if (url.pathname === '/v1/market') return json(req, 200, { tokens: await api.market(limit(100, 1_000)) }, 'public, max-age=2')
+        if (url.pathname === '/v1/search') return json(req, 200, { tokens: await api.search(url.searchParams.get('q') ?? '', limit(20, 50)) }, 'public, max-age=10')
         if (url.pathname.startsWith('/v1/signals') || url.pathname.startsWith('/v1/safety/') || url.pathname.startsWith('/v1/bot/')) {
           const bot = api.bot
           if (!bot) return json(req, 503, { error: 'signals are not running in this process' })

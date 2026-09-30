@@ -265,6 +265,34 @@ export interface ScanStats {
   byStatus: Record<ScanRow['status'], number>
 }
 
+/** A coin found by name, ticker or address (GET /v1/search). */
+export interface SearchHit {
+  token: string
+  symbol: string
+  name: string
+  launchpad: string
+  image: string | null
+  pool: string | null
+  launchedAt: number | null
+  priceUsd: number | null
+  marketCapUsd: number | null
+  liquidityUsd: number | null
+  volume24h: number | null
+}
+
+/** How well a coin matches a search (0: not at all): the site's Launchpad matcher, shared. */
+export function searchScore(c: { symbol: string; name: string; address: string }, q: string): number {
+  if (!q) return 0
+  const sym = c.symbol.toLowerCase(), name = c.name.toLowerCase(), addr = c.address.toLowerCase()
+  if (sym === q || addr === q) return 6
+  if (name === q) return 5
+  if (sym.startsWith(q)) return 4
+  if (name.startsWith(q) || name.split(/\s+/).some(w => w.startsWith(q))) return 3
+  if (sym.includes(q) || name.includes(q)) return 2
+  if ((/^0x[0-9a-f]{2,}$/.test(q) && addr.startsWith(q)) || (/^[0-9a-f]{6,}$/.test(q) && addr.includes(q))) return 1
+  return 0
+}
+
 /** A visitor's paper-trading account on the engine (virtual USDC; GET/POST /v1/paper/account). */
 export interface PaperAccountView {
   id: string
