@@ -442,8 +442,11 @@ export class Bot implements EngineObserver {
     // scan's time) made a snipe a scalp, or a rebound rejected, on missing data
     // (2026-09-30). They wait for the scan now, retried every 15s, for up to
     // UNKNOWN_RISK_WAIT_MS (a snipe no later than the end of its window); after
-    // that, as before. A momentum scalp never waits.
-    if (r?.verdict === 'risky' && rule !== 'momentum') {
+    // that, as before. A momentum scalp never waits, and neither does a coin whose market numbers
+    // already make it Prime (2026-10-01): it's traded with Precision either way, and its take-profit
+    // came 10-48s after the signal, so waiting for the scan only costs the move.
+    const primeNow = gradeOf({ ageSec, liquidityUsd: this.o.engine.tokens.get(token)?.liquidityUsd ?? null, marketCapUsd: null, buyers: feats.buyers, buySellRatio: feats.buySellRatio, runUp: feats.runUp, topBuyerPct: feats.topBuyerPct, score: r?.score ?? 0, flags: [], roundTripPct: r?.honeypot?.roundTripLossPct ?? null }).grade === 'prime'
+    if (r?.verdict === 'risky' && rule !== 'momentum' && !primeNow) {
       const unknown = r.checks.filter(c => c.risk && c.ok === null)
       if (unknown.length && !r.checks.some(c => c.risk && c.ok === false)) {
         const key = `${rule}:${token}`, now = Date.now()
