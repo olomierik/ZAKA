@@ -20,8 +20,8 @@ function BurnTicker({ navigate }: { navigate: (p: Page) => void }) {
   return (
     <button className="navbar-burn-ticker" onClick={() => navigate({ name: 'burn' })} title={T('$ARCD buyback & burn')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
       <span>🔥</span>
-      <span style={{ color: 'var(--amber)', fontWeight: 700 }}>$ARCD {stats ? compact(stats.burned) : '…'}{' '}{T("burned")}</span>
-      {pct >= 0.01 && <span style={{ color: 'var(--text-muted)' }}>({pct.toFixed(2)}%)</span>}
+      <span className="burn-label" style={{ color: 'var(--amber)', fontWeight: 700 }}>$ARCD {stats ? compact(stats.burned) : '…'}{' '}{T("burned")}</span>
+      {pct >= 0.01 && <span className="burn-label" style={{ color: 'var(--text-muted)' }}>({pct.toFixed(2)}%)</span>}
     </button>
   )
 }

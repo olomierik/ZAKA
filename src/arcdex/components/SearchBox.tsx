@@ -5,12 +5,15 @@ import { shortAddr, useTrader } from '../lib/identity'
 import { loadBlueChips, useMarket, type TokenMeta } from '../lib/tokenMeta'
 import { useRecentLaunches } from '../api/marketStream'
 import { setPrefs, usePrefs } from '../lib/prefs'
+import { useCoinFinder, type FoundCoin } from '../lib/coinFinder'
 import type { Page } from '../App'
 import { t as T, N_ } from '../lib/i18n'
 
 // fomo-style search: recently viewed coins when empty; otherwise coins,
 // traders and clans (All / Tokens / Users / Clans), with Follow inline.
-// "/" focuses it from anywhere; Esc closes.
+// Coins come from everywhere (lib/coinFinder.ts): by name, ticker or any
+// contract address, even one no list has. "/" focuses it; Enter opens the
+// best match; Esc closes.
 
 type Tab = 'all' | 'tokens' | 'users' | 'clans'
 const money = (n: number | null) => n == null ? '—' : `$${n >= 1e9 ? (n / 1e9).toFixed(2) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : n.toFixed(2)}`
@@ -56,16 +59,18 @@ export default function SearchBox({ navigate, mobileOpen = false }: { navigate: 
     return () => { alive = false; clearTimeout(id) }
   }, [s])
 
-  const tokens = useMemo(() => {
-    if (!s) return []
-    const known = [...chips, ...market.filter(m => !chips.some(c => c.address === m.address))]
-    const fresh: TokenMeta[] = launches.filter(l => !known.some(k => k.address === l.token)).map(l => ({
-      address: l.token, symbol: l.symbol, name: l.name, image: l.image ?? null, priceUsd: 0, pool: l.pool ?? '',
-      change24h: 0, change1h: 0, marketCapUsd: null, volume24h: 0, liquidityUsd: 0, bonded: null, createdAt: new Date(l.timestamp).toISOString(),
-    }))
-    const all = [...known, ...fresh]
-    return all.filter(t => t.address === s || t.symbol.toLowerCase().includes(s.replace(/^\$/, '')) || t.name.toLowerCase().includes(s)).slice(0, 12)
-  }, [s, market, chips, launches])
+  // Everything this page already knows, searched at once; the finder adds the engine, GeckoTerminal and the chain.
+  const local = useMemo<FoundCoin[]>(() => {
+    const seen = new Set<string>()
+    const out: FoundCoin[] = []
+    const add = (c: FoundCoin) => { if (!seen.has(c.address)) { seen.add(c.address); out.push(c) } }
+    const fromMeta = (t: TokenMeta): FoundCoin => ({ address: t.address.toLowerCase(), symbol: t.symbol, name: t.name, image: t.image, pool: t.pool || null, launchpad: null, priceUsd: t.priceUsd || null, marketCapUsd: t.marketCapUsd, liquidityUsd: t.liquidityUsd || null, change24h: t.change24h, source: 'local' })
+    chips.forEach(c => add(fromMeta(c)))
+    market.forEach(m => add(fromMeta(m)))
+    launches.forEach(l => add({ address: l.token.toLowerCase(), symbol: l.symbol, name: l.name, image: l.image ?? null, pool: l.pool ?? null, launchpad: l.launchpad, priceUsd: l.priceUsd ?? null, marketCapUsd: l.marketCapUsd ?? null, liquidityUsd: null, change24h: null, source: 'local' }))
+    return out
+  }, [market, chips, launches])
+  const { results: tokens, searching, noToken } = useCoinFinder(q, local, 12)
   const isAddr = /^0x[0-9a-f]{40}$/.test(s)
 
   const openToken = (t: { address: string; pool: string | null }) => { setOpen(false); setQ(''); navigate({ name: 'argus', address: t.address, pool: t.pool ?? '' }) }
@@ -75,22 +80,29 @@ export default function SearchBox({ navigate, mobileOpen = false }: { navigate: 
     try { await socialWrite(trader, on ? 'unfollow' : 'follow', { target: a }) } catch { setFollowing(f => { const n = new Set(f); if (on) n.add(a); else n.delete(a); return n }) }
   }
 
-  const tokenRow = (t: TokenMeta | { address: string; symbol: string; image: string | null; pool: string | null; priceUsd?: number; marketCapUsd?: number | null; change24h?: number }) => (
+  const tokenRow = (t: { address: string; symbol: string; name?: string; image: string | null; pool: string | null; launchpad?: string | null; marketCapUsd?: number | null; change24h?: number | null }) => (
     <button key={t.address} className="menu-item" onClick={() => openToken(t)}>
-      {t.image ? <img src={t.image} alt="" style={{ width: 26, height: 26, borderRadius: '50%' }} /> : <Avatar address={t.address} size={26} />}
-      <span style={{ minWidth: 0, flex: 1 }}><b>{t.symbol}</b> <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontFamily: 'var(--mono)' }}>{shortAddr(t.address)}</span></span>
-      {'marketCapUsd' in t && <span style={{ fontSize: '0.72rem', fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>{T("MC")}{' '}{money(t.marketCapUsd ?? null)}</span>}
-      {'change24h' in t && t.change24h != null && <span style={{ fontSize: '0.72rem', width: 60, textAlign: 'right', color: t.change24h >= 0 ? 'var(--green)' : 'var(--red)' }}>{t.change24h >= 0 ? '+' : ''}{t.change24h.toFixed(1)}%</span>}
+      {t.image ? <img src={t.image} alt="" style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0 }} /> : <Avatar address={t.address} size={26} />}
+      <span style={{ minWidth: 0, flex: 1, textAlign: 'left' }}>
+        <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><b>{t.symbol}</b>{t.name && t.name !== t.symbol ? <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}> {t.name}</span> : null}</span>
+        <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem', fontFamily: 'var(--mono)' }}>{shortAddr(t.address)}{t.launchpad ? ` · ${t.launchpad}` : ''}</span>
+      </span>
+      {t.marketCapUsd != null && <span style={{ fontSize: '0.72rem', fontFamily: 'var(--mono)', color: 'var(--text-muted)', flexShrink: 0 }}>{T("MC")}{' '}{money(t.marketCapUsd)}</span>}
+      {t.change24h != null && <span style={{ fontSize: '0.72rem', width: 56, textAlign: 'right', flexShrink: 0, color: t.change24h >= 0 ? 'var(--green)' : 'var(--red)' }}>{t.change24h >= 0 ? '+' : ''}{t.change24h.toFixed(1)}%</span>}
     </button>
   )
 
   return (
-    <div ref={box} className={`navbar-search-wrap${mobileOpen ? ' open' : ''}`} style={{ position: 'relative' }}>
+    <div ref={box} className={`navbar-search-wrap${mobileOpen ? ' open' : ''}`}>
       <input ref={input} className="navbar-search" value={q} placeholder={T("Search tokens or traders…   /")}
         onFocus={() => setOpen(true)} onChange={e => { setQ(e.target.value); setOpen(true) }}
-        onKeyDown={e => { if (e.key === 'Enter' && isAddr) openToken({ address: s, pool: tokens[0]?.pool ?? '' }) }} />
+        onKeyDown={e => {
+          if (e.key !== 'Enter') return
+          if (tokens[0]) openToken(tokens[0])
+          else if (isAddr) openToken({ address: s, pool: '' })
+        }} />
       {open && (
-        <div className="menu-pop" style={{ top: 36, left: 0, right: 0, minWidth: 320, maxHeight: 460, overflowY: 'auto' }}>
+        <div className="menu-pop search-pop" style={{ top: 36, left: 0, right: 0, maxHeight: 460, overflowY: 'auto' }}>
           {!s ? (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
@@ -104,7 +116,10 @@ export default function SearchBox({ navigate, mobileOpen = false }: { navigate: 
               <div style={{ display: 'flex', gap: 4, padding: '2px 4px 6px' }}>
                 {([['all', N_('All')], ['tokens', N_('Tokens')], ['users', N_('Users')], ['clans', N_('Clans')]] as [Tab, string][]).map(([k, l]) => <button key={k} onClick={() => setTab(k)} className={`disc-sub${tab === k ? ' active' : ''}`}>{T(l)}</button>)}
               </div>
-              {(tab === 'all' || tab === 'tokens') && (tokens.length ? tokens.map(tokenRow) : isAddr ? tokenRow({ address: s, symbol: T('Open token'), image: null, pool: '' }) : tab === 'tokens' ? <Nothing /> : null)}
+              {(tab === 'all' || tab === 'tokens') && (tokens.length ? tokens.map(tokenRow)
+                : searching ? <div style={{ padding: 12, fontSize: '0.78rem', color: 'var(--text-muted)' }}>{T('Searching all of Arc…')}</div>
+                : noToken ? <div style={{ padding: 12, fontSize: '0.78rem', color: 'var(--text-muted)' }}>{T('No token at this address on Arc. It may be a wallet: see it below.')}</div>
+                : tab === 'tokens' ? <Nothing /> : null)}
               {(tab === 'all' || tab === 'users') && (users.length ? users.map(u => (
                 <div key={u.address} className="menu-item" style={{ cursor: 'default' }}>
                   <button onClick={() => { setOpen(false); setQ(''); navigate({ name: 'trader', address: u.address }) }} style={{ display: 'flex', gap: 10, alignItems: 'center', background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', padding: 0, flex: 1, minWidth: 0 }}>
@@ -124,7 +139,7 @@ export default function SearchBox({ navigate, mobileOpen = false }: { navigate: 
                   <b>{c.name}</b><span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T("clan")}</span>
                 </button>
               )) : tab === 'clans' ? <Nothing /> : null)}
-              {tab === 'all' && !tokens.length && !users.length && !clans.length && !isAddr && <Nothing />}
+              {tab === 'all' && !tokens.length && !users.length && !clans.length && !isAddr && !searching && <Nothing />}
             </>
           )}
         </div>

@@ -610,6 +610,39 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
   - `bun scripts/test-pool-swaps.ts`: on-chain swap loading and prices vs GeckoTerminal.
   - `bun scripts/test-holders.ts [token] [createdIso]`: a full holder count; it must report 0 negative balances.
 
+## Every screen size: nothing off-screen (2026-09-30, owner's request)
+
+"All features and buttons reachable, no button out of screen, on tablets and every size."
+- **Measured first.** The top bar overflowed by 151px at 1280px, 88px at 1100px and 164px at 1024px, cutting off Connect Wallet and the language picker. On a 320px phone, opening search pushed Connect Wallet off the screen, and the results sheet (like every top-bar menu) sat partly under the tab bar.
+- **The top bar** (`arcdex.css`, the "top bar is never wider than the screen" block): less important things drop out as the screen narrows, and each is still reachable elsewhere. The right side (language, account, Connect Wallet) never shrinks, and the links scroll sideways only as a last resort.
+
+  | Width | What changes |
+  |---|---|
+  | ≤1480px | the secondary links (Feed, Leaderboard, Clans, Rewards; also in the left panel and the account menu) and the "Arc Mainnet" label drop out |
+  | ≤1320px | the burn ticker is just its 🔥, still the way to /burn |
+  | ≤1180px | the MAINNET badge goes and the links get tighter |
+  | 901–1024px | the logo icon alone |
+  | ≤900px | the links move into the ☰ drawer |
+  | ≤767px | the phone layout, with the tab bar |
+
+  - AUTOTRADE is a highlighted link right after Terminal.
+- **The drawer (≤900px)** lists every page: Terminal, Feed, Leaderboard, Clans, Rewards, Launchpad, Swap, Bridge, Portfolio, Autotrade, Alerts, Transfers and $ARCD burn (`MOBILE_NAV` in `App.tsx`).
+- **Phones (≤600px):** search opens as a full-width row under the top bar (its position is in the stylesheet, not inline, so the phone rule wins). Any menu open in the top bar lifts it above the tab bar (`.top-navbar:has(.menu-pop)`).
+- **Checked (2026-09-30)** with an in-page audit: interactive elements off-screen and not in a scrollable box, and sideways page scroll.
+  - Pages: /app, /autotrade, /swap, /bridge, /launchpad, /portfolio, /leaderboard, /feed, /clans, /rewards, /transfers, /burn, /alerts, a coin page, and the landing.
+  - Widths: 1920, 1440, 1366, 1280, 1180, 1100, 1024, 1000, 960, 901, 820, 768, 390, 360 and 320px. Nothing off-screen.
+
+## Search: any coin, by name or contract address (2026-09-30, owner's request)
+
+- **`lib/coinFinder.ts` `useCoinFinder(query, local)`:** the coins the page already has, at once. Then, from two characters, each source capped at 5s so none holds the others back:
+  - the engine's `GET /v1/search?q=`: every launch in its memory and its Postgres (`HistoryStore.searchTokens`), on every launchpad;
+  - GeckoTerminal's `/search/pools`: names or token addresses, through `/api/gecko`;
+  - for a full address no one lists, the token's own `symbol()`/`name()` on-chain.
+- Merged by address and ranked with the Launchpad's matcher, `searchScore` in `api/_marketProtocol.ts` (shared with the engine): exact ticker or address, then prefixes, then contains; bigger coins first among equals.
+- **Top bar (`SearchBox.tsx`):** coins with name, launchpad and MC. Enter opens the best match. A wallet address says "No token at this address", and View trader still works.
+- **Terminal:** while its search box has text, "More on Arc" under the list shows coins the list isn't showing (`components/FoundOnArc.tsx`). The list itself still follows its tab and filters.
+- **Checked:** a coin launched minutes earlier on an unlisted launchpad (NATFLEX), found by address and by name; a wallet address (no token, view as trader); and a 320px phone.
+
 ## Phones: native-app layout (2026-09-26)
 
 One breakpoint, `max-width: 767px` (`lib/useMobile.ts`, and the last block of `arcdex.css`). Desktop is unchanged.

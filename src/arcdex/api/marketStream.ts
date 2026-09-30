@@ -11,7 +11,7 @@
 // subscription is re-sent, and the engine answers each with a fresh snapshot.
 
 import { useSyncExternalStore } from 'react'
-import { botControlMessage, type BotControl, type BotPosition, type BotStatus, type PaperAccountView, type PaperAction, type ScanRow, type ScanStats, type Interval, type LaunchInfo, type SafetyCheck, type ServerMessage, type TokenStats, type TradeSignal, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
+import { botControlMessage, type BotControl, type BotPosition, type BotStatus, type PaperAccountView, type PaperAction, type ScanRow, type ScanStats, type SearchHit, type Interval, type LaunchInfo, type SafetyCheck, type ServerMessage, type TokenStats, type TradeSignal, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
 
 const WS_URL = (import.meta.env.VITE_ARCDEX_WS_URL as string | undefined) || undefined
 const API_URL = ((import.meta.env.VITE_ARCDEX_API_URL as string | undefined) || (WS_URL ? WS_URL.replace(/^ws/, 'http').replace(/\/ws\/?$/, '') : '')).replace(/\/$/, '')
@@ -142,6 +142,8 @@ export const getBotPositions = (status: 'open' | 'closed' | 'all' = 'all', limit
   get<{ positions: BotPosition[] }>(`/v1/bot/positions?status=${status}&limit=${limit}`).then(r => r.positions)
 export const getSafety = (token: string) => get<{ report: SafetyReport }>(`/v1/safety/${token.toLowerCase()}`).then(r => r.report)
 export const getBotStatus = () => get<BotStatus>('/v1/bot/status')
+/** Coins by name, ticker or address: every launch the engine has seen (lib/coinFinder.ts merges it with the rest). */
+export const engineSearch = (q: string, limit = 20) => get<{ tokens: SearchHit[] }>(`/v1/search?q=${encodeURIComponent(q)}&limit=${limit}`).then(r => r.tokens)
 export const getScan = (limit = 200, status?: ScanRow['status']) => get<{ rows: ScanRow[]; stats: ScanStats }>(`/v1/bot/scan?limit=${limit}${status ? `&status=${status}` : ''}`)
 
 // ── visitors' paper accounts (virtual USDC; engine/src/bot/paperAccounts.ts) ──

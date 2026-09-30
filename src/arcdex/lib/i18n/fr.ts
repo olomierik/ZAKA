@@ -1432,5 +1432,11 @@ const d: Record<string, string> = {
   "New coins in their first 10 minutes that pass every safety check and show real buying. Half sold at 2×, the rest trails.": "Nouveaux coins dans leurs 10 premières minutes, qui passent tous les contrôles de sécurité et montrent de vrais achats. La moitié vendue à 2×, le reste en stop suiveur.",
   "Snipes on coins with a risk flag (the creator holds a big stake, launches coin after coin). A fifth of the size, most sold at +30%, out when the creator sells.": "Snipes sur des coins signalés à risque (le créateur détient une grosse part, lance coin sur coin). Un cinquième de la taille, l'essentiel vendu à +30 %, sortie quand le créateur vend.",
   "Coins that ran 10× or more, fell 50–85% and are climbing back on real buying. Held up to 6 hours.": "Coins qui ont fait 10× ou plus, ont chuté de 50 à 85 % et remontent sur de vrais achats. Gardés jusqu'à 6 heures.",
+  "Searching all of Arc…": "Recherche sur tout Arc…",
+  "No token at this address on Arc. It may be a wallet: see it below.": "Aucun token à cette adresse sur Arc. C'est peut-être un portefeuille : voir ci-dessous.",
+  "More on Arc": "Plus sur Arc",
+  "coins not in this list": "coins absents de cette liste",
+  "No token at this address on Arc.": "Aucun token à cette adresse sur Arc.",
+  "not listed yet": "pas encore listé",
 }
 export default d

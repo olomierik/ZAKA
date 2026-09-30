@@ -18,6 +18,7 @@ import { toggleWatch, usePrefs } from '../lib/prefs'
 import { t as T, N_ } from '../lib/i18n'
 import { useIsMobile } from '../lib/useMobile'
 import MobileHome from '../components/MobileHome'
+import FoundOnArc from '../components/FoundOnArc'
 import RiskBadge from '../components/RiskBadge'
 import { RISK_COLOR as RISK_DOT, riskText, tokenRisk, type Risk } from '../lib/risk'
 
@@ -587,6 +588,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   }, [search, source, viewTab, minMcap, maxMcap, minVol])
 
   const filtered = curation.groups.map(g => g.primary).filter(matchesFilters)
+  const shownAddresses = useMemo(() => new Set(filtered.map(t => t.address.toLowerCase())), [filtered])
 
   // ── sort ──────────────────────────────────────────────────────────
   const sorted = [...filtered].sort((a, b) => {
@@ -791,6 +793,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
             )}
           </div>
         )}
+        {/* A name or pasted address the list doesn't have: found anyway, from all of Arc. */}
+        {search.trim().length >= 2 && <FoundOnArc query={search} shown={shownAddresses} navigate={navigate} />}
       </div>
     </div>
   )

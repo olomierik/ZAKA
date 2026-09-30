@@ -1432,5 +1432,11 @@ const d: Record<string, string> = {
   "New coins in their first 10 minutes that pass every safety check and show real buying. Half sold at 2×, the rest trails.": "发射前 10 分钟内、通过所有安全检查并有真实买盘的新币。一半在 2× 卖出，其余移动止损。",
   "Snipes on coins with a risk flag (the creator holds a big stake, launches coin after coin). A fifth of the size, most sold at +30%, out when the creator sells.": "对带风险标记的币（创建者持有大量份额、接连发币）进行狙击。仓位为五分之一，大部分在 +30% 卖出，创建者卖出即离场。",
   "Coins that ran 10× or more, fell 50–85% and are climbing back on real buying. Held up to 6 hours.": "涨过 10 倍以上、回落 50–85% 且在真实买盘推动下回升的币。最多持有 6 小时。",
+  "Searching all of Arc…": "正在搜索整个 Arc…",
+  "No token at this address on Arc. It may be a wallet: see it below.": "Arc 上此地址没有代币。它可能是一个钱包：见下方。",
+  "More on Arc": "Arc 上的更多",
+  "coins not in this list": "不在此列表中的币",
+  "No token at this address on Arc.": "Arc 上此地址没有代币。",
+  "not listed yet": "尚未上架",
 }
 export default d

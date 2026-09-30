@@ -797,8 +797,10 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .m-autotrade-bolt { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; background: linear-gradient(135deg, #f59e0b, #f97316); flex-shrink: 0; }
 .m-autotrade-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .m-autotrade-text b { font-size: 1.02rem; font-weight: 900; letter-spacing: 0.08em; }
-.m-autotrade-text span { font-size: 0.74rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
-.m-autotrade-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; flex-shrink: 0; animation: at-pulse 1.6s ease-out infinite; }
+.m-autotrade-text > span { font-size: 0.74rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+/* Pulses by fading: a spreading ring would be clipped by the line's ellipsis. */
+.m-autotrade-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; flex-shrink: 0; animation: m-blink 1.6s ease-in-out infinite; }
+@keyframes m-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .m-autotrade-go { font-size: 1.4rem; color: var(--text-muted); }
 @media (prefers-reduced-motion: reduce) { .m-autotrade-dot { animation: none; } }
 .m-home-live { font-size: 0.62rem; font-weight: 900; letter-spacing: 0.5px; padding: 2px 7px; border-radius: 999px; background: #ef4444; color: #fff; }
@@ -1225,3 +1227,50 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 /* The AUTOTRADE link in the top bar (components/NavBar.tsx) */
 .navbar-link.navbar-autotrade { color: #fbbf24; font-weight: 900; letter-spacing: 0.04em; border: 1px solid rgba(245,158,11,0.45); border-radius: 999px; padding: 4px 11px; background: rgba(245,158,11,0.08); white-space: nowrap; }
 .navbar-link.navbar-autotrade.active, .navbar-link.navbar-autotrade:hover { background: rgba(245,158,11,0.18); color: #fcd34d; }
+
+/* Search: everywhere on Arc (components/SearchBox.tsx, FoundOnArc.tsx) */
+.search-pop { min-width: min(360px, calc(100vw - 24px)); }
+.found-arc { margin: 12px 0 18px; border: 1px solid var(--adx-card-border); border-radius: 12px; background: var(--adx-card-bg); overflow: hidden; }
+.found-arc-h { padding: 10px 14px; font-size: 0.8rem; font-weight: 800; border-bottom: 1px solid var(--adx-card-border); }
+.found-arc-h span { font-weight: 500; color: var(--text-muted); margin-left: 6px; }
+.found-arc-note { padding: 12px 14px; font-size: 0.78rem; color: var(--text-muted); }
+.found-arc-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; background: none; border: none; border-bottom: 1px solid var(--adx-card-border); color: var(--text); text-align: left; cursor: pointer; }
+.found-arc-row:last-child { border-bottom: none; }
+.found-arc-row:hover { background: var(--bg-2); }
+.found-arc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.86rem; }
+.found-arc-name span { color: var(--text-muted); font-size: 0.76rem; }
+.found-arc-name small { display: block; color: var(--text-muted); font-family: var(--mono); font-size: 0.68rem; }
+.found-arc-mc { flex-shrink: 0; font-family: var(--mono); font-size: 0.74rem; color: var(--text-muted); }
+
+/* ── The top bar is never wider than the screen (owner's request, 2026-09-30:
+   "no button goes out of screen"). Measured 2026-09-30: it overflowed by
+   151px at 1280px, 88px at 1100px and 164px at 1024px, cutting off Connect
+   Wallet and the language picker. Less important things drop out as the
+   screen narrows (each is also in the left panel or the account menu), the
+   right side never shrinks, and the links scroll sideways as a last resort. */
+.navbar-links { min-width: 0; flex-shrink: 1; overflow-x: auto; scrollbar-width: none; }
+.navbar-links::-webkit-scrollbar { display: none; }
+.navbar-search-wrap { flex: 1 1 150px; min-width: 110px; }
+.navbar-right { flex-shrink: 0; }
+@media (max-width: 1480px) { .navbar-link.nav-secondary { display: none; } .navbar-live span { display: none; } }
+/* 1320px and under: the burn ticker is just its 🔥 (still the way to the burn page); under 900, it's in the drawer. */
+@media (max-width: 1320px) { .navbar-burn-ticker .burn-label { display: none; } }
+@media (max-width: 900px) { .navbar-burn-ticker { display: none; } }
+@media (max-width: 1180px) {
+  .navbar-badge { display: none; }
+  .top-navbar { gap: 10px; padding: 0 12px; }
+  .navbar-link { padding: 6px 7px; font-size: 0.74rem; }
+}
+/* 901–1024px: the logo icon alone (the links need the room); below 900 the links move into the drawer. */
+@media (max-width: 1024px) and (min-width: 901px) { .navbar-logo { font-size: 0; gap: 0 !important; } }
+
+/* The search box: in the bar on wide screens; on phones (≤600px) a full-width
+   row under the bar when opened, so opening it never pushes Connect Wallet
+   off the screen (it did at 320px). The position lives here, not inline, so
+   the phone rule can win. */
+.top-navbar { position: relative; }
+.navbar-search-wrap { position: relative; }
+@media (max-width: 600px) { .navbar-search-wrap { position: absolute; } }
+/* A menu open in the top bar (search results, the account menu) sits above
+   the phone's tab bar: as a bottom sheet it was partly hidden behind it. */
+.top-navbar:has(.menu-pop) { z-index: 1150; }

@@ -70,7 +70,8 @@ const MOBILE_NAV: [Page, string, string][] = [
   [{ name: 'terminal' }, '◈', N_('Terminal')], [{ name: 'feed' }, '◉', N_('Feed')], [{ name: 'leaderboard' }, '♛', N_('Leaderboard')],
   [{ name: 'clans' }, '⚑', N_('Clans')], [{ name: 'rewards' }, '✦', N_('Rewards')], [{ name: 'launchpad' }, '◆', N_('Launchpad')],
   [{ name: 'swap' }, '⇄', N_('Swap')], [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'portfolio' }, '▤', N_('Portfolio')],
-  [{ name: 'signals' }, '⚡', N_('Autotrade')],
+  [{ name: 'signals' }, '⚡', N_('Autotrade')], [{ name: 'alerts' }, '🔔', N_('Alerts')], [{ name: 'transfers' }, '⇅', N_('Transfers')],
+  [{ name: 'burn' }, '🔥', N_('$ARCD burn')],
 ]
 
 export default function App() {

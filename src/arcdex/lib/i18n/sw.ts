@@ -1432,5 +1432,11 @@ const d: Record<string, string> = {
   "New coins in their first 10 minutes that pass every safety check and show real buying. Half sold at 2×, the rest trails.": "Sarafu mpya katika dakika zao 10 za kwanza zinazopita kila ukaguzi wa usalama na kuonyesha ununuzi halisi. Nusu huuzwa kwa 2×, zilizobaki hufuata.",
   "Snipes on coins with a risk flag (the creator holds a big stake, launches coin after coin). A fifth of the size, most sold at +30%, out when the creator sells.": "Snipe kwenye sarafu zenye alama ya hatari (muundaji ana hisa kubwa, anazindua sarafu moja baada ya nyingine). Sehemu ya tano ya ukubwa, nyingi zinauzwa kwa +30%, kutoka muundaji anapouza.",
   "Coins that ran 10× or more, fell 50–85% and are climbing back on real buying. Held up to 6 hours.": "Sarafu zilizopanda 10× au zaidi, zikashuka 50–85% na zinapanda tena kwa ununuzi halisi. Hushikiliwa hadi saa 6.",
+  "Searching all of Arc…": "Inatafuta Arc yote…",
+  "No token at this address on Arc. It may be a wallet: see it below.": "Hakuna tokeni kwenye anwani hii kwenye Arc. Huenda ni pochi: iangalie hapa chini.",
+  "More on Arc": "Zaidi kwenye Arc",
+  "coins not in this list": "sarafu zisizo kwenye orodha hii",
+  "No token at this address on Arc.": "Hakuna tokeni kwenye anwani hii kwenye Arc.",
+  "not listed yet": "bado haijaorodheshwa",
 }
 export default d
