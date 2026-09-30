@@ -65,6 +65,8 @@ const SECOND_LEG_REPEAT_MS = RULES.secondLeg.repeatMin * 60_000
 const DEEP_BUDGET_MS = { honeypot: 10_000, holders: 12_000, clusters: 15_000 }
 /** A deep scan missing an answer is tried again this soon, not held for minutes. */
 const DEEP_TTL_INCOMPLETE_MS = 15_000
+/** A snipe or a dip rebound whose only risks are unknown waits this long for the scan to answer them. */
+const UNKNOWN_RISK_WAIT_MS = 45_000
 const within = <T,>(p: Promise<T>, ms: number, fallback: T): Promise<T> => Promise.race([p.catch(() => fallback), new Promise<T>(r => setTimeout(() => r(fallback), ms))])
 /** Launchpads whose coins trade on their own curve before graduating. */
 const CURVES = new Set(['Peach', 'Faze', 'Mercuri', 'SolonPad', 'ARCDEX'])
@@ -93,7 +95,8 @@ class Limiter {
 /** A rule's numbers, before the safety scan adds its own. */
 type RuleFeatures = Pick<SignalFeatures, 'buyers' | 'buySellRatio' | 'runUp' | 'topBuyerPct'>
 const ratio = (buy: number, sell: number) => (sell > 0 ? Math.round((buy / sell) * 100) / 100 : null)
-const flowFeatures = (f: Flow): RuleFeatures => ({ buyers: f.buyers, buySellRatio: ratio(f.buyUsd, f.sellUsd), runUp: f.firstPrice && f.lastPrice ? f.lastPrice / f.firstPrice : null, topBuyerPct: f.topBuyerPct })
+/** A snipe's numbers: the market's own buying, as the rule read it (Flow.organic). */
+const flowFeatures = (f: Flow): RuleFeatures => ({ buyers: f.organic.buyers, buySellRatio: ratio(f.organic.buyUsd, f.organic.sellUsd), runUp: f.organic.firstPrice && f.organic.lastPrice ? f.organic.lastPrice / f.organic.firstPrice : null, topBuyerPct: f.organic.topBuyerPct })
 const windowFeatures = (w: Window): RuleFeatures => ({ buyers: w.buyers, buySellRatio: ratio(w.buyUsd, w.sellUsd), runUp: w.firstPrice && w.lastPrice ? w.lastPrice / w.firstPrice : null, topBuyerPct: w.topBuyerPct })
 
 export class Bot implements EngineObserver {
@@ -111,6 +114,8 @@ export class Bot implements EngineObserver {
   private lastEval = new Map<string, number>()
   private evaluating = new Set<string>()
   private fired = new Map<string, number>()
+  /** Since when a snipe or rebound has waited on unknown risk checks (`${rule}:${token}`). */
+  private riskWait = new Map<string, number>()
   private bySymbol = new Map<string, Set<string>>()
   private byCreator = new Map<string, number[]>()
   private recentSignals: Signal[] = []
@@ -258,7 +263,7 @@ export class Bot implements EngineObserver {
     for (const [token, path] of this.paths) {
       if (now - path.launchedAt > WATCH_MS && !this.positions.some(p => p.status === 'open' && p.token === token)) {
         this.paths.delete(token); this.tapes.drop(token); this.deeps.delete(token); this.reports.delete(token); this.statics.delete(token); this.lastEval.delete(token)
-        this.recent.drop(token); this.rug.forget(token)
+        this.recent.drop(token); this.rug.forget(token); this.riskWait.delete(`snipe:${token}`); this.riskWait.delete(`second-leg:${token}`)
       }
     }
     for (const [token, r] of this.scan.rows) if (now - r.launchedAt > WATCH_MS) this.scan.drop(token)
@@ -299,9 +304,36 @@ export class Bot implements EngineObserver {
       snipeWaiting = [...failing(rule.reasons), `snipe window: ${Math.max(0, Math.floor(RULES.snipe.maxAgeSec - ageSec))}s left`]
       keys.push(...rule.failed.map(f => `snipe:${f}`))
     }
-    // Fast scalp: a burst of buying in the last 2 minutes, on any coin; again after 30 minutes, not right after its snipe.
+    // Dip rebound first, after the snipe window (2026-09-30): a rebound is a
+    // burst of buying too, and when the momentum rule was checked first it fired
+    // a fast scalp, held the coin for 30 minutes, and the rebound was never
+    // looked at. A rebound that isn't a signal (a risky coin, a scan still
+    // running) leaves the coin to the momentum rule, as before.
+    const path = this.paths.get(token)
+    const lastLeg = this.fired.get(`second-leg:${token}`) ?? 0
+    let legChecked = false, legOutcome: Pick<ScanRow, 'status' | 'stage' | 'reasons' | 'strategy' | 'keys'> | null = null
+    let legWaiting: string[] = [], legKeys: string[] = []
+    if (!snipeWaiting && path && now - lastLeg >= SECOND_LEG_REPEAT_MS) {
+      legChecked = true
+      const rule = secondLegReady(path, now)
+      if (rule.ok) {
+        const flow = computeFlow(this.tapes.get(token), { launchBlock: meta.blockNumber, creator: meta.creator, supply: st.supply })
+        const nowMin = Math.floor(now / 60_000)
+        const last15 = path.minutes.filter(x => x.m > nowMin - 15)
+        const cur = path.minutes[path.minutes.length - 1]?.c ?? null
+        const feats: RuleFeatures = {
+          buyers: flow.organic.buyers, topBuyerPct: flow.organic.topBuyerPct,
+          buySellRatio: ratio(last15.reduce((sum, x) => sum + x.bv, 0), last15.reduce((sum, x) => sum + x.sv, 0)),
+          runUp: cur && rule.bottom ? cur / rule.bottom : null,
+        }
+        const out = await this.tryFire('second-leg', token, rule.reasons, ageSec, feats)
+        if (out.status === 'signal') { this.scan.record(base, out); return }
+        legOutcome = out
+      } else { legWaiting = failing(rule.reasons); legKeys = rule.failed.map(f => `leg:${f}`) }
+    }
+    // Fast scalp: a burst of buying in the last 2 minutes, on any coin; again after 30 minutes, not right after its snipe or rebound.
     let scalpWaiting: string[] = []
-    const lastScalp = Math.max(this.fired.get(`scalp:${token}`) ?? 0, this.fired.get(`snipe:${token}`) ?? 0)
+    const lastScalp = Math.max(this.fired.get(`scalp:${token}`) ?? 0, this.fired.get(`snipe:${token}`) ?? 0, lastLeg)
     if (now - lastScalp >= RULES.scalp.repeatMin * 60_000) {
       const w = windowOf(this.recent.window(token, now, RULES.scalp.windowSec * 1_000))
       const rule = scalpReady(w, ageSec, st.liquidityUsd)
@@ -310,24 +342,9 @@ export class Bot implements EngineObserver {
       keys.push(...rule.failed.map(f => `scalp:${f}`))
     }
     if (snipeWaiting) { this.scan.record(base, { status: 'watching', stage: 'snipe', reasons: [...snipeWaiting, ...scalpWaiting], keys }); return }
-    // Second leg: a coin that ran 10×, fell and is coming back.
-    const path = this.paths.get(token)
-    const lastLeg = this.fired.get(`second-leg:${token}`) ?? 0
-    if (path && now - lastLeg >= SECOND_LEG_REPEAT_MS) {
-      const rule = secondLegReady(path, now)
-      if (rule.ok) {
-        const flow = computeFlow(this.tapes.get(token), { launchBlock: meta.blockNumber, creator: meta.creator, supply: st.supply })
-        const nowMin = Math.floor(now / 60_000)
-        const last15 = path.minutes.filter(x => x.m > nowMin - 15)
-        const cur = path.minutes[path.minutes.length - 1]?.c ?? null
-        const feats: RuleFeatures = {
-          buyers: flow.buyers, topBuyerPct: flow.topBuyerPct,
-          buySellRatio: ratio(last15.reduce((sum, x) => sum + x.bv, 0), last15.reduce((sum, x) => sum + x.sv, 0)),
-          runUp: cur && rule.bottom ? cur / rule.bottom : null,
-        }
-        this.scan.record(base, await this.tryFire('second-leg', token, rule.reasons, ageSec, feats))
-      } else this.scan.record(base, { status: 'watching', stage: 'second-leg', reasons: ['waiting for a momentum scalp or a dip rebound', ...scalpWaiting, ...failing(rule.reasons)], keys: [...keys, ...rule.failed.map(f => `leg:${f}`)] })
-    } else if (scalpWaiting.length) this.scan.record(base, { status: 'watching', stage: 'scalp', reasons: scalpWaiting, keys })
+    if (legOutcome) this.scan.record(base, legOutcome)
+    else if (legChecked) this.scan.record(base, { status: 'watching', stage: 'second-leg', reasons: ['waiting for a momentum scalp or a dip rebound', ...scalpWaiting, ...legWaiting], keys: [...keys, ...legKeys] })
+    else if (scalpWaiting.length) this.scan.record(base, { status: 'watching', stage: 'scalp', reasons: scalpWaiting, keys })
   }
 
   /** A coin that met a rule: the rug guard and its safety scan decide. Returns what the scanner shows. */
@@ -336,6 +353,25 @@ export class Bot implements EngineObserver {
     const alarm = this.rug.recentAlarm(token)
     if (alarm) return { status: 'rejected', stage: 'safety', reasons: [`✗ rug guard ${Math.max(1, Math.round((Date.now() - alarm.at) / 60_000))} min ago: ${alarm.text}`], keys: ['safety:rug-guard'] }
     const r = await this.report(token, true)
+    // A risk that isn't known yet (holders not read, funding not traced in the
+    // scan's time) made a snipe a scalp, or a rebound rejected, on missing data
+    // (2026-09-30). They wait for the scan now, retried every 15s, for up to
+    // UNKNOWN_RISK_WAIT_MS (a snipe no later than the end of its window); after
+    // that, as before. A momentum scalp never waits.
+    if (r?.verdict === 'risky' && rule !== 'momentum') {
+      const unknown = r.checks.filter(c => c.risk && c.ok === null)
+      if (unknown.length && !r.checks.some(c => c.risk && c.ok === false)) {
+        const key = `${rule}:${token}`, now = Date.now()
+        const since = this.riskWait.get(key) ?? now
+        this.riskWait.set(key, since)
+        const meta = this.o.engine.metas.get(token)
+        const until = Math.min(since + UNKNOWN_RISK_WAIT_MS, rule === 'snipe' && meta ? meta.timestamp + RULES.snipe.maxAgeSec * 1_000 - 10_000 : Infinity)
+        if (now < until) {
+          metrics.inc(`bot_${rule}_waiting_unknown`)
+          return { status: 'checking', stage: 'safety', reasons: unknown.map(c => `… ${c.id}: ${c.detail} (checking again)`), keys: unknown.map(c => `pending:${c.id}`) }
+        }
+      }
+    }
     // A snipe on a coin that failed only a risk check is a scalp: small, sold fast. A momentum burst is a scalp either way.
     const strategy: Strategy | null = r?.verdict === 'pass' ? (rule === 'momentum' ? 'scalp' : rule) : r?.verdict === 'risky' && rule !== 'second-leg' ? 'scalp' : null
     if (!r || !strategy) {
@@ -378,6 +414,7 @@ export class Bot implements EngineObserver {
       rule, features,
     }
     this.fired.set(`${rule === 'momentum' ? 'scalp' : rule}:${token}`, now)
+    this.riskWait.delete(`${rule}:${token}`)
     this.recentSignals = [signal, ...this.recentSignals].slice(0, 500)
     this.o.store.saveSignal(signal)
     this.o.publish(['signals'], { t: 'SIGNAL', d: signal })

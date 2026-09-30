@@ -1558,6 +1558,8 @@ const d: Record<string, string> = {
   "now": "sasa",
   "Recent trades": "Biashara za karibuni",
   "Why coins are passed over right now": "Kwa nini sarafu zinarukwa sasa hivi",
+  "from a snipe on a risky coin": "kutoka kwa snipe kwenye sarafu hatari",
+  "The snipe rule fired, but the coin carries a risk, so it trades small and sells fast": "Kanuni ya snipe ilifyatuka, lakini sarafu ina hatari, kwa hiyo inafanyiwa biashara ndogo na kuuzwa haraka",
   "Signals and bots, last 24h": "Ishara na boti, saa 24 zilizopita",
   "Signals and the engine's own paper book, last 24h": "Ishara na daftari la karatasi la injini, saa 24 zilizopita",
   "traded by at least one bot": "zilizofanyiwa biashara na angalau boti moja",

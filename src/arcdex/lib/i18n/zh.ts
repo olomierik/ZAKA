@@ -1558,6 +1558,8 @@ const d: Record<string, string> = {
   "now": "现价",
   "Recent trades": "最近交易",
   "Why coins are passed over right now": "当前为何跳过这些代币",
+  "from a snipe on a risky coin": "来自风险币上的狙击",
+  "The snipe rule fired, but the coin carries a risk, so it trades small and sells fast": "狙击规则已触发，但该币有风险，因此小额交易并快速卖出",
   "Signals and bots, last 24h": "信号与机器人，过去 24 小时",
   "Signals and the engine's own paper book, last 24h": "信号与引擎自己的模拟账本，过去 24 小时",
   "traded by at least one bot": "至少被一个机器人交易",

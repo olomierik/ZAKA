@@ -26,6 +26,7 @@ export const REASON_LABELS: Record<string, string> = {
   'safety:clusters': 'safety: early buyers funded from one source', 'safety:wash': 'safety: wash trading', 'safety:creator': 'safety: the creator dumped',
   'safety:selfdestruct': 'safety: can self-destruct', 'safety:rug-guard': 'rug guard alarm (30-minute quarantine)', 'safety:risky-for-rebound': 'dip rebound needs a clean coin',
   'pending:honeypot': 'checking: honeypot probe', 'pending:clusters': 'checking: funding trace', 'pending:liquidity': 'checking: liquidity',
+  'pending:holders': 'checking: holders',
   'safety:unavailable': 'safety scan unavailable',
 }
 

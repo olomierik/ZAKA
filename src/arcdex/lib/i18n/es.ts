@@ -1558,6 +1558,8 @@ const d: Record<string, string> = {
   "now": "ahora",
   "Recent trades": "Operaciones recientes",
   "Why coins are passed over right now": "Por qué se descartan monedas ahora mismo",
+  "from a snipe on a risky coin": "de un snipe en una moneda riesgosa",
+  "The snipe rule fired, but the coin carries a risk, so it trades small and sells fast": "La regla de snipe se activó, pero la moneda tiene un riesgo: se opera en pequeño y se vende rápido",
   "Signals and bots, last 24h": "Señales y bots, últimas 24 h",
   "Signals and the engine's own paper book, last 24h": "Señales y el libro en papel del motor, últimas 24 h",
   "traded by at least one bot": "operadas por al menos un bot",

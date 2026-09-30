@@ -80,16 +80,23 @@ export const RULES = {
 /** `failed`: short ids of the unmet conditions ("buyers", "ratio"…), counted by the scanner (GET /v1/bot/rejections). */
 export interface RuleResult { ok: boolean; reasons: string[]; failed: string[] }
 
-export function snipeReady(f: Flow, ageSec: number, r = RULES.snipe): RuleResult {
+/**
+ * A snipe: real buying in a coin's first minutes. It reads the market's own
+ * buying (`Flow.organic`: the creator's buys and the launch blocks' left out),
+ * so a dev buy at launch neither blocks it ("one buyer is 80% of buys") nor
+ * passes it on its own ("$2,500 bought").
+ */
+export function snipeReady(flow: Flow, ageSec: number, r = RULES.snipe): RuleResult {
   const reasons: string[] = []
   const failed: string[] = []
   const need = (id: string, cond: boolean, pass: string, fail: string) => { reasons.push(cond ? pass : `✗ ${fail}`); if (!cond) failed.push(id); return cond }
+  const f = flow.organic
   const run = f.firstPrice && f.lastPrice ? f.lastPrice / f.firstPrice : null
   const ofPeak = f.peakPrice && f.lastPrice ? f.lastPrice / f.peakPrice : null
   const ok = [
     need('age', ageSec >= r.minAgeSec && ageSec <= r.maxAgeSec, `${Math.round(ageSec)}s since launch`, `age ${Math.round(ageSec)}s outside ${r.minAgeSec}–${r.maxAgeSec}s`),
-    need('buyers', f.buyers >= r.minBuyers, `${f.buyers} buyers`, `only ${f.buyers} buyers (need ${r.minBuyers})`),
-    need('bought', f.buyUsd >= r.minBuyUsd, `$${Math.round(f.buyUsd)} bought`, `only $${Math.round(f.buyUsd)} bought (need $${r.minBuyUsd})`),
+    need('buyers', f.buyers >= r.minBuyers, `${f.buyers} buyers since launch`, `only ${f.buyers} buyers since launch (need ${r.minBuyers})`),
+    need('bought', f.buyUsd >= r.minBuyUsd, `$${Math.round(f.buyUsd)} bought since launch`, `only $${Math.round(f.buyUsd)} bought since launch (need $${r.minBuyUsd}; the creator's buys don't count)`),
     need('ratio', f.buyUsd >= r.minBuySellRatio * f.sellUsd, `buys ${(f.buyUsd / Math.max(1, f.sellUsd)).toFixed(1)}× sells`, `sells too heavy ($${Math.round(f.sellUsd)} vs $${Math.round(f.buyUsd)} bought)`),
     need('topbuyer', f.topBuyerPct <= r.maxTopBuyerPct, `largest buyer ${f.topBuyerPct.toFixed(0)}% of buys`, `one buyer is ${f.topBuyerPct.toFixed(0)}% of buys`),
     need('late', run !== null && run <= r.maxRunUp, `${run?.toFixed(1)}× from the first trade`, run === null ? 'no price yet' : `already ${run.toFixed(1)}× from the first trade (late)`),
