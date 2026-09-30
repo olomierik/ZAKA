@@ -232,6 +232,26 @@ describe('live: the same bot, from paper to its own wallet', () => {
     await settle()
     expect(out.positions.find(p => p.signalId === 'crowd-2')?.crowd?.rank).toBe(0)
   })
+  test('a live bot trades Prime signals with Precision, and passes over grades not proven at live speed', async () => {
+    const { accounts, a, wallet } = readyBot({ balance: 100 })
+    accounts.createWallet(a, now)
+    await accounts.setMode(a, 'live', owner, now)
+    accounts.act(a, { action: 'start' }, now)
+    const ctx = (id: string, token: string) => ({ signal: { id, token, strategy: 'scalp' } as never, pool: { ...pool, currency1: token as Address, base: token as Address }, meta: { token, symbol: 'COIN', launchpad: 'Argus' } as never })
+    const prime = { score: 80, grade: 'live' as const, tier: 'A' as const, rank: null, parts: [], level: 'prime' as const, liveOk: true, liveWhy: null }
+    accounts.onSignal(sig({ id: 'pr1', quality: prime }), Date.now(), ctx('pr1', T))
+    await settle()
+    const p = a.positions.find(x => x.mode === 'live' && x.signalId === 'pr1')!
+    expect(p).toMatchObject({ strategy: 'precision', grade: 'prime', sizeUsd: 20 }) // 20% of its $100 wallet on a Prime signal
+    expect(p.exits).toMatchObject({ tp1Multiple: 1.06, tp1SellPct: 1 })
+    const T2 = '0x' + 'b3'.repeat(20)
+    const standard = { ...prime, level: 'standard' as const, liveOk: false, liveWhy: 'live bots trade Prime signals, and other grades once proven at live speed' }
+    accounts.onSignal(sig({ id: 'st1', token: T2, quality: standard }), Date.now(), ctx('st1', T2))
+    await settle()
+    expect(a.positions.some(x => x.signalId === 'st1')).toBe(false)
+    expect(a.skips[0].text).toMatch(/not traded live: live bots trade Prime signals/)
+    expect(wallet.calls.filter(c => c.startsWith('buy '))).toEqual(['buy 20'])
+  })
   test('ready once the paper record is: 20 trades, 55% won, a profit factor of 1.2, a net profit', () => {
     expect(readiness([paperTrade(1, true)]).ok).toBe(false)
     const { a } = readyBot()

@@ -98,6 +98,8 @@ export interface BotCardData {
   curve: number[]
   since: number | null
   link: string
+  /** Winning trades in a row, most recent first. */
+  streak?: number
 }
 
 const STRAT_LABEL: Record<string, string> = { scalp: 'Fast scalp', snipe: 'Snipe', 'second-leg': 'Dip rebound', precision: 'Precision' }
@@ -210,8 +212,9 @@ function fit(g: CanvasRenderingContext2D, s: string, max: number) {
 }
 
 /** What a bot's card says when it's shared (the post's text). */
-export function botShareText(d: Pick<BotCardData, 'name' | 'mode' | 'pnlUsd' | 'pnlPct' | 'winRate' | 'trades'>, mine = true): string {
+export function botShareText(d: Pick<BotCardData, 'name' | 'mode' | 'pnlUsd' | 'pnlPct' | 'winRate' | 'trades' | 'streak'>, mine = true): string {
   const pct = d.pnlPct === null ? '' : ` (${d.pnlPct >= 0 ? '+' : '−'}${Math.abs(d.pnlPct).toFixed(1)}%)`
   const won = d.winRate === null ? '' : `, ${Math.round(d.winRate * 100)}% of ${d.trades} trades won`
-  return `🤖 ${mine ? 'My bot' : 'The bot'} ${d.name} is ${usdText(d.pnlUsd)}${pct}${won}${d.mode === 'paper' ? ' (paper trading)' : ''} on ARCDEX Autotrade. Self-improving trading bots for Arc.`
+  const streak = (d.streak ?? 0) >= 3 ? ` 🔥 ${d.streak} wins in a row.` : ''
+  return `🤖 ${mine ? 'My bot' : 'The bot'} ${d.name} is ${usdText(d.pnlUsd)}${pct}${won}${d.mode === 'paper' ? ' (paper trading)' : ' trading real USDC'} on ARCDEX Autotrade.${streak} Self-improving trading bots for Arc.`
 }

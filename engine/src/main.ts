@@ -223,8 +223,8 @@ async function main() {
   log.info('visitors\' bots', { email: mailer.enabled, live: !!vault })
   botsHealth = () => ({ email: mailer.enabled, userLive: !!vault, ownerWallet: !!live, mode: botRef?.mode ?? null, bots: accounts?.count ?? 0, running: accounts?.running ?? 0 })
   // Tiers (bot/tiers.ts): what each account gets; everything, for everyone, until TIERS_ENFORCED.
-  const tiers = new Tiers({ enforced: cfg.tiersEnforced, rpc })
-  log.info('autotrade tiers', { enforced: tiers.enforced })
+  const tiers = new Tiers({ enforced: cfg.tiersEnforced, rpc, enforceAt: cfg.tiersEnforceAt })
+  log.info('autotrade tiers', { enforced: tiers.enforced, enforceAt: tiers.enforceAt === null ? null : new Date(tiers.enforceAt).toISOString() })
   // Linked wallets' $ARCD, read at start and every 10 minutes (and again whenever an account's tier is asked with a stale balance).
   const readHoldings = () => { for (const w of users?.linkedWallets() ?? []) void tiers.read(w) }
   readHoldings()
@@ -235,7 +235,7 @@ async function main() {
     rpc, engine: eng, pools, mode: cfg.botMode, sizeUsd: cfg.botSizeUsd ?? undefined, scalpSizeUsd: cfg.botScalpSizeUsd ?? undefined,
     store: botStore, accounts,
     publish: (topics, msg) => publisher.publish(topics, msg),
-    live, owner: cfg.botOwner, history: history.enabled ? history : null, liveSignals: cfg.botSignals.live,
+    live, owner: cfg.botOwner, history: history.enabled ? history : null, liveSignals: cfg.botSignals.live, liveGrades: cfg.liveGrades,
   })
   botRef = bot
   if (bot) {

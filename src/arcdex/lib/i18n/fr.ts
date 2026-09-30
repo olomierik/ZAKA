@@ -1907,5 +1907,14 @@ const d: Record<string, string> = {
   "liquidity $3,000+": "liquidité 3 000 $+",
   "Tiered by signal quality: the higher the tier, the cleaner the signals. Prime signals, the cleanest, go to Tier 3 with the Precision strategy.": "Des niveaux selon la qualité des signaux : plus le niveau est haut, plus les signaux sont propres. Les signaux Prime, les plus propres, vont au niveau 3 avec la stratégie Précision.",
   "Free for now: every tier's signals and strategies are open to everyone, so you can see what each one does. Link a wallet in Autotrade to see your tier.": "Gratuit pour l'instant : les signaux et stratégies de chaque niveau sont ouverts à tous, pour que vous voyiez ce que fait chacun. Liez un portefeuille dans Autotrade pour voir votre niveau.",
+  "Free live trading": "Trading live gratuit",
+  "Every account trades live without $ARCD until {d}. Then tiers start: live trading needs Tier 1 (5M $ARCD).": "Chaque compte trade en live sans $ARCD jusqu'au {d}. Ensuite les niveaux commencent : le trading live demande le niveau 1 (5M $ARCD).",
+  "{t} left": "encore {t}",
+  "Tiers start {d}.": "Les niveaux commencent le {d}.",
+  "Live bots trade it now": "Les bots live le tradent maintenant",
+  "Live bots: not yet (it needs 10+ replays, 60% won and a profit at live speed)": "Bots live : pas encore (il faut 10+ rejeux, 60 % gagnés et un profit à la vitesse live)",
+  "Live bots trade Prime signals now, the cleanest: all of it sold at +6%, fast. Other grades join by themselves once they prove a profit at live speed (the Signals tab shows each grade's record).": "Les bots live tradent maintenant les signaux Prime, les plus propres : tout est vendu à +6 %, vite. Les autres grades s'ajoutent d'eux-mêmes dès qu'ils prouvent un profit à la vitesse live (l'onglet Signaux montre le bilan de chaque grade).",
+  "Live bots trade it": "Les bots live le tradent",
+  "🎉 Free live trading: every account trades live without $ARCD until {d}. Then tiers start.": "🎉 Trading live gratuit : chaque compte trade en live sans $ARCD jusqu'au {d}. Ensuite les niveaux commencent.",
 }
 export default d

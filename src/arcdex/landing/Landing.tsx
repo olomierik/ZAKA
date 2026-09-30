@@ -5,7 +5,7 @@ import {
   ARCD, ARCD_APP_PATH, ARCD_POOL, ARC_EXPLORER,
   compact, loadArcd, price, short, type ArcdStats,
 } from '../lib/arcd'
-import { ARCD_TIERS, arcdAmount, TIERS_ENFORCED } from '../lib/tiers'
+import { ARCD_TIERS, arcdAmount, TIERS_ENFORCED, TIERS_START } from '../lib/tiers'
 import LiveBots from './LiveBots'
 import { PHASES, phaseStatus } from './roadmap'
 import './landing.css'
@@ -193,6 +193,7 @@ export default function Landing() {
             </div>
           ))}
         </div>
+        {!TIERS_ENFORCED && Date.now() < TIERS_START && <p className="ld-note ld-promo">{t('🎉 Free live trading: every account trades live without $ARCD until {d}. Then tiers start.', { d: new Date(TIERS_START).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) })}</p>}
         {!TIERS_ENFORCED && <p className="ld-note">{t('Free for now: every tier\'s signals and strategies are open to everyone, so you can see what each one does. Link a wallet in Autotrade to see your tier.')}</p>}
         <div className="ld-cta ld-center"><a className="ld-btn ld-btn-ghost" href={ARCD_APP_PATH}>{t('Buy $ARCD')}</a></div>
       </section>

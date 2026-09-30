@@ -1907,5 +1907,14 @@ const d: Record<string, string> = {
   "liquidity $3,000+": "Liquidität 3.000 $+",
   "Tiered by signal quality: the higher the tier, the cleaner the signals. Prime signals, the cleanest, go to Tier 3 with the Precision strategy.": "Stufen nach Signalqualität: Je höher die Stufe, desto sauberer die Signale. Prime-Signale, die saubersten, gehen an Stufe 3 mit der Präzisions-Strategie.",
   "Free for now: every tier's signals and strategies are open to everyone, so you can see what each one does. Link a wallet in Autotrade to see your tier.": "Vorerst kostenlos: Die Signale und Strategien jeder Stufe sind für alle offen, damit du siehst, was jede leistet. Verknüpfe in Autotrade ein Wallet, um deine Stufe zu sehen.",
+  "Free live trading": "Kostenloser Live-Handel",
+  "Every account trades live without $ARCD until {d}. Then tiers start: live trading needs Tier 1 (5M $ARCD).": "Jedes Konto handelt bis {d} live ohne $ARCD. Danach starten die Stufen: Live-Handel braucht Stufe 1 (5M $ARCD).",
+  "{t} left": "noch {t}",
+  "Tiers start {d}.": "Die Stufen starten am {d}.",
+  "Live bots trade it now": "Live-Bots handeln es jetzt",
+  "Live bots: not yet (it needs 10+ replays, 60% won and a profit at live speed)": "Live-Bots: noch nicht (braucht 10+ Wiederholungen, 60 % gewonnen und Gewinn bei Live-Geschwindigkeit)",
+  "Live bots trade Prime signals now, the cleanest: all of it sold at +6%, fast. Other grades join by themselves once they prove a profit at live speed (the Signals tab shows each grade's record).": "Live-Bots handeln jetzt Prime-Signale, die saubersten: alles bei +6 % verkauft, schnell. Andere Klassen kommen von selbst dazu, sobald sie bei Live-Geschwindigkeit Gewinn beweisen (der Signale-Tab zeigt die Bilanz jeder Klasse).",
+  "Live bots trade it": "Live-Bots handeln es",
+  "🎉 Free live trading: every account trades live without $ARCD until {d}. Then tiers start.": "🎉 Kostenloser Live-Handel: Jedes Konto handelt bis {d} live ohne $ARCD. Danach starten die Stufen.",
 }
 export default d

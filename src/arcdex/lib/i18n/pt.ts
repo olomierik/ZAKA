@@ -1907,5 +1907,14 @@ const d: Record<string, string> = {
   "liquidity $3,000+": "liquidez $3.000+",
   "Tiered by signal quality: the higher the tier, the cleaner the signals. Prime signals, the cleanest, go to Tier 3 with the Precision strategy.": "Níveis por qualidade de sinal: quanto maior o nível, mais limpos os sinais. Os sinais Prime, os mais limpos, vão para o Nível 3 com a estratégia Precisão.",
   "Free for now: every tier's signals and strategies are open to everyone, so you can see what each one does. Link a wallet in Autotrade to see your tier.": "Grátis por enquanto: os sinais e estratégias de cada nível estão abertos a todos, para você ver o que cada um faz. Vincule uma carteira no Autotrade para ver seu nível.",
+  "Free live trading": "Trading ao vivo grátis",
+  "Every account trades live without $ARCD until {d}. Then tiers start: live trading needs Tier 1 (5M $ARCD).": "Todas as contas operam ao vivo sem $ARCD até {d}. Depois começam os níveis: operar ao vivo exige o Nível 1 (5M $ARCD).",
+  "{t} left": "faltam {t}",
+  "Tiers start {d}.": "Os níveis começam em {d}.",
+  "Live bots trade it now": "Os bots ao vivo o operam agora",
+  "Live bots: not yet (it needs 10+ replays, 60% won and a profit at live speed)": "Bots ao vivo: ainda não (precisa de 10+ repetições, 60% ganhas e lucro na velocidade live)",
+  "Live bots trade Prime signals now, the cleanest: all of it sold at +6%, fast. Other grades join by themselves once they prove a profit at live speed (the Signals tab shows each grade's record).": "Os bots ao vivo operam agora os sinais Prime, os mais limpos: tudo vendido a +6%, rápido. As outras notas entram sozinhas quando provam lucro na velocidade live (a aba Sinais mostra o histórico de cada nota).",
+  "Live bots trade it": "Os bots ao vivo o operam",
+  "🎉 Free live trading: every account trades live without $ARCD until {d}. Then tiers start.": "🎉 Trading ao vivo grátis: todas as contas operam ao vivo sem $ARCD até {d}. Depois começam os níveis.",
 }
 export default d

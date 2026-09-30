@@ -58,6 +58,7 @@ export interface BotApiDeps {
   accounts: PaperAccounts | null
   tiers?: Tiers | null
   grades?: () => GradeRecordView[]
+  liveGrades?: 'proven' | 'all'
   signedBy?: (address: Address, message: string, signature: Hex) => Promise<boolean>
 }
 
@@ -68,7 +69,7 @@ export async function botApi(req: Request, url: URL, ip: string, d: BotApiDeps, 
   // ── the tiers (public): what each gets, and each grade's record ──
   if (req.method === 'GET' && p === '/v1/tiers') {
     const body: TiersResponse = {
-      enforced: d.tiers?.enforced ?? false, tiers: d.tiers?.list() ?? [], grades: d.grades?.() ?? [],
+      enforced: d.tiers?.enforced ?? false, enforceAt: d.tiers?.enforceAt ?? null, liveGrades: d.liveGrades, tiers: d.tiers?.list() ?? [], grades: d.grades?.() ?? [],
       crowd: { impactShareOfTp: CROWD.impactShareOfTp, maxPoolShare: CROWD.maxPoolShare, maxBots: CROWD.maxBots },
     }
     return json(200, body, 'public, max-age=30')

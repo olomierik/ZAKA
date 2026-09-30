@@ -1907,5 +1907,14 @@ const d: Record<string, string> = {
   "liquidity $3,000+": "ukwasi $3,000+",
   "Tiered by signal quality: the higher the tier, the cleaner the signals. Prime signals, the cleanest, go to Tier 3 with the Precision strategy.": "Madaraja kwa ubora wa ishara: daraja likiwa juu, ishara ni safi zaidi. Ishara za Prime, safi zaidi, huenda Daraja 3 pamoja na mkakati wa Usahihi.",
   "Free for now: every tier's signals and strategies are open to everyone, so you can see what each one does. Link a wallet in Autotrade to see your tier.": "Bure kwa sasa: ishara na mikakati ya kila daraja iko wazi kwa wote, ili uone kila moja linavyofanya. Unganisha pochi kwenye Autotrade kuona daraja lako.",
+  "Free live trading": "Biashara ya live bure",
+  "Every account trades live without $ARCD until {d}. Then tiers start: live trading needs Tier 1 (5M $ARCD).": "Kila akaunti hufanya biashara ya live bila $ARCD hadi {d}. Kisha madaraja yanaanza: biashara ya live inahitaji Daraja 1 (5M $ARCD).",
+  "{t} left": "zimebaki {t}",
+  "Tiers start {d}.": "Madaraja yanaanza {d}.",
+  "Live bots trade it now": "Bot za live zinaifanyia biashara sasa",
+  "Live bots: not yet (it needs 10+ replays, 60% won and a profit at live speed)": "Bot za live: bado (inahitaji marudio 10+, 60% ya ushindi na faida kwa kasi ya live)",
+  "Live bots trade Prime signals now, the cleanest: all of it sold at +6%, fast. Other grades join by themselves once they prove a profit at live speed (the Signals tab shows each grade's record).": "Bot za live sasa hufanyia biashara ishara za Prime, safi zaidi: yote huuzwa kwa +6%, haraka. Madaraja mengine huingia yenyewe yakithibitisha faida kwa kasi ya live (kichupo cha Ishara kinaonyesha rekodi ya kila daraja).",
+  "Live bots trade it": "Bot za live zinaifanyia biashara",
+  "🎉 Free live trading: every account trades live without $ARCD until {d}. Then tiers start.": "🎉 Biashara ya live bure: kila akaunti hufanya biashara ya live bila $ARCD hadi {d}. Kisha madaraja yanaanza.",
 }
 export default d

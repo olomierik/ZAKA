@@ -66,6 +66,24 @@ export function gradeOf(f: SignalFeatures | undefined, _rule?: SignalRule): { gr
   return { grade: 'standard', why: core.filter(l => !l.ok).map(l => `Core needs ${l.text}`) }
 }
 
+/**
+ * Which grades live bots trade (2026-09-30, owner: "let live accounts enjoy
+ * a performance they'll market"): Prime, unless it's under review, and any
+ * other grade once it's proven at live speed (the same bar as the review: 10+
+ * replays, at least 60% won, a profit). On that day's replays only Prime was
+ * (10 of 11 won); Standard won 1 of 12. So live bots trade Prime signals, and
+ * start on another grade by themselves once its record earns it.
+ */
+export function liveGrade(book: GradeBook, grade: SignalGrade, now = Date.now()): { ok: boolean; why: string | null } {
+  const r = book.record(grade, now)
+  if (grade === 'prime' && !r.review) return { ok: true, why: null }
+  const ok = r.trades >= GRADE_REVIEW.minTrades && (r.avgReturn ?? -1) >= GRADE_REVIEW.minAvg && (r.winRate ?? 0) >= GRADE_REVIEW.minWinRate
+  if (ok) return { ok: true, why: null }
+  const name = grade === 'prime' ? 'Prime' : grade === 'core' ? 'Core' : 'Standard'
+  const rec = r.trades ? `${name} signals won ${r.wins} of their last ${r.trades} at live speed (${(r.avgReturn ?? 0) >= 0 ? '+' : ''}${((r.avgReturn ?? 0) * 100).toFixed(1)}% a trade)` : `${name} signals have no record at live speed yet`
+  return { ok: false, why: `live bots trade Prime signals, and other grades once proven at live speed (${GRADE_REVIEW.minTrades}+ replays, ${Math.round(GRADE_REVIEW.minWinRate * 100)}% won, a profit): ${rec}` }
+}
+
 /** One grade lower (a grade under review hands its signals out as the next one down). */
 export const lower = (g: SignalGrade): SignalGrade => (g === 'prime' ? 'core' : 'standard')
 

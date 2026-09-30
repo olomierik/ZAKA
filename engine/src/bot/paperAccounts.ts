@@ -554,7 +554,10 @@ export class PaperAccounts {
       if (!a.running) { if (a.mode === 'live' || a.cash >= SIZE_LIMITS.minUsd) skip('not-running', 'not traded: the bot is stopped (press Start)'); continue }
       const access = this.accessOf(a.ownerId)
       // Which of its strategies trades this signal: Precision takes Prime signals first, else the signal's own strategy.
-      const precision = grade === 'prime' && a.strategies.includes('precision') && access.strategies.includes('precision')
+      // A live bot trades a Prime signal with Precision whenever it follows the strategy the signal fired with (all of it
+      // at +6%: 10 of 11 won at live speed; the default exits made more on average, but lost 30% twice).
+      const precision = grade === 'prime' && access.strategies.includes('precision')
+        && (a.strategies.includes('precision') || (a.mode === 'live' && a.strategies.includes(sig.strategy)))
       const st: Strategy | null = precision ? 'precision' : a.strategies.includes(sig.strategy) ? sig.strategy : null
       if (!st) {
         const onlyPrecision = a.strategies.length === 1 && a.strategies[0] === 'precision'
@@ -566,6 +569,8 @@ export class PaperAccounts {
       // Its owner's tier (bot/tiers.ts): every grade while tiers aren't enforced.
       if (!access.grades.includes(grade)) { skip('tier', `not traded: ${GRADE_LABEL[grade]} signals are for ${Tiers.tierFor(grade).name} and up`); continue }
       if (a.mode === 'live' && !access.live) { skip('tier', `not traded live: live trading is for ${TIER_FOR_LIVE} and up`); continue }
+      // Live bots trade Prime signals, and other grades once proven at live speed (signals/grades.ts liveGrade).
+      if (a.mode === 'live' && sig.quality?.liveOk === false) { skip('grade-live', `not traded live: ${sig.quality.liveWhy ?? 'its grade isn\'t proven at live speed yet'}`); continue }
       if (a.mode !== 'live' && !this.paperSignals) { skip('live-only', 'not traded: signals go to live bots only for now (the platform\'s setting)'); continue }
       if (a.pausedUntil && now < a.pausedUntil) { skip('paused', `paused after ${PROTECT.pauseAfterLosses} losses in a row`); continue }
       const t = a.tuning[st]
@@ -848,7 +853,7 @@ export class PaperAccounts {
       team: this.team(now),
       live: a.live ? {
         wallet: a.live.address, balanceUsd: this.o.live?.cachedBalance(a.id) ?? null,
-        pnlUsd: liveStats.totalPnlUsd, closed: liveStats.closed, open: liveStats.open, winRate: liveStats.winRate, feesPaidUsd: a.live.feesPaidUsd ?? 0,
+        pnlUsd: liveStats.totalPnlUsd, closed: liveStats.closed, open: liveStats.open, winRate: liveStats.winRate, feesPaidUsd: a.live.feesPaidUsd ?? 0, startBalanceUsd: a.live.startBalanceUsd ?? null,
         limits: { maxTradeUsd: USER_LIVE.maxTradeUsd, minBalanceUsd: USER_LIVE.minBalanceUsd, reserveUsd: USER_LIVE.reserveUsd, maxOpen: USER_LIVE.maxOpen, dailyLossUsd: trader?.limits.dailyLossUsd ?? USER_LIVE.dailyLossMinUsd, preflight: true, maxRoundTripPct: USER_LIVE.maxRoundTripPct, maxSharePct: Math.round(USER_LIVE.maxShareOfBalance * 100) },
         events: trader?.events.slice(0, 30) ?? [],
       } : null,

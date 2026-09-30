@@ -39,7 +39,7 @@ import { txErrorText } from '../lib/tx'
 import { useCash, useSendUsdc } from '../lib/usdc'
 import { cardFromAccount, cardFromMarket, ShareBotButton } from '../components/BotShare'
 import { profitNotifyOn, setProfitNotify } from '../components/ProfitAlerts'
-import { ARCD_TIERS, arcdAmount, GRADE_COLOR, GRADE_NAME, GRADE_TIER, STRATEGY_TIER, TIERS_ENFORCED, tierName } from '../lib/tiers'
+import { ARCD_TIERS, arcdAmount, countdown, GRADE_COLOR, GRADE_NAME, GRADE_TIER, STRATEGY_TIER, TIERS_ENFORCED, TIERS_START, tierName } from '../lib/tiers'
 import type { Page } from '../App'
 import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
 import { N_, t as T } from '../lib/i18n'
@@ -132,6 +132,7 @@ export default function SignalsPage({ navigate, view: pageView, bot }: { navigat
       ) : (
         <>
           <ScanStrip stats={scan?.stats ?? null} />
+          <LivePromo />
           <div style={{ display: 'flex', gap: 4, marginTop: 14, borderBottom: '1px solid var(--adx-card-border)', overflowX: 'auto' }}>
             {VIEWS.map(([k, l]) => (
               <button key={k} onClick={() => setView(k)} style={{ padding: '9px 14px', background: 'none', border: 'none', borderBottom: `2px solid ${view === k ? 'var(--adx-accent)' : 'transparent'}`, color: view === k ? 'var(--text)' : 'var(--text-muted)', fontWeight: 800, fontSize: '0.84rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -283,6 +284,27 @@ function useTiers(): TiersResponse | null {
   return t
 }
 
+/**
+ * Live trading for every account until tiers start (3 October 2026, 00:00 UTC;
+ * the engine's `enforceAt`), with a countdown; after that, what it takes.
+ */
+function LivePromo() {
+  const tiers = useTiers()
+  const at = tiers ? tiers.enforceAt ?? null : TIERS_START
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(id) }, [])
+  if (at === null || tiers?.enforced) return null
+  const left = countdown(at, now)
+  if (!left) return null
+  return (
+    <div className="at-promo">
+      <span className="at-promo-badge">🎉 {T('Free live trading')}</span>
+      <span>{T('Every account trades live without $ARCD until {d}. Then tiers start: live trading needs Tier 1 (5M $ARCD).', { d: new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) })}</span>
+      <b className="at-promo-left">{T('{t} left', { t: left })}</b>
+    </div>
+  )
+}
+
 /** A signal's grade, and the lowest tier that gets it. */
 function GradeBadge({ g, title, tiers }: { g: SignalGrade; title?: string; tiers?: TiersResponse | null }) {
   return <span className={`at-grade ${g}`} title={title} style={{ borderColor: GRADE_COLOR[g] + '88', color: GRADE_COLOR[g] }}>{g === 'prime' ? '◆ ' : ''}{T(GRADE_NAME[g])}{g !== 'standard' ? ` · ${T(tierName(GRADE_TIER[g], tiers?.tiers))}` : ''}</span>
@@ -325,7 +347,7 @@ function TierCard({ me, onAccess }: { me: MeResponse; onAccess: (a: AccessView) 
         <span className="at-tiers-tag">{enforced ? T('Active') : T('Free for now')}</span>
         <span style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}>{open ? '▴' : '▾'}</span>
       </button>
-      {!enforced && <div className="at-tiers-foot">{T('Everything is open while tiers are free: your bots get every grade of signal, Prime included, and every strategy. Watch what each grade does before tiers start.')}</div>}
+      {!enforced && <div className="at-tiers-foot">{T('Everything is open while tiers are free: your bots get every grade of signal, Prime included, and every strategy. Watch what each grade does before tiers start.')}{tiers?.enforceAt !== null ? ` ${T('Tiers start {d}.', { d: new Date(tiers?.enforceAt ?? TIERS_START).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) })}` : ''}</div>}
       {open && (
         <>
           <div className="at-tiers-grid">
@@ -378,6 +400,7 @@ function GradesCard({ grades: fromStats }: { grades?: GradeRecordView[] }) {
             <button className="link-btn" style={{ marginLeft: 'auto', fontSize: '0.72rem' }} onClick={() => setOpen(o => (o === g.grade ? null : g.grade))}>{open === g.grade ? T('Hide') : T('What it takes')}</button>
           </div>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{T('Traded with {e}', { e: T(g.exits) })}</div>
+          {g.live !== undefined && <div style={{ fontSize: '0.72rem', marginTop: 2, color: g.live ? '#86efac' : 'var(--text-muted)' }}>{g.live ? `✓ ${T('Live bots trade it now')}` : T('Live bots: not yet (it needs 10+ replays, 60% won and a profit at live speed)')}</div>}
           {g.review && <div className="at-note warn" style={{ marginTop: 4 }}>⚠ {T(g.review)}</div>}
           {open === g.grade && <ul className="at-grade-rules">{g.rules.map(r => <li key={r}>{T(r)}</li>)}</ul>}
         </div>
@@ -729,6 +752,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, li
       {tab === 'overview' && (
         <>
           {isLive && liveSpeed && <LiveGateNote rows={liveSpeed} strategies={acct.strategies} />}
+          {isLive && <div className="at-note" style={{ marginTop: 12 }}>◆ {T('Live bots trade Prime signals now, the cleanest: all of it sold at +6%, fast. Other grades join by themselves once they prove a profit at live speed (the Signals tab shows each grade\'s record).')}</div>}
           {!isLive && me.paperSignals === false && <div className="at-note warn" style={{ marginTop: 12 }}>{T('Signals go to live bots only for now (the platform\'s setting): this paper bot isn\'t trading. Switch it to LIVE to trade.')}</div>}
           {acct.team && <TeamCard team={acct.team} acct={acct} onStrategy={() => setTab('strategy')} />}
           <GradeStats acct={acct} />
@@ -1573,6 +1597,7 @@ function SignalRow({ s, navigate }: { s: TradeSignal; navigate: (p: Page) => voi
         <Pill color={STRATEGY_COLOR[s.strategy] ?? '#64748b'}>{T(STRATEGY[s.strategy] ?? s.strategy)}</Pill>
         {s.probation && <span className="at-probation" title={s.probation.why}>{T('On probation: bots sit it out')}</span>}
         {s.quality?.level && !s.probation && <GradeBadge g={s.quality.level} title={[...(s.quality.levelWhy ?? []), ...(s.quality.review ? [s.quality.review] : [])].join(' · ')} />}
+        {s.quality?.liveOk && !s.probation && <span className="at-live-ok" title={T('Live bots trade it')}>{T('LIVE')}</span>}
         {s.quality && !s.probation && <span className={`at-quality ${s.quality.grade}`} title={[...s.quality.parts, ...(s.quality.liveSpeed ? [T('at live speed: {n} replays, {a} a trade', { n: s.quality.liveSpeed.trades, a: s.quality.liveSpeed.avgPct === null ? '—' : `${s.quality.liveSpeed.avgPct}%` })] : [])].join(' · ')}>{s.quality.grade === 'live' ? T('Quality {q}', { q: s.quality.score }) : T('Paper only · {q}', { q: s.quality.score })}</span>}
         {s.strategy === 'scalp' && s.rule === 'snipe' && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }} title={T('The snipe rule fired, but the coin carries a risk, so it trades small and sells fast')}>{T('from a snipe on a risky coin')}</span>}
         {!s.executable && <Pill color="#64748b">{T('Paper only')}</Pill>}

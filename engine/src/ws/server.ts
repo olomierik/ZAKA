@@ -223,7 +223,7 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
         const control = api.control
         return botApi(req, url, ip, {
-          users: api.users, accounts: api.accounts, tiers: api.tiers, grades: api.bot ? () => api.bot!.gradeRecords() : undefined,
+          users: api.users, accounts: api.accounts, tiers: api.tiers, grades: api.bot ? () => api.bot!.gradeRecords() : undefined, liveGrades: api.bot?.liveGrades,
           signedBy: control ? (a, m, s) => control.signedBy(a, m, s) : undefined,
         }, (status, body, cache) => json(req, status, body, cache))
       }

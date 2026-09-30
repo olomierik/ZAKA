@@ -1907,5 +1907,14 @@ const d: Record<string, string> = {
   "liquidity $3,000+": "liquidez 3.000 $+",
   "Tiered by signal quality: the higher the tier, the cleaner the signals. Prime signals, the cleanest, go to Tier 3 with the Precision strategy.": "Niveles por calidad de señal: cuanto más alto el nivel, más limpias las señales. Las señales Prime, las más limpias, van al Nivel 3 con la estrategia Precisión.",
   "Free for now: every tier's signals and strategies are open to everyone, so you can see what each one does. Link a wallet in Autotrade to see your tier.": "Gratis por ahora: las señales y estrategias de cada nivel están abiertas para todos, para que veas lo que hace cada uno. Vincula una billetera en Autotrade para ver tu nivel.",
+  "Free live trading": "Trading en vivo gratis",
+  "Every account trades live without $ARCD until {d}. Then tiers start: live trading needs Tier 1 (5M $ARCD).": "Todas las cuentas operan en vivo sin $ARCD hasta el {d}. Después empiezan los niveles: operar en vivo requiere el Nivel 1 (5M $ARCD).",
+  "{t} left": "quedan {t}",
+  "Tiers start {d}.": "Los niveles empiezan el {d}.",
+  "Live bots trade it now": "Los bots en vivo lo operan ahora",
+  "Live bots: not yet (it needs 10+ replays, 60% won and a profit at live speed)": "Bots en vivo: aún no (necesita 10+ repeticiones, 60 % ganadas y ganancia a velocidad real)",
+  "Live bots trade Prime signals now, the cleanest: all of it sold at +6%, fast. Other grades join by themselves once they prove a profit at live speed (the Signals tab shows each grade's record).": "Los bots en vivo operan ahora las señales Prime, las más limpias: todo se vende a +6 %, rápido. Los demás grados se suman solos cuando demuestran ganancia a velocidad real (la pestaña Señales muestra el historial de cada grado).",
+  "Live bots trade it": "Los bots en vivo lo operan",
+  "🎉 Free live trading: every account trades live without $ARCD until {d}. Then tiers start.": "🎉 Trading en vivo gratis: todas las cuentas operan en vivo sin $ARCD hasta el {d}. Después empiezan los niveles.",
 }
 export default d

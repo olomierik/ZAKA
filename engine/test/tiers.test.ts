@@ -279,3 +279,29 @@ describe('the owner\'s grants and linked wallets', () => {
     expect(users.linkWallet(b.user, W, now)).toBeNull()
   })
 })
+
+describe('free live trading until the deadline, then tiers (owner, 2026-09-30)', () => {
+  const at = Date.parse('2026-10-03T00:00:00Z')
+  test('before 3 October 00:00 UTC everyone trades live without $ARCD; from then, tiers', () => {
+    const tiers = new Tiers({ enforced: false, rpc: null, enforceAt: at })
+    expect(tiers.access(null, at - 1)).toMatchObject({ enforced: false, enforceAt: at, live: true, grades: ['prime', 'core', 'standard'], entitled: 'free' })
+    expect(tiers.access(null, at)).toMatchObject({ enforced: true, live: false, grades: ['standard'], maxBots: 1 })
+    expect(new Tiers({ enforced: true, rpc: null, enforceAt: at }).enforceAt).toBeNull() // already on
+  })
+})
+
+describe('which grades live bots trade', () => {
+  test('Prime, unless under review; another grade once proven at live speed', async () => {
+    const { liveGrade } = await import('../src/signals/grades')
+    const book = new GradeBook()
+    expect(liveGrade(book, 'prime', now)).toEqual({ ok: true, why: null })
+    for (let i = 0; i < 12; i++) book.add(`s${i}`, 'standard', now - i * 60_000, i === 0 ? 0.1 : -0.15)
+    const std = liveGrade(book, 'standard', now)
+    expect(std.ok).toBe(false)
+    expect(std.why).toMatch(/Standard signals won 1 of their last 12 at live speed \(-12\.9% a trade\)/)
+    for (let i = 0; i < 20; i++) book.add(`g${i}`, 'core', now - i * 60_000, i % 4 ? 0.04 : -0.02)
+    expect(liveGrade(book, 'core', now).ok).toBe(true) // 15 of 20 won, a profit
+    for (let i = 0; i < 10; i++) book.add(`p${i}`, 'prime', now - i * 60_000, -0.05)
+    expect(liveGrade(book, 'prime', now).ok).toBe(false) // under review
+  })
+})

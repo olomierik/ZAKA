@@ -41,7 +41,7 @@ import type { EngineObserver, MarketEngine } from '../market/engine'
 import { metrics } from '../metrics'
 import { PricePath, RULES, scalpReady, secondLegReady, snipeReady, tooCostly } from '../signals/rules'
 import type { BotStatus, GradeRecordView, ScanRow, SignalFeatures, SignalGrade, SignalQuality, SignalRule } from '../../../api/_marketProtocol'
-import { GRADE_RULES, GRADES, GradeBook, gradeOf } from '../signals/grades'
+import { GRADE_RULES, GRADES, GradeBook, gradeOf, liveGrade } from '../signals/grades'
 import { crowdCap } from './crowd'
 import { QUALITY, QualityRank, qualityScore, type RuleRecord } from '../signals/quality'
 import { LIVE_GATE, liveKey, LiveSpeedBook, replayAtLiveSpeed, type LiveSpeedRecord } from '../signals/liveSpeed'
@@ -156,11 +156,14 @@ export class Bot implements EngineObserver {
   private speed: typeof LIVE_SPEED | null
   /** Live bots: every signal not on probation (`all`), or only the proven kinds, not the lowest 20% (`proven`). */
   readonly liveSignals: 'all' | 'proven'
+  /** Which grades live bots trade: Prime and grades proven at live speed (`proven`), or every grade (`all`). */
+  readonly liveGrades: 'proven' | 'all'
 
   /** `history`: the coins' stored trades (replays); `speed`: the paper book at live speed (the default; null: at once). */
-  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null; history?: Pick<HistoryStore, 'trades'> | null; speed?: typeof LIVE_SPEED | null; liveSignals?: 'all' | 'proven' }) {
+  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null; history?: Pick<HistoryStore, 'trades'> | null; speed?: typeof LIVE_SPEED | null; liveSignals?: 'all' | 'proven'; liveGrades?: 'proven' | 'all' }) {
     this.speed = o.speed === undefined ? LIVE_SPEED : o.speed
     this.liveSignals = o.liveSignals ?? 'proven'
+    this.liveGrades = o.liveGrades ?? 'proven'
     this.mode = o.mode === 'live' && !o.live ? 'paper' : o.mode
     o.live?.setPools(token => { const mp = this.o.engine.tokens.get(token)?.mainPool; return mp ? this.o.pools.get(mp) ?? null : null })
   }
@@ -505,10 +508,12 @@ export class Bot implements EngineObserver {
     // Its grade (signals/grades.ts): Prime, Core or Standard, handed out one lower while its own grade's record is under review.
     const graded2 = gradeOf(features, rule)
     const handed = this.grades.effective(graded2.grade, now)
+    // Live bots trade Prime and grades proven at live speed (signals/grades.ts liveGrade).
+    const forLive = this.liveGrades === 'all' ? { ok: true, why: null } : liveGrade(this.grades, handed.grade, now)
     const quality: SignalQuality = {
       score: scored.score, ...ranked, ...(this.liveSignals === 'proven' && ranked.grade === 'live' && !ls.ok ? { grade: 'paper' as const } : {}), parts: scored.parts,
       liveSpeed: { trades: ls.trades, winRate: ls.winRate, avgPct: ls.avgReturn === null ? null : Math.round(ls.avgReturn * 1_000) / 10, ok: ls.ok },
-      level: handed.grade, levelWhy: graded2.why, review: handed.review,
+      level: handed.grade, levelWhy: graded2.why, review: handed.review, liveOk: forLive.ok, liveWhy: forLive.why,
     }
     reasons = [...reasons, `grade: ${handed.grade}${handed.grade !== graded2.grade ? ` (${graded2.grade} under review)` : ''}`]
     metrics.inc(`bot_signals_level_${handed.grade}`)
@@ -537,16 +542,19 @@ export class Bot implements EngineObserver {
     if (this.mode === 'live' && this.o.live) {
       if (probation) this.o.live.event({ kind: 'skip', text: `$${meta.symbol}: not bought live, ${probation.why}` })
       else if (quality.grade === 'paper') this.o.live.event({ kind: 'skip', text: `$${meta.symbol}: not bought live, ${ls.ok ? `quality ${quality.score} is in the lowest ${Math.round((1 - QUALITY.liveShare) * 100)}% of recent signals` : liveWhy(ls)}` })
+      else if (!forLive.ok) this.o.live.event({ kind: 'skip', token, symbol: meta.symbol, text: `$${meta.symbol}: not bought live, ${forLive.why}` })
       else {
+        // A Prime signal is traded with Precision (all of it at +6%), as visitors' live bots do.
+        const liveStrategy: Strategy = handed.grade === 'prime' ? 'precision' : strategy
         // Visitors' bots were seated first (bot/crowd.ts): the platform's bot takes only what they left under the cap.
-        const want = this.params(strategy).sizeUsd
-        const capUsd = crowdCap({ liquidityUsd: st.liquidityUsd, takeProfit: this.params(strategy).tp1Multiple, flags: features.flags })
+        const want = this.params(liveStrategy).sizeUsd
+        const capUsd = crowdCap({ liquidityUsd: st.liquidityUsd, takeProfit: this.params(liveStrategy).tp1Multiple, flags: features.flags })
         const left = this.o.accounts ? this.o.accounts.crowd.leftover(signal.id, capUsd) : capUsd
         if (left < 1) this.o.live.event({ kind: 'skip', token, symbol: meta.symbol, text: `$${meta.symbol}: not bought live, visitors' bots filled its crowd cap ($${capUsd.toFixed(2)})` })
         else {
           const size = Math.min(want, left)
           this.o.accounts?.crowd.take(signal.id, capUsd, size)
-          void this.o.live.open(signal, strategy, pool, meta, { sizeUsd: size, priceNow: () => this.priceOf(token) })
+          void this.o.live.open(signal, liveStrategy, pool, meta, { sizeUsd: size, priceNow: () => this.priceOf(token) })
         }
       }
     }
@@ -624,7 +632,7 @@ export class Bot implements EngineObserver {
     })()
     return GRADES.map(g => {
       const r = this.grades.record(g, now)
-      return { grade: g, trades: r.trades, wins: r.wins, winRate: r.winRate, avgPct: r.avgReturn === null ? null : Math.round(r.avgReturn * 1_000) / 10, review: r.review, exits: exits[g], rules: rules(g) }
+      return { grade: g, trades: r.trades, wins: r.wins, winRate: r.winRate, avgPct: r.avgReturn === null ? null : Math.round(r.avgReturn * 1_000) / 10, review: r.review, exits: exits[g], rules: rules(g), live: this.liveGrades === 'all' || liveGrade(this.grades, g, now).ok }
     })
   }
 

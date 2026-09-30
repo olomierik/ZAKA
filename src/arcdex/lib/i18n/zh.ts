@@ -1907,5 +1907,14 @@ const d: Record<string, string> = {
   "liquidity $3,000+": "流动性 3,000 美元以上",
   "Tiered by signal quality: the higher the tier, the cleaner the signals. Prime signals, the cleanest, go to Tier 3 with the Precision strategy.": "按信号质量分级：等级越高，信号越干净。最干净的 Prime 信号给第 3 级，并配精准策略。",
   "Free for now: every tier's signals and strategies are open to everyone, so you can see what each one does. Link a wallet in Autotrade to see your tier.": "目前免费：每个等级的信号和策略对所有人开放，你可以亲眼看看各自的表现。在 Autotrade 中关联钱包即可查看你的等级。",
+  "Free live trading": "免费实盘交易",
+  "Every account trades live without $ARCD until {d}. Then tiers start: live trading needs Tier 1 (5M $ARCD).": "{d} 之前，所有账户无需 $ARCD 即可实盘交易。之后等级开始生效：实盘交易需要第 1 级（5M $ARCD）。",
+  "{t} left": "剩余 {t}",
+  "Tiers start {d}.": "等级将于 {d} 开始。",
+  "Live bots trade it now": "实盘机器人现在交易它",
+  "Live bots: not yet (it needs 10+ replays, 60% won and a profit at live speed)": "实盘机器人：暂不交易（需要 10 次以上回放、60% 胜率且在实盘速度下盈利）",
+  "Live bots trade Prime signals now, the cleanest: all of it sold at +6%, fast. Other grades join by themselves once they prove a profit at live speed (the Signals tab shows each grade's record).": "实盘机器人现在只交易最干净的 Prime 信号：+6% 全部卖出，速进速出。其他级别在实盘速度下证明盈利后会自动加入（信号标签页显示每个级别的记录）。",
+  "Live bots trade it": "实盘机器人交易它",
+  "🎉 Free live trading: every account trades live without $ARCD until {d}. Then tiers start.": "🎉 免费实盘交易：{d} 之前，所有账户无需 $ARCD 即可实盘交易。之后等级开始生效。",
 }
 export default d

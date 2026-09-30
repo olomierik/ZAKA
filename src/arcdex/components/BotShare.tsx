@@ -21,13 +21,21 @@ export function cardFromMarket(b: MarketBot | MarketBotDetail): BotCardData {
 }
 
 /** The card for the owner's own bot (its dashboard). */
+/** Winning trades in a row, most recent first (for the post: "7 wins in a row"). */
+function winStreak(closed: { closedAt: number | null; pnlUsd: number | null }[]): number {
+  let n = 0
+  for (const p of [...closed].sort((x, y) => (y.closedAt ?? 0) - (x.closedAt ?? 0))) { if ((p.pnlUsd ?? 0) > 0) n++; else break }
+  return n
+}
+
 export function cardFromAccount(a: PaperAccountView): BotCardData {
   const live = a.mode === 'live' && a.live
   const pnl = live ? a.live!.pnlUsd : a.equity - a.deposited
   const closed = a.positions.filter(p => p.status === 'closed' && (live ? p.mode === 'live' : p.mode !== 'live'))
   return {
     name: a.name ?? 'My bot', mode: live ? 'live' : 'paper', strategies: a.strategies,
-    pnlUsd: pnl, pnlPct: live ? null : a.deposited > 0 ? (pnl / a.deposited) * 100 : null,
+    pnlUsd: pnl, pnlPct: live ? (a.live!.startBalanceUsd ? (pnl / a.live!.startBalanceUsd) * 100 : null) : a.deposited > 0 ? (pnl / a.deposited) * 100 : null,
+    streak: winStreak(closed),
     winRate: live ? a.live!.winRate : a.stats.winRate, trades: live ? a.live!.closed : a.stats.closed,
     curve: botCurve(closed, live ? a.live!.pnlUsd : a.stats.totalPnlUsd).concat(live ? [] : [pnl]),
     since: a.startedAt ?? a.createdAt, link: linkOf(a.slug ?? ''),

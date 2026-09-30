@@ -23,6 +23,21 @@ export const ARCD_TIERS: ArcdTier[] = [
 /** The engine's answer wins (GET /v1/tiers `enforced`); this is only the fallback. */
 export const TIERS_ENFORCED = false
 
+/**
+ * Live trading for every account without $ARCD until then; tiers start by
+ * themselves at that moment (owner's decision, 2026-09-30: 3 October 2026,
+ * 00:00 UTC). The engine's `enforceAt` wins; this is the fallback.
+ */
+export const TIERS_START = Date.parse('2026-10-03T00:00:00Z')
+
+/** "2d 4h 12m" until `at` (null once it's passed). */
+export function countdown(at: number, now = Date.now()): string | null {
+  const ms = at - now
+  if (ms <= 0) return null
+  const m = Math.floor(ms / 60_000), d = Math.floor(m / 1_440), h = Math.floor((m % 1_440) / 60)
+  return d > 0 ? `${d}d ${h}h ${m % 60}m` : h > 0 ? `${h}h ${m % 60}m` : `${Math.max(1, m)}m`
+}
+
 /** A tier's name, from the engine's table or this one. */
 export const tierName = (id: TierId, list: Pick<TierInfo, 'id' | 'name'>[] = ARCD_TIERS) => list.find(t => t.id === id)?.name ?? id
 

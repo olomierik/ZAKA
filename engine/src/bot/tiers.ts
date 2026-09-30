@@ -16,12 +16,13 @@
 // subscription paid some other way; POST /v1/bot/control grant-tier, signed
 // by the owner's wallet), whichever is higher.
 //
-// While TIERS_ENFORCED is off (the default), every account gets every grade
-// and strategy, 5 bots and live trading, at the standard fee, and no one is
-// ahead of anyone in a crowd: the tier each account would have is shown, so
-// everyone sees what each tier's signals do before anything is charged.
-// Switching TIERS_ENFORCED=true on Railway starts enforcing, with no other
-// change.
+// Until tiers are enforced, every account gets every grade and strategy, 5
+// bots and live trading, at the standard fee, and no one is ahead of anyone in
+// a crowd: the tier each account would have is shown, so everyone sees what
+// each tier's signals do before anything is charged. They start by
+// themselves at TIERS_ENFORCE_AT (owner's decision, 2026-09-30: live trading
+// for every account without $ARCD until 3 October 2026, 00:00 UTC, then
+// tiers), or at once with TIERS_ENFORCED=true.
 
 import type { AccessView, BotStrategy, SignalGrade, TierId, TierInfo } from '../../../api/_marketProtocol'
 import type { Rpc } from '../chain/http'
@@ -52,9 +53,13 @@ export class Tiers {
   private held = new Map<string, { arcd: number; at: number }>()
   private reading = new Set<string>()
 
-  constructor(private o: { enforced: boolean; rpc: Rpc | null }) {}
+  /** `enforceAt`: when tiers start by themselves (ms); `enforced`: now, whatever the time. */
+  constructor(private o: { enforced: boolean; rpc: Rpc | null; enforceAt?: number | null }) {}
 
-  get enforced() { return this.o.enforced }
+  /** Whether tiers are enforced at `now`. */
+  enforcedAt(now = Date.now()) { return this.o.enforced || (this.o.enforceAt != null && now >= this.o.enforceAt) }
+  get enforced() { return this.enforcedAt() }
+  get enforceAt(): number | null { return this.o.enforced ? null : this.o.enforceAt ?? null }
   list(): TierInfo[] { return TIERS }
 
   /** $ARCD in these wallets (null until every one has been read once); stale ones are read again in the background. */
@@ -99,13 +104,14 @@ export class Tiers {
   access(u: TierHolder | null, now = Date.now()): AccessView {
     const e = this.entitled(u, now)
     const next = TIERS.find(t => t.priority === e.tier.priority + 1) ?? null
+    const enforced = this.enforcedAt(now)
     const base = {
-      enforced: this.o.enforced, entitled: e.tier.id, via: e.via, arcdHeld: e.arcdHeld,
+      enforced, enforceAt: this.enforceAt, entitled: e.tier.id, via: e.via, arcdHeld: e.arcdHeld,
       wallets: (u?.wallets ?? []).map(w => w.address),
       grant: u?.grant && u.grant.until > now ? u.grant : null,
       next: next ? { tier: next.id, needArcd: Math.max(0, next.minArcd - (e.arcdHeld ?? 0)) } : null,
     }
-    if (!this.o.enforced) return { ...base, grades: TOP.grades, strategies: TOP.strategies, maxBots: TOP.maxBots, live: true, profitFeePct: BASE_FEE_PCT, priority: 0 }
+    if (!enforced) return { ...base, grades: TOP.grades, strategies: TOP.strategies, maxBots: TOP.maxBots, live: true, profitFeePct: BASE_FEE_PCT, priority: 0 }
     const t = e.tier
     return { ...base, grades: t.grades, strategies: t.strategies, maxBots: t.maxBots, live: t.live, profitFeePct: t.profitFeePct, priority: t.priority }
   }
