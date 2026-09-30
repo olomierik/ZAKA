@@ -201,6 +201,8 @@ export async function searchPools(query: string): Promise<GeckoPool[]> {
   return (d.data ?? []).map(p => {
     const pool = parsePool(p, dexMap)
     const t = tokens.get((p.relationships as Record<string, { data?: { id?: string } }>)?.base_token?.data?.id ?? '')
-    return t ? { ...pool, baseSymbol: t.symbol || pool.baseSymbol, baseName: t.name || pool.baseName, logoUrl: t.image_url ?? null } : pool
+    // A coin without a logo has image_url "missing.png": drawn, that's a broken image.
+    const logo = t?.image_url && t.image_url !== 'missing.png' && /^https:\/\//.test(t.image_url) ? t.image_url : null
+    return t ? { ...pool, baseSymbol: t.symbol || pool.baseSymbol, baseName: t.name || pool.baseName, logoUrl: logo } : pool
   })
 }
