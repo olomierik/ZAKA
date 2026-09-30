@@ -174,19 +174,30 @@ describe('the live trader (stand-in wallet)', () => {
     expect(calls).toEqual([])
     expect(lt.events[0].text).toMatch(/paper only/)
   })
-  test('take profit sells its share of the wallet\'s balance; the creator selling sells the rest', async () => {
+  test('a scalp\'s take-profit sells the whole balance: the profit is secured and the trade closed', async () => {
     const { lt, calls, positions, meta, signal } = setup()
     await lt.open(signal('s1'), 'scalp', pool, meta)
     const p = positions[0]
-    lt.onPrice(p, p.marketEntry * 1.35, Date.now(), false)
+    lt.onPrice(p, p.marketEntry * 1.1, Date.now(), false) // short of +15%
     await settle()
-    expect(calls.slice(2)).toEqual(['sell 3750 @1500']) // 75% of 5,000
-    expect(p.tp1Done).toBe(true)
-    lt.onPrice(p, p.marketEntry * 1.2, Date.now(), true)
+    expect(calls.slice(2)).toEqual([])
+    lt.onPrice(p, p.marketEntry * 1.16, Date.now(), false)
     await settle()
-    expect(calls.slice(3)).toEqual(['sell 1250 @1500'])
-    expect(p).toMatchObject({ status: 'closed', exitReason: 'creator' })
-    expect(p.pnlUsd!).toBeCloseTo(5 * 1.3 - 5 - 0.03, 6) // proceeds − size − gas (buy + two sells)
+    expect(calls.slice(2)).toEqual(['sell 5000 @1500'])
+    expect(p).toMatchObject({ status: 'closed', exitReason: 'tp1' })
+    expect(p.pnlUsd!).toBeCloseTo(5 * 1.3 - 5 - 0.02, 6) // proceeds − size − gas (buy + sell)
+  })
+  test('the creator selling, or a rug alarm, sells everything at once', async () => {
+    for (const how of ['creator', 'rug'] as const) {
+      const { lt, calls, positions, meta, signal } = setup()
+      await lt.open(signal('s1'), 'scalp', pool, meta)
+      const p = positions[0]
+      if (how === 'creator') lt.onPrice(p, p.marketEntry * 1.05, Date.now(), true)
+      else lt.closeNow(p, 'rug')
+      await settle()
+      expect(calls.slice(2)).toEqual(['sell 5000 @1500'])
+      expect(p).toMatchObject({ status: 'closed', exitReason: how })
+    }
   })
   test('a failing sale is retried with more slippage, then marked stuck', async () => {
     const { lt, calls, positions, meta, signal } = setup({ sellFails: 3 })

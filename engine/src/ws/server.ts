@@ -20,8 +20,9 @@
 //   POST /v1/bot/control                        the owner's signed switch (bot/control.ts)
 //   GET /v1/bot/scan?limit=200&status=…         every coin being scanned, and why (bot/scanFeed.ts)
 //   GET /v1/search?q=…&limit=20                 coins by name, ticker or address: every launch this engine has seen
-//   POST /v1/paper/accounts                     a new paper account: its key, once (bot/paperAccounts.ts)
-//   GET|POST /v1/paper/account                  the account behind the X-Paper-Key header; POST acts on it
+//   POST /v1/paper/accounts {name, strategies}  a new bot: its key, once (bot/paperAccounts.ts)
+//   GET|POST /v1/paper/account                  the bot behind the X-Paper-Key header; POST acts on it
+//   GET /v1/paper/trades?limit=100&before=ms    every closed trade of that bot, newest first (the trade log)
 //   GET /health           summary (200 ok/degraded, 503 down)
 //   GET /metrics          full metrics (Bearer METRICS_TOKEN when set)
 
@@ -36,7 +37,7 @@ import { metrics } from '../metrics'
 import type { Bot } from '../bot/bot'
 import { parseControl, type ControlVerifier } from '../bot/control'
 import type { PaperAccounts } from '../bot/paperAccounts'
-import type { PaperAction, ScanRow } from '../../../api/_marketProtocol'
+import type { NewPaperAccount, PaperAction, ScanRow } from '../../../api/_marketProtocol'
 import type { MarketEngine, Publisher } from '../market/engine'
 import type { HistoryStore } from '../store/history'
 import type { HotStore } from '../store/hot'
@@ -215,11 +216,21 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         const accounts = api.accounts
         if (!accounts) return json(req, 503, { error: 'paper trading is not running in this process' })
         if (req.method === 'POST' && url.pathname === '/v1/paper/accounts') {
+          if (Number(req.headers.get('content-length') ?? 0) > 2_048) return json(req, 413, { error: 'too large' })
+          const body = await req.json().catch(() => ({})) as Partial<NewPaperAccount> | null
           if (!mayCreate(ip)) return json(req, 429, { error: 'too many new accounts from here; try again later' })
-          const made = accounts.create()
+          const made = accounts.create(Date.now(), body && typeof body === 'object' ? { name: body.name, strategies: body.strategies } : {})
           if (!made) return json(req, 503, { error: 'paper trading is full right now' })
+          if ('error' in made) return json(req, 400, { error: made.error })
           metrics.inc('paper_accounts_created')
           return json(req, 200, { key: made.key, account: accounts.view(made.account) })
+        }
+        if (req.method === 'GET' && url.pathname === '/v1/paper/trades') {
+          const a = accounts.byKey(req.headers.get('x-paper-key'))
+          if (!a) return json(req, 404, { error: 'no paper account for this key' })
+          const n = Math.max(1, Math.min(500, Number(url.searchParams.get('limit')) || 100))
+          const before = Number(url.searchParams.get('before')) || undefined
+          return json(req, 200, { trades: await accounts.trades(a, n, before), total: a.tradesLogged })
         }
         if (url.pathname === '/v1/paper/account') {
           const a = accounts.byKey(req.headers.get('x-paper-key'))

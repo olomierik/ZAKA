@@ -122,3 +122,64 @@ export class Tapes {
   get size() { return this.tapes.size }
   tokens() { return [...this.tapes.keys()] }
 }
+
+/** Each coin's last few minutes of trades (any age: the tape above keeps only
+ * a coin's start). The rug guard and the momentum scalp rule read it. */
+export class RecentTapes {
+  private tapes = new Map<string, TapeTrade[]>()
+  constructor(private keepMs = 180_000, private cap = 400) {}
+  add(token: string, t: TapeTrade, now = t.ts) {
+    let list = this.tapes.get(token)
+    if (!list) { list = []; this.tapes.set(token, list) }
+    list.push(t)
+    let drop = 0
+    while (drop < list.length && (now - list[drop].ts > this.keepMs || list.length - drop > this.cap)) drop++
+    if (drop) list.splice(0, drop)
+  }
+  /** Trades of the last `ms` before `now`. */
+  window(token: string, now: number, ms: number): TapeTrade[] { return (this.tapes.get(token) ?? []).filter(t => now - t.ts <= ms && t.ts <= now + 5_000) }
+  drop(token: string) { this.tapes.delete(token) }
+  tokens() { return [...this.tapes.keys()] }
+  /** Coins that traded within the kept span, most recent trade first; forgets the rest. */
+  active(now: number): string[] {
+    const out: [string, number][] = []
+    for (const [token, list] of this.tapes) {
+      const last = list[list.length - 1]?.ts ?? 0
+      if (now - last > this.keepMs) this.tapes.delete(token); else out.push([token, last])
+    }
+    return out.sort((x, y) => y[1] - x[1]).map(([t]) => t)
+  }
+  get size() { return this.tapes.size }
+}
+
+/** A short window of trading, in numbers (the momentum scalp rule). */
+export interface Window {
+  trades: number
+  buyers: number
+  sellers: number
+  buyUsd: number
+  sellUsd: number
+  firstPrice: number | null
+  lastPrice: number | null
+  high: number | null
+  low: number | null
+  topBuyerPct: number
+}
+
+export function windowOf(trades: TapeTrade[]): Window {
+  const buyers = new Map<string, number>(), sellers = new Set<string>()
+  let buyUsd = 0, sellUsd = 0
+  const prices: number[] = []
+  for (const t of [...trades].sort((a, b) => a.ts - b.ts || a.block - b.block)) {
+    if (t.side === 'BUY') { buyUsd += t.usd; if (t.wallet) buyers.set(t.wallet, (buyers.get(t.wallet) ?? 0) + t.usd) }
+    else if (t.side === 'SELL') { sellUsd += t.usd; if (t.wallet) sellers.add(t.wallet) }
+    if (t.price !== null && t.price > 0) prices.push(t.price)
+  }
+  const top = Math.max(0, ...buyers.values())
+  return {
+    trades: trades.length, buyers: buyers.size, sellers: sellers.size, buyUsd, sellUsd,
+    firstPrice: prices[0] ?? null, lastPrice: prices[prices.length - 1] ?? null,
+    high: prices.length ? Math.max(...prices) : null, low: prices.length ? Math.min(...prices) : null,
+    topBuyerPct: buyUsd > 0 ? (top / buyUsd) * 100 : 0,
+  }
+}

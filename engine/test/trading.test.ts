@@ -122,7 +122,7 @@ describe('paper trading', () => {
   })
 })
 
-describe('scalp: risky coins, small and out fast', () => {
+describe('fast scalp: small, sold in full at +15%, out fast', () => {
   const now = Date.UTC(2026, 8, 30, 12)
   const scalp = (price = 1) => openPosition({ id: 'p', strategy: 'scalp', token: A(1), symbol: 'C', launchpad: 'ARGUS', signalId: 's', price, cost: 0.02, now })
   const P = STRATEGIES.scalp
@@ -131,35 +131,41 @@ describe('scalp: risky coins, small and out fast', () => {
     expect(scalp().sizeUsd).toBe(5)
     expect(P.sizeUsd).toBe(STRATEGIES.snipe.sizeUsd / 5)
   })
-  test('sells three quarters at +30%, the rest trails 15% under the peak', () => {
+  test('sells everything at +15%: the profit is secured and the trade closed', () => {
     const p = scalp()
-    expect(onPrice(p, 1.25, now + 1, P)).toEqual([])
-    expect(onPrice(p, 1.31, now + 2, P)[0].reason).toBe('tp1')
-    expect(p.remaining).toBeCloseTo(p.qty * 0.25, 9)
-    onPrice(p, 1.6, now + 3, P)
-    expect(onPrice(p, 1.37, now + 4, P)).toEqual([]) // 14.4% under the peak: holds
-    expect(onPrice(p, 1.35, now + 5, P)[0].reason).toBe('trail')
-    expect(p.pnlUsd!).toBeGreaterThan(1)
+    expect(onPrice(p, 1.14, now + 1, P)).toEqual([])
+    const f = onPrice(p, 1.16, now + 2, P)
+    expect(f.map(x => x.reason)).toEqual(['tp1'])
+    expect(p).toMatchObject({ status: 'closed', remaining: 0, exitReason: 'tp1' })
+    expect(p.pnlUsd!).toBeGreaterThan(0.4) // $5 at +16%, less 2% each way
   })
-  test('stop at −15%', () => {
+  test('stop at −10%', () => {
     const p = scalp()
-    expect(onPrice(p, 0.86, now + 1, P)).toEqual([])
-    expect(onPrice(p, 0.84, now + 2, P)[0].reason).toBe('stop')
+    expect(onPrice(p, 0.91, now + 1, P)).toEqual([])
+    expect(onPrice(p, 0.89, now + 2, P)[0].reason).toBe('stop')
   })
-  test('out after 5 minutes unless up 5%', () => {
+  test('out after 3 minutes unless up 3%', () => {
     const p = scalp()
-    expect(onPrice(p, 1.03, now + 4 * 60_000, P)).toEqual([])
-    expect(onPrice(p, 1.03, now + 5 * 60_000 + 1, P)[0].reason).toBe('time')
+    expect(onPrice(p, 1.02, now + 2 * 60_000, P)).toEqual([])
+    expect(onPrice(p, 1.02, now + 3 * 60_000 + 1, P)[0].reason).toBe('time')
     const up = scalp()
-    expect(onPrice(up, 1.08, now + 6 * 60_000, P)).toEqual([])
+    expect(onPrice(up, 1.05, now + 4 * 60_000, P)).toEqual([])
   })
-  test('never held past 15 minutes, the runner too', () => {
+  test('never held past 10 minutes', () => {
     const p = scalp()
-    onPrice(p, 1.5, now + 60_000, P) // took profit
-    expect(p.tp1Done).toBe(true)
-    expect(onPrice(p, 1.5, now + 14 * 60_000, P)).toEqual([])
-    expect(onPrice(p, 1.5, now + 15 * 60_000, P)[0].reason).toBe('time')
+    expect(onPrice(p, 1.05, now + 9 * 60_000, P)).toEqual([])
+    expect(onPrice(p, 1.05, now + 10 * 60_000, P)[0].reason).toBe('time')
     expect(p.status).toBe('closed')
+  })
+  test('a position trades with its own exits when it has them (a visitor\'s learned tuning)', () => {
+    const p = scalp()
+    p.exits = { ...P, tp1Multiple: 1.08 }
+    expect(onPrice(p, 1.09, now + 1, P)[0].reason).toBe('tp1')
+  })
+  test('scalps may come back to a coin after 30 minutes; other strategies after 6 hours', () => {
+    const done = { ...scalp(), status: 'closed' as const, closedAt: now }
+    expect(canOpen([done], done.token, now + 31 * 60_000, RISK, 'scalp').ok).toBe(true)
+    expect(canOpen([done], done.token, now + 31 * 60_000, RISK, 'snipe').ok).toBe(false)
   })
   test('the creator selling closes it (the bot calls closeNow on their sale)', () => {
     expect(P.exitOnCreatorSell).toBe(true)

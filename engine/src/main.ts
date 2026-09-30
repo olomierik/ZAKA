@@ -300,7 +300,9 @@ async function main() {
   await stream.start()
 
   setInterval(() => eng.tick(), 1_000)
-  if (bot) setInterval(() => bot.tick(), 15_000)
+  // Time exits, visitors' bots and cleanup every 5s; every coin trading right now is evaluated every 3s.
+  if (bot) setInterval(() => bot.tick(), 5_000)
+  if (bot) setInterval(() => bot.sweep(), 3_000)
   // The live scanner on the site: what changed, every 2s.
   if (bot) setInterval(() => bot.pushScan(), 2_000)
   setInterval(() => void hot.ping().then(() => { redisOk = true }, () => { redisOk = false; log.warn('redis ping failed') }), 10_000)
