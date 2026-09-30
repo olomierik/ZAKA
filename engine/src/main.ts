@@ -40,6 +40,7 @@ import { MemoryHotStore, RedisHotStore, type HotStore } from './store/hot'
 import { Bot } from './bot/bot'
 import { ControlVerifier } from './bot/control'
 import { DEFAULT_LIMITS, LiveTrader } from './bot/liveTrader'
+import { PaperAccounts } from './bot/paperAccounts'
 import { MemoryBotStore, PostgresBotStore } from './bot/store'
 import { LiveExecutor } from './trading/live'
 import { DataApi, startServer } from './ws/server'
@@ -193,9 +194,13 @@ async function main() {
       void exec.ready().catch(e => log.error('live: Universal Router check failed', { error: errMsg(e) }))
     }
   }
+  const botStore = cfg.databaseUrl ? new PostgresBotStore(cfg.databaseUrl) : new MemoryBotStore()
+  // Visitors' paper accounts (virtual USDC), traded on the same signals.
+  const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s) })
+  if (accounts) await accounts.load().catch(e => log.error('paper accounts: load failed', { error: errMsg(e) }))
   const bot = cfg.botMode === 'off' ? null : new Bot({
     rpc, engine: eng, pools, mode: cfg.botMode, sizeUsd: cfg.botSizeUsd ?? undefined, scalpSizeUsd: cfg.botScalpSizeUsd ?? undefined,
-    store: cfg.databaseUrl ? new PostgresBotStore(cfg.databaseUrl) : new MemoryBotStore(),
+    store: botStore, accounts,
     publish: (topics, msg) => publisher.publish(topics, msg),
     live, owner: cfg.botOwner,
   })
@@ -203,7 +208,7 @@ async function main() {
   if (bot) {
     eng.observers.push(bot)
     await bot.start()
-    dataApi?.attachBot(bot, new ControlVerifier(cfg.botOwner as `0x${string}` | null, cfg.httpUrls))
+    dataApi?.attachBot(bot, new ControlVerifier(cfg.botOwner as `0x${string}` | null, cfg.httpUrls), accounts)
   }
   await eng.warmStart()
   const parser = new TradeParser(pools, oracle, makers, eng.launchpadOf)
@@ -296,6 +301,8 @@ async function main() {
 
   setInterval(() => eng.tick(), 1_000)
   if (bot) setInterval(() => bot.tick(), 15_000)
+  // The live scanner on the site: what changed, every 2s.
+  if (bot) setInterval(() => bot.pushScan(), 2_000)
   setInterval(() => void hot.ping().then(() => { redisOk = true }, () => { redisOk = false; log.warn('redis ping failed') }), 10_000)
   setInterval(() => void history.cleanup(cfg.tradeRetentionHours), 3_600_000)
   if (srv) setInterval(() => hot.putSubscriptions(srv!.subscriptionCounts()), 10_000)

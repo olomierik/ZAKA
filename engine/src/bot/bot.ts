@@ -30,9 +30,11 @@ import { log, errMsg } from '../log'
 import type { EngineObserver, MarketEngine } from '../market/engine'
 import { metrics } from '../metrics'
 import { PricePath, RULES, secondLegReady, snipeReady } from '../signals/rules'
-import type { BotStatus } from '../../../api/_marketProtocol'
+import type { BotStatus, ScanRow } from '../../../api/_marketProtocol'
 import { canOpen, closeNow, costPerSide, onPrice, openPosition, RISK, STRATEGIES, stats, type Position, type Strategy, type StrategyParams } from '../trading/paper'
 import type { LiveTrader } from './liveTrader'
+import type { PaperAccounts } from './paperAccounts'
+import { failing, ScanFeed } from './scanFeed'
 import type { BotStore } from './store'
 import type { Signal } from './types'
 
@@ -67,12 +69,14 @@ export class Bot implements EngineObserver {
   positions: Position[] = []
   private lastRecheck = new Map<string, number>()
   private blockedOnce = new Set<string>()
+  /** Every coin being watched, where it stands and why (the site's live scanner). */
+  readonly scan = new ScanFeed()
 
   /** What it's doing now: paper, live (paper too, plus the bot wallet's trades), or off. */
   mode: BotMode
 
   /** `sizeUsd` sizes snipes and second legs; `scalpSizeUsd` sizes scalps. `live` is set when a bot wallet is configured. */
-  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null }) {
+  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null }) {
     this.mode = o.mode === 'live' && !o.live ? 'paper' : o.mode
     o.live?.setPools(token => { const mp = this.o.engine.tokens.get(token)?.mainPool; return mp ? this.o.pools.get(mp) ?? null : null })
   }
@@ -111,6 +115,7 @@ export class Bot implements EngineObserver {
   // ── engine events ───────────────────────────────────────────────────
 
   onLaunch(l: LaunchInfo) {
+    if (Date.now() - l.timestamp <= WATCH_MS) this.scan.launch(l)
     const sym = l.symbol.trim().toLowerCase()
     if (sym) this.bySymbol.set(sym, (this.bySymbol.get(sym) ?? new Set()).add(l.token))
     if (l.creator) this.byCreator.set(l.creator, [...(this.byCreator.get(l.creator) ?? []), l.timestamp].slice(-50))
@@ -138,6 +143,7 @@ export class Bot implements EngineObserver {
       if (creatorSold && this.params(p.strategy).exitOnCreatorSell) this.fills(p, closeNow(p, price, now, 'creator'))
       else if (priced) this.fills(p, onPrice(p, price, now, this.params(p.strategy)))
     }
+    if (price) this.o.accounts?.onPrice(t.token, price, now, creatorSold, priced)
     if (!priced) return
     if (now - (this.lastEval.get(t.token) ?? 0) >= EVAL_EVERY_MS && !this.evaluating.has(t.token)) {
       this.lastEval.set(t.token, now)
@@ -155,11 +161,13 @@ export class Bot implements EngineObserver {
       if (price) this.fills(p, onPrice(p, price, now, this.params(p.strategy)))
     }
     this.o.live?.tick(now, token => this.o.engine.tokens.get(token)?.priceUsd ?? null)
+    this.o.accounts?.tick(now)
     for (const [token, path] of this.paths) {
       if (now - path.launchedAt > WATCH_MS && !this.positions.some(p => p.status === 'open' && p.token === token)) {
         this.paths.delete(token); this.tapes.drop(token); this.deeps.delete(token); this.reports.delete(token); this.statics.delete(token); this.lastEval.delete(token)
       }
     }
+    for (const [token, r] of this.scan.rows) if (now - r.launchedAt > WATCH_MS) this.scan.drop(token)
     metrics.set('bot_watched', this.paths.size)
   }
 
@@ -183,26 +191,40 @@ export class Bot implements EngineObserver {
       }
     }
     const ageSec = (now - meta.timestamp) / 1000
+    const base = { token, symbol: meta.symbol, launchpad: meta.launchpad, launchedAt: meta.timestamp, priceUsd: st.priceUsd, marketCapUsd: st.stats(now).marketCapUsd, liquidityUsd: st.liquidityUsd }
     // Snipe: once per coin, in its first minutes.
     if (ageSec <= RULES.snipe.maxAgeSec && !this.fired.has(`snipe:${token}`)) {
       const flow = computeFlow(this.tapes.get(token), { launchBlock: meta.blockNumber, creator: meta.creator, supply: st.supply })
       const rule = snipeReady(flow, ageSec)
-      if (rule.ok) await this.tryFire('snipe', token, rule.reasons, ageSec)
+      if (rule.ok) this.scan.record(base, await this.tryFire('snipe', token, rule.reasons, ageSec))
+      else this.scan.record(base, { status: 'watching', stage: 'snipe', reasons: [...failing(rule.reasons), `snipe window: ${Math.max(0, Math.floor(RULES.snipe.maxAgeSec - ageSec))}s left`] })
+      return
     }
     // Second leg: a coin that ran 10×, fell and is coming back.
     const path = this.paths.get(token)
     const lastLeg = this.fired.get(`second-leg:${token}`) ?? 0
     if (path && now - lastLeg >= SECOND_LEG_REPEAT_MS) {
       const rule = secondLegReady(path, now)
-      if (rule.ok) await this.tryFire('second-leg', token, rule.reasons, ageSec)
+      if (rule.ok) this.scan.record(base, await this.tryFire('second-leg', token, rule.reasons, ageSec))
+      else this.scan.record(base, { status: 'watching', stage: 'second-leg', reasons: ['no snipe in its first 10 minutes; waiting for a second leg', ...failing(rule.reasons)] })
     }
   }
 
-  private async tryFire(rule: 'snipe' | 'second-leg', token: string, reasons: string[], ageSec: number) {
+  /** A coin that met a rule: its safety scan decides. Returns what the scanner shows. */
+  private async tryFire(rule: 'snipe' | 'second-leg', token: string, reasons: string[], ageSec: number): Promise<Pick<ScanRow, 'status' | 'stage' | 'reasons' | 'strategy'>> {
     const r = await this.report(token, true)
     // A snipe on a coin that failed only a risk check is a scalp: small, sold fast.
     const strategy: Strategy | null = r?.verdict === 'pass' ? rule : r?.verdict === 'risky' && rule === 'snipe' ? 'scalp' : null
     if (!r || !strategy) {
+      const outcome = (): Pick<ScanRow, 'status' | 'stage' | 'reasons'> => {
+        if (!r) return { status: 'checking', stage: 'safety', reasons: ['safety scan unavailable right now'] }
+        const hardFails = r.checks.filter(c => c.hard && c.ok === false)
+        if (hardFails.length) return { status: 'rejected', stage: 'safety', reasons: hardFails.map(c => `✗ ${c.id}: ${c.detail}`) }
+        const pending = r.checks.filter(c => c.hard && c.ok === null)
+        if (pending.length) return { status: 'checking', stage: 'safety', reasons: pending.map(c => `… ${c.id}: ${c.detail}`) }
+        // Risky, and a second leg needs a clean coin.
+        return { status: 'rejected', stage: 'safety', reasons: ['a second leg needs a clean coin', ...r.checks.filter(c => c.risk && c.ok !== true).map(c => `✗ ${c.id}: ${c.detail}`)] }
+      }
       metrics.inc(`bot_${rule}_blocked_${r?.verdict ?? 'unknown'}`)
       // Which checks stop candidates (tuning): counted once per coin.
       const key = `${rule}:${token}`
@@ -212,7 +234,7 @@ export class Bot implements EngineObserver {
         for (const c of stopping) metrics.inc(`bot_block_${c.ok === false ? 'fail' : 'pending'}_${c.id}`)
         log.info('bot: candidate blocked', { strategy: rule, token, verdict: r.verdict, checks: stopping.map(c => `${c.id}: ${c.detail}`) })
       }
-      return
+      return outcome()
     }
     if (strategy === 'scalp') reasons = [...reasons, ...r.checks.filter(c => c.risk && c.ok !== true).map(c => `risk (${c.id}): ${c.detail}`)]
     const meta = this.o.engine.metas.get(token)!, st = this.o.engine.tokens.get(token)!
@@ -231,15 +253,25 @@ export class Bot implements EngineObserver {
     this.o.publish(['signals'], { t: 'SIGNAL', d: signal })
     metrics.inc(`bot_signals_${strategy}`)
     log.info('signal', { strategy, token, symbol: meta.symbol, launchpad: meta.launchpad, price: signal.price, score: r.score })
-    if (this.mode === 'off') return
+    const fired = { status: 'signal' as const, stage: rule, strategy, reasons }
+    if (this.mode === 'off') return fired
+    // Visitors' paper accounts that follow this strategy.
+    this.o.accounts?.onSignal({ id: signal.id, token, symbol: meta.symbol, launchpad: meta.launchpad, price: signal.price, strategy, roundTripPct: r.honeypot?.roundTripLossPct ?? null, liquidityUsd: st.liquidityUsd }, now)
     if (this.mode === 'live' && this.o.live) void this.o.live.open(signal, strategy, pool, meta)
     const allowed = canOpen(this.positions.filter(p => p.mode !== 'live'), token, now, RISK, strategy)
-    if (!allowed.ok) { log.info('bot: not opening', { token, strategy, why: allowed.why }); return }
+    if (!allowed.ok) { log.info('bot: not opening', { token, strategy, why: allowed.why }); return fired }
     const params = this.params(strategy)
     const cost = costPerSide(r.honeypot?.roundTripLossPct ?? null, params.sizeUsd, st.liquidityUsd)
     const p: Position = { ...openPosition({ id: `${signal.id}:paper`, strategy, token, symbol: meta.symbol, launchpad: meta.launchpad, signalId: signal.id, price: signal.price, cost, now, params }), mode: 'paper' }
     this.positions.push(p)
     this.fills(p, [])
+    return fired
+  }
+
+  /** Every 2s: the scan rows that changed, and the scan's numbers, to the site. */
+  pushScan(now = Date.now()) {
+    if (this.mode === 'off') return
+    this.o.publish(['scan'], { t: 'SCAN', d: { rows: this.scan.drainChanged(80), stats: this.scan.stats(now) } })
   }
 
   /** A strategy's exits, with the configured size. */

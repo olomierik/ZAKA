@@ -18,6 +18,9 @@
 //   GET /v1/bot/positions?status=open|closed|all&limit=100
 //   GET /v1/bot/status                          mode, bot wallet, live limits and activity
 //   POST /v1/bot/control                        the owner's signed switch (bot/control.ts)
+//   GET /v1/bot/scan?limit=200&status=…         every coin being scanned, and why (bot/scanFeed.ts)
+//   POST /v1/paper/accounts                     a new paper account: its key, once (bot/paperAccounts.ts)
+//   GET|POST /v1/paper/account                  the account behind the X-Paper-Key header; POST acts on it
 //   GET /health           summary (200 ok/degraded, 503 down)
 //   GET /metrics          full metrics (Bearer METRICS_TOKEN when set)
 
@@ -31,6 +34,8 @@ import { log, errMsg } from '../log'
 import { metrics } from '../metrics'
 import type { Bot } from '../bot/bot'
 import { parseControl, type ControlVerifier } from '../bot/control'
+import type { PaperAccounts } from '../bot/paperAccounts'
+import type { PaperAction, ScanRow } from '../../../api/_marketProtocol'
 import type { MarketEngine, Publisher } from '../market/engine'
 import type { HistoryStore } from '../store/history'
 import type { HotStore } from '../store/hot'
@@ -47,7 +52,8 @@ export class DataApi {
   /** Signals and paper/live trading, when this process runs them, and the owner's signature check. */
   bot: Bot | null = null
   control: ControlVerifier | null = null
-  attachBot(b: Bot, control: ControlVerifier | null = null) { this.bot = b; this.control = control }
+  accounts: PaperAccounts | null = null
+  attachBot(b: Bot, control: ControlVerifier | null = null, accounts: PaperAccounts | null = null) { this.bot = b; this.control = control; this.accounts = accounts }
 
   async tokenSnapshot(token: string, limit = 50): Promise<{ stats: TokenStats | null; trades: WireTrade[] }> {
     if (this.engine?.tokens.has(token)) return { stats: this.engine.statsOf(token), trades: this.engine.recentTrades(token, limit) }
@@ -138,6 +144,15 @@ export function startServer({ cfg, api, health }: ServerDeps) {
   const counts = new Map<string, number>()
   const perIp = new Map<string, number>()
   const rest = new Buckets(cfg.restRatePerSec)
+  // New paper accounts: at most 5 an hour per IP.
+  const created = new Map<string, number[]>()
+  const mayCreate = (ip: string, now = Date.now()) => {
+    const list = (created.get(ip) ?? []).filter(t => now - t < 3_600_000)
+    if (list.length >= 5) return false
+    list.push(now); created.set(ip, list)
+    if (created.size > 50_000) created.clear()
+    return true
+  }
   let nextId = 1
   let clients = 0
   const trustProxy = process.env.TRUST_PROXY === '1'
@@ -170,7 +185,34 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         const ok = server.upgrade(req, { data: { id: nextId++, ip, subs: new Set(), allowance: cfg.maxMsgsPerSec, last: Date.now() } })
         return ok ? undefined : new Response('websocket upgrade expected', { status: 400 })
       }
-      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors(req), 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' } })
+      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors(req), 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Content-Type, X-Paper-Key', 'Access-Control-Max-Age': '600' } })
+      if (url.pathname.startsWith('/v1/paper/')) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        const accounts = api.accounts
+        if (!accounts) return json(req, 503, { error: 'paper trading is not running in this process' })
+        if (req.method === 'POST' && url.pathname === '/v1/paper/accounts') {
+          if (!mayCreate(ip)) return json(req, 429, { error: 'too many new accounts from here; try again later' })
+          const made = accounts.create()
+          if (!made) return json(req, 503, { error: 'paper trading is full right now' })
+          metrics.inc('paper_accounts_created')
+          return json(req, 200, { key: made.key, account: accounts.view(made.account) })
+        }
+        if (url.pathname === '/v1/paper/account') {
+          const a = accounts.byKey(req.headers.get('x-paper-key'))
+          if (!a) return json(req, 404, { error: 'no paper account for this key' })
+          if (req.method === 'GET') return json(req, 200, { account: accounts.view(a) })
+          if (req.method === 'POST') {
+            if (Number(req.headers.get('content-length') ?? 0) > 2_048) return json(req, 413, { error: 'too large' })
+            const body = await req.json().catch(() => null) as PaperAction | null
+            if (!body || typeof body !== 'object') return json(req, 400, { error: 'expected a JSON object' })
+            const bad = accounts.act(a, body)
+            if (bad) return json(req, 400, { error: bad })
+            accounts.flush()
+            return json(req, 200, { account: accounts.view(a) })
+          }
+        }
+        return json(req, 404, { error: 'not found' })
+      }
       if (req.method === 'POST' && url.pathname === '/v1/bot/control') {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
         const bot = api.bot, control = api.control
@@ -204,6 +246,11 @@ export function startServer({ cfg, api, health }: ServerDeps) {
           if (url.pathname === '/v1/signals') return json(req, 200, { signals: bot.signals(limit(50, 500)) }, 'public, max-age=1')
           if (url.pathname === '/v1/bot/stats') return json(req, 200, bot.stats(), 'public, max-age=2')
           if (url.pathname === '/v1/bot/status') return json(req, 200, bot.status(), 'no-store')
+          if (url.pathname === '/v1/bot/scan') {
+            const st = url.searchParams.get('status') as ScanRow['status'] | null
+            const valid = st && ['new', 'watching', 'checking', 'rejected', 'signal'].includes(st) ? st : undefined
+            return json(req, 200, { rows: bot.scan.list(limit(200, 1_000), valid), stats: bot.scan.stats() }, 'public, max-age=2')
+          }
           if (url.pathname === '/v1/bot/positions') {
             const st = url.searchParams.get('status')
             return json(req, 200, { positions: bot.positionsList(st === 'open' || st === 'closed' ? st : 'all', limit(100, 1_000)) }, 'public, max-age=1')

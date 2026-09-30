@@ -18,7 +18,7 @@
 // subscribe to one or the other, or events arrive twice. NEW_TOKEN goes to
 // `new_tokens`; `market` carries TICKS (all tokens, once a second).
 
-export const CHANNELS = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles', 'new_tokens', 'market', 'signals'] as const
+export const CHANNELS = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles', 'new_tokens', 'market', 'signals', 'scan'] as const
 export type Channel = (typeof CHANNELS)[number]
 /** Channels that need a token address. */
 export const TOKEN_CHANNELS: readonly Channel[] = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles']
@@ -62,7 +62,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | { error: strin
 
 /** The pub/sub topic a subscription maps to. */
 export function topicOf(m: { channel: Channel; token?: string; interval?: string }): string {
-  if (m.channel === 'new_tokens' || m.channel === 'market' || m.channel === 'signals') return m.channel
+  if (m.channel === 'new_tokens' || m.channel === 'market' || m.channel === 'signals' || m.channel === 'scan') return m.channel
   if (m.channel === 'candles') return `candles:${m.token}:${m.interval}`
   return `${m.channel}:${m.token}`
 }
@@ -232,6 +232,65 @@ export interface BotStatus {
   }
 }
 
+/** One coin in the signal engine's scan (GET /v1/bot/scan, the `scan` channel). */
+export interface ScanRow {
+  token: string
+  symbol: string
+  launchpad: string
+  launchedAt: number
+  /** new: no trade yet; watching: the market rules aren't met (yet); checking: the
+   * safety scan hasn't finished; rejected: a hard safety check failed; signal: it fired. */
+  status: 'new' | 'watching' | 'checking' | 'rejected' | 'signal'
+  /** Which rule the reasons are about. */
+  stage: 'snipe' | 'second-leg' | 'safety'
+  /** Why, in words: unmet rules or failing checks (✗ marks a failure). */
+  reasons: string[]
+  strategy?: 'snipe' | 'second-leg' | 'scalp'
+  priceUsd: number | null
+  marketCapUsd: number | null
+  liquidityUsd: number | null
+  /** When it was last evaluated, and how many times. */
+  at: number
+  evals: number
+}
+
+export interface ScanStats {
+  /** Coins the engine is watching (launched in the last 48h). */
+  watching: number
+  /** Evaluations in the last minute, and when the last one ran. */
+  evalsPerMin: number
+  lastEvalAt: number | null
+  signals24h: number
+  rejected24h: number
+  byStatus: Record<ScanRow['status'], number>
+}
+
+/** A visitor's paper-trading account on the engine (virtual USDC; GET/POST /v1/paper/account). */
+export interface PaperAccountView {
+  id: string
+  running: boolean
+  strategies: ('snipe' | 'second-leg' | 'scalp')[]
+  /** USD per trade (scalps use a fifth of it). */
+  tradeUsd: number
+  cash: number
+  deposited: number
+  /** Cash plus open positions at the current price. */
+  equity: number
+  openValue: number
+  createdAt: number
+  startedAt: number | null
+  positions: BotPosition[]
+  stats: { closed: number; open: number; wins: number; losses: number; winRate: number | null; totalPnlUsd: number; profitFactor: number | null; expectancyUsd: number | null; maxDrawdownUsd: number }
+}
+
+/** What a visitor can do with their paper account (POST /v1/paper/account). */
+export type PaperAction =
+  | { action: 'deposit'; amount: number }
+  | { action: 'start' } | { action: 'stop' }
+  | { action: 'strategies'; strategies: ('snipe' | 'second-leg' | 'scalp')[] }
+  | { action: 'size'; usd: number }
+  | { action: 'reset' }
+
 /** What the owner can tell the bot (POST /v1/bot/control, signed). */
 export type BotControl = { action: 'mode'; mode: 'paper' | 'live' } | { action: 'close-live' }
 
@@ -244,6 +303,7 @@ export function botControlMessage(c: BotControl, at: number): string {
 }
 
 export type ServerMessage =
+  | { t: 'SCAN'; d: { rows: ScanRow[]; stats: ScanStats } }
   | { t: 'TRADE'; k: string; d: WireTrade }
   | { t: 'PRICE_UPDATE'; k: string; d: { pu: number | null; p: number | null; mc: number | null; b: number; ts: number } }
   | { t: 'VOLUME_UPDATE'; k: string; d: { v: number; bv: number; sv: number; bc: number; sc: number; tc: number } }
