@@ -150,10 +150,13 @@ export class Bot implements EngineObserver {
   /** The paper book's buys waiting for their live-speed fill, by token. */
   private pendingHouse = new Map<string, { signal: Signal; strategy: Strategy; params: StrategyParams; cost: number; features: SignalFeatures; rule: SignalRule; due: number }>()
   private speed: typeof LIVE_SPEED | null
+  /** Live bots: every signal not on probation (`all`), or only the proven kinds, not the lowest 20% (`proven`). */
+  readonly liveSignals: 'all' | 'proven'
 
   /** `history`: the coins' stored trades (replays); `speed`: the paper book at live speed (the default; null: at once). */
-  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null; history?: Pick<HistoryStore, 'trades'> | null; speed?: typeof LIVE_SPEED | null }) {
+  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null; history?: Pick<HistoryStore, 'trades'> | null; speed?: typeof LIVE_SPEED | null; liveSignals?: 'all' | 'proven' }) {
     this.speed = o.speed === undefined ? LIVE_SPEED : o.speed
+    this.liveSignals = o.liveSignals ?? 'proven'
     this.mode = o.mode === 'live' && !o.live ? 'paper' : o.mode
     o.live?.setPools(token => { const mp = this.o.engine.tokens.get(token)?.mainPool; return mp ? this.o.pools.get(mp) ?? null : null })
   }
@@ -492,9 +495,11 @@ export class Bot implements EngineObserver {
     // Its quality, ranked against the last signals: the top 80% are live-grade, the rest paper only. The rule's record is
     // its live-speed one once it has 5 replays (what a live bot would have got), else the team's.
     const scored = qualityScore(features, ls.trades >= QUALITY.ruleMinTrades ? { trades: ls.trades, winRate: ls.winRate } : this.ruleRecord(rule, now))
-    const ranked = probation ? { grade: 'paper' as const, tier: 'B' as const, rank: null } : this.qualityRank.grade(scored.score)
+    const graded = probation ? { grade: 'paper' as const, tier: 'B' as const, rank: null } : this.qualityRank.grade(scored.score)
+    // `all` (the owner's setting): every signal not on probation goes to live bots; the rank still sets the tier (the size).
+    const ranked = this.liveSignals === 'all' && !probation ? { ...graded, grade: 'live' as const } : graded
     const quality: SignalQuality = {
-      score: scored.score, ...ranked, ...(ranked.grade === 'live' && !ls.ok ? { grade: 'paper' as const } : {}), parts: scored.parts,
+      score: scored.score, ...ranked, ...(this.liveSignals === 'proven' && ranked.grade === 'live' && !ls.ok ? { grade: 'paper' as const } : {}), parts: scored.parts,
       liveSpeed: { trades: ls.trades, winRate: ls.winRate, avgPct: ls.avgReturn === null ? null : Math.round(ls.avgReturn * 1_000) / 10, ok: ls.ok },
     }
     reasons = [...reasons, quality.grade === 'live' ? `quality ${quality.score}: live-grade, tier ${quality.tier}`
@@ -747,7 +752,8 @@ export class Bot implements EngineObserver {
     const byRule = Object.fromEntries((['momentum', 'snipe', 'second-leg'] as const).map(k => [k, stats(paper.filter(p => (p.rule ?? ruleOf.get(p.signalId)) === k))]))
     const probation = Object.fromEntries((['momentum', 'snipe', 'second-leg'] as const).map(k => [k, this.probation(k)?.why ?? null]))
     const liveSpeed = this.liveSpeed.keys().map(k => this.liveSpeed.record(k))
-    return { mode: this.mode, ...of(paper), byRule, probation, liveSpeed, live: of(this.positions.filter(p => p.mode === 'live')), params: { snipe: this.params('snipe'), 'second-leg': this.params('second-leg'), scalp: this.params('scalp') }, risk: RISK, rules: RULES, watching: this.paths.size }
+    const routing = { liveSignals: this.liveSignals, paperSignals: this.o.accounts?.paperSignals ?? true }
+    return { mode: this.mode, ...of(paper), byRule, probation, liveSpeed, routing, live: of(this.positions.filter(p => p.mode === 'live')), params: { snipe: this.params('snipe'), 'second-leg': this.params('second-leg'), scalp: this.params('scalp') }, risk: RISK, rules: RULES, watching: this.paths.size }
   }
 
   status(): BotStatus {

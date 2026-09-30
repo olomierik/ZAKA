@@ -75,16 +75,16 @@ export const profitFee = (pnlUsd: number | null) => (pnlUsd !== null && pnlUsd >
  */
 export const TEAM_READY = { minOwn: 5, days: 7 }
 
-export function readinessWithTeam(positions: Position[], team: Position[]): BotReadiness {
+export function readinessWithTeam(positions: Position[], team: Position[], minOwn = TEAM_READY.minOwn): BotReadiness {
   const own = readiness(positions)
   const ts = stats(team)
   const pf = ts.profitFactor === Infinity ? 99 : ts.profitFactor
   const teamOk = ts.closed >= READY.minTrades && (ts.winRate ?? 0) >= READY.minWinRate && (pf ?? 0) >= READY.minProfitFactor && ts.totalPnlUsd > 0
-  const viaTeam = teamOk && own.trades >= TEAM_READY.minOwn && own.pnlUsd >= 0
+  const viaTeam = teamOk && own.trades >= minOwn && own.pnlUsd >= 0
   return {
     ...own, ok: own.ok || viaTeam, via: own.ok ? 'own' : viaTeam ? 'team' : null,
     team: { trades: ts.closed, winRate: ts.winRate, profitFactor: pf, pnlUsd: ts.totalPnlUsd, ok: teamOk },
-    need: { ...own.need, minOwnWithTeam: TEAM_READY.minOwn },
+    need: { ...own.need, minOwnWithTeam: minOwn },
   }
 }
 

@@ -746,6 +746,19 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
         - `GET /v1/bot/stats` has `liveSpeed`, and signals carry `quality.liveSpeed`.
       - **Site:** an "At live speed" card on the Signals tab (each kind: replays, won, average a trade, live or paper only). A live bot's Overview says which kinds it may trade now, or that it's waiting for proof.
       - Tests: `engine/test/liveSpeed.test.ts` (exits and buys at live speed, drift, replays of a LUMOIN-style spike, the gate, the engine replaying stored signals); `live.test.ts` (the drift guard).
+    - **Where signals go: live bots only, every signal (2026-09-30, owner: "the signal engine produces signals but the trading engine doesn't trade; all the signals to live trades only for now; the settings from when paper trading was making profits, on live trades").**
+      - **Why live bots stopped:** the live-speed gate (no kind of signal qualified) and the 80/20 routing sent every signal to paper only.
+      - **The settings, as when paper was booming (before the gate and the 80/20):** live bots take every signal not on probation. Probation stays (momentum was on it then too).
+        - The quality rank still sets the tier, so the size (20% or 10% of the bot's capital).
+        - The drift guard stays: a live buy is skipped once the price moved over 5% since the signal (BAGEY was 15% down).
+      - **Told plainly:** the paper profits then came from instant fills, which a live bot can't get. The same signals replayed at live speed averaged −3.7% a trade, so these settings don't bring back those profits by themselves. The "At live speed" card keeps showing what each kind makes at live speed.
+      - **Visitors' paper bots get no signals for now:** "not traded: signals go to live bots only for now" (`live-only` in the skip counts), and a note on their dashboard. The engine's own paper book still trades and measures every signal at live speed, feeding probation, the replays and the team. While paper bots get no signals, a bot can go live on the team's record alone (no trades of its own needed).
+      - **Settings (Railway, arcdex-engine):**
+        - `BOT_LIVE_SIGNALS`: `all` (the default now) or `proven` (only the kinds that make money at live speed, and not the lowest 20% by quality).
+        - `BOT_PAPER_SIGNALS`: `off` (the default now) or `on` (paper bots trade signals again).
+        - `GET /v1/bot/stats` has `routing`; `GET /v1/me` has `paperSignals`.
+      - **Fees on bot swaps:** the platform's fee on a bot is 2% of each winning live trade's profit, sent to the fee wallet `0x2742…86Bb` when the trade closes; losing trades pay nothing, and bot swaps pay no per-swap fee (they go through Uniswap's Universal Router, not ArcDexSwapRouter). All five live trades up to then lost, so the fee wallet had received nothing from bots.
+      - Tests: `liveSpeed.test.ts` (live bots only; readiness on the team's record), `botFlow.test.ts` (every signal to live bots).
     - **Dip rebound** (the `second-leg` strategy; it needed a 10× run): ran 2×+, pulled back 25–70% (was 50–85%), held a higher low for 3+ minutes (10), 8%+ off the bottom (20%), buying back (last 15 minutes' buys 1.2× sells, $100+). The same coin again after an hour (6).
     - **Signals within 2 minutes:** each part of the deep scan gets a time budget (honeypot probe 10s, holders 12s, funding trace 15s). Funding not traced in time is a risk flag (the coin can still be a fast scalp), not a hard block, and a scan missing an answer is retried after 15s instead of being held 2 minutes. A honeypot probe that doesn't answer still blocks.
     - **Why fast scalps outnumbered snipes and dip rebounds (2026-09-30, owner: "improve the other signals; leave the fast scalper, it works"):**

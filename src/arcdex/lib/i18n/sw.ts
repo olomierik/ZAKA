@@ -1822,5 +1822,9 @@ const d: Record<string, string> = {
   "live bots trade it": "bot halisi huifanyia biashara",
   "paper only": "karatasi pekee",
   "at live speed: {n} replays, {a} a trade": "kwa kasi halisi: marudio {n}, {a} kwa biashara",
+  "Signals go to live bots only for now (the platform's setting): this paper bot isn't trading. Switch it to LIVE to trade.": "Kwa sasa ishara huenda kwa bot halisi pekee (mpangilio wa jukwaa): bot hii ya karatasi haifanyi biashara. Ibadilishe kuwa HALISI ili ifanye biashara.",
+  "Every signal is replayed on its coin's real trades as a live bot trades it: bought 2.5s after the signal, sold 2s after each trigger, costs included.": "Kila ishara hurudiwa kwenye biashara halisi za sarafu yake kama bot halisi inavyoifanya: kununuliwa sekunde 2.5 baada ya ishara, kuuzwa sekunde 2 baada ya kila kichocheo, gharama zikiwemo.",
+  "Right now live bots take every signal not on probation (the platform's setting): these are the numbers to watch.": "Kwa sasa bot halisi huchukua kila ishara isiyo chini ya uangalizi (mpangilio wa jukwaa): hizi ndizo takwimu za kufuatilia.",
+  "Live bots trade a kind of signal only once its last 10 or more replays average +0.5% a trade or better.": "Bot halisi hufanya biashara ya aina ya ishara pale tu marudio yake 10 au zaidi ya mwisho yanapokuwa na wastani wa +0.5% kwa biashara au zaidi.",
 }
 export default d

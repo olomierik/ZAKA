@@ -131,10 +131,10 @@ export default function SignalsPage({ navigate, view: pageView, bot }: { navigat
               </button>
             ))}
           </div>
-          {view === 'mine' && <MyBots navigate={navigate} liveSpeed={stats?.liveSpeed} />}
+          {view === 'mine' && <MyBots navigate={navigate} liveSpeed={stats?.routing?.liveSignals === 'all' ? undefined : stats?.liveSpeed} />}
           {view === 'market' && <Marketplace navigate={navigate} slug={bot ?? null} />}
           {view === 'scanner' && <><RejectionsCard /><ScannerPanel scan={scan} navigate={navigate} /></>}
-          {view === 'signals' && stats?.liveSpeed && <LiveSpeedCard rows={stats.liveSpeed} />}
+          {view === 'signals' && stats?.liveSpeed && <LiveSpeedCard rows={stats.liveSpeed} all={stats.routing?.liveSignals === 'all'} />}
           {view === 'signals' && (
             <Section title={T('Live signals')}>
               <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>{T('Every signal gets a quality score and is ranked against the last 50: the top 80% can go to live bots, the lowest 20% to paper bots only, where they are still measured. A live bot also needs the kind of signal to make money at live speed (above). Tier A (the top 40%) takes 20% of a bot\'s capital, the rest 10%.')}</div>
@@ -603,6 +603,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, li
       {tab === 'overview' && (
         <>
           {isLive && liveSpeed && <LiveGateNote rows={liveSpeed} strategies={acct.strategies} />}
+          {!isLive && me.paperSignals === false && <div className="at-note warn" style={{ marginTop: 12 }}>{T('Signals go to live bots only for now (the platform\'s setting): this paper bot isn\'t trading. Switch it to LIVE to trade.')}</div>}
           {acct.team && <TeamCard team={acct.team} acct={acct} onStrategy={() => setTab('strategy')} />}
           <Section title={T('Open trades') + ` · ${open.length}`}>
             {open.length === 0 ? <Empty>{acct.running ? T('Waiting for the next signal. The scanner shows what it is checking.') : T('No open trades. Press Start to trade.')}</Empty> : open.map(p => <PositionRow key={p.id} p={p} navigate={navigate} />)}
@@ -716,10 +717,13 @@ function LiveGateNote({ rows, strategies }: { rows: LiveSpeedRow[]; strategies: 
 }
 
 /** Each kind of signal at live speed: what a live bot would have made on its last replays, and whether live bots trade it. */
-function LiveSpeedCard({ rows }: { rows: LiveSpeedRow[] }) {
+function LiveSpeedCard({ rows, all }: { rows: LiveSpeedRow[]; all?: boolean }) {
   return (
     <Section title={T('At live speed')}>
-      <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>{T('Every signal is replayed on its coin\'s real trades as a live bot trades it: bought 2.5s after the signal, sold 2s after each trigger, costs included. Live bots trade a kind of signal only once its last 10 or more replays average +0.5% a trade or better.')}</div>
+      <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>
+        {T('Every signal is replayed on its coin\'s real trades as a live bot trades it: bought 2.5s after the signal, sold 2s after each trigger, costs included.')}{' '}
+        {all ? T('Right now live bots take every signal not on probation (the platform\'s setting): these are the numbers to watch.') : T('Live bots trade a kind of signal only once its last 10 or more replays average +0.5% a trade or better.')}
+      </div>
       {rows.length === 0 ? <Empty>{T('Replaying the recent signals…')}</Empty> : (
         <div className="at-team">
           {rows.map(r => (
@@ -728,7 +732,7 @@ function LiveSpeedCard({ rows }: { rows: LiveSpeedRow[] }) {
               <span>{T('{n} replays', { n: r.trades })}</span>
               <span>{r.winRate === null ? '—' : T('{w} won', { w: `${Math.round(r.winRate * 100)}%` })}</span>
               <b style={{ fontFamily: 'var(--mono)', color: (r.avgReturn ?? 0) >= 0 ? 'var(--green)' : '#fca5a5' }}>{r.avgReturn === null ? '—' : `${r.avgReturn >= 0 ? '+' : ''}${(r.avgReturn * 100).toFixed(1)}% ${T('a trade')}`}</b>
-              {r.ok ? <span className="at-quality live">{T('live bots trade it')}</span> : <span className="at-quality paper">{T('paper only')}</span>}
+              {all ? null : r.ok ? <span className="at-quality live">{T('live bots trade it')}</span> : <span className="at-quality paper">{T('paper only')}</span>}
             </div>
           ))}
         </div>

@@ -24,7 +24,7 @@ class TestBot extends Bot {
   }
 }
 
-function setup() {
+function setup(o: { liveSignals?: 'all' | 'proven' } = {}) {
   const launched = Date.now() - 20 * 60_000 // past the snipe window
   const meta: LaunchInfo = { token: T, name: 'Coin', symbol: 'COIN', decimals: 18, creator: '0x' + 'cc'.repeat(20), txHash: '0x', blockNumber: 1, timestamp: launched, pool: null, quote: null, launchpad: 'ARGUS', chain: 'ARC', status: 'LIVE' }
   const st = new TokenState(T)
@@ -38,7 +38,7 @@ function setup() {
   const made = accounts.create(Date.now(), { name: 'Tester', strategies: ['scalp'] }) as { account: PaperAccount }
   accounts.act(made.account, { action: 'deposit', amount: 500 })
   accounts.act(made.account, { action: 'start' })
-  const bot = new TestBot({ rpc, engine, pools, store, publish: (_t, m) => sent.push(m), mode: 'paper', accounts, speed: null })
+  const bot = new TestBot({ rpc, engine, pools, store, publish: (_t, m) => sent.push(m), mode: 'paper', accounts, speed: null, liveSignals: o.liveSignals })
   let i = 0
   /** A trade, as the engine would apply it: the coin's price and liquidity first, then the observers. */
   const trade = (o: { side?: 'BUY' | 'SELL'; price: number; usd?: number; liquidity?: number; wallet?: string; at?: number }) => {
@@ -74,6 +74,16 @@ describe('the bot, end to end', () => {
     expect([50, 100]).toContain(pos.sizeUsd)
     expect(bot.positions.filter(p => p.status === 'open')).toHaveLength(1) // the bot's own paper book too
     expect(bot.scan.get(T)).toMatchObject({ status: 'signal', stage: 'scalp', strategy: 'scalp' })
+  })
+
+  test('live bots take every signal not on probation (the owner’s setting), even before it proves itself at live speed', async () => {
+    const { bot, sent, trade } = setup({ liveSignals: 'all' })
+    const t0 = Date.now() - 80_000
+    for (let k = 0; k < 8; k++) trade({ price: 1 + k * 0.012, at: t0 + k * 10_000 })
+    await settle(); bot.sweep(Date.now() + 5_000); await settle()
+    const sig = sent.find(m => m.t === 'SIGNAL')
+    expect(sig?.t === 'SIGNAL' && sig.d.quality).toMatchObject({ grade: 'live', liveSpeed: { trades: 0, ok: false } })
+    expect(bot.stats().routing).toEqual({ liveSignals: 'all', paperSignals: true })
   })
 
   test('liquidity pulled: the rug guard closes every position at once and quarantines the coin', async () => {

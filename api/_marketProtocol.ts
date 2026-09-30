@@ -504,6 +504,8 @@ export interface MeResponse {
   liveAvailable: { ok: boolean; why: string | null }
   /** The team every bot learns from (missing on older engines). */
   team?: TeamView
+  /** Whether paper bots get signals now (false: live bots only, the platform's setting). */
+  paperSignals?: boolean
 }
 
 /** A bot in the marketplace (GET /v1/bots): public, no owner details. */

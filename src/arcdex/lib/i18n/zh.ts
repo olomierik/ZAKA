@@ -1822,5 +1822,9 @@ const d: Record<string, string> = {
   "live bots trade it": "实盘机器人交易",
   "paper only": "仅模拟",
   "at live speed: {n} replays, {a} a trade": "实盘速度：{n} 次重放，每笔 {a}",
+  "Signals go to live bots only for now (the platform's setting): this paper bot isn't trading. Switch it to LIVE to trade.": "目前信号只发给实盘机器人（平台设置）：此模拟机器人不会交易。切换到实盘即可交易。",
+  "Every signal is replayed on its coin's real trades as a live bot trades it: bought 2.5s after the signal, sold 2s after each trigger, costs included.": "每个信号都按实盘机器人的方式在该币的真实成交上重放：信号后 2.5 秒买入，每次触发后 2 秒卖出，含成本。",
+  "Right now live bots take every signal not on probation (the platform's setting): these are the numbers to watch.": "目前实盘机器人接收所有不在观察期的信号（平台设置）：这些是需要关注的数字。",
+  "Live bots trade a kind of signal only once its last 10 or more replays average +0.5% a trade or better.": "只有当某类信号最近 10 次以上的重放平均每笔达到 +0.5% 或更好时，实盘机器人才会交易它。",
 }
 export default d

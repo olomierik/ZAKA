@@ -139,6 +139,8 @@ export interface BotStatsResponse extends BotStatsSet {
   byRule?: { momentum: BotStats; snipe: BotStats; 'second-leg': BotStats }
   /** Each kind of signal (`rule/strategy`) replayed on real trades at live speed; live bots trade only those `ok` (engine/src/signals/liveSpeed.ts). */
   liveSpeed?: LiveSpeedRow[]
+  /** Where signals go (the platform's setting): live bots every signal not on probation (`all`) or only the proven kinds; paper bots or not. */
+  routing?: { liveSignals: 'all' | 'proven'; paperSignals: boolean }
 }
 export interface LiveSpeedRow { key: string; trades: number; wins: number; winRate: number | null; avgReturn: number | null; ok: boolean }
 export interface SafetyReport { token: string; launchpad: string; at: number; verdict: 'pass' | 'risky' | 'fail' | 'pending'; score: number; checks: SafetyCheck[]; template: string | null }

@@ -54,6 +54,16 @@ export interface Config {
   logLevel: 'debug' | 'info' | 'warn' | 'error'
   /** Signals and trading (engine/src/bot): paper (default), live (needs a bot wallet) or off. The owner's switch on the site overrides it. */
   botMode: 'paper' | 'live' | 'off'
+  /**
+   * Where signals go (owner's request, 2026-09-30: "all the signals to the live
+   * trades only for now; the settings from when paper was making profits").
+   * `live`: `all` sends live bots every signal not on probation, as before the
+   * live-speed gate; `proven` only the kinds that make money at live speed
+   * (signals/liveSpeed.ts), and not the lowest 20% by quality. `paper`: false
+   * sends visitors' paper bots none (the engine's own paper book still trades
+   * and measures every signal).
+   */
+  botSignals: { live: 'all' | 'proven'; paper: boolean }
   /** Paper position size in USD for snipes and second legs (default: each strategy's own, $25). */
   botSizeUsd: number | null
   /** Paper position size in USD for scalps, the small fast trades on risky coins (default $5). */
@@ -93,6 +103,7 @@ export function loadConfig(): Config {
     tradeRetentionHours: int('HISTORY_TRADE_RETENTION_HOURS', 72, 1, 24 * 3650),
     logLevel: (process.env.LOG_LEVEL ?? 'info') as Config['logLevel'],
     botMode: process.env.BOT_MODE === 'off' ? 'off' : process.env.BOT_MODE === 'live' ? 'live' : 'paper',
+    botSignals: { live: process.env.BOT_LIVE_SIGNALS === 'proven' ? 'proven' : 'all', paper: process.env.BOT_PAPER_SIGNALS === 'on' },
     botSizeUsd: process.env.BOT_SIZE_USD ? int('BOT_SIZE_USD', 25, 1, 10_000) : null,
     botScalpSizeUsd: process.env.BOT_SCALP_SIZE_USD ? int('BOT_SCALP_SIZE_USD', 5, 1, 10_000) : null,
     botOwner: /^0x[0-9a-fA-F]{40}$/.test(process.env.BOT_OWNER_ADDRESS ?? '') ? process.env.BOT_OWNER_ADDRESS!.toLowerCase() : null,

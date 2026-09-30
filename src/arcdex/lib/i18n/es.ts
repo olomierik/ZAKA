@@ -1822,5 +1822,9 @@ const d: Record<string, string> = {
   "live bots trade it": "los bots reales la operan",
   "paper only": "solo papel",
   "at live speed: {n} replays, {a} a trade": "a velocidad real: {n} reproducciones, {a} por operación",
+  "Signals go to live bots only for now (the platform's setting): this paper bot isn't trading. Switch it to LIVE to trade.": "Por ahora las señales van solo a los bots reales (ajuste de la plataforma): este bot de papel no opera. Cámbialo a REAL para operar.",
+  "Every signal is replayed on its coin's real trades as a live bot trades it: bought 2.5s after the signal, sold 2s after each trigger, costs included.": "Cada señal se reproduce sobre las operaciones reales de su moneda como la opera un bot real: comprada 2,5 s después de la señal, vendida 2 s después de cada disparador, con costes.",
+  "Right now live bots take every signal not on probation (the platform's setting): these are the numbers to watch.": "Ahora mismo los bots reales toman cada señal que no está en observación (ajuste de la plataforma): estas son las cifras a vigilar.",
+  "Live bots trade a kind of signal only once its last 10 or more replays average +0.5% a trade or better.": "Los bots reales operan un tipo de señal solo cuando sus últimas 10 o más reproducciones promedian +0,5 % por operación o más.",
 }
 export default d

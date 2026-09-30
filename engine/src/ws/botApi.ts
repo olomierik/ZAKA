@@ -110,7 +110,7 @@ export async function botApi(req: Request, url: URL, ip: string, d: { users: Use
   if (req.method === 'GET' && p === '/v1/me') {
     const bots = accounts.ofOwner(u.id)
     await Promise.all(bots.map(a => accounts.refreshLive(a)))
-    const me: MeResponse = { user: users.view(u), bots: bots.map(a => accounts.view(a, now)), email: users.mailEnabled, maxBots: 5, liveAvailable: accounts.liveAvailable, team: accounts.team(now) }
+    const me: MeResponse = { user: users.view(u), bots: bots.map(a => accounts.view(a, now)), email: users.mailEnabled, maxBots: 5, liveAvailable: accounts.liveAvailable, team: accounts.team(now), paperSignals: accounts.paperSignals }
     return json(200, me)
   }
   if (req.method === 'GET' && p === '/v1/me/profits') {

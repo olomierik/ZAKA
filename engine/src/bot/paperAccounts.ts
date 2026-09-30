@@ -191,9 +191,13 @@ export class PaperAccounts {
   private pending = new Map<string, PendingEntry[]>()
   private speed: typeof LIVE_SPEED | null
 
+  /** Whether visitors' paper bots get signals (the owner's setting, BOT_PAPER_SIGNALS; off: live bots only). */
+  readonly paperSignals: boolean
+
   /** `speed`: paper fills at live speed (the default); null fills at once (tests of other things). */
-  constructor(private o: { store: PaperAccountStore; priceOf: (token: string) => number | null; params: (s: Strategy) => StrategyParams; live?: UserLive | null; speed?: typeof LIVE_SPEED | null }) {
+  constructor(private o: { store: PaperAccountStore; priceOf: (token: string) => number | null; params: (s: Strategy) => StrategyParams; live?: UserLive | null; speed?: typeof LIVE_SPEED | null; paperSignals?: boolean }) {
     this.speed = o.speed === undefined ? LIVE_SPEED : o.speed
+    this.paperSignals = o.paperSignals ?? true
   }
 
   async load() {
@@ -482,6 +486,7 @@ export class PaperAccounts {
       // A stopped bot that was never funded is someone's abandoned try: left out.
       if (!a.running) { if (a.mode === 'live' || a.cash >= SIZE_LIMITS.minUsd) skip('not-running', 'not traded: the bot is stopped (press Start)'); continue }
       if (!a.strategies.includes(sig.strategy)) { skip('strategy', `not traded: this bot follows ${a.strategies.map(x => LABEL[x]).join(', ')}`); continue }
+      if (a.mode !== 'live' && !this.paperSignals) { skip('live-only', 'not traded: signals go to live bots only for now (the platform\'s setting)'); continue }
       if (a.pausedUntil && now < a.pausedUntil) { skip('paused', `paused after ${PROTECT.pauseAfterLosses} losses in a row`); continue }
       const t = a.tuning[sig.strategy]
       if (sig.probation) { skip('probation', `not traded: ${sig.probation.why}`); continue }
@@ -836,7 +841,8 @@ export class PaperAccounts {
 
   /** Whether a bot may go live: its own paper record, or the team's on its strategies with 5 trades of its own. */
   readinessOf(a: PaperAccount, now = Date.now()) {
-    return readinessWithTeam(a.positions, this.teamTrades(a.strategies, now - TEAM_READY.days * 86_400_000))
+    // While paper bots get no signals, a bot can't build a record of its own: the team's is enough.
+    return readinessWithTeam(a.positions, this.teamTrades(a.strategies, now - TEAM_READY.days * 86_400_000), this.paperSignals ? TEAM_READY.minOwn : 0)
   }
 
   /** The team in numbers: bots running, and each strategy's record over the last 7 days (kept 30s). */

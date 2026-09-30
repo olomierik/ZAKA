@@ -131,3 +131,30 @@ describe('the gate', () => {
     expect(bot.stats().liveSpeed).toEqual([rec])
   })
 })
+
+describe('where signals go (the owner\'s settings)', () => {
+  test('live bots only: a paper bot passes, says why; a live bot still takes the signal', () => {
+    const accts = new PaperAccounts({ speed: null, paperSignals: false, store: new MemoryBotStore(), priceOf: () => 1, params: s => STRATEGIES[s] })
+    const paper = (accts.create(now, { name: 'Paper One', strategies: ['snipe'] }) as { account: PaperAccount }).account
+    accts.act(paper, { action: 'deposit', amount: 100 }, now); accts.act(paper, { action: 'start' }, now)
+    accts.onSignal({ id: 's1', token: T, symbol: 'C', launchpad: 'ARGUS', price: 1, strategy: 'snipe', roundTripPct: 2, liquidityUsd: 100_000 }, now)
+    expect(paper.positions).toHaveLength(0)
+    expect(paper.skips[0].text).toMatch(/signals go to live bots only for now/)
+    expect(accts.outcomes.summary(now).reasons.map(r => r.key)).toEqual(['live-only'])
+  })
+  test('while paper bots get no signals, the team\'s record is enough to go live', () => {
+    const on = new PaperAccounts({ speed: null, store: new MemoryBotStore(), priceOf: () => 1, params: s => STRATEGIES[s] })
+    const off = new PaperAccounts({ speed: null, paperSignals: false, store: new MemoryBotStore(), priceOf: () => 1, params: s => STRATEGIES[s] })
+    for (const accts of [on, off]) {
+      for (let i = 0; i < 20; i++) {
+        const p = openPosition({ id: `t${i}`, strategy: 'snipe', token: `0x${String(i + 1).padStart(40, '0')}`, symbol: 'X', launchpad: 'A', signalId: `sg${i}`, price: 1, cost: 0, now: now - 3_600_000 + i, params: { ...snipe, sizeUsd: 10 } })
+        p.features = { ageSec: 60, liquidityUsd: 7_000, marketCapUsd: null, buyers: 15, buySellRatio: null, runUp: 1.5, topBuyerPct: 20, score: 95, flags: [], roundTripPct: 2 }
+        onPrice(p, i % 4 ? 1.5 : 0.7, now - 3_000_000 + i, snipe)
+        accts.observe(p)
+      }
+    }
+    const fresh = (accts: PaperAccounts) => (accts.create(now, { name: 'Fresh', strategies: ['snipe'] }) as { account: PaperAccount }).account
+    expect(on.readinessOf(fresh(on), now).ok).toBe(false) // needs 5 of its own
+    expect(off.readinessOf(fresh(off), now)).toMatchObject({ ok: true, via: 'team' })
+  })
+})
