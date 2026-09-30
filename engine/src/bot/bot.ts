@@ -40,7 +40,8 @@ import { log, errMsg } from '../log'
 import type { EngineObserver, MarketEngine } from '../market/engine'
 import { metrics } from '../metrics'
 import { PricePath, RULES, scalpReady, secondLegReady, snipeReady, tooCostly } from '../signals/rules'
-import type { BotStatus, ScanRow, SignalFeatures, SignalRule } from '../../../api/_marketProtocol'
+import type { BotStatus, ScanRow, SignalFeatures, SignalQuality, SignalRule } from '../../../api/_marketProtocol'
+import { QUALITY, QualityRank, qualityScore, type RuleRecord } from '../signals/quality'
 import { canOpen, closeNow, costPerSide, onPrice, openPosition, RISK, STRATEGIES, stats, type Position, type Strategy, type StrategyParams } from '../trading/paper'
 import type { LiveTrader } from './liveTrader'
 import type { PaperAccounts } from './paperAccounts'
@@ -120,6 +121,8 @@ export class Bot implements EngineObserver {
   private bySymbol = new Map<string, Set<string>>()
   private byCreator = new Map<string, number[]>()
   private recentSignals: Signal[] = []
+  /** The last signals' quality scores: the top 80% go to live bots (signals/quality.ts). */
+  private qualityRank = new QualityRank()
   positions: Position[] = []
   private lastRecheck = new Map<string, number>()
   private blockedOnce = new Set<string>()
@@ -141,6 +144,12 @@ export class Bot implements EngineObserver {
     this.positions = await this.o.store.positions(30).catch(e => { log.warn('bot: could not load positions', { error: errMsg(e) }); return [] })
     this.recentSignals = await this.o.store.signals(200).catch(() => [])
     this.scan.seedSignals(this.recentSignals.map(s => s.at))
+    // The quality rank picks up where it was: the last signals' scores, oldest first.
+    for (const sg of [...this.recentSignals].slice(0, QUALITY.window).reverse()) {
+      if (sg.probation) continue
+      const score = sg.quality?.score ?? (sg.features && sg.rule ? qualityScore(sg.features, this.ruleRecord(sg.rule, Date.now())).score : null)
+      if (score !== null) this.qualityRank.add(score)
+    }
     // Its closed paper trades are what visitors' bots with few trades of their own also learn from.
     const ruleOf = new Map(this.recentSignals.map(s => [s.id, s.rule]))
     for (const p of this.positions) if (p.mode !== 'live') { p.rule ??= ruleOf.get(p.signalId); this.o.accounts?.observe(p) }
@@ -457,12 +466,17 @@ export class Bot implements EngineObserver {
       topBuyerPct: Math.round(feats.topBuyerPct * 10) / 10, score: r.score,
       flags: r.checks.filter(c => c.risk && c.ok !== true).map(c => c.id), roundTripPct: r.honeypot?.roundTripLossPct ?? null,
     }
+    // Its quality, ranked against the last signals: the top 80% are live-grade, the rest paper only.
+    const scored = qualityScore(features, this.ruleRecord(rule, now))
+    const quality: SignalQuality = { score: scored.score, ...(probation ? { grade: 'paper' as const, tier: 'B' as const, rank: null } : this.qualityRank.grade(scored.score)), parts: scored.parts }
+    reasons = [...reasons, quality.grade === 'live' ? `quality ${quality.score}: live-grade, tier ${quality.tier}` : `quality ${quality.score}: paper only (the lowest ${Math.round((1 - QUALITY.liveShare) * 100)}% of recent signals)`]
+    metrics.inc(`bot_signals_grade_${quality.grade}`)
     const signal: Signal = {
       id: `${strategy}:${token}:${now}`, strategy, token, symbol: meta.symbol, name: meta.name, launchpad: meta.launchpad, at: now,
       price: st.priceUsd!, marketCapUsd: s.marketCapUsd, liquidityUsd: st.liquidityUsd, ageSec: Math.round(ageSec), reasons,
       safety: { verdict: r.verdict, score: r.score, checks: r.checks },
       executable: pool ? true : EXECUTABLE_CURVES.has(meta.launchpad),
-      rule, features, probation,
+      rule, features, probation, quality,
     }
     this.fired.set(`${rule === 'momentum' ? 'scalp' : rule}:${token}`, now)
     this.riskWait.delete(`${rule}:${token}`)
@@ -474,9 +488,10 @@ export class Bot implements EngineObserver {
     const fired = { status: 'signal' as const, stage, strategy, reasons }
     if (this.mode === 'off') return fired
     // Visitors' bots that follow this strategy (each with its own learned filters and sizes).
-    this.o.accounts?.onSignal({ id: signal.id, token, symbol: meta.symbol, launchpad: meta.launchpad, price: signal.price, strategy, roundTripPct: r.honeypot?.roundTripLossPct ?? null, liquidityUsd: st.liquidityUsd, features, rule, probation }, now, { signal, pool, meta })
+    this.o.accounts?.onSignal({ id: signal.id, token, symbol: meta.symbol, launchpad: meta.launchpad, price: signal.price, strategy, roundTripPct: r.honeypot?.roundTripLossPct ?? null, liquidityUsd: st.liquidityUsd, features, rule, probation, quality }, now, { signal, pool, meta })
     if (this.mode === 'live' && this.o.live) {
       if (probation) this.o.live.event({ kind: 'skip', text: `$${meta.symbol}: not bought live, ${probation.why}` })
+      else if (quality.grade === 'paper') this.o.live.event({ kind: 'skip', text: `$${meta.symbol}: not bought live, quality ${quality.score} is in the lowest ${Math.round((1 - QUALITY.liveShare) * 100)}% of recent signals` })
       else void this.o.live.open(signal, strategy, pool, meta)
     }
     const allowed = canOpen(this.positions.filter(p => p.mode !== 'live'), token, now, RISK, strategy)
@@ -617,6 +632,17 @@ export class Bot implements EngineObserver {
   // ── reads (REST) ────────────────────────────────────────────────────
 
   signals(limit: number) { return this.recentSignals.slice(0, limit) }
+  /** A rule's recent record: its last 20 closed trades across the engine's paper book and the team, one per signal, the last 14 days. */
+  ruleRecord(rule: SignalRule, now = Date.now()): RuleRecord {
+    const ruleOf = new Map(this.recentSignals.map(s => [s.id, s.rule]))
+    const seen = new Set<string>()
+    const list = [...this.positions.filter(p => p.mode !== 'live'), ...(this.o.accounts?.teamTrades() ?? [])]
+      .filter(p => p.status === 'closed' && (p.rule ?? ruleOf.get(p.signalId)) === rule && now - (p.closedAt ?? 0) <= 14 * 86_400_000 && !seen.has(p.signalId) && (seen.add(p.signalId), true))
+      .sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0))
+      .slice(-QUALITY.ruleWindow)
+    return { trades: list.length, winRate: list.length ? list.filter(p => (p.pnlUsd ?? 0) > 0).length / list.length : null }
+  }
+
   /** Why a rule is on probation now, or null. */
   probation(rule: SignalRule, now = Date.now()) {
     const ruleOf = new Map(this.recentSignals.map(s => [s.id, s.rule]))

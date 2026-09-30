@@ -45,8 +45,8 @@ export const USER_LIVE = {
   maxTradeUsd: 50,
   /** A bot goes live with at least this in its wallet. */
   minBalanceUsd: 10,
-  /** Never traded: gas for the exits and the fee. */
-  reserveUsd: 1,
+  /** Never traded: gas for the exits and the fee (a swap on Arc costs about $0.005; was $1 until 2026-09-30, a tenth of a $10 bot). */
+  reserveUsd: 0.3,
   maxOpen: 3,
   maxOpenScalp: 2,
   slippageBps: 1_000,
@@ -56,7 +56,7 @@ export const USER_LIVE = {
   /** No trade over this share of what the wallet is worth (its USDC, read before the buy, plus open trades). */
   maxShareOfBalance: 0.2,
   /** The day's loss limit: this share of the wallet, between the two amounts. */
-  dailyLossPct: 10, dailyLossMinUsd: 5, dailyLossMaxUsd: 100,
+  dailyLossPct: 10, dailyLossMinUsd: 1, dailyLossMaxUsd: 100,
   /** Live stops (back to paper) once the wallet and its open trades are worth this share of what it went live with. */
   stopBelowPct: 50,
 }

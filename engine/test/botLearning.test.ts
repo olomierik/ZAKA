@@ -265,14 +265,14 @@ describe('a visitor\'s bot, all together', () => {
     expect(accts.act(made.account, { action: 'rename', name: '<script>' }, now)).toMatch(/2–24/)
     expect(accts.act(made.account, { action: 'rename', name: 'Night Owl' }, now)).toBeNull()
   })
-  test('a take-profit sells everything and secures the target', () => {
+  test('a take-profit sells everything, for about what its size makes there', () => {
     const { accts, a } = setup()
     accts.onSignal(sig(1), now)
     const p = a.positions[0]
     accts.onPrice(p.token, 1.2, now + 30_000, false, true)
     expect(p).toMatchObject({ status: 'closed', exitReason: 'tp1' })
-    expect(p.pnlUsd!).toBeGreaterThan(TARGETS.scalp.range[0])
-    expect(p.pnlUsd!).toBeLessThan(TARGETS.scalp.range[1] + 0.5)
+    expect(p.pnlUsd!).toBeGreaterThan(p.targetUsd! * 0.9) // sold at or above the take-profit, less the 2% fee
+    expect(p.pnlUsd!).toBeLessThan(p.sizeUsd * 0.2)
     expect(p.note).toMatch(/Took the profit/)
   })
   test('a rug alarm closes the position at once; every closed trade is in the log', async () => {
@@ -290,7 +290,7 @@ describe('a visitor\'s bot, all together', () => {
     const { accts, a } = setup()
     for (let i = 1; i <= 4; i++) {
       accts.onSignal(sig(i), now + i)
-      accts.onPrice(sig(i).token, 0.85, now + i + 1, false, true) // stopped out
+      accts.onPrice(sig(i).token, 0.89, now + i + 1, false, true) // stopped out (under the day's loss limit: 20% trades lose about $23 each)
     }
     expect(a.lossStreak).toBe(4)
     expect(a.pausedUntil).toBe(now + 4 + 1 + PROTECT.pauseMin * 60_000)

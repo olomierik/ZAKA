@@ -66,8 +66,10 @@ describe('the bot, end to end', () => {
     const sig = sent.find(m => m.t === 'SIGNAL')
     expect(sig?.t === 'SIGNAL' && sig.d).toMatchObject({ strategy: 'scalp', rule: 'momentum', features: { buyers: 8, score: 88, flags: [] } })
     const pos = account.positions[0]
-    expect(pos).toMatchObject({ status: 'open', strategy: 'scalp', targetUsd: 1.5, tuningVersion: 1 })
-    expect(pos.sizeUsd).toBeGreaterThan(5) // sized for the $1.5 target, not a fixed amount
+    expect(pos).toMatchObject({ status: 'open', strategy: 'scalp', tuningVersion: 1 })
+    // Sized from the bot's capital: 20% of its $500 on a tier-A signal, 10% on B (the first signals rank by score alone).
+    expect(sig?.t === 'SIGNAL' && sig.d.quality).toMatchObject({ grade: 'live', rank: null })
+    expect([50, 100]).toContain(pos.sizeUsd)
     expect(bot.positions.filter(p => p.status === 'open')).toHaveLength(1) // the bot's own paper book too
     expect(bot.scan.get(T)).toMatchObject({ status: 'signal', stage: 'scalp', strategy: 'scalp' })
   })

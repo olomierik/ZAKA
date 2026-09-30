@@ -189,6 +189,19 @@ export interface TradeSignal {
   features?: SignalFeatures
   /** The rule's recent paper record is losing: the signal is still measured, but bots don't trade it (2026-10-01). */
   probation?: { why: string } | null
+  /** Its quality score and grade (engine/src/signals/quality.ts; missing on older signals). */
+  quality?: SignalQuality
+}
+
+/** A signal's quality: live-grade (the top 80% of recent signals: every bot may trade it) or paper only; tier A takes 20% of a bot's capital, B 10%. */
+export interface SignalQuality {
+  score: number
+  grade: 'live' | 'paper'
+  tier: 'A' | 'B'
+  /** The share of the last 50 signals it scores at least as well as (null while there are too few to rank against). */
+  rank: number | null
+  /** The score's parts, in words. */
+  parts: string[]
 }
 
 /** Which rule fired a signal. Momentum bursts count buyers over two minutes, snipes since launch: they're learned apart. */
@@ -422,7 +435,7 @@ export interface PaperAccountView {
   skips: PaperEvent[]
   /** What keeps the account from being drained. */
   /** `maxTradeUsd`: the most one trade may use now (`maxTradeSharePct` of what the bot is worth; null while a live wallet is unread). Both missing on older engines. */
-  protections: { pausedUntil: number | null; lossStreak: number; pauseAfterLosses: number; dailyLossLimitUsd: number; todayPnlUsd: number; stopBelowPct: number; maxTradeSharePct?: number; maxTradeUsd?: number | null }
+  protections: { pausedUntil: number | null; lossStreak: number; pauseAfterLosses: number; dailyLossLimitUsd: number; todayPnlUsd: number; stopBelowPct: number; maxTradeSharePct?: number; maxTradeUsd?: number | null; tradeSharePct?: { a: number; b: number }; minTradeUsd?: number }
   /** Every closed trade it has made (GET /v1/paper/trades lists them all). */
   tradesLogged: number
   /** Its unique id on the platform (from its name): /bots/<slug>. */

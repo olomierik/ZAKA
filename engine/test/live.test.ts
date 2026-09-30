@@ -173,12 +173,17 @@ describe('the live trader (stand-in wallet)', () => {
     await lt.open(signal('s1'), 'scalp', pool, meta, { sizeUsd: 12 })
     expect(calls).toEqual(['buy 10', 'approve']) // 20% of $30 + $20 open
   })
-  test('a wallet too small for a $2 trade waits', async () => {
-    const { lt, calls, positions, meta, signal } = setup({ balance: 8 })
+  test('a wallet too small for a $1 trade waits (a $10 wallet trades)', async () => {
+    const { lt, calls, positions, meta, signal } = setup({ balance: 4 })
     await lt.open(signal('s1'), 'scalp', pool, meta, { sizeUsd: 5 })
     expect(calls).toEqual([])
     expect(positions).toEqual([])
-    expect(lt.events[0].text).toMatch(/at most 20% of it, under the \$2 minimum/)
+    expect(lt.events[0].text).toMatch(/at most 20% of it, under the \$1 minimum/)
+  })
+  test('a $10 wallet trades: 20% of it, $2', async () => {
+    const { lt, calls, meta, signal } = setup({ balance: 10 })
+    await lt.open(signal('s1'), 'scalp', pool, meta, { sizeUsd: 5 })
+    expect(calls[0]).toBe('buy 2')
   })
   test('never trades below the reserve', async () => {
     const { lt, calls, positions, meta, signal } = setup({ balance: 6 })

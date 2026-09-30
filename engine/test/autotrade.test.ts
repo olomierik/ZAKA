@@ -5,7 +5,7 @@ import type { LaunchInfo } from '../../api/_marketProtocol'
 import { MemoryBotStore } from '../src/bot/store'
 import { defaultTuning } from '../src/bot/learner'
 import { keyHash, PaperAccounts, PAPER_LIMITS, type PaperAccount, type PaperSignal } from '../src/bot/paperAccounts'
-import { sizeForTarget, TARGETS } from '../src/bot/sizing'
+import { CAPITAL_SIZING } from '../src/bot/sizing'
 import { failing, ScanFeed } from '../src/bot/scanFeed'
 import { STRATEGIES } from '../src/trading/paper'
 
@@ -20,7 +20,9 @@ describe('paper accounts', () => {
     return { store, accts, key, a: account }
   }
   const signal = (o: Partial<PaperSignal> = {}): PaperSignal => ({ id: 's1', token: T, symbol: 'C', launchpad: 'ARGUS', price: 1, strategy: 'snipe', roundTripPct: 2, liquidityUsd: 100_000, ...o })
-  const sizeOf = (s: 'snipe' | 'scalp', liq = 100_000) => sizeForTarget({ targetUsd: TARGETS[s].target, takeProfit: defaultTuning(s).takeProfit, roundTripPct: 2, liquidityUsd: liq })!.sizeUsd
+  /** A trade from `capital`: 20% on a tier-A signal (one without a grade counts as A), 10% on B (bot/sizing.ts). */
+  const sizeOf = (capital: number, tier: 'A' | 'B' = 'A') => Math.floor(capital * (tier === 'A' ? CAPITAL_SIZING.shareA : CAPITAL_SIZING.shareB) * 10 + 1e-9) / 10
+  const quality = (grade: 'live' | 'paper', tier: 'A' | 'B') => ({ score: grade === 'live' ? 85 : 55, grade, tier, rank: null, parts: [] })
 
   test('a key opens its account; the engine keeps only its hash', () => {
     const { accts, key, a } = setup()
@@ -45,7 +47,7 @@ describe('paper accounts', () => {
     expect(accts.act(a, { action: 'start' }, now)).toBeNull()
     expect(a).toMatchObject({ running: true, cash: 1_000, startedAt: now })
   })
-  test('a running account buys the signals of the strategies it follows, each sized for its profit target', () => {
+  test('a running account buys the signals of the strategies it follows, each sized from its capital', () => {
     const { accts, a } = setup()
     accts.act(a, { action: 'deposit', amount: 100 }, now)
     accts.onSignal(signal(), now) // not started yet
@@ -55,32 +57,42 @@ describe('paper accounts', () => {
     expect(a.positions).toEqual([])
     accts.onSignal(signal({ id: 's3' }), now)
     expect(a.positions).toHaveLength(1)
-    expect(a.cash).toBeCloseTo(100 - sizeOf('snipe'), 6)
+    expect(a.positions[0].sizeUsd).toBe(sizeOf(100)) // 20% of $100
     accts.onSignal(signal({ id: 's4', token: '0x' + 'c2'.repeat(20), strategy: 'scalp' }), now)
-    expect(a.cash).toBeCloseTo(100 - sizeOf('snipe') - sizeOf('scalp'), 6)
-    expect(a.positions[1]).toMatchObject({ targetUsd: TARGETS.scalp.target, tuningVersion: 1 })
+    expect(a.positions[1].sizeUsd).toBeGreaterThanOrEqual(19.8) // 20% of what it's worth now: $80 cash and the open trade
+    expect(a.positions[1].sizeUsd).toBeLessThanOrEqual(20)
+    expect(a.positions[1].targetUsd).toBeGreaterThan(0) // what it makes at the take-profit
+    expect(a.positions[1].tuningVersion).toBe(1)
+    expect(a.events[0].text).toMatch(/20% of its \$\d+\.\d\d/)
   })
-  test('a small bot trades at most 20% of what it is worth, for a smaller profit; the same coin once per 6 hours', () => {
+  test('the signal\'s tier sets the share: 20% on tier A, 10% on tier B; a live bot passes over paper-only signals', () => {
     const { accts, a } = setup()
-    expect(sizeOf('snipe')).toBeGreaterThan(4) // what a $3 target needs here
-    accts.act(a, { action: 'deposit', amount: 20 }, now); accts.act(a, { action: 'start' }, now)
-    accts.onSignal(signal(), now)
-    expect(a.positions).toHaveLength(1)
-    // At most 20% of $20 ($4): the smallest size in that which nets $1, the low end of the range.
-    expect(a.positions[0].sizeUsd).toBeLessThanOrEqual(4)
-    expect(a.positions[0].targetUsd).toBe(1)
-    expect(a.events[0].text).toMatch(/a small bot: at most 20% of its \$20\.00 a trade/)
+    accts.act(a, { action: 'deposit', amount: 100 }, now); accts.act(a, { action: 'start' }, now)
+    accts.onSignal(signal({ id: 'b1', quality: quality('live', 'B') }), now)
+    expect(a.positions[0].sizeUsd).toBe(sizeOf(100, 'B'))
+    accts.onSignal(signal({ id: 'p1', token: '0x' + 'c3'.repeat(20), quality: quality('paper', 'B') }), now)
+    expect(a.positions).toHaveLength(2) // a paper bot takes a paper-only signal
+    a.mode = 'live'
+    accts.onSignal(signal({ id: 'p2', token: '0x' + 'c4'.repeat(20), quality: quality('paper', 'B') }), now)
+    expect(accts.view(a).skips[0].text).toMatch(/not traded live: in the lowest 20% of recent signals by quality \(score 55\)/)
+  })
+  test('a $10 bot trades: $2 on tier A, $1 on tier B; the same coin once per 6 hours', () => {
+    const { accts, a } = setup()
+    accts.act(a, { action: 'deposit', amount: 10 }, now); accts.act(a, { action: 'start' }, now)
+    accts.onSignal(signal({ quality: quality('live', 'A') }), now)
+    expect(a.positions[0].sizeUsd).toBe(2)
     accts.onSignal(signal({ id: 's2' }), now) // same coin
     expect(a.positions).toHaveLength(1)
-    expect(accts.view(a).protections).toMatchObject({ maxTradeSharePct: 20 })
-    expect(accts.view(a).protections.maxTradeUsd).toBeLessThanOrEqual(4)
+    accts.onSignal(signal({ id: 's3', token: '0x' + 'c5'.repeat(20), quality: quality('live', 'B') }), now)
+    expect(a.positions[1].sizeUsd).toBe(1)
+    expect(accts.view(a).protections).toMatchObject({ maxTradeSharePct: 20, tradeSharePct: { a: 20, b: 10 }, minTradeUsd: 1 })
   })
-  test('a bot too small for even a $2 trade waits, and says why', () => {
+  test('a bot too small for even a $1 trade waits, and says why', () => {
     const { accts, a } = setup()
-    accts.act(a, { action: 'deposit', amount: 9 }, now); accts.act(a, { action: 'start' }, now)
+    accts.act(a, { action: 'deposit', amount: 4 }, now); accts.act(a, { action: 'start' }, now)
     accts.onSignal(signal(), now)
     expect(a.positions).toEqual([])
-    expect(accts.view(a).skips[0].text).toMatch(/the bot is worth \$9\.00: a trade is at most 20% of it \(\$1\.50\)/)
+    expect(accts.view(a).skips[0].text).toMatch(/the bot is worth \$4\.00: even 20% of it is under the \$1 minimum trade/)
   })
   test('exits pay back into cash; the creator selling closes a position at once', () => {
     const { accts, a } = setup()
@@ -100,9 +112,9 @@ describe('paper accounts', () => {
     accts.onSignal(signal(), now)
     price = 0.9
     const v = accts.view(a)
-    expect(v.cash).toBeCloseTo(100 - sizeOf('snipe'), 6)
-    expect(v.openValue).toBeGreaterThan(sizeOf('snipe') * 0.85)
-    expect(v.openValue).toBeLessThan(sizeOf('snipe') * 0.9)
+    expect(v.cash).toBeCloseTo(100 - sizeOf(100), 6)
+    expect(v.openValue).toBeGreaterThan(sizeOf(100) * 0.85)
+    expect(v.openValue).toBeLessThan(sizeOf(100) * 0.9)
     expect(accts.act(a, { action: 'reset' }, now)).toBeNull()
     expect(a).toMatchObject({ cash: 0, deposited: 0, positions: [], running: false, name: 'Hunter 1' })
   })

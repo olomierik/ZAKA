@@ -110,3 +110,43 @@ export function noSizeWhy(o: { strategy: Strategy; takeProfit: number; roundTrip
   }
   return { key: 'too-thin', why: `the pool is too thin (or the coin too costly to trade) to net even $${floor} at ${pct}` }
 }
+
+// ── Sized from the bot's capital (owner's request, 2026-09-30: "take trade
+// sizes according to the bot's initial capital, not a default; let even bots
+// with $10 run trades"). Replaces the profit-target sizing above for every
+// bot's trades: a share of what the bot is worth (its capital at the start;
+// then what it has grown or shrunk to), by the signal's tier
+// (signals/quality.ts):
+//
+//   tier A (the top of the live-grade signals)   20% of the bot
+//   tier B (the rest, and paper-only signals)    10%
+//
+// at least $1, so a $10 bot trades $2 (A) or $1 (B). Never more than 1.5% of
+// the pool's liquidity (a bigger trade moves a thin pool against itself), and
+// never a trade whose round trip eats the take-profit.
+
+export const CAPITAL_SIZING = { shareA: 0.2, shareB: 0.1, minUsd: 1, maxUsd: 250, maxPoolShare: 0.015 }
+
+export type CapitalSized = { sizeUsd: number; profitUsd: number; costPct: number; share: number }
+export type NoCapitalSize = { key: 'small-balance' | 'too-thin' | 'costly'; why: string }
+
+/** A trade's size from the bot's capital and the signal's tier, or why there's none. */
+export function sizeFromCapital(o: { capitalUsd: number; tier: 'A' | 'B'; takeProfit: number; roundTripPct: number | null; liquidityUsd: number | null; maxUsd?: number }): CapitalSized | NoCapitalSize {
+  const c = CAPITAL_SIZING
+  const share = o.tier === 'A' ? c.shareA : c.shareB
+  const floor10 = (x: number) => Math.floor(x * 10 + 1e-9) / 10
+  let size = floor10(Math.max(0, o.capitalUsd) * share)
+  // A small bot's tier-B trade is the $1 minimum, as long as that's within its 20%.
+  if (size < c.minUsd && o.capitalUsd * c.shareA >= c.minUsd) size = c.minUsd
+  if (size < c.minUsd) return { key: 'small-balance', why: `the bot is worth $${o.capitalUsd.toFixed(2)}: even ${Math.round(c.shareA * 100)}% of it is under the $${c.minUsd} minimum trade` }
+  size = Math.min(size, o.maxUsd ?? c.maxUsd)
+  if (o.liquidityUsd !== null && o.liquidityUsd > 0) {
+    const poolCap = floor10(o.liquidityUsd * c.maxPoolShare)
+    if (poolCap < c.minUsd) return { key: 'too-thin', why: `the pool ($${Math.round(o.liquidityUsd).toLocaleString('en-US')}) is too thin for even a $${c.minUsd} trade` }
+    size = Math.min(size, poolCap)
+  }
+  const net = netAtTakeProfit(size, o.takeProfit, o.roundTripPct, o.liquidityUsd)
+  const pct = `${Math.round((o.takeProfit - 1) * 100)}%`
+  if (net <= 0) return { key: 'costly', why: `buying and selling back costs more than its +${pct} take-profit` }
+  return { sizeUsd: size, profitUsd: Math.round(net * 100) / 100, costPct: Math.round(costPerSide(o.roundTripPct, size, o.liquidityUsd) * 10_000) / 100, share }
+}

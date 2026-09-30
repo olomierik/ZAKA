@@ -37,7 +37,7 @@ export const SKIP_LABELS: Record<string, string> = {
   'not-running': 'bot funded but not started (press Start)', strategy: 'bot doesn\'t follow that strategy', paused: 'bot paused after 4 losses in a row',
   filters: 'the bot\'s learned filters', 'too-thin': 'pool too thin or too costly to net $1', cash: 'not enough cash in the bot', 'small-balance': 'bot too small: a trade is at most 20% of it',
   'max-open': 'too many trades already open', cooldown: 'traded that coin recently', 'daily-loss': 'daily loss limit reached',
-  probation: 'the rule is on probation (its paper record is losing)', 'live-unavailable': 'live wallet unavailable', 'live-cap': 'over the live size cap', 'live-order': 'sent to a live wallet',
+  probation: 'the rule is on probation (its paper record is losing)', 'paper-grade': 'live bots: in the lowest 20% of signals by quality', costly: 'the round trip eats the take-profit', 'live-unavailable': 'live wallet unavailable', 'live-cap': 'over the live size cap', 'live-order': 'sent to a live wallet',
 }
 
 /**

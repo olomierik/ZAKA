@@ -1800,5 +1800,14 @@ const d: Record<string, string> = {
   "Paper bots": "模拟机器人",
   "virtual USDC, no real money": "虚拟 USDC，非真实资金",
   "No live bots yet. A bot goes live once its paper record, or the team's, proves it.": "暂无实盘机器人。机器人的模拟记录或团队记录达标后即可切换实盘。",
+  "Every signal gets a quality score and is ranked against the last 50: the top 80% go to live bots and paper bots, the lowest 20% to paper bots only, where they are still measured. Tier A (the top 40%) takes 20% of a bot's capital, the rest 10%.": "每个信号都有质量分，并与最近 50 个信号比较排名：前 80% 发给实盘和模拟机器人，最低的 20% 只发给模拟机器人继续衡量。A 级（前 40%）使用机器人资金的 20%，其余 10%。",
+  "Name it and pick its strategies: it starts trading at once with $1,000 of virtual USDC and the team's best settings. Each trade is a share of what the bot is worth: 20% on the best signals, 10% on the rest, at least $1, so even a $10 bot trades. It gets out of rugs at once and learns from its own trades and every other bot's. It keeps trading with this page closed. No wallet or real money needed.": "给它起名并选择策略：它会立即用 1,000 美元虚拟 USDC 和团队的最佳设置开始交易。每笔交易是机器人价值的一部分：最佳信号 20%，其余 10%，至少 1 美元，所以即使 10 美元的机器人也能交易。遇到跑路立即退出，并从自己和其他所有机器人的交易中学习。关闭此页面后仍会继续交易。无需钱包或真实资金。",
+  "Trade size: from the bot's capital": "交易规模：按机器人资金",
+  "Each trade is a share of what the bot is worth now (at the start, its capital): {a}% on the best signals (tier A), {b}% on the rest, at least {m}. A $10 bot trades $2 or $1. Never more than 1.5% of the coin's pool, and never a trade whose costs eat the take-profit.": "每笔交易是机器人当前价值的一部分（开始时即其资金）：最佳信号（A 级）{a}%，其余 {b}%，至少 {m}。10 美元的机器人每笔交易 2 美元或 1 美元。绝不超过该币池子的 1.5%，也绝不做成本吃掉止盈的交易。",
+  "Each trade is {a}% of what the bot is worth on the best signals, {b}% on the rest (now at most {m}), at least {min}: a small bot trades small.": "最佳信号每笔为机器人价值的 {a}%，其余 {b}%（当前最多 {m}），至少 {min}：小机器人小额交易。",
+  "about {v} on a top signal": "顶级信号约 {v}",
+  "Sells all at {tp} · stop {sl} · out after {m} min unless moving, {x} min at most": "在 {tp} 全部卖出 · 止损 {sl} · {m} 分钟无波动即退出，最长 {x} 分钟",
+  "Live-grade · tier {t} · {q}": "实盘级 · {t} 级 · {q}",
+  "Paper only · {q}": "仅模拟 · {q}",
 }
 export default d

@@ -136,6 +136,7 @@ export default function SignalsPage({ navigate, view: pageView, bot }: { navigat
           {view === 'scanner' && <><RejectionsCard /><ScannerPanel scan={scan} navigate={navigate} /></>}
           {view === 'signals' && (
             <Section title={T('Live signals')}>
+              <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>{T('Every signal gets a quality score and is ranked against the last 50: the top 80% go to live bots and paper bots, the lowest 20% to paper bots only, where they are still measured. Tier A (the top 40%) takes 20% of a bot\'s capital, the rest 10%.')}</div>
               {signals.length === 0 ? <Empty>{T('No signals yet. Most launches fail a safety check; a signal appears the moment one passes them all.')}</Empty>
                 : signals.map(s => <SignalRow key={s.id} s={s} navigate={navigate} />)}
             </Section>
@@ -217,7 +218,7 @@ function CreateBot({ busy, loading, error, onCreate, onCancel, team }: { busy: b
     <div className="at-card at-hero">
       <div className="at-hero-title">{T('Create your Autotrade bot')}</div>
       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-        {T('Name it and pick its strategies: it starts trading at once with $1,000 of virtual USDC and the team\'s best settings. It sizes every trade itself to lock in $1–4 (fast scalps $1–2), gets out of rugs at once, and learns from its own trades and every other bot\'s. It keeps trading with this page closed. No wallet or real money needed.')}
+        {T('Name it and pick its strategies: it starts trading at once with $1,000 of virtual USDC and the team\'s best settings. Each trade is a share of what the bot is worth: 20% on the best signals, 10% on the rest, at least $1, so even a $10 bot trades. It gets out of rugs at once and learns from its own trades and every other bot\'s. It keeps trading with this page closed. No wallet or real money needed.')}
       </div>
       <div className="at-label">{T('Bot name')}</div>
       <input className="at-input at-name" value={name} maxLength={24} placeholder={T('e.g. Night Owl')} onChange={e => setName(e.target.value)} aria-label={T('Bot name')} />
@@ -627,11 +628,11 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate }: 
             if (next.length) void act({ action: 'strategies', strategies: next })
             else setError(T('Keep at least one strategy.'))
           }} />
-          <div className="at-label">{T('Trade size: automatic')}</div>
+          <div className="at-label">{T('Trade size: from the bot\'s capital')}</div>
           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            {T('You don\'t set an amount: each trade is the smallest that locks in its profit target after fees and price impact, and is sold in full there. A pool too thin to pay it is skipped.')}
+            {T('Each trade is a share of what the bot is worth now (at the start, its capital): {a}% on the best signals (tier A), {b}% on the rest, at least {m}. A $10 bot trades $2 or $1. Never more than 1.5% of the coin\'s pool, and never a trade whose costs eat the take-profit.', { a: acct.protections?.tradeSharePct?.a ?? 20, b: acct.protections?.tradeSharePct?.b ?? 10, m: usd(acct.protections?.minTradeUsd ?? 1, 0) })}
           </div>
-          {acct.tuning && acct.strategies.map(s => <TuningLine key={s} s={s} t={acct.tuning[s]} range={acct.targets?.[s] ?? null} />)}
+          {acct.tuning && acct.strategies.map(s => <TuningLine key={s} s={s} t={acct.tuning[s]} />)}
         </Section>
       )}
 
@@ -991,7 +992,7 @@ function SettingsTab({ acct, act, busy, onRename }: { acct: PaperAccountView; ac
         <Section title={T('Protection')}>
           <ul className="at-protect">
             <li>🛡 {T('Rug guard: out at once when liquidity is pulled, an early insider or a whale dumps, the price crashes on heavy selling, or the creator sells.')}</li>
-            {prot.maxTradeSharePct !== undefined && <li>⚖ {T('No trade over {p}% of what the bot is worth (now at most {m} a trade): a small bot trades smaller and aims for a smaller profit.', { p: prot.maxTradeSharePct, m: prot.maxTradeUsd == null ? '—' : usd(prot.maxTradeUsd) })}</li>}
+            {prot.maxTradeSharePct !== undefined && <li>⚖ {T('Each trade is {a}% of what the bot is worth on the best signals, {b}% on the rest (now at most {m}), at least {min}: a small bot trades small.', { a: prot.tradeSharePct?.a ?? prot.maxTradeSharePct, b: prot.tradeSharePct?.b ?? 10, m: prot.maxTradeUsd == null ? '—' : usd(prot.maxTradeUsd), min: usd(prot.minTradeUsd ?? 1, 0) })}</li>}
             <li>⏸ {T('Pauses new trades for 30 minutes after {n} losses in a row (now {s} in a row).', { n: prot.pauseAfterLosses, s: prot.lossStreak })}</li>
             <li>📉 {T('Daily loss limit {l}: no new trades after it until tomorrow (UTC). Today: {t}.', { l: usd(prot.dailyLossLimitUsd, 0), t: usd(prot.todayPnlUsd) })}</li>
             <li>🛑 {T('Stops if the account falls {p}% below what was deposited.', { p: prot.stopBelowPct })}</li>
@@ -1042,7 +1043,7 @@ function filterWords(f: BotFilters): string[] {
   ].filter((x): x is string => !!x)
 }
 
-function TuningLine({ s, t, range }: { s: Strategy; t: PaperAccountView['tuning'][Strategy]; range: [number, number] | null }) {
+function TuningLine({ s, t }: { s: Strategy; t: PaperAccountView['tuning'][Strategy] }) {
   // Learned per kind of signal: a momentum burst and a snipe count buyers differently.
   const learned = [
     ...filterWords(t.filters),
@@ -1052,13 +1053,12 @@ function TuningLine({ s, t, range }: { s: Strategy; t: PaperAccountView['tuning'
     <div className="at-tune">
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         <Pill color={STRATEGY_COLOR[s]}>{T(STRATEGY[s])} · v{t.version}</Pill>
-        <b style={{ fontFamily: 'var(--mono)' }}>{t.sizeUsd === null ? '—' : T('about {v} a trade', { v: usd(t.sizeUsd) })}</b>
+        <b style={{ fontFamily: 'var(--mono)' }}>{t.sizeUsd === null ? '—' : T('about {v} on a top signal', { v: usd(t.sizeUsd) })}</b>
         {t.closed > 0 && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T('{n} trades, {w} won', { n: t.closed, w: t.winRate === null ? '—' : `${Math.round(t.winRate * 100)}%` })}</span>}
       </div>
       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
-        {T('Sells all at {tp} to make {target}{range} · stop {sl} · out after {m} min unless moving, {x} min at most', {
-          tp: pctMove(t.takeProfit), target: usd(t.targetUsd), range: range ? ` (${T('aims {a}–{b}', { a: `$${range[0]}`, b: `$${range[1]}` })})` : '',
-          sl: pctMove(t.stopLoss), m: t.timeStopMin, x: t.maxHoldMin,
+        {T('Sells all at {tp} · stop {sl} · out after {m} min unless moving, {x} min at most', {
+          tp: pctMove(t.takeProfit), sl: pctMove(t.stopLoss), m: t.timeStopMin, x: t.maxHoldMin,
         })}
       </div>
       {learned.length > 0 && <div style={{ fontSize: '0.72rem', color: '#c4b5fd', marginTop: 2 }}>{T('Learned:')} {learned.join(' · ')}</div>}
@@ -1395,6 +1395,7 @@ function SignalRow({ s, navigate }: { s: TradeSignal; navigate: (p: Page) => voi
         <Pill color={getLaunchpadColor(s.launchpad)}>{s.launchpad}</Pill>
         <Pill color={STRATEGY_COLOR[s.strategy] ?? '#64748b'}>{T(STRATEGY[s.strategy] ?? s.strategy)}</Pill>
         {s.probation && <span className="at-probation" title={s.probation.why}>{T('On probation: bots sit it out')}</span>}
+        {s.quality && !s.probation && <span className={`at-quality ${s.quality.grade}`} title={s.quality.parts.join(' · ')}>{s.quality.grade === 'live' ? T('Live-grade · tier {t} · {q}', { t: s.quality.tier, q: s.quality.score }) : T('Paper only · {q}', { q: s.quality.score })}</span>}
         {s.strategy === 'scalp' && s.rule === 'snipe' && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }} title={T('The snipe rule fired, but the coin carries a risk, so it trades small and sells fast')}>{T('from a snipe on a risky coin')}</span>}
         {!s.executable && <Pill color="#64748b">{T('Paper only')}</Pill>}
         <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)' }}><AgoText ts={s.at} /></span>

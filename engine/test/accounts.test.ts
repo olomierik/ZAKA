@@ -11,7 +11,7 @@ import { MemoryMailer, NoMailer } from '../src/bot/mailer'
 import { PaperAccounts, slugOf, type PaperAccount, type PaperSignal } from '../src/bot/paperAccounts'
 import { ScanFeed } from '../src/bot/scanFeed'
 import { MemoryBotStore } from '../src/bot/store'
-import { PROFIT_FEE, profitFee, readiness, READY, UserLive, WalletVault } from '../src/bot/userLive'
+import { PROFIT_FEE, profitFee, readiness, READY, USER_LIVE, UserLive, WalletVault } from '../src/bot/userLive'
 import { AUTH, Users } from '../src/bot/users'
 import type { PoolInfo } from '../src/dex/pools'
 import { USDC20, type LiveExecutor } from '../src/trading/live'
@@ -233,7 +233,8 @@ describe('live: the same bot, from paper to its own wallet', () => {
     await settle()
     const p = a.positions.find(x => x.mode === 'live')!
     expect(wallet.calls[0]).toMatch(/^buy \d+(\.\d+)?$/)
-    expect(p).toMatchObject({ status: 'open', strategy: 'scalp', targetUsd: 1.5, tuningVersion: 1 })
+    expect(p).toMatchObject({ status: 'open', strategy: 'scalp', sizeUsd: 20, tuningVersion: 1 }) // 20% of its $100 wallet
+    expect(p.targetUsd).toBeGreaterThan(0)
     expect(p.exits?.tp1Multiple).toBe(1.15)
     expect(accounts.holds(T)).toBe(true)
     accounts.onPrice(T, 1.2, Date.now(), false, true)
@@ -263,7 +264,7 @@ describe('live: the same bot, from paper to its own wallet', () => {
     expect(p.feeDue).toBe(p.feeUsd) // owed: the send failed
     expect(p.txs?.some(t => t.kind === 'fee')).toBe(false)
     const bal = wallet.o.balance
-    expect(await accounts.withdrawable(a)).toBeCloseTo(Math.floor((bal - 0.2 - p.feeUsd!) * 100) / 100, 6) // the fee stays in the wallet
+    expect(await accounts.withdrawable(a)).toBeCloseTo(Math.floor((bal - USER_LIVE.reserveUsd / 5 - p.feeUsd!) * 100) / 100, 6) // the fee stays in the wallet
     down = false
     accounts.tick(Date.now() + 61_000) // retried after a minute
     await settle()

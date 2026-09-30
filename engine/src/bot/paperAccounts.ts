@@ -36,14 +36,15 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 import type { Address } from 'viem'
-import type { BotProfit, LaunchInfo, LearnNote, MarketBot, MarketBotDetail, NewPaperAccount, PaperAccountView, PaperAction, PaperEvent, SignalFeatures, SignalRule, TeamView } from '../../../api/_marketProtocol'
+import type { BotProfit, LaunchInfo, LearnNote, MarketBot, MarketBotDetail, NewPaperAccount, PaperAccountView, PaperAction, PaperEvent, SignalFeatures, SignalQuality, SignalRule, TeamView } from '../../../api/_marketProtocol'
 import type { PoolInfo } from '../dex/pools'
 import { errMsg, log } from '../log'
 import { canOpen, closeNow, costPerSide, onPrice, openPosition, RISK, stats, type Fill, type Position, type RiskRules, type Strategy, type StrategyParams } from '../trading/paper'
+import { QUALITY } from '../signals/quality'
 import { admits, defaultTuning, learn, migrateTuning, relax, toParams, type Tuning } from './learner'
 import type { LiveTrader } from './liveTrader'
 import type { RugAlarm } from './rugGuard'
-import { maxTradeFor, noSizeWhy, SIZE_LIMITS, sizeForTrade, TARGETS } from './sizing'
+import { CAPITAL_SIZING, maxTradeFor, SIZE_LIMITS, sizeFromCapital, TARGETS } from './sizing'
 import type { Signal } from './types'
 import { OutcomeTally } from './scanFeed'
 import { profitFee, readinessWithTeam, TEAM_READY, USER_LIVE, type BotWallet, type UserLive } from './userLive'
@@ -107,7 +108,7 @@ export interface PaperAccountStore {
   paperTrades(accountId: string, limit: number, before?: number): Promise<Position[]>
 }
 
-export interface PaperSignal { id: string; token: string; symbol: string; launchpad: string; price: number; strategy: Strategy; roundTripPct: number | null; liquidityUsd: number | null; features?: SignalFeatures; rule?: SignalRule; probation?: { why: string } | null }
+export interface PaperSignal { id: string; token: string; symbol: string; launchpad: string; price: number; strategy: Strategy; roundTripPct: number | null; liquidityUsd: number | null; features?: SignalFeatures; rule?: SignalRule; probation?: { why: string } | null; quality?: SignalQuality }
 /** What a live bot needs to trade a signal: the signal itself, the coin's pool and its launch. */
 export interface LiveContext { signal: Signal; pool: PoolInfo | null; meta: LaunchInfo }
 
@@ -476,23 +477,24 @@ export class PaperAccounts {
       if (a.pausedUntil && now < a.pausedUntil) { skip('paused', `paused after ${PROTECT.pauseAfterLosses} losses in a row`); continue }
       const t = a.tuning[sig.strategy]
       if (sig.probation) { skip('probation', `not traded: ${sig.probation.why}`); continue }
+      // The bottom 20% of signals by quality go to paper bots only (signals/quality.ts): still measured, no real money.
+      if (a.mode === 'live' && sig.quality?.grade === 'paper') { skip('paper-grade', `not traded live: in the lowest ${Math.round((1 - QUALITY.liveShare) * 100)}% of recent signals by quality (score ${sig.quality.score}); paper bots take it`); continue }
       const filtered = admits(t, sig.features, sig.rule)
       if (filtered) { a.filterSkips[sig.strategy] = (a.filterSkips[sig.strategy] ?? 0) + 1; skip('filters', filtered); continue }
-      // Sized for its target, never over 20% of what the bot is worth; a thinner or costlier
-      // pool gets the size for $1 (the low end of the range), a small bot the 20% for what it nets.
+      // Sized from the bot's capital (bot/sizing.ts): 20% of what it's worth on a tier-A signal, 10% otherwise, at least $1.
       const balanceUsd = this.balanceOf(a)
-      const want = { strategy: sig.strategy, targetUsd: t.targetUsd, takeProfit: t.takeProfit, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd, balanceUsd: balanceUsd ?? undefined }
-      const sized = sizeForTrade(want)
-      if (!sized) { const n = noSizeWhy(want); skip(n.key, n.why); continue }
+      if (balanceUsd === null) { skip('live-unavailable', 'its wallet\'s balance couldn\'t be read yet'); continue }
+      const tier = sig.quality?.grade === 'live' && sig.quality.tier === 'A' ? 'A' : sig.quality ? 'B' : 'A'
+      const sized = sizeFromCapital({ capitalUsd: balanceUsd, tier, takeProfit: t.takeProfit, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd, maxUsd: a.mode === 'live' ? USER_LIVE.maxTradeUsd : undefined })
+      if (!('sizeUsd' in sized)) { skip(sized.key, sized.why); continue }
       const params = toParams(t, sized.sizeUsd)
       if (a.mode === 'live') {
         const trader = this.trader(a)
         if (!trader || !ctx) { skip('live-unavailable', 'live trading is unavailable right now'); continue }
-        if (sized.sizeUsd > USER_LIVE.maxTradeUsd) { skip('live-cap', `needs ${money(sized.sizeUsd)}, over the $${USER_LIVE.maxTradeUsd} live cap`); continue }
         a.lastBuyAt[sig.strategy] = now
         a.filterSkips[sig.strategy] = 0
         this.outcomes.add(sig.id, 'live-order', now)
-        void trader.open(ctx.signal, sig.strategy, ctx.pool, ctx.meta, { sizeUsd: sized.sizeUsd, idSuffix: a.id.slice(0, 12), extra: { exits: params, targetUsd: sized.targetUsd, tuningVersion: t.version, features: sig.features, rule: sig.rule } })
+        void trader.open(ctx.signal, sig.strategy, ctx.pool, ctx.meta, { sizeUsd: sized.sizeUsd, idSuffix: a.id.slice(0, 12), extra: { exits: params, targetUsd: sized.profitUsd, tuningVersion: t.version, features: sig.features, rule: sig.rule } })
           .catch(e => log.warn('user live: open failed', { bot: a.slug, error: errMsg(e) }))
         continue
       }
@@ -502,7 +504,7 @@ export class PaperAccounts {
       const cost = costPerSide(sig.roundTripPct, sized.sizeUsd, sig.liquidityUsd)
       const p: Position = {
         ...openPosition({ id: `${sig.id}:${a.id.slice(0, 12)}`, strategy: sig.strategy, token: sig.token, symbol: sig.symbol, launchpad: sig.launchpad, signalId: sig.id, price: sig.price, cost, now, params }),
-        mode: 'paper', exits: params, targetUsd: sized.targetUsd, tuningVersion: t.version, features: sig.features, rule: sig.rule,
+        mode: 'paper', exits: params, targetUsd: sized.profitUsd, tuningVersion: t.version, features: sig.features, rule: sig.rule,
       }
       a.cash -= sized.sizeUsd
       a.positions.push(p)
@@ -510,9 +512,8 @@ export class PaperAccounts {
       a.filterSkips[sig.strategy] = 0
       this.outcomes.add(sig.id, 'traded', now)
       this.track(a, p)
-      const aim = sized.small ? ` (a small bot: at most ${Math.round(SIZE_LIMITS.maxShareOfBalance * 100)}% of its ${money(balanceUsd ?? 0)} a trade, so aiming for ${money(sized.targetUsd)}, not $${t.targetUsd})`
-        : sized.targetUsd < t.targetUsd ? ` (a thin pool: aiming for $${sized.targetUsd}, not $${t.targetUsd})` : ''
-      this.event(a, { at: now, kind: 'buy', token: sig.token, symbol: sig.symbol, text: `Bought $${sig.symbol} for ${money(sized.sizeUsd)} (${LABEL[sig.strategy]}): sells all at ${move(t.takeProfit)} to make about ${money(sized.profitUsd)}${aim}, stop at ${move(t.stopLoss)}` })
+      const why = `${Math.round(sized.share * 100)}% of its ${money(balanceUsd)}${sig.quality ? `, a tier-${tier} signal (quality ${sig.quality.score})` : ''}`
+      this.event(a, { at: now, kind: 'buy', token: sig.token, symbol: sig.symbol, text: `Bought $${sig.symbol} for ${money(sized.sizeUsd)} (${LABEL[sig.strategy]}; ${why}): sells all at ${move(t.takeProfit)} to make about ${money(sized.profitUsd)}, stop at ${move(t.stopLoss)}` })
       this.save(a, now)
     }
   }
@@ -637,8 +638,9 @@ export class PaperAccounts {
     const tuning = Object.fromEntries(STRATEGIES.map(st => {
       const { prev: _prev, ...t } = a.tuning[st]
       const mine = stats(a.positions.filter(p => p.strategy === st))
-      const sized = sizeForTrade({ strategy: st, targetUsd: t.targetUsd, takeProfit: t.takeProfit, ...TYPICAL, balanceUsd: worth !== null && worth > 0 ? worth : undefined })
-      return [st, { ...t, sizeUsd: sized?.sizeUsd ?? null, closed: mine.closed, winRate: mine.winRate }]
+      // What a tier-A trade would be now, in a typical pool (a tier-B one is half).
+      const sized = worth !== null && worth > 0 ? sizeFromCapital({ capitalUsd: worth, tier: 'A', takeProfit: t.takeProfit, ...TYPICAL, maxUsd: a.mode === 'live' ? USER_LIVE.maxTradeUsd : undefined }) : null
+      return [st, { ...t, sizeUsd: sized && 'sizeUsd' in sized ? sized.sizeUsd : null, closed: mine.closed, winRate: mine.winRate }]
     })) as PaperAccountView['tuning']
     const trader = a.live && this.o.live ? this.o.live.existing(a.id) : null
     const liveStats = stats(a.positions.filter(isLive))
@@ -654,6 +656,7 @@ export class PaperAccounts {
         pausedUntil: a.pausedUntil && a.pausedUntil > now ? a.pausedUntil : null, lossStreak: a.lossStreak, pauseAfterLosses: PROTECT.pauseAfterLosses,
         dailyLossLimitUsd: riskFor(a).dailyLossUsd, todayPnlUsd: today, stopBelowPct: PROTECT.stopBelowPct,
         maxTradeSharePct: Math.round(SIZE_LIMITS.maxShareOfBalance * 100), maxTradeUsd: worth === null ? null : maxTradeFor(worth),
+        tradeSharePct: { a: Math.round(CAPITAL_SIZING.shareA * 100), b: Math.round(CAPITAL_SIZING.shareB * 100) }, minTradeUsd: CAPITAL_SIZING.minUsd,
       },
       tradesLogged: a.tradesLogged,
       feesPaidUsd: a.feesPaidUsd + (a.live?.feesPaidUsd ?? 0),

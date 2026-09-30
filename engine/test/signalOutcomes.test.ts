@@ -58,14 +58,18 @@ describe('every signal a bot passes over says why, and is counted', () => {
   }
   const sig = (o: Partial<PaperSignal> = {}): PaperSignal => ({ id: 's1', token: T(1), symbol: 'C', launchpad: 'Argus', price: 1, strategy: 'scalp', roundTripPct: 4, liquidityUsd: 2_000, ...o })
 
-  test('a thin-pool scalp is bought now (aiming for $1), where it was skipped as "too thin"', () => {
+  test('a thin-pool scalp is bought, at the bot\'s share (the pool caps it at 1.5% of its liquidity)', () => {
     const { accts, make } = setup()
     const a = make('Thin Pool', ['scalp'])
     accts.act(a, { action: 'deposit', amount: 100 }, now); accts.act(a, { action: 'start' }, now)
     accts.onSignal(sig(), now)
     expect(a.positions).toHaveLength(1)
-    expect(a.positions[0].targetUsd).toBe(1)
-    expect(a.events[0].text).toMatch(/aiming for \$1, not \$1.5/)
+    expect(a.positions[0].sizeUsd).toBe(20) // 20% of $100; the $2,000 pool would take up to $30
+    expect(a.positions[0].targetUsd).toBeGreaterThan(0)
+    const big = make('Big Bot', ['scalp'])
+    accts.act(big, { action: 'deposit', amount: 10_000 }, now); accts.act(big, { action: 'start' }, now)
+    accts.onSignal(sig({ id: 's9', token: T(9) }), now)
+    expect(big.positions[0].sizeUsd).toBe(30) // not $2,000: 1.5% of the pool
   })
   test('a funded bot that isn\'t started, and one that doesn\'t follow the strategy, say so', () => {
     const { accts, make } = setup()
@@ -87,13 +91,13 @@ describe('every signal a bot passes over says why, and is counted', () => {
     const { accts, make } = setup()
     const rich = make('Rich', ['scalp']), poor = make('Poor', ['scalp'])
     accts.act(rich, { action: 'deposit', amount: 100 }, now); accts.act(rich, { action: 'start' }, now)
-    accts.act(poor, { action: 'deposit', amount: 6 }, now); accts.act(poor, { action: 'start' }, now)
+    accts.act(poor, { action: 'deposit', amount: 4 }, now); accts.act(poor, { action: 'start' }, now)
     accts.onSignal(sig(), now)
     accts.onSignal(sig({ id: 's2' }), now + 1_000) // the same coin again: the rich bot's cooldown; the poor bot is too small either time
     const o = accts.outcomes.summary(now + 1_000)
     expect(o).toMatchObject({ signals: 2, traded: 1 })
     expect(Object.fromEntries(o.reasons.map(r => [r.key, r.count]))).toEqual({ 'small-balance': 2, cooldown: 1 })
-    expect(poor.skips[0].text).toMatch(/^fast scalp: the bot is worth \$6\.00: a trade is at most 20% of it \(\$1\.00\)/)
+    expect(poor.skips[0].text).toMatch(/^fast scalp: the bot is worth \$4\.00: even 20% of it is under the \$1 minimum trade/)
   })
   test('the counts cover the last 24 hours', () => {
     const t = new OutcomeTally()

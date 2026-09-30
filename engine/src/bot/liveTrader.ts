@@ -59,7 +59,7 @@ export interface LiveLimits {
 }
 
 /** The smallest live trade: below this, a wallet is too small to trade (gas and rounding eat it). */
-export const MIN_LIVE_TRADE_USD = 2
+export const MIN_LIVE_TRADE_USD = 1
 
 export const DEFAULT_LIMITS: LiveLimits = { maxTradeUsd: 25, dailyLossUsd: 50, maxOpen: 3, maxOpenScalp: 2, slippageBps: 1_000, exitSlippageBps: [1_500, 3_500, 6_000], reserveUsd: 2, preflight: true, maxRoundTripPct: 20, maxShareOfBalance: 0.2 }
 
@@ -142,7 +142,7 @@ export class LiveTrader {
       const bal = this.balance!.usd
       const share = this.o.limits.maxShareOfBalance ?? 0.2
       const worth = bal + this.live().filter(p => p.status === 'open').reduce((sum, p) => sum + p.sizeUsd * (p.remaining / (p.qty || 1)), 0)
-      const cap = Math.floor(worth * share * 2) / 2
+      const cap = Math.floor(worth * share * 10 + 1e-9) / 10
       if (size > cap) {
         if (cap < MIN_LIVE_TRADE_USD) { this.event({ kind: 'skip', token, symbol, text: `$${symbol}: not bought (the wallet is worth $${worth.toFixed(2)}; a trade is at most ${Math.round(share * 100)}% of it, under the $${MIN_LIVE_TRADE_USD} minimum)` }); return }
         // A smaller trade makes proportionally less at the same take-profit.
