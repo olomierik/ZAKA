@@ -130,8 +130,8 @@ export interface BotStats {
   winRate: number | null; avgWinUsd: number | null; avgLossUsd: number | null
   profitFactor: number | null; expectancyUsd: number | null; totalPnlUsd: number; maxDrawdownUsd: number
 }
-export interface BotStatsResponse { mode: 'paper' | 'off'; all: BotStats; snipe: BotStats; secondLeg: BotStats; watching: number }
-export interface SafetyReport { token: string; launchpad: string; at: number; verdict: 'pass' | 'fail' | 'pending'; score: number; checks: SafetyCheck[]; template: string | null }
+export interface BotStatsResponse { mode: 'paper' | 'off'; all: BotStats; snipe: BotStats; secondLeg: BotStats; /** Missing from engines before scalps (2026-09-30). */ scalp?: BotStats; watching: number }
+export interface SafetyReport { token: string; launchpad: string; at: number; verdict: 'pass' | 'risky' | 'fail' | 'pending'; score: number; checks: SafetyCheck[]; template: string | null }
 
 export const getSignals = (limit = 100) => get<{ signals: TradeSignal[] }>(`/v1/signals?limit=${limit}`).then(r => r.signals)
 export const getBotStats = () => get<BotStatsResponse>('/v1/bot/stats')

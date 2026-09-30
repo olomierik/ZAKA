@@ -1,6 +1,9 @@
 // One safety report per coin, from every check the engine can make. A coin
 // gets signals only if every hard check passes; one that can't be answered
-// yet leaves it pending, never passed.
+// yet leaves it pending, never passed. Risk checks (the creator's stake,
+// serial launching, a copycat ticker) don't block: a coin failing only those
+// is "risky", and the bot trades it small and out fast (a scalp; owner's
+// decision, 2026-09-30).
 //
 //   contract (once)   the launchpad's own code (a template), or else: can
 //                     anyone still mint, freeze, pause, switch trading off,
@@ -11,13 +14,14 @@
 //   honeypot          bought, passed on and sold by a probe (honeypot.ts);
 //                     a round trip costing over 25% in a deep pool is a tax
 //   liquidity         enough to trade (curves: can't be pulled)
-//   holders           top 10 over 50%, or the creator over 15%
+//   holders (risk)    top 10 over 50%, or the creator over 15%
 //   bundle            3+ wallets taking over 25% of the supply in the launch
 //                     block and the two after it
 //   clusters          3+ early buyers funded from one source, or by the creator
 //   wash              a few wallets making most of the volume in round trips
-//   creator           sold most of their own buy; launched 3+ other coins today
-//   copycat           a bigger coin already uses the ticker
+//   creator           sold most of their own buy (the dump already happened)
+//   serial (risk)     the creator launched 3+ other coins today
+//   copycat (risk)    a bigger coin already uses the ticker
 
 import type { LaunchInfo } from '../../../api/_marketProtocol'
 import type { Rpc } from '../chain/http'
@@ -52,6 +56,8 @@ export interface Check {
   ok: boolean | null
   /** A hard check blocks signals when it fails, and keeps them pending while unknown. */
   hard: boolean
+  /** A risk check doesn't block: failing it, or not knowing, makes the coin risky (traded small, out fast). */
+  risk?: boolean
   detail: string
 }
 
@@ -59,7 +65,8 @@ export interface SafetyReport {
   token: string
   launchpad: string
   at: number
-  verdict: 'pass' | 'fail' | 'pending'
+  /** pass: every check passed; risky: every hard check passed, but a risk check didn't. */
+  verdict: 'pass' | 'risky' | 'fail' | 'pending'
   /** 0–100, higher is safer: 100 minus penalties for failed and unknown checks. */
   score: number
   checks: Check[]
@@ -128,7 +135,7 @@ export async function staticFacts(rpc: Rpc, token: string, pool: PoolInfo | null
   let hook: StaticFacts['hook'] = null
   const h = pool?.dex === 'uniswap-v4' ? pool.hooks?.toLowerCase() : null
   if (h && h !== '0x' + '0'.repeat(40)) {
-    let known = KNOWN_HOOKS[h] ?? null
+    let known: string | null = KNOWN_HOOKS[h] ?? null
     if (!known) {
       const hc = await rpc.call<string>('eth_getCode', [h, 'latest']).catch(() => null)
       known = HOOK_TEMPLATES.find((t: CodeTemplate) => matchesTemplate(hc, t))?.name ?? null
@@ -143,6 +150,7 @@ export async function staticFacts(rpc: Rpc, token: string, pool: PoolInfo | null
 export function assess(s: StaticFacts, i: ScanInput): SafetyReport {
   const checks: Check[] = []
   const add = (id: string, ok: boolean | null, hard: boolean, detail: string) => checks.push({ id, ok, hard, detail })
+  const risk = (id: string, ok: boolean | null, detail: string) => checks.push({ id, ok, hard: false, risk: true, detail })
   const trusted = s.template !== null
   const launchpadOwned = s.owner !== null && (s.owner === i.meta.entry?.toLowerCase() || s.owner === (i.meta.pool ?? '').toLowerCase())
 
@@ -176,10 +184,10 @@ export function assess(s: StaticFacts, i: ScanInput): SafetyReport {
     add('liquidity', i.liquidityUsd === null ? null : i.liquidityUsd >= LIMITS.minLiquidityUsd, true, i.liquidityUsd === null ? 'liquidity not known yet' : `$${Math.round(i.liquidityUsd).toLocaleString()} in the pool`)
   } else add('liquidity', true, true, 'on its launchpad curve: liquidity can\'t be pulled')
 
-  // Holders
-  if (i.holders === undefined) add('holders', null, true, 'holders not read yet')
-  else if (i.holders === null) add('holders', null, true, 'holders could not be read')
-  else add('holders', i.holders.top10Pct <= LIMITS.maxTop10Pct && i.holders.creatorPct <= LIMITS.maxCreatorPct, true,
+  // Holders (risk: a big holder can dump on the bot, so it trades small and gets out fast)
+  if (i.holders === undefined) risk('holders', null, 'holders not read yet')
+  else if (i.holders === null) risk('holders', null, 'holders could not be read')
+  else risk('holders', i.holders.top10Pct <= LIMITS.maxTop10Pct && i.holders.creatorPct <= LIMITS.maxCreatorPct,
     `${i.holders.holders} holders; top 10 hold ${i.holders.top10Pct.toFixed(1)}%, the creator ${i.holders.creatorPct.toFixed(1)}%`)
 
   // Bundling, clusters, wash
@@ -197,16 +205,16 @@ export function assess(s: StaticFacts, i: ScanInput): SafetyReport {
   const washy = i.flow.trades >= 20 && i.flow.top3VolumePct > LIMITS.maxTop3VolumePct && i.flow.roundTripVolumePct > LIMITS.maxRoundTripVolumePct
   add('wash', !washy, true, `top 3 wallets make ${i.flow.top3VolumePct.toFixed(0)}% of volume; ${i.flow.roundTripVolumePct.toFixed(0)}% is round trips`)
 
-  // Creator
+  // Creator: one who already sold most of their buy has dumped (hard); a serial launcher is a risk
   const sold = i.flow.creator.soldTokensPct
-  add('creator', !(sold !== null && sold > LIMITS.maxCreatorSoldPct) && i.creatorLaunches24h < LIMITS.maxCreatorLaunches24h, true,
-    [sold !== null ? `sold ${sold.toFixed(0)}% of their buy` : 'hasn\'t sold', `${i.creatorLaunches24h} other launches today`].join('; '))
-  add('copycat', i.biggerSameTicker.length === 0, true, i.biggerSameTicker.length ? `a bigger coin already uses $${i.meta.symbol}: ${i.biggerSameTicker[0]}` : 'ticker not taken by a bigger coin')
+  add('creator', !(sold !== null && sold > LIMITS.maxCreatorSoldPct), true, sold !== null ? `sold ${sold.toFixed(0)}% of their buy` : 'hasn\'t sold')
+  risk('serial', i.creatorLaunches24h < LIMITS.maxCreatorLaunches24h, `${i.creatorLaunches24h} other launches today`)
+  risk('copycat', i.biggerSameTicker.length === 0,i.biggerSameTicker.length ? `a bigger coin already uses $${i.meta.symbol}: ${i.biggerSameTicker[0]}` : 'ticker not taken by a bigger coin')
   // Evidence, not a requirement
   add('sellers', i.flow.outsideSellers > 0 ? true : null, false, `${i.flow.outsideSellers} holders besides the creator have sold`)
 
   const hard = checks.filter(c => c.hard)
-  const verdict = hard.some(c => c.ok === false) ? 'fail' : hard.some(c => c.ok === null) ? 'pending' : 'pass'
-  const score = Math.max(0, 100 - checks.reduce((s, c) => s + (c.ok === false ? (c.hard ? 30 : 10) : c.ok === null ? 5 : 0), 0))
+  const verdict = hard.some(c => c.ok === false) ? 'fail' : hard.some(c => c.ok === null) ? 'pending' : checks.some(c => c.risk && c.ok !== true) ? 'risky' : 'pass'
+  const score = Math.max(0, 100 - checks.reduce((s, c) => s + (c.ok === false ? (c.hard ? 30 : c.risk ? 20 : 10) : c.ok === null ? 5 : 0), 0))
   return { token: i.meta.token, launchpad: i.meta.launchpad, at: Date.now(), verdict, score, checks, template: s.template, honeypot: i.honeypot ?? null }
 }

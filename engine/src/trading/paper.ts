@@ -8,7 +8,7 @@
 // cost (pool fees, hook taxes, token taxes), half on entry and half on exit,
 // plus price impact for the size against the pool's liquidity.
 
-export type Strategy = 'snipe' | 'second-leg'
+export type Strategy = 'snipe' | 'second-leg' | 'scalp'
 
 export interface StrategyParams {
   sizeUsd: number
@@ -22,22 +22,33 @@ export interface StrategyParams {
   /** After this long, exit unless up at least `timeStopMinGain`. */
   timeStopMin: number
   timeStopMinGain: number
+  /** Out after this long whatever happened (the runner too). */
+  maxHoldMin?: number
+  /** Out the moment the coin's creator sells any of it. */
+  exitOnCreatorSell?: boolean
 }
 
 export const STRATEGIES: Record<Strategy, StrategyParams> = {
   snipe: { sizeUsd: 25, stopLoss: 0.65, tp1Multiple: 2, tp1SellPct: 0.5, trailFromPeak: 0.35, timeStopMin: 45, timeStopMinGain: 1.1 },
   'second-leg': { sizeUsd: 25, stopLoss: 0.8, tp1Multiple: 1.8, tp1SellPct: 0.5, trailFromPeak: 0.25, timeStopMin: 360, timeStopMinGain: 1.1 },
+  // A snipe on a coin that passed every hard check but not a risk check (the
+  // creator holds a big stake, launches coin after coin, a copycat ticker):
+  // a fifth of the size, most of it sold at +30%, out when the creator sells,
+  // and never held past 15 minutes (owner's decision, 2026-09-30).
+  scalp: { sizeUsd: 5, stopLoss: 0.85, tp1Multiple: 1.3, tp1SellPct: 0.75, trailFromPeak: 0.15, timeStopMin: 5, timeStopMinGain: 1.05, maxHoldMin: 15, exitOnCreatorSell: true },
 }
 
 export const RISK = {
   maxOpen: 5,
+  /** Scalps open at once, within `maxOpen`. */
+  maxOpenScalp: 3,
   /** A coin traded once isn't traded again for this long. */
   cooldownMin: 360,
   /** No new positions once today's (UTC) realized loss reaches this. */
   dailyLossUsd: 100,
 }
 
-export type ExitReason = 'tp1' | 'trail' | 'stop' | 'time' | 'safety'
+export type ExitReason = 'tp1' | 'trail' | 'stop' | 'time' | 'safety' | 'creator'
 
 export interface Fill { at: number; price: number; qty: number; usd: number; reason: 'entry' | ExitReason }
 
@@ -115,6 +126,7 @@ export function onPrice(pos: Position, price: number, now: number, params = STRA
   }
   if (pos.status === 'open' && pos.tp1Done && price <= pos.peak * (1 - params.trailFromPeak)) out.push(sell(pos, pos.remaining, price, now, 'trail'))
   if (pos.status === 'open' && now - pos.openedAt >= params.timeStopMin * 60_000 && x < params.timeStopMinGain && !pos.tp1Done) out.push(sell(pos, pos.remaining, price, now, 'time'))
+  if (pos.status === 'open' && params.maxHoldMin !== undefined && now - pos.openedAt >= params.maxHoldMin * 60_000) out.push(sell(pos, pos.remaining, price, now, 'time'))
   return out
 }
 
@@ -164,9 +176,11 @@ export function stats(positions: Position[]): Stats {
 }
 
 /** Whether a new position is allowed now (pure; the trader supplies its state). */
-export function canOpen(positions: Position[], token: string, now: number, risk = RISK): { ok: boolean; why: string } {
+export function canOpen(positions: Position[], token: string, now: number, risk = RISK, strategy?: Strategy): { ok: boolean; why: string } {
   const open = positions.filter(p => p.status === 'open')
   if (open.length >= risk.maxOpen) return { ok: false, why: `${open.length} positions open (max ${risk.maxOpen})` }
+  const scalps = open.filter(p => p.strategy === 'scalp').length
+  if (strategy === 'scalp' && scalps >= risk.maxOpenScalp) return { ok: false, why: `${scalps} scalps open (max ${risk.maxOpenScalp})` }
   if (positions.some(p => p.token === token && (p.status === 'open' || now - (p.closedAt ?? 0) < risk.cooldownMin * 60_000))) return { ok: false, why: 'traded this coin recently' }
   const day = new Date(now).toISOString().slice(0, 10)
   const today = positions.filter(p => p.closedAt && new Date(p.closedAt).toISOString().slice(0, 10) === day).reduce((s, p) => s + (p.pnlUsd ?? 0), 0)

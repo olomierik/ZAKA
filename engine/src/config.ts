@@ -54,8 +54,10 @@ export interface Config {
   logLevel: 'debug' | 'info' | 'warn' | 'error'
   /** Signals and paper trading (engine/src/bot): paper (default) or off. Live trading isn't built. */
   botMode: 'paper' | 'off'
-  /** Paper position size in USD (default: each strategy's own, $25). */
+  /** Paper position size in USD for snipes and second legs (default: each strategy's own, $25). */
   botSizeUsd: number | null
+  /** Paper position size in USD for scalps, the small fast trades on risky coins (default $5). */
+  botScalpSizeUsd: number | null
 }
 
 export function loadConfig(): Config {
@@ -88,6 +90,7 @@ export function loadConfig(): Config {
     logLevel: (process.env.LOG_LEVEL ?? 'info') as Config['logLevel'],
     botMode: process.env.BOT_MODE === 'off' ? 'off' : 'paper',
     botSizeUsd: process.env.BOT_SIZE_USD ? int('BOT_SIZE_USD', 25, 1, 10_000) : null,
+    botScalpSizeUsd: process.env.BOT_SCALP_SIZE_USD ? int('BOT_SCALP_SIZE_USD', 5, 1, 10_000) : null,
   }
   if (process.env.BOT_MODE === 'live') throw new Error('BOT_MODE=live: live trading is not built yet (paper trading first). Use paper or off.')
   // Separate ingest/gateway processes talk through Redis pub/sub.

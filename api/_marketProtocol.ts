@@ -163,12 +163,13 @@ export interface LaunchInfo {
 }
 
 /** One safety check of a coin (engine/src/intel/scanner.ts). */
-export interface SafetyCheck { id: string; ok: boolean | null; hard: boolean; detail: string }
+export interface SafetyCheck { id: string; ok: boolean | null; hard: boolean; /** Doesn't block: failing it makes the coin risky (a scalp). */ risk?: boolean; detail: string }
 
-/** A trading signal (engine/src/bot/bot.ts): market rules met and every hard safety check passed. */
+/** A trading signal (engine/src/bot/bot.ts): market rules met and every hard safety check passed.
+ * A scalp is a snipe on a coin that failed a risk check: traded small and out fast. */
 export interface TradeSignal {
   id: string
-  strategy: 'snipe' | 'second-leg'
+  strategy: 'snipe' | 'second-leg' | 'scalp'
   token: string
   symbol: string
   name: string
@@ -179,7 +180,7 @@ export interface TradeSignal {
   liquidityUsd: number | null
   ageSec: number
   reasons: string[]
-  safety: { verdict: 'pass' | 'fail' | 'pending'; score: number; checks: SafetyCheck[] }
+  safety: { verdict: 'pass' | 'risky' | 'fail' | 'pending'; score: number; checks: SafetyCheck[] }
   /** Whether ARCDEX can trade it today. */
   executable: boolean
 }
@@ -187,7 +188,7 @@ export interface TradeSignal {
 /** A (paper) position the bot opened on a signal (engine/src/trading/paper.ts). */
 export interface BotPosition {
   id: string
-  strategy: 'snipe' | 'second-leg'
+  strategy: 'snipe' | 'second-leg' | 'scalp'
   token: string
   symbol: string
   launchpad: string

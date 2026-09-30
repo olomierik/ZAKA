@@ -118,7 +118,6 @@ describe('the safety report', () => {
   })
   test('anything not yet known keeps it pending, never passed', () => {
     expect(assess(trusted, { ...clean, honeypot: undefined }).verdict).toBe('pending')
-    expect(assess(trusted, { ...clean, holders: undefined }).verdict).toBe('pending')
     expect(assess(trusted, { ...clean, clusters: null }).verdict).toBe('pending')
     expect(assess(trusted, { ...clean, liquidityUsd: null }).verdict).toBe('pending')
   })
@@ -146,9 +145,7 @@ describe('the safety report', () => {
     expect(failed(hooked, clean)).toEqual(['hook'])
     expect(assess({ ...trusted, hook: { address: A(0x2044), known: 'Argus P7 hook', dangerous: true } }, clean).verdict).toBe('pass')
   })
-  test('concentrated holders, bundles, clusters, wash, a dumping or serial creator, a copycat', () => {
-    expect(failed(trusted, { ...clean, holders: { ...clean.holders!, top10Pct: 70 } })).toEqual(['holders'])
-    expect(failed(trusted, { ...clean, holders: { ...clean.holders!, creatorPct: 20 } })).toEqual(['holders'])
+  test('bundles, clusters, wash and a creator who dumped fail', () => {
     const bundled = computeFlow([1, 2, 3].map(w => T({ wallet: A(w), block: 100, tokens: 100_000 })), { launchBlock: LAUNCH, creator: A(9), supply: 1e6 })
     expect(failed(trusted, { ...clean, flow: bundled })).toEqual(['bundle'])
     expect(failed(trusted, { ...clean, clusters: { ...clean.clusters!, groups: [{ funder: A(70), wallets: [A(1), A(2), A(3)] }] } })).toEqual(['clusters'])
@@ -157,8 +154,20 @@ describe('the safety report', () => {
     expect(failed(trusted, { ...clean, flow: washed })).toEqual(['wash'])
     const dumped = computeFlow([T({ wallet: A(9), tokens: 1_000 }), T({ wallet: A(9), side: 'SELL', tokens: 900, block: 130 })], { launchBlock: LAUNCH, creator: A(9), supply: 1e6 })
     expect(failed(trusted, { ...clean, flow: dumped })).toEqual(['creator'])
-    expect(failed(trusted, { ...clean, creatorLaunches24h: 5 })).toEqual(['creator'])
-    expect(failed(trusted, { ...clean, biggerSameTicker: [A(55)] })).toEqual(['copycat'])
+    expect(assess(trusted, { ...clean, flow: dumped }).verdict).toBe('fail')
+  })
+  test('a big holder, a serial creator or a copycat makes the coin risky, not failed', () => {
+    const risky = (i: ScanInput) => { const r = assess(trusted, i); return [r.verdict, r.checks.filter(c => c.risk && c.ok !== true).map(c => c.id)] }
+    expect(risky({ ...clean, holders: { ...clean.holders!, top10Pct: 70 } })).toEqual(['risky', ['holders']])
+    expect(risky({ ...clean, holders: { ...clean.holders!, creatorPct: 49.9 } })).toEqual(['risky', ['holders']])
+    expect(risky({ ...clean, creatorLaunches24h: 5 })).toEqual(['risky', ['serial']])
+    expect(risky({ ...clean, biggerSameTicker: [A(55)] })).toEqual(['risky', ['copycat']])
+    // Holders not known yet: assume the worst, trade it as risky.
+    expect(risky({ ...clean, holders: undefined })).toEqual(['risky', ['holders']])
+    expect(risky({ ...clean, holders: null })).toEqual(['risky', ['holders']])
+    // A hard failure still wins.
+    expect(assess(trusted, { ...clean, creatorLaunches24h: 5, clusters: { ...clean.clusters!, groups: [{ funder: A(70), wallets: [A(1), A(2), A(3)] }] } }).verdict).toBe('fail')
+    expect(assess(trusted, { ...clean, creatorLaunches24h: 5, honeypot: undefined }).verdict).toBe('pending')
   })
   test('a coin on its launchpad curve needs no probe or pool liquidity', () => {
     expect(assess(trusted, { ...clean, onCurve: true, honeypot: undefined, liquidityUsd: null }).verdict).toBe('pass')

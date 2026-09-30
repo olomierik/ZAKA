@@ -6,7 +6,10 @@
 //   evaluation   → the snipe and second-leg rules (signals/rules.ts); a coin
 //                  that meets one gets a deep safety scan (probe, holders,
 //                  funding), cached 2 minutes; if every hard check passes, a
-//                  signal, and in paper mode a position (trading/paper.ts)
+//                  signal, and in paper mode a position (trading/paper.ts).
+//                  A snipe on a coin that failed only a risk check (the
+//                  creator's stake, serial launches, a copycat) is a scalp:
+//                  small, sold fast, out when the creator sells
 //   open coins   → safety re-checked each minute: a coin that fails (turned
 //                  honeypot, creator dumping, …) is closed out
 //
@@ -26,7 +29,7 @@ import { log, errMsg } from '../log'
 import type { EngineObserver, MarketEngine } from '../market/engine'
 import { metrics } from '../metrics'
 import { PricePath, RULES, secondLegReady, snipeReady } from '../signals/rules'
-import { canOpen, closeNow, costPerSide, onPrice, openPosition, STRATEGIES, stats, type Position, type Strategy } from '../trading/paper'
+import { canOpen, closeNow, costPerSide, onPrice, openPosition, RISK, STRATEGIES, stats, type Position, type Strategy, type StrategyParams } from '../trading/paper'
 import type { BotStore } from './store'
 import type { Signal } from './types'
 
@@ -62,12 +65,14 @@ export class Bot implements EngineObserver {
   private lastRecheck = new Map<string, number>()
   private blockedOnce = new Set<string>()
 
-  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number }) {}
+  /** `sizeUsd` sizes snipes and second legs; `scalpSizeUsd` sizes scalps. */
+  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number }) {}
 
   async start() {
     this.positions = await this.o.store.positions(30).catch(e => { log.warn('bot: could not load positions', { error: errMsg(e) }); return [] })
     this.recentSignals = await this.o.store.signals(200).catch(() => [])
-    for (const s of this.recentSignals) this.fired.set(`${s.strategy}:${s.token}`, s.at)
+    // A scalp is a snipe on a risky coin: it counts as that coin's snipe.
+    for (const s of this.recentSignals) this.fired.set(`${s.strategy === 'scalp' ? 'snipe' : s.strategy}:${s.token}`, s.at)
     log.info('bot started', { mode: this.o.mode, open: this.positions.filter(p => p.status === 'open').length, store: this.o.store.kind })
   }
 
@@ -88,7 +93,12 @@ export class Bot implements EngineObserver {
     path.add(t.timestamp, t.priceUsd, t.side, t.usdValue ?? 0)
     if (ctx.replay || this.o.mode === 'off') return
     const now = Date.now()
-    for (const p of this.positions) if (p.status === 'open' && p.token === t.token && t.priceUsd) this.fills(p, onPrice(p, t.priceUsd, now))
+    const creatorSold = t.side === 'SELL' && !!meta.creator && t.wallet?.toLowerCase() === meta.creator.toLowerCase()
+    for (const p of this.positions) {
+      if (p.status !== 'open' || p.token !== t.token || !t.priceUsd) continue
+      if (creatorSold && this.params(p.strategy).exitOnCreatorSell) this.fills(p, closeNow(p, t.priceUsd, now, 'creator'))
+      else this.fills(p, onPrice(p, t.priceUsd, now, this.params(p.strategy)))
+    }
     if (now - (this.lastEval.get(t.token) ?? 0) >= EVAL_EVERY_MS && !this.evaluating.has(t.token)) {
       this.lastEval.set(t.token, now)
       this.evaluating.add(t.token)
@@ -102,7 +112,7 @@ export class Bot implements EngineObserver {
     for (const p of this.positions) {
       if (p.status !== 'open') continue
       const price = this.o.engine.tokens.get(p.token)?.priceUsd
-      if (price) this.fills(p, onPrice(p, price, now))
+      if (price) this.fills(p, onPrice(p, price, now, this.params(p.strategy)))
     }
     for (const [token, path] of this.paths) {
       if (now - path.launchedAt > WATCH_MS && !this.positions.some(p => p.status === 'open' && p.token === token)) {
@@ -144,19 +154,23 @@ export class Bot implements EngineObserver {
     }
   }
 
-  private async tryFire(strategy: Strategy, token: string, reasons: string[], ageSec: number) {
+  private async tryFire(rule: 'snipe' | 'second-leg', token: string, reasons: string[], ageSec: number) {
     const r = await this.report(token, true)
-    if (!r || r.verdict !== 'pass') {
-      metrics.inc(`bot_${strategy}_blocked_${r?.verdict ?? 'unknown'}`)
+    // A snipe on a coin that failed only a risk check is a scalp: small, sold fast.
+    const strategy: Strategy | null = r?.verdict === 'pass' ? rule : r?.verdict === 'risky' && rule === 'snipe' ? 'scalp' : null
+    if (!r || !strategy) {
+      metrics.inc(`bot_${rule}_blocked_${r?.verdict ?? 'unknown'}`)
       // Which checks stop candidates (tuning): counted once per coin.
-      const key = `${strategy}:${token}`
+      const key = `${rule}:${token}`
       if (r && !this.blockedOnce.has(key)) {
         this.blockedOnce.add(key)
-        for (const c of r.checks) if (c.hard && c.ok !== true) metrics.inc(`bot_block_${c.ok === false ? 'fail' : 'pending'}_${c.id}`)
-        log.info('bot: candidate blocked', { strategy, token, verdict: r.verdict, checks: r.checks.filter(c => c.hard && c.ok !== true).map(c => `${c.id}: ${c.detail}`) })
+        const stopping = r.checks.filter(c => (c.hard || (c.risk && rule === 'second-leg')) && c.ok !== true)
+        for (const c of stopping) metrics.inc(`bot_block_${c.ok === false ? 'fail' : 'pending'}_${c.id}`)
+        log.info('bot: candidate blocked', { strategy: rule, token, verdict: r.verdict, checks: stopping.map(c => `${c.id}: ${c.detail}`) })
       }
       return
     }
+    if (strategy === 'scalp') reasons = [...reasons, ...r.checks.filter(c => c.risk && c.ok !== true).map(c => `risk (${c.id}): ${c.detail}`)]
     const meta = this.o.engine.metas.get(token)!, st = this.o.engine.tokens.get(token)!
     const now = Date.now()
     const pool = st.mainPool ? this.o.pools.get(st.mainPool) ?? null : null
@@ -167,20 +181,26 @@ export class Bot implements EngineObserver {
       safety: { verdict: r.verdict, score: r.score, checks: r.checks },
       executable: pool ? true : EXECUTABLE_CURVES.has(meta.launchpad),
     }
-    this.fired.set(`${strategy}:${token}`, now)
+    this.fired.set(`${rule}:${token}`, now)
     this.recentSignals = [signal, ...this.recentSignals].slice(0, 500)
     this.o.store.saveSignal(signal)
     this.o.publish(['signals'], { t: 'SIGNAL', d: signal })
     metrics.inc(`bot_signals_${strategy}`)
     log.info('signal', { strategy, token, symbol: meta.symbol, launchpad: meta.launchpad, price: signal.price, score: r.score })
     if (this.o.mode !== 'paper') return
-    const allowed = canOpen(this.positions, token, now)
-    if (!allowed.ok) { log.info('bot: not opening', { token, why: allowed.why }); return }
-    const params = { ...STRATEGIES[strategy], ...(this.o.sizeUsd ? { sizeUsd: this.o.sizeUsd } : {}) }
+    const allowed = canOpen(this.positions, token, now, RISK, strategy)
+    if (!allowed.ok) { log.info('bot: not opening', { token, strategy, why: allowed.why }); return }
+    const params = this.params(strategy)
     const cost = costPerSide(r.honeypot?.roundTripLossPct ?? null, params.sizeUsd, st.liquidityUsd)
     const p = openPosition({ id: `${signal.id}:paper`, strategy, token, symbol: meta.symbol, launchpad: meta.launchpad, signalId: signal.id, price: signal.price, cost, now, params })
     this.positions.push(p)
     this.fills(p, [])
+  }
+
+  /** A strategy's exits, with the configured size. */
+  private params(strategy: Strategy): StrategyParams {
+    const size = strategy === 'scalp' ? this.o.scalpSizeUsd : this.o.sizeUsd
+    return { ...STRATEGIES[strategy], ...(size ? { sizeUsd: size } : {}) }
   }
 
   private fills(p: Position, fills: unknown[]) {
@@ -272,7 +292,7 @@ export class Bot implements EngineObserver {
   async safety(token: string) { return this.reports.get(token) ?? (await this.report(token, false).catch(() => null)) }
   stats() {
     const by = (s: Strategy) => stats(this.positions.filter(p => p.strategy === s))
-    return { mode: this.o.mode, all: stats(this.positions), snipe: by('snipe'), secondLeg: by('second-leg'), params: STRATEGIES, rules: RULES, watching: this.paths.size }
+    return { mode: this.o.mode, all: stats(this.positions), snipe: by('snipe'), secondLeg: by('second-leg'), scalp: by('scalp'), params: { snipe: this.params('snipe'), 'second-leg': this.params('second-leg'), scalp: this.params('scalp') }, risk: RISK, rules: RULES, watching: this.paths.size }
   }
   positionsList(status: 'open' | 'closed' | 'all', limit: number) {
     return this.positions.filter(p => status === 'all' || p.status === status).sort((a, b) => b.openedAt - a.openedAt).slice(0, limit)

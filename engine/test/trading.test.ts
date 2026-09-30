@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'bun:test'
 import { computeFlow, type TapeTrade } from '../src/intel/flow'
 import { PricePath, RULES, secondLegReady, snipeReady } from '../src/signals/rules'
-import { canOpen, closeNow, costPerSide, onPrice, openPosition, stats, STRATEGIES, type Position } from '../src/trading/paper'
+import { canOpen, closeNow, costPerSide, onPrice, openPosition, RISK, stats, STRATEGIES, type Position } from '../src/trading/paper'
 
 const A = (n: number) => '0x' + n.toString(16).padStart(40, '0')
 const T = (o: Partial<TapeTrade>): TapeTrade => ({ block: 100, ts: 0, wallet: A(1), side: 'BUY', usd: 60, tokens: 1_000, price: 0.01, ...o })
@@ -119,5 +119,58 @@ describe('paper trading', () => {
   })
   test('the default snipe size and exits are what the strategy says', () => {
     expect(STRATEGIES.snipe).toMatchObject({ sizeUsd: 25, stopLoss: 0.65, tp1Multiple: 2 })
+  })
+})
+
+describe('scalp: risky coins, small and out fast', () => {
+  const now = Date.UTC(2026, 8, 30, 12)
+  const scalp = (price = 1) => openPosition({ id: 'p', strategy: 'scalp', token: A(1), symbol: 'C', launchpad: 'ARGUS', signalId: 's', price, cost: 0.02, now })
+  const P = STRATEGIES.scalp
+
+  test('a fifth of a snipe', () => {
+    expect(scalp().sizeUsd).toBe(5)
+    expect(P.sizeUsd).toBe(STRATEGIES.snipe.sizeUsd / 5)
+  })
+  test('sells three quarters at +30%, the rest trails 15% under the peak', () => {
+    const p = scalp()
+    expect(onPrice(p, 1.25, now + 1, P)).toEqual([])
+    expect(onPrice(p, 1.31, now + 2, P)[0].reason).toBe('tp1')
+    expect(p.remaining).toBeCloseTo(p.qty * 0.25, 9)
+    onPrice(p, 1.6, now + 3, P)
+    expect(onPrice(p, 1.37, now + 4, P)).toEqual([]) // 14.4% under the peak: holds
+    expect(onPrice(p, 1.35, now + 5, P)[0].reason).toBe('trail')
+    expect(p.pnlUsd!).toBeGreaterThan(1)
+  })
+  test('stop at −15%', () => {
+    const p = scalp()
+    expect(onPrice(p, 0.86, now + 1, P)).toEqual([])
+    expect(onPrice(p, 0.84, now + 2, P)[0].reason).toBe('stop')
+  })
+  test('out after 5 minutes unless up 5%', () => {
+    const p = scalp()
+    expect(onPrice(p, 1.03, now + 4 * 60_000, P)).toEqual([])
+    expect(onPrice(p, 1.03, now + 5 * 60_000 + 1, P)[0].reason).toBe('time')
+    const up = scalp()
+    expect(onPrice(up, 1.08, now + 6 * 60_000, P)).toEqual([])
+  })
+  test('never held past 15 minutes, the runner too', () => {
+    const p = scalp()
+    onPrice(p, 1.5, now + 60_000, P) // took profit
+    expect(p.tp1Done).toBe(true)
+    expect(onPrice(p, 1.5, now + 14 * 60_000, P)).toEqual([])
+    expect(onPrice(p, 1.5, now + 15 * 60_000, P)[0].reason).toBe('time')
+    expect(p.status).toBe('closed')
+  })
+  test('the creator selling closes it (the bot calls closeNow on their sale)', () => {
+    expect(P.exitOnCreatorSell).toBe(true)
+    expect(STRATEGIES.snipe.exitOnCreatorSell).toBeUndefined()
+    const p = scalp()
+    expect(closeNow(p, 0.3, now + 1, 'creator')[0].reason).toBe('creator')
+    expect(p.pnlUsd!).toBeGreaterThan(-5) // at most the $5 it put in
+  })
+  test('at most 3 scalps open, within the 5 overall', () => {
+    const scalps = Array.from({ length: 3 }, (_, i) => ({ ...scalp(), token: A(i + 10) }))
+    expect(canOpen(scalps, A(99), now, RISK, 'scalp').why).toMatch(/scalps open/)
+    expect(canOpen(scalps, A(99), now, RISK, 'snipe').ok).toBe(true)
   })
 })

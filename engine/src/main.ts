@@ -170,7 +170,7 @@ async function main() {
   const eng = engine
   // Signals and paper trading (engine/src/bot): watches launches from the engine's own trades.
   const bot = cfg.botMode === 'off' ? null : new Bot({
-    rpc, engine: eng, pools, mode: cfg.botMode, sizeUsd: cfg.botSizeUsd ?? undefined,
+    rpc, engine: eng, pools, mode: cfg.botMode, sizeUsd: cfg.botSizeUsd ?? undefined, scalpSizeUsd: cfg.botScalpSizeUsd ?? undefined,
     store: cfg.databaseUrl ? new PostgresBotStore(cfg.databaseUrl) : new MemoryBotStore(),
     publish: (topics, msg) => publisher.publish(topics, msg),
   })

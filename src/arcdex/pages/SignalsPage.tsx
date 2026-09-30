@@ -10,12 +10,13 @@ import { AgoText } from '../components/Ago'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 
-type Tab = 'all' | 'snipe' | 'secondLeg'
+type Tab = 'all' | 'snipe' | 'scalp' | 'secondLeg'
 
 const usd = (n: number | null | undefined, digits = 2) => n === null || n === undefined || !Number.isFinite(n) ? '—' : `${n < 0 ? '−' : ''}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
 const price = (n: number) => n >= 1 ? `$${n.toFixed(4)}` : `$${n.toPrecision(3)}`
 const big = (n: number | null) => n === null ? '—' : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(0)}`
-const STRATEGY: Record<TradeSignal['strategy'], string> = { snipe: 'Snipe', 'second-leg': 'Second leg' }
+const STRATEGY: Record<TradeSignal['strategy'], string> = { snipe: 'Snipe', scalp: 'Fast scalp', 'second-leg': 'Second leg' }
+const STRATEGY_COLOR: Record<TradeSignal['strategy'], string> = { snipe: '#3b82f6', scalp: '#f59e0b', 'second-leg': '#a855f7' }
 
 export default function SignalsPage({ navigate }: { navigate: (p: Page) => void }) {
   const [stats, setStats] = useState<BotStatsResponse | null>(null)
@@ -39,7 +40,7 @@ export default function SignalsPage({ navigate }: { navigate: (p: Page) => void 
     return () => { alive = false; clearInterval(id); off() }
   }, [])
 
-  const shown: BotStats | null = stats ? stats[tab] : null
+  const shown: BotStats | null = stats ? stats[tab] ?? null : null
   const open = useMemo(() => positions.filter(p => p.status === 'open'), [positions])
   const closed = useMemo(() => positions.filter(p => p.status === 'closed').sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)), [positions])
 
@@ -47,8 +48,12 @@ export default function SignalsPage({ navigate }: { navigate: (p: Page) => void 
     <div className="token-page content-page">
       <h2 className="page-h">{T('Signals')}</h2>
       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.5 }}>
-        {T('New coins that pass every safety check and show real buying, from every Arc launchpad.')}{' '}
+        {T('New coins that pass every hard safety check and show real buying, from every Arc launchpad.')}{' '}
         <b style={{ color: 'var(--text)' }}>{T('Paper trading:')}</b>{' '}{T('each signal opens a simulated position at the live price, with real costs. No money moves.')}
+      </div>
+      <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5 }}>
+        <Pill color={STRATEGY_COLOR.scalp}>{T('Fast scalp')}</Pill>{' '}
+        {T('Coins with a risk flag (the creator holds a big stake, launches coin after coin, or copies a ticker) are traded small and fast: a fifth of the size, most of it sold at +30%, out the moment the creator sells, never held over 15 minutes.')}
       </div>
       <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', fontSize: '0.74rem', color: '#fcd34d', lineHeight: 1.45 }}>
         {T('These are measured results, not a promise: no strategy can guarantee a win rate, and most new coins go to zero. Not financial advice.')}
@@ -59,7 +64,7 @@ export default function SignalsPage({ navigate }: { navigate: (p: Page) => void 
       ) : (
         <>
           <div style={{ display: 'flex', gap: 4, marginTop: 16, borderBottom: '1px solid var(--adx-card-border)' }}>
-            {([['all', T('All strategies')], ['snipe', T('Snipe')], ['secondLeg', T('Second leg')]] as [Tab, string][]).map(([k, l]) => (
+            {([['all', T('All strategies')], ['snipe', T('Snipe')], ['scalp', T('Fast scalp')], ['secondLeg', T('Second leg')]] as [Tab, string][]).map(([k, l]) => (
               <button key={k} onClick={() => setTab(k)} style={{ padding: '8px 14px', background: 'none', border: 'none', borderBottom: `2px solid ${tab === k ? 'var(--adx-accent)' : 'transparent'}`, color: tab === k ? 'var(--text)' : 'var(--text-muted)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>{l}</button>
             ))}
           </div>
@@ -94,13 +99,14 @@ export default function SignalsPage({ navigate }: { navigate: (p: Page) => void 
 function SignalRow({ s, navigate }: { s: TradeSignal; navigate: (p: Page) => void }) {
   const [openDetails, setOpenDetails] = useState(false)
   const passed = s.safety.checks.filter(c => c.hard && c.ok === true).length
+  const risks = s.safety.checks.filter(c => c.risk && c.ok !== true)
   return (
     <div style={{ padding: '12px 4px', borderBottom: '1px solid var(--adx-card-border)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <button className="link-btn" onClick={() => navigate({ name: 'argus', address: s.token, pool: '' })} style={{ fontSize: '0.95rem', textDecoration: 'none' }}>${s.symbol}</button>
         <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
         <Pill color={getLaunchpadColor(s.launchpad)}>{s.launchpad}</Pill>
-        <Pill color={s.strategy === 'snipe' ? '#3b82f6' : '#a855f7'}>{T(STRATEGY[s.strategy])}</Pill>
+        <Pill color={STRATEGY_COLOR[s.strategy] ?? '#64748b'}>{T(STRATEGY[s.strategy] ?? s.strategy)}</Pill>
         {!s.executable && <Pill color="#64748b">{T('Paper only')}</Pill>}
         <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)' }}><AgoText ts={s.at} /></span>
       </div>
@@ -111,6 +117,9 @@ function SignalRow({ s, navigate }: { s: TradeSignal; navigate: (p: Page) => voi
         <span style={{ color: '#86efac' }}>✓ {T('{n} safety checks passed', { n: passed })} · {s.safety.score}/100</span>
         <button className="link-btn" onClick={() => setOpenDetails(v => !v)} style={{ fontSize: '0.74rem' }}>{openDetails ? T('Hide why') : T('Why')}</button>
       </div>
+      {risks.length > 0 && (
+        <div style={{ marginTop: 4, fontSize: '0.74rem', color: '#fcd34d', lineHeight: 1.45 }}>⚠ {T('Risky:')} {risks.map(c => c.detail).join(' · ')}</div>
+      )}
       {openDetails && (
         <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 }}>
           <div>
@@ -128,12 +137,13 @@ function SignalRow({ s, navigate }: { s: TradeSignal; navigate: (p: Page) => voi
 }
 
 function CheckLine({ c }: { c: SafetyCheck }) {
-  const mark = c.ok === true ? '✓' : c.ok === false ? '✗' : '…'
-  const color = c.ok === true ? '#86efac' : c.ok === false ? '#fca5a5' : 'var(--text-muted)'
+  // A risk check that didn't pass is a warning (the coin is traded small), not a failure.
+  const mark = c.ok === true ? '✓' : c.risk ? '⚠' : c.ok === false ? '✗' : '…'
+  const color = c.ok === true ? '#86efac' : c.risk ? '#fcd34d' : c.ok === false ? '#fca5a5' : 'var(--text-muted)'
   return <div style={{ fontSize: '0.74rem', lineHeight: 1.5 }}><span style={{ color, fontWeight: 800 }}>{mark}</span> <b>{c.id}</b> <span style={{ color: 'var(--text-muted)' }}>{c.detail}</span></div>
 }
 
-const EXIT: Record<string, string> = { tp1: 'took half the profit', trail: 'trailing stop', stop: 'stop loss', time: 'time stop', safety: 'failed a safety check' }
+const EXIT: Record<string, string> = { tp1: 'took profit', trail: 'trailing stop', stop: 'stop loss', time: 'time stop', safety: 'failed a safety check', creator: 'the creator sold' }
 
 function PositionRow({ p, navigate }: { p: BotPosition; navigate: (p: Page) => void }) {
   const sold = p.fills.filter(f => f.reason !== 'entry')
@@ -142,7 +152,7 @@ function PositionRow({ p, navigate }: { p: BotPosition; navigate: (p: Page) => v
     <div className="reward-row" style={{ flexWrap: 'wrap' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <button className="link-btn" onClick={() => navigate({ name: 'argus', address: p.token, pool: '' })} style={{ textDecoration: 'none' }}>${p.symbol}</button>
-        <Pill color={p.strategy === 'snipe' ? '#3b82f6' : '#a855f7'}>{T(STRATEGY[p.strategy])}</Pill>
+        <Pill color={STRATEGY_COLOR[p.strategy] ?? '#64748b'}>{T(STRATEGY[p.strategy] ?? p.strategy)}</Pill>
         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}><AgoText ts={p.openedAt} /></span>
       </div>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: '0.76rem', fontFamily: 'var(--mono)', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
@@ -150,7 +160,7 @@ function PositionRow({ p, navigate }: { p: BotPosition; navigate: (p: Page) => v
         {sold.length > 0 && <span>{T('sold')} {sold.map(f => price(f.price)).join(', ')}</span>}
         {p.status === 'closed'
           ? <b style={{ color: (p.pnlUsd ?? 0) >= 0 ? 'var(--green)' : '#fca5a5' }}>{usd(p.pnlUsd)} ({pnlPct! >= 0 ? '+' : ''}{pnlPct!.toFixed(0)}%) · {T(EXIT[p.exitReason ?? ''] ?? p.exitReason ?? '')}</b>
-          : <span style={{ color: 'var(--text)' }}>{p.tp1Done ? T('half taken, trailing') : T('open')}</span>}
+          : <span style={{ color: 'var(--text)' }}>{p.tp1Done ? T('profit taken, trailing') : T('open')}</span>}
       </div>
     </div>
   )
