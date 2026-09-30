@@ -14,6 +14,9 @@ export interface BotStore {
   /** Open positions, and those closed in the last `days`. */
   positions(days: number): Promise<Position[]>
   signals(limit: number): Promise<Signal[]>
+  /** Small settings that survive a restart (the owner's mode). */
+  getSetting(key: string): Promise<string | null>
+  setSetting(key: string, value: string): Promise<void>
 }
 
 export class MemoryBotStore implements BotStore {
@@ -27,6 +30,9 @@ export class MemoryBotStore implements BotStore {
     return [...this.p.values()].filter(p => p.status === 'open' || (p.closedAt ?? 0) >= since).map(p => structuredClone(p))
   }
   async signals(limit: number) { return [...this.s.values()].sort((a, b) => b.at - a.at).slice(0, limit) }
+  private kv = new Map<string, string>()
+  async getSetting(key: string) { return this.kv.get(key) ?? null }
+  async setSetting(key: string, value: string) { this.kv.set(key, value) }
 }
 
 const SCHEMA = `
@@ -39,6 +45,7 @@ create table if not exists arcdex_bot_positions (
   opened_at timestamptz not null, closed_at timestamptz, data jsonb not null
 );
 create index if not exists arcdex_bot_positions_open on arcdex_bot_positions (status, closed_at desc);
+create table if not exists arcdex_bot_settings (key text primary key, value text not null, at timestamptz not null default now());
 `
 
 export class PostgresBotStore implements BotStore {
@@ -69,5 +76,14 @@ export class PostgresBotStore implements BotStore {
     await this.ready
     const rows = await this.sql`select data from arcdex_bot_signals order by at desc limit ${limit}`
     return rows.map((r: { data: Signal | string }) => (typeof r.data === 'string' ? JSON.parse(r.data) : r.data) as Signal)
+  }
+  async getSetting(key: string) {
+    await this.ready
+    const rows = await this.sql`select value from arcdex_bot_settings where key = ${key}`
+    return (rows[0] as { value: string } | undefined)?.value ?? null
+  }
+  async setSetting(key: string, value: string) {
+    await this.ready
+    await this.sql`insert into arcdex_bot_settings (key, value, at) values (${key}, ${value}, now()) on conflict (key) do update set value = excluded.value, at = excluded.at`
   }
 }

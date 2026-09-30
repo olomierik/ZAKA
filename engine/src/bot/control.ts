@@ -1,0 +1,53 @@
+// The owner's controls (POST /v1/bot/control): switch between paper and live
+// trading, or sell every live position. Each request carries a message
+// signed by the owner's wallet (BOT_OWNER_ADDRESS): the engine rebuilds the
+// exact text (api/_marketProtocol.ts botControlMessage) and checks the
+// signature, for ordinary wallets and contract wallets (ERC-1271/6492)
+// alike. A signature is good for 5 minutes and once.
+
+import { createPublicClient, fallback, http, isAddress, isHex, type Address, type Hex } from 'viem'
+import { botControlMessage, type BotControl } from '../../../api/_marketProtocol'
+import { ARC } from '../trading/live'
+
+export const MAX_AGE_MS = 5 * 60_000
+
+export interface ControlRequest { control: BotControl; at: number; signature: Hex }
+
+/** The request's shape, or why it's refused. */
+export function parseControl(body: unknown): ControlRequest | string {
+  if (!body || typeof body !== 'object') return 'expected a JSON object'
+  const b = body as Record<string, unknown>
+  const at = Number(b.at)
+  if (!Number.isFinite(at)) return 'missing "at"'
+  if (typeof b.signature !== 'string' || !isHex(b.signature) || b.signature.length < 132) return 'missing or bad "signature"'
+  if (b.action === 'mode' && (b.mode === 'paper' || b.mode === 'live')) return { control: { action: 'mode', mode: b.mode }, at, signature: b.signature as Hex }
+  if (b.action === 'close-live') return { control: { action: 'close-live' }, at, signature: b.signature as Hex }
+  return 'unknown action'
+}
+
+type Verify = (a: { address: Address; message: string; signature: Hex }) => Promise<boolean>
+
+export class ControlVerifier {
+  private used = new Map<string, number>()
+  private verifyMessage: Verify
+
+  constructor(readonly owner: Address | null, readUrls: string[], verify?: Verify) {
+    this.verifyMessage = verify ?? (() => {
+      const client = createPublicClient({ chain: ARC, transport: fallback(readUrls.map(u => http(u, { timeout: 10_000 }))) })
+      return a => client.verifyMessage(a)
+    })()
+  }
+
+  /** null when the owner signed this request; otherwise why not. */
+  async verify(r: ControlRequest, now = Date.now()): Promise<string | null> {
+    if (!this.owner || !isAddress(this.owner)) return 'no owner wallet is configured on the engine (BOT_OWNER_ADDRESS)'
+    if (Math.abs(now - r.at) > MAX_AGE_MS) return 'the signature is too old (or the clock is off); sign again'
+    const key = r.signature.toLowerCase()
+    if (this.used.has(key)) return 'this signature was already used; sign again'
+    const ok = await this.verifyMessage({ address: this.owner, message: botControlMessage(r.control, r.at), signature: r.signature }).catch(() => false)
+    if (!ok) return "not signed by the owner's wallet"
+    this.used.set(key, now)
+    for (const [k, t] of this.used) if (now - t > MAX_AGE_MS * 2) this.used.delete(k)
+    return null
+  }
+}

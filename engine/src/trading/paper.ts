@@ -1,8 +1,8 @@
 // Paper trading: every signal becomes a simulated position at the live
 // price, with its costs, and is closed by the strategy's own exits. The
 // results are the engine's track record: win rate, average win and loss,
-// profit factor, drawdown. No money moves. Live trading uses the same
-// positions and exits once it's switched on (not yet).
+// profit factor, drawdown. No money moves. Live positions (trading/live.ts)
+// use the same exits (`exitsAt`), filled at what the sale really paid.
 //
 // Costs, both ways: what the honeypot probe measured a $1 round trip to
 // cost (pool fees, hook taxes, token taxes), half on entry and half on exit,
@@ -48,12 +48,16 @@ export const RISK = {
   dailyLossUsd: 100,
 }
 
-export type ExitReason = 'tp1' | 'trail' | 'stop' | 'time' | 'safety' | 'creator'
+export type ExitReason = 'tp1' | 'trail' | 'stop' | 'time' | 'safety' | 'creator' | 'manual'
 
 export interface Fill { at: number; price: number; qty: number; usd: number; reason: 'entry' | ExitReason }
 
+export interface LiveTx { kind: 'buy' | 'approve' | 'sell'; hash: string; at: number; usd?: number; gasUsd?: number }
+
 export interface Position {
   id: string
+  /** paper: simulated at the market price with modelled costs; live: bought and sold by the bot wallet. Missing: paper. */
+  mode?: 'paper' | 'live'
   strategy: Strategy
   token: string
   symbol: string
@@ -74,8 +78,14 @@ export interface Position {
   status: 'open' | 'closed'
   closedAt: number | null
   exitReason: ExitReason | null
-  /** Sale proceeds minus the size, once closed. */
+  /** Sale proceeds minus the size (and, live, the gas), once closed. */
   pnlUsd: number | null
+  /** Live: its transactions, the gas they cost, and why a sale is failing (it's retried). */
+  txs?: LiveTx[]
+  gasUsd?: number
+  stuck?: string | null
+  /** Live: the token amount bought, in its smallest unit (qty is in whole tokens). */
+  rawQty?: string
 }
 
 /** Cost per side: half the measured round trip (at least 1%), plus impact for the size. */
@@ -98,41 +108,50 @@ export function openPosition(o: { id: string; strategy: Strategy; token: string;
   }
 }
 
-function sell(pos: Position, qty: number, price: number, now: number, reason: ExitReason): Fill {
-  const got = price * (1 - pos.cost)
-  const f: Fill = { at: now, price: got, qty, usd: qty * got, reason }
+/** Records a sale of `qty` tokens that brought in `usd` (after costs). */
+export function recordSell(pos: Position, qty: number, usd: number, now: number, reason: ExitReason): Fill {
+  const f: Fill = { at: now, price: qty > 0 ? usd / qty : 0, qty, usd, reason }
   pos.remaining -= qty
+  if (reason === 'tp1') pos.tp1Done = true
   pos.fills.push(f)
   if (pos.remaining <= pos.qty * 1e-9) {
     pos.remaining = 0
     pos.status = 'closed'
     pos.closedAt = now
     pos.exitReason = reason
-    pos.pnlUsd = pos.fills.filter(x => x.reason !== 'entry').reduce((s, x) => s + x.usd, 0) - pos.sizeUsd
+    pos.pnlUsd = pos.fills.filter(x => x.reason !== 'entry').reduce((s, x) => s + x.usd, 0) - pos.sizeUsd - (pos.gasUsd ?? 0)
   }
   return f
 }
 
-/** A new market price for an open position: returns the fills its exits made. */
-export function onPrice(pos: Position, price: number, now: number, params = STRATEGIES[pos.strategy]): Fill[] {
+export interface Exit { qty: number; reason: ExitReason }
+
+/** The sales a new price calls for, in order (pure: the position doesn't change). */
+export function exitsAt(pos: Position, price: number, now: number, params = STRATEGIES[pos.strategy]): Exit[] {
   if (pos.status !== 'open' || !(price > 0)) return []
-  const out: Fill[] = []
-  pos.peak = Math.max(pos.peak, price)
+  const peak = Math.max(pos.peak, price)
   const x = price / pos.marketEntry
-  if (x <= params.stopLoss) return [sell(pos, pos.remaining, price, now, 'stop')]
-  if (!pos.tp1Done && x >= params.tp1Multiple) {
-    pos.tp1Done = true
-    out.push(sell(pos, pos.remaining * params.tp1SellPct, price, now, 'tp1'))
-  }
-  if (pos.status === 'open' && pos.tp1Done && price <= pos.peak * (1 - params.trailFromPeak)) out.push(sell(pos, pos.remaining, price, now, 'trail'))
-  if (pos.status === 'open' && now - pos.openedAt >= params.timeStopMin * 60_000 && x < params.timeStopMinGain && !pos.tp1Done) out.push(sell(pos, pos.remaining, price, now, 'time'))
-  if (pos.status === 'open' && params.maxHoldMin !== undefined && now - pos.openedAt >= params.maxHoldMin * 60_000) out.push(sell(pos, pos.remaining, price, now, 'time'))
+  if (x <= params.stopLoss) return [{ qty: pos.remaining, reason: 'stop' }]
+  const out: Exit[] = []
+  let left = pos.remaining, tp1Done = pos.tp1Done
+  const open = () => left > pos.qty * 1e-9
+  if (!tp1Done && x >= params.tp1Multiple) { const q = left * params.tp1SellPct; out.push({ qty: q, reason: 'tp1' }); left -= q; tp1Done = true }
+  if (open() && tp1Done && price <= peak * (1 - params.trailFromPeak)) { out.push({ qty: left, reason: 'trail' }); left = 0 }
+  if (open() && now - pos.openedAt >= params.timeStopMin * 60_000 && x < params.timeStopMinGain && !tp1Done) { out.push({ qty: left, reason: 'time' }); left = 0 }
+  if (open() && params.maxHoldMin !== undefined && now - pos.openedAt >= params.maxHoldMin * 60_000) { out.push({ qty: left, reason: 'time' }); left = 0 }
   return out
 }
 
-/** Close at the last price (a later safety failure, say). */
+/** A new market price for an open paper position: returns the fills its exits made. */
+export function onPrice(pos: Position, price: number, now: number, params = STRATEGIES[pos.strategy]): Fill[] {
+  const exits = exitsAt(pos, price, now, params)
+  if (pos.status === 'open' && price > 0) pos.peak = Math.max(pos.peak, price)
+  return exits.map(e => recordSell(pos, e.qty, e.qty * price * (1 - pos.cost), now, e.reason))
+}
+
+/** Close a paper position at the last price (a later safety failure, say). */
 export function closeNow(pos: Position, price: number, now: number, reason: ExitReason): Fill[] {
-  return pos.status === 'open' && price > 0 ? [sell(pos, pos.remaining, price, now, reason)] : []
+  return pos.status === 'open' && price > 0 ? [recordSell(pos, pos.remaining, pos.remaining * price * (1 - pos.cost), now, reason)] : []
 }
 
 export interface Stats {
@@ -175,7 +194,7 @@ export function stats(positions: Position[]): Stats {
   }
 }
 
-/** Whether a new position is allowed now (pure; the trader supplies its state). */
+/** Whether a new position is allowed now (pure; pass the positions of one mode). */
 export function canOpen(positions: Position[], token: string, now: number, risk = RISK, strategy?: Strategy): { ok: boolean; why: string } {
   const open = positions.filter(p => p.status === 'open')
   if (open.length >= risk.maxOpen) return { ok: false, why: `${open.length} positions open (max ${risk.maxOpen})` }

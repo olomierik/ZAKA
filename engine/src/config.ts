@@ -52,12 +52,16 @@ export interface Config {
   restRatePerSec: number
   tradeRetentionHours: number
   logLevel: 'debug' | 'info' | 'warn' | 'error'
-  /** Signals and paper trading (engine/src/bot): paper (default) or off. Live trading isn't built. */
-  botMode: 'paper' | 'off'
+  /** Signals and trading (engine/src/bot): paper (default), live (needs a bot wallet) or off. The owner's switch on the site overrides it. */
+  botMode: 'paper' | 'live' | 'off'
   /** Paper position size in USD for snipes and second legs (default: each strategy's own, $25). */
   botSizeUsd: number | null
   /** Paper position size in USD for scalps, the small fast trades on risky coins (default $5). */
   botScalpSizeUsd: number | null
+  /** The wallet that may switch paper/live (its signature is checked). The bot wallet's key is read in main.ts, never kept here. */
+  botOwner: string | null
+  /** Live trading limits (bot/liveTrader.ts). */
+  live: { maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; reserveUsd: number; sendUrl: string }
 }
 
 export function loadConfig(): Config {
@@ -88,11 +92,20 @@ export function loadConfig(): Config {
     restRatePerSec: int('REST_RATE_PER_SEC', 20, 1, 10_000),
     tradeRetentionHours: int('HISTORY_TRADE_RETENTION_HOURS', 72, 1, 24 * 3650),
     logLevel: (process.env.LOG_LEVEL ?? 'info') as Config['logLevel'],
-    botMode: process.env.BOT_MODE === 'off' ? 'off' : 'paper',
+    botMode: process.env.BOT_MODE === 'off' ? 'off' : process.env.BOT_MODE === 'live' ? 'live' : 'paper',
     botSizeUsd: process.env.BOT_SIZE_USD ? int('BOT_SIZE_USD', 25, 1, 10_000) : null,
     botScalpSizeUsd: process.env.BOT_SCALP_SIZE_USD ? int('BOT_SCALP_SIZE_USD', 5, 1, 10_000) : null,
+    botOwner: /^0x[0-9a-fA-F]{40}$/.test(process.env.BOT_OWNER_ADDRESS ?? '') ? process.env.BOT_OWNER_ADDRESS!.toLowerCase() : null,
+    live: {
+      maxTradeUsd: int('BOT_LIVE_MAX_TRADE_USD', 25, 1, 10_000),
+      dailyLossUsd: int('BOT_LIVE_DAILY_LOSS_USD', 50, 1, 100_000),
+      maxOpen: int('BOT_LIVE_MAX_OPEN', 3, 1, 50),
+      maxOpenScalp: int('BOT_LIVE_MAX_OPEN_SCALP', 2, 0, 50),
+      slippageBps: int('BOT_LIVE_SLIPPAGE_BPS', 1_000, 10, 5_000),
+      reserveUsd: int('BOT_LIVE_RESERVE_USD', 2, 0, 10_000),
+      sendUrl: urls('ARC_SEND_URL', ['https://rpc.mainnet.arc.io'], http)[0],
+    },
   }
-  if (process.env.BOT_MODE === 'live') throw new Error('BOT_MODE=live: live trading is not built yet (paper trading first). Use paper or off.')
   // Separate ingest/gateway processes talk through Redis pub/sub.
   if (role !== 'all' && !cfg.redisUrl) throw new Error(`ENGINE_ROLE=${role} needs REDIS_URL`)
   return cfg

@@ -14,8 +14,10 @@
 //   GET /v1/market?limit=100
 //   GET /v1/signals?limit=50                    trading signals (engine/src/bot)
 //   GET /v1/safety/:token                       a coin's latest safety report
-//   GET /v1/bot/stats                           paper trading results
+//   GET /v1/bot/stats                           paper and live trading results
 //   GET /v1/bot/positions?status=open|closed|all&limit=100
+//   GET /v1/bot/status                          mode, bot wallet, live limits and activity
+//   POST /v1/bot/control                        the owner's signed switch (bot/control.ts)
 //   GET /health           summary (200 ok/degraded, 503 down)
 //   GET /metrics          full metrics (Bearer METRICS_TOKEN when set)
 
@@ -28,6 +30,7 @@ import type { Config } from '../config'
 import { log, errMsg } from '../log'
 import { metrics } from '../metrics'
 import type { Bot } from '../bot/bot'
+import { parseControl, type ControlVerifier } from '../bot/control'
 import type { MarketEngine, Publisher } from '../market/engine'
 import type { HistoryStore } from '../store/history'
 import type { HotStore } from '../store/hot'
@@ -41,9 +44,10 @@ export class DataApi {
 
   /** The engine starts after the server (so /health answers during warm-up). */
   attachEngine(e: MarketEngine) { this.engine = e }
-  /** Signals and paper trading, when this process runs them. */
+  /** Signals and paper/live trading, when this process runs them, and the owner's signature check. */
   bot: Bot | null = null
-  attachBot(b: Bot) { this.bot = b }
+  control: ControlVerifier | null = null
+  attachBot(b: Bot, control: ControlVerifier | null = null) { this.bot = b; this.control = control }
 
   async tokenSnapshot(token: string, limit = 50): Promise<{ stats: TokenStats | null; trades: WireTrade[] }> {
     if (this.engine?.tokens.has(token)) return { stats: this.engine.statsOf(token), trades: this.engine.recentTrades(token, limit) }
@@ -166,7 +170,22 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         const ok = server.upgrade(req, { data: { id: nextId++, ip, subs: new Set(), allowance: cfg.maxMsgsPerSec, last: Date.now() } })
         return ok ? undefined : new Response('websocket upgrade expected', { status: 400 })
       }
-      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors(req), 'Access-Control-Allow-Methods': 'GET', 'Access-Control-Max-Age': '600' } })
+      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors(req), 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' } })
+      if (req.method === 'POST' && url.pathname === '/v1/bot/control') {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        const bot = api.bot, control = api.control
+        if (!bot || !control) return json(req, 503, { error: 'the bot is not running in this process' })
+        if (Number(req.headers.get('content-length') ?? 0) > 4_096) return json(req, 413, { error: 'too large' })
+        const parsed = parseControl(await req.json().catch(() => null))
+        if (typeof parsed === 'string') return json(req, 400, { error: parsed })
+        const bad = await control.verify(parsed)
+        if (bad) { metrics.inc('bot_control_refused'); log.warn('bot control refused', { action: parsed.control.action, why: bad }); return json(req, 403, { error: bad }) }
+        if (parsed.control.action === 'mode') {
+          const r = await bot.setMode(parsed.control.mode)
+          return json(req, r.ok ? 200 : 409, r.ok ? { ok: true, status: bot.status() } : { error: r.error })
+        }
+        return json(req, 200, { ok: true, selling: bot.closeLive(), status: bot.status() })
+      }
       if (req.method !== 'GET') return json(req, 405, { error: 'method not allowed' })
       if (url.pathname === '/health') { const h = health(); return json(req, h.status === 'down' ? 503 : 200, h) }
       if (url.pathname === '/metrics') {
@@ -184,6 +203,7 @@ export function startServer({ cfg, api, health }: ServerDeps) {
           if (!bot) return json(req, 503, { error: 'signals are not running in this process' })
           if (url.pathname === '/v1/signals') return json(req, 200, { signals: bot.signals(limit(50, 500)) }, 'public, max-age=1')
           if (url.pathname === '/v1/bot/stats') return json(req, 200, bot.stats(), 'public, max-age=2')
+          if (url.pathname === '/v1/bot/status') return json(req, 200, bot.status(), 'no-store')
           if (url.pathname === '/v1/bot/positions') {
             const st = url.searchParams.get('status')
             return json(req, 200, { positions: bot.positionsList(st === 'open' || st === 'closed' ? st : 'all', limit(100, 1_000)) }, 'public, max-age=1')

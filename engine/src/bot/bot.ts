@@ -14,7 +14,8 @@
 //                  honeypot, creator dumping, …) is closed out
 //
 // Signals and positions go to the store (Postgres on Railway) and to the
-// `signals` WebSocket channel. BOT_MODE=live isn't built: it runs as paper.
+// `signals` WebSocket channel. Every signal opens a paper position; in live
+// mode (the owner's switch, bot/liveTrader.ts) the bot wallet also trades it.
 
 import { POOL_MANAGER } from '../../../api/_arcSwaps'
 import type { LaunchInfo, ServerMessage, Trade } from '../../../api/_marketProtocol'
@@ -29,7 +30,9 @@ import { log, errMsg } from '../log'
 import type { EngineObserver, MarketEngine } from '../market/engine'
 import { metrics } from '../metrics'
 import { PricePath, RULES, secondLegReady, snipeReady } from '../signals/rules'
+import type { BotStatus } from '../../../api/_marketProtocol'
 import { canOpen, closeNow, costPerSide, onPrice, openPosition, RISK, STRATEGIES, stats, type Position, type Strategy, type StrategyParams } from '../trading/paper'
+import type { LiveTrader } from './liveTrader'
 import type { BotStore } from './store'
 import type { Signal } from './types'
 
@@ -45,7 +48,7 @@ const EXECUTABLE_CURVES = new Set(['Mercuri', 'SolonPad', 'ARCDEX'])
 /** Tickers of coins that aren't launches: a launch using one is a copycat. */
 const RESERVED = new Set(['usdc', 'usdt', 'eurc', 'eth', 'weth', 'btc', 'wbtc', 'argus', 'arcd', 'arc', 'faze', 'peach', 'virtual'])
 
-export type BotMode = 'paper' | 'off'
+export type BotMode = 'paper' | 'live' | 'off'
 
 interface Deep { at: number; honeypot?: HoneypotResult; holders: Holders | null; clusters: Clusters | null }
 
@@ -65,15 +68,44 @@ export class Bot implements EngineObserver {
   private lastRecheck = new Map<string, number>()
   private blockedOnce = new Set<string>()
 
-  /** `sizeUsd` sizes snipes and second legs; `scalpSizeUsd` sizes scalps. */
-  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number }) {}
+  /** What it's doing now: paper, live (paper too, plus the bot wallet's trades), or off. */
+  mode: BotMode
+
+  /** `sizeUsd` sizes snipes and second legs; `scalpSizeUsd` sizes scalps. `live` is set when a bot wallet is configured. */
+  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null }) {
+    this.mode = o.mode === 'live' && !o.live ? 'paper' : o.mode
+    o.live?.setPools(token => { const mp = this.o.engine.tokens.get(token)?.mainPool; return mp ? this.o.pools.get(mp) ?? null : null })
+  }
 
   async start() {
     this.positions = await this.o.store.positions(30).catch(e => { log.warn('bot: could not load positions', { error: errMsg(e) }); return [] })
     this.recentSignals = await this.o.store.signals(200).catch(() => [])
     // A scalp is a snipe on a risky coin: it counts as that coin's snipe.
     for (const s of this.recentSignals) this.fired.set(`${s.strategy === 'scalp' ? 'snipe' : s.strategy}:${s.token}`, s.at)
-    log.info('bot started', { mode: this.o.mode, open: this.positions.filter(p => p.status === 'open').length, store: this.o.store.kind })
+    // The owner's last choice survives a restart (live only while a bot wallet is configured).
+    const saved = await this.o.store.getSetting('mode').catch(() => null)
+    if (this.mode !== 'off' && (saved === 'paper' || (saved === 'live' && this.o.live))) this.mode = saved
+    if (this.o.live) void this.o.live.refreshBalance().catch(e => log.warn('live: balance read failed', { error: errMsg(e) }))
+    log.info('bot started', { mode: this.mode, open: this.positions.filter(p => p.status === 'open').length, store: this.o.store.kind, wallet: this.o.live?.address ?? null })
+  }
+
+  /** The owner's switch (the signature is checked before this). */
+  async setMode(mode: 'paper' | 'live'): Promise<{ ok: boolean; error?: string }> {
+    if (this.mode === 'off') return { ok: false, error: 'the bot is off on this engine (BOT_MODE=off)' }
+    if (mode === 'live' && !this.o.live) return { ok: false, error: 'no bot wallet is configured (BOT_PRIVATE_KEY)' }
+    this.mode = mode
+    await this.o.store.setSetting('mode', mode)
+    this.o.live?.event({ kind: 'mode', text: mode === 'live' ? 'Switched to LIVE: new signals are traded with the bot wallet' : 'Switched to paper: no new live trades (open ones are still managed)' })
+    log.info('bot: mode switched', { mode })
+    return { ok: true }
+  }
+
+  /** The owner's "sell everything" button: every open live position, now. */
+  closeLive(): number {
+    const open = this.positions.filter(p => p.mode === 'live' && p.status === 'open')
+    for (const p of open) this.o.live?.closeNow(p, 'manual')
+    this.o.live?.event({ kind: 'mode', text: `Owner: selling all ${open.length} live position(s)` })
+    return open.length
   }
 
   // ── engine events ───────────────────────────────────────────────────
@@ -95,13 +127,14 @@ export class Bot implements EngineObserver {
     let path = this.paths.get(t.token)
     if (!path) { path = new PricePath(meta.timestamp); this.paths.set(t.token, path) }
     if (priced) path.add(t.timestamp, t.priceUsd, t.side, t.usdValue ?? 0)
-    if (ctx.replay || this.o.mode === 'off') return
+    if (ctx.replay || this.mode === 'off') return
     const now = Date.now()
     // The creator selling, in any pool, closes a scalp at the coin's price after the sale.
     const creatorSold = t.side === 'SELL' && !!meta.creator && t.wallet?.toLowerCase() === meta.creator.toLowerCase()
     const price = this.o.engine.tokens.get(t.token)?.priceUsd ?? null
     for (const p of this.positions) {
       if (p.status !== 'open' || p.token !== t.token || !price) continue
+      if (p.mode === 'live') { if (priced || creatorSold) this.o.live?.onPrice(p, price, now, creatorSold); continue }
       if (creatorSold && this.params(p.strategy).exitOnCreatorSell) this.fills(p, closeNow(p, price, now, 'creator'))
       else if (priced) this.fills(p, onPrice(p, price, now, this.params(p.strategy)))
     }
@@ -115,12 +148,13 @@ export class Bot implements EngineObserver {
 
   /** Every 15s: time stops, safety re-checks for open coins, forgetting old coins. */
   tick(now = Date.now()) {
-    if (this.o.mode === 'off') return
+    if (this.mode === 'off') return
     for (const p of this.positions) {
-      if (p.status !== 'open') continue
+      if (p.status !== 'open' || p.mode === 'live') continue
       const price = this.o.engine.tokens.get(p.token)?.priceUsd
       if (price) this.fills(p, onPrice(p, price, now, this.params(p.strategy)))
     }
+    this.o.live?.tick(now, token => this.o.engine.tokens.get(token)?.priceUsd ?? null)
     for (const [token, path] of this.paths) {
       if (now - path.launchedAt > WATCH_MS && !this.positions.some(p => p.status === 'open' && p.token === token)) {
         this.paths.delete(token); this.tapes.drop(token); this.deeps.delete(token); this.reports.delete(token); this.statics.delete(token); this.lastEval.delete(token)
@@ -136,13 +170,16 @@ export class Bot implements EngineObserver {
     const st = this.o.engine.tokens.get(token)
     if (!meta || !st?.priceUsd) return
     const now = Date.now()
-    const open = this.positions.find(p => p.status === 'open' && p.token === token)
-    if (open && now - (this.lastRecheck.get(token) ?? 0) >= RECHECK_OPEN_MS) {
+    const open = this.positions.filter(p => p.status === 'open' && p.token === token)
+    if (open.length && now - (this.lastRecheck.get(token) ?? 0) >= RECHECK_OPEN_MS) {
       this.lastRecheck.set(token, now)
       const r = await this.report(token, true)
       if (r?.verdict === 'fail') {
         log.info('bot: closing on a safety failure', { token, failed: r.checks.filter(c => c.ok === false).map(c => c.id) })
-        this.fills(open, closeNow(open, st.priceUsd, now, 'safety'))
+        for (const p of open) {
+          if (p.mode === 'live') this.o.live?.closeNow(p, 'safety')
+          else this.fills(p, closeNow(p, st.priceUsd, now, 'safety'))
+        }
       }
     }
     const ageSec = (now - meta.timestamp) / 1000
@@ -194,21 +231,25 @@ export class Bot implements EngineObserver {
     this.o.publish(['signals'], { t: 'SIGNAL', d: signal })
     metrics.inc(`bot_signals_${strategy}`)
     log.info('signal', { strategy, token, symbol: meta.symbol, launchpad: meta.launchpad, price: signal.price, score: r.score })
-    if (this.o.mode !== 'paper') return
-    const allowed = canOpen(this.positions, token, now, RISK, strategy)
+    if (this.mode === 'off') return
+    if (this.mode === 'live' && this.o.live) void this.o.live.open(signal, strategy, pool, meta)
+    const allowed = canOpen(this.positions.filter(p => p.mode !== 'live'), token, now, RISK, strategy)
     if (!allowed.ok) { log.info('bot: not opening', { token, strategy, why: allowed.why }); return }
     const params = this.params(strategy)
     const cost = costPerSide(r.honeypot?.roundTripLossPct ?? null, params.sizeUsd, st.liquidityUsd)
-    const p = openPosition({ id: `${signal.id}:paper`, strategy, token, symbol: meta.symbol, launchpad: meta.launchpad, signalId: signal.id, price: signal.price, cost, now, params })
+    const p: Position = { ...openPosition({ id: `${signal.id}:paper`, strategy, token, symbol: meta.symbol, launchpad: meta.launchpad, signalId: signal.id, price: signal.price, cost, now, params }), mode: 'paper' }
     this.positions.push(p)
     this.fills(p, [])
   }
 
   /** A strategy's exits, with the configured size. */
-  private params(strategy: Strategy): StrategyParams {
+  params(strategy: Strategy): StrategyParams {
     const size = strategy === 'scalp' ? this.o.scalpSizeUsd : this.o.sizeUsd
     return { ...STRATEGIES[strategy], ...(size ? { sizeUsd: size } : {}) }
   }
+
+  /** Saves a position and tells the site (the live trader calls it after each trade). */
+  persist(p: Position) { this.fills(p, [null]) }
 
   private fills(p: Position, fills: unknown[]) {
     if (fills.length === 0 && p.fills.length > 1) return
@@ -298,8 +339,24 @@ export class Bot implements EngineObserver {
   signals(limit: number) { return this.recentSignals.slice(0, limit) }
   async safety(token: string) { return this.reports.get(token) ?? (await this.report(token, false).catch(() => null)) }
   stats() {
-    const by = (s: Strategy) => stats(this.positions.filter(p => p.strategy === s))
-    return { mode: this.o.mode, all: stats(this.positions), snipe: by('snipe'), secondLeg: by('second-leg'), scalp: by('scalp'), params: { snipe: this.params('snipe'), 'second-leg': this.params('second-leg'), scalp: this.params('scalp') }, risk: RISK, rules: RULES, watching: this.paths.size }
+    const of = (list: Position[]) => {
+      const by = (s: Strategy) => stats(list.filter(p => p.strategy === s))
+      return { all: stats(list), snipe: by('snipe'), secondLeg: by('second-leg'), scalp: by('scalp') }
+    }
+    // Top level: paper results (every signal); `live`: the bot wallet's real trades.
+    return { mode: this.mode, ...of(this.positions.filter(p => p.mode !== 'live')), live: of(this.positions.filter(p => p.mode === 'live')), params: { snipe: this.params('snipe'), 'second-leg': this.params('second-leg'), scalp: this.params('scalp') }, risk: RISK, rules: RULES, watching: this.paths.size }
+  }
+
+  status(): BotStatus {
+    const l = this.o.live
+    return {
+      mode: this.mode,
+      owner: this.o.owner ?? null,
+      live: l ? {
+        available: true, why: null, wallet: l.address, balanceUsd: l.balance?.usd ?? null, limits: l.limits,
+        todayPnlUsd: l.todayPnlUsd(), open: l.live().filter(p => p.status === 'open').length, events: l.events.slice(0, 40),
+      } : { available: false, why: 'No bot wallet is configured on the engine (BOT_PRIVATE_KEY).', wallet: null, balanceUsd: null, limits: null, todayPnlUsd: 0, open: 0, events: [] },
+    }
   }
   positionsList(status: 'open' | 'closed' | 'all', limit: number) {
     return this.positions.filter(p => status === 'all' || p.status === status).sort((a, b) => b.openedAt - a.openedAt).slice(0, limit)

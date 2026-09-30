@@ -207,6 +207,40 @@ export interface BotPosition {
   closedAt: number | null
   exitReason: string | null
   pnlUsd: number | null
+  /** paper (missing on older rows) or live: the bot wallet's real trade. */
+  mode?: 'paper' | 'live'
+  /** Live: its transactions, the gas they cost, and a sale that keeps failing. */
+  txs?: { kind: 'buy' | 'approve' | 'sell'; hash: string; at: number; usd?: number; gasUsd?: number }[]
+  gasUsd?: number
+  stuck?: string | null
+}
+
+/** The bot's mode and live wallet (GET /v1/bot/status). */
+export interface BotStatus {
+  mode: 'paper' | 'live' | 'off'
+  /** The wallet whose signature switches modes (BOT_OWNER_ADDRESS); null: nobody can. */
+  owner: string | null
+  live: {
+    available: boolean
+    why: string | null
+    wallet: string | null
+    balanceUsd: number | null
+    limits: { maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; exitSlippageBps: number[]; reserveUsd: number } | null
+    todayPnlUsd: number
+    open: number
+    events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
+  }
+}
+
+/** What the owner can tell the bot (POST /v1/bot/control, signed). */
+export type BotControl = { action: 'mode'; mode: 'paper' | 'live' } | { action: 'close-live' }
+
+/** The exact text the owner's wallet signs for a control (the engine rebuilds it to check the signature). */
+export function botControlMessage(c: BotControl, at: number): string {
+  const what = c.action === 'mode'
+    ? (c.mode === 'live' ? 'Switch the bot to LIVE trading with real money' : 'Switch the bot to paper trading')
+    : 'Sell every live position now'
+  return `ARCDEX signal bot\n${what}\nAt: ${new Date(at).toISOString()}`
 }
 
 export type ServerMessage =

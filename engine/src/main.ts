@@ -38,7 +38,10 @@ import { NullHistoryStore, SupabaseHistoryStore, type HistoryStore } from './sto
 import { PostgresHistoryStore } from './store/postgresHistory'
 import { MemoryHotStore, RedisHotStore, type HotStore } from './store/hot'
 import { Bot } from './bot/bot'
+import { ControlVerifier } from './bot/control'
+import { DEFAULT_LIMITS, LiveTrader } from './bot/liveTrader'
 import { MemoryBotStore, PostgresBotStore } from './bot/store'
+import { LiveExecutor } from './trading/live'
 import { DataApi, startServer } from './ws/server'
 
 const cfg = loadConfig()
@@ -168,16 +171,39 @@ async function main() {
     engine = new MarketEngine(publisher, hot, history, rpc)
   }
   const eng = engine
-  // Signals and paper trading (engine/src/bot): watches launches from the engine's own trades.
+  // Signals and trading (engine/src/bot): watches launches from the engine's own trades.
+  // Live trading needs a bot wallet: BOT_PRIVATE_KEY, set by the owner (read here only, never logged).
+  let botRef: Bot | null = null
+  let live: LiveTrader | null = null
+  const key = process.env.BOT_PRIVATE_KEY?.trim()
+  if (cfg.botMode !== 'off' && key) {
+    if (!/^0x[0-9a-fA-F]{64}$/.test(key)) log.error('BOT_PRIVATE_KEY is not a 0x-prefixed 32-byte hex key: live trading stays off')
+    else {
+      // The send endpoint stays out of the published limits and the logs (a private RPC URL can carry a token).
+      const { sendUrl, ...limits } = cfg.live
+      const exec = new LiveExecutor({ privateKey: key as `0x${string}`, readUrls: cfg.httpUrls, sendUrl })
+      live = new LiveTrader({
+        exec,
+        limits: { ...DEFAULT_LIMITS, ...limits },
+        positions: () => botRef?.positions ?? [],
+        params: s => botRef!.params(s),
+        save: p => botRef?.persist(p),
+      })
+      log.info('bot wallet ready', { wallet: exec.address, limits, owner: cfg.botOwner })
+      void exec.ready().catch(e => log.error('live: Universal Router check failed', { error: errMsg(e) }))
+    }
+  }
   const bot = cfg.botMode === 'off' ? null : new Bot({
     rpc, engine: eng, pools, mode: cfg.botMode, sizeUsd: cfg.botSizeUsd ?? undefined, scalpSizeUsd: cfg.botScalpSizeUsd ?? undefined,
     store: cfg.databaseUrl ? new PostgresBotStore(cfg.databaseUrl) : new MemoryBotStore(),
     publish: (topics, msg) => publisher.publish(topics, msg),
+    live, owner: cfg.botOwner,
   })
+  botRef = bot
   if (bot) {
     eng.observers.push(bot)
     await bot.start()
-    dataApi?.attachBot(bot)
+    dataApi?.attachBot(bot, new ControlVerifier(cfg.botOwner as `0x${string}` | null, cfg.httpUrls))
   }
   await eng.warmStart()
   const parser = new TradeParser(pools, oracle, makers, eng.launchpadOf)
