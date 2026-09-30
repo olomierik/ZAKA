@@ -53,6 +53,16 @@ export interface Flow {
   peakMultiple: number | null
   /** 1 − last / peak */
   drawdownFromPeak: number | null
+  /**
+   * The market's own buying: the creator's buys and the launch blocks' left
+   * out (the creator's stake and any bundle are the scanner's checks), every
+   * sale counted. The snipe rule reads this (2026-09-30): a creator who
+   * bought $2,500 at launch was "one buyer" with most of the buy volume, so no
+   * snipe could pass on a dev-sniped coin, and the same buy made "$200 bought"
+   * and "buys over sells" true on its own. Prices are from after the launch
+   * blocks, so "not late" is measured from the market's first price.
+   */
+  organic: { buyers: number; buyUsd: number; sellUsd: number; topBuyerPct: number; firstPrice: number | null; peakPrice: number | null; lastPrice: number | null }
 }
 
 const ROUND_TRIP_MS = 10 * 60_000
@@ -84,6 +94,16 @@ export function computeFlow(tape: TapeTrade[], o: { launchBlock: number; creator
   const creatorTrades = creator ? trades.filter(t => t.wallet === creator) : []
   const prices = trades.map(t => t.price).filter((p): p is number => p !== null && p > 0)
   const firstPrice = prices[0] ?? null, peakPrice = prices.length ? Math.max(...prices) : null, lastPrice = prices[prices.length - 1] ?? null
+  // The market's own buying (see Flow.organic).
+  const afterLaunch = trades.filter(t => t.block > o.launchBlock + 2)
+  const organicBuys = new Map<string, number>()
+  let organicBuyUsd = 0
+  for (const t of afterLaunch) {
+    if (t.side !== 'BUY' || (creator && t.wallet === creator)) continue
+    organicBuyUsd += t.usd
+    if (t.wallet) organicBuys.set(t.wallet, (organicBuys.get(t.wallet) ?? 0) + t.usd)
+  }
+  const organicPrices = afterLaunch.map(t => t.price).filter((p): p is number => p !== null && p > 0)
   return {
     trades: trades.length,
     buyers: wallets.filter(([, w]) => w.buyUsd > 0).length,
@@ -103,6 +123,11 @@ export function computeFlow(tape: TapeTrade[], o: { launchBlock: number; creator
     firstPrice, peakPrice, lastPrice,
     peakMultiple: firstPrice && peakPrice ? peakPrice / firstPrice : null,
     drawdownFromPeak: peakPrice && lastPrice ? 1 - lastPrice / peakPrice : null,
+    organic: {
+      buyers: organicBuys.size, buyUsd: organicBuyUsd, sellUsd,
+      topBuyerPct: organicBuyUsd > 0 ? (Math.max(0, ...organicBuys.values()) / organicBuyUsd) * 100 : 0,
+      firstPrice: organicPrices[0] ?? null, peakPrice: organicPrices.length ? Math.max(...organicPrices) : null, lastPrice: organicPrices[organicPrices.length - 1] ?? null,
+    },
   }
 }
 

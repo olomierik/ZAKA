@@ -216,7 +216,7 @@ async function main() {
     pools: token => { const mp = eng.tokens.get(token)?.mainPool; return mp ? pools.get(mp) ?? null : null },
   })
   log.info('visitors\' bots', { email: mailer.enabled, live: !!vault })
-  const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s), live: userLive })
+  const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => botRef?.priceOf(token) ?? eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s), live: userLive })
   if (accounts) await accounts.load().catch(e => log.error('paper accounts: load failed', { error: errMsg(e) }))
   const bot = cfg.botMode === 'off' ? null : new Bot({
     rpc, engine: eng, pools, mode: cfg.botMode, sizeUsd: cfg.botSizeUsd ?? undefined, scalpSizeUsd: cfg.botScalpSizeUsd ?? undefined,

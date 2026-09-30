@@ -9,8 +9,12 @@
 //
 // Impact grows with size, so past some size a bigger trade nets less. If no
 // size up to the cap reaches the target (a pool too thin, a take-profit too
-// close for the costs), the bot skips the trade rather than take one that
-// can't pay.
+// close for the costs), the trade is sized for the low end of the strategy's
+// range ($1) instead; only if not even that can be netted does the bot skip
+// it rather than take one that can't pay. (Before 2026-09-30 it skipped at the
+// target: a fast scalp's $1.50 at +15% needs about $2,500 of liquidity at a
+// 4% round trip and $5,000 at 6%, while the momentum rule fires from $2,000,
+// so bots passed over many scalp signals as "too thin".)
 
 import { costPerSide, type Strategy } from '../trading/paper'
 
@@ -44,4 +48,18 @@ export function sizeForTarget(o: { targetUsd: number; takeProfit: number; roundT
     }
   }
   return null
+}
+
+/**
+ * A trade's size: the smallest that nets `targetUsd`, else the smallest that
+ * nets the low end of the strategy's range (`targetUsd` in the answer says
+ * which), or null when not even that can be netted.
+ */
+export function sizeForTrade(o: { strategy: Strategy; targetUsd: number; takeProfit: number; roundTripPct: number | null; liquidityUsd: number | null }): (Sized & { targetUsd: number }) | null {
+  const full = sizeForTarget(o)
+  if (full) return { ...full, targetUsd: o.targetUsd }
+  const floor = TARGETS[o.strategy].range[0]
+  if (!(floor < o.targetUsd)) return null
+  const low = sizeForTarget({ ...o, targetUsd: floor })
+  return low ? { ...low, targetUsd: floor } : null
 }

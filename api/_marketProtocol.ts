@@ -311,7 +311,8 @@ export interface BotStatus {
     why: string | null
     wallet: string | null
     balanceUsd: number | null
-    limits: { maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; exitSlippageBps: number[]; reserveUsd: number } | null
+    /** `preflight`: every buy is simulated with its sale first, as the bot wallet (engines from before 2026-09-30 don't say). */
+    limits: { maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; exitSlippageBps: number[]; reserveUsd: number; preflight?: boolean; maxRoundTripPct?: number } | null
     todayPnlUsd: number
     open: number
     events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
@@ -443,7 +444,7 @@ export interface BotLiveView {
   open: number
   winRate: number | null
   feesPaidUsd: number
-  limits: { maxTradeUsd: number; minBalanceUsd: number; reserveUsd: number; maxOpen: number; dailyLossUsd: number }
+  limits: { maxTradeUsd: number; minBalanceUsd: number; reserveUsd: number; maxOpen: number; dailyLossUsd: number; preflight?: boolean; maxRoundTripPct?: number }
   events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
 }
 
@@ -488,12 +489,23 @@ export interface MarketBotDetail extends MarketBot {
   live: { pnlUsd: number; closed: number; winRate: number | null } | null
 }
 
+/** What became of the last 24 hours' signals: how many were traded, and why the rest weren't. */
+export interface SignalOutcomes {
+  signals: number
+  /** Signals traded (bots: by at least one bot; live bots count when the order went to their wallet). */
+  traded: number
+  /** Why not, counted once per signal (and, for visitors' bots, once per bot), most common first. */
+  reasons: { key: string; label: string; count: number }[]
+}
+
 /** Why coins are passed over right now (GET /v1/bot/rejections). */
 export interface RejectionStats {
   /** Coins watched in the last 48h that aren't signals, by their main reason. */
   top: { key: string; label: string; coins: number }[]
   watching: number
   at: number
+  /** Signals that weren't traded, and why: the engine's own book, and visitors' bots (engines from before 2026-09-30 don't say). */
+  signals?: { owner: SignalOutcomes | null; bots: SignalOutcomes | null }
 }
 
 /** What a visitor can do with their bot (POST /v1/paper/account). The amount per trade isn't one: each trade is sized for its profit target. */

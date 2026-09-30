@@ -9,7 +9,7 @@
 //   rejected   a hard safety check failed (honeypot, mint power, bundle, …)
 //   signal     it fired (snipe, fast scalp or second leg)
 
-import type { LaunchInfo, RejectionStats, ScanRow, ScanStats } from '../../../api/_marketProtocol'
+import type { LaunchInfo, RejectionStats, ScanRow, ScanStats, SignalOutcomes } from '../../../api/_marketProtocol'
 
 /** Rejection keys in words (rules: signals/rules.ts `failed` ids; safety: intel/scanner.ts check ids). */
 export const REASON_LABELS: Record<string, string> = {
@@ -26,10 +26,50 @@ export const REASON_LABELS: Record<string, string> = {
   'safety:clusters': 'safety: early buyers funded from one source', 'safety:wash': 'safety: wash trading', 'safety:creator': 'safety: the creator dumped',
   'safety:selfdestruct': 'safety: can self-destruct', 'safety:rug-guard': 'rug guard alarm (30-minute quarantine)', 'safety:risky-for-rebound': 'dip rebound needs a clean coin',
   'pending:honeypot': 'checking: honeypot probe', 'pending:clusters': 'checking: funding trace', 'pending:liquidity': 'checking: liquidity',
+  'pending:holders': 'checking: holders',
   'safety:unavailable': 'safety scan unavailable',
 }
 
 const DAY = 86_400_000
+
+/** Why a signal wasn't traded, in words (keys from PaperAccounts.onSignal and canOpen). */
+export const SKIP_LABELS: Record<string, string> = {
+  'not-running': 'bot funded but not started (press Start)', strategy: 'bot doesn\'t follow that strategy', paused: 'bot paused after 4 losses in a row',
+  filters: 'the bot\'s learned filters', 'too-thin': 'pool too thin or too costly to net $1', cash: 'not enough cash in the bot',
+  'max-open': 'too many trades already open', cooldown: 'traded that coin recently', 'daily-loss': 'daily loss limit reached',
+  'live-unavailable': 'live wallet unavailable', 'live-cap': 'over the live size cap', 'live-order': 'sent to a live wallet',
+}
+
+/**
+ * What became of each signal over the last 24 hours (owner, 2026-09-30:
+ * "signals are produced but the bot doesn't initiate trades"): traded, or
+ * which rule stopped it. Kept as hourly counts plus one entry per signal, so
+ * it stays small however many bots there are.
+ */
+export class OutcomeTally {
+  private hours = new Map<number, Map<string, number>>()
+  private bySignal = new Map<string, { at: number; traded: boolean }>()
+
+  add(signal: string, key: string, now = Date.now()) {
+    const h = Math.floor(now / 3_600_000)
+    const bucket = this.hours.get(h) ?? new Map<string, number>()
+    bucket.set(key, (bucket.get(key) ?? 0) + 1)
+    this.hours.set(h, bucket)
+    const s = this.bySignal.get(signal) ?? { at: now, traded: false }
+    if (key === 'traded' || key === 'live-order') s.traded = true
+    this.bySignal.set(signal, s)
+  }
+
+  summary(now = Date.now()): SignalOutcomes {
+    const oldest = Math.floor((now - DAY) / 3_600_000)
+    for (const h of this.hours.keys()) if (h <= oldest) this.hours.delete(h)
+    for (const [id, s] of this.bySignal) if (now - s.at > DAY) this.bySignal.delete(id)
+    const counts = new Map<string, number>()
+    for (const b of this.hours.values()) for (const [k, n] of b) if (k !== 'traded' && k !== 'live-order') counts.set(k, (counts.get(k) ?? 0) + n)
+    const reasons = [...counts].sort((x, y) => y[1] - x[1]).map(([key, count]) => ({ key, label: SKIP_LABELS[key] ?? key, count }))
+    return { signals: this.bySignal.size, traded: [...this.bySignal.values()].filter(s => s.traded).length, reasons }
+  }
+}
 
 export class ScanFeed {
   readonly rows = new Map<string, ScanRow>()

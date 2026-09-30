@@ -21,7 +21,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
-import type { BotControl, BotPosition, BotStatus, LearnNote, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, TradeSignal } from '../../../api/_marketProtocol'
+import type { BotControl, BotPosition, BotStatus, LearnNote, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, SignalOutcomes, TradeSignal } from '../../../api/_marketProtocol'
 import { getLaunchpadColor } from '../api/radardex'
 import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botWithdraw, botWithdrawCode, engineEnabled, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse } from '../api/marketStream'
 import { AgoText } from '../components/Ago'
@@ -692,6 +692,11 @@ function LivePanel({ acct, act, busy, me, onMe }: { acct: PaperAccountView; act:
           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
             {T('Send USDC on Arc to this address: at least {m} to go live. It trades up to {x} a trade and keeps {r} for gas. Only this bot uses it.', { m: usd(live.limits.minBalanceUsd, 0), x: usd(live.limits.maxTradeUsd, 0), r: usd(live.limits.reserveUsd, 0) })}
           </div>
+          {live.limits.preflight && (
+            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 4 }}>
+              ✓ {T('Every buy is checked first: the bot\'s wallet simulates the buy and selling it all straight back. A coin it couldn\'t sell, or a round trip costing over {p}%, is never bought.', { p: live.limits.maxRoundTripPct ?? 20 })}
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginTop: 8 }}>
             <Stat label={T('Wallet balance')} value={usd(live.balanceUsd)} small />
             <Stat label={T('Live P&L')} value={usd(live.pnlUsd)} color={live.pnlUsd >= 0 ? 'var(--green)' : '#fca5a5'} small sub={T('{n} trades, {w} won', { n: live.closed, w: pct(live.winRate) })} />
@@ -875,15 +880,41 @@ function RejectionsCard() {
     const id = setInterval(() => { if (!document.hidden) void load() }, 30_000)
     return () => { alive = false; clearInterval(id) }
   }, [])
-  if (!r || !r.top.length) return null
-  const max = r.top[0].coins
+  if (!r) return null
+  const max = r.top[0]?.coins ?? 1
   return (
-    <Section title={T('Why coins are passed over right now') + ` · ${r.watching}`}>
-      {r.top.slice(0, 8).map(x => (
+    <>
+      {r.signals?.bots && r.signals.bots.signals > 0 && <SignalOutcomesCard title={T('Signals and bots, last 24h')} o={r.signals.bots} tradedText={T('traded by at least one bot')} />}
+      {r.signals?.owner && r.signals.owner.signals > 0 && <SignalOutcomesCard title={T('Signals and the engine\'s own paper book, last 24h')} o={r.signals.owner} tradedText={T('traded')} />}
+      {r.top.length > 0 && (
+        <Section title={T('Why coins are passed over right now') + ` · ${r.watching}`}>
+          {r.top.slice(0, 8).map(x => (
+            <div key={x.key} className="at-reason-bar">
+              <span className="at-reason-label">{T(x.label)}</span>
+              <span className="at-reason-track"><span style={{ width: `${Math.max(3, (x.coins / max) * 100)}%` }} /></span>
+              <span className="at-reason-n">{x.coins}</span>
+            </div>
+          ))}
+        </Section>
+      )}
+    </>
+  )
+}
+
+/** What became of the signals: how many were traded, and why the rest weren't (GET /v1/bot/rejections `signals`). */
+function SignalOutcomesCard({ title, o, tradedText }: { title: string; o: SignalOutcomes; tradedText: string }) {
+  const max = o.reasons[0]?.count ?? 1
+  return (
+    <Section title={title}>
+      <div style={{ fontSize: '0.8rem', marginBottom: 6 }}>
+        {T('{n} signals · {t} {what}', { n: o.signals, t: o.traded, what: tradedText })}
+      </div>
+      {o.reasons.length > 0 && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 4 }}>{T('Why not, each time a bot passed over one:')}</div>}
+      {o.reasons.slice(0, 8).map(x => (
         <div key={x.key} className="at-reason-bar">
           <span className="at-reason-label">{T(x.label)}</span>
-          <span className="at-reason-track"><span style={{ width: `${Math.max(3, (x.coins / max) * 100)}%` }} /></span>
-          <span className="at-reason-n">{x.coins}</span>
+          <span className="at-reason-track"><span style={{ width: `${Math.max(3, (x.count / max) * 100)}%` }} /></span>
+          <span className="at-reason-n">{x.count}</span>
         </div>
       ))}
     </Section>
@@ -945,6 +976,7 @@ function SignalRow({ s, navigate }: { s: TradeSignal; navigate: (p: Page) => voi
         <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
         <Pill color={getLaunchpadColor(s.launchpad)}>{s.launchpad}</Pill>
         <Pill color={STRATEGY_COLOR[s.strategy] ?? '#64748b'}>{T(STRATEGY[s.strategy] ?? s.strategy)}</Pill>
+        {s.strategy === 'scalp' && s.rule === 'snipe' && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }} title={T('The snipe rule fired, but the coin carries a risk, so it trades small and sells fast')}>{T('from a snipe on a risky coin')}</span>}
         {!s.executable && <Pill color="#64748b">{T('Paper only')}</Pill>}
         <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)' }}><AgoText ts={s.at} /></span>
       </div>
@@ -1136,7 +1168,8 @@ function BotPanel({ status, onStatus }: { status: BotStatus; onStatus: (s: BotSt
 }
 
 function limitsText(x: NonNullable<BotStatus['live']['limits']>): string {
-  return T('Limits: up to ${a} a trade · {o} open at once ({s} scalps) · stops for the day after a ${d} loss · keeps ${r} for gas · buys at most {b}% under the quote', { a: x.maxTradeUsd, o: x.maxOpen, s: x.maxOpenScalp, d: x.dailyLossUsd, r: x.reserveUsd, b: x.slippageBps / 100 })
+  const text = T('Limits: up to ${a} a trade · {o} open at once ({s} scalps) · stops for the day after a ${d} loss · keeps ${r} for gas · buys at most {b}% under the quote', { a: x.maxTradeUsd, o: x.maxOpen, s: x.maxOpenScalp, d: x.dailyLossUsd, r: x.reserveUsd, b: x.slippageBps / 100 })
+  return x.preflight ? `${text} · ${T('each buy simulated with its sale first (round trip at most {p}%)', { p: x.maxRoundTripPct ?? 20 })}` : text
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

@@ -38,6 +38,9 @@ Everything runs in one Bun process by default. For scale-out, split it into `ENG
 | `src/intel/honeypot.ts` | The honeypot probe (buy, pass on, sell, in one eth_call with state overrides) |
 | `src/signals/rules.ts` | Snipe, momentum fast-scalp and second-leg rules |
 | `src/trading/paper.ts` | Paper positions, exits, costs, risk limits, stats |
+| `src/trading/live.ts` | Live trades through Uniswap's Universal Router: buys, sales, approvals, transfers; signed here, simulated first, gas and fees with room, nonces corrected, resent until confirmed |
+| `src/trading/preflight.ts` | The pre-flight before every live buy: the exact buy and the sale of all it delivers, as the bot's wallet, in one eth_call (`contracts/test/sim/BotRoundTrip.sol`, built into `roundTripBuild.ts` by `scripts/gen-roundtrip-build.ts`) |
+| `src/bot/liveTrader.ts` | Live positions: limits, the pre-flight's verdict, exits, retried sales and forced closes, buys and sales whose receipts came late |
 | `src/bot/bot.ts` | Ties it together: watches launches, sweeps every trading coin every 3s, fires signals (with the coin's numbers), paper-trades; `/v1/signals`, `/v1/bot/*`, `signals` channel |
 | `src/bot/rugGuard.ts` | The rug guard: liquidity pulled, insider or whale dumps, crashes on heavy selling close every position in the coin at once |
 | `src/bot/paperAccounts.ts` | Visitors' named bots: automatic trade sizes, rug and drain protection, a trade log (`/v1/paper/*`) |
@@ -147,6 +150,28 @@ bun engine/scripts/capture-fixtures.ts     # refresh the recorded mainnet fixtur
 ```
 
 Tests use recorded real chain data and in-memory doubles. Nothing fake reaches a production path.
+
+### Live trading: every swap goes through
+
+The bot sends only swaps that will go through (owner's request, 2026-09-30):
+- **Before a buy:** the pre-flight runs the exact buy, both approvals and the sale of everything the buy delivered, as the bot's own wallet, in one eth_call. The harness's code sits at the wallet for that call only.
+  - A coin it couldn't sell is never bought: a honeypot, a hook that blocks the wallet or router, or a tax that eats the sale.
+  - Nor is one whose round trip costs over `BOT_LIVE_MAX_ROUND_TRIP_PCT` (20%), or leaves nothing at the take-profit (under half the bot's profit target, when it has one).
+  - The buy's gas limit is what the simulation used, with 40% headroom.
+- **Sending:** each transaction is simulated again right before signing, and never sent if that fails.
+  - Fees leave room for the base fee to double.
+  - Transactions are signed in the engine, so the hash is known before the node answers. They are sent again while no receipt comes.
+  - A used nonce or a low fee is corrected. A transaction that never confirmed hands its nonce, at a higher fee, to the next one.
+  - A buy whose price moved past its slippage is quoted again, once.
+- **Afterwards:**
+  - Coins from a buy whose receipt was lost become a position.
+  - A sale sent but unconfirmed is looked up before another is sent.
+  - A forced close (rug, safety, the owner's order) is retried every tick until it goes through.
+- **Tests:**
+  - `bun test engine/test/preflight.test.ts`, 34 tests against a stand-in node: the encoding, the verdicts, revert reasons, sending (nonces, fees, rebroadcasts, lost connections, reverts), and the trader's side.
+  - `forge test --match-contract BotRoundTripTest`: the harness against stand-in router, Permit2 and coin contracts that decode the same Universal Router calls. It uses no cheatcodes, so it also ran in ethereumjs (all six passed; with patching switched off, two fail).
+  - `bun engine/scripts/check-live-trade.ts` dry-runs the real buy, sale and pre-flight against mainnet from a throwaway address. No key or funds are needed.
+- **After editing `BotRoundTrip.sol`:** run `forge build && bun engine/scripts/gen-roundtrip-build.ts`. Add `--check` to find a stale build.
 
 ### Test a new Argus launch
 

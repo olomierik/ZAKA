@@ -13,15 +13,32 @@
 //         so exits don't wait on approvals), the USDC goes to the bot
 //         (TAKE_ALL, at least the minimum)
 //
-// Every transaction is simulated first, sent one at a time with its own
-// nonce, and read back from its receipt: what the bot really paid and got,
-// and the gas. The encodings follow the Universal Router 2.1.x releases on
-// Arc, whose ExactInputSingleParams carries minHopPriceX36 (checked against
-// real Arc transactions, 2026-09-30).
+// So that every swap the bot sends goes through on-chain (owner's request,
+// 2026-09-30):
+//   - before a buy, the pre-flight (trading/preflight.ts) runs the exact buy
+//     and the sale of everything it delivers, as this wallet, in one
+//     eth_call: a coin it couldn't sell is never bought, and the buy's gas
+//     limit is what the simulation used, with headroom
+//   - every transaction is simulated right before it's signed; one that
+//     would fail is never sent. A buy whose price moved past its slippage
+//     is quoted again, once
+//   - fees leave room for the base fee to double (only what's used is paid)
+//   - transactions are signed here, so the hash is known before sending;
+//     they go to one endpoint, one at a time, each with its own nonce, and
+//     are sent again while no receipt comes. A nonce the node says is used,
+//     or a fee it says is too low, is corrected; a transaction that never
+//     confirmed hands its nonce, at a higher fee, to the next one
+//   - swaps carry a 2-minute deadline, so one that didn't land by then can't
+//     land later at a stale price
+// What the bot paid and got, and the gas, are read from each receipt. The
+// encodings follow the Universal Router 2.1.x releases on Arc, whose
+// ExactInputSingleParams carries minHopPriceX36 (checked against real Arc
+// transactions, 2026-09-30).
 
-import { createPublicClient, createWalletClient, decodeErrorResult, defineChain, encodeAbiParameters, encodeFunctionData, fallback, http, maxUint256, parseAbi, type Address, type Hex, type Log, type TransactionReceipt } from 'viem'
+import { createPublicClient, decodeErrorResult, defineChain, encodeAbiParameters, encodeFunctionData, fallback, http, keccak256, maxUint256, parseAbi, type Address, type Hex, type Log, type PublicClient, type TransactionReceipt } from 'viem'
 import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts'
 import type { PoolInfo } from '../dex/pools'
+import { decodeRoundTrip, gasLimitOf, judgeRoundTrip, PREFLIGHT_CALLER, roundTripCall, roundTripSteps, SENTINEL, type RoundTrip } from './preflight'
 
 export const ARC = defineChain({
   id: 5042,
@@ -84,9 +101,14 @@ const PERMIT2_ABI = parseAbi([
 const MAX_UINT160 = (1n << 160n) - 1n
 /** Common revert shapes, to name a failure in words. */
 const ERRORS_ABI = parseAbi([
-  'error Error(string)', 'error V4TooLittleReceived(uint256 minAmountOutReceived, uint256 amountReceived)', 'error DeadlinePassed(uint256 deadline)',
-  // V4Quoter: it wraps what the pool said; NotEnoughLiquidity when the pool can't take the whole amount
+  'error Error(string)', 'error Panic(uint256 code)',
+  'error V4TooLittleReceived(uint256 minAmountOutReceived, uint256 amountReceived)', 'error V4TooMuchRequested(uint256 maxAmountInRequested, uint256 amountRequested)', 'error DeadlinePassed(uint256 deadline)',
+  // Wrappers: the Universal Router names the command that failed, v4 the hook or coin that refused,
+  // the V4Quoter what the pool said (NotEnoughLiquidity when the pool can't take the whole amount).
+  'error ExecutionFailed(uint256 commandIndex, bytes message)', 'error WrappedError(address target, bytes4 selector, bytes reason, bytes details)',
   'error UnexpectedRevertBytes(bytes revertData)', 'error NotEnoughLiquidity(bytes32 poolId)',
+  // Permit2
+  'error InsufficientAllowance(uint256 amount)', 'error AllowanceExpired(uint256 deadline)',
 ])
 
 // ── pools ─────────────────────────────────────────────────────────────
@@ -179,9 +201,35 @@ export const usdOf18 = (x: bigint) => Number(x) / 1e18
 
 // ── the executor ─────────────────────────────────────────────────────
 
-export class LiveError extends Error { constructor(msg: string, readonly hash?: Hex) { super(msg) } }
+/**
+ * Why a trade didn't happen. `refused`: never sent (its simulation or the
+ * pre-flight said it would fail, or the node turned it away); `reverted`:
+ * sent and reverted; `unconfirmed`: sent, but no receipt came before it
+ * expired (what it did is read from the wallet afterwards).
+ */
+export type LiveErrorKind = 'refused' | 'reverted' | 'unconfirmed' | 'failed'
+export class LiveError extends Error { constructor(msg: string, readonly hash?: Hex, readonly kind: LiveErrorKind = 'failed') { super(msg) } }
 
 export interface Fill { hash: Hex; tokens: bigint; usd: number; gasUsd: number; at: number }
+
+/** The reads the executor makes (a viem public client; tests pass a stand-in). */
+export type Reader = Pick<PublicClient, 'call' | 'estimateGas' | 'estimateFeesPerGas' | 'getGasPrice' | 'getTransactionCount' | 'getTransactionReceipt' | 'getBalance' | 'readContract' | 'simulateContract'>
+
+export interface Timing {
+  /** Receipt polling. */
+  pollMs: number
+  /** How long a transaction without a deadline (an approval, a transfer) is waited for. */
+  confirmMs: number
+  /** Swaps must land within this, or they revert. */
+  deadlineS: number
+  /** A swap is waited for until its deadline has passed by this much: after that it can only revert. */
+  afterDeadlineMs: number
+  /** Sent again this often while no receipt comes (a node that dropped it takes it back; one that has it says so). */
+  rebroadcastMs: number
+  /** A failed simulation is tried again after this (a lagging node may not see the last approval yet). */
+  simRetryMs: number
+}
+export const TIMING: Timing = { pollMs: 250, confirmMs: 90_000, deadlineS: 120, afterDeadlineMs: 20_000, rebroadcastMs: 10_000, simRetryMs: 600 }
 
 export interface LiveOptions {
   privateKey: Hex
@@ -189,22 +237,41 @@ export interface LiveOptions {
   readUrls: string[]
   /** Transactions go to one endpoint only: a fallback could send one twice. */
   sendUrl: string
+  /** Stand-ins (tests): the reads, and what sends a signed transaction. */
+  clients?: { reader: Reader; sendRaw: (raw: Hex) => Promise<unknown> }
+  timing?: Partial<Timing>
 }
+
+/** Gas limits when the node can't estimate one. Only the gas used is paid. */
+const DEFAULT_GAS: Record<string, bigint> = { buy: 1_500_000n, sell: 1_500_000n, approve: 150_000n, transfer: 100_000n }
+
+type Fees = { type: 'eip1559'; max: bigint; tip: bigint } | { type: 'legacy'; gasPrice: bigint }
+type Broadcast = 'sent' | 'maybe' | 'nonce' | 'underpriced' | 'refused'
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 export class LiveExecutor {
   readonly address: Address
   private account: PrivateKeyAccount
-  private reader
-  private wallet
+  private reader: Reader
+  private sendRaw: (raw: Hex) => Promise<unknown>
+  private t: Timing
   private router: Address | null = null
+  /** One past the last nonce this process sent. */
   private nonce: number | null = null
+  /** A sent transaction that never confirmed: the next one takes its nonce over, at a higher fee, if it still hasn't landed. */
+  private stale: { nonce: number; bump: bigint } | null = null
   private queue: Promise<unknown> = Promise.resolve()
 
   constructor(o: LiveOptions) {
     this.account = privateKeyToAccount(o.privateKey)
     this.address = this.account.address
-    this.reader = createPublicClient({ chain: ARC, transport: fallback(o.readUrls.map(u => http(u, { timeout: 10_000 }))) })
-    this.wallet = createWalletClient({ account: this.account, chain: ARC, transport: http(o.sendUrl, { timeout: 15_000 }) })
+    this.t = { ...TIMING, ...o.timing }
+    if (o.clients) { this.reader = o.clients.reader; this.sendRaw = o.clients.sendRaw }
+    else {
+      this.reader = createPublicClient({ chain: ARC, transport: fallback(o.readUrls.map(u => http(u, { timeout: 10_000 }))) })
+      const sender = createPublicClient({ chain: ARC, transport: http(o.sendUrl, { timeout: 15_000 }) })
+      this.sendRaw = raw => sender.request({ method: 'eth_sendRawTransaction', params: [raw] })
+    }
   }
 
   /** The Universal Router wired to Arc's PoolManager, and a quoter that answers for it. */
@@ -230,21 +297,57 @@ export class LiveExecutor {
     return result[0]
   }
 
-  /** Buy `token` for `usd` of USDC in `pool`, accepting `slippageBps` less than quoted. */
-  async buy(pool: PoolInfo, token: Address, usd: number, slippageBps: number): Promise<Fill> {
+  /**
+   * Buys `token` for `usd` of USDC in `pool`, accepting `slippageBps` less
+   * than quoted. With `check`, the pre-flight runs first (the exact buy, then
+   * selling all of it back, as this wallet: trading/preflight.ts): the buy is
+   * sent only if both went through and `check` has no objection to the round
+   * trip, and its gas limit is what the simulation used, with headroom.
+   */
+  async buy(pool: PoolInfo, token: Address, usd: number, slippageBps: number, check?: (rt: RoundTrip) => string | null): Promise<Fill & { roundTrip: RoundTrip | null }> {
     const router = await this.ready()
     const key = keyOf(pool), usdc = key && usdcSide(key, token)
-    if (!key || !usdc) throw new LiveError('not a v4 pool against USDC')
+    if (!key || !usdc) throw new LiveError('not a v4 pool against USDC', undefined, 'refused')
     const amountIn = usdcUnits(usdc, usd)
-    const quoted = await this.quote(key, key.currency0.toLowerCase() === usdc.toLowerCase(), amountIn)
-    if (quoted === 0n) throw new LiveError('the pool quotes nothing for this buy')
-    const call = encodeBuy(router, key, token, usdc, amountIn, minOutOf(quoted, slippageBps), this.address, this.deadline())
-    const r = await this.send(call, 'buy')
-    const d = deltasOf(r.logs, this.address, token)
-    if (d.tokens <= 0n) throw new LiveError('the buy went through but no coins arrived', r.transactionHash)
-    // What left the wallet (the swept remainder came back), or what was sent if the logs didn't say.
-    const paid = d.usdc18 < 0n ? -d.usdc18 : amountIn * (usdc.toLowerCase() === NATIVE ? 1n : 10n ** 12n)
-    return { hash: r.transactionHash, tokens: d.tokens, usd: usdOf18(paid), gasUsd: gasUsdOf(r), at: Date.now() }
+    const zeroForOne = key.currency0.toLowerCase() === usdc.toLowerCase()
+    // A price that moves past the slippage between the quote and the send is quoted again, once.
+    for (let attempt = 0; ; attempt++) {
+      const quoted = await this.quote(key, zeroForOne, amountIn).catch(e => { throw new LiveError(`the pool can't quote this buy (${reason(e)})`, undefined, 'refused') })
+      if (quoted === 0n) throw new LiveError('the pool quotes nothing for this buy', undefined, 'refused')
+      const deadline = this.deadline()
+      const call = encodeBuy(router, key, token, usdc, amountIn, minOutOf(quoted, slippageBps), this.address, deadline)
+      let rt: RoundTrip | null = null
+      if (check) {
+        rt = await this.roundTrip(call, key, token, usdc)
+        const bad = rt.ok ? check(rt) : rt.why
+        if (bad) throw new LiveError(`pre-flight: ${bad}`, undefined, 'refused')
+      }
+      let r: TransactionReceipt
+      try { r = await this.send(call, 'buy', { gas: rt ? gasLimitOf(rt.gas.buy) : undefined, deadline }) }
+      catch (e) {
+        if (attempt === 0 && e instanceof LiveError && e.kind === 'refused' && /TooLittleReceived/.test(e.message)) continue
+        throw e
+      }
+      const d = deltasOf(r.logs, this.address, token)
+      if (d.tokens <= 0n) throw new LiveError('the buy went through but no coins arrived', r.transactionHash)
+      // What left the wallet (the swept remainder came back), or what was sent if the logs didn't say.
+      const paid = d.usdc18 < 0n ? -d.usdc18 : amountIn * (usdc.toLowerCase() === NATIVE ? 1n : 10n ** 12n)
+      return { hash: r.transactionHash, tokens: d.tokens, usd: usdOf18(paid), gasUsd: gasUsdOf(r), at: Date.now(), roundTrip: rt }
+    }
+  }
+
+  /** The pre-flight (trading/preflight.ts): `buy` as this wallet, then the sale of everything it delivered, in one eth_call. */
+  async roundTrip(buy: Call, key: PoolKey, token: Address, usdc: Address): Promise<RoundTrip> {
+    const router = await this.ready()
+    const steps = roundTripSteps({ buy, token, router, permit2: PERMIT2, sell: encodeSell(router, key, token, usdc, SENTINEL, 0n, this.deadline()) })
+    let data: Hex | undefined, lastErr: unknown = null
+    // From the wallet itself; a node that won't take a call from an address with code (EIP-3607) gets another caller.
+    for (const from of [this.address, PREFLIGHT_CALLER]) {
+      try { data = (await this.reader.call(roundTripCall(this.address, token, steps, from))).data; lastErr = null; break }
+      catch (e) { lastErr = e }
+    }
+    if (lastErr || !data) throw new LiveError(`the pre-flight couldn't run (${lastErr ? reason(lastErr) : 'no answer'})`, undefined, 'refused')
+    return judgeRoundTrip(decodeRoundTrip(data), revertReason)
   }
 
   /** Lets the router take `token` through Permit2 (once per coin), so selling needs no approval later. */
@@ -274,45 +377,161 @@ export class LiveExecutor {
   async sell(pool: PoolInfo, token: Address, amount: bigint, slippageBps: number): Promise<Fill> {
     const router = await this.ready()
     const key = keyOf(pool), usdc = key && usdcSide(key, token)
-    if (!key || !usdc) throw new LiveError('not a v4 pool against USDC')
-    if (amount <= 0n) throw new LiveError('nothing to sell')
+    if (!key || !usdc) throw new LiveError('not a v4 pool against USDC', undefined, 'refused')
+    if (amount <= 0n) throw new LiveError('nothing to sell', undefined, 'refused')
+    // An exit must get out: if the pool can't be quoted, the sale takes whatever it pays.
     const quoted = await this.quote(key, key.currency0.toLowerCase() === token.toLowerCase(), amount).catch(() => 0n)
-    const call = encodeSell(router, key, token, usdc, amount, minOutOf(quoted, slippageBps), this.deadline())
-    const r = await this.send(call, 'sell')
+    const deadline = this.deadline()
+    const r = await this.send(encodeSell(router, key, token, usdc, amount, minOutOf(quoted, slippageBps), deadline), 'sell', { deadline })
+    return this.saleFill(r, token)
+  }
+
+  /** A sale that was sent but not confirmed in time: what it did, if it went through after all (null if it didn't, or no node knows it). */
+  async lateSale(hash: Hex, token: Address): Promise<Fill | null> {
+    const r = await this.reader.getTransactionReceipt({ hash }).catch(() => null)
+    return r && r.status === 'success' ? this.saleFill(r, token) : null
+  }
+
+  private saleFill(r: TransactionReceipt, token: Address): Fill {
     const d = deltasOf(r.logs, this.address, token)
     return { hash: r.transactionHash, tokens: -d.tokens, usd: usdOf18(d.usdc18 > 0n ? d.usdc18 : 0n), gasUsd: gasUsdOf(r), at: Date.now() }
   }
 
   /** Sends `usd` of USDC (native) to `to`: a fee on a winning trade, a withdrawal. */
   async sendUsdc(to: Address, usd: number): Promise<Fill> {
-    if (!(usd > 0)) throw new LiveError('nothing to send')
+    if (!(usd > 0)) throw new LiveError('nothing to send', undefined, 'refused')
     const r = await this.send({ to, data: '0x', value: BigInt(Math.round(usd * 1e6)) * 10n ** 12n }, 'transfer')
     return { hash: r.transactionHash, tokens: 0n, usd, gasUsd: gasUsdOf(r), at: Date.now() }
   }
 
-  private deadline() { return BigInt(Math.floor(Date.now() / 1000) + 120) }
+  private deadline() { return BigInt(Math.floor(Date.now() / 1000) + this.t.deadlineS) }
 
-  /** One transaction at a time: simulated (retried briefly: a lagging node may not see the last approval yet), sent with the next nonce, confirmed. */
-  private send(call: Call, label: string): Promise<TransactionReceipt> {
+  /**
+   * One transaction at a time. Simulated first (one that would fail is never
+   * sent); given a gas limit with headroom and fees with room for the base
+   * fee to double; signed here, so its hash is known before it is sent; sent
+   * to one endpoint; confirmed from its receipt, and sent again while none
+   * comes. A nonce the node says is used, or a fee it says is too low, is
+   * corrected and the transaction signed again. One that never confirmed
+   * gives its nonce, at a higher fee, to the next transaction.
+   */
+  private send(call: Call, label: string, o: { gas?: bigint; deadline?: bigint } = {}): Promise<TransactionReceipt> {
     const run = async () => {
-      let lastErr: unknown = null
-      for (let i = 0; i < 4; i++) {
-        try { await this.reader.call({ account: this.address, to: call.to, data: call.data, value: call.value }); lastErr = null; break }
-        catch (e) { lastErr = e; await new Promise(r => setTimeout(r, 600)) }
+      await this.simulate(call, label)
+      const gas = o.gas ?? await this.estimate(call, label)
+      const fees = await this.fees()
+      let { nonce, bump } = await this.nextNonce()
+      for (let attempt = 0; ; attempt++) {
+        const raw = await this.sign(call, nonce, gas, fees, bump)
+        const hash = keccak256(raw)
+        const { status, msg } = await this.broadcast(raw)
+        if (status === 'nonce' && attempt < 3) { this.nonce = Math.max(this.nonce ?? 0, nonce + 1); this.stale = null; ({ nonce, bump } = await this.nextNonce()); continue }
+        if (status === 'underpriced' && attempt < 3) { bump *= 2n; continue }
+        if (status !== 'sent' && status !== 'maybe') throw new LiveError(`${label} was turned away by the node (${msg})`, undefined, 'refused')
+        this.nonce = Math.max(this.nonce ?? 0, nonce + 1)
+        const r = await this.confirm(hash, raw, o.deadline)
+        if (!r) {
+          this.stale = { nonce, bump }
+          throw new LiveError(`${label} sent but not confirmed${o.deadline ? ' before its deadline' : ' in time'}`, hash, 'unconfirmed')
+        }
+        if (this.stale?.nonce === nonce) this.stale = null
+        if (r.status !== 'success') throw new LiveError(`${label} reverted on-chain`, hash, 'reverted')
+        return r
       }
-      if (lastErr) throw new LiveError(`${label} would fail: ${reason(lastErr)}`)
-      const pending = await this.reader.getTransactionCount({ address: this.address, blockTag: 'pending' })
-      const nonce = Math.max(pending, this.nonce ?? 0)
-      const hash = await this.wallet.sendTransaction({ to: call.to, data: call.data, value: call.value, nonce })
-      this.nonce = nonce + 1
-      const r = await this.reader.waitForTransactionReceipt({ hash, pollingInterval: 250, timeout: 90_000 })
-      if (r.status !== 'success') throw new LiveError(`${label} reverted on-chain`, hash)
-      return r
     }
     const p = this.queue.then(run, run)
     this.queue = p.catch(() => undefined)
     return p
   }
+
+  /** Tried a few times (a lagging node may not see the last approval yet), except a price that moved past the slippage. */
+  private async simulate(call: Call, label: string) {
+    let lastErr: unknown = null
+    for (let i = 0; i < 4; i++) {
+      try { await this.reader.call({ account: this.address, to: call.to, data: call.data, value: call.value }); return }
+      catch (e) {
+        lastErr = e
+        if (/TooLittleReceived/.test(reason(e))) break
+        if (i < 3) await sleep(this.t.simRetryMs)
+      }
+    }
+    throw new LiveError(`${label} would fail: ${reason(lastErr)}`, undefined, 'refused')
+  }
+
+  private async estimate(call: Call, label: string): Promise<bigint> {
+    try { return gasLimitOf(await this.reader.estimateGas({ account: this.address, to: call.to, data: call.data, value: call.value })) }
+    catch { return DEFAULT_GAS[label] ?? 1_500_000n }
+  }
+
+  /** Room for the base fee to double before the transaction lands; only what is used is paid. */
+  private async fees(): Promise<Fees> {
+    try {
+      const f = await this.reader.estimateFeesPerGas() as { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }
+      const tip = f.maxPriorityFeePerGas > 0n ? f.maxPriorityFeePerGas : 1n
+      return { type: 'eip1559', max: f.maxFeePerGas * 2n + tip, tip }
+    } catch {
+      return { type: 'legacy', gasPrice: ((await this.reader.getGasPrice()) * 3n) / 2n }
+    }
+  }
+
+  private async nextNonce(): Promise<{ nonce: number; bump: bigint }> {
+    const [latest, pending] = await Promise.all([
+      this.reader.getTransactionCount({ address: this.address, blockTag: 'latest' }),
+      this.reader.getTransactionCount({ address: this.address, blockTag: 'pending' }),
+    ])
+    if (this.stale && latest <= this.stale.nonce) return { nonce: this.stale.nonce, bump: this.stale.bump * 2n }
+    this.stale = null
+    return { nonce: Math.max(latest, pending, this.nonce ?? 0), bump: 1n }
+  }
+
+  private sign(call: Call, nonce: number, gas: bigint, fees: Fees, bump: bigint): Promise<Hex> {
+    const base = { chainId: ARC.id, to: call.to, data: call.data, value: call.value, nonce, gas }
+    return fees.type === 'eip1559'
+      ? this.account.signTransaction({ ...base, type: 'eip1559', maxFeePerGas: fees.max * bump, maxPriorityFeePerGas: fees.tip * bump })
+      : this.account.signTransaction({ ...base, type: 'legacy', gasPrice: fees.gasPrice * bump })
+  }
+
+  private async broadcast(raw: Hex): Promise<{ status: Broadcast; msg: string }> {
+    try { await this.sendRaw(raw); return { status: 'sent', msg: '' } }
+    catch (e) {
+      const msg = reason(e), m = `${(e as Error)?.message ?? ''} ${msg}`.toLowerCase()
+      if (/already known|known transaction|already imported|already exists/.test(m)) return { status: 'sent', msg }
+      if (/nonce too low|nonce is too low|invalid nonce|nonce has already been used/.test(m)) return { status: 'nonce', msg }
+      if (/underpriced|fee too low|less than block base fee|fee cap/.test(m)) return { status: 'underpriced', msg }
+      if (/insufficient funds|exceeds balance|gas limit|intrinsic gas|invalid|rejected|not allowed/.test(m)) return { status: 'refused', msg }
+      return { status: 'maybe', msg } // a timeout or a dropped connection: it may have gone through
+    }
+  }
+
+  /** The receipt, or null if none came in time. The transaction is sent again every so often while waiting. */
+  private async confirm(hash: Hex, raw: Hex, deadline?: bigint): Promise<TransactionReceipt | null> {
+    const until = deadline ? Number(deadline) * 1000 + this.t.afterDeadlineMs : Date.now() + this.t.confirmMs
+    let sentAt = Date.now()
+    for (;;) {
+      const r = await this.reader.getTransactionReceipt({ hash }).catch(() => null)
+      if (r) return r
+      if (Date.now() >= until) return null
+      if (Date.now() - sentAt >= this.t.rebroadcastMs) { sentAt = Date.now(); void this.sendRaw(raw).catch(() => {}) }
+      await sleep(this.t.pollMs)
+    }
+  }
+}
+
+/** Revert data in words: the innermost reason, through the router's, the quoter's and v4's wrappers. */
+export function revertReason(data: Hex | undefined): string {
+  let prefix = ''
+  for (let depth = 0; data && data.length >= 10 && depth < 5; depth++) {
+    let d: { errorName: string; args?: readonly unknown[] }
+    try { d = decodeErrorResult({ abi: ERRORS_ABI, data }) } catch { return `${prefix}reverted ${data.slice(0, 10)}` }
+    const args = d.args ?? []
+    if (d.errorName === 'UnexpectedRevertBytes') { data = args[0] as Hex; continue }
+    if (d.errorName === 'ExecutionFailed') { data = args[1] as Hex; continue }
+    if (d.errorName === 'WrappedError') { prefix = `refused by ${String(args[0]).toLowerCase().slice(0, 10)}…: `; data = args[2] as Hex; continue }
+    if (d.errorName === 'NotEnoughLiquidity') return `${prefix}not enough liquidity in the pool for this size`
+    if (d.errorName === 'Panic') return `${prefix}panic 0x${(args[0] as bigint).toString(16)}`
+    return prefix + (d.errorName === 'Error' ? String(args[0]) : d.errorName)
+  }
+  return `${prefix}reverted without a reason`
 }
 
 /** A failure in words: the revert reason when there is one. */
@@ -321,14 +540,7 @@ export function reason(e: unknown): string {
   let data = raw?.raw ?? raw?.cause?.raw ?? raw?.cause?.data ?? raw?.data
   // viem nests the node's error: find the revert data wherever it is
   if (!data && e && typeof e === 'object' && 'walk' in e) data = ((e as { walk: (f: (x: unknown) => boolean) => unknown }).walk(x => typeof (x as { data?: unknown })?.data === 'string') as { data?: Hex } | null)?.data
-  for (let depth = 0; data && data.length >= 10 && depth < 3; depth++) {
-    try {
-      const d = decodeErrorResult({ abi: ERRORS_ABI, data })
-      if (d.errorName === 'UnexpectedRevertBytes') { data = d.args[0] as Hex; continue }
-      if (d.errorName === 'NotEnoughLiquidity') return 'not enough liquidity in the pool for this size'
-      return d.errorName === 'Error' ? String(d.args?.[0]) : d.errorName
-    } catch { return `reverted ${data.slice(0, 10)}` }
-  }
+  if (typeof data === 'string' && data.length >= 10) return revertReason(data)
   const m = (e as Error)?.message ?? String(e)
   return (m.split('\n').find(l => l.trim()) ?? m).slice(0, 160)
 }
