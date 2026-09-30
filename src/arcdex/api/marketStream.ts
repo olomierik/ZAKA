@@ -11,7 +11,7 @@
 // subscription is re-sent, and the engine answers each with a fresh snapshot.
 
 import { useSyncExternalStore } from 'react'
-import { botControlMessage, type BotControl, type BotPosition, type BotStatus, type PaperAccountView, type PaperAction, type ScanRow, type ScanStats, type SearchHit, type Interval, type LaunchInfo, type NewPaperAccount, type BotUserView, type MeResponse, type MarketBot, type MarketBotDetail, type RejectionStats, type SafetyCheck, type ServerMessage, type TokenStats, type TradeSignal, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
+import { botControlMessage, type BotControl, type BotProfit, type BotPosition, type BotStatus, type PaperAccountView, type PaperAction, type ScanRow, type ScanStats, type SearchHit, type Interval, type LaunchInfo, type NewPaperAccount, type BotUserView, type MeResponse, type MarketBot, type MarketBotDetail, type RejectionStats, type SafetyCheck, type ServerMessage, type TokenStats, type TradeSignal, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
 
 const WS_URL = (import.meta.env.VITE_ARCDEX_WS_URL as string | undefined) || undefined
 const API_URL = ((import.meta.env.VITE_ARCDEX_API_URL as string | undefined) || (WS_URL ? WS_URL.replace(/^ws/, 'http').replace(/\/ws\/?$/, '') : '')).replace(/\/$/, '')
@@ -230,6 +230,8 @@ export async function botChangePasscode(current: string, next: string) {
 }
 export async function botSignOutAll() { await botFetch('/v1/auth/logout-all', { method: 'POST', body: {}, auth: true }); setBotSession(null) }
 export const botMe = () => botFetch<MeResponse>('/v1/me', { auth: true })
+/** Winning trades the signed-in owner's bots closed after `since` (the profit notifications). */
+export const botProfits = (since: number) => botFetch<{ profits: BotProfit[]; now: number }>(`/v1/me/profits?since=${Math.floor(since)}`, { auth: true })
 export const botCreate = (bot: NewPaperAccount) => botFetch<{ account: PaperAccountView }>('/v1/me/bots', { method: 'POST', body: bot, auth: true }).then(r => r.account)
 export const botAction = (slug: string, action: PaperAction) => botFetch<{ account: PaperAccountView }>(`/v1/me/bots/${encodeURIComponent(slug)}`, { method: 'POST', body: action, auth: true }).then(r => r.account)
 export const botTrades = (slug: string, limit = 100, before?: number) =>

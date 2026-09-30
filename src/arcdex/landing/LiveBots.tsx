@@ -10,7 +10,6 @@ import { t } from '../lib/i18n'
 // changes, and a bot that moves up or down slides to its new rank.
 
 const POLL_MS = 5_000
-const SHOWN = 7
 const STRATEGY: Record<MarketBot['strategies'][number], [string, string]> = {
   snipe: ['Snipe', '#3b82f6'], scalp: ['Fast scalp', '#f59e0b'], 'second-leg': ['Dip rebound', '#a855f7'],
 }
@@ -42,7 +41,7 @@ function Tween({ value, format }: { value: number; format: (n: number) => string
 
 interface Move { dir: 'up' | 'down'; n: number; rank?: 'up' | 'down' }
 
-export default function LiveBots({ engine }: { engine: string }) {
+export default function LiveBots({ engine, rows: shownRows = 7 }: { engine: string; rows?: number }) {
   const [bots, setBots] = useState<MarketBot[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [moves, setMoves] = useState<Record<string, Move>>({})
@@ -65,7 +64,7 @@ export default function LiveBots({ engine }: { engine: string }) {
         list.forEach((b, i) => {
           const was = last.current.get(b.slug)
           if (was && Math.abs(b.pnlUsd - was.pnl) >= 0.005) next[b.slug] = { dir: b.pnlUsd > was.pnl ? 'up' : 'down', n: beat.current }
-          if (was && i < SHOWN && was.rank !== i) next[b.slug] = { ...(next[b.slug] ?? { dir: i < was.rank ? 'up' : 'down', n: beat.current }), rank: i < was.rank ? 'up' : 'down' }
+          if (was && i < shownRows && was.rank !== i) next[b.slug] = { ...(next[b.slug] ?? { dir: i < was.rank ? 'up' : 'down', n: beat.current }), rank: i < was.rank ? 'up' : 'down' }
         })
         last.current = new Map(list.map((b, i) => [b.slug, { pnl: b.pnlUsd, rank: i }]))
         setMoves(next)
@@ -76,7 +75,7 @@ export default function LiveBots({ engine }: { engine: string }) {
     void load()
     const id = setInterval(() => { if (!document.hidden) void load() }, POLL_MS)
     return () => { alive = false; clearInterval(id) }
-  }, [engine])
+  }, [engine, shownRows])
 
   // A bot that changed rank slides from where it was.
   useLayoutEffect(() => {
@@ -96,7 +95,7 @@ export default function LiveBots({ engine }: { engine: string }) {
   }, [bots])
 
   if (!engine || (failed && !bots)) return null
-  const shown = bots?.slice(0, SHOWN) ?? []
+  const shown = bots?.slice(0, shownRows) ?? []
   const combined = bots?.reduce((s, b) => s + b.pnlUsd, 0) ?? 0
   const trades = bots?.reduce((s, b) => s + b.closed, 0) ?? 0
 
@@ -142,6 +141,7 @@ export default function LiveBots({ engine }: { engine: string }) {
           })}
         </div>
       )}
+      {bots && <a className="ld-bots-all" href="/bots">{t('See all bots')} →</a>}
     </div>
   )
 }

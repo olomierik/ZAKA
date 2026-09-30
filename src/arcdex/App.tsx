@@ -38,6 +38,7 @@ import { sheetHistory } from './lib/sheetHistory'
 import { OPEN_TRADING_WALLET } from './lib/tradingWalletSheet'
 import { useEmbeddedAddress } from './lib/identity'
 import { useFundingScan } from './lib/funding'
+import ProfitAlerts from './components/ProfitAlerts'
 
 // Remember ?ref= or /r/<name> before anything renders (first-touch attribution).
 captureReferral()
@@ -179,6 +180,8 @@ export default function App() {
       </Sheet>
       <ConnectModalHost />
       <WalletPromptHost />
+      {/* A toast (and, when allowed, a system notification) for every profit the signed-in owner's bots take. */}
+      <ProfitAlerts navigate={navigate} />
     </div>
   )
 }

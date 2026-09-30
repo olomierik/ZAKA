@@ -1308,3 +1308,36 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 /* A menu open in the top bar (search results, the account menu) sits above
    the phone's tab bar: as a bottom sheet it was partly hidden behind it. */
 .top-navbar:has(.menu-pop) { z-index: 1150; }
+
+/* ── Profit notifications (components/ProfitAlerts.tsx) ── */
+.profit-toasts { position: fixed; right: 16px; bottom: 16px; z-index: 1150; display: flex; flex-direction: column; gap: 10px; width: min(340px, calc(100vw - 24px)); }
+.profit-toast { background: var(--adx-card-bg, #0f1a2d); border: 1px solid rgba(34, 197, 94, 0.45); border-radius: 12px; padding: 12px 14px; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45); animation: profit-in 0.35s ease-out; }
+.profit-toast-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 0.8rem; font-weight: 700; }
+.profit-toast-x { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.9rem; padding: 0 2px; }
+.profit-toast-amt { font-family: var(--mono); font-size: 1.25rem; font-weight: 800; color: var(--green, #22c55e); margin-top: 4px; }
+.profit-toast-amt span { font-family: inherit; font-size: 0.8rem; font-weight: 600; color: var(--text); }
+.profit-toast-meta { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+.profit-toast-btns { display: flex; gap: 6px; margin-top: 9px; }
+.profit-toast-btns button { flex: 1; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--adx-card-border); background: rgba(255, 255, 255, 0.05); color: var(--text); font-size: 0.74rem; font-weight: 700; cursor: pointer; }
+.profit-toast-btns button:hover { background: rgba(255, 255, 255, 0.1); }
+@keyframes profit-in { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (max-width: 767px) { .profit-toasts { right: 12px; left: 12px; width: auto; bottom: calc(70px + env(safe-area-inset-bottom)); } }
+@media (prefers-reduced-motion: reduce) { .profit-toast { animation: none; } }
+
+/* ── Autotrade: tiers, sharing, profit notifications ── */
+.at-share { background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.4); color: #86efac; border-radius: 8px; padding: 4px 10px; font-size: 0.72rem; font-weight: 700; cursor: pointer; }
+.at-share:hover { background: rgba(34, 197, 94, 0.18); }
+.at-share:disabled { opacity: 0.6; cursor: wait; }
+.at-tiers { margin-top: 12px; border: 1px solid rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.06); border-radius: 12px; }
+.at-tiers-head { width: 100%; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; background: none; border: none; color: var(--text); font-size: 0.8rem; font-weight: 700; cursor: pointer; text-align: left; }
+.at-tiers-tag { font-size: 0.64rem; font-weight: 800; padding: 2px 8px; border-radius: 99px; color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.5); }
+.at-tiers-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; padding: 0 12px 10px; }
+.at-tier { border: 1px solid var(--adx-card-border); border-radius: 10px; padding: 10px; background: var(--adx-card-bg); font-size: 0.74rem; }
+.at-tier.paid { border-color: rgba(245, 158, 11, 0.35); }
+.at-tier b { display: block; font-size: 0.84rem; }
+.at-tier-min { display: block; color: #fcd34d; font-family: var(--mono); font-size: 0.72rem; margin-top: 2px; }
+.at-tier ul { margin: 6px 0 0; padding-left: 16px; color: var(--text-muted); line-height: 1.5; }
+.at-tiers-foot { padding: 0 12px 10px; font-size: 0.7rem; color: var(--text-muted); }
+.at-notify { margin-top: 10px; display: flex; flex-direction: column; gap: 2px; font-size: 0.76rem; }
+.at-notify label { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; cursor: pointer; }
+.at-notify span { color: var(--text-muted); font-size: 0.7rem; padding-left: 22px; }

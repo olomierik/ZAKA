@@ -25,6 +25,9 @@ import type { BotControl, BotPosition, BotStatus, LearnNote, MarketBot, MarketBo
 import { getLaunchpadColor } from '../api/radardex'
 import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botWithdraw, botWithdrawCode, engineEnabled, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse } from '../api/marketStream'
 import { AgoText } from '../components/Ago'
+import { cardFromAccount, cardFromMarket, ShareBotButton } from '../components/BotShare'
+import { profitNotifyOn, setProfitNotify } from '../components/ProfitAlerts'
+import { ARCD_TIERS, arcdAmount, TIERS_ENFORCED } from '../lib/tiers'
 import type { Page } from '../App'
 import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
 import { t as T } from '../lib/i18n'
@@ -240,6 +243,51 @@ function StrategyPicker({ selected, disabled, onToggle }: { selected: Strategy[]
 }
 
 /** The signed-in owner's bots, on any device: sign in first, then one dashboard per bot. */
+/** Autotrade access by $ARCD held (lib/tiers.ts): announced, not enforced yet. */
+function TiersNote() {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="at-tiers">
+      <button className="at-tiers-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+        <span>🔑 {T('Autotrade access is tiered by $ARCD held')}</span>
+        <span className="at-tiers-tag">{TIERS_ENFORCED ? T('Active') : T('Coming soon')}</span>
+        <span style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}>{open ? '▴' : '▾'}</span>
+      </button>
+      {open && (
+        <>
+          <div className="at-tiers-grid">
+            {ARCD_TIERS.map(t => (
+              <div key={t.id} className={`at-tier${t.id === 'free' ? '' : ' paid'}`}>
+                <b>{T(t.name)}</b>
+                <span className="at-tier-min">{t.minArcd ? `${arcdAmount(t.minArcd)} $ARCD` : T('No $ARCD needed')}</span>
+                <ul>{t.perks.map(x => <li key={x}>{T(x)}</li>)}</ul>
+              </div>
+            ))}
+          </div>
+          {!TIERS_ENFORCED && <div className="at-tiers-foot">{T('Announced: nothing is locked yet. Holdings will be checked once accounts can link a wallet.')}</div>}
+        </>
+      )}
+    </div>
+  )
+}
+
+/** A system notification for every profit its bots take (a toast shows either way while ARCDEX is open). */
+function ProfitNotifySwitch() {
+  const [on, setOn] = useState(() => profitNotifyOn())
+  const [denied, setDenied] = useState(false)
+  const supported = typeof Notification !== 'undefined'
+  if (!supported) return null
+  return (
+    <div className="at-notify">
+      <label>
+        <input type="checkbox" checked={on} onChange={e => { const want = e.target.checked; void setProfitNotify(want).then(ok => { setOn(ok); setDenied(want && !ok) }) }} />
+        🔔 {T('Notify me of every profit')}
+      </label>
+      <span>{denied ? T('Your browser blocked notifications for this site: allow them in its settings.') : T('A notification each time a trade closes in profit, even with this tab in the background.')}</span>
+    </div>
+  )
+}
+
 function MyBots({ navigate }: { navigate: (p: Page) => void }) {
   const [session, setSession] = useState<string | null>(() => botSession())
   const [me, setMe] = useState<MeResponse | null>(null)
@@ -285,6 +333,7 @@ function MyBots({ navigate }: { navigate: (p: Page) => void }) {
   return (
     <>
       <AccountBar me={me} onChanged={() => void reload()} />
+      <TiersNote />
       {bots.length > 0 && (
         <div className="at-botbar">
           {bots.map(b => (
@@ -444,6 +493,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate }: 
           )}
           {acct.mode === 'live' ? <Pill color={LIVE_RED}>● {T('LIVE')}</Pill> : <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('Paper account')} · {T('virtual USDC')}</span>}
           {acct.slug && <button className="link-btn" style={{ fontSize: '0.72rem' }} onClick={() => navigate({ name: 'signals', view: 'market', bot: acct.slug })}>{T('Public page')} ↗</button>}
+          {acct.slug && (acct.stats.closed > 0 || acct.deposited > 0) && <ShareBotButton className="at-share" get={() => cardFromAccount(acct)} mine />}
           {acct.running && acct.startedAt && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>· {T('started')} <AgoText ts={acct.startedAt} /></span>}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginTop: 10 }}>
@@ -452,6 +502,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate }: 
           <Stat label={T('Profit / loss')} value={usd(pnl)} color={pnl >= 0 ? 'var(--green)' : '#fca5a5'} sub={T('on {d} deposited', { d: usd(acct.deposited, 0) })} />
           <Stat label={T('Win rate')} value={acct.stats.winRate === null ? '—' : `${(acct.stats.winRate * 100).toFixed(0)}%`} sub={T('{w} won · {l} lost', { w: acct.stats.wins, l: acct.stats.losses })} />
         </div>
+        <ProfitNotifySwitch />
         {paused && <div className="at-note warn">⏸ {T('Paused after {n} losses in a row: no new trades until {t} while it learns from them.', { n: prot!.pauseAfterLosses, t: new Date(paused).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}</div>}
 
         <div className="at-label">{T('Deposit virtual USDC')}</div>
@@ -824,7 +875,10 @@ function MarketBotPage({ slug, navigate }: { slug: string; navigate: (p: Page) =
           {bot.mode === 'live' ? <Pill color={LIVE_RED}>● {T('LIVE')}</Pill> : <Pill color="#64748b">{T('PAPER')}</Pill>}
           <span className={`at-run${bot.running ? ' on' : ''}`}>{bot.running ? `● ${T('Running')}` : T('Stopped')}</span>
           {bot.strategies.map(s => <Pill key={s} color={STRATEGY_COLOR[s]}>{T(STRATEGY[s])}</Pill>)}
-          <button className="link-btn" style={{ marginLeft: 'auto', fontSize: '0.72rem' }} onClick={() => { void navigator.clipboard?.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }) }}>{copied ? T('Copied') : T('Copy link')}</button>
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 10, alignItems: 'center' }}>
+            <ShareBotButton className="at-share" get={() => cardFromMarket(bot)} mine={false} />
+            <button className="link-btn" style={{ fontSize: '0.72rem' }} onClick={() => { void navigator.clipboard?.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }) }}>{copied ? T('Copied') : T('Copy link')}</button>
+          </span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginTop: 10 }}>
           <Stat label={T('Profit / loss')} value={usd(bot.pnlUsd)} color={bot.pnlUsd >= 0 ? 'var(--green)' : '#fca5a5'} sub={bot.pnlPct === null ? undefined : `${bot.pnlPct >= 0 ? '+' : ''}${bot.pnlPct.toFixed(1)}%`} />

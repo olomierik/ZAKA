@@ -2,21 +2,24 @@ import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { LANGS, setLang, t, useLang, type Lang } from '../lib/i18n'
 import {
-  ARCD, ARCD_APP_PATH, ARCD_POOL, ARCD_SUPPLY, ARC_EXPLORER, BURN_ADDRESS, FEE_WALLET,
+  ARCD, ARCD_APP_PATH, ARCD_POOL, ARC_EXPLORER,
   compact, loadArcd, price, short, type ArcdStats,
 } from '../lib/arcd'
+import { ARCD_TIERS, arcdAmount, TIERS_ENFORCED } from '../lib/tiers'
 import LiveBots from './LiveBots'
-import { LIVE_NOW, PHASES, ROADMAP_START, phaseRange, phaseStatus } from './roadmap'
+import { PHASES, phaseStatus } from './roadmap'
 import './landing.css'
 
-// arcdex.online/ — the landing page: what ARCDEX is, its Autotrade bots with
-// their P&L live (./LiveBots.tsx), $ARCD (the official coin) and how platform
-// fees buy it back and burn it, with live on-chain numbers, then the roadmap
-// (./roadmap.ts) and the whitepaper (/whitepaper, with its PDF). A separate
-// small bundle (no wallet libraries); "Launch app" goes to /app.
+// arcdex.online/ — the landing page (redesigned 2026-10-01, owner's request:
+// "more professional, less detail, a new slogan, smaller type"). Autotrade is
+// the main feature now: the hero is the slogan and the bots' P&L, live
+// (./LiveBots.tsx); then how it works, access tiers by $ARCD (../lib/tiers.ts),
+// $ARCD itself, the rest of the app, the roadmap in one line, a few
+// questions. A separate small bundle (no wallet libraries); "Launch app"
+// goes to /app. The long explanations live in the whitepaper and the FAQ.
 
 export function mountLanding(root: HTMLElement) {
-  document.title = 'ARCDEX — The social trading app for Arc · $ARCD'
+  document.title = 'ARCDEX · Self-improving trading bots for Arc'
   createRoot(root).render(<StrictMode><Landing /></StrictMode>)
 }
 
@@ -29,25 +32,30 @@ function Copy({ text, label }: { text: string; label?: string }) {
   )
 }
 
-function ago(ms: number) {
-  const s = Math.max(0, (Date.now() - ms) / 1000)
-  return s < 3600 ? t('{n} min ago', { n: Math.max(1, Math.floor(s / 60)) }) : s < 86400 ? t('{n} hours ago', { n: Math.floor(s / 3600) }) : t('{n} days ago', { n: Math.floor(s / 86400) })
-}
-
-/** The market engine's REST base (Autotrade's live numbers), when the site has one. */
+/** The market engine's REST base (the bots, the scanner, $ARCD's live price), when the site has one. */
 const ENGINE = ((import.meta.env.VITE_ARCDEX_API_URL as string | undefined) || ((import.meta.env.VITE_ARCDEX_WS_URL as string | undefined) ?? '').replace(/^ws/, 'http').replace(/\/ws\/?$/, '')).replace(/\/$/, '')
 interface ScanNumbers { watching: number; evalsPerMin: number; signals24h: number; rejected24h: number }
+type Market = NonNullable<ArcdStats['market']>
+
+/** $ARCD's numbers from the market engine: when /api/arcd has no market (GeckoTerminal unavailable). */
+async function engineMarket(): Promise<Market | null> {
+  if (!ENGINE) return null
+  const r = await fetch(`${ENGINE}/v1/tokens/${ARCD}`, { signal: AbortSignal.timeout(6_000) })
+  if (!r.ok) return null
+  const j = await r.json() as { stats?: { priceUsd: number | null; marketCapUsd: number | null; liquidityUsd: number | null; vol24: number; chg: { h24: number | null } } | null }
+  const s = j.stats
+  return s?.priceUsd ? { priceUsd: s.priceUsd, fdvUsd: s.marketCapUsd ?? s.priceUsd * 1e9, liquidityUsd: s.liquidityUsd ?? 0, volume24h: s.vol24, change24h: s.chg.h24 ?? 0, image: null } : null
+}
 
 export default function Landing() {
   const lang = useLang()
   const [d, setD] = useState<ArcdStats | null>(null)
+  const [fallback, setFallback] = useState<Market | null>(null)
   const [scan, setScan] = useState<ScanNumbers | null>(null)
   const [menu, setMenu] = useState(false)
   const navRef = useRef<HTMLElement>(null)
 
-  // The links fold into the ☰ menu wherever they don't fit on one line: on
-  // phones (landing.css), and on mid-width screens in languages with long
-  // labels (.ld-nav-fold). Measured unfolded, before paint.
+  // The links fold into the ☰ menu wherever they don't fit on one line.
   useLayoutEffect(() => {
     const nav = navRef.current
     if (!nav) return
@@ -62,13 +70,15 @@ export default function Landing() {
   }, [lang])
 
   useEffect(() => {
-    const load = () => void loadArcd(true).then(setD).catch(() => {})
+    const load = () => void loadArcd(true).then(x => {
+      setD(x)
+      if (!x.market) void engineMarket().then(setFallback).catch(() => {})
+    }).catch(() => void engineMarket().then(setFallback).catch(() => {}))
     load()
     const id = setInterval(() => { if (!document.hidden) load() }, 60_000)
     return () => clearInterval(id)
   }, [])
 
-  // Autotrade's scanner, live: how many coins it's checking right now.
   useEffect(() => {
     if (!ENGINE) return
     const load = () => void fetch(`${ENGINE}/v1/bot/scan?limit=1`, { signal: AbortSignal.timeout(6_000) })
@@ -78,58 +88,39 @@ export default function Landing() {
     return () => clearInterval(id)
   }, [])
 
-  const m = d?.market
-  const burnedPct = d?.burnedPct ?? 0
-  const stats: [string, string][] = [
-    [t('$ARCD burned'), d ? compact(d.burned) + ' ARCD' : '…'],
-    [t('Of supply burned'), d ? (burnedPct < 0.01 ? '0%' : burnedPct.toFixed(2) + '%') : '…'],
-    ...(d?.fees
-      ? [[t('Platform fees generated'), '$' + compact(d.fees.feesUsdc)], [t('Traders on ARCDEX'), compact(d.fees.traders).replace(/\.00$/, '')]] as [string, string][]
-      : [[t('$ARCD liquidity'), m ? '$' + compact(m.liquidityUsd) : '…'], [t('$ARCD market cap'), m ? '$' + compact(m.fdvUsd) : '…']] as [string, string][]),
+  const m = d?.market ?? fallback
+  const up = (m?.change24h ?? 0) >= 0
+  const metrics: [string, string][] = [
+    [t('Coins scanned'), scan ? scan.watching.toLocaleString() : '…'],
+    [t('Signals in 24h'), scan ? scan.signals24h.toLocaleString() : '…'],
+    [t('$ARCD market cap'), m ? '$' + compact(m.fdvUsd) : '…'],
+    [t('$ARCD burned'), d?.burned != null ? compact(d.burned) : '…'],
   ]
 
-  const FEATURES: [string, string, string][] = [
-    ['🤖', t('Autotrade'), t('A signal engine scans every new coin on every Arc launchpad, rejects the unsafe ones and trades the rest for you. Start free with virtual USDC.')],
-    ['⚡', t('One-tap trading'), t('A trading wallet in your browser: buy and sell in one tap, no pop-ups. Protect it with a passkey.')],
-    ['👀', t("See who's buying"), t('Every trade on the chart is a trader’s avatar. Follow the best traders and get an alert the moment they move.')],
-    ['⚑', t('Clans, leaderboards & points'), t('Team up in clans, climb the leaderboard and earn ARCDEX Points every season.')],
-    ['🛡', t('Safety checks on every coin'), t('Dev sells, top-holder share, creator taxes and honeypot flags — before you trade.')],
-    ['💳', t('Deposit your way'), t('Send USDC on Arc, bridge it from Ethereum or Base with Circle CCTP, or pay with a card, Apple Pay or Google Pay.')],
-    ['🚀', t('Launch a coin'), t('Launch on a fair bonding curve and earn 60% of your creator tax in USDC on every trade.')],
-    ['🤝', t('Invite & earn'), t('Earn 15% of the trading fees of everyone you invite — paid on-chain, on every trade, forever.')],
-    ['🌍', t('Your language'), 'English · Français · Español · Português · Kiswahili · Deutsch · 中文'],
+  const STEPS: [string, string, string][] = [
+    ['1', t('Create'), t('Name your bot and pick its strategies.')],
+    ['2', t('Trade'), t('It scans every new coin, skips the unsafe ones and sizes each trade.')],
+    ['3', t('Learn'), t('It reads its losing trades and adjusts itself.')],
   ]
 
-  const FLOW: [string, string, string][] = [
-    ['1', t('You trade'), t('Every swap, launchpad trade and bridge on ARCDEX pays a small fee in USDC.')],
-    ['2', t('Fees reach one public wallet'), t('All platform fees land in the ARCDEX fee wallet — anyone can watch it on-chain.')],
-    ['3', t('Buyback'), t('The fee wallet uses that USDC to buy $ARCD on the open market, from the ARCD/USDC pool.')],
-    ['4', t('Burn'), t('The $ARCD bought back is sent to the burn address. Nobody can ever move it again — the supply only goes down.')],
+  const PLATFORM: [string, string, string][] = [
+    ['📈', t('Terminal'), t('Every coin on Arc, live.')],
+    ['⚡', t('One-tap trading'), t('Buy and sell with no pop-ups.')],
+    ['🛡', t('Safety checks'), t('Honeypots and rugs flagged first.')],
+    ['🚀', t('Launchpad'), t('Launch a coin on a fair curve.')],
+    ['🌉', t('Bridge'), t('USDC from Ethereum and Base.')],
+    ['👥', t('Social'), t('Follow traders, join clans.')],
   ]
-
-  const FEES: [string, string, string][] = [
-    [t('Swaps on ARCDEX'), t('2% of each trade, in USDC'), t('85% — the other 15% rewards the trader’s referrer')],
-    [t('Launchpad trades'), t('1% platform fee + the coin’s creator tax (0–3%)'), t('The 1% plus 40% of the creator tax — 60% goes to the coin’s creator')],
-    [t('Bridge (Circle CCTP)'), t('0.5% of the transfer (min $0.05, max $50)'), t('90% — Circle keeps 10%')],
-  ]
-
-  const AUTO_TAGS: [string, string][] = [['🛡', t('Rug guard')], ['🧠', t('Learns from every loss')], ['⚖', t('Auto trade size')], ['🌙', t('Trades 24/7')]]
 
   const FAQ: [string, string][] = [
-    [t('What is Autotrade?'), t('Autotrade is ARCDEX’s signal engine. It scans every new coin on Arc, rejects the unsafe ones with the reason shown, and trades the rest with the strategies you pick. You start with virtual USDC (paper trading), so you can see how it does before risking anything. Results are measured, never promised: most new coins go to zero.')],
-    [t('What is ARCDEX?'), t('ARCDEX is the social trading app for Arc: a terminal for every new coin, one-tap trading, live trader activity, clans, leaderboards and a launchpad. Everything settles on-chain in USDC, and you always keep your own keys.')],
-    [t('What is $ARCD?'), t('$ARCD is the one official ARCDEX coin, launched on Argus on Arc mainnet. Its supply is fixed at 1,000,000,000 — the contract has no mint function — and ARCDEX’s fees are used to buy it back and burn it.')],
-    [t('Which fees buy back and burn $ARCD?'), t('All of ARCDEX’s own fee revenue: its share of swap fees, launchpad fees and bridge fees. Referral rewards and creators’ shares are paid to them first; everything the platform keeps goes to buyback and burn.')],
-    [t('How often do buybacks and burns happen?'), t('As fees build up in the fee wallet, they are used to buy back $ARCD, which is then burned. Every burn is a public transaction — you can see them on this page and on the Arc explorer.')],
-    [t('Is $ARCD an investment?'), t('No. $ARCD is a community coin with no promise of profit. Burning reduces the supply but does not guarantee any price. Crypto is risky — only use money you can afford to lose.')],
-    [t('Do I need $ARCD to use ARCDEX?'), t('No. You trade with USDC, and gas on Arc is paid in USDC too. Holding $ARCD is optional.')],
-    [t('How do I get started?'), t('Open the app, connect a wallet or create a one-tap trading wallet, deposit USDC and start trading. It takes about a minute.')],
+    [t('What is Autotrade?'), t('Your own trading bot on ARCDEX. It scans every new coin on Arc, skips the unsafe ones and trades the rest with the strategies you pick, around the clock.')],
+    [t('How does a bot improve itself?'), t('After trades close, it reads its losing ones and adjusts its take-profit and entry filters. Every change is logged with its reason, and a change that makes it win less is rolled back.')],
+    [t('Is my money at risk?'), t('Every bot starts on paper with virtual USDC. It can go live once its record earns it. Live trading uses real money and can lose it. Nothing here is financial advice.')],
+    [t('What are the $ARCD tiers?'), t('Holding $ARCD will unlock more of Autotrade: live trading, more bots and a lower profit fee. The tiers are announced; holdings are checked once accounts can link a wallet.')],
+    [t('What is $ARCD?'), t('The official ARCDEX coin: a fixed supply of 1,000,000,000 with no mint function. Platform fees buy it back and burn it.')],
   ]
 
-  const up = (m?.change24h ?? 0) >= 0
-  const startDate = new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : lang, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
-    .format(new Date(`${ROADMAP_START}T00:00:00Z`))
-  const xShare = `https://x.com/intent/post?text=${encodeURIComponent(t('The ARCDEX whitepaper and roadmap: a new phase every week on Arc.'))}&url=${encodeURIComponent('https://arcdex.online/whitepaper')}`
+  const phaseNow = PHASES.find(p => phaseStatus(p.n) === 'now') ?? PHASES.find(p => phaseStatus(p.n) === 'next') ?? PHASES[PHASES.length - 1]
 
   return (
     <div className="ld" lang={lang}>
@@ -137,16 +128,13 @@ export default function Landing() {
 
       {/* ── nav ─────────────────────────────────────────── */}
       <header className="ld-nav" ref={navRef}>
-        <a href="/" className="ld-brand"><img src="/arcdex-logo.svg" alt="" width={30} height={30} />ARCDEX</a>
+        <a href="/" className="ld-brand"><img src="/arcdex-logo.svg" alt="" width={26} height={26} />ARCDEX</a>
         <nav className={`ld-links${menu ? ' open' : ''}`} onClick={() => setMenu(false)}>
-          <a href="#autotrade">{t('Autotrade')}</a>
-          <a href="#features">{t('Features')}</a>
+          <a href="#how">{t('How it works')}</a>
+          <a href="#tiers">{t('Tiers')}</a>
           <a href="#arcd">$ARCD</a>
-          <a href="#burn">{t('Buyback & burn')}</a>
-          <a href="#roadmap">{t('Roadmap')}</a>
+          <a href="/bots">{t('Bots')}</a>
           <a href="/whitepaper">{t('Whitepaper')}</a>
-          <a href="#faq">{t('FAQ')}</a>
-          {/* phones: the language picker lives in this menu */}
           <div className="ld-menu-lang" onClick={e => e.stopPropagation()}>
             <select className="ld-lang" value={lang} onChange={e => void setLang(e.target.value as Lang)} aria-label={t('Language')}>
               {LANGS.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
@@ -162,214 +150,115 @@ export default function Landing() {
         </div>
       </header>
 
-      {/* ── hero ────────────────────────────────────────── */}
+      {/* ── hero: the slogan and the bots, live ─────────── */}
       <section className="ld-hero">
         <div className="ld-hero-text">
           <span className="ld-pill"><span className="ld-dot" />{t('Live on Arc mainnet')}</span>
-          <h1>{t('The social trading app for Arc.')}</h1>
-          <p className="ld-lead">{t('Trade every new coin on Arc in one tap, see who’s buying in real time and follow the best traders. Every fee the platform earns buys back and burns $ARCD.')}</p>
+          <h1>{t('Self-improving trading bots for Arc.')}</h1>
+          <p className="ld-lead">{t('Name a bot, pick a strategy, press Start. It trades new coins around the clock and learns from every trade.')}</p>
           <div className="ld-cta">
-            <a className="ld-btn ld-btn-primary" href="/app">{t('Launch app')} →</a>
-            <a className="ld-btn ld-btn-ghost" href="/autotrade">⚡ {t('Try Autotrade')}</a>
-            <a className="ld-btn ld-btn-ghost" href={ARCD_APP_PATH}>🔥 {t('Buy $ARCD')}</a>
+            <a className="ld-btn ld-btn-primary" href="/autotrade">{t('Create your bot')} →</a>
+            <a className="ld-btn ld-btn-ghost" href="/app">{t('Launch app')}</a>
           </div>
-          <div className="ld-trust">{t('USDC-native · gas paid in USDC · self-custody')}</div>
+          <div className="ld-trust">{t('Paper first')} · {t('Rug guard')} · {t('Auto trade size')} · {t('Shareable P&L')}</div>
         </div>
-
-        <div className="ld-card ld-coin">
-          <div className="ld-coin-head">
-            <img src={m?.image || '/arcdex-logo.svg'} alt="" width={48} height={48} />
-            <div>
-              <div className="ld-coin-name">$ARCD <span className="ld-tag">{t('Official coin')}</span></div>
-              <div className="ld-muted">ARCDEX · Arc mainnet</div>
-            </div>
-          </div>
-          <div className="ld-coin-price">
-            <span>{price(m?.priceUsd)}</span>
-            {m && <span className={up ? 'ld-up' : 'ld-down'}>{up ? '▲' : '▼'} {Math.abs(m.change24h).toFixed(2)}%</span>}
-          </div>
-          <div className="ld-coin-grid">
-            <div><span>{t('Market cap')}</span><b>{m ? '$' + compact(m.fdvUsd) : '…'}</b></div>
-            <div><span>{t('Liquidity')}</span><b>{m ? '$' + compact(m.liquidityUsd) : '…'}</b></div>
-            <div><span>{t('Burned')}</span><b className="ld-fire">{d ? compact(d.burned) : '…'}</b></div>
-            <div><span>{t('Supply')}</span><b>1B</b></div>
-          </div>
-          <div className="ld-ca">
-            <span className="ld-muted">CA</span>
-            <code title={ARCD}>{short(ARCD)}</code>
-            <Copy text={ARCD} />
-          </div>
-          <a className="ld-btn ld-btn-primary ld-btn-block" href={ARCD_APP_PATH}>{t('Buy $ARCD on ARCDEX')}</a>
-        </div>
+        <LiveBots engine={ENGINE} rows={5} />
       </section>
 
-      {/* ── live stats ──────────────────────────────────── */}
-      <section className="ld-stats">
-        {stats.map(([k, v]) => <div key={k}><b>{v}</b><span>{k}</span></div>)}
+      <section className="ld-metrics">
+        {metrics.map(([k, v]) => <div key={k}><b>{v}</b><span>{k}</span></div>)}
       </section>
 
-      {/* ── Autotrade: the bots, live ────────────────────── */}
-      <section className="ld-section" id="autotrade">
-        <span className="ld-pill ld-pill-auto">⚡ Autotrade</span>
-        <h2>{t('Bots that trade Arc for you')}</h2>
-        <p className="ld-sub">{t('Name it. Press Start. It learns from every loss.')}</p>
-        <div className="ld-auto-tags">{AUTO_TAGS.map(([i, l]) => <span key={l}>{i} {l}</span>)}</div>
-        <LiveBots engine={ENGINE} />
-        {scan && (
-          <div className="ld-auto-live">
-            <span className="ld-dot" />
-            <span><b>{scan.watching.toLocaleString()}</b> {t('coins scanned')}</span>
-            <span><b>{scan.signals24h.toLocaleString()}</b> {t('signals in 24h')}</span>
-            <span><b>{scan.rejected24h.toLocaleString()}</b> {t('rejected in 24h')}</span>
-          </div>
-        )}
-        <div className="ld-cta ld-center">
-          <a className="ld-btn ld-btn-primary" href="/autotrade">⚡ {t('Create your bot')} →</a>
-          <a className="ld-btn ld-btn-ghost" href="/bots">{t('All bots')}</a>
-        </div>
-        <p className="ld-auto-note">{t('Paper bots trade virtual USDC. Real numbers, live: not promises.')}</p>
-      </section>
-
-      {/* ── features ────────────────────────────────────── */}
-      <section className="ld-section" id="features">
-        <h2>{t('Everything you need to trade Arc')}</h2>
-        <p className="ld-sub">{t('Built for the coins launching on Arc every day — fast, social and safe.')}</p>
-        <div className="ld-features">
-          {FEATURES.map(([icon, title, body]) => (
-            <div key={title} className="ld-card ld-feature"><div className="ld-icon">{icon}</div><h3>{title}</h3><p>{body}</p></div>
+      {/* ── how it works ────────────────────────────────── */}
+      <section className="ld-section" id="how">
+        <h2>{t('How it works')}</h2>
+        <div className="ld-steps">
+          {STEPS.map(([n, title, body]) => (
+            <div key={n} className="ld-card ld-step"><span className="ld-step-n">{n}</span><h3>{title}</h3><p>{body}</p></div>
           ))}
         </div>
+      </section>
+
+      {/* ── access tiers ────────────────────────────────── */}
+      <section className="ld-section" id="tiers">
+        <h2>{t('Autotrade access with $ARCD')}</h2>
+        <p className="ld-sub">{t('Hold more $ARCD, unlock more of Autotrade.')}</p>
+        <div className="ld-tiers">
+          {ARCD_TIERS.map(tier => (
+            <div key={tier.id} className={`ld-card ld-tier${tier.id === 't3' ? ' top' : ''}`}>
+              <span className="ld-tier-name">{t(tier.name)}</span>
+              <b className="ld-tier-min">{tier.minArcd ? `${arcdAmount(tier.minArcd)} $ARCD` : t('No $ARCD needed')}</b>
+              <span className="ld-tier-usd">{tier.minArcd && m ? t('≈ ${v} today', { v: compact(tier.minArcd * m.priceUsd) }) : ' '}</span>
+              <ul>{tier.perks.map(x => <li key={x}>{t(x)}</li>)}</ul>
+            </div>
+          ))}
+        </div>
+        {!TIERS_ENFORCED && <p className="ld-note">{t('Announced: nothing is locked yet. Holdings will be checked once accounts can link a wallet.')}</p>}
+        <div className="ld-cta ld-center"><a className="ld-btn ld-btn-ghost" href={ARCD_APP_PATH}>{t('Buy $ARCD')}</a></div>
       </section>
 
       {/* ── $ARCD ───────────────────────────────────────── */}
       <section className="ld-section" id="arcd">
         <div className="ld-split">
-          <div>
-            <span className="ld-pill ld-pill-fire">🔥 $ARCD</span>
-            <h2>{t('$ARCD — the official ARCDEX coin')}</h2>
-            <p className="ld-sub ld-left">{t('$ARCD is the one official coin of ARCDEX. Its supply is fixed at 1,000,000,000 and can only go down: the contract has no mint function, and every fee the platform earns is used to buy $ARCD back and burn it.')}</p>
-            <div className="ld-card ld-ca-big">
-              <span className="ld-muted">{t('Contract address (Arc mainnet)')}</span>
-              <code>{ARCD}</code>
-              <Copy text={ARCD} label={t('Copy address')} />
-            </div>
-            <div className="ld-warn">⚠ {t('Only this contract is the official $ARCD. Anyone can launch a copycat with the same name — always check the address.')}</div>
-            <div className="ld-cta">
-              <a className="ld-btn ld-btn-primary" href={ARCD_APP_PATH}>{t('Buy $ARCD')}</a>
-              <a className="ld-btn ld-btn-ghost" href={ARCD_APP_PATH}>{t('View chart')}</a>
-              <a className="ld-btn ld-btn-ghost" href={`${ARC_EXPLORER}/token/${ARCD}`} target="_blank" rel="noopener noreferrer">{t('Arc explorer')} ↗</a>
-              <a className="ld-btn ld-btn-ghost" href={`https://www.geckoterminal.com/arc/pools/${ARCD_POOL}`} target="_blank" rel="noopener noreferrer">GeckoTerminal ↗</a>
+          <div className="ld-left">
+            <h2>$ARCD</h2>
+            <p className="ld-sub ld-left">{t('The official ARCDEX coin. A fixed supply of 1B with no mint function. Platform fees buy it back and burn it.')}</p>
+            <div className="ld-links-row">
+              <a href="/burn">{t('Burn dashboard')} →</a>
+              <a href={`${ARC_EXPLORER}/token/${ARCD}`} target="_blank" rel="noopener noreferrer">{t('Explorer')} ↗</a>
+              <a href={`https://www.geckoterminal.com/arc/pools/${ARCD_POOL}`} target="_blank" rel="noopener noreferrer">GeckoTerminal ↗</a>
             </div>
           </div>
-          <div className="ld-card ld-facts">
-            {([
-              [t('Name'), 'ARCDEX'], [t('Symbol'), 'ARCD'], [t('Network'), 'Arc mainnet'],
-              [t('Total supply'), ARCD_SUPPLY.toLocaleString('en-US')], [t('Mint function'), t('None — supply can never increase')],
-              [t('Launched on'), 'Argus (Portal 8)'], [t('Pool'), 'ARCD / USDC · Uniswap v4'],
-              [t('Burn address'), short(BURN_ADDRESS)],
-            ] as [string, string][]).map(([k, v]) => <div key={k} className="ld-fact"><span>{k}</span><b>{v}</b></div>)}
+          <div className="ld-card ld-coin">
+            <div className="ld-coin-head">
+              <img src={m?.image || '/arcdex-logo.svg'} alt="" width={40} height={40} />
+              <div>
+                <div className="ld-coin-name">$ARCD</div>
+                <div className="ld-muted">ARCDEX · Arc</div>
+              </div>
+              <div className="ld-coin-price">
+                <span>{price(m?.priceUsd)}</span>
+                {m ? <span className={up ? 'ld-up' : 'ld-down'}>{up ? '▲' : '▼'} {Math.abs(m.change24h).toFixed(2)}%</span> : <span className="ld-muted">…</span>}
+              </div>
+            </div>
+            <div className="ld-coin-grid">
+              <div><span>{t('Market cap')}</span><b>{m ? '$' + compact(m.fdvUsd) : '…'}</b></div>
+              <div><span>{t('24h change')}</span><b className={m ? (up ? 'ld-up' : 'ld-down') : ''}>{m ? `${up ? '+' : '−'}${Math.abs(m.change24h).toFixed(2)}%` : '…'}</b></div>
+              <div><span>{t('Liquidity')}</span><b>{m ? '$' + compact(m.liquidityUsd) : '…'}</b></div>
+              <div><span>{t('Burned')}</span><b className="ld-fire">{d?.burned != null ? compact(d.burned) : '…'}</b></div>
+            </div>
+            <div className="ld-ca">
+              <span className="ld-muted">CA</span>
+              <code title={ARCD}>{short(ARCD)}</code>
+              <Copy text={ARCD} />
+            </div>
+            <a className="ld-btn ld-btn-primary ld-btn-block" href={ARCD_APP_PATH}>{t('Buy $ARCD')}</a>
           </div>
         </div>
       </section>
 
-      {/* ── buyback & burn ──────────────────────────────── */}
-      <section className="ld-section" id="burn">
-        <span className="ld-pill ld-pill-fire">🔥 {t('Buyback & burn')}</span>
-        <h2>{t('Every fee buys back and burns $ARCD')}</h2>
-        <p className="ld-sub">{t('ARCDEX earns money only from fees — and doesn’t keep them. 100% of the platform’s fee revenue goes back into $ARCD: bought on the open market and sent to the burn address, where no one can ever move it again.')}</p>
-
-        <div className="ld-flow">
-          {FLOW.map(([n, title, body]) => (
-            <div key={n} className="ld-card ld-step"><div className="ld-step-n">{n}</div><h3>{title}</h3><p>{body}</p></div>
+      {/* ── the rest of the app ─────────────────────────── */}
+      <section className="ld-section" id="platform">
+        <h2>{t('A full trading app for Arc')}</h2>
+        <div className="ld-platform">
+          {PLATFORM.map(([icon, title, body]) => (
+            <div key={title} className="ld-card ld-tile"><span className="ld-icon">{icon}</span><div><h3>{title}</h3><p>{body}</p></div></div>
           ))}
         </div>
-
-        <div className="ld-card ld-table-card">
-          <h3>{t('Where the fees come from')}</h3>
-          <div className="ld-table">
-            <div className="ld-tr ld-th"><span>{t('Source')}</span><span>{t('Fee')}</span><span>{t('Goes to buyback & burn')}</span></div>
-            {FEES.map(([a, b, c]) => <div key={a} className="ld-tr"><span>{a}</span><span>{b}</span><span className="ld-fire">{c}</span></div>)}
-          </div>
-        </div>
-
-        <div className="ld-tracker">
-          <div className="ld-card ld-track-main">
-            <span className="ld-muted">{t('Burned so far')}</span>
-            <div className="ld-big ld-fire">{d ? compact(d.burned) : '…'} <small>ARCD</small></div>
-            <div className="ld-bar"><div style={{ width: `${(d?.burned ?? 0) >= 1 ? Math.min(100, Math.max(burnedPct, 0.5)) : 0}%` }} /></div>
-            <span className="ld-muted">{d ? t('{pct}% of the 1,000,000,000 supply', { pct: burnedPct < 0.01 ? '0' : burnedPct.toFixed(2) }) : '…'}</span>
-            <div className="ld-track-grid">
-              <div><span>{t('USDC in the fee wallet')}</span><b>{d?.feeWallet.usdc != null ? '$' + compact(d.feeWallet.usdc) : '…'}</b></div>
-              <div><span>{t('$ARCD in the fee wallet')}</span><b>{d?.feeWallet.arcd != null ? compact(d.feeWallet.arcd) : '…'}</b></div>
-              {d?.fees && <div><span>{t('Swap fees generated')}</span><b>${compact(d.fees.feesUsdc)}</b></div>}
-              {d?.fees && <div><span>{t('Fees in the last 24h')}</span><b>${compact(d.fees.fees24h)}</b></div>}
-            </div>
-          </div>
-          <div className="ld-card ld-track-list">
-            <h3>{t('Recent burns')}</h3>
-            {!d ? <div className="ld-muted">{t('Loading…')}</div> : d.burns.length === 0 ? (
-              <div className="ld-muted">{t('No burns in the last 48 hours. Burns appear here the moment they land on-chain.')}</div>
-            ) : d.burns.slice(0, 8).map(b => (
-              <a key={b.tx + b.block} className="ld-burn" href={`${ARC_EXPLORER}/tx/${b.tx}`} target="_blank" rel="noopener noreferrer">
-                <span>🔥 <b>{compact(b.amount)} ARCD</b></span><span className="ld-muted">{b.time ? ago(b.time) : '#' + b.block} ↗</span>
-              </a>
-            ))}
-            <a className="ld-link" href="/burn">{t('Open the burn dashboard')} →</a>
-          </div>
-        </div>
-
-        <div className="ld-verify">
-          <b>{t('Don’t trust — verify.')}</b> {t('Every buyback and burn is a public transaction from the fee wallet to the burn address.')}{' '}
-          <a href={`${ARC_EXPLORER}/address/${FEE_WALLET}`} target="_blank" rel="noopener noreferrer">{t('Fee wallet')} {short(FEE_WALLET)} ↗</a>{' · '}
-          <a href={`${ARC_EXPLORER}/address/${BURN_ADDRESS}`} target="_blank" rel="noopener noreferrer">{t('Burn address')} {short(BURN_ADDRESS)} ↗</a>
-        </div>
       </section>
 
-      {/* ── roadmap ─────────────────────────────────────── */}
+      {/* ── roadmap, in one line ────────────────────────── */}
       <section className="ld-section" id="roadmap">
-        <span className="ld-pill">🗺 {t('Roadmap')}</span>
-        <h2>{t('A new phase every week')}</h2>
-        <p className="ld-sub">{t('Seven phases, each shipped in 5–7 days, starting {date}.', { date: startDate })}</p>
-        <div className="ld-roadmap">
-          <div className="ld-card ld-phase ld-phase-live">
-            <div className="ld-phase-head"><span className="ld-phase-n">0</span><span className="ld-phase-chip live">{t('Live now')}</span></div>
-            <h3>{t('Live on arcdex.online')}</h3>
-            <ul>{LIVE_NOW.map(x => <li key={x}>{t(x)}</li>)}</ul>
+        <div className="ld-card ld-road">
+          <span className="ld-muted">{t('Roadmap')}</span>
+          <div className="ld-road-steps">
+            {PHASES.map(p => {
+              const st = phaseStatus(p.n)
+              return <span key={p.n} className={`ld-road-step ${st}`} title={t(p.title)}>{st === 'done' ? '✓' : p.n}</span>
+            })}
           </div>
-          {PHASES.map(p => {
-            const st = phaseStatus(p.n)
-            return (
-              <div key={p.n} className={`ld-card ld-phase ld-phase-${st}`}>
-                <div className="ld-phase-head">
-                  <span className="ld-phase-n">{p.n}</span>
-                  <span className={`ld-phase-chip ${st}`}>{st === 'done' ? t('Done ✓') : st === 'now' ? t('In progress') : t('Planned')}</span>
-                </div>
-                <h3>{t(p.title)}</h3>
-                <div className="ld-phase-when">{phaseRange(p.n, lang)} · {t('5–7 days')}</div>
-                <ul>{p.items.map(i => <li key={i.text}>{t(i.text)}{i.dep && <sup title={t('Built in the phase; goes live once a partner, an audit or a regulator allows it.')}>{'\u00a0†'}</sup>}</li>)}</ul>
-              </div>
-            )
-          })}
-        </div>
-        <p className="ld-note">† {t('Built in the phase; goes live once a partner, an audit or a regulator allows it.')}</p>
-      </section>
-
-      {/* ── whitepaper ──────────────────────────────────── */}
-      <section className="ld-section" id="whitepaper">
-        <div className="ld-card ld-paper">
-          <div className="ld-paper-text">
-            <span className="ld-pill">📄 {t('Whitepaper')}</span>
-            <h2>{t('Read the ARCDEX whitepaper')}</h2>
-            <p className="ld-sub ld-left">{t('Why Arc’s meme market needs one fast, safe and social place to trade, what traders want, how $ARCD buyback and burn works, and the plan week by week.')}</p>
-            <div className="ld-cta">
-              <a className="ld-btn ld-btn-primary" href="/whitepaper">{t('Read the whitepaper')} →</a>
-              <a className="ld-btn ld-btn-ghost" href="/arcdex-whitepaper.pdf" download>⬇ {t('Download PDF')}</a>
-              <a className="ld-btn ld-btn-ghost" href={xShare} target="_blank" rel="noopener noreferrer">𝕏 {t('Share on X')}</a>
-            </div>
-          </div>
-          <a className="ld-paper-cover" href="/whitepaper" aria-label={t('Read the whitepaper')}>
-            <img src="/arcdex-whitepaper-x.png" alt="" width={1600} height={900} loading="lazy" />
-          </a>
+          <span className="ld-road-now">{t('Now')}: <b>{t(phaseNow.title)}</b></span>
+          <a className="ld-link" href="/whitepaper">{t('Whitepaper')} →</a>
         </div>
       </section>
 
@@ -381,30 +270,28 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── final CTA ───────────────────────────────────── */}
       <section className="ld-final ld-card">
-        <h2>{t('Ready to trade Arc?')}</h2>
-        <p>{t('Open ARCDEX, deposit USDC and make your first trade in about a minute.')}</p>
+        <h2>{t('Start your bot today.')}</h2>
+        <p>{t('Free on paper. No wallet needed to try.')}</p>
         <div className="ld-cta ld-center">
-          <a className="ld-btn ld-btn-primary" href="/app">{t('Launch app')} →</a>
-          <a className="ld-btn ld-btn-ghost" href={ARCD_APP_PATH}>🔥 {t('Buy $ARCD')}</a>
+          <a className="ld-btn ld-btn-primary" href="/autotrade">{t('Create your bot')} →</a>
+          <a className="ld-btn ld-btn-ghost" href="/bots">{t('See all bots')}</a>
         </div>
       </section>
 
       <footer className="ld-footer">
         <div className="ld-foot-top">
-          <a href="/" className="ld-brand"><img src="/arcdex-logo.svg" alt="" width={24} height={24} />ARCDEX</a>
+          <a href="/" className="ld-brand"><img src="/arcdex-logo.svg" alt="" width={22} height={22} />ARCDEX</a>
           <nav>
             <a href="/app">{t('App')}</a>
-            <a href="/leaderboard">{t('Leaderboard')}</a>
-            <a href="/rewards">{t('Rewards')}</a>
+            <a href="/autotrade">{t('Autotrade')}</a>
+            <a href="/bots">{t('Bots')}</a>
             <a href="/launchpad">{t('Launchpad')}</a>
             <a href="/burn">{t('Burn dashboard')}</a>
             <a href="/whitepaper">{t('Whitepaper')}</a>
-            <a href="/arcdex-whitepaper.pdf" download>{t('Whitepaper (PDF)')}</a>
           </nav>
         </div>
-        <p className="ld-disclaimer">{t('ARCDEX is non-custodial software on Arc: you control your wallet and your funds. Nothing on this site is financial advice. Crypto prices are volatile and you can lose money. $ARCD has no promise of value or profit.')}</p>
+        <p className="ld-disclaimer">{t('Paper bots trade virtual USDC; live bots trade real USDC and can lose it. Results shown are real, not promises. Nothing here is financial advice. $ARCD has no promise of value.')}</p>
         <p className="ld-muted">© 2026 ARCDEX</p>
       </footer>
     </div>
