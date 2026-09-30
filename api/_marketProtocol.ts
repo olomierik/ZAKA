@@ -489,12 +489,23 @@ export interface MarketBotDetail extends MarketBot {
   live: { pnlUsd: number; closed: number; winRate: number | null } | null
 }
 
+/** What became of the last 24 hours' signals: how many were traded, and why the rest weren't. */
+export interface SignalOutcomes {
+  signals: number
+  /** Signals traded (bots: by at least one bot; live bots count when the order went to their wallet). */
+  traded: number
+  /** Why not, counted once per signal (and, for visitors' bots, once per bot), most common first. */
+  reasons: { key: string; label: string; count: number }[]
+}
+
 /** Why coins are passed over right now (GET /v1/bot/rejections). */
 export interface RejectionStats {
   /** Coins watched in the last 48h that aren't signals, by their main reason. */
   top: { key: string; label: string; coins: number }[]
   watching: number
   at: number
+  /** Signals that weren't traded, and why: the engine's own book, and visitors' bots (engines from before 2026-09-30 don't say). */
+  signals?: { owner: SignalOutcomes | null; bots: SignalOutcomes | null }
 }
 
 /** What a visitor can do with their bot (POST /v1/paper/account). The amount per trade isn't one: each trade is sized for its profit target. */

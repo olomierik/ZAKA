@@ -30,9 +30,13 @@ export interface StrategyParams {
   exitOnCreatorSell?: boolean
 }
 
+// Every strategy has a longest hold (2026-09-30). Snipes and second legs had
+// none: one up 10–99% whose coin then stopped trading never hit a stop, a
+// take-profit or a time stop, stayed open for good, and five of them filled
+// every slot, so the bot stopped taking signals ("5 positions open").
 export const STRATEGIES: Record<Strategy, StrategyParams> = {
-  snipe: { sizeUsd: 25, stopLoss: 0.65, tp1Multiple: 2, tp1SellPct: 0.5, trailFromPeak: 0.35, timeStopMin: 45, timeStopMinGain: 1.1 },
-  'second-leg': { sizeUsd: 25, stopLoss: 0.8, tp1Multiple: 1.8, tp1SellPct: 0.5, trailFromPeak: 0.25, timeStopMin: 360, timeStopMinGain: 1.1 },
+  snipe: { sizeUsd: 25, stopLoss: 0.65, tp1Multiple: 2, tp1SellPct: 0.5, trailFromPeak: 0.35, timeStopMin: 45, timeStopMinGain: 1.1, maxHoldMin: 180 },
+  'second-leg': { sizeUsd: 25, stopLoss: 0.8, tp1Multiple: 1.8, tp1SellPct: 0.5, trailFromPeak: 0.25, timeStopMin: 360, timeStopMinGain: 1.1, maxHoldMin: 720 },
   // Fast scalp (owner's request, 2026-09-30: "fast scalp for 1 to 2 dollar
   // profits"): a snipe on a coin that passed every hard check but not a risk
   // check (the creator's stake, serial launches, a copycat ticker), or a
@@ -222,15 +226,16 @@ export function stats(positions: Position[]): Stats {
 }
 
 /** Whether a new position is allowed now (pure; pass the positions of one mode). */
-export function canOpen(positions: Position[], token: string, now: number, risk: RiskRules = RISK, strategy?: Strategy): { ok: boolean; why: string } {
+/** Whether a new position may open; `key` names the rule that stopped it (counted in GET /v1/bot/rejections). */
+export function canOpen(positions: Position[], token: string, now: number, risk: RiskRules = RISK, strategy?: Strategy): { ok: boolean; why: string; key?: 'max-open' | 'cooldown' | 'daily-loss' } {
   const open = positions.filter(p => p.status === 'open')
-  if (open.length >= risk.maxOpen) return { ok: false, why: `${open.length} positions open (max ${risk.maxOpen})` }
+  if (open.length >= risk.maxOpen) return { ok: false, why: `${open.length} positions open (max ${risk.maxOpen})`, key: 'max-open' }
   const scalps = open.filter(p => p.strategy === 'scalp').length
-  if (strategy === 'scalp' && scalps >= risk.maxOpenScalp) return { ok: false, why: `${scalps} scalps open (max ${risk.maxOpenScalp})` }
+  if (strategy === 'scalp' && scalps >= risk.maxOpenScalp) return { ok: false, why: `${scalps} scalps open (max ${risk.maxOpenScalp})`, key: 'max-open' }
   const cooldown = (strategy === 'scalp' ? risk.cooldownMinScalp ?? risk.cooldownMin : risk.cooldownMin) * 60_000
-  if (positions.some(p => p.token === token && (p.status === 'open' || now - (p.closedAt ?? 0) < cooldown))) return { ok: false, why: 'traded this coin recently' }
+  if (positions.some(p => p.token === token && (p.status === 'open' || now - (p.closedAt ?? 0) < cooldown))) return { ok: false, why: 'traded this coin recently', key: 'cooldown' }
   const day = new Date(now).toISOString().slice(0, 10)
   const today = positions.filter(p => p.closedAt && new Date(p.closedAt).toISOString().slice(0, 10) === day).reduce((s, p) => s + (p.pnlUsd ?? 0), 0)
-  if (today <= -risk.dailyLossUsd) return { ok: false, why: `today's loss $${(-today).toFixed(2)} reached the $${risk.dailyLossUsd} limit` }
+  if (today <= -risk.dailyLossUsd) return { ok: false, why: `today's loss $${(-today).toFixed(2)} reached the $${risk.dailyLossUsd} limit`, key: 'daily-loss' }
   return { ok: true, why: '' }
 }

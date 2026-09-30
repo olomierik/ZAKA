@@ -40,8 +40,9 @@ import { canOpen, closeNow, costPerSide, onPrice, openPosition, RISK, stats, typ
 import { admits, defaultTuning, learn, relax, toParams, type Tuning } from './learner'
 import type { LiveTrader } from './liveTrader'
 import type { RugAlarm } from './rugGuard'
-import { SIZE_LIMITS, sizeForTarget, TARGETS } from './sizing'
+import { SIZE_LIMITS, sizeForTrade, TARGETS } from './sizing'
 import type { Signal } from './types'
+import { OutcomeTally } from './scanFeed'
 import { profitFee, readiness, USER_LIVE, type BotWallet, type UserLive } from './userLive'
 
 export interface PaperAccount {
@@ -164,6 +165,8 @@ export class PaperAccounts {
   /** token → accounts with a position open in it */
   private byToken = new Map<string, Set<string>>()
   private dirty = new Set<string>()
+  /** What became of each signal across every bot (GET /v1/bot/rejections). */
+  readonly outcomes = new OutcomeTally()
   /** Live positions already settled (fee, log, learning) after closing. */
   private settled = new Set<string>()
   private lastFeeTry = new Map<string, number>()
@@ -422,44 +425,57 @@ export class PaperAccounts {
 
   // ── signals and prices ───────────────────────────────────────────────
 
-  /** A signal: every running bot that follows its strategy buys (paper, or live from its wallet), if its filters, cash and risk rules allow. */
+  /**
+   * A signal: every running bot that follows its strategy buys (paper, or
+   * live from its wallet), if its filters, cash and risk rules allow. Every
+   * bot that doesn't says why, in its list of signals passed over, and the
+   * reasons are counted (GET /v1/bot/rejections): a bot that isn't started or
+   * doesn't follow the strategy used to pass over signals without a word.
+   */
   onSignal(sig: PaperSignal, now = Date.now(), ctx: LiveContext | null = null) {
     for (const a of this.accounts.values()) {
-      if (!a.running || !a.strategies.includes(sig.strategy)) continue
-      const skip = (why: string) => {
+      const skip = (key: string, why: string) => {
         a.skips = [{ at: now, kind: 'skip' as const, token: sig.token, symbol: sig.symbol, text: `${LABEL[sig.strategy]}: ${why}` }, ...a.skips].slice(0, PAPER_LIMITS.keepSkips)
+        this.outcomes.add(sig.id, key, now)
       }
-      if (a.pausedUntil && now < a.pausedUntil) { skip(`paused after ${PROTECT.pauseAfterLosses} losses in a row`); continue }
+      // A stopped bot that was never funded is someone's abandoned try: left out.
+      if (!a.running) { if (a.mode === 'live' || a.cash >= SIZE_LIMITS.minUsd) skip('not-running', 'not traded: the bot is stopped (press Start)'); continue }
+      if (!a.strategies.includes(sig.strategy)) { skip('strategy', `not traded: this bot follows ${a.strategies.map(x => LABEL[x]).join(', ')}`); continue }
+      if (a.pausedUntil && now < a.pausedUntil) { skip('paused', `paused after ${PROTECT.pauseAfterLosses} losses in a row`); continue }
       const t = a.tuning[sig.strategy]
       const filtered = admits(t, sig.features)
-      if (filtered) { a.filterSkips[sig.strategy] = (a.filterSkips[sig.strategy] ?? 0) + 1; skip(filtered); continue }
-      const sized = sizeForTarget({ targetUsd: t.targetUsd, takeProfit: t.takeProfit, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd })
-      if (!sized) { skip(`the pool is too thin to net $${t.targetUsd} at ${move(t.takeProfit)}`); continue }
+      if (filtered) { a.filterSkips[sig.strategy] = (a.filterSkips[sig.strategy] ?? 0) + 1; skip('filters', filtered); continue }
+      // Sized for its target; a thinner or costlier pool gets the size for $1 (the low end of the range) instead.
+      const sized = sizeForTrade({ strategy: sig.strategy, targetUsd: t.targetUsd, takeProfit: t.takeProfit, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd })
+      if (!sized) { skip('too-thin', `the pool is too thin (or the coin too costly to trade) to net even $${TARGETS[sig.strategy].range[0]} at ${move(t.takeProfit)}`); continue }
       const params = toParams(t, sized.sizeUsd)
       if (a.mode === 'live') {
         const trader = this.trader(a)
-        if (!trader || !ctx) { skip('live trading is unavailable right now'); continue }
-        if (sized.sizeUsd > USER_LIVE.maxTradeUsd) { skip(`needs ${money(sized.sizeUsd)}, over the $${USER_LIVE.maxTradeUsd} live cap`); continue }
+        if (!trader || !ctx) { skip('live-unavailable', 'live trading is unavailable right now'); continue }
+        if (sized.sizeUsd > USER_LIVE.maxTradeUsd) { skip('live-cap', `needs ${money(sized.sizeUsd)}, over the $${USER_LIVE.maxTradeUsd} live cap`); continue }
         a.lastBuyAt[sig.strategy] = now
         a.filterSkips[sig.strategy] = 0
-        void trader.open(ctx.signal, sig.strategy, ctx.pool, ctx.meta, { sizeUsd: sized.sizeUsd, idSuffix: a.id.slice(0, 12), extra: { exits: params, targetUsd: t.targetUsd, tuningVersion: t.version, features: sig.features } })
+        this.outcomes.add(sig.id, 'live-order', now)
+        void trader.open(ctx.signal, sig.strategy, ctx.pool, ctx.meta, { sizeUsd: sized.sizeUsd, idSuffix: a.id.slice(0, 12), extra: { exits: params, targetUsd: sized.targetUsd, tuningVersion: t.version, features: sig.features } })
           .catch(e => log.warn('user live: open failed', { bot: a.slug, error: errMsg(e) }))
         continue
       }
-      if (a.cash < sized.sizeUsd) { skip(`needs ${money(sized.sizeUsd)}, has ${money(a.cash)} in cash`); continue }
+      if (a.cash < sized.sizeUsd) { skip('cash', `needs ${money(sized.sizeUsd)}, has ${money(a.cash)} in cash`); continue }
       const allowed = canOpen(a.positions.filter(p => !isLive(p)), sig.token, now, riskFor(a), sig.strategy)
-      if (!allowed.ok) { skip(allowed.why); continue }
+      if (!allowed.ok) { skip(allowed.key ?? 'max-open', allowed.why); continue }
       const cost = costPerSide(sig.roundTripPct, sized.sizeUsd, sig.liquidityUsd)
       const p: Position = {
         ...openPosition({ id: `${sig.id}:${a.id.slice(0, 12)}`, strategy: sig.strategy, token: sig.token, symbol: sig.symbol, launchpad: sig.launchpad, signalId: sig.id, price: sig.price, cost, now, params }),
-        mode: 'paper', exits: params, targetUsd: t.targetUsd, tuningVersion: t.version, features: sig.features,
+        mode: 'paper', exits: params, targetUsd: sized.targetUsd, tuningVersion: t.version, features: sig.features,
       }
       a.cash -= sized.sizeUsd
       a.positions.push(p)
       a.lastBuyAt[sig.strategy] = now
       a.filterSkips[sig.strategy] = 0
+      this.outcomes.add(sig.id, 'traded', now)
       this.track(a, p)
-      this.event(a, { at: now, kind: 'buy', token: sig.token, symbol: sig.symbol, text: `Bought $${sig.symbol} for ${money(sized.sizeUsd)} (${LABEL[sig.strategy]}): sells all at ${move(t.takeProfit)} to make about ${money(sized.profitUsd)}, stop at ${move(t.stopLoss)}` })
+      const aim = sized.targetUsd < t.targetUsd ? ` (a thin pool: aiming for $${sized.targetUsd}, not $${t.targetUsd})` : ''
+      this.event(a, { at: now, kind: 'buy', token: sig.token, symbol: sig.symbol, text: `Bought $${sig.symbol} for ${money(sized.sizeUsd)} (${LABEL[sig.strategy]}): sells all at ${move(t.takeProfit)} to make about ${money(sized.profitUsd)}${aim}, stop at ${move(t.stopLoss)}` })
       this.save(a, now)
     }
   }
@@ -569,7 +585,7 @@ export class PaperAccounts {
     const tuning = Object.fromEntries(STRATEGIES.map(st => {
       const { prev: _prev, ...t } = a.tuning[st]
       const mine = stats(a.positions.filter(p => p.strategy === st))
-      const sized = sizeForTarget({ targetUsd: t.targetUsd, takeProfit: t.takeProfit, ...TYPICAL })
+      const sized = sizeForTrade({ strategy: st, targetUsd: t.targetUsd, takeProfit: t.takeProfit, ...TYPICAL })
       return [st, { ...t, sizeUsd: sized?.sizeUsd ?? null, closed: mine.closed, winRate: mine.winRate }]
     })) as PaperAccountView['tuning']
     const trader = a.live && this.o.live ? this.o.live.existing(a.id) : null

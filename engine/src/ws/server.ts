@@ -295,7 +295,7 @@ export function startServer({ cfg, api, health }: ServerDeps) {
           if (url.pathname === '/v1/signals') return json(req, 200, { signals: bot.signals(limit(50, 500)) }, 'public, max-age=1')
           if (url.pathname === '/v1/bot/stats') return json(req, 200, bot.stats(), 'public, max-age=2')
           if (url.pathname === '/v1/bot/status') return json(req, 200, bot.status(), 'no-store')
-          if (url.pathname === '/v1/bot/rejections') return json(req, 200, bot.scan.rejections(), 'public, max-age=10')
+          if (url.pathname === '/v1/bot/rejections') return json(req, 200, { ...bot.scan.rejections(), signals: { owner: bot.outcomes.summary(), bots: api.accounts?.outcomes.summary() ?? null } }, 'public, max-age=10')
           if (url.pathname === '/v1/bot/scan') {
             const st = url.searchParams.get('status') as ScanRow['status'] | null
             const valid = st && ['new', 'watching', 'checking', 'rejected', 'signal'].includes(st) ? st : undefined

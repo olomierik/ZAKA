@@ -45,7 +45,7 @@ import { canOpen, closeNow, costPerSide, onPrice, openPosition, RISK, STRATEGIES
 import type { LiveTrader } from './liveTrader'
 import type { PaperAccounts } from './paperAccounts'
 import { RugWatch } from './rugGuard'
-import { failing, ScanFeed } from './scanFeed'
+import { failing, ScanFeed, OutcomeTally } from './scanFeed'
 import type { BotStore } from './store'
 import type { Signal } from './types'
 
@@ -119,6 +119,8 @@ export class Bot implements EngineObserver {
   private blockedOnce = new Set<string>()
   /** Every coin being watched, where it stands and why (the site's live scanner). */
   readonly scan = new ScanFeed()
+  /** What became of its own signals in its paper book (GET /v1/bot/rejections). */
+  readonly outcomes = new OutcomeTally()
 
   /** What it's doing now: paper, live (paper too, plus the bot wallet's trades), or off. */
   mode: BotMode
@@ -231,15 +233,27 @@ export class Bot implements EngineObserver {
     return n
   }
 
+  /**
+   * A coin's price now, else the last one the bot saw: the engine forgets a
+   * coin after a day without trades, and a position in it must still reach
+   * its time exits.
+   */
+  priceOf(token: string): number | null {
+    const live = this.o.engine.tokens.get(token)?.priceUsd
+    if (live) return live
+    const m = this.paths.get(token)?.minutes
+    return m?.length ? m[m.length - 1].c : null
+  }
+
   /** Every 15s: time stops, safety re-checks for open coins, forgetting old coins. */
   tick(now = Date.now()) {
     if (this.mode === 'off') return
     for (const p of this.positions) {
       if (p.status !== 'open' || p.mode === 'live') continue
-      const price = this.o.engine.tokens.get(p.token)?.priceUsd
+      const price = this.priceOf(p.token)
       if (price) this.fills(p, onPrice(p, price, now, this.params(p.strategy)))
     }
-    this.o.live?.tick(now, token => this.o.engine.tokens.get(token)?.priceUsd ?? null)
+    this.o.live?.tick(now, token => this.priceOf(token))
     this.o.accounts?.tick(now)
     for (const [token, path] of this.paths) {
       if (now - path.launchedAt > WATCH_MS && !this.positions.some(p => p.status === 'open' && p.token === token)) {
@@ -375,7 +389,8 @@ export class Bot implements EngineObserver {
     this.o.accounts?.onSignal({ id: signal.id, token, symbol: meta.symbol, launchpad: meta.launchpad, price: signal.price, strategy, roundTripPct: r.honeypot?.roundTripLossPct ?? null, liquidityUsd: st.liquidityUsd, features }, now, { signal, pool, meta })
     if (this.mode === 'live' && this.o.live) void this.o.live.open(signal, strategy, pool, meta)
     const allowed = canOpen(this.positions.filter(p => p.mode !== 'live'), token, now, RISK, strategy)
-    if (!allowed.ok) { log.info('bot: not opening', { token, strategy, why: allowed.why }); return fired }
+    if (!allowed.ok) { this.outcomes.add(signal.id, allowed.key ?? 'max-open', now); log.info('bot: not opening', { token, strategy, why: allowed.why }); return fired }
+    this.outcomes.add(signal.id, 'traded', now)
     const params = this.params(strategy)
     const cost = costPerSide(r.honeypot?.roundTripLossPct ?? null, params.sizeUsd, st.liquidityUsd)
     const p: Position = { ...openPosition({ id: `${signal.id}:paper`, strategy, token, symbol: meta.symbol, launchpad: meta.launchpad, signalId: signal.id, price: signal.price, cost, now, params }), mode: 'paper', features }

@@ -21,7 +21,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
-import type { BotControl, BotPosition, BotStatus, LearnNote, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, TradeSignal } from '../../../api/_marketProtocol'
+import type { BotControl, BotPosition, BotStatus, LearnNote, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, SignalOutcomes, TradeSignal } from '../../../api/_marketProtocol'
 import { getLaunchpadColor } from '../api/radardex'
 import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botWithdraw, botWithdrawCode, engineEnabled, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse } from '../api/marketStream'
 import { AgoText } from '../components/Ago'
@@ -880,15 +880,41 @@ function RejectionsCard() {
     const id = setInterval(() => { if (!document.hidden) void load() }, 30_000)
     return () => { alive = false; clearInterval(id) }
   }, [])
-  if (!r || !r.top.length) return null
-  const max = r.top[0].coins
+  if (!r) return null
+  const max = r.top[0]?.coins ?? 1
   return (
-    <Section title={T('Why coins are passed over right now') + ` · ${r.watching}`}>
-      {r.top.slice(0, 8).map(x => (
+    <>
+      {r.signals?.bots && r.signals.bots.signals > 0 && <SignalOutcomesCard title={T('Signals and bots, last 24h')} o={r.signals.bots} tradedText={T('traded by at least one bot')} />}
+      {r.signals?.owner && r.signals.owner.signals > 0 && <SignalOutcomesCard title={T('Signals and the engine\'s own paper book, last 24h')} o={r.signals.owner} tradedText={T('traded')} />}
+      {r.top.length > 0 && (
+        <Section title={T('Why coins are passed over right now') + ` · ${r.watching}`}>
+          {r.top.slice(0, 8).map(x => (
+            <div key={x.key} className="at-reason-bar">
+              <span className="at-reason-label">{T(x.label)}</span>
+              <span className="at-reason-track"><span style={{ width: `${Math.max(3, (x.coins / max) * 100)}%` }} /></span>
+              <span className="at-reason-n">{x.coins}</span>
+            </div>
+          ))}
+        </Section>
+      )}
+    </>
+  )
+}
+
+/** What became of the signals: how many were traded, and why the rest weren't (GET /v1/bot/rejections `signals`). */
+function SignalOutcomesCard({ title, o, tradedText }: { title: string; o: SignalOutcomes; tradedText: string }) {
+  const max = o.reasons[0]?.count ?? 1
+  return (
+    <Section title={title}>
+      <div style={{ fontSize: '0.8rem', marginBottom: 6 }}>
+        {T('{n} signals · {t} {what}', { n: o.signals, t: o.traded, what: tradedText })}
+      </div>
+      {o.reasons.length > 0 && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 4 }}>{T('Why not, each time a bot passed over one:')}</div>}
+      {o.reasons.slice(0, 8).map(x => (
         <div key={x.key} className="at-reason-bar">
           <span className="at-reason-label">{T(x.label)}</span>
-          <span className="at-reason-track"><span style={{ width: `${Math.max(3, (x.coins / max) * 100)}%` }} /></span>
-          <span className="at-reason-n">{x.coins}</span>
+          <span className="at-reason-track"><span style={{ width: `${Math.max(3, (x.count / max) * 100)}%` }} /></span>
+          <span className="at-reason-n">{x.count}</span>
         </div>
       ))}
     </Section>
