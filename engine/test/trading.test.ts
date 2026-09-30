@@ -18,7 +18,7 @@ describe('snipe rule', () => {
   test('too early, too late, too few buyers', () => {
     expect(snipeReady(f, 5).ok).toBe(false)
     expect(snipeReady(f, 900).ok).toBe(false)
-    expect(snipeReady(computeFlow(buys.slice(0, 5), { launchBlock: 100, creator: null, supply: 1e9 }), 90).ok).toBe(false)
+    expect(snipeReady(computeFlow(buys.slice(0, 3), { launchBlock: 100, creator: null, supply: 1e9 }), 90).ok).toBe(false)
   })
   test('one wallet doing most of the buying', () => {
     const whale = computeFlow([...buys, T({ wallet: A(99), usd: 5_000, block: 130, price: 0.019 })], { launchBlock: 100, creator: null, supply: 1e9 })

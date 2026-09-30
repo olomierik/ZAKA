@@ -36,7 +36,7 @@ describe('the snipe rule reads the market\'s own buying', () => {
     const f = computeFlow([devBuy, ...organic.slice(0, 2)], { launchBlock: 100, creator: DEV, supply: 1e9 })
     const r = snipeReady(f, 120)
     expect(r.ok).toBe(false)
-    expect(r.failed).toEqual(expect.arrayContaining(['buyers', 'bought']))
+    expect(r.failed).toEqual(expect.arrayContaining(['buyers']))
   })
   test('the launch blocks\' buyers are left out; every sale counts; "late" runs from the market\'s first price', () => {
     const f = computeFlow([

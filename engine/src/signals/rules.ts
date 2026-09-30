@@ -42,8 +42,8 @@ export const RULES = {
     /** Let the first blocks' bundlers show before judging. */
     minAgeSec: 20,
     maxAgeSec: 600,
-    minBuyers: 6,
-    minBuyUsd: 200,
+    minBuyers: 4, // 2026-10-01: was 6 (more signals; live bots still take only Prime, 30+ buyers)
+    minBuyUsd: 120, // was 200
     /** Buy volume at least this many times sell volume. */
     minBuySellRatio: 1.3,
     /** No single buyer above this share of buy volume. */
