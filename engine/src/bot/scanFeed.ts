@@ -76,6 +76,10 @@ export class ScanFeed {
   private changed = new Set<string>()
   private evalTimes: number[] = []
   private signalTimes: number[] = []
+  /** After a restart: the last day's signals, from the store, so "signals in 24h" doesn't start again at 0 (2026-10-01). */
+  seedSignals(times: number[], now = Date.now()) {
+    this.signalTimes = [...times.filter(t => now - t < DAY), ...this.signalTimes].sort((a, b) => a - b)
+  }
   private rejectTimes: number[] = []
   private lastEvalAt: number | null = null
 

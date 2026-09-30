@@ -158,3 +158,11 @@ describe('the scan feed', () => {
     expect(f.drainChanged(10)).toEqual([])
   })
 })
+
+describe('the scan feed after a restart', () => {
+  test('"signals in 24h" counts the last day\'s stored signals, not only those since the restart', () => {
+    const f = new ScanFeed()
+    f.seedSignals([now - 30 * 60_000, now - 5 * 3_600_000, now - 30 * 3_600_000], now)
+    expect(f.stats(now).signals24h).toBe(2)
+  })
+})

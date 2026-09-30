@@ -139,6 +139,7 @@ export class Bot implements EngineObserver {
   async start() {
     this.positions = await this.o.store.positions(30).catch(e => { log.warn('bot: could not load positions', { error: errMsg(e) }); return [] })
     this.recentSignals = await this.o.store.signals(200).catch(() => [])
+    this.scan.seedSignals(this.recentSignals.map(s => s.at))
     // A scalp from a snipe on a risky coin counts as that coin's snipe; a momentum scalp as its scalp.
     for (const s of this.recentSignals) this.fired.set(`${s.rule === 'momentum' ? 'scalp' : s.strategy === 'scalp' ? 'snipe' : s.strategy}:${s.token}`, s.at)
     // The owner's last choice survives a restart (live only while a bot wallet is configured).
