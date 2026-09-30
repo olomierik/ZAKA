@@ -36,7 +36,7 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 import type { Address } from 'viem'
-import type { LaunchInfo, LearnNote, MarketBot, MarketBotDetail, NewPaperAccount, PaperAccountView, PaperAction, PaperEvent, SignalFeatures } from '../../../api/_marketProtocol'
+import type { BotProfit, LaunchInfo, LearnNote, MarketBot, MarketBotDetail, NewPaperAccount, PaperAccountView, PaperAction, PaperEvent, SignalFeatures } from '../../../api/_marketProtocol'
 import type { PoolInfo } from '../dex/pools'
 import { errMsg, log } from '../log'
 import { canOpen, closeNow, costPerSide, onPrice, openPosition, RISK, stats, type Fill, type Position, type RiskRules, type Strategy, type StrategyParams } from '../trading/paper'
@@ -244,6 +244,18 @@ export class PaperAccounts {
     a.ownerId = ownerId
     this.save(a, now)
     return a
+  }
+
+  /** Winning trades an owner's bots closed after `since`, newest first (profit notifications, owner's request 2026-10-01). */
+  profitsOf(ownerId: string, since: number): BotProfit[] {
+    const out: BotProfit[] = []
+    for (const a of this.ofOwner(ownerId)) {
+      for (const p of a.positions) {
+        if (p.status !== 'closed' || !p.closedAt || p.closedAt <= since || !((p.pnlUsd ?? 0) > 0)) continue
+        out.push({ id: p.id, bot: a.name, slug: a.slug, symbol: p.symbol, token: p.token, strategy: p.strategy, mode: isLive(p) ? 'live' : 'paper', pnlUsd: p.pnlUsd!, pnlPct: p.sizeUsd > 0 ? (p.pnlUsd! / p.sizeUsd) * 100 : null, feeUsd: p.feeUsd ?? null, closedAt: p.closedAt })
+      }
+    }
+    return out.sort((x, y) => y.closedAt - x.closedAt).slice(0, 50)
   }
 
   /** Whether any bot has a position open in `token` (its safety is re-checked, its rugs watched). */

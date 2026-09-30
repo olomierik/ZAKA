@@ -343,3 +343,19 @@ describe('the HTTP routes', () => {
     expect((await call('POST', '/v1/auth/login', { email: 'f@x.io', passcode: 'Ok42' })).status).toBe(200)
   })
 })
+
+describe('profit notifications (GET /v1/me/profits)', () => {
+  test('an owner\'s winning trades since a moment, newest first; losses and other owners\' bots left out', () => {
+    const { accounts } = setupBots()
+    const mine = (accounts.create(now, { name: 'Winner', strategies: ['scalp'] }, 'owner') as { account: PaperAccount }).account
+    const theirs = (accounts.create(now, { name: 'Someone Else', strategies: ['scalp'] }, 'other') as { account: PaperAccount }).account
+    mine.positions.push(paperTrade(1, true), paperTrade(2, false), paperTrade(3, true))
+    theirs.positions.push(paperTrade(4, true))
+    const all = accounts.profitsOf('owner', 0)
+    expect(all.map(p => p.id)).toEqual(['p3', 'p1'])
+    expect(all[0]).toMatchObject({ bot: 'Winner', slug: 'winner', mode: 'paper', symbol: 'X' })
+    expect(all[0].pnlUsd).toBeGreaterThan(0)
+    expect(accounts.profitsOf('owner', all[1].closedAt).map(p => p.id)).toEqual(['p3'])
+    expect(accounts.profitsOf('nobody', 0)).toEqual([])
+  })
+})

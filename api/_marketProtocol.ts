@@ -462,6 +462,22 @@ export interface MeResponse {
 }
 
 /** A bot in the marketplace (GET /v1/bots): public, no owner details. */
+/** A winning trade one of an owner's bots closed (GET /v1/me/profits): what a profit notification says. */
+export interface BotProfit {
+  id: string
+  bot: string
+  slug: string
+  symbol: string
+  token: string
+  strategy: 'snipe' | 'second-leg' | 'scalp'
+  mode: 'paper' | 'live'
+  /** After the platform's 2% fee. */
+  pnlUsd: number
+  pnlPct: number | null
+  feeUsd: number | null
+  closedAt: number
+}
+
 export interface MarketBot {
   slug: string
   name: string

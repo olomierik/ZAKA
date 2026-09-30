@@ -10,6 +10,7 @@
 //   POST /v1/auth/passcode {current, next}        change it (other devices signed out)
 //   POST /v1/auth/logout-all                      sign out every device
 //   GET  /v1/me                                   the owner and every bot of theirs
+//   GET  /v1/me/profits?since=ms                  winning trades their bots closed since then (the app's profit notifications)
 //   POST /v1/me/bots {name, strategies}           a new bot
 //   POST /v1/me/claim  (X-Paper-Key)              a browser-key bot joins the account
 //   GET|POST /v1/me/bots/:slug                    one bot; POST acts on it (deposit, start, stop,
@@ -104,6 +105,11 @@ export async function botApi(req: Request, url: URL, ip: string, d: { users: Use
     await Promise.all(bots.map(a => accounts.refreshLive(a)))
     const me: MeResponse = { user: users.view(u), bots: bots.map(a => accounts.view(a, now)), email: users.mailEnabled, maxBots: 5, liveAvailable: accounts.liveAvailable }
     return json(200, me)
+  }
+  if (req.method === 'GET' && p === '/v1/me/profits') {
+    // At most a day back: a device that was off doesn't get a flood of old news.
+    const since = Math.max(now - 86_400_000, Number(url.searchParams.get('since')) || now - 60_000)
+    return json(200, { profits: accounts.profitsOf(u.id, since), now }, 'no-store')
   }
   if (req.method === 'POST' && p === '/v1/me/bots') {
     const b = await readBody(req)
