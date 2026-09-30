@@ -1,11 +1,17 @@
 // Autotrade (/autotrade; /signals still works): the market engine's signal
 // bot, for everyone (engine/src/bot).
 //
-//   My autotrade  a paper account on the engine for this browser: deposit
-//                 virtual USDC, pick one or more strategies, Start; it trades
-//                 every matching signal, with the bot's exits, 24/7
+//   My bots       sign up with an email and a 4-character passcode, then
+//                 create bots (each name unique on ARCDEX), deposit virtual
+//                 USDC, pick strategies, Start: they trade on the engine 24/7
+//                 with every device off. Once a bot's paper record is good
+//                 enough, its owner switches the same bot to LIVE: its own
+//                 wallet trades real USDC (2% of each winning trade's profit
+//                 goes to the platform)
+//   Marketplace   every bot, its P&L and open positions (/bots, /bots/<name>)
 //   Scanner       every coin being scanned, live, and why it isn't a signal
-//                 (rules not met yet, a failed safety check)
+//                 (rules not met yet, a failed safety check), and the most
+//                 common reasons right now
 //   Signals       the signals, with every check behind them
 //   Bot results   the bot's own paper and live results, and the owner's
 //                 live switch (a signed message)
@@ -15,9 +21,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
-import type { BotControl, BotPosition, BotStatus, LearnNote, NewPaperAccount, PaperAccountView, PaperAction, SafetyCheck, ScanRow, ScanStats, TradeSignal } from '../../../api/_marketProtocol'
+import type { BotControl, BotPosition, BotStatus, LearnNote, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, TradeSignal } from '../../../api/_marketProtocol'
 import { getLaunchpadColor } from '../api/radardex'
-import { createPaperAccount, engineEnabled, getBotPositions, getBotStats, getBotStatus, getPaperAccount, getPaperTrades, getScan, getSignals, marketStream, paperAction, paperKey, sendBotControl, type BotStats, type BotStatsResponse } from '../api/marketStream'
+import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botWithdraw, botWithdrawCode, engineEnabled, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse } from '../api/marketStream'
 import { AgoText } from '../components/Ago'
 import type { Page } from '../App'
 import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
@@ -27,7 +33,7 @@ import { shortAddr, useEmbeddedAddress } from '../lib/identity'
 type Tab = 'all' | 'snipe' | 'scalp' | 'secondLeg'
 type Strategy = TradeSignal['strategy']
 type Book = 'paper' | 'live'
-type View = 'mine' | 'scanner' | 'signals' | 'bot'
+type View = 'mine' | 'market' | 'scanner' | 'signals' | 'bot'
 const EXPLORER = 'https://explorer.arc.io'
 const LIVE_RED = '#ef4444'
 const VIEW_KEY = 'arcdex:autotrade-view'
@@ -35,12 +41,12 @@ const VIEW_KEY = 'arcdex:autotrade-view'
 const usd = (n: number | null | undefined, digits = 2) => n === null || n === undefined || !Number.isFinite(n) ? '—' : `${n < 0 ? '−' : ''}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
 const price = (n: number) => n >= 1 ? `$${n.toFixed(4)}` : `$${n.toPrecision(3)}`
 const big = (n: number | null) => n === null ? '—' : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(0)}`
-const STRATEGY: Record<TradeSignal['strategy'], string> = { snipe: 'Snipe', scalp: 'Fast scalp', 'second-leg': 'Second leg' }
+const STRATEGY: Record<TradeSignal['strategy'], string> = { snipe: 'Snipe', scalp: 'Fast scalp', 'second-leg': 'Dip rebound' }
 const STRATEGY_COLOR: Record<TradeSignal['strategy'], string> = { snipe: '#3b82f6', scalp: '#f59e0b', 'second-leg': '#a855f7' }
 const STRATEGY_HELP: Record<TradeSignal['strategy'], string> = {
-  snipe: 'New coins in their first 10 minutes that pass every safety check and show real buying. Sold in full at the take-profit (+40% to start), aiming for $1–4 a trade.',
+  snipe: 'New coins in their first 10 minutes that pass every safety check and show real buying. Sold in full at the take-profit (+40% to start), aiming for $1–5 a trade.',
   scalp: 'Quick in and out for $1–2: bursts of real buying on any safe coin, and new coins with a risk flag. Sold in full at +15% to start, −10% stop, out within 10 minutes, and at once if the creator sells.',
-  'second-leg': 'Coins that ran 10× or more, fell 50–85% and are climbing back on real buying. Sold in full at the take-profit (+35% to start), held up to 6 hours.',
+  'second-leg': 'Coins that ran 2× or more, pulled back 25–70% and are being bought again. Sold in full at the take-profit (+35% to start), aiming for $1–5, held up to 6 hours.',
 }
 /** A bot's name: as the engine checks it (bot/paperAccounts.ts cleanName). */
 const BOT_NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._'-]{0,22}[\p{L}\p{N}.]$/u
@@ -50,15 +56,22 @@ const SCAN_STATUS: Record<ScanRow['status'], [string, string]> = {
   new: ['New', '#64748b'], watching: ['Watching', '#3b82f6'], checking: ['Checking', '#f59e0b'], rejected: ['Rejected', '#ef4444'], signal: ['Signal', '#22c55e'],
 }
 
-export default function SignalsPage({ navigate }: { navigate: (p: Page) => void }) {
+export default function SignalsPage({ navigate, view: pageView, bot }: { navigate: (p: Page) => void; view?: 'market'; bot?: string }) {
   const [stats, setStats] = useState<BotStatsResponse | null>(null)
   const [signals, setSignals] = useState<TradeSignal[]>([])
   const [positions, setPositions] = useState<BotPosition[]>([])
   const [scan, setScan] = useState<{ rows: ScanRow[]; stats: ScanStats } | null>(null)
   const [status, setStatus] = useState<BotStatus | null>(null)
   const [down, setDown] = useState(false)
-  const [view, setViewState] = useState<View>(() => { try { return (localStorage.getItem(VIEW_KEY) as View) || 'mine' } catch { return 'mine' } })
-  const setView = (v: View) => { setViewState(v); try { localStorage.setItem(VIEW_KEY, v) } catch { /* storage blocked */ } }
+  const [view, setViewState] = useState<View>(() => { if (pageView === 'market') return 'market'; try { return (localStorage.getItem(VIEW_KEY) as View) || 'mine' } catch { return 'mine' } })
+  const setView = (v: View) => {
+    setViewState(v)
+    try { localStorage.setItem(VIEW_KEY, v) } catch { /* storage blocked */ }
+    // The marketplace has its own address (/bots); leaving it goes back to /autotrade.
+    if (v === 'market') navigate({ name: 'signals', view: 'market' })
+    else if (pageView === 'market') navigate({ name: 'signals' })
+  }
+  useEffect(() => { if (pageView === 'market') setViewState('market') }, [pageView, bot])
 
   useEffect(() => {
     if (!engineEnabled) return
@@ -86,7 +99,7 @@ export default function SignalsPage({ navigate }: { navigate: (p: Page) => void 
   }, [])
 
   const mode = status?.mode ?? stats?.mode ?? 'paper'
-  const VIEWS: [View, string][] = [['mine', T('My autotrade')], ['scanner', T('Scanner')], ['signals', T('Signals')], ['bot', T('Bot results')]]
+  const VIEWS: [View, string][] = [['mine', T('My bots')], ['market', T('Marketplace')], ['scanner', T('Scanner')], ['signals', T('Signals')], ['bot', T('Bot results')]]
 
   return (
     <div className="token-page content-page">
@@ -110,8 +123,9 @@ export default function SignalsPage({ navigate }: { navigate: (p: Page) => void 
               </button>
             ))}
           </div>
-          {view === 'mine' && <MyAutotrade navigate={navigate} />}
-          {view === 'scanner' && <ScannerPanel scan={scan} navigate={navigate} />}
+          {view === 'mine' && <MyBots navigate={navigate} />}
+          {view === 'market' && <Marketplace navigate={navigate} slug={bot ?? null} />}
+          {view === 'scanner' && <><RejectionsCard /><ScannerPanel scan={scan} navigate={navigate} /></>}
           {view === 'signals' && (
             <Section title={T('Live signals')}>
               {signals.length === 0 ? <Empty>{T('No signals yet. Most launches fail a safety check; a signal appears the moment one passes them all.')}</Empty>
@@ -184,7 +198,7 @@ function ScannerPanel({ scan, navigate }: { scan: { rows: ScanRow[]; stats: Scan
 }
 
 /** A new bot: its name and strategies (the engine sizes its trades). */
-function CreateBot({ busy, loading, error, onCreate }: { busy: boolean; loading: boolean; error: string | null; onCreate: (bot: NewPaperAccount) => void }) {
+function CreateBot({ busy, loading, error, onCreate, onCancel }: { busy: boolean; loading: boolean; error: string | null; onCreate: (bot: NewPaperAccount) => void; onCancel?: () => void }) {
   const [name, setName] = useState('')
   const [strategies, setStrategies] = useState<Strategy[]>(['scalp'])
   const clean = name.replace(/\s+/g, ' ').trim()
@@ -201,7 +215,9 @@ function CreateBot({ busy, loading, error, onCreate }: { busy: boolean; loading:
       {name && !valid && <div style={{ fontSize: '0.72rem', color: '#fca5a5', marginTop: 4 }}>{T('2–24 letters, digits or spaces.')}</div>}
       <div className="at-label">{T('Strategies')} <span style={{ fontWeight: 500, color: 'var(--text-muted)' }}>· {T('use one, or several at once')}</span></div>
       <StrategyPicker selected={strategies} disabled={busy} onToggle={toggle} />
+      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('Its name is its unique id on ARCDEX: the marketplace shows it at /bots/<name>.')}</div>
       <button className="at-big" disabled={busy || loading || !valid || !strategies.length} onClick={() => onCreate({ name: clean, strategies })}>{busy || loading ? T('Loading…') : `🤖 ${T('Create my bot')}`}</button>
+      {onCancel && <button className="link-btn" onClick={onCancel}>{T('Cancel')}</button>}
       {error && <div className="at-error">⚠ {error}</div>}
     </div>
   )
@@ -223,37 +239,178 @@ function StrategyPicker({ selected, disabled, onToggle }: { selected: Strategy[]
   )
 }
 
-/** This browser's bot: named, its strategies and virtual USDC; it sizes its own trades, gets out of rugs and learns from its losses. */
-function MyAutotrade({ navigate }: { navigate: (p: Page) => void }) {
-  const [key, setKey] = useState<string | null>(() => paperKey())
-  const [acct, setAcct] = useState<PaperAccountView | null>(null)
+/** The signed-in owner's bots, on any device: sign in first, then one dashboard per bot. */
+function MyBots({ navigate }: { navigate: (p: Page) => void }) {
+  const [session, setSession] = useState<string | null>(() => botSession())
+  const [me, setMe] = useState<MeResponse | null>(null)
+  const [sel, setSel] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const on = () => setSession(botSession())
+    window.addEventListener('arcdex:bot-session', on)
+    return () => window.removeEventListener('arcdex:bot-session', on)
+  }, [])
+  const reload = useCallback(() => botMe().then(m => { setMe(m); setError(null) }).catch((e: Error) => setError(e.message)), [])
+  useEffect(() => {
+    if (!session) { setMe(null); return }
+    let alive = true
+    const load = () => botMe().then(m => { if (alive) { setMe(m); setError(null) } }).catch((e: Error) => { if (alive) setError(e.message) })
+    void load()
+    const id = setInterval(() => { if (!document.hidden) void load() }, 5_000)
+    return () => { alive = false; clearInterval(id) }
+  }, [session])
+
+  if (!session) return <AuthPanel />
+  if (!me) return error ? <div className="at-card" style={{ marginTop: 14 }}><div className="at-error">⚠ {error}</div><button className="link-btn" onClick={() => botSignOut()}>{T('Sign out')}</button></div> : <Empty>{T('Loading…')}</Empty>
+
+  const bots = me.bots
+  const acct = bots.find(b => b.slug === sel) ?? bots[0] ?? null
+  const act = async (a: PaperAction) => {
+    if (!acct?.slug) return
+    setBusy(true); setError(null)
+    try {
+      const v = await botAction(acct.slug, a)
+      setMe(m => m && { ...m, bots: m.bots.map(b => (b.slug === acct.slug ? v : b)) })
+      if (a.action === 'rename') setSel(v.slug ?? null)
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+  const create = async (bot: NewPaperAccount) => {
+    setBusy(true); setError(null)
+    try { const v = await botCreate(bot); await reload(); setSel(v.slug ?? null); setCreating(false) } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
+  return (
+    <>
+      <AccountBar me={me} onChanged={() => void reload()} />
+      {bots.length > 0 && (
+        <div className="at-botbar">
+          {bots.map(b => (
+            <button key={b.slug} className={`at-chip${b.slug === acct?.slug && !creating ? ' on' : ''}`} onClick={() => { setSel(b.slug ?? null); setCreating(false) }}>
+              🤖 {b.name}{b.mode === 'live' ? ` · ${T('LIVE')}` : ''}{b.running ? ' ●' : ''}
+            </button>
+          ))}
+          {bots.length < me.maxBots && <button className={`at-chip${creating ? ' on' : ''}`} onClick={() => setCreating(true)}>+ {T('New bot')}</button>}
+        </div>
+      )}
+      {creating || !acct
+        ? <CreateBot busy={busy} loading={false} error={error} onCreate={b => void create(b)} onCancel={bots.length ? () => setCreating(false) : undefined} />
+        : <BotDashboard key={acct.slug} acct={acct} act={act} busy={busy} error={error} setError={setError} me={me} onMe={() => void reload()} navigate={navigate} />}
+    </>
+  )
+}
+
+/** Sign in, sign up (email + 4 letters or digits), or get a new passcode by email. */
+function AuthPanel() {
+  const [tab, setTab] = useState<'up' | 'in' | 'forgot'>('up')
+  const [email, setEmail] = useState('')
+  const [pass, setPass] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
+  const passOk = /^[A-Za-z0-9]{4}$/.test(pass)
+  const emailOk = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email.trim())
+  const submit = async () => {
+    setBusy(true); setError(null); setInfo(null)
+    try {
+      if (tab === 'forgot') { await botForgot(email.trim()); setInfo(T('If that email has an account, a new passcode is on its way. Sign in with it, then change it if you like.')); setTab('in'); setPass('') }
+      else if (tab === 'up') await botSignup(email.trim(), pass)
+      else await botLogin(email.trim(), pass)
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+  return (
+    <div className="at-card at-hero">
+      <div className="at-hero-title">{T('Your Autotrade bots, on any device')}</div>
+      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+        {T('Sign up with your email and a 4-character passcode. Your bots run on ARCDEX around the clock, with your phone and computer off; sign in from anywhere to see every trade.')}
+      </div>
+      {paperKey() && <div className="at-note warn">🤖 {T('This browser already has a bot: it joins your account when you sign up or sign in.')}</div>}
+      <div style={{ display: 'flex', gap: 6 }}>
+        {([['up', T('Sign up')], ['in', T('Sign in')]] as const).map(([k, l]) => <button key={k} className={`at-chip${tab === k ? ' on' : ''}`} onClick={() => { setTab(k); setError(null) }}>{l}</button>)}
+      </div>
+      <input className="at-input at-name" type="email" autoComplete="email" value={email} placeholder={T('Email')} onChange={e => setEmail(e.target.value)} aria-label={T('Email')} />
+      {tab !== 'forgot' && (
+        <>
+          <input className="at-input at-pass" type="password" autoComplete={tab === 'up' ? 'new-password' : 'current-password'} maxLength={4} value={pass} placeholder="••••" onChange={e => setPass(e.target.value.replace(/[^A-Za-z0-9]/g, ''))} aria-label={T('Passcode')} onKeyDown={e => { if (e.key === 'Enter' && emailOk && passOk) void submit() }} />
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T('4 letters or digits; upper and lower case count.')}</div>
+        </>
+      )}
+      <button className="at-big" disabled={busy || !emailOk || (tab !== 'forgot' && !passOk)} onClick={() => void submit()}>
+        {busy ? T('Loading…') : tab === 'up' ? T('Create my account') : tab === 'in' ? T('Sign in') : T('Email me a new passcode')}
+      </button>
+      {tab === 'in' && <button className="link-btn" onClick={() => { setTab('forgot'); setError(null) }}>{T('Forgot your passcode?')}</button>}
+      {tab === 'forgot' && <button className="link-btn" onClick={() => setTab('in')}>{T('Back to sign in')}</button>}
+      {info && <div className="at-note">✉️ {info}</div>}
+      {error && <div className="at-error">⚠ {error}</div>}
+    </div>
+  )
+}
+
+/** Confirms the owner's email with a 6-digit code (needed for live trading and withdrawals). */
+function VerifyEmail({ onDone }: { onDone: () => void }) {
+  const [sent, setSent] = useState(false)
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const run = async (f: () => Promise<unknown>, after?: () => void) => {
+    setBusy(true); setError(null)
+    try { await f(); after?.() } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+  // Sign-up already emailed a code, so the box to enter it is always there.
+  return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 6 }}>
+      <input className="at-input" inputMode="numeric" maxLength={6} value={code} placeholder="123456" onChange={e => setCode(e.target.value.replace(/\D/g, ''))} aria-label={T('Code')} />
+      <button className="btn-ghost" disabled={busy || code.length !== 6} onClick={() => void run(() => botVerify(code), onDone)}>{T('Confirm')}</button>
+      <button className="link-btn" disabled={busy} onClick={() => void run(botVerifySend, () => setSent(true))}>{sent ? T('Send the code again') : T('Email me a code')}</button>
+      {error && <span className="at-error" style={{ marginTop: 0 }}>⚠ {error}</span>}
+    </div>
+  )
+}
+
+/** Who's signed in: email (verified or not), change passcode, sign out. */
+function AccountBar({ me, onChanged }: { me: MeResponse; onChanged: () => void }) {
+  const [open, setOpen] = useState<'verify' | 'passcode' | null>(null)
+  const [cur, setCur] = useState('')
+  const [next, setNext] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const change = async () => {
+    setBusy(true); setMsg(null)
+    try { await botChangePasscode(cur, next); setMsg(T('Passcode changed. Other devices were signed out.')); setOpen(null); setCur(''); setNext('') } catch (e) { setMsg((e as Error).message) } finally { setBusy(false) }
+  }
+  return (
+    <div className="at-account">
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span>👤 <b>{me.user.email}</b></span>
+        {me.user.verified ? <Pill color="#22c55e">✓ {T('verified')}</Pill>
+          : me.email ? <button className="link-btn" onClick={() => setOpen(open === 'verify' ? null : 'verify')}>{T('Verify email')}</button> : null}
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button className="link-btn" onClick={() => setOpen(open === 'passcode' ? null : 'passcode')}>{T('Change passcode')}</button>
+          <button className="link-btn" onClick={() => botSignOut()}>{T('Sign out')}</button>
+          <button className="link-btn" onClick={() => void botSignOutAll().catch(() => botSignOut())}>{T('Sign out everywhere')}</button>
+        </span>
+      </div>
+      {open === 'verify' && <VerifyEmail onDone={() => { setOpen(null); onChanged() }} />}
+      {open === 'passcode' && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 6 }}>
+          <input className="at-input at-pass" type="password" maxLength={4} value={cur} placeholder={T('Current')} onChange={e => setCur(e.target.value.replace(/[^A-Za-z0-9]/g, ''))} aria-label={T('Current passcode')} />
+          <input className="at-input at-pass" type="password" maxLength={4} value={next} placeholder={T('New')} onChange={e => setNext(e.target.value.replace(/[^A-Za-z0-9]/g, ''))} aria-label={T('New passcode')} />
+          <button className="btn-ghost" disabled={busy || cur.length !== 4 || next.length !== 4} onClick={() => void change()}>{T('Save')}</button>
+        </div>
+      )}
+      {msg && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>{msg}</div>}
+    </div>
+  )
+}
+
+/** One of the owner's bots: named, its strategies and virtual USDC; it sizes its own trades, gets out of rugs, learns from its losses, and can go live. */
+function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate }: { acct: PaperAccountView; act: (a: PaperAction) => Promise<void>; busy: boolean; error: string | null; setError: (e: string | null) => void; me: MeResponse; onMe: () => void; navigate: (p: Page) => void }) {
   const [amount, setAmount] = useState('1000')
   const [resetting, setResetting] = useState(false)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [logTab, setLogTab] = useState<'activity' | 'skipped'>('activity')
-
-  useEffect(() => {
-    if (!key) return
-    let alive = true
-    const load = () => getPaperAccount(key).then(a => { if (alive) { setAcct(a); setError(null) } }).catch((e: Error) => { if (!alive) return; if (!paperKey()) { setKey(null); setAcct(null) } else setError(e.message) })
-    void load()
-    const id = setInterval(() => { if (!document.hidden) void load() }, 5_000)
-    return () => { alive = false; clearInterval(id) }
-  }, [key])
-
-  const act = async (a: PaperAction) => {
-    if (!key) return
-    setBusy(true); setError(null)
-    try { setAcct(await paperAction(key, a)) } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
-  }
-  const create = async (bot: NewPaperAccount) => {
-    setBusy(true); setError(null)
-    try { const a = await createPaperAccount(bot); setAcct(a); setKey(paperKey()) } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
-  }
-
-  if (!key || !acct) return <CreateBot busy={busy} loading={!!key && !acct} error={error} onCreate={b => void create(b)} />
 
   const pnl = acct.equity - acct.deposited
   const open = acct.positions.filter(p => p.status === 'open')
@@ -285,7 +442,8 @@ function MyAutotrade({ navigate }: { navigate: (p: Page) => void }) {
               <button className="link-btn" onClick={() => setRenaming(null)}>{T('Cancel')}</button>
             </span>
           )}
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('Paper account')} {acct.id} · {T('virtual USDC')}</span>
+          {acct.mode === 'live' ? <Pill color={LIVE_RED}>● {T('LIVE')}</Pill> : <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('Paper account')} · {T('virtual USDC')}</span>}
+          {acct.slug && <button className="link-btn" style={{ fontSize: '0.72rem' }} onClick={() => navigate({ name: 'signals', view: 'market', bot: acct.slug })}>{T('Public page')} ↗</button>}
           {acct.running && acct.startedAt && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>· {T('started')} <AgoText ts={acct.startedAt} /></span>}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginTop: 10 }}>
@@ -319,6 +477,8 @@ function MyAutotrade({ navigate }: { navigate: (p: Page) => void }) {
         {error && <div className="at-error">⚠ {error}</div>}
       </div>
 
+      <LivePanel acct={acct} act={act} busy={busy} me={me} onMe={onMe} />
+
       <Section title={T('What {name} learned', { name: acct.name ?? T('your bot') })}>
         {!acct.learnLog?.length ? <Empty>{T('Nothing yet. After a few closed trades it reads the losing ones and adjusts its filters and take-profit; every change is shown here with the reason, and a change that does worse is rolled back.')}</Empty>
           : acct.learnLog.map((n, i) => (
@@ -347,7 +507,7 @@ function MyAutotrade({ navigate }: { navigate: (p: Page) => void }) {
       <Section title={T('Open trades') + ` · ${open.length}`}>
         {open.length === 0 ? <Empty>{acct.running ? T('Waiting for the next signal. The scanner above shows what it is checking.') : T('No open trades.')}</Empty> : open.map(p => <PositionRow key={p.id} p={p} navigate={navigate} />)}
       </Section>
-      <TradeLog paperKey={key} name={acct.name ?? 'bot'} total={acct.tradesLogged ?? acct.stats.closed} fallback={acct.positions.filter(p => p.status === 'closed')} navigate={navigate} />
+      <TradeLog fetchTrades={(limit, before) => botTrades(acct.slug ?? '', limit, before)} name={acct.name ?? 'bot'} total={acct.tradesLogged ?? acct.stats.closed} fallback={acct.positions.filter(p => p.status === 'closed')} navigate={navigate} />
       {acct.events && (
         <Section title={T('Activity')}>
           <div style={{ display: 'flex', gap: 6, margin: '6px 0' }}>
@@ -408,7 +568,7 @@ function TuningLine({ s, t, range }: { s: Strategy; t: PaperAccountView['tuning'
 }
 
 /** Every closed trade the bot has made (the engine keeps them all), newest first, with a CSV download. */
-function TradeLog({ paperKey: key, name, total, fallback, navigate }: { paperKey: string; name: string; total: number; fallback: BotPosition[]; navigate: (p: Page) => void }) {
+function TradeLog({ fetchTrades, name, total, fallback, navigate }: { fetchTrades: (limit: number, before?: number) => Promise<{ trades: BotPosition[]; total: number }>; name: string; total: number; fallback: BotPosition[]; navigate: (p: Page) => void }) {
   const [trades, setTrades] = useState<BotPosition[] | null>(null)
   const [more, setMore] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -416,16 +576,17 @@ function TradeLog({ paperKey: key, name, total, fallback, navigate }: { paperKey
 
   useEffect(() => {
     let alive = true
-    getPaperTrades(key, 50).then(r => { if (alive) { setTrades(r.trades); setMore(r.trades.length < r.total); setError(null) } })
+    fetchTrades(50).then(r => { if (alive) { setTrades(r.trades); setMore(r.trades.length < r.total); setError(null) } })
       .catch(() => { if (alive) { setTrades(null); setMore(false) } }) // an engine without the log: the account's own list below
     return () => { alive = false }
-  }, [key, total])
+    // Refetched when the bot or its trade count changes (not for each render's new fetcher).
+  }, [name, total])
 
   const loadMore = async () => {
     if (!trades?.length) return
     setBusy(true)
     try {
-      const r = await getPaperTrades(key, 100, trades[trades.length - 1].closedAt ?? undefined)
+      const r = await fetchTrades(100, trades[trades.length - 1].closedAt ?? undefined)
       const next = [...trades, ...r.trades.filter(t => !trades.some(x => x.id === t.id))]
       setTrades(next); setMore(r.trades.length > 0 && next.length < r.total)
     } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
@@ -437,7 +598,7 @@ function TradeLog({ paperKey: key, name, total, fallback, navigate }: { paperKey
       const all: BotPosition[] = []
       let before: number | undefined
       for (let page = 0; page < 40; page++) {
-        const r = await getPaperTrades(key, 500, before)
+        const r = await fetchTrades(500, before)
         all.push(...r.trades)
         if (r.trades.length < 500) break
         before = r.trades[r.trades.length - 1].closedAt ?? undefined
@@ -475,6 +636,258 @@ function tradesCsv(list: BotPosition[]): string {
     p.targetUsd, p.tuningVersion, p.features?.liquidityUsd, p.features?.buyers, p.features?.buySellRatio, p.features?.runUp, p.features?.score, p.features?.flags.join(' '), p.note,
   ].map(cell).join(','))
   return [head.join(','), ...rows].join('\n')
+}
+
+/**
+ * Live for this bot: its paper record against what live needs, the owner's
+ * verified email, its own wallet (address, balance), the Paper/Live switch,
+ * its live results, selling everything, and withdrawing with an emailed code.
+ */
+function LivePanel({ acct, act, busy, me, onMe }: { acct: PaperAccountView; act: (a: PaperAction) => Promise<void>; busy: boolean; me: MeResponse; onMe: () => void }) {
+  const [confirming, setConfirming] = useState(false)
+  const [to, setTo] = useState('')
+  const [amt, setAmt] = useState('')
+  const [code, setCode] = useState('')
+  const [codeSent, setCodeSent] = useState(false)
+  const [wBusy, setWBusy] = useState(false)
+  const [wMsg, setWMsg] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const ready = acct.ready
+  const live = acct.live ?? null
+  const avail = acct.liveAvailable ?? me.liveAvailable
+  if (!ready) return null // an engine from before live bots
+  const pct = (x: number | null) => (x === null ? '—' : `${Math.round(x * 100)}%`)
+  const lines: [boolean, string][] = [
+    [ready.trades >= ready.need.minTrades, T('{a} of {b} closed paper trades', { a: ready.trades, b: ready.need.minTrades })],
+    [(ready.winRate ?? 0) >= ready.need.minWinRate, T('win rate {a} (needs {b})', { a: pct(ready.winRate), b: pct(ready.need.minWinRate) })],
+    [(ready.profitFactor ?? 0) >= ready.need.minProfitFactor, T('profit factor {a} (needs {b})', { a: ready.profitFactor === null ? '—' : ready.profitFactor.toFixed(2), b: ready.need.minProfitFactor })],
+    [ready.pnlUsd > 0, T('net paper profit {a}', { a: usd(ready.pnlUsd) })],
+  ]
+  const sendCode = async () => {
+    setWBusy(true); setWMsg(null)
+    try { setWMsg(await botWithdrawCode(acct.slug ?? '', to.trim(), Number(amt))); setCodeSent(true) } catch (e) { setWMsg(`⚠ ${(e as Error).message}`) } finally { setWBusy(false) }
+  }
+  const withdraw = async () => {
+    setWBusy(true); setWMsg(null)
+    try { const r = await botWithdraw(acct.slug ?? '', code); setWMsg(T('Sent. Transaction {h}', { h: `${r.hash.slice(0, 10)}…` })); setCodeSent(false); setCode(''); setAmt(''); onMe() } catch (e) { setWMsg(`⚠ ${(e as Error).message}`) } finally { setWBusy(false) }
+  }
+  return (
+    <Section title={acct.mode === 'live' ? `● ${T('Trading LIVE')}` : T('Trade live with this bot')}>
+      {!avail.ok && <div className="at-note warn">{T('Live trading for bots isn\'t switched on yet on ARCDEX.')} <span style={{ opacity: 0.8 }}>({avail.why})</span></div>}
+      <div className="at-label" style={{ marginTop: 6 }}>{T('1. Prove it on paper')} {ready.ok ? <Pill color="#22c55e">✓ {T('ready')}</Pill> : null}</div>
+      <ul className="at-protect">{lines.map(([ok, text], i) => <li key={i} style={{ color: ok ? '#86efac' : undefined }}>{ok ? '✓' : '…'} {text}</li>)}</ul>
+      <div className="at-label">{T('2. Verify your email')} {me.user.verified ? <Pill color="#22c55e">✓ {T('verified')}</Pill> : null}</div>
+      {me.user.verified ? <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>{T('Withdrawals are confirmed with a code sent to {e}.', { e: me.user.email })}</div>
+        : me.email ? <VerifyEmail onDone={onMe} /> : <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>{T('Email isn\'t set up on ARCDEX yet.')}</div>}
+      <div className="at-label">{T('3. Fund its own wallet')}</div>
+      {!live ? (
+        <button className="btn-ghost" disabled={busy || !avail.ok} onClick={() => void act({ action: 'live-wallet' })}>{T('Make its live wallet')}</button>
+      ) : (
+        <>
+          <div className="at-wallet">
+            <code>{live.wallet}</code>
+            <button className="link-btn" onClick={() => { void navigator.clipboard?.writeText(live.wallet).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }) }}>{copied ? T('Copied') : T('Copy')}</button>
+            <a href={`${EXPLORER}/address/${live.wallet}`} target="_blank" rel="noreferrer" style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{T('explorer')} ↗</a>
+          </div>
+          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            {T('Send USDC on Arc to this address: at least {m} to go live. It trades up to {x} a trade and keeps {r} for gas. Only this bot uses it.', { m: usd(live.limits.minBalanceUsd, 0), x: usd(live.limits.maxTradeUsd, 0), r: usd(live.limits.reserveUsd, 0) })}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginTop: 8 }}>
+            <Stat label={T('Wallet balance')} value={usd(live.balanceUsd)} small />
+            <Stat label={T('Live P&L')} value={usd(live.pnlUsd)} color={live.pnlUsd >= 0 ? 'var(--green)' : '#fca5a5'} small sub={T('{n} trades, {w} won', { n: live.closed, w: pct(live.winRate) })} />
+            <Stat label={T('Platform fees paid')} value={usd(live.feesPaidUsd, 4)} small sub={T('2% of winning trades\' profit')} />
+          </div>
+        </>
+      )}
+      <div className="at-label">{T('4. Switch it')}</div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Segmented value={acct.mode ?? 'paper'} disabled={busy} onChange={v => { if (v === 'live') setConfirming(true); else void act({ action: 'mode', mode: 'paper' }) }} options={[['paper', T('Paper')], ['live', T('Live')]]} />
+        {live && live.open > 0 && <button className="btn-ghost" disabled={busy} onClick={() => void act({ action: 'sell-live' })}>{T('Sell all live positions ({n})', { n: live.open })}</button>}
+      </div>
+      {confirming && (
+        <div className="at-note warn">
+          {T('Real money: this bot will trade its wallet\'s USDC on every signal it takes, with its learned settings, until you switch it back. 2% of each winning trade\'s profit goes to the platform; losing trades pay nothing. Results aren\'t guaranteed: most new coins go to zero.')}
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button className="btn-ghost" style={{ borderColor: LIVE_RED, color: '#fca5a5' }} disabled={busy} onClick={() => { setConfirming(false); void act({ action: 'mode', mode: 'live' }) }}>{T('Yes, trade live')}</button>
+            <button className="link-btn" onClick={() => setConfirming(false)}>{T('Cancel')}</button>
+          </div>
+        </div>
+      )}
+      {live && me.user.verified && (
+        <>
+          <div className="at-label">{T('Withdraw')}</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input className="at-input at-name" value={to} placeholder="0x…" onChange={e => setTo(e.target.value.trim())} aria-label={T('To address')} disabled={codeSent} />
+            <input className="at-input" inputMode="decimal" value={amt} placeholder="$" onChange={e => setAmt(e.target.value.replace(/[^0-9.]/g, ''))} aria-label={T('Amount')} disabled={codeSent} />
+            {!codeSent
+              ? <button className="btn-ghost" disabled={wBusy || !/^0x[0-9a-fA-F]{40}$/.test(to) || !(Number(amt) > 0)} onClick={() => void sendCode()}>{T('Email me a code')}</button>
+              : <>
+                  <input className="at-input" inputMode="numeric" maxLength={6} value={code} placeholder="123456" onChange={e => setCode(e.target.value.replace(/\D/g, ''))} aria-label={T('Code')} />
+                  <button className="btn-ghost" disabled={wBusy || code.length !== 6} onClick={() => void withdraw()}>{T('Withdraw')}</button>
+                  <button className="link-btn" onClick={() => { setCodeSent(false); setCode('') }}>{T('Cancel')}</button>
+                </>}
+          </div>
+          {wMsg && <div style={{ fontSize: '0.72rem', color: wMsg.startsWith('⚠') ? '#fca5a5' : 'var(--text-muted)', marginTop: 4 }}>{wMsg}</div>}
+        </>
+      )}
+      {live && live.events.length > 0 && (
+        <details style={{ marginTop: 10 }}>
+          <summary style={{ cursor: 'pointer', fontSize: '0.76rem', fontWeight: 800 }}>{T('Live activity')}</summary>
+          {live.events.map((e, i) => (
+            <div key={`${e.at}:${i}`} className="at-event">
+              <span className="at-event-at"><AgoText ts={e.at} /></span>
+              <span>{e.text}{e.hash ? <> · <a href={`${EXPLORER}/tx/${e.hash}`} target="_blank" rel="noreferrer" style={{ color: 'var(--text-muted)' }}>tx ↗</a></> : null}</span>
+            </div>
+          ))}
+        </details>
+      )}
+    </Section>
+  )
+}
+
+/** Every bot on ARCDEX, best first: P&L, win rate, open positions. */
+function Marketplace({ navigate, slug }: { navigate: (p: Page) => void; slug: string | null }) {
+  const [sort, setSort] = useState<'pnl' | 'winrate' | 'new' | 'live'>('pnl')
+  const [data, setData] = useState<{ bots: MarketBot[]; total: number } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    if (slug) return
+    let alive = true
+    const load = () => getMarket(sort, 100).then(d => { if (alive) { setData(d); setError(null) } }).catch((e: Error) => { if (alive) setError(e.message) })
+    void load()
+    const id = setInterval(() => { if (!document.hidden) void load() }, 15_000)
+    return () => { alive = false; clearInterval(id) }
+  }, [sort, slug])
+  if (slug) return <MarketBotPage slug={slug} navigate={navigate} />
+  return (
+    <Section title={T('Bot marketplace') + (data ? ` · ${data.total}` : '')}>
+      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5, margin: '2px 0 8px' }}>
+        {T('Every bot on ARCDEX, with its results and what it holds right now. Paper bots trade virtual USDC; live bots trade their own wallet.')}
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+        {([['pnl', T('Top P&L')], ['winrate', T('Win rate')], ['live', T('Live first')], ['new', T('Newest')]] as const).map(([k, l]) => <button key={k} className={`at-chip${sort === k ? ' on' : ''}`} onClick={() => setSort(k)}>{l}</button>)}
+      </div>
+      {error ? <Empty>⚠ {error}</Empty> : !data ? <Empty>{T('Loading…')}</Empty> : data.bots.length === 0 ? <Empty>{T('No bots yet. Create the first one under My bots.')}</Empty> : data.bots.map((b, i) => (
+        <button key={b.slug} className="at-market-row" onClick={() => navigate({ name: 'signals', view: 'market', bot: b.slug })}>
+          <span className="at-rank">{i + 1}</span>
+          <span style={{ minWidth: 0, flex: 1 }}>
+            <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <b>🤖 {b.name}</b>
+              {b.mode === 'live' ? <Pill color={LIVE_RED}>● {T('LIVE')}</Pill> : <Pill color="#64748b">{T('PAPER')}</Pill>}
+              {b.running && <span style={{ color: '#22c55e', fontSize: '0.7rem' }}>● {T('Running')}</span>}
+              {b.strategies.map(s => <Pill key={s} color={STRATEGY_COLOR[s]}>{T(STRATEGY[s])}</Pill>)}
+            </span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              {T('{n} trades, {w} won', { n: b.closed, w: b.winRate === null ? '—' : `${Math.round(b.winRate * 100)}%` })} · {T('{n} open', { n: b.positions.length })}{b.learned ? ` · ${T('learned {n} times', { n: b.learned })}` : ''}
+              {b.mode === 'live' && b.paper ? ` · ${T('paper record {v}', { v: usd(b.paper.pnlUsd) })}` : ''}
+            </span>
+          </span>
+          <span style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>
+            <b style={{ color: b.pnlUsd >= 0 ? 'var(--green)' : '#fca5a5' }}>{usd(b.pnlUsd)}</b>
+            {b.pnlPct !== null && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{b.pnlPct >= 0 ? '+' : ''}{b.pnlPct.toFixed(1)}%</div>}
+          </span>
+        </button>
+      ))}
+    </Section>
+  )
+}
+
+/** One bot's public page (/bots/<name>): its results, open positions valued now, recent trades and what it learned. */
+function MarketBotPage({ slug, navigate }: { slug: string; navigate: (p: Page) => void }) {
+  const [bot, setBot] = useState<MarketBotDetail | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    let alive = true
+    const load = () => getMarketBot(slug).then(b => { if (alive) { setBot(b); setError(null) } }).catch((e: Error) => { if (alive) setError(e.message) })
+    void load()
+    const id = setInterval(() => { if (!document.hidden) void load() }, 10_000)
+    return () => { alive = false; clearInterval(id) }
+  }, [slug])
+  const back = <button className="link-btn" onClick={() => navigate({ name: 'signals', view: 'market' })}>← {T('All bots')}</button>
+  if (error) return <Section title={slug}>{back}<Empty>⚠ {error}</Empty></Section>
+  if (!bot) return <Empty>{T('Loading…')}</Empty>
+  const link = `https://arcdex.online/bots/${encodeURIComponent(bot.slug)}`
+  return (
+    <>
+      <div className="at-card" style={{ marginTop: 14 }}>
+        {back}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 6 }}>
+          <b className="at-bot-name">🤖 {bot.name}</b>
+          {bot.mode === 'live' ? <Pill color={LIVE_RED}>● {T('LIVE')}</Pill> : <Pill color="#64748b">{T('PAPER')}</Pill>}
+          <span className={`at-run${bot.running ? ' on' : ''}`}>{bot.running ? `● ${T('Running')}` : T('Stopped')}</span>
+          {bot.strategies.map(s => <Pill key={s} color={STRATEGY_COLOR[s]}>{T(STRATEGY[s])}</Pill>)}
+          <button className="link-btn" style={{ marginLeft: 'auto', fontSize: '0.72rem' }} onClick={() => { void navigator.clipboard?.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }) }}>{copied ? T('Copied') : T('Copy link')}</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginTop: 10 }}>
+          <Stat label={T('Profit / loss')} value={usd(bot.pnlUsd)} color={bot.pnlUsd >= 0 ? 'var(--green)' : '#fca5a5'} sub={bot.pnlPct === null ? undefined : `${bot.pnlPct >= 0 ? '+' : ''}${bot.pnlPct.toFixed(1)}%`} />
+          <Stat label={T('Win rate')} value={bot.winRate === null ? '—' : `${Math.round(bot.winRate * 100)}%`} sub={T('{n} closed trades', { n: bot.closed })} />
+          <Stat label={T('Open positions')} value={String(bot.positions.length)} />
+          <Stat label={T('Learned')} value={T('{n} changes', { n: bot.learned })} sub={bot.ready ? T('ready for live') : undefined} />
+          {bot.mode === 'live' && bot.paper && <Stat label={T('Paper record')} value={usd(bot.paper.pnlUsd)} color={bot.paper.pnlUsd >= 0 ? 'var(--green)' : '#fca5a5'} sub={T('{n} trades, {w} won', { n: bot.paper.closed, w: bot.paper.winRate === null ? '—' : `${Math.round(bot.paper.winRate * 100)}%` })} />}
+        </div>
+        {bot.wallet && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 8 }}>{T('Live wallet')}: <a href={`${EXPLORER}/address/${bot.wallet}`} target="_blank" rel="noreferrer" style={{ color: 'var(--text-muted)' }}>{shortAddr(bot.wallet)} ↗</a></div>}
+      </div>
+      <Section title={T('Open positions') + ` · ${bot.positions.length}`}>
+        {bot.positions.length === 0 ? <Empty>{T('No open positions right now.')}</Empty> : bot.positions.map(p => (
+          <div key={`${p.token}:${p.openedAt}`} className="reward-row" style={{ flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button className="link-btn" onClick={() => navigate({ name: 'argus', address: p.token, pool: '' })} style={{ textDecoration: 'none' }}>${p.symbol}</button>
+              <Pill color={STRATEGY_COLOR[p.strategy]}>{T(STRATEGY[p.strategy])}</Pill>
+              {p.mode === 'live' && <Pill color={LIVE_RED}>{T('LIVE')}</Pill>}
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}><AgoText ts={p.openedAt} /></span>
+            </div>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+              {T('in')} {price(p.entry)} · {usd(p.sizeUsd)} · {T('now')} {p.price === null ? '—' : price(p.price)}{' '}
+              {p.pnlUsd !== null && <b style={{ color: p.pnlUsd >= 0 ? 'var(--green)' : '#fca5a5' }}>{usd(p.pnlUsd)}</b>}
+            </div>
+          </div>
+        ))}
+      </Section>
+      <Section title={T('Recent trades')}>
+        {bot.trades.length === 0 ? <Empty>{T('Nothing closed yet.')}</Empty> : bot.trades.map(p => <PositionRow key={p.id} p={p} navigate={navigate} />)}
+      </Section>
+      {bot.learnLog.length > 0 && (
+        <Section title={T('What {name} learned', { name: bot.name })}>
+          {bot.learnLog.map((n, i) => (
+            <div key={`${n.at}:${i}`} className="at-learn">
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Pill color={STRATEGY_COLOR[n.strategy]}>{T(STRATEGY[n.strategy])} · v{n.version}</Pill>
+                <Pill color={LEARN_COLOR[n.kind]}>{T(LEARN_KIND[n.kind])}</Pill>
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}><AgoText ts={n.at} /></span>
+              </div>
+              <div style={{ fontSize: '0.76rem', lineHeight: 1.45, marginTop: 3 }}>{n.text}</div>
+            </div>
+          ))}
+        </Section>
+      )}
+    </>
+  )
+}
+
+/** Why the coins being watched aren't signals right now, by their main reason (GET /v1/bot/rejections). */
+function RejectionsCard() {
+  const [r, setR] = useState<RejectionStats | null>(null)
+  useEffect(() => {
+    let alive = true
+    const load = () => getRejections().then(x => { if (alive) setR(x) }).catch(() => {})
+    void load()
+    const id = setInterval(() => { if (!document.hidden) void load() }, 30_000)
+    return () => { alive = false; clearInterval(id) }
+  }, [])
+  if (!r || !r.top.length) return null
+  const max = r.top[0].coins
+  return (
+    <Section title={T('Why coins are passed over right now') + ` · ${r.watching}`}>
+      {r.top.slice(0, 8).map(x => (
+        <div key={x.key} className="at-reason-bar">
+          <span className="at-reason-label">{T(x.label)}</span>
+          <span className="at-reason-track"><span style={{ width: `${Math.max(3, (x.coins / max) * 100)}%` }} /></span>
+          <span className="at-reason-n">{x.coins}</span>
+        </div>
+      ))}
+    </Section>
+  )
 }
 
 /** The bot's own results (paper and live), its positions, and the owner's panel. */
@@ -585,7 +998,7 @@ function PositionRow({ p, navigate }: { p: BotPosition; navigate: (p: Page) => v
         <span>{T('in')} {price(p.marketEntry)} · {usd(p.sizeUsd, p.sizeUsd < 100 ? 2 : 0)}</span>
         {sold.length > 0 && <span>{T('sold')} {sold.map(f => price(f.price)).join(', ')}</span>}
         {p.status === 'closed'
-          ? <b style={{ color: (p.pnlUsd ?? 0) >= 0 ? 'var(--green)' : '#fca5a5' }}>{usd(p.pnlUsd)} ({pnlPct! >= 0 ? '+' : ''}{pnlPct!.toFixed(0)}%) · {T(EXIT[p.exitReason ?? ''] ?? p.exitReason ?? '')}</b>
+          ? <b style={{ color: (p.pnlUsd ?? 0) >= 0 ? 'var(--green)' : '#fca5a5' }}>{usd(p.pnlUsd)} ({pnlPct! >= 0 ? '+' : ''}{pnlPct!.toFixed(0)}%) · {T(EXIT[p.exitReason ?? ''] ?? p.exitReason ?? '')}{p.feeUsd ? <span style={{ fontWeight: 500, color: 'var(--text-muted)' }}> · {T('2% fee {v}', { v: usd(p.feeUsd, 4) })}</span> : null}</b>
           : <span style={{ color: 'var(--text)' }}>{p.tp1Done ? T('profit taken, trailing') : T('open')}</span>}
       </div>
       {p.status === 'closed' && p.note && <div style={{ width: '100%', fontSize: '0.72rem', color: p.exitReason === 'rug' ? '#fcd34d' : 'var(--text-muted)' }}>{p.exitReason === 'rug' ? '🛡 ' : ''}{p.note}</div>}
@@ -604,7 +1017,7 @@ function PositionRow({ p, navigate }: { p: BotPosition; navigate: (p: Page) => v
   )
 }
 
-const TX_KIND: Record<string, string> = { buy: 'buy', sell: 'sell', approve: 'approval' }
+const TX_KIND: Record<string, string> = { buy: 'buy', sell: 'sell', approve: 'approval', fee: 'platform fee' }
 
 function ModeBadge({ mode }: { mode: BotStatus['mode'] }) {
   const live = mode === 'live'

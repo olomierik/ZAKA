@@ -1223,6 +1223,21 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .at-strat-help { font-size: 0.7rem; color: var(--text-muted); line-height: 1.4; }
 .at-check { width: 18px; height: 18px; border-radius: 5px; border: 2px solid; display: inline-flex; align-items: center; justify-content: center; font-size: 0.72rem; color: #fff; flex-shrink: 0; }
 .at-error { margin-top: 8px; font-size: 0.74rem; color: #fca5a5; }
+/* Accounts, the bot bar, live, the marketplace */
+.at-account { margin-top: 14px; padding: 9px 12px; border-radius: 10px; background: var(--adx-card-bg); border: 1px solid var(--adx-card-border); font-size: 0.76rem; }
+.at-botbar { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.at-input.at-pass { width: 88px; letter-spacing: 0.35em; text-align: center; }
+.at-wallet { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 10px; margin-bottom: 6px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--adx-card-border); }
+.at-wallet code { font-family: var(--mono); font-size: 0.74rem; overflow-wrap: anywhere; }
+.at-market-row { display: flex; gap: 10px; align-items: center; width: 100%; padding: 10px 4px; background: none; border: none; border-bottom: 1px solid var(--adx-card-border); color: var(--text); text-align: left; cursor: pointer; font-size: 0.82rem; }
+.at-market-row:last-child { border-bottom: none; }
+.at-market-row:hover { background: var(--bg-2); }
+.at-rank { width: 22px; text-align: center; color: var(--text-muted); font-weight: 800; flex-shrink: 0; }
+.at-reason-bar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(60px, 34%) 40px; gap: 8px; align-items: center; padding: 4px 0; font-size: 0.74rem; }
+.at-reason-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.at-reason-track { height: 7px; border-radius: 99px; background: var(--bg-2); overflow: hidden; }
+.at-reason-track span { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #f59e0b, #ef4444); }
+.at-reason-n { text-align: right; font-family: var(--mono); color: var(--text-muted); }
 /* Named, self-tuning bots */
 .at-input.at-name { width: min(260px, 100%); font-family: inherit; }
 .at-bot-name { font-size: 1rem; font-weight: 900; overflow-wrap: anywhere; }

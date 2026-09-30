@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { DepositModal, WithdrawModal } from './CashModals'
-import { engineEnabled, getBotStatus, getPaperAccount, getScan, paperKey } from '../api/marketStream'
+import { botMe, botSession, engineEnabled, getBotStatus, getPaperAccount, getScan, paperKey } from '../api/marketStream'
 import { useTrader } from '../lib/identity'
 import { useCash } from '../lib/usdc'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
@@ -28,8 +28,9 @@ export default function MobileHome({ navigate }: { navigate: (p: Page) => void }
     const load = () => {
       void getScan(1).then(s => { if (alive) setScanning(s.stats.watching) }).catch(() => {})
       void getBotStatus().then(s => { if (alive) setLive(s.mode === 'live') }).catch(() => {})
-      const key = paperKey()
-      if (key) void getPaperAccount(key).then(a => { if (alive) setMine({ running: a.running, equity: a.equity, name: a.name ?? null }) }).catch(() => {})
+      // The signed-in owner's first running bot (else their first), or this browser's older key bot.
+      if (botSession()) void botMe().then(m => { const a = m.bots.find(b => b.running) ?? m.bots[0]; if (alive && a) setMine({ running: a.running, equity: a.equity, name: a.name ?? null }) }).catch(() => {})
+      else { const key = paperKey(); if (key) void getPaperAccount(key).then(a => { if (alive) setMine({ running: a.running, equity: a.equity, name: a.name ?? null }) }).catch(() => {}) }
     }
     load()
     const id = setInterval(() => { if (!document.hidden) load() }, 30_000)

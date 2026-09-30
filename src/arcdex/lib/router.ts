@@ -24,7 +24,7 @@ export function pageToPath(p: Page): string {
     case 'swap':        return '/swap'
     case 'bridge':      return p.dir === 'in' ? '/bridge?dir=in' : '/bridge'
     case 'deploy-curve-router': return '/deploy/curve-router'
-    case 'signals':     return '/autotrade'
+    case 'signals':     return p.bot ? `/bots/${encodeURIComponent(p.bot)}` : p.view === 'market' ? '/bots' : '/autotrade'
   }
 }
 
@@ -58,6 +58,8 @@ export function pathToPage(pathname: string, search: string): Page | null {
     case 'bridge':      return { name: 'bridge', dir: q.get('dir') === 'in' ? 'in' : 'out' }
     case 'signals':
     case 'autotrade':   return { name: 'signals' }
+    // The bot marketplace, and one bot's public page.
+    case 'bots':        return b ? { name: 'signals', view: 'market', bot: b.toLowerCase() } : { name: 'signals', view: 'market' }
     // Not linked anywhere: the owner deploys ArcDexCurveRouter here.
     case 'deploy':      return b === 'curve-router' ? { name: 'deploy-curve-router' } : null
     default:            return null

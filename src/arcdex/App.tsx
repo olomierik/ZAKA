@@ -62,7 +62,7 @@ export type Page =
   | { name: 'swap' }
   | { name: 'bridge'; dir?: 'in' | 'out' }
   | { name: 'deploy-curve-router' }
-  | { name: 'signals' }
+  | { name: 'signals'; view?: 'market'; bot?: string }
 
 const fromUrl = (): Page => pathToPage(window.location.pathname, window.location.search) ?? { name: 'terminal' }
 
@@ -160,7 +160,7 @@ export default function App() {
           {page.name === 'transfers'   && <TransfersPage navigate={navigate} />}
           {page.name === 'burn'        && <BurnPage navigate={navigate} />}
           {page.name === 'deploy-curve-router' && <DeployCurveRouter />}
-          {page.name === 'signals'     && <SignalsPage navigate={navigate} />}
+          {page.name === 'signals'     && <SignalsPage navigate={navigate} view={page.view} bot={page.bot} />}
           </Suspense>
         </main>
 
