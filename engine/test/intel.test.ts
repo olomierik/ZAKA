@@ -65,6 +65,15 @@ describe('code templates', () => {
     expect(field(body(addr('a'), '0001'), named, 'quote')).toBe('0x' + addr('a'))
     expect(field(body(addr('a'), '0001'), named, 'missing')).toBeNull()
   })
+  test('a setting is masked whole, even if the sample only varied its low byte', () => {
+    // PUSH2 <fee> STOP: fees 100, 101, 102 differ only in the low byte…
+    const fees = ['0064', '0065', '0066'].map(f => '0x61' + f + '00')
+    const ft = learnTemplate('fees', fees)
+    expect(ft.mask).toEqual([[1, 2]])
+    // …but a coin launched with a fee of 356 (0x0164) is the same contract.
+    expect(matchesTemplate('0x610164' + '00', ft)).toBe(true)
+    expect(matchesTemplate('0x620164' + '00', ft)).toBe(false) // a different instruction is not
+  })
   test('needs at least three copies to learn from', () => {
     expect(() => learnTemplate('x', codes.slice(0, 2))).toThrow()
   })

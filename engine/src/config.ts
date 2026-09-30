@@ -52,6 +52,10 @@ export interface Config {
   restRatePerSec: number
   tradeRetentionHours: number
   logLevel: 'debug' | 'info' | 'warn' | 'error'
+  /** Signals and paper trading (engine/src/bot): paper (default) or off. Live trading isn't built. */
+  botMode: 'paper' | 'off'
+  /** Paper position size in USD (default: each strategy's own, $25). */
+  botSizeUsd: number | null
 }
 
 export function loadConfig(): Config {
@@ -82,7 +86,10 @@ export function loadConfig(): Config {
     restRatePerSec: int('REST_RATE_PER_SEC', 20, 1, 10_000),
     tradeRetentionHours: int('HISTORY_TRADE_RETENTION_HOURS', 72, 1, 24 * 3650),
     logLevel: (process.env.LOG_LEVEL ?? 'info') as Config['logLevel'],
+    botMode: process.env.BOT_MODE === 'off' ? 'off' : 'paper',
+    botSizeUsd: process.env.BOT_SIZE_USD ? int('BOT_SIZE_USD', 25, 1, 10_000) : null,
   }
+  if (process.env.BOT_MODE === 'live') throw new Error('BOT_MODE=live: live trading is not built yet (paper trading first). Use paper or off.')
   // Separate ingest/gateway processes talk through Redis pub/sub.
   if (role !== 'all' && !cfg.redisUrl) throw new Error(`ENGINE_ROLE=${role} needs REDIS_URL`)
   return cfg

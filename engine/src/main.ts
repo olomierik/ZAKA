@@ -37,6 +37,8 @@ import { metrics } from './metrics'
 import { NullHistoryStore, SupabaseHistoryStore, type HistoryStore } from './store/history'
 import { PostgresHistoryStore } from './store/postgresHistory'
 import { MemoryHotStore, RedisHotStore, type HotStore } from './store/hot'
+import { Bot } from './bot/bot'
+import { MemoryBotStore, PostgresBotStore } from './bot/store'
 import { DataApi, startServer } from './ws/server'
 
 const cfg = loadConfig()
@@ -145,10 +147,12 @@ async function main() {
   const adapterCtx = { rpc, pools, sender: (txHash: string) => makers.get(txHash) }
 
   let srv: ReturnType<typeof startServer> | null = null
+  let dataApi: DataApi | null = null
   let publisher: Publisher
   if (cfg.role === 'all') {
     // Serve /health right away; the engine attaches once it exists.
     const api = new DataApi(null, hot, history)
+    dataApi = api
     srv = startServer({ cfg, api, health })
     publisher = srv.publisher
     // Also fan out over Redis if other gateway processes are running.
@@ -164,6 +168,17 @@ async function main() {
     engine = new MarketEngine(publisher, hot, history, rpc)
   }
   const eng = engine
+  // Signals and paper trading (engine/src/bot): watches launches from the engine's own trades.
+  const bot = cfg.botMode === 'off' ? null : new Bot({
+    rpc, engine: eng, pools, mode: cfg.botMode, sizeUsd: cfg.botSizeUsd ?? undefined,
+    store: cfg.databaseUrl ? new PostgresBotStore(cfg.databaseUrl) : new MemoryBotStore(),
+    publish: (topics, msg) => publisher.publish(topics, msg),
+  })
+  if (bot) {
+    eng.observers.push(bot)
+    await bot.start()
+    dataApi?.attachBot(bot)
+  }
   await eng.warmStart()
   const parser = new TradeParser(pools, oracle, makers, eng.launchpadOf)
   // Launches on launchpads without an adapter, found from their pool's Initialize.
@@ -254,6 +269,7 @@ async function main() {
   await stream.start()
 
   setInterval(() => eng.tick(), 1_000)
+  if (bot) setInterval(() => bot.tick(), 15_000)
   setInterval(() => void hot.ping().then(() => { redisOk = true }, () => { redisOk = false; log.warn('redis ping failed') }), 10_000)
   setInterval(() => void history.cleanup(cfg.tradeRetentionHours), 3_600_000)
   if (srv) setInterval(() => hot.putSubscriptions(srv!.subscriptionCounts()), 10_000)

@@ -48,11 +48,37 @@ export function varyingRanges(codes: string[]): [number, number][] {
   return runs
 }
 
+/** Byte ranges of every PUSH instruction's value in `code`. */
+export function pushValues(code: string): [number, number][] {
+  const hex = strip(code)
+  const out: [number, number][] = []
+  for (let i = 0; i < hex.length / 2;) {
+    const op = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+    if (op >= 0x60 && op <= 0x7f) { const n = op - 0x5f; out.push([i + 1, i + n]); i += 1 + n } else i++
+  }
+  return out
+}
+
+/** Varying ranges widened to the whole value they sit in: a setting baked
+ * into the code is a PUSH value, and a sample may only show some of its
+ * bytes varying (a fee of 100 vs 300 differs in the low byte; 100 vs 1000
+ * in both). Merged where they overlap. */
+export function widenToValues(ranges: [number, number][], code: string): [number, number][] {
+  const values = pushValues(code)
+  const wide = ranges.map(([s, e]) => {
+    for (const [vs, ve] of values) if (vs <= e && ve >= s) { s = Math.min(s, vs); e = Math.max(e, ve) }
+    return [s, e] as [number, number]
+  }).sort((a, b) => a[0] - b[0])
+  const out: [number, number][] = []
+  for (const r of wide) { const last = out[out.length - 1]; if (last && r[0] <= last[1] + 1) last[1] = Math.max(last[1], r[1]); else out.push([...r]) }
+  return out
+}
+
 /** A template from real instances of one contract (at least 3, so each
  * varying range shows up; more is safer). */
 export function learnTemplate(name: string, codes: string[]): CodeTemplate {
   if (codes.length < 3) throw new Error(`${name}: need at least 3 instances`)
-  const mask = varyingRanges(codes)
+  const mask = widenToValues(varyingRanges(codes), codes[0])
   return { name, size: strip(codes[0]).length / 2, mask, hash: keccak256(maskedCode(codes[0], mask) as `0x${string}`) }
 }
 
@@ -67,10 +93,20 @@ export function filledIn(code: string, t: CodeTemplate): string[] {
   return t.mask.map(([s, e]) => '0x' + h.slice(s * 2, (e + 1) * 2))
 }
 
-/** A named value a copy filled in (see `fields`), or null. */
+/** A filled-in value as an address: a 20-byte value, or a 32-byte word
+ * holding one (its first 12 bytes zero). Null if it isn't one. */
+export function asAddress(v: string | null | undefined): string | null {
+  const h = (v ?? '').toLowerCase().replace(/^0x/, '')
+  if (h.length === 40) return '0x' + h
+  if (h.length === 64 && /^0{24}/.test(h)) return '0x' + h.slice(24)
+  return null
+}
+
+/** A named value a copy filled in (see `fields`), or null. Addresses come back as addresses. */
 export function field(code: string, t: CodeTemplate, name: string): string | null {
   const i = t.fields?.[name]
-  return i === undefined ? null : filledIn(code, t)[i] ?? null
+  const v = i === undefined ? null : filledIn(code, t)[i] ?? null
+  return v === null ? null : asAddress(v) ?? v
 }
 
 /** EIP-1167 minimal proxy (45 bytes): the implementation it delegates to, else null. */

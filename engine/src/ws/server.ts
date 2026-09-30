@@ -12,6 +12,10 @@
 //   GET /v1/tokens/:token/trades?limit=100&before=<ms>
 //   GET /v1/tokens/:token/candles?interval=1m&limit=500&before=<ms>
 //   GET /v1/market?limit=100
+//   GET /v1/signals?limit=50                    trading signals (engine/src/bot)
+//   GET /v1/safety/:token                       a coin's latest safety report
+//   GET /v1/bot/stats                           paper trading results
+//   GET /v1/bot/positions?status=open|closed|all&limit=100
 //   GET /health           summary (200 ok/degraded, 503 down)
 //   GET /metrics          full metrics (Bearer METRICS_TOKEN when set)
 
@@ -23,6 +27,7 @@ import {
 import type { Config } from '../config'
 import { log, errMsg } from '../log'
 import { metrics } from '../metrics'
+import type { Bot } from '../bot/bot'
 import type { MarketEngine, Publisher } from '../market/engine'
 import type { HistoryStore } from '../store/history'
 import type { HotStore } from '../store/hot'
@@ -36,6 +41,9 @@ export class DataApi {
 
   /** The engine starts after the server (so /health answers during warm-up). */
   attachEngine(e: MarketEngine) { this.engine = e }
+  /** Signals and paper trading, when this process runs them. */
+  bot: Bot | null = null
+  attachBot(b: Bot) { this.bot = b }
 
   async tokenSnapshot(token: string, limit = 50): Promise<{ stats: TokenStats | null; trades: WireTrade[] }> {
     if (this.engine?.tokens.has(token)) return { stats: this.engine.statsOf(token), trades: this.engine.recentTrades(token, limit) }
@@ -171,6 +179,22 @@ export function startServer({ cfg, api, health }: ServerDeps) {
       try {
         if (url.pathname === '/v1/tokens/new') return json(req, 200, { launches: await api.launches(limit(50, 500)) }, 'public, max-age=1')
         if (url.pathname === '/v1/market') return json(req, 200, { tokens: await api.market(limit(100, 1_000)) }, 'public, max-age=2')
+        if (url.pathname.startsWith('/v1/signals') || url.pathname.startsWith('/v1/safety/') || url.pathname.startsWith('/v1/bot/')) {
+          const bot = api.bot
+          if (!bot) return json(req, 503, { error: 'signals are not running in this process' })
+          if (url.pathname === '/v1/signals') return json(req, 200, { signals: bot.signals(limit(50, 500)) }, 'public, max-age=1')
+          if (url.pathname === '/v1/bot/stats') return json(req, 200, bot.stats(), 'public, max-age=2')
+          if (url.pathname === '/v1/bot/positions') {
+            const st = url.searchParams.get('status')
+            return json(req, 200, { positions: bot.positionsList(st === 'open' || st === 'closed' ? st : 'all', limit(100, 1_000)) }, 'public, max-age=1')
+          }
+          const sm = /^\/v1\/safety\/(0x[0-9a-fA-F]{40})$/.exec(url.pathname)
+          if (sm) {
+            const r = await bot.safety(sm[1].toLowerCase())
+            return r ? json(req, 200, { report: r }, 'public, max-age=2') : json(req, 404, { error: 'not a coin the engine is watching' })
+          }
+          return json(req, 404, { error: 'not found' })
+        }
         const m = /^\/v1\/tokens\/(0x[0-9a-fA-F]{40})(\/trades|\/candles)?$/.exec(url.pathname)
         if (m) {
           const token = m[1].toLowerCase()

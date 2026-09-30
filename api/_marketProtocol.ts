@@ -7,6 +7,7 @@
 //   client → server   {"action":"subscribe","channel":"token","token":"0x…"}
 //                     {"action":"subscribe","channel":"candles","token":"0x…","interval":"1m"}
 //                     {"action":"subscribe","channel":"new_tokens"}
+//                     {"action":"subscribe","channel":"signals"}   trading signals and the bot's positions
 //                     {"action":"unsubscribe", …same fields}
 //                     {"action":"ping"}
 //   server → client   {"t":"TRADE","k":"0x…token","d":{…WireTrade}}
@@ -17,7 +18,7 @@
 // subscribe to one or the other, or events arrive twice. NEW_TOKEN goes to
 // `new_tokens`; `market` carries TICKS (all tokens, once a second).
 
-export const CHANNELS = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles', 'new_tokens', 'market'] as const
+export const CHANNELS = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles', 'new_tokens', 'market', 'signals'] as const
 export type Channel = (typeof CHANNELS)[number]
 /** Channels that need a token address. */
 export const TOKEN_CHANNELS: readonly Channel[] = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles']
@@ -61,7 +62,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | { error: strin
 
 /** The pub/sub topic a subscription maps to. */
 export function topicOf(m: { channel: Channel; token?: string; interval?: string }): string {
-  if (m.channel === 'new_tokens' || m.channel === 'market') return m.channel
+  if (m.channel === 'new_tokens' || m.channel === 'market' || m.channel === 'signals') return m.channel
   if (m.channel === 'candles') return `candles:${m.token}:${m.interval}`
   return `${m.channel}:${m.token}`
 }
@@ -161,6 +162,52 @@ export interface LaunchInfo {
   marketCapUsd?: number | null
 }
 
+/** One safety check of a coin (engine/src/intel/scanner.ts). */
+export interface SafetyCheck { id: string; ok: boolean | null; hard: boolean; detail: string }
+
+/** A trading signal (engine/src/bot/bot.ts): market rules met and every hard safety check passed. */
+export interface TradeSignal {
+  id: string
+  strategy: 'snipe' | 'second-leg'
+  token: string
+  symbol: string
+  name: string
+  launchpad: string
+  at: number
+  price: number
+  marketCapUsd: number | null
+  liquidityUsd: number | null
+  ageSec: number
+  reasons: string[]
+  safety: { verdict: 'pass' | 'fail' | 'pending'; score: number; checks: SafetyCheck[] }
+  /** Whether ARCDEX can trade it today. */
+  executable: boolean
+}
+
+/** A (paper) position the bot opened on a signal (engine/src/trading/paper.ts). */
+export interface BotPosition {
+  id: string
+  strategy: 'snipe' | 'second-leg'
+  token: string
+  symbol: string
+  launchpad: string
+  signalId: string
+  openedAt: number
+  marketEntry: number
+  entryPrice: number
+  sizeUsd: number
+  qty: number
+  remaining: number
+  cost: number
+  peak: number
+  tp1Done: boolean
+  fills: { at: number; price: number; qty: number; usd: number; reason: string }[]
+  status: 'open' | 'closed'
+  closedAt: number | null
+  exitReason: string | null
+  pnlUsd: number | null
+}
+
 export type ServerMessage =
   | { t: 'TRADE'; k: string; d: WireTrade }
   | { t: 'PRICE_UPDATE'; k: string; d: { pu: number | null; p: number | null; mc: number | null; b: number; ts: number } }
@@ -169,6 +216,9 @@ export type ServerMessage =
   | { t: 'CANDLE_UPDATE'; k: string; i: Interval; d: WireCandle }
   | { t: 'NEW_TOKEN'; k: string; d: LaunchInfo }
   | { t: 'SNAPSHOT'; k: string; d: { stats: TokenStats | null; trades: WireTrade[] } }
+  /** signals channel: a new trading signal, and the bot's positions as they open, fill and close */
+  | { t: 'SIGNAL'; d: TradeSignal }
+  | { t: 'BOT_POSITION'; d: BotPosition }
   /** market channel, once a second: [token, priceUsd, chg24 %, vol24 USD, mcap USD, trades24] for tokens that traded */
   | { t: 'TICKS'; d: [string, number | null, number | null, number, number | null, number][] }
   | { t: 'SUBSCRIBED' | 'UNSUBSCRIBED'; c: string }

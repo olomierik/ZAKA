@@ -34,6 +34,11 @@ Everything runs in one Bun process by default. For scale-out, split it into `ENG
 | `src/launchpads/faze.ts` | Faze: launches and trades on its one curve contract (native-USDC coins only) |
 | `src/launchpads/v4Launches.ts` | Any other launchpad that opens a v4 pool at launch (Aka.fun, o1, Minara, Long.supply, and unlisted ones as "Other") |
 | `src/intel/templates.ts` | Contract code templates: "is this the launchpad's own contract?" (`templateData.ts` from `scripts/learn-templates.ts`) |
+| `src/intel/scanner.ts` | The safety report: contract, hook, honeypot probe, liquidity, holders, bundling, clusters, wash, creator, copycat |
+| `src/intel/honeypot.ts` | The honeypot probe (buy, pass on, sell, in one eth_call with state overrides) |
+| `src/signals/rules.ts` | Snipe and second-leg rules |
+| `src/trading/paper.ts` | Paper positions, exits, costs, risk limits, stats |
+| `src/bot/bot.ts` | Ties it together: watches launches, fires signals, paper-trades; `/v1/signals`, `/v1/bot/*`, `signals` channel |
 | `src/market/tokenState.ts` | Per-token hot state; rolling 24h stats in 1,440 minute buckets |
 | `src/market/candles.ts` | 1s/5s/15s/1m/5m/15m/1h/4h/1d candles, late-trade handling |
 | `src/market/engine.ts` | Applies trades/launches; publishes events; ticks; warm restart |

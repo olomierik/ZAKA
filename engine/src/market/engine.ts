@@ -13,6 +13,13 @@ import type { HotStore } from '../store/hot'
 import { CandleEngine, toWireCandle, type ApplyResult } from './candles'
 import { TokenState } from './tokenState'
 
+/** Told of every trade and launch the engine applies (replays too: they
+ * rebuild state after a restart). Must not throw or block. */
+export interface EngineObserver {
+  onTrade?(t: Trade, ctx: { replay: boolean }): void
+  onLaunch?(l: LaunchInfo, ctx: { replay: boolean }): void
+}
+
 export interface Publisher {
   publish(topics: string[], msg: ServerMessage): void
   /** Anyone subscribed? (Skips building messages nobody will read.) */
@@ -35,6 +42,10 @@ export class MarketEngine {
   private supplyQueue = new Set<string>()
   private lastEvict = Date.now()
   lastNewTokenAt = 0
+  readonly observers: EngineObserver[] = []
+  private notify(fn: (o: EngineObserver) => void) {
+    for (const o of this.observers) { try { fn(o) } catch (e) { metrics.inc('observer_errors'); log.warn('observer failed', { error: errMsg(e) }) } }
+  }
 
   constructor(private out: Publisher, private hot: HotStore, private history: HistoryStore, private rpc: Rpc | null) {}
 
@@ -84,6 +95,7 @@ export class MarketEngine {
     this.dirty.add(t.token)
     this.ticks.add(t.token)
     metrics.inc('trades')
+    this.notify(o => o.onTrade?.(t, { replay: ctx.replay }))
     if (ctx.replay) { metrics.inc('trades_replayed'); return }
 
     const k = t.token
@@ -132,6 +144,7 @@ export class MarketEngine {
     this.dirty.add(l.token)
     metrics.inc('new_tokens')
     this.lastNewTokenAt = Date.now()
+    this.notify(o => o.onLaunch?.(l, { replay: ctx.replay }))
     if (ctx.replay) return
     metrics.latency('launch_detection', Date.now() - l.timestamp)
     const s = st.stats()
