@@ -11,8 +11,11 @@
 // keys work on pro-api.coingecko.com with x-cg-pro-api-key, Demo keys on
 // api.coingecko.com with x-cg-demo-api-key. The key is tried as Pro, then as
 // Demo; one neither accepts falls back to the free API, so a wrong or expired
-// key can never take the market data down. Every response says which
-// upstream served it (X-Arcdex-Upstream) — never the key.
+// key can never take the market data down. A key whose plan has run out of
+// credits (429 "monthly credit limit", code 10006; seen 2026-10-01, when it
+// emptied the $ARCD card and every market list) is benched for 30 minutes and
+// the free API answers meanwhile. Every response says which upstream served
+// it (X-Arcdex-Upstream) — never the key.
 
 declare const process: { env: Record<string, string | undefined> }
 
@@ -31,19 +34,35 @@ async function keyRejected(res: Response): Promise<boolean> {
   return /api[ _-]?key|root url|unauthori[sz]ed/i.test(text)
 }
 
-export function createUpstream(rawKey: string | undefined, fetchImpl: typeof fetch = fetch) {
+/** The key's plan has no credits left this month (nothing to do with the request). */
+async function outOfCredits(res: Response): Promise<boolean> {
+  if (res.status !== 429 && res.status !== 402) return false
+  const text = await res.clone().text().catch(() => '')
+  return /credit limit|10006|overage/i.test(text)
+}
+
+/** How long a key out of credits is left alone before it's tried again. */
+export const OUT_OF_CREDITS_BENCH_MS = 30 * 60_000
+
+export function createUpstream(rawKey: string | undefined, fetchImpl: typeof fetch = fetch, now: () => number = Date.now) {
   const key = rawKey?.trim() || undefined
   let tier: Upstream = key ? 'coingecko-pro' : 'geckoterminal'
+  let benchedUntil = 0
   return {
-    upstream: () => tier,
+    upstream: () => (benchedUntil > now() ? 'geckoterminal' : tier),
     /** GET `path` (e.g. "/networks/arc/pools/0x…?include=base_token") from the current upstream. */
     async fetch(path: string, init: { signal?: AbortSignal } = {}): Promise<Response> {
       for (;;) {
-        const used = tier
+        const used: Upstream = benchedUntil > now() ? 'geckoterminal' : tier
         const t = TIERS[used]
         const headers: Record<string, string> = { Accept: 'application/json;version=20230302', 'User-Agent': 'ARCDEX/1.0' }
         if (t.keyHeader && key) headers[t.keyHeader] = key
         const res = await fetchImpl(`${t.base}${path}`, { headers, signal: init.signal })
+        if (t.keyHeader && await outOfCredits(res)) {
+          if (benchedUntil <= now()) console.warn(`COINGECKO_API_KEY is out of credits on ${used}; using the free GeckoTerminal API for ${OUT_OF_CREDITS_BENCH_MS / 60_000} minutes`)
+          benchedUntil = now() + OUT_OF_CREDITS_BENCH_MS
+          continue
+        }
         if (!t.next || !(await keyRejected(res))) return res
         // Concurrent requests may all see the rejection: step down once.
         if (tier === used) {

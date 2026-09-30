@@ -88,6 +88,27 @@ console.log('concurrent requests')
   check(rs.every(r => r.ok) && up.upstream() === 'coingecko-demo', '20 at once step down to Demo once, not past it')
 }
 
+console.log('a key out of credits (429 "monthly credit limit", 2026-10-01)')
+{
+  const OUT = { status: 429, body: { status: { error_code: 10006, error_message: "You have reached your account's monthly credit limit. The overage option is currently turned off." } } }
+  let t = 1_000_000, credits = false
+  const { f, calls } = mock(c => (isPro(c) ? (credits ? OK : OUT) : OK))
+  const up = createUpstream('CG-paid', f, () => t)
+  const r = await up.fetch(PATH)
+  check(r.ok && isFree(calls[calls.length - 1]), 'the same request is answered by the free API', calls.map(c => c.url).join(' '))
+  check(up.upstream() === 'geckoterminal', 'and says so')
+  const n = calls.length
+  await up.fetch(PATH)
+  check(calls.length === n + 1 && isFree(calls[n]), 'the key is left alone while benched: one call, to the free API')
+  t += 31 * 60_000; credits = true
+  const back = await up.fetch(PATH)
+  check(back.ok && isPro(calls[calls.length - 1]) && up.upstream() === 'coingecko-pro', 'after 30 minutes the key is tried again, and used once it has credits')
+  const { f: f2, calls: c2 } = mock(c => (isPro(c) ? { status: 429, body: { status: { error_code: 429, error_message: 'Throttled: too many requests' } } } : OK))
+  const up2 = createUpstream('CG-paid', f2, () => t)
+  const r2 = await up2.fetch(PATH)
+  check(r2.status === 429 && c2.length === 1 && isPro(c2[0]), 'an ordinary rate limit is passed on, not a reason to leave the key')
+}
+
 console.log('live')
 {
   const POOL = '/networks/arc/pools/0x87b65f8831a8f3ba17da44003fae5294476b9a5c7ac5da53485a44dd12af9897?include=base_token' // $ARCD/USDC

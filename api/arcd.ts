@@ -1,6 +1,7 @@
 // GET /api/arcd — everything the landing page and burn dashboard show
 // about $ARCD, ARCDEX's official coin, in one CDN-cached response:
-//   market   price, FDV, liquidity, volume, 24h change (GeckoTerminal)
+//   market   price, FDV, liquidity, volume, 24h change (GeckoTerminal; the
+//            market engine's own numbers when GeckoTerminal can't answer)
 //   burned   $ARCD held by the burn address 0x…dEaD (gone forever)
 //   feeWallet  USDC waiting to buy back + $ARCD bought but not yet burned
 //   burns    recent transfers into the burn address (Arc RPC logs)
@@ -22,6 +23,13 @@ const TRANSFER = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523
 const SPAN = 9_000       // Arc RPC's max getLogs range
 const SPANS = 40         // ~2 days of blocks for the recent-burns list
 const SUPPLY = 1_000_000_000
+/** The market engine's REST base (it prices $ARCD from its own swaps). */
+const ENGINE = ((process.env.VITE_ARCDEX_API_URL || (process.env.VITE_ARCDEX_WS_URL ?? '').replace(/^ws/, 'http').replace(/\/ws\/?$/, '')) || 'https://arcdex-engine-production.up.railway.app').replace(/\/$/, '')
+/** Each part gets this long, so one slow source can't hold the whole answer (it took 18s on 2026-10-01). */
+const BUDGET_MS = { market: 7_000, balances: 6_000, burns: 9_000, fees: 6_000 }
+const within = <T,>(p: Promise<T>, ms: number): Promise<T> => Promise.race([p, new Promise<T>((_, no) => setTimeout(() => no(new Error('timeout')), ms))])
+
+declare const process: { env: Record<string, string | undefined> }
 
 const pad = (a: string) => '0x' + a.toLowerCase().replace(/^0x/, '').padStart(64, '0')
 
@@ -60,6 +68,20 @@ async function recentBurns(): Promise<Burn[]> {
 }
 
 async function market() {
+  try { return await within(geckoMarket(), BUDGET_MS.market - 2_000) } catch { return await within(engineMarket(), 2_000) }
+}
+
+/** The market engine's live numbers for $ARCD (no image). */
+async function engineMarket() {
+  const r = await fetch(`${ENGINE}/v1/tokens/${ARCD}`)
+  if (!r.ok) throw new Error('engine ' + r.status)
+  const j = await r.json() as { stats?: { priceUsd: number | null; marketCapUsd: number | null; liquidityUsd: number | null; vol24: number; chg: { h24: number | null } } | null }
+  const st = j.stats
+  if (!st?.priceUsd) throw new Error('engine has no price')
+  return { priceUsd: st.priceUsd, fdvUsd: st.marketCapUsd ?? st.priceUsd * SUPPLY, liquidityUsd: st.liquidityUsd ?? 0, volume24h: st.vol24, change24h: st.chg.h24 ?? 0, image: null as string | null }
+}
+
+async function geckoMarket() {
   const r = await gtFetch(`/networks/arc/pools/${POOL}?include=base_token`)
   if (!r.ok) throw new Error('gecko ' + r.status)
   const j = await r.json() as { data: { attributes: Record<string, unknown> }; included?: { attributes: Record<string, unknown> }[] }
@@ -85,7 +107,8 @@ async function fees() {
 
 export default async function handler(): Promise<Response> {
   const [m, dead, walletUsdc, walletArcd, burns, f] = await Promise.allSettled([
-    market(), balanceOf(ARCD, DEAD, 18), balanceOf(USDC, FEE_WALLET, 6), balanceOf(ARCD, FEE_WALLET, 18), recentBurns(), fees(),
+    within(market(), BUDGET_MS.market), within(balanceOf(ARCD, DEAD, 18), BUDGET_MS.balances), within(balanceOf(USDC, FEE_WALLET, 6), BUDGET_MS.balances),
+    within(balanceOf(ARCD, FEE_WALLET, 18), BUDGET_MS.balances), within(recentBurns(), BUDGET_MS.burns), within(fees(), BUDGET_MS.fees),
   ])
   const val = <T>(p: PromiseSettledResult<T>) => (p.status === 'fulfilled' ? p.value : null)
   const burned = val(dead)
