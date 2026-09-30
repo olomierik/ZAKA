@@ -80,6 +80,8 @@ function parsePool(pool: { id: string; attributes: Record<string, unknown>; rela
   const txnsH1  = (a.transactions as Record<string, { buys: number; sells: number; buyers: number; sellers: number }>)?.h1 ?? { buys: 0, sells: 0, buyers: 0, sellers: 0 }
   const pc      = a.price_change_percentage as Record<string, string> ?? {}
   const baseToken = (a.name as string).split('/')[0].trim()
+  // "arc_0x…": the pool's base token, so a search result opens the right coin.
+  const baseId  = (pool.relationships as Record<string, { data?: { id?: string } }> | undefined)?.base_token?.data?.id ?? ''
 
   return {
     id:          pool.id,
@@ -89,7 +91,7 @@ function parsePool(pool: { id: string; attributes: Record<string, unknown>; rela
     dexName:     dexLabel(dexInfo?.name ?? dexId),
     baseSymbol:  baseToken.replace(/[^A-Z0-9$]/gi, ''),
     baseName:    baseToken,
-    baseAddress: '',
+    baseAddress: /_0x[0-9a-f]{40}$/i.test(baseId) ? baseId.slice(baseId.indexOf('_') + 1).toLowerCase() : '',
     logoUrl:     null,
     priceUsd:    parseFloat(a.base_token_price_usd as string ?? '0') || 0,
     priceChange: {
@@ -190,9 +192,15 @@ export async function getPoolOhlcv(poolAddress: string, resolution: ChartRes, li
 }
 
 export async function searchPools(query: string): Promise<GeckoPool[]> {
-  const d = await gecko<{ data: { id: string; attributes: Record<string, unknown>; relationships: Record<string, unknown> }[]; included: { id: string; type: string; attributes: { name: string } }[] }>(
-    `/search/pools`, { query, network: NET, include: 'dex' }
+  const d = await gecko<{ data: { id: string; attributes: Record<string, unknown>; relationships: Record<string, unknown> }[]; included: { id: string; type: string; attributes: { name: string; symbol?: string; image_url?: string | null } }[] }>(
+    `/search/pools`, { query, network: NET, include: 'dex,base_token' }
   )
   const dexMap = buildDexMap(d.included ?? [])
-  return (d.data ?? []).map(p => parsePool(p, dexMap))
+  // The coin's own name, ticker and logo (a pool's name only carries the ticker).
+  const tokens = new Map((d.included ?? []).filter(i => i.type === 'token').map(i => [i.id, i.attributes]))
+  return (d.data ?? []).map(p => {
+    const pool = parsePool(p, dexMap)
+    const t = tokens.get((p.relationships as Record<string, { data?: { id?: string } }>)?.base_token?.data?.id ?? '')
+    return t ? { ...pool, baseSymbol: t.symbol || pool.baseSymbol, baseName: t.name || pool.baseName, logoUrl: t.image_url ?? null } : pool
+  })
 }
