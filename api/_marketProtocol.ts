@@ -311,7 +311,8 @@ export interface BotStatus {
     why: string | null
     wallet: string | null
     balanceUsd: number | null
-    limits: { maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; exitSlippageBps: number[]; reserveUsd: number } | null
+    /** `preflight`: every buy is simulated with its sale first, as the bot wallet (engines from before 2026-09-30 don't say). */
+    limits: { maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; exitSlippageBps: number[]; reserveUsd: number; preflight?: boolean; maxRoundTripPct?: number } | null
     todayPnlUsd: number
     open: number
     events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
@@ -443,7 +444,7 @@ export interface BotLiveView {
   open: number
   winRate: number | null
   feesPaidUsd: number
-  limits: { maxTradeUsd: number; minBalanceUsd: number; reserveUsd: number; maxOpen: number; dailyLossUsd: number }
+  limits: { maxTradeUsd: number; minBalanceUsd: number; reserveUsd: number; maxOpen: number; dailyLossUsd: number; preflight?: boolean; maxRoundTripPct?: number }
   events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
 }
 

@@ -10,12 +10,17 @@
 //   sell   the address holds the coins and has approved Permit2, which has
 //          approved the router (storage overrides; the slots are found by
 //          reading them back); the same two checks
+//   pre-flight  what the bot runs before every live buy (trading/preflight.ts):
+//          the harness's code at the address, which then buys, approves and
+//          sells everything back through the real router and pool; it must
+//          pass, and must refuse the buy with a minimum of twice the quote
 //
 //   bun engine/scripts/check-live-trade.ts
 import { createPublicClient, encodeAbiParameters, fallback, http, keccak256, maxUint256, numberToHex, pad, parseAbi, type Address, type Hex } from 'viem'
 import { HttpRpc } from '../src/chain/http'
 import { PoolRegistry, type PoolInfo } from '../src/dex/pools'
-import { ARC, encodeBuy, encodeSell, keyOf, minOutOf, NATIVE, PERMIT2, reason, ROUTERS, usdcSide, usdcUnits } from '../src/trading/live'
+import { ARC, encodeBuy, encodeSell, keyOf, minOutOf, NATIVE, PERMIT2, reason, revertReason, ROUTERS, usdcSide, usdcUnits, type Call } from '../src/trading/live'
+import { decodeRoundTrip, judgeRoundTrip, PREFLIGHT_CALLER, roundTripCall, roundTripSteps, SENTINEL, type RoundTrip } from '../src/trading/preflight'
 
 const READ = ['https://rpc.blockdaemon.mainnet.arc.io', 'https://rpc.mainnet.arc.io']
 const client = createPublicClient({ chain: ARC, transport: fallback(READ.map(u => http(u))) })
@@ -85,6 +90,19 @@ async function tokenSlots(token: Address, amount: bigint): Promise<{ balance: He
   return null
 }
 
+/** The bot's pre-flight for `buy`, as ME holding 100 USDC (from ME, else from another caller, as the executor does). */
+async function preflight(buy: Call, key: NonNullable<ReturnType<typeof keyOf>>, token: Address, usdc: Address, deadline: bigint): Promise<RoundTrip | string> {
+  const steps = roundTripSteps({ buy, token, router: buy.to, permit2: PERMIT2, sell: encodeSell(buy.to, key, token, usdc, SENTINEL, 0n, deadline) })
+  let last = ''
+  for (const from of [ME, PREFLIGHT_CALLER]) {
+    try {
+      const { data } = await client.call(roundTripCall(ME, token, steps, from, 100n * 10n ** 18n))
+      if (data) return judgeRoundTrip(decodeRoundTrip(data), revertReason)
+    } catch (e) { last = reason(e) }
+  }
+  return `the pre-flight couldn't run: ${last}`
+}
+
 const ur = await router()
 console.log('Universal Router', ur)
 const candidates = await busyPools()
@@ -106,6 +124,13 @@ for (const p of candidates) {
   ok(b1.ok, `buy goes through with a 10% minimum${b1.ok ? '' : `: ${b1.why}`}`)
   const tooMuch = encodeBuy(ur, key, token, usdc, amountIn, q * 2n, ME, deadline)
   ok(!(await goesThrough(tooMuch.to, tooMuch.data, tooMuch.value, funded)).ok, 'buy is refused when the minimum is twice the quote')
+  // The pre-flight: the same buy, then selling it all back, as the wallet
+  const rt = await preflight(buy, key, token, usdc, deadline)
+  ok(typeof rt !== 'string' && rt.ok, typeof rt === 'string' ? rt : rt.ok
+    ? `pre-flight passes: $${rt.paidUsd.toFixed(4)} bought ${rt.tokens}, sold straight back for $${rt.backUsd.toFixed(4)} (${rt.lossPct}% round trip); gas: buy ${rt.gas.buy}, approvals ${rt.gas.approve}, sell ${rt.gas.sell}`
+    : `pre-flight passes: ${rt.why}`)
+  const rtTight = await preflight(tooMuch, key, token, usdc, deadline)
+  ok(typeof rtTight !== 'string' && !rtTight.ok && /the buy would fail/.test(rtTight.why ?? ''), `pre-flight refuses a buy with a minimum of twice the quote${typeof rtTight === 'string' ? `: ${rtTight}` : rtTight.why ? ` (${rtTight.why})` : ''}`)
   // Sell what $1 bought
   const slots = await tokenSlots(token, q)
   if (!slots) { ok(false, `found the coin's storage slots (can't simulate its sale)`); continue }

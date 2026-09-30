@@ -1355,6 +1355,8 @@ const d: Record<string, string> = {
   "Live trading needs a bot wallet on the engine: set BOT_PRIVATE_KEY (a new wallet that holds only what the bot may trade) in Railway, then fund it with USDC on Arc.": "Biashara halisi inahitaji pochi ya bot kwenye injini: weka BOT_PRIVATE_KEY (pochi mpya yenye kile tu bot inaruhusiwa kuuza) kwenye Railway, kisha iwekee USDC kwenye Arc.",
   "Live trading is not set up on this engine.": "Biashara halisi haijawekwa kwenye injini hii.",
   "Limits: up to ${a} a trade · {o} open at once ({s} scalps) · stops for the day after a ${d} loss · keeps ${r} for gas · buys at most {b}% under the quote": "Mipaka: hadi ${a} kwa biashara · {o} wazi kwa wakati mmoja (scalp {s}) · husimama kwa siku baada ya hasara ya ${d} · huweka ${r} kwa gesi · hununua hadi {b}% chini ya bei",
+  "Every buy is checked first: the bot's wallet simulates the buy and selling it all straight back. A coin it couldn't sell, or a round trip costing over {p}%, is never bought.": "Kila ununuzi hukaguliwa kwanza: pochi ya boti huiga ununuzi na kuuza vyote papo hapo. Sarafu ambayo isingeweza kuuzwa, au safari ya kwenda na kurudi inayogharimu zaidi ya {p}%, hainunuliwi kamwe.",
+  "each buy simulated with its sale first (round trip at most {p}%)": "kila ununuzi huigwa kwanza pamoja na mauzo yake (kwenda na kurudi si zaidi ya {p}%)",
   "Latest signal": "Ishara ya karibuni",
   "Signals: the bot's picks and results": "Ishara: machaguo na matokeo ya bot",
   "sold by the owner": "imeuzwa na mmiliki",

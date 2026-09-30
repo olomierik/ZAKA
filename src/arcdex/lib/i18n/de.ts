@@ -1355,6 +1355,8 @@ const d: Record<string, string> = {
   "Live trading needs a bot wallet on the engine: set BOT_PRIVATE_KEY (a new wallet that holds only what the bot may trade) in Railway, then fund it with USDC on Arc.": "Live-Handel braucht eine Bot-Wallet auf der Engine: BOT_PRIVATE_KEY (eine neue Wallet, die nur hält, was der Bot handeln darf) in Railway setzen und dann mit USDC auf Arc aufladen.",
   "Live trading is not set up on this engine.": "Live-Handel ist auf dieser Engine nicht eingerichtet.",
   "Limits: up to ${a} a trade · {o} open at once ({s} scalps) · stops for the day after a ${d} loss · keeps ${r} for gas · buys at most {b}% under the quote": "Limits: bis ${a} pro Trade · {o} gleichzeitig offen ({s} Scalps) · Stopp für den Tag nach ${d} Verlust · behält ${r} für Gas · kauft höchstens {b}% unter dem Kurs",
+  "Every buy is checked first: the bot's wallet simulates the buy and selling it all straight back. A coin it couldn't sell, or a round trip costing over {p}%, is never bought.": "Jeder Kauf wird zuerst geprüft: Die Wallet des Bots simuliert den Kauf und den sofortigen Verkauf von allem. Ein Coin, den er nicht verkaufen könnte, oder ein Hin und Zurück, das mehr als {p} % kostet, wird nie gekauft.",
+  "each buy simulated with its sale first (round trip at most {p}%)": "jeder Kauf wird vorher mit seinem Verkauf simuliert (Hin und Zurück höchstens {p} %)",
   "Latest signal": "Neuestes Signal",
   "Signals: the bot's picks and results": "Signale: die Picks und Ergebnisse des Bots",
   "sold by the owner": "vom Eigentümer verkauft",

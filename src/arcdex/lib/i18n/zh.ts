@@ -1355,6 +1355,8 @@ const d: Record<string, string> = {
   "Live trading needs a bot wallet on the engine: set BOT_PRIVATE_KEY (a new wallet that holds only what the bot may trade) in Railway, then fund it with USDC on Arc.": "实盘交易需要引擎上的机器人钱包：在 Railway 中设置 BOT_PRIVATE_KEY（一个只存放机器人可交易资金的新钱包），然后向其转入 Arc 上的 USDC。",
   "Live trading is not set up on this engine.": "此引擎尚未设置实盘交易。",
   "Limits: up to ${a} a trade · {o} open at once ({s} scalps) · stops for the day after a ${d} loss · keeps ${r} for gas · buys at most {b}% under the quote": "限额：每笔最多 ${a} · 同时最多 {o} 个仓位（剥头皮 {s} 个） · 当日亏损达 ${d} 后停止 · 保留 ${r} 作燃料费 · 买入价最多低于报价 {b}%",
+  "Every buy is checked first: the bot's wallet simulates the buy and selling it all straight back. A coin it couldn't sell, or a round trip costing over {p}%, is never bought.": "每笔买入都会先检查：机器人的钱包会模拟买入并立即全部卖回。无法卖出的币，或往返成本超过 {p}% 的交易，一律不买。",
+  "each buy simulated with its sale first (round trip at most {p}%)": "每笔买入先与其卖出一起模拟（往返成本最多 {p}%）",
   "Latest signal": "最新信号",
   "Signals: the bot's picks and results": "信号：机器人的选择与结果",
   "sold by the owner": "由所有者卖出",

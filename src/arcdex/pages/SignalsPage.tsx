@@ -692,6 +692,11 @@ function LivePanel({ acct, act, busy, me, onMe }: { acct: PaperAccountView; act:
           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
             {T('Send USDC on Arc to this address: at least {m} to go live. It trades up to {x} a trade and keeps {r} for gas. Only this bot uses it.', { m: usd(live.limits.minBalanceUsd, 0), x: usd(live.limits.maxTradeUsd, 0), r: usd(live.limits.reserveUsd, 0) })}
           </div>
+          {live.limits.preflight && (
+            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 4 }}>
+              ✓ {T('Every buy is checked first: the bot\'s wallet simulates the buy and selling it all straight back. A coin it couldn\'t sell, or a round trip costing over {p}%, is never bought.', { p: live.limits.maxRoundTripPct ?? 20 })}
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginTop: 8 }}>
             <Stat label={T('Wallet balance')} value={usd(live.balanceUsd)} small />
             <Stat label={T('Live P&L')} value={usd(live.pnlUsd)} color={live.pnlUsd >= 0 ? 'var(--green)' : '#fca5a5'} small sub={T('{n} trades, {w} won', { n: live.closed, w: pct(live.winRate) })} />
@@ -1136,7 +1141,8 @@ function BotPanel({ status, onStatus }: { status: BotStatus; onStatus: (s: BotSt
 }
 
 function limitsText(x: NonNullable<BotStatus['live']['limits']>): string {
-  return T('Limits: up to ${a} a trade · {o} open at once ({s} scalps) · stops for the day after a ${d} loss · keeps ${r} for gas · buys at most {b}% under the quote', { a: x.maxTradeUsd, o: x.maxOpen, s: x.maxOpenScalp, d: x.dailyLossUsd, r: x.reserveUsd, b: x.slippageBps / 100 })
+  const text = T('Limits: up to ${a} a trade · {o} open at once ({s} scalps) · stops for the day after a ${d} loss · keeps ${r} for gas · buys at most {b}% under the quote', { a: x.maxTradeUsd, o: x.maxOpen, s: x.maxOpenScalp, d: x.dailyLossUsd, r: x.reserveUsd, b: x.slippageBps / 100 })
+  return x.preflight ? `${text} · ${T('each buy simulated with its sale first (round trip at most {p}%)', { p: x.maxRoundTripPct ?? 20 })}` : text
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

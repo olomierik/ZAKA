@@ -369,11 +369,14 @@ export class PaperAccounts {
     return open.length
   }
 
-  /** What can be withdrawn now: the wallet's USDC less the gas reserve. */
+  /** What can be withdrawn now: the wallet's USDC less gas, fees not sent yet and, while trades are open, the reserve their sales need. */
   async withdrawable(a: PaperAccount): Promise<number | null> {
     if (!a.live || !this.o.live) return null
     const bal = await this.o.live.balance(a.id, this.trader(a), true)
-    return bal === null ? null : Math.max(0, Math.floor((bal - USER_LIVE.reserveUsd / 5) * 100) / 100)
+    if (bal === null) return null
+    const open = a.positions.some(p => isLive(p) && p.status === 'open')
+    const owed = a.positions.reduce((s, p) => s + (p.feeDue ?? 0), 0)
+    return Math.max(0, Math.floor((bal - (open ? USER_LIVE.reserveUsd : USER_LIVE.reserveUsd / 5) - owed) * 100) / 100)
   }
 
   /** Sends USDC from the bot's wallet (the owner confirmed it by email). */
@@ -589,7 +592,7 @@ export class PaperAccounts {
       live: a.live ? {
         wallet: a.live.address, balanceUsd: this.o.live?.cachedBalance(a.id) ?? null,
         pnlUsd: liveStats.totalPnlUsd, closed: liveStats.closed, open: liveStats.open, winRate: liveStats.winRate, feesPaidUsd: a.live.feesPaidUsd ?? 0,
-        limits: { maxTradeUsd: USER_LIVE.maxTradeUsd, minBalanceUsd: USER_LIVE.minBalanceUsd, reserveUsd: USER_LIVE.reserveUsd, maxOpen: USER_LIVE.maxOpen, dailyLossUsd: trader?.limits.dailyLossUsd ?? USER_LIVE.dailyLossMinUsd },
+        limits: { maxTradeUsd: USER_LIVE.maxTradeUsd, minBalanceUsd: USER_LIVE.minBalanceUsd, reserveUsd: USER_LIVE.reserveUsd, maxOpen: USER_LIVE.maxOpen, dailyLossUsd: trader?.limits.dailyLossUsd ?? USER_LIVE.dailyLossMinUsd, preflight: true, maxRoundTripPct: USER_LIVE.maxRoundTripPct },
         events: trader?.events.slice(0, 30) ?? [],
       } : null,
       liveAvailable: this.o.live?.available ?? { ok: false, why: 'live trading isn\'t available on this engine' },
