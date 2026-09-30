@@ -5,14 +5,15 @@ import {
   ARCD, ARCD_APP_PATH, ARCD_POOL, ARCD_SUPPLY, ARC_EXPLORER, BURN_ADDRESS, FEE_WALLET,
   compact, loadArcd, price, short, type ArcdStats,
 } from '../lib/arcd'
+import LiveBots from './LiveBots'
 import { LIVE_NOW, PHASES, ROADMAP_START, phaseRange, phaseStatus } from './roadmap'
 import './landing.css'
 
-// arcdex.online/ — the landing page: what ARCDEX is, $ARCD (the official
-// coin) and how platform fees buy it back and burn it, with live on-chain
-// numbers, then the roadmap (./roadmap.ts) and the whitepaper (/whitepaper,
-// with its PDF). A separate small bundle (no wallet libraries); "Launch
-// app" goes to /app.
+// arcdex.online/ — the landing page: what ARCDEX is, its Autotrade bots with
+// their P&L live (./LiveBots.tsx), $ARCD (the official coin) and how platform
+// fees buy it back and burn it, with live on-chain numbers, then the roadmap
+// (./roadmap.ts) and the whitepaper (/whitepaper, with its PDF). A separate
+// small bundle (no wallet libraries); "Launch app" goes to /app.
 
 export function mountLanding(root: HTMLElement) {
   document.title = 'ARCDEX — The social trading app for Arc · $ARCD'
@@ -112,11 +113,7 @@ export default function Landing() {
     [t('Bridge (Circle CCTP)'), t('0.5% of the transfer (min $0.05, max $50)'), t('90% — Circle keeps 10%')],
   ]
 
-  const AUTOTRADE: [string, string, string][] = [
-    ['1', t('It scans every coin'), t('Every new coin on every Arc launchpad is checked the moment it trades: a real buy-and-sell honeypot test, mint, freeze and pause powers, the creator’s stake, bundled launches, wallet clusters and wash trading.')],
-    ['2', t('You choose the strategies'), t('Snipe, Fast scalp, Second leg: use one, or several at once, and set how much goes into each trade.')],
-    ['3', t('It trades around the clock'), t('Deposit virtual USDC and press Start. Autotrade takes every matching signal with automatic take-profits and stops, even while you’re away, and shows why it skipped every other coin.')],
-  ]
+  const AUTO_TAGS: [string, string][] = [['🛡', t('Rug guard')], ['🧠', t('Learns from every loss')], ['⚖', t('Auto trade size')], ['🌙', t('Trades 24/7')]]
 
   const FAQ: [string, string][] = [
     [t('What is Autotrade?'), t('Autotrade is ARCDEX’s signal engine. It scans every new coin on Arc, rejects the unsafe ones with the reason shown, and trades the rest with the strategies you pick. You start with virtual USDC (paper trading), so you can see how it does before risking anything. Results are measured, never promised: most new coins go to zero.')],
@@ -142,8 +139,8 @@ export default function Landing() {
       <header className="ld-nav" ref={navRef}>
         <a href="/" className="ld-brand"><img src="/arcdex-logo.svg" alt="" width={30} height={30} />ARCDEX</a>
         <nav className={`ld-links${menu ? ' open' : ''}`} onClick={() => setMenu(false)}>
-          <a href="#features">{t('Features')}</a>
           <a href="#autotrade">{t('Autotrade')}</a>
+          <a href="#features">{t('Features')}</a>
           <a href="#arcd">$ARCD</a>
           <a href="#burn">{t('Buyback & burn')}</a>
           <a href="#roadmap">{t('Roadmap')}</a>
@@ -211,6 +208,28 @@ export default function Landing() {
         {stats.map(([k, v]) => <div key={k}><b>{v}</b><span>{k}</span></div>)}
       </section>
 
+      {/* ── Autotrade: the bots, live ────────────────────── */}
+      <section className="ld-section" id="autotrade">
+        <span className="ld-pill ld-pill-auto">⚡ Autotrade</span>
+        <h2>{t('Bots that trade Arc for you')}</h2>
+        <p className="ld-sub">{t('Name it. Press Start. It learns from every loss.')}</p>
+        <div className="ld-auto-tags">{AUTO_TAGS.map(([i, l]) => <span key={l}>{i} {l}</span>)}</div>
+        <LiveBots engine={ENGINE} />
+        {scan && (
+          <div className="ld-auto-live">
+            <span className="ld-dot" />
+            <span><b>{scan.watching.toLocaleString()}</b> {t('coins scanned')}</span>
+            <span><b>{scan.signals24h.toLocaleString()}</b> {t('signals in 24h')}</span>
+            <span><b>{scan.rejected24h.toLocaleString()}</b> {t('rejected in 24h')}</span>
+          </div>
+        )}
+        <div className="ld-cta ld-center">
+          <a className="ld-btn ld-btn-primary" href="/autotrade">⚡ {t('Create your bot')} →</a>
+          <a className="ld-btn ld-btn-ghost" href="/bots">{t('All bots')}</a>
+        </div>
+        <p className="ld-auto-note">{t('Paper bots trade virtual USDC. Real numbers, live: not promises.')}</p>
+      </section>
+
       {/* ── features ────────────────────────────────────── */}
       <section className="ld-section" id="features">
         <h2>{t('Everything you need to trade Arc')}</h2>
@@ -220,31 +239,6 @@ export default function Landing() {
             <div key={title} className="ld-card ld-feature"><div className="ld-icon">{icon}</div><h3>{title}</h3><p>{body}</p></div>
           ))}
         </div>
-      </section>
-
-      {/* ── Autotrade ───────────────────────────────────── */}
-      <section className="ld-section" id="autotrade">
-        <span className="ld-pill ld-pill-auto">⚡ {t('New')} · Autotrade</span>
-        <h2>{t('Autotrade: a safety scanner that trades for you')}</h2>
-        <p className="ld-sub">{t('Most new coins are traps. Autotrade checks every one, skips the unsafe ones and trades the rest with your strategies. Try it free with virtual USDC.')}</p>
-        {scan && (
-          <div className="ld-auto-live">
-            <span className="ld-dot" />
-            <span><b>{scan.watching.toLocaleString()}</b> {t('coins being scanned right now')}</span>
-            <span><b>{scan.evalsPerMin.toLocaleString()}</b> {t('checks a minute')}</span>
-            <span><b>{scan.signals24h.toLocaleString()}</b> {t('signals in 24h')}</span>
-            <span><b>{scan.rejected24h.toLocaleString()}</b> {t('rejected in 24h')}</span>
-          </div>
-        )}
-        <div className="ld-flow ld-flow-3">
-          {AUTOTRADE.map(([n, title, body]) => (
-            <div key={n} className="ld-card ld-step"><div className="ld-step-n ld-step-auto">{n}</div><h3>{title}</h3><p>{body}</p></div>
-          ))}
-        </div>
-        <div className="ld-cta" style={{ justifyContent: 'center' }}>
-          <a className="ld-btn ld-btn-primary" href="/autotrade">⚡ {t('Try Autotrade free')} →</a>
-        </div>
-        <p className="ld-auto-note">{t('Paper trading uses virtual USDC: no money moves. Results are measured, never promised, and most new coins go to zero. Not financial advice.')}</p>
       </section>
 
       {/* ── $ARCD ───────────────────────────────────────── */}
