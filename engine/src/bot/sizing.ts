@@ -14,11 +14,11 @@
 
 import { costPerSide, type Strategy } from '../trading/paper'
 
-/** Profit per winning trade, USD: [low, high] of the range, and the default target. Scalps: $1–2. */
+/** Profit per winning trade, USD: [low, high] of the range, and the default target. Scalps $1–2, the others $1–5 (owner, 2026-09-30). */
 export const TARGETS: Record<Strategy, { range: [number, number]; target: number }> = {
   scalp: { range: [1, 2], target: 1.5 },
-  snipe: { range: [1, 4], target: 3 },
-  'second-leg': { range: [1, 4], target: 3 },
+  snipe: { range: [1, 5], target: 3 },
+  'second-leg': { range: [1, 5], target: 3 },
 }
 
 export const SIZE_LIMITS = { minUsd: 5, maxUsd: 250, stepUsd: 0.5 }

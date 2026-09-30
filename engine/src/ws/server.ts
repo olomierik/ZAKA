@@ -23,6 +23,8 @@
 //   POST /v1/paper/accounts {name, strategies}  a new bot: its key, once (bot/paperAccounts.ts)
 //   GET|POST /v1/paper/account                  the bot behind the X-Paper-Key header; POST acts on it
 //   GET /v1/paper/trades?limit=100&before=ms    every closed trade of that bot, newest first (the trade log)
+//   GET /v1/bot/rejections                      why watched coins aren't signals, by main reason
+//   /v1/auth/*, /v1/me…, /v1/bots…               accounts, owners' bots, the marketplace (ws/botApi.ts)
 //   GET /health           summary (200 ok/degraded, 503 down)
 //   GET /metrics          full metrics (Bearer METRICS_TOKEN when set)
 
@@ -37,6 +39,8 @@ import { metrics } from '../metrics'
 import type { Bot } from '../bot/bot'
 import { parseControl, type ControlVerifier } from '../bot/control'
 import type { PaperAccounts } from '../bot/paperAccounts'
+import type { Users } from '../bot/users'
+import { botApi } from './botApi'
 import type { NewPaperAccount, PaperAction, ScanRow } from '../../../api/_marketProtocol'
 import type { MarketEngine, Publisher } from '../market/engine'
 import type { HistoryStore } from '../store/history'
@@ -55,7 +59,8 @@ export class DataApi {
   bot: Bot | null = null
   control: ControlVerifier | null = null
   accounts: PaperAccounts | null = null
-  attachBot(b: Bot, control: ControlVerifier | null = null, accounts: PaperAccounts | null = null) { this.bot = b; this.control = control; this.accounts = accounts }
+  users: Users | null = null
+  attachBot(b: Bot, control: ControlVerifier | null = null, accounts: PaperAccounts | null = null, users: Users | null = null) { this.bot = b; this.control = control; this.accounts = accounts; this.users = users }
 
   async tokenSnapshot(token: string, limit = 50): Promise<{ stats: TokenStats | null; trades: WireTrade[] }> {
     if (this.engine?.tokens.has(token)) return { stats: this.engine.statsOf(token), trades: this.engine.recentTrades(token, limit) }
@@ -210,7 +215,12 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         const ok = server.upgrade(req, { data: { id: nextId++, ip, subs: new Set(), allowance: cfg.maxMsgsPerSec, last: Date.now() } })
         return ok ? undefined : new Response('websocket upgrade expected', { status: 400 })
       }
-      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors(req), 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Content-Type, X-Paper-Key', 'Access-Control-Max-Age': '600' } })
+      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors(req), 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Content-Type, X-Paper-Key, Authorization', 'Access-Control-Max-Age': '600' } })
+      // Accounts, owners' bots and the marketplace (ws/botApi.ts).
+      if (url.pathname.startsWith('/v1/auth/') || url.pathname === '/v1/me' || url.pathname.startsWith('/v1/me/') || url.pathname === '/v1/bots' || url.pathname.startsWith('/v1/bots/')) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        return botApi(req, url, ip, { users: api.users, accounts: api.accounts }, (status, body, cache) => json(req, status, body, cache))
+      }
       if (url.pathname.startsWith('/v1/paper/')) {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
         const accounts = api.accounts
@@ -228,6 +238,7 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         if (req.method === 'GET' && url.pathname === '/v1/paper/trades') {
           const a = accounts.byKey(req.headers.get('x-paper-key'))
           if (!a) return json(req, 404, { error: 'no paper account for this key' })
+          if (a.ownerId) return json(req, 403, { error: 'this bot belongs to an account now: sign in to reach it' })
           const n = Math.max(1, Math.min(500, Number(url.searchParams.get('limit')) || 100))
           const before = Number(url.searchParams.get('before')) || undefined
           return json(req, 200, { trades: await accounts.trades(a, n, before), total: a.tradesLogged })
@@ -235,6 +246,8 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         if (url.pathname === '/v1/paper/account') {
           const a = accounts.byKey(req.headers.get('x-paper-key'))
           if (!a) return json(req, 404, { error: 'no paper account for this key' })
+          // A bot that joined an account is reached by signing in, not by the old browser key.
+          if (a.ownerId) return json(req, 403, { error: 'this bot belongs to an account now: sign in to reach it' })
           if (req.method === 'GET') return json(req, 200, { account: accounts.view(a) })
           if (req.method === 'POST') {
             if (Number(req.headers.get('content-length') ?? 0) > 2_048) return json(req, 413, { error: 'too large' })
@@ -282,6 +295,7 @@ export function startServer({ cfg, api, health }: ServerDeps) {
           if (url.pathname === '/v1/signals') return json(req, 200, { signals: bot.signals(limit(50, 500)) }, 'public, max-age=1')
           if (url.pathname === '/v1/bot/stats') return json(req, 200, bot.stats(), 'public, max-age=2')
           if (url.pathname === '/v1/bot/status') return json(req, 200, bot.status(), 'no-store')
+          if (url.pathname === '/v1/bot/rejections') return json(req, 200, bot.scan.rejections(), 'public, max-age=10')
           if (url.pathname === '/v1/bot/scan') {
             const st = url.searchParams.get('status') as ScanRow['status'] | null
             const valid = st && ['new', 'watching', 'checking', 'rejected', 'signal'].includes(st) ? st : undefined

@@ -61,7 +61,7 @@ export type ExitReason = 'tp1' | 'trail' | 'stop' | 'time' | 'safety' | 'creator
 
 export interface Fill { at: number; price: number; qty: number; usd: number; reason: 'entry' | ExitReason }
 
-export interface LiveTx { kind: 'buy' | 'approve' | 'sell'; hash: string; at: number; usd?: number; gasUsd?: number }
+export interface LiveTx { kind: 'buy' | 'approve' | 'sell' | 'fee'; hash: string; at: number; usd?: number; gasUsd?: number }
 
 export interface Position {
   id: string
@@ -106,6 +106,9 @@ export interface Position {
   low?: number
   /** Why it closed, in words. */
   note?: string
+  /** A visitor's bot: the platform's 2% of a winning trade's profit (already taken from pnlUsd); live, a fee still to send. */
+  feeUsd?: number
+  feeDue?: number
 }
 
 /** Cost per side: half the measured round trip (at least 1%), plus impact for the size. */

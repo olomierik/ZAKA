@@ -91,7 +91,7 @@ describe('the momentum scalp rule', () => {
     expect(scalpReady(windowOf(burst(8, i => ({ price: 1 + i * 0.1 }))), 600, 10_000).reasons.join()).toMatch(/a spike/)
     expect(scalpReady(windowOf(burst(8, i => ({ side: i % 2 ? 'SELL' : 'BUY' }))), 600, 10_000).ok).toBe(false)
     expect(scalpReady(windowOf(burst(8, () => ({ wallet: '0xone' }))), 600, 10_000).ok).toBe(false)
-    expect(scalpReady(windowOf(burst(8)), 600, 1_000).reasons.join()).toMatch(/need \$2,500 for a scalp/)
+    expect(scalpReady(windowOf(burst(8)), 600, 1_000).reasons.join()).toMatch(/need \$2,000 for a scalp/)
     expect(scalpReady(windowOf(burst(8)), 30, 10_000).ok).toBe(false)
   })
 })

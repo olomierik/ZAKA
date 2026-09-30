@@ -57,6 +57,8 @@ export class LiveTrader {
   }) {}
 
   get address(): Address { return this.o.exec.address }
+  /** The wallet itself (fees and withdrawals for visitors' live bots, bot/userLive.ts). */
+  get executor(): LiveExecutor { return this.o.exec }
   get limits() { return this.o.limits }
   live() { return this.o.positions().filter(p => p.mode === 'live') }
 
@@ -71,16 +73,20 @@ export class LiveTrader {
     metrics.set('live_balance_usd', Math.round(this.balance.usd * 100) / 100)
   }
 
-  /** Opens a live position on a signal, when the limits allow. */
-  async open(signal: Signal, strategy: Strategy, pool: PoolInfo | null, meta: LaunchInfo) {
+  /**
+   * Opens a live position on a signal, when the limits allow. A visitor's bot
+   * passes its own size (sized for its profit target), an id suffix, and the
+   * exits and entry numbers the position keeps (`extra`).
+   */
+  async open(signal: Signal, strategy: Strategy, pool: PoolInfo | null, meta: LaunchInfo, opts: { sizeUsd?: number; idSuffix?: string; extra?: Partial<Position> } = {}) {
     const token = signal.token as Address, symbol = meta.symbol
     const key = keyOf(pool)
     if (!pool || !key || !usdcSide(key, token)) { this.event({ kind: 'skip', token, symbol, text: `$${symbol}: live trading can't reach this coin's venue yet (paper only)` }); return }
     if (this.opening.has(token)) return
     const now = Date.now()
-    const allowed = canOpen(this.live(), token, now, { maxOpen: this.o.limits.maxOpen, maxOpenScalp: this.o.limits.maxOpenScalp, cooldownMin: RISK.cooldownMin, dailyLossUsd: this.o.limits.dailyLossUsd }, strategy)
+    const allowed = canOpen(this.live(), token, now, { maxOpen: this.o.limits.maxOpen, maxOpenScalp: this.o.limits.maxOpenScalp, cooldownMin: RISK.cooldownMin, cooldownMinScalp: RISK.cooldownMinScalp, dailyLossUsd: this.o.limits.dailyLossUsd }, strategy)
     if (!allowed.ok) { this.event({ kind: 'skip', token, symbol, text: `$${symbol}: not bought (${allowed.why})` }); return }
-    const size = Math.min(this.o.params(strategy).sizeUsd, this.o.limits.maxTradeUsd)
+    const size = Math.min(opts.sizeUsd ?? this.o.params(strategy).sizeUsd, this.o.limits.maxTradeUsd)
     this.opening.add(token)
     try {
       await this.refreshBalance()
@@ -90,7 +96,8 @@ export class LiveTrader {
       const qty = Number(f.tokens) / 10 ** pool.baseDecimals
       const price = f.usd / qty
       const p: Position = {
-        id: `${signal.id}:live`, mode: 'live', strategy, token, symbol, launchpad: meta.launchpad, signalId: signal.id,
+        ...opts.extra,
+        id: `${signal.id}:live${opts.idSuffix ? `:${opts.idSuffix}` : ''}`, mode: 'live', strategy, token, symbol, launchpad: meta.launchpad, signalId: signal.id,
         openedAt: f.at, marketEntry: price, entryPrice: price, sizeUsd: f.usd, qty, remaining: qty, cost: 0, peak: price,
         tp1Done: false, fills: [{ at: f.at, price, qty, usd: f.usd, reason: 'entry' }],
         status: 'open', closedAt: null, exitReason: null, pnlUsd: null,
@@ -120,7 +127,7 @@ export class LiveTrader {
   /** A new price for a live position (and whether it was the creator selling). */
   onPrice(p: Position, price: number, now: number, creatorSold: boolean) {
     if (p.status !== 'open' || !(price > 0)) return
-    const params = this.o.params(p.strategy)
+    const params = p.exits ?? this.o.params(p.strategy)
     const exits: Exit[] = creatorSold && params.exitOnCreatorSell ? [{ qty: p.remaining, reason: 'creator' }] : exitsAt(p, price, now, params)
     p.peak = Math.max(p.peak, price)
     if (exits.length) void this.sell(p, exits)

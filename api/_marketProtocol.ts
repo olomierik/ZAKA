@@ -284,7 +284,7 @@ export interface BotPosition {
   /** paper (missing on older rows) or live: the bot wallet's real trade. */
   mode?: 'paper' | 'live'
   /** Live: its transactions, the gas they cost, and a sale that keeps failing. */
-  txs?: { kind: 'buy' | 'approve' | 'sell'; hash: string; at: number; usd?: number; gasUsd?: number }[]
+  txs?: { kind: 'buy' | 'approve' | 'sell' | 'fee'; hash: string; at: number; usd?: number; gasUsd?: number }[]
   gasUsd?: number
   stuck?: string | null
   /** A visitor's bot: the exits it traded with, the profit its size was chosen to secure, and the tuning version. */
@@ -296,6 +296,9 @@ export interface BotPosition {
   low?: number
   /** Why it closed, in words. */
   note?: string
+  /** A visitor's bot: the platform's 2% of a winning trade's profit (already out of pnlUsd); live, a fee still to send. */
+  feeUsd?: number
+  feeDue?: number
 }
 
 /** The bot's mode and live wallet (GET /v1/bot/status). */
@@ -335,6 +338,8 @@ export interface ScanRow {
   /** When it was last evaluated, and how many times. */
   at: number
   evals: number
+  /** What stops it, as keys ("snipe:buyers", "safety:honeypot"), for counting (GET /v1/bot/rejections). */
+  keys?: string[]
 }
 
 export interface ScanStats {
@@ -404,6 +409,91 @@ export interface PaperAccountView {
   protections: { pausedUntil: number | null; lossStreak: number; pauseAfterLosses: number; dailyLossLimitUsd: number; todayPnlUsd: number; stopBelowPct: number }
   /** Every closed trade it has made (GET /v1/paper/trades lists them all). */
   tradesLogged: number
+  /** Its unique id on the platform (from its name): /bots/<slug>. */
+  slug?: string
+  /** paper: virtual USDC; live: its own wallet trades real USDC. */
+  mode?: 'paper' | 'live'
+  /** The platform's 2% of winning trades' profit: virtual (paper) and sent (live). */
+  feesPaidUsd?: number
+  /** Whether its paper record is good enough to trade live, and how far it is. */
+  ready?: BotReadiness
+  /** Its live wallet and results, once it has a wallet. */
+  live?: BotLiveView | null
+  /** Whether this engine can trade live for visitors' bots at all. */
+  liveAvailable?: { ok: boolean; why: string | null }
+}
+
+/** A bot's paper record against what trading live needs (engine/src/bot/userLive.ts READY). */
+export interface BotReadiness {
+  ok: boolean
+  trades: number
+  winRate: number | null
+  profitFactor: number | null
+  pnlUsd: number
+  need: { minTrades: number; minWinRate: number; minProfitFactor: number }
+}
+
+/** A bot's live side: its own wallet, balance and results. */
+export interface BotLiveView {
+  wallet: string
+  balanceUsd: number | null
+  /** Realized live P&L (after gas and the 2% fee), closed and open trades, win rate. */
+  pnlUsd: number
+  closed: number
+  open: number
+  winRate: number | null
+  feesPaidUsd: number
+  limits: { maxTradeUsd: number; minBalanceUsd: number; reserveUsd: number; maxOpen: number; dailyLossUsd: number }
+  events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
+}
+
+/** A signed-in bot owner (GET /v1/me). */
+export interface BotUserView { email: string; verified: boolean; createdAt: number }
+
+export interface MeResponse {
+  user: BotUserView
+  bots: PaperAccountView[]
+  /** Email (Resend) is set up: verification, resets and withdrawal codes work. */
+  email: boolean
+  maxBots: number
+  liveAvailable: { ok: boolean; why: string | null }
+}
+
+/** A bot in the marketplace (GET /v1/bots): public, no owner details. */
+export interface MarketBot {
+  slug: string
+  name: string
+  strategies: ('snipe' | 'second-leg' | 'scalp')[]
+  mode: 'paper' | 'live'
+  running: boolean
+  createdAt: number
+  /** Paper: account value minus deposits (realized and open); live: realized live P&L plus open trades. */
+  pnlUsd: number
+  pnlPct: number | null
+  winRate: number | null
+  closed: number
+  /** Its open positions, valued now. */
+  positions: { token: string; symbol: string; strategy: 'snipe' | 'second-leg' | 'scalp'; mode: 'paper' | 'live'; sizeUsd: number; entry: number; price: number | null; pnlUsd: number | null; openedAt: number }[]
+  /** Its paper record, always (for a live bot, what earned it the switch). */
+  paper: { pnlUsd: number; winRate: number | null; closed: number }
+  /** Learned changes so far, and whether it could go live. */
+  learned: number
+  ready: boolean
+  wallet: string | null
+}
+
+export interface MarketBotDetail extends MarketBot {
+  trades: BotPosition[]
+  learnLog: LearnNote[]
+  live: { pnlUsd: number; closed: number; winRate: number | null } | null
+}
+
+/** Why coins are passed over right now (GET /v1/bot/rejections). */
+export interface RejectionStats {
+  /** Coins watched in the last 48h that aren't signals, by their main reason. */
+  top: { key: string; label: string; coins: number }[]
+  watching: number
+  at: number
 }
 
 /** What a visitor can do with their bot (POST /v1/paper/account). The amount per trade isn't one: each trade is sized for its profit target. */
@@ -413,6 +503,10 @@ export type PaperAction =
   | { action: 'strategies'; strategies: ('snipe' | 'second-leg' | 'scalp')[] }
   | { action: 'rename'; name: string }
   | { action: 'reset' }
+  /** Signed-in owners only (POST /v1/me/bots/:slug): */
+  | { action: 'mode'; mode: 'paper' | 'live' }
+  | { action: 'live-wallet' }
+  | { action: 'sell-live' }
 
 /** A new bot (POST /v1/paper/accounts). */
 export interface NewPaperAccount { name: string; strategies: ('snipe' | 'second-leg' | 'scalp')[] }

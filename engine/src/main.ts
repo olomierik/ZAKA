@@ -13,6 +13,7 @@
 //
 //   bun engine/src/main.ts          (see engine/README.md)
 
+import { randomBytes } from 'node:crypto'
 import { RedisClient } from 'bun'
 import { scanLogs, setLogEndpoints, type RawLog } from '../../api/_arcLogs'
 import { POOL_MANAGER, V3_SWAP, V4_INITIALIZE, V4_SWAP } from '../../api/_arcSwaps'
@@ -40,7 +41,10 @@ import { MemoryHotStore, RedisHotStore, type HotStore } from './store/hot'
 import { Bot } from './bot/bot'
 import { ControlVerifier } from './bot/control'
 import { DEFAULT_LIMITS, LiveTrader } from './bot/liveTrader'
+import { mailerFromEnv } from './bot/mailer'
 import { PaperAccounts } from './bot/paperAccounts'
+import { UserLive, WalletVault } from './bot/userLive'
+import { Users } from './bot/users'
 import { MemoryBotStore, PostgresBotStore } from './bot/store'
 import { LiveExecutor } from './trading/live'
 import { DataApi, startServer } from './ws/server'
@@ -195,8 +199,24 @@ async function main() {
     }
   }
   const botStore = cfg.databaseUrl ? new PostgresBotStore(cfg.databaseUrl) : new MemoryBotStore()
-  // Visitors' paper accounts (virtual USDC), traded on the same signals.
-  const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s) })
+  // Visitors' bots live on: accounts (email + passcode, Resend for email), and
+  // live trading from each bot's own wallet once BOT_WALLET_SECRET is set.
+  // Secrets are read here only and never logged.
+  const mailer = mailerFromEnv()
+  let authSecret = process.env.AUTH_SECRET?.trim() || await botStore.getSetting('auth_secret').catch(() => null)
+  if (!authSecret) { authSecret = randomBytes(32).toString('hex'); await botStore.setSetting('auth_secret', authSecret).catch(e => log.warn('auth secret not saved: sessions end at restart', { error: errMsg(e) })) }
+  const users = cfg.botMode === 'off' ? null : new Users({ store: botStore, mailer, secret: authSecret })
+  if (users) await users.load().catch(e => log.error('bot accounts: load failed', { error: errMsg(e) }))
+  let vault: WalletVault | null = null
+  const walletSecret = process.env.BOT_WALLET_SECRET?.trim()
+  if (walletSecret) { try { vault = new WalletVault(walletSecret) } catch (e) { log.error('BOT_WALLET_SECRET is not usable: live trading for visitors\' bots stays off', { error: errMsg(e) }) } }
+  const userLive = new UserLive({
+    vault, why: walletSecret && !vault ? 'the engine\'s wallet secret is misconfigured' : null,
+    makeExec: privateKey => new LiveExecutor({ privateKey, readUrls: cfg.httpUrls, sendUrl: cfg.live.sendUrl }),
+    pools: token => { const mp = eng.tokens.get(token)?.mainPool; return mp ? pools.get(mp) ?? null : null },
+  })
+  log.info('visitors\' bots', { email: mailer.enabled, live: !!vault })
+  const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s), live: userLive })
   if (accounts) await accounts.load().catch(e => log.error('paper accounts: load failed', { error: errMsg(e) }))
   const bot = cfg.botMode === 'off' ? null : new Bot({
     rpc, engine: eng, pools, mode: cfg.botMode, sizeUsd: cfg.botSizeUsd ?? undefined, scalpSizeUsd: cfg.botScalpSizeUsd ?? undefined,
@@ -208,7 +228,7 @@ async function main() {
   if (bot) {
     eng.observers.push(bot)
     await bot.start()
-    dataApi?.attachBot(bot, new ControlVerifier(cfg.botOwner as `0x${string}` | null, cfg.httpUrls), accounts)
+    dataApi?.attachBot(bot, new ControlVerifier(cfg.botOwner as `0x${string}` | null, cfg.httpUrls), accounts, users)
   }
   await eng.warmStart()
   const parser = new TradeParser(pools, oracle, makers, eng.launchpadOf)
