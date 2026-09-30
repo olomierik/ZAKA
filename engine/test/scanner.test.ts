@@ -4,7 +4,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { LaunchInfo } from '../../api/_marketProtocol'
 import { analyzeCode } from '../src/intel/bytecode'
-import { firstFunders, groupFunders } from '../src/intel/clusters'
+import { firstFunders, firstFunding, groupFunders, resolveFunders } from '../src/intel/clusters'
 import { computeFlow, type TapeTrade } from '../src/intel/flow'
 import { holdersFromLogs } from '../src/intel/holders'
 import { assess, type ScanInput, type StaticFacts } from '../src/intel/scanner'
@@ -59,11 +59,32 @@ describe('holders', () => {
 })
 
 describe('clusters', () => {
-  const log = (from: string, block: number) => ({ topics: ['0x', '0x' + from.slice(2).padStart(64, '0')], blockNumber: '0x' + block.toString(16), logIndex: '0x0' })
+  const log = (from: string, block: number, tx = '0xt' + block) => ({ topics: ['0x', '0x' + from.slice(2).padStart(64, '0')], blockNumber: '0x' + block.toString(16), logIndex: '0x0', transactionHash: tx })
   test('the first sender funded each wallet', () => {
     const f = firstFunders(new Map([[A(1), [log(A(70), 20), log(A(71), 10)]], [A(2), []]]))
     expect(f.get(A(1))).toBe(A(71))
     expect(f.get(A(2))).toBeNull()
+  })
+  test('a payment from a contract names who sent that transaction', () => {
+    const POOL_MANAGER = A(50), DISPERSE = A(51)
+    const first = firstFunding(new Map([
+      [A(1), [log(POOL_MANAGER, 10, '0xs1')]], // sold something: its own transaction
+      [A(2), [log(DISPERSE, 11, '0xd')]], [A(3), [log(DISPERSE, 11, '0xd')]], // one person, through a disperse contract
+      [A(4), [log(A(70), 12)]], // a person paid it directly
+      [A(5), [log(POOL_MANAGER, 13, '0xlost')]], // the transaction couldn't be read
+    ]))
+    const f = resolveFunders(first, new Set([POOL_MANAGER, DISPERSE]), new Map([['0xs1', A(1)], ['0xd', A(99)]]))
+    expect(f.get(A(1))).toBe(A(0)) // says nothing, like a bridge mint
+    expect(f.get(A(2))).toBe(A(99))
+    expect(f.get(A(3))).toBe(A(99))
+    expect(f.get(A(4))).toBe(A(70))
+    expect(f.get(A(5))).toBeNull()
+  })
+  test('sellers paid by the PoolManager are not a cluster', () => {
+    const PM = A(50)
+    const first = firstFunding(new Map([1, 2, 3, 4].map(i => [A(i), [log(PM, 10 + i, '0xs' + i)]])))
+    const f = resolveFunders(first, new Set([PM]), new Map([1, 2, 3, 4].map(i => ['0xs' + i, A(i)])))
+    expect(groupFunders(f, null, null, new Set()).groups).toEqual([])
   })
   test('three wallets from one source are a cluster; a hub or a bridge mint is not', () => {
     const funders = new Map([[A(1), A(70)], [A(2), A(70)], [A(3), A(70)], [A(4), A(80)], [A(5), A(80)], [A(6), A(80)], [A(7), A(0)], [A(8), A(0)], [A(9), A(0)]])

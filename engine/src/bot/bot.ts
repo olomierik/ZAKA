@@ -153,7 +153,7 @@ export class Bot implements EngineObserver {
       if (r && !this.blockedOnce.has(key)) {
         this.blockedOnce.add(key)
         for (const c of r.checks) if (c.hard && c.ok !== true) metrics.inc(`bot_block_${c.ok === false ? 'fail' : 'pending'}_${c.id}`)
-        log.debug('bot: candidate blocked', { strategy, token, verdict: r.verdict, checks: r.checks.filter(c => c.hard && c.ok !== true).map(c => `${c.id}: ${c.detail}`) })
+        log.info('bot: candidate blocked', { strategy, token, verdict: r.verdict, checks: r.checks.filter(c => c.hard && c.ok !== true).map(c => `${c.id}: ${c.detail}`) })
       }
       return
     }
