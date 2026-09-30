@@ -45,6 +45,7 @@ import { mailerFromEnv } from './bot/mailer'
 import { PaperAccounts } from './bot/paperAccounts'
 import { UserLive, WalletVault } from './bot/userLive'
 import { Users } from './bot/users'
+import { Tiers } from './bot/tiers'
 import { MemoryBotStore, PostgresBotStore } from './bot/store'
 import { LiveExecutor } from './trading/live'
 import { DataApi, startServer } from './ws/server'
@@ -221,7 +222,14 @@ async function main() {
   })
   log.info('visitors\' bots', { email: mailer.enabled, live: !!vault })
   botsHealth = () => ({ email: mailer.enabled, userLive: !!vault, ownerWallet: !!live, mode: botRef?.mode ?? null, bots: accounts?.count ?? 0, running: accounts?.running ?? 0 })
-  const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => botRef?.priceOf(token) ?? eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s), live: userLive, paperSignals: cfg.botSignals.paper })
+  // Tiers (bot/tiers.ts): what each account gets; everything, for everyone, until TIERS_ENFORCED.
+  const tiers = new Tiers({ enforced: cfg.tiersEnforced, rpc })
+  log.info('autotrade tiers', { enforced: tiers.enforced })
+  // Linked wallets' $ARCD, read at start and every 10 minutes (and again whenever an account's tier is asked with a stale balance).
+  const readHoldings = () => { for (const w of users?.linkedWallets() ?? []) void tiers.read(w) }
+  readHoldings()
+  setInterval(readHoldings, 10 * 60_000)
+  const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => botRef?.priceOf(token) ?? eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s), live: userLive, paperSignals: cfg.botSignals.paper, access: ownerId => tiers.access(users?.get(ownerId) ?? null) })
   if (accounts) await accounts.load().catch(e => log.error('paper accounts: load failed', { error: errMsg(e) }))
   const bot = cfg.botMode === 'off' ? null : new Bot({
     rpc, engine: eng, pools, mode: cfg.botMode, sizeUsd: cfg.botSizeUsd ?? undefined, scalpSizeUsd: cfg.botScalpSizeUsd ?? undefined,
@@ -233,7 +241,7 @@ async function main() {
   if (bot) {
     eng.observers.push(bot)
     await bot.start()
-    dataApi?.attachBot(bot, new ControlVerifier(cfg.botOwner as `0x${string}` | null, cfg.httpUrls), accounts, users)
+    dataApi?.attachBot(bot, new ControlVerifier(cfg.botOwner as `0x${string}` | null, cfg.httpUrls), accounts, users, tiers)
   }
   await eng.warmStart()
   // The scanner lists every launch of the last 48h at once, not only coins that trade after a restart.

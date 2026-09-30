@@ -23,9 +23,15 @@
 //   GET  /v1/me/bots/:slug/funders                the wallets that funded its live wallet
 //   GET  /v1/bots?sort=pnl|winrate|new|live       the marketplace
 //   GET  /v1/bots/:slug                           one bot, public: positions, trades, what it learned
+//   GET  /v1/tiers                                the tiers, whether they're enforced, and each signal grade's record
+//   POST /v1/me/wallets {address, at, signature}  links a wallet (its $ARCD counts toward the tier)
+//   POST /v1/me/wallets/remove {address}          unlinks one
 
-import type { MeResponse, PaperAction } from '../../../api/_marketProtocol'
+import { isAddress, isHex, type Address, type Hex } from 'viem'
+import { tierLinkMessage, type GradeRecordView, type MeResponse, type PaperAction, type TiersResponse } from '../../../api/_marketProtocol'
+import { CROWD } from '../bot/crowd'
 import type { PaperAccount, PaperAccounts } from '../bot/paperAccounts'
+import type { Tiers } from '../bot/tiers'
 import type { User, Users } from '../bot/users'
 import { metrics } from '../metrics'
 
@@ -44,11 +50,30 @@ async function readBody(req: Request): Promise<Record<string, unknown> | null> {
   return b && typeof b === 'object' && !Array.isArray(b) ? b as Record<string, unknown> : null
 }
 
-export async function botApi(req: Request, url: URL, ip: string, d: { users: Users | null; accounts: PaperAccounts | null }, json: Json): Promise<Response> {
+/** A wallet's link signature is good for this long. */
+const LINK_MAX_AGE_MS = 10 * 60_000
+
+export interface BotApiDeps {
+  users: Users | null
+  accounts: PaperAccounts | null
+  tiers?: Tiers | null
+  grades?: () => GradeRecordView[]
+  signedBy?: (address: Address, message: string, signature: Hex) => Promise<boolean>
+}
+
+export async function botApi(req: Request, url: URL, ip: string, d: BotApiDeps, json: Json): Promise<Response> {
   const { users, accounts } = d
-  if (!users || !accounts) return json(503, { error: 'bots are not running in this process' })
   const p = url.pathname
   const now = Date.now()
+  // ── the tiers (public): what each gets, and each grade's record ──
+  if (req.method === 'GET' && p === '/v1/tiers') {
+    const body: TiersResponse = {
+      enforced: d.tiers?.enforced ?? false, tiers: d.tiers?.list() ?? [], grades: d.grades?.() ?? [],
+      crowd: { impactShareOfTp: CROWD.impactShareOfTp, maxPoolShare: CROWD.maxPoolShare, maxBots: CROWD.maxBots },
+    }
+    return json(200, body, 'public, max-age=30')
+  }
+  if (!users || !accounts) return json(503, { error: 'bots are not running in this process' })
 
   // ── the marketplace (public) ──
   if (req.method === 'GET' && p === '/v1/bots') {
@@ -110,8 +135,29 @@ export async function botApi(req: Request, url: URL, ip: string, d: { users: Use
   if (req.method === 'GET' && p === '/v1/me') {
     const bots = accounts.ofOwner(u.id)
     await Promise.all(bots.map(a => accounts.refreshLive(a)))
-    const me: MeResponse = { user: users.view(u), bots: bots.map(a => accounts.view(a, now)), email: users.mailEnabled, maxBots: 5, liveAvailable: accounts.liveAvailable, team: accounts.team(now), paperSignals: accounts.paperSignals }
+    const access = accounts.accessOf(u.id)
+    const me: MeResponse = { user: users.view(u), bots: bots.map(a => accounts.view(a, now)), email: users.mailEnabled, maxBots: access.maxBots, liveAvailable: accounts.liveAvailable, team: accounts.team(now), paperSignals: accounts.paperSignals, access }
     return json(200, me)
+  }
+  if (req.method === 'POST' && p === '/v1/me/wallets') {
+    const b = await readBody(req)
+    const address = typeof b?.address === 'string' ? b.address.trim() : ''
+    const at = Number(b?.at)
+    if (!isAddress(address)) return json(400, { error: 'not a wallet address' })
+    if (typeof b?.signature !== 'string' || !isHex(b.signature)) return json(400, { error: 'missing the wallet\'s signature' })
+    if (!Number.isFinite(at) || Math.abs(now - at) > LINK_MAX_AGE_MS) return json(400, { error: 'the signature is too old; sign again' })
+    if (!d.signedBy) return json(503, { error: 'wallet links aren\'t available on this engine' })
+    if (!(await d.signedBy(address as Address, tierLinkMessage(u.email, address, at), b.signature as Hex))) return json(403, { error: 'not signed by that wallet' })
+    const bad = users.linkWallet(u, address, now)
+    if (bad) return json(409, { error: bad })
+    await d.tiers?.read(address)
+    return json(200, { access: accounts.accessOf(u.id) })
+  }
+  if (req.method === 'POST' && p === '/v1/me/wallets/remove') {
+    const b = await readBody(req)
+    if (typeof b?.address !== 'string') return json(400, { error: 'which wallet?' })
+    users.unlinkWallet(u, b.address)
+    return json(200, { access: accounts.accessOf(u.id) })
   }
   if (req.method === 'GET' && p === '/v1/me/profits') {
     // At most a day back: a device that was off doesn't get a flood of old news.

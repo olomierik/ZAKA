@@ -52,17 +52,19 @@ export type Tuning = StrategyTuning & { prev?: StrategyTuning | null }
 export const OPEN_FILTERS: BotFilters = { minLiquidityUsd: 1_000, minBuyers: 0, minBuySellRatio: 0, maxRunUp: 100, minScore: 0, maxTopBuyerPct: 100, avoidFlags: [] }
 
 /** The kinds of signal each strategy trades. */
-export const RULES_OF: Record<Strategy, SignalRule[]> = { scalp: ['momentum', 'snipe'], snipe: ['snipe'], 'second-leg': ['second-leg'] }
+export const RULES_OF: Record<Strategy, SignalRule[]> = { scalp: ['momentum', 'snipe'], snipe: ['snipe'], 'second-leg': ['second-leg'], precision: ['snipe', 'momentum'] }
 export const RULE_LABEL: Record<SignalRule, string> = { momentum: 'momentum bursts', snipe: 'snipes', 'second-leg': 'dip rebounds' }
 
 const EXITS: Record<Strategy, Pick<StrategyTuning, 'takeProfit' | 'stopLoss' | 'timeStopMin' | 'maxHoldMin'>> = {
   scalp: { takeProfit: 1.1, stopLoss: 0.9, timeStopMin: 3, maxHoldMin: 60 },
   snipe: { takeProfit: 1.1, stopLoss: 0.9, timeStopMin: 3, maxHoldMin: 60 },
   'second-leg': { takeProfit: 1.35, stopLoss: 0.85, timeStopMin: 120, maxHoldMin: 360 },
+  // Prime signals only: all of it at +6% (signals/grades.ts).
+  precision: { takeProfit: 1.06, stopLoss: 0.93, timeStopMin: 3, maxHoldMin: 10 },
 }
 
 /** How far learning may move a take-profit. */
-export const TP_BOUNDS: Record<Strategy, [number, number]> = { scalp: [1.06, 1.3], snipe: [1.06, 1.6], 'second-leg': [1.15, 1.8] }
+export const TP_BOUNDS: Record<Strategy, [number, number]> = { scalp: [1.06, 1.3], snipe: [1.06, 1.6], 'second-leg': [1.15, 1.8], precision: [1.03, 1.1] }
 
 /**
  * The exit plan (2026-09-30): half sold at the take-profit, then the stop at
@@ -119,8 +121,19 @@ export function filtersFor(t: StrategyTuning, rule: SignalRule | null | undefine
   return (rule && t.rules?.[rule]) || t.filters
 }
 
-/** The exits a position opened with this tuning trades with: half sold at the take-profit, the rest trailing with the stop at break-even. */
-export function toParams(t: StrategyTuning, sizeUsd: number): StrategyParams {
+/**
+ * The exits a position opened with this tuning trades with: half sold at the
+ * take-profit, the rest trailing with the stop at break-even. Precision sells
+ * all of it at its take-profit: a small, fast gain is the whole trade.
+ */
+export function toParams(t: StrategyTuning, sizeUsd: number, s?: Strategy): StrategyParams {
+  if (s === 'precision') {
+    return {
+      sizeUsd, stopLoss: t.stopLoss, tp1Multiple: t.takeProfit, tp1SellPct: 1, trailFromPeak: EXIT_PLAN.trailFromPeak,
+      // Kept past the time stop only a third of the way to the take-profit (+2% at +6%).
+      timeStopMin: t.timeStopMin, timeStopMinGain: 1 + (t.takeProfit - 1) / 3, maxHoldMin: t.maxHoldMin, exitOnCreatorSell: true,
+    }
+  }
   return {
     sizeUsd, stopLoss: t.stopLoss, tp1Multiple: t.takeProfit, tp1SellPct: EXIT_PLAN.sellPct, trailFromPeak: EXIT_PLAN.trailFromPeak, breakevenAfterTp1: true,
     // A time stop keeps a position only if it's a fifth of the way to the take-profit.

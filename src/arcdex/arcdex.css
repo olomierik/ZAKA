@@ -1339,6 +1339,19 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .at-tier-min { display: block; color: #fcd34d; font-family: var(--mono); font-size: 0.72rem; margin-top: 2px; }
 .at-tier ul { margin: 6px 0 0; padding-left: 16px; color: var(--text-muted); line-height: 1.5; }
 .at-tiers-foot { padding: 0 12px 10px; font-size: 0.7rem; color: var(--text-muted); }
+/* Tiers by signal quality (2026-09-30): the account's tier, linked wallets, grades. */
+.at-tiers-body { padding: 0 12px 12px; }
+.at-tier.mine { border-color: #facc15; box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.35) inset; }
+.at-tier-tag { margin-left: auto; font-size: 0.62rem; font-weight: 800; color: #fcd34d; border: 1px solid rgba(250, 204, 21, 0.45); border-radius: 99px; padding: 1px 7px; white-space: nowrap; }
+.at-strat.locked { opacity: 0.55; }
+.at-wallet-row { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 0.76rem; padding: 4px 0; }
+.at-wallet-row a { color: var(--text); }
+.at-grade { font-size: 0.68rem; font-weight: 800; border-radius: 999px; padding: 1px 8px; border: 1px solid; background: rgba(148, 163, 184, 0.06); white-space: nowrap; }
+.at-grade.prime { background: rgba(250, 204, 21, 0.1); }
+.at-grade.core { background: rgba(56, 189, 248, 0.08); }
+.at-grade-row { padding: 8px 2px; border-bottom: 1px solid var(--adx-card-border); }
+.at-grade-row:last-of-type { border-bottom: none; }
+.at-grade-rules { margin: 4px 0 0; padding-left: 18px; font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; }
 .at-notify { margin-top: 10px; display: flex; flex-direction: column; gap: 2px; font-size: 0.76rem; }
 .at-notify label { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; cursor: pointer; }
 .at-notify span { color: var(--text-muted); font-size: 0.7rem; padding-left: 22px; }

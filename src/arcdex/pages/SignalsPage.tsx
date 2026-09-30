@@ -12,18 +12,24 @@
 //   Scanner       every coin being scanned, live, and why it isn't a signal
 //                 (rules not met yet, a failed safety check), and the most
 //                 common reasons right now
-//   Signals       the signals, with every check behind them
+//   Signals       the signals, with every check behind them, each graded
+//                 Prime, Core or Standard, and each grade's record at live
+//                 speed (engine/src/signals/grades.ts)
 //   Bot results   the bot's own paper and live results, and the owner's
 //                 live switch (a signed message)
+//
+// Tiers (engine/src/bot/tiers.ts, lib/tiers.ts): what each tier gets, the
+// account's own tier from the wallets it links, and "free for now" until the
+// engine enforces them.
 //
 // A strip at the top shows the scanner working (the `scan` channel, every 2s).
 // The numbers are measured results, never a promise.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
-import type { BotControl, BotFilters, BotPosition, BotStatus, LearnNote, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, SignalOutcomes, SignalRule, TeamView, TradeSignal } from '../../../api/_marketProtocol'
+import type { AccessView, BotControl, BotFilters, BotPosition, BotStatus, BotStrategy, GradeRecordView, LearnNote, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, SignalGrade, SignalOutcomes, SignalRule, TeamView, TierId, TiersResponse, TradeSignal } from '../../../api/_marketProtocol'
 import { getLaunchpadColor } from '../api/radardex'
-import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botFunders, botWithdraw, botWithdrawCode, botWithdrawPasscode, engineEnabled, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse, type LiveSpeedRow } from '../api/marketStream'
+import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botFunders, botWithdraw, botWithdrawCode, botWithdrawPasscode, botLinkWallet, botUnlinkWallet, engineEnabled, getTiers, sendTierGrant, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse, type LiveSpeedRow } from '../api/marketStream'
 import { AgoText } from '../components/Ago'
 import { openConnectModal } from '../components/ConnectWallet'
 import { PasscodeField, useWithdrawGuard } from '../components/WithdrawGuard'
@@ -33,14 +39,14 @@ import { txErrorText } from '../lib/tx'
 import { useCash, useSendUsdc } from '../lib/usdc'
 import { cardFromAccount, cardFromMarket, ShareBotButton } from '../components/BotShare'
 import { profitNotifyOn, setProfitNotify } from '../components/ProfitAlerts'
-import { ARCD_TIERS, arcdAmount, TIERS_ENFORCED } from '../lib/tiers'
+import { ARCD_TIERS, arcdAmount, GRADE_COLOR, GRADE_NAME, GRADE_TIER, STRATEGY_TIER, TIERS_ENFORCED, tierName } from '../lib/tiers'
 import type { Page } from '../App'
 import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
 import { N_, t as T } from '../lib/i18n'
 import { shortAddr, useEmbeddedAddress, useTrader } from '../lib/identity'
 
 type Tab = 'all' | 'snipe' | 'scalp' | 'secondLeg'
-type Strategy = TradeSignal['strategy']
+type Strategy = BotStrategy
 type Book = 'paper' | 'live'
 type View = 'mine' | 'market' | 'scanner' | 'signals' | 'bot'
 const EXPLORER = 'https://explorer.arc.io'
@@ -50,9 +56,11 @@ const VIEW_KEY = 'arcdex:autotrade-view'
 const usd = (n: number | null | undefined, digits = 2) => n === null || n === undefined || !Number.isFinite(n) ? '—' : `${n < 0 ? '−' : ''}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
 const price = (n: number) => n >= 1 ? `$${n.toFixed(4)}` : `$${n.toPrecision(3)}`
 const big = (n: number | null) => n === null ? '—' : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(0)}`
-const STRATEGY: Record<TradeSignal['strategy'], string> = { snipe: 'Snipe', scalp: 'Fast scalp', 'second-leg': 'Dip rebound' }
-const STRATEGY_COLOR: Record<TradeSignal['strategy'], string> = { snipe: '#3b82f6', scalp: '#f59e0b', 'second-leg': '#a855f7' }
-const STRATEGY_HELP: Record<TradeSignal['strategy'], string> = {
+const STRATEGY: Record<BotStrategy, string> = { snipe: 'Snipe', scalp: 'Fast scalp', 'second-leg': 'Dip rebound', precision: 'Precision' }
+const STRATEGY_COLOR: Record<BotStrategy, string> = { snipe: '#3b82f6', scalp: '#f59e0b', 'second-leg': '#a855f7', precision: '#facc15' }
+const ALL_STRATEGIES: BotStrategy[] = ['precision', 'snipe', 'scalp', 'second-leg']
+const STRATEGY_HELP: Record<BotStrategy, string> = {
+  precision: 'Prime signals only, the cleanest: the market\'s own buying, spread wide and early. All of it sold at +6%, −7% stop, 10 minutes at most, out at once if the creator sells. A small gain, taken fast.',
   snipe: 'New coins in their first 10 minutes that pass every safety check and show real buying. Half sold at +10%, then the stop moves to break-even and the rest trails 25% under its peak; −10% stop, an hour at most.',
   scalp: 'Quick in and out: bursts of real buying on any safe coin, and new coins with a risk flag. Half sold at +10%, then the stop moves to break-even and the rest trails 25% under its peak; −10% stop, an hour at most, and out at once if the creator sells.',
   'second-leg': 'Coins that ran 2× or more, pulled back 25–70% and are being bought again. Half sold at the take-profit (+35% to start), then the stop moves to break-even and the rest trails; held up to 6 hours.',
@@ -134,10 +142,11 @@ export default function SignalsPage({ navigate, view: pageView, bot }: { navigat
           {view === 'mine' && <MyBots navigate={navigate} liveSpeed={stats?.routing?.liveSignals === 'all' ? undefined : stats?.liveSpeed} />}
           {view === 'market' && <Marketplace navigate={navigate} slug={bot ?? null} />}
           {view === 'scanner' && <><RejectionsCard /><ScannerPanel scan={scan} navigate={navigate} /></>}
+          {view === 'signals' && <GradesCard grades={stats?.grades} />}
           {view === 'signals' && stats?.liveSpeed && <LiveSpeedCard rows={stats.liveSpeed} all={stats.routing?.liveSignals === 'all'} />}
           {view === 'signals' && (
             <Section title={T('Live signals')}>
-              <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>{T('Every signal gets a quality score and is ranked against the last 50: the top 80% can go to live bots, the lowest 20% to paper bots only, where they are still measured. A live bot also needs the kind of signal to make money at live speed (above). A trade takes 20% of a bot\'s capital on a safe coin, 10% on one with a risk flag.')}</div>
+              <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>{T('Every signal is graded Prime, Core or Standard when it fires. A trade takes 20% of a bot\'s capital on a Prime signal, 15% on Core, 10% on Standard. When many bots take the same signal, they share it: together they never buy enough to move the price against themselves.')}</div>
               {signals.length === 0 ? <Empty>{T('No signals yet. Most launches fail a safety check; a signal appears the moment one passes them all.')}</Empty>
                 : signals.map(s => <SignalRow key={s.id} s={s} navigate={navigate} />)}
             </Section>
@@ -208,7 +217,7 @@ function ScannerPanel({ scan, navigate }: { scan: { rows: ScanRow[]; stats: Scan
 }
 
 /** A new bot: its name and strategies (the engine sizes its trades). */
-function CreateBot({ busy, loading, error, onCreate, onCancel, team }: { busy: boolean; loading: boolean; error: string | null; onCreate: (bot: NewPaperAccount) => void; onCancel?: () => void; team?: TeamView }) {
+function CreateBot({ busy, loading, error, onCreate, onCancel, team, access }: { busy: boolean; loading: boolean; error: string | null; onCreate: (bot: NewPaperAccount) => void; onCancel?: () => void; team?: TeamView; access?: AccessView | null }) {
   const [name, setName] = useState('')
   // Both by default (2026-09-30): the team's clean-coin snipes won 6 of 6, and a scalp-only bot never saw them.
   const [strategies, setStrategies] = useState<Strategy[]>(['snipe', 'scalp'])
@@ -219,13 +228,13 @@ function CreateBot({ busy, loading, error, onCreate, onCancel, team }: { busy: b
     <div className="at-card at-hero">
       <div className="at-hero-title">{T('Create your Autotrade bot')}</div>
       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-        {T('Name it and pick its strategies: it starts trading at once with $1,000 of virtual USDC and the team\'s best settings. Each trade is a share of what the bot is worth: 20% on a safe coin, 10% on one with a risk flag, at least $1, so even a $10 bot trades. It gets out of rugs at once and learns from its own trades and every other bot\'s. It keeps trading with this page closed. No wallet or real money needed.')}
+        {T('Name it and pick its strategies: it starts trading at once with $1,000 of virtual USDC and the team\'s best settings. Each trade is a share of what the bot is worth: 20% on a Prime signal, 15% on Core, 10% on Standard, at least $1, so even a $10 bot trades. It gets out of rugs at once and learns from its own trades and every other bot\'s. It keeps trading with this page closed. No wallet or real money needed.')}
       </div>
       <div className="at-label">{T('Bot name')}</div>
       <input className="at-input at-name" value={name} maxLength={24} placeholder={T('e.g. Night Owl')} onChange={e => setName(e.target.value)} aria-label={T('Bot name')} />
       {name && !valid && <div style={{ fontSize: '0.72rem', color: '#fca5a5', marginTop: 4 }}>{T('2–24 letters, digits or spaces.')}</div>}
       <div className="at-label">{T('Strategies')} <span style={{ fontWeight: 500, color: 'var(--text-muted)' }}>· {T('use one, or several at once')}</span></div>
-      <StrategyPicker selected={strategies} disabled={busy} onToggle={toggle} team={team} />
+      <StrategyPicker selected={strategies} disabled={busy} onToggle={toggle} team={team} access={access} />
       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('Its name is its unique id on ARCDEX: the marketplace shows it at /bots/<name>.')}</div>
       <button className="at-big" disabled={busy || loading || !valid || !strategies.length} onClick={() => onCreate({ name: clean, strategies })}>{busy || loading ? T('Loading…') : `🤖 ${T('Create my bot')}`}</button>
       {onCancel && <button className="link-btn" onClick={onCancel}>{T('Cancel')}</button>}
@@ -234,16 +243,21 @@ function CreateBot({ busy, loading, error, onCreate, onCancel, team }: { busy: b
   )
 }
 
-/** The strategies to pick from, each with the team's record on it this week when the engine sends it. */
-function StrategyPicker({ selected, disabled, onToggle, team }: { selected: Strategy[]; disabled: boolean; onToggle: (s: Strategy) => void; team?: TeamView }) {
+/** The strategies to pick from, each with the team's record on it this week when the engine sends it, and the tier a tiered one is for. */
+function StrategyPicker({ selected, disabled, onToggle, team, access }: { selected: Strategy[]; disabled: boolean; onToggle: (s: Strategy) => void; team?: TeamView; access?: AccessView | null }) {
   return (
     <div className="at-strats">
-      {(['snipe', 'scalp', 'second-leg'] as const).map(s => {
+      {ALL_STRATEGIES.map(s => {
         const on = selected.includes(s)
         const rec = team?.byStrategy[s]
+        const tier = STRATEGY_TIER[s]
+        const locked = !!access?.enforced && !access.strategies.includes(s)
         return (
-          <button key={s} className={`at-strat${on ? ' on' : ''}`} style={{ borderColor: on ? STRATEGY_COLOR[s] : undefined }} disabled={disabled} onClick={() => onToggle(s)} aria-pressed={on}>
-            <span className="at-strat-head"><span className="at-check" style={{ background: on ? STRATEGY_COLOR[s] : 'transparent', borderColor: STRATEGY_COLOR[s] }}>{on ? '✓' : ''}</span>{T(STRATEGY[s])}</span>
+          <button key={s} className={`at-strat${on ? ' on' : ''}${locked ? ' locked' : ''}`} style={{ borderColor: on ? STRATEGY_COLOR[s] : undefined }} disabled={disabled || (locked && !on)} onClick={() => onToggle(s)} aria-pressed={on}>
+            <span className="at-strat-head">
+              <span className="at-check" style={{ background: on ? STRATEGY_COLOR[s] : 'transparent', borderColor: STRATEGY_COLOR[s] }}>{on ? '✓' : ''}</span>{T(STRATEGY[s])}
+              {tier && <span className="at-tier-tag">{locked ? '🔒 ' : ''}{T(tierName(tier))}{access?.enforced ? '' : ` · ${T('free for now')}`}</span>}
+            </span>
             <span className="at-strat-help">{T(STRATEGY_HELP[s])}</span>
             <span className="at-strat-team">{rec ? T('Team, 7 days: {n} trades, {w} won, {p}', { n: rec.trades, w: rec.winRate === null ? '—' : `${Math.round(rec.winRate * 100)}%`, p: usd(rec.pnlUsd) }) : T('Team, 7 days: no trades yet')}</span>
           </button>
@@ -254,31 +268,143 @@ function StrategyPicker({ selected, disabled, onToggle, team }: { selected: Stra
 }
 
 /** The signed-in owner's bots, on any device: sign in first, then one dashboard per bot. */
-/** Autotrade access by $ARCD held (lib/tiers.ts): announced, not enforced yet. */
-function TiersNote() {
+/** The engine's tier table and each grade's record (GET /v1/tiers), shared by every part of the page; the page's own copy until it answers. */
+let tiersCache: TiersResponse | null = null
+function useTiers(): TiersResponse | null {
+  const [t, setT] = useState<TiersResponse | null>(tiersCache)
+  useEffect(() => {
+    if (!engineEnabled) return
+    let alive = true
+    const load = () => getTiers().then(r => { tiersCache = r; if (alive) setT(r) }).catch(() => { /* an older engine: the page's copy */ })
+    void load()
+    const id = setInterval(() => { if (!document.hidden) void load() }, 60_000)
+    return () => { alive = false; clearInterval(id) }
+  }, [])
+  return t
+}
+
+/** A signal's grade, and the lowest tier that gets it. */
+function GradeBadge({ g, title, tiers }: { g: SignalGrade; title?: string; tiers?: TiersResponse | null }) {
+  return <span className={`at-grade ${g}`} title={title} style={{ borderColor: GRADE_COLOR[g] + '88', color: GRADE_COLOR[g] }}>{g === 'prime' ? '◆ ' : ''}{T(GRADE_NAME[g])}{g !== 'standard' ? ` · ${T(tierName(GRADE_TIER[g], tiers?.tiers))}` : ''}</span>
+}
+
+/**
+ * The account's tier: what its linked wallets' $ARCD (or the owner's grant)
+ * earns, the tiers, and linking a wallet by signing with it. Free for now:
+ * until the engine enforces tiers, every account gets every tier's signals.
+ */
+function TierCard({ me, onAccess }: { me: MeResponse; onAccess: (a: AccessView) => void }) {
+  const tiers = useTiers()
+  const access = me.access ?? null
+  const enforced = tiers?.enforced ?? access?.enforced ?? TIERS_ENFORCED
+  const list = tiers?.tiers?.length ? tiers.tiers : ARCD_TIERS
+  const embedded = useEmbeddedAddress()
+  const { address } = useAccount()
+  const { signMessageAsync } = useSignMessage()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
+  const linked = new Set((access?.wallets ?? []).map(w => w.toLowerCase()))
+  const candidates = [
+    ...(embedded ? [{ address: embedded, label: T('trading wallet'), sign: (m: string) => getEmbeddedWalletClient().signMessage({ message: m }) }] : []),
+    ...(address && address.toLowerCase() !== embedded?.toLowerCase() ? [{ address, label: T('connected wallet'), sign: (m: string) => signMessageAsync({ message: m }) }] : []),
+  ].filter(c => !linked.has(c.address.toLowerCase()))
+  const link = async (c: (typeof candidates)[number]) => {
+    setBusy(true); setError(null)
+    try { onAccess(await botLinkWallet(me.user.email, c.address, c.sign)) } catch (e) { setError((e as Error).message?.split('\n')[0] ?? String(e)) } finally { setBusy(false) }
+  }
+  const unlink = async (w: string) => {
+    setBusy(true); setError(null)
+    try { onAccess(await botUnlinkWallet(w)) } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+  const entitled = access?.entitled ?? 'free'
   return (
     <div className="at-tiers">
       <button className="at-tiers-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
-        <span>🔑 {T('Autotrade access is tiered by $ARCD held')}</span>
-        <span className="at-tiers-tag">{TIERS_ENFORCED ? T('Active') : T('Coming soon')}</span>
+        <span>🔑 {T('Your tier: {t}', { t: T(tierName(entitled, list)) })}{access?.arcdHeld != null && access.wallets.length ? ` · ${arcdAmount(Math.floor(access.arcdHeld))} $ARCD` : ''}{access?.via === 'grant' && access.grant ? ` · ${T('granted until {d}', { d: new Date(access.grant.until).toLocaleDateString() })}` : ''}</span>
+        <span className="at-tiers-tag">{enforced ? T('Active') : T('Free for now')}</span>
         <span style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}>{open ? '▴' : '▾'}</span>
       </button>
+      {!enforced && <div className="at-tiers-foot">{T('Everything is open while tiers are free: your bots get every grade of signal, Prime included, and every strategy. Watch what each grade does before tiers start.')}</div>}
       {open && (
         <>
           <div className="at-tiers-grid">
-            {ARCD_TIERS.map(t => (
-              <div key={t.id} className={`at-tier${t.id === 'free' ? '' : ' paid'}`}>
-                <b>{T(t.name)}</b>
+            {list.map(t => (
+              <div key={t.id} className={`at-tier${t.id === 'free' ? '' : ' paid'}${t.id === entitled ? ' mine' : ''}`}>
+                <b>{T(t.name)}{t.id === entitled ? ` · ${T('you')}` : ''}</b>
                 <span className="at-tier-min">{t.minArcd ? `${arcdAmount(t.minArcd)} $ARCD` : T('No $ARCD needed')}</span>
                 <ul>{t.perks.map(x => <li key={x}>{T(x)}</li>)}</ul>
               </div>
             ))}
           </div>
-          {!TIERS_ENFORCED && <div className="at-tiers-foot">{T('Announced: nothing is locked yet. Holdings will be checked once accounts can link a wallet.')}</div>}
+          <div className="at-tiers-body">
+          <div className="at-label">{T('Your wallets')}</div>
+          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{T('The $ARCD in the wallets you link counts toward your tier. Linking asks the wallet to sign a message: it moves nothing and costs nothing.')}</div>
+          {(access?.wallets ?? []).map(w => (
+            <div key={w} className="at-wallet-row">
+              <a href={`${EXPLORER}/address/${w}`} target="_blank" rel="noreferrer">{shortAddr(w)}</a>
+              <button className="link-btn" disabled={busy} onClick={() => void unlink(w)}>{T('Unlink')}</button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+            {candidates.map(c => <button key={c.address} className="btn-ghost" disabled={busy} onClick={() => void link(c)}>{busy ? T('Waiting for your signature…') : T('Link {w} ({a})', { w: c.label, a: shortAddr(c.address) })}</button>)}
+            {!candidates.length && !embedded && !address && <button className="btn-ghost" onClick={() => openConnectModal()}>{T('Connect a wallet to link it')}</button>}
+          </div>
+          {access?.next && access.wallets.length > 0 && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>{T('{n} more $ARCD for {t}.', { n: arcdAmount(Math.ceil(access.next.needArcd)), t: T(tierName(access.next.tier, list)) })}</div>}
+          {error && <div className="at-error">⚠ {error}</div>}
+          </div>
         </>
       )}
     </div>
+  )
+}
+
+/** Each grade's signals replayed at live speed with the exits that grade trades with: what each tier's signals did. */
+function GradesCard({ grades: fromStats }: { grades?: GradeRecordView[] }) {
+  const tiers = useTiers()
+  const grades = tiers?.grades?.length ? tiers.grades : fromStats ?? []
+  const [open, setOpen] = useState<SignalGrade | null>(null)
+  if (!grades.length) return null
+  return (
+    <Section title={T('Signal grades, measured at live speed')}>
+      <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>{T('Every signal is replayed on the coin\'s real trades as a live bot gets it (bought 2.5s late, sold 2s late), with the exits its grade trades with. A grade whose record fails is under review: its signals go out one grade lower until it recovers.')}</div>
+      {grades.map(g => (
+        <div key={g.grade} className="at-grade-row">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <GradeBadge g={g.grade} tiers={tiers} />
+            <span style={{ fontFamily: 'var(--mono)', fontSize: '0.78rem' }}>
+              {g.trades ? T('{n} replays · {w} won · {a} a trade', { n: g.trades, w: g.winRate === null ? '—' : `${Math.round(g.winRate * 100)}%`, a: g.avgPct === null ? '—' : `${g.avgPct > 0 ? '+' : ''}${g.avgPct}%` }) : T('no replays yet')}
+            </span>
+            <button className="link-btn" style={{ marginLeft: 'auto', fontSize: '0.72rem' }} onClick={() => setOpen(o => (o === g.grade ? null : g.grade))}>{open === g.grade ? T('Hide') : T('What it takes')}</button>
+          </div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{T('Traded with {e}', { e: T(g.exits) })}</div>
+          {g.review && <div className="at-note warn" style={{ marginTop: 4 }}>⚠ {T(g.review)}</div>}
+          {open === g.grade && <ul className="at-grade-rules">{g.rules.map(r => <li key={r}>{T(r)}</li>)}</ul>}
+        </div>
+      ))}
+      {!(tiers?.enforced) && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>{T('Free for now: every grade goes to every bot.')}</div>}
+    </Section>
+  )
+}
+
+/** The trades a bot closed, by the signal's grade: what each tier's signals did for this bot. */
+function GradeStats({ acct }: { acct: PaperAccountView }) {
+  const by = acct.byGrade ?? {}
+  const rows = (['prime', 'core', 'standard'] as const).filter(g => by[g]?.trades)
+  if (!rows.length) return null
+  return (
+    <Section title={T('By signal grade')}>
+      {rows.map(g => {
+        const r = by[g]!
+        return (
+          <div key={g} className="reward-row">
+            <GradeBadge g={g} />
+            <span style={{ fontFamily: 'var(--mono)', fontSize: '0.78rem' }}>{T('{n} trades, {w} won', { n: r.trades, w: `${Math.round((r.wins / r.trades) * 100)}%` })}</span>
+            <b style={{ marginLeft: 'auto', fontFamily: 'var(--mono)', color: r.pnlUsd >= 0 ? 'var(--green)' : '#fca5a5' }}>{usd(r.pnlUsd)}</b>
+          </div>
+        )
+      })}
+    </Section>
   )
 }
 
@@ -355,9 +481,9 @@ function MyBots({ navigate, liveSpeed }: { navigate: (p: Page) => void; liveSpee
         </div>
       )}
       {creating || !acct
-        ? <CreateBot busy={busy} loading={false} error={error} onCreate={b => void create(b)} onCancel={bots.length ? () => setCreating(false) : undefined} team={me.team} />
+        ? <CreateBot busy={busy} loading={false} error={error} onCreate={b => void create(b)} onCancel={bots.length ? () => setCreating(false) : undefined} team={me.team} access={me.access} />
         : <BotDashboard key={acct.slug} acct={acct} act={act} busy={busy} error={error} setError={setError} me={me} onMe={() => void reload()} navigate={navigate} liveSpeed={liveSpeed} />}
-      <TiersNote />
+      <TierCard me={me} onAccess={access => setMe(m => m && { ...m, access })} />
     </>
   )
 }
@@ -605,6 +731,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, li
           {isLive && liveSpeed && <LiveGateNote rows={liveSpeed} strategies={acct.strategies} />}
           {!isLive && me.paperSignals === false && <div className="at-note warn" style={{ marginTop: 12 }}>{T('Signals go to live bots only for now (the platform\'s setting): this paper bot isn\'t trading. Switch it to LIVE to trade.')}</div>}
           {acct.team && <TeamCard team={acct.team} acct={acct} onStrategy={() => setTab('strategy')} />}
+          <GradeStats acct={acct} />
           <Section title={T('Open trades') + ` · ${open.length}`}>
             {open.length === 0 ? <Empty>{acct.running ? T('Waiting for the next signal. The scanner shows what it is checking.') : T('No open trades. Press Start to trade.')}</Empty> : open.map(p => <PositionRow key={p.id} p={p} navigate={navigate} />)}
           </Section>
@@ -626,14 +753,14 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, li
       {tab === 'strategy' && (
         <Section title={T('Strategies')}>
           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '2px 0 8px' }}>{T('Use one, or several at once.')}</div>
-          <StrategyPicker selected={acct.strategies} disabled={busy} team={acct.team} onToggle={s => {
+          <StrategyPicker selected={acct.strategies} disabled={busy} team={acct.team} access={me.access} onToggle={s => {
             const next = acct.strategies.includes(s) ? acct.strategies.filter(x => x !== s) : [...acct.strategies, s]
             if (next.length) void act({ action: 'strategies', strategies: next })
             else setError(T('Keep at least one strategy.'))
           }} />
           <div className="at-label">{T('Trade size: from the bot\'s capital')}</div>
           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            {T('Each trade is a share of what the bot is worth now (at the start, its capital): {a}% on a safe coin (it passed every check), {b}% on one with a risk flag, at least {m}. A $10 bot trades $2 or $1. Never more than 1.5% of the coin\'s pool, and never a trade whose costs eat the take-profit. Half is sold at the take-profit; then the stop moves to break-even and the rest trails 25% under its peak.', { a: acct.protections?.tradeSharePct?.a ?? 20, b: acct.protections?.tradeSharePct?.b ?? 10, m: usd(acct.protections?.minTradeUsd ?? 1, 0) })}
+            {T('Each trade is a share of what the bot is worth now (at the start, its capital), by the signal\'s grade: {p}% on Prime, {c}% on Core, {s}% on Standard, at least {m}. A $10 bot trades $2 or $1. Never more than 1.5% of the coin\'s pool, and never a trade whose costs eat the take-profit. When many bots take the same signal, they share it under a cap, and each later bot\'s take-profit is a notch higher so they don\'t all sell at once.', { p: acct.protections?.gradeSharePct?.prime ?? 20, c: acct.protections?.gradeSharePct?.core ?? 15, s: acct.protections?.gradeSharePct?.standard ?? 10, m: usd(acct.protections?.minTradeUsd ?? 1, 0) })}
           </div>
           {acct.tuning && acct.strategies.map(s => <TuningLine key={s} s={s} t={acct.tuning[s]} />)}
         </Section>
@@ -1039,7 +1166,8 @@ function SettingsTab({ acct, act, busy, onRename }: { acct: PaperAccountView; ac
         <Section title={T('Protection')}>
           <ul className="at-protect">
             <li>🛡 {T('Rug guard: out at once when liquidity is pulled, an early insider or a whale dumps, the price crashes on heavy selling, or the creator sells.')}</li>
-            {prot.maxTradeSharePct !== undefined && <li>⚖ {T('Each trade is {a}% of what the bot is worth on a safe coin, {b}% on one with a risk flag (now at most {m}), at least {min}: a small bot trades small.', { a: prot.tradeSharePct?.a ?? prot.maxTradeSharePct, b: prot.tradeSharePct?.b ?? 10, m: prot.maxTradeUsd == null ? '—' : usd(prot.maxTradeUsd), min: usd(prot.minTradeUsd ?? 1, 0) })}</li>}
+            {prot.maxTradeSharePct !== undefined && <li>⚖ {T('Each trade is {p}% of what the bot is worth on a Prime signal, {c}% on Core, {s}% on Standard (now at most {m}), at least {min}: a small bot trades small.', { p: prot.gradeSharePct?.prime ?? prot.maxTradeSharePct, c: prot.gradeSharePct?.core ?? 15, s: prot.gradeSharePct?.standard ?? 10, m: prot.maxTradeUsd == null ? '—' : usd(prot.maxTradeUsd), min: usd(prot.minTradeUsd ?? 1, 0) })}</li>}
+            <li>👥 {T('Shares each signal with the other bots: together they never buy enough to move the price against themselves, and the one that waited longest goes first.')}</li>
             <li>⏸ {T('Pauses new trades for 30 minutes after {n} losses in a row (now {s} in a row).', { n: prot.pauseAfterLosses, s: prot.lossStreak })}</li>
             <li>📉 {T('Daily loss limit {l}: no new trades after it until tomorrow (UTC). Today: {t}.', { l: usd(prot.dailyLossLimitUsd, 0), t: usd(prot.todayPnlUsd) })}</li>
             <li>🛑 {T('Stops if the account falls {p}% below what was deposited.', { p: prot.stopBelowPct })}</li>
@@ -1100,11 +1228,11 @@ function TuningLine({ s, t }: { s: Strategy; t: PaperAccountView['tuning'][Strat
     <div className="at-tune">
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         <Pill color={STRATEGY_COLOR[s]}>{T(STRATEGY[s])} · v{t.version}</Pill>
-        <b style={{ fontFamily: 'var(--mono)' }}>{t.sizeUsd === null ? '—' : T('about {v} on a safe coin', { v: usd(t.sizeUsd) })}</b>
+        <b style={{ fontFamily: 'var(--mono)' }}>{t.sizeUsd === null ? '—' : T(s === 'precision' ? 'about {v} on a Prime signal' : 'about {v} on a Core signal', { v: usd(t.sizeUsd) })}</b>
         {t.closed > 0 && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T('{n} trades, {w} won', { n: t.closed, w: t.winRate === null ? '—' : `${Math.round(t.winRate * 100)}%` })}</span>}
       </div>
       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
-        {T((t.plan ?? 1) >= 2
+        {T(s !== 'precision' && (t.plan ?? 1) >= 2
           ? 'Half sold at {tp}, the rest trails 25% under its peak with the stop at break-even · stop {sl} · out after {m} min unless moving, {x} min at most'
           : 'Sells all at {tp} · stop {sl} · out after {m} min unless moving, {x} min at most', {
           tp: pctMove(t.takeProfit), sl: pctMove(t.stopLoss), m: t.timeStopMin, x: t.maxHoldMin,
@@ -1444,7 +1572,8 @@ function SignalRow({ s, navigate }: { s: TradeSignal; navigate: (p: Page) => voi
         <Pill color={getLaunchpadColor(s.launchpad)}>{s.launchpad}</Pill>
         <Pill color={STRATEGY_COLOR[s.strategy] ?? '#64748b'}>{T(STRATEGY[s.strategy] ?? s.strategy)}</Pill>
         {s.probation && <span className="at-probation" title={s.probation.why}>{T('On probation: bots sit it out')}</span>}
-        {s.quality && !s.probation && <span className={`at-quality ${s.quality.grade}`} title={[...s.quality.parts, ...(s.quality.liveSpeed ? [T('at live speed: {n} replays, {a} a trade', { n: s.quality.liveSpeed.trades, a: s.quality.liveSpeed.avgPct === null ? '—' : `${s.quality.liveSpeed.avgPct}%` })] : [])].join(' · ')}>{s.quality.grade === 'live' ? T('Live-grade · tier {t} · {q}', { t: s.quality.tier, q: s.quality.score }) : T('Paper only · {q}', { q: s.quality.score })}</span>}
+        {s.quality?.level && !s.probation && <GradeBadge g={s.quality.level} title={[...(s.quality.levelWhy ?? []), ...(s.quality.review ? [s.quality.review] : [])].join(' · ')} />}
+        {s.quality && !s.probation && <span className={`at-quality ${s.quality.grade}`} title={[...s.quality.parts, ...(s.quality.liveSpeed ? [T('at live speed: {n} replays, {a} a trade', { n: s.quality.liveSpeed.trades, a: s.quality.liveSpeed.avgPct === null ? '—' : `${s.quality.liveSpeed.avgPct}%` })] : [])].join(' · ')}>{s.quality.grade === 'live' ? T('Quality {q}', { q: s.quality.score }) : T('Paper only · {q}', { q: s.quality.score })}</span>}
         {s.strategy === 'scalp' && s.rule === 'snipe' && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }} title={T('The snipe rule fired, but the coin carries a risk, so it trades small and sells fast')}>{T('from a snipe on a risky coin')}</span>}
         {!s.executable && <Pill color="#64748b">{T('Paper only')}</Pill>}
         <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)' }}><AgoText ts={s.at} /></span>
@@ -1492,7 +1621,9 @@ function PositionRow({ p, navigate }: { p: BotPosition; navigate: (p: Page) => v
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <button className="link-btn" onClick={() => navigate({ name: 'argus', address: p.token, pool: '' })} style={{ textDecoration: 'none' }}>${p.symbol}</button>
         <Pill color={STRATEGY_COLOR[p.strategy] ?? '#64748b'}>{T(STRATEGY[p.strategy] ?? p.strategy)}</Pill>
+        {p.grade && <GradeBadge g={p.grade} />}
         {p.mode === 'live' && <Pill color={LIVE_RED}>{T('LIVE')}</Pill>}
+        {p.mode === 'live' && p.crowd && p.crowd.bots > 1 && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }} title={T('Bots on this signal together bought {u} of its {c} cap', { u: usd(p.crowd.usd), c: usd(p.crowd.capUsd) })}>{T('#{r} of {n} bots', { r: p.crowd.rank + 1, n: p.crowd.bots })}</span>}
         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}><AgoText ts={p.openedAt} /></span>
       </div>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: '0.76rem', fontFamily: 'var(--mono)', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
@@ -1632,6 +1763,40 @@ function BotPanel({ status, onStatus }: { status: BotStatus; onStatus: (s: BotSt
           {sign ? T('Live trading needs a bot wallet on the engine: set BOT_PRIVATE_KEY (a new wallet that holds only what the bot may trade) in Railway, then fund it with USDC on Arc.') : T('Live trading is not set up on this engine.')}
         </div>
       )}
+      {sign && <TierGrant sign={sign} />}
+    </div>
+  )
+}
+
+/** The owner gives an account a tier for some days (a subscription paid some other way), signed by the owner's wallet. */
+function TierGrant({ sign }: { sign: (message: string) => Promise<`0x${string}`> }) {
+  const [email, setEmail] = useState('')
+  const [tier, setTier] = useState<TierId>('t3')
+  const [days, setDays] = useState('30')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const n = Math.floor(Number(days))
+  const valid = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email.trim()) && Number.isInteger(n) && n >= 0 && n <= 3_660
+  const send = async () => {
+    setBusy(true); setMsg(null)
+    try {
+      const r = await sendTierGrant({ action: 'grant-tier', email: email.trim().toLowerCase(), tier, days: n }, sign)
+      setMsg({ ok: true, text: r.grant ? T('{e} has {t} until {d}.', { e: email.trim(), t: T(tierName(tier)), d: new Date(r.grant.until).toLocaleDateString() }) : T('The grant to {e} was taken back.', { e: email.trim() }) })
+    } catch (e) { setMsg({ ok: false, text: (e as Error).message?.split('\n')[0] ?? String(e) }) } finally { setBusy(false) }
+  }
+  return (
+    <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--adx-card-border)' }}>
+      <div style={{ fontSize: '0.8rem', fontWeight: 800 }}>{T('Grant a tier')}</div>
+      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{T('For a subscription paid another way: the account gets the tier for that many days (0 takes a grant back). It counts once tiers are enforced.')}</div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+        <input className="at-input" style={{ flex: '1 1 200px' }} value={email} placeholder={T('account email')} onChange={e => setEmail(e.target.value)} aria-label={T('account email')} />
+        <select className="at-input" style={{ flex: '0 0 auto' }} value={tier} onChange={e => setTier(e.target.value as TierId)} aria-label={T('Tier')}>
+          {ARCD_TIERS.filter(t => t.id !== 'free').map(t => <option key={t.id} value={t.id}>{T(t.name)}</option>)}
+        </select>
+        <input className="at-input" style={{ flex: '0 0 90px' }} value={days} inputMode="numeric" onChange={e => setDays(e.target.value.replace(/[^0-9]/g, ''))} aria-label={T('days')} />
+        <button className="btn-ghost" disabled={busy || !valid} onClick={() => void send()}>{busy ? T('Waiting for your signature…') : T('Sign and grant')}</button>
+      </div>
+      {msg && <div style={{ marginTop: 6, fontSize: '0.74rem', color: msg.ok ? 'var(--green)' : '#fca5a5' }}>{msg.ok ? '✓ ' : '⚠ '}{msg.text}</div>}
     </div>
   )
 }

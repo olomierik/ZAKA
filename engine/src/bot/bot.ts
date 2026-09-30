@@ -40,7 +40,9 @@ import { log, errMsg } from '../log'
 import type { EngineObserver, MarketEngine } from '../market/engine'
 import { metrics } from '../metrics'
 import { PricePath, RULES, scalpReady, secondLegReady, snipeReady, tooCostly } from '../signals/rules'
-import type { BotStatus, ScanRow, SignalFeatures, SignalQuality, SignalRule } from '../../../api/_marketProtocol'
+import type { BotStatus, GradeRecordView, ScanRow, SignalFeatures, SignalGrade, SignalQuality, SignalRule } from '../../../api/_marketProtocol'
+import { GRADE_RULES, GRADES, GradeBook, gradeOf } from '../signals/grades'
+import { crowdCap } from './crowd'
 import { QUALITY, QualityRank, qualityScore, type RuleRecord } from '../signals/quality'
 import { LIVE_GATE, liveKey, LiveSpeedBook, replayAtLiveSpeed, type LiveSpeedRecord } from '../signals/liveSpeed'
 import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, RISK, STRATEGIES, stats, type Position, type Strategy, type StrategyParams } from '../trading/paper'
@@ -146,6 +148,8 @@ export class Bot implements EngineObserver {
   /** `sizeUsd` sizes snipes and second legs; `scalpSizeUsd` sizes scalps. `live` is set when a bot wallet is configured. */
   /** Each kind of signal replayed on its coin's real trades at live speed; live bots trade only the kinds that make money (signals/liveSpeed.ts). */
   readonly liveSpeed = new LiveSpeedBook()
+  /** Each grade's signals replayed at live speed with the exits that grade trades with: its public record and its review (signals/grades.ts). */
+  readonly grades = new GradeBook()
   private replaying = false
   /** The paper book's buys waiting for their live-speed fill, by token. */
   private pendingHouse = new Map<string, { signal: Signal; strategy: Strategy; params: StrategyParams; cost: number; features: SignalFeatures; rule: SignalRule; due: number }>()
@@ -498,10 +502,16 @@ export class Bot implements EngineObserver {
     const graded = probation ? { grade: 'paper' as const, tier: 'B' as const, rank: null } : this.qualityRank.grade(scored.score)
     // `all` (the owner's setting): every signal not on probation goes to live bots; the rank still sets the tier (the size).
     const ranked = this.liveSignals === 'all' && !probation ? { ...graded, grade: 'live' as const } : graded
+    // Its grade (signals/grades.ts): Prime, Core or Standard, handed out one lower while its own grade's record is under review.
+    const graded2 = gradeOf(features, rule)
+    const handed = this.grades.effective(graded2.grade, now)
     const quality: SignalQuality = {
       score: scored.score, ...ranked, ...(this.liveSignals === 'proven' && ranked.grade === 'live' && !ls.ok ? { grade: 'paper' as const } : {}), parts: scored.parts,
       liveSpeed: { trades: ls.trades, winRate: ls.winRate, avgPct: ls.avgReturn === null ? null : Math.round(ls.avgReturn * 1_000) / 10, ok: ls.ok },
+      level: handed.grade, levelWhy: graded2.why, review: handed.review,
     }
+    reasons = [...reasons, `grade: ${handed.grade}${handed.grade !== graded2.grade ? ` (${graded2.grade} under review)` : ''}`]
+    metrics.inc(`bot_signals_level_${handed.grade}`)
     reasons = [...reasons, quality.grade === 'live' ? `quality ${quality.score}: live-grade, tier ${quality.tier}`
       : ranked.grade === 'live' ? `quality ${quality.score}: paper only, ${liveWhy(ls)}`
       : `quality ${quality.score}: paper only (the lowest ${Math.round((1 - QUALITY.liveShare) * 100)}% of recent signals)`]
@@ -527,7 +537,18 @@ export class Bot implements EngineObserver {
     if (this.mode === 'live' && this.o.live) {
       if (probation) this.o.live.event({ kind: 'skip', text: `$${meta.symbol}: not bought live, ${probation.why}` })
       else if (quality.grade === 'paper') this.o.live.event({ kind: 'skip', text: `$${meta.symbol}: not bought live, ${ls.ok ? `quality ${quality.score} is in the lowest ${Math.round((1 - QUALITY.liveShare) * 100)}% of recent signals` : liveWhy(ls)}` })
-      else void this.o.live.open(signal, strategy, pool, meta, { priceNow: () => this.priceOf(token) })
+      else {
+        // Visitors' bots were seated first (bot/crowd.ts): the platform's bot takes only what they left under the cap.
+        const want = this.params(strategy).sizeUsd
+        const capUsd = crowdCap({ liquidityUsd: st.liquidityUsd, takeProfit: this.params(strategy).tp1Multiple, flags: features.flags })
+        const left = this.o.accounts ? this.o.accounts.crowd.leftover(signal.id, capUsd) : capUsd
+        if (left < 1) this.o.live.event({ kind: 'skip', token, symbol: meta.symbol, text: `$${meta.symbol}: not bought live, visitors' bots filled its crowd cap ($${capUsd.toFixed(2)})` })
+        else {
+          const size = Math.min(want, left)
+          this.o.accounts?.crowd.take(signal.id, capUsd, size)
+          void this.o.live.open(signal, strategy, pool, meta, { sizeUsd: size, priceNow: () => this.priceOf(token) })
+        }
+      }
     }
     const allowed = canOpen(this.positions.filter(p => p.mode !== 'live'), token, now, RISK, strategy)
     if (!allowed.ok) { this.outcomes.add(signal.id, allowed.key ?? 'max-open', now); log.info('bot: not opening', { token, strategy, why: allowed.why }); return fired }
@@ -564,20 +585,47 @@ export class Bot implements EngineObserver {
     if (!h || this.replaying) return
     this.replaying = true
     try {
-      const due = this.recentSignals.filter(sg => !this.liveSpeed.has(sg.id) && now - sg.at >= 60_000 && now - sg.at <= LIVE_GATE.days * 86_400_000).slice(0, batch)
+      const due = this.recentSignals.filter(sg => (!this.liveSpeed.has(sg.id) || !this.grades.has(sg.id)) && now - sg.at >= 60_000 && now - sg.at <= LIVE_GATE.days * 86_400_000).slice(0, batch)
       for (const sg of due) {
-        // The exits a new bot trades with (what live bots trade with before they learn).
         if (!(sg.strategy in STRATEGIES)) { this.liveSpeed.skip(sg.id); continue }
-        const exits = toParams(defaultTuning(sg.strategy), 100)
-        const until = Math.min(now, sg.at + ((exits.maxHoldMin ?? 60) + 2) * 60_000)
+        // The exits a new bot trades with (what live bots trade with before they learn); a Prime signal's grade record with Precision's.
+        const exits = toParams(defaultTuning(sg.strategy), 100, sg.strategy)
+        const grade: SignalGrade = gradeOf(sg.features, sg.rule).grade
+        const gradeExits = grade === 'prime' ? toParams(defaultTuning('precision'), 100, 'precision') : exits
+        const hold = Math.max(exits.maxHoldMin ?? 60, gradeExits.maxHoldMin ?? 60)
+        const until = Math.min(now, sg.at + (hold + 2) * 60_000)
         const rows = await this.tradesBetween(sg.token, sg.at - 5_000, until).catch(() => null)
         if (!rows) continue
         const r = replayAtLiveSpeed(rows, { at: sg.at, price: sg.price, roundTripPct: sg.features?.roundTripPct ?? null, exits, now })
-        if (!r.final) continue
-        if (r.ret === null) this.liveSpeed.skip(sg.id)
-        else this.liveSpeed.add({ signalId: sg.id, key: liveKey(sg.rule, sg.strategy), at: sg.at, ret: r.ret })
+        if (r.final && !this.liveSpeed.has(sg.id)) {
+          if (r.ret === null) this.liveSpeed.skip(sg.id)
+          else this.liveSpeed.add({ signalId: sg.id, key: liveKey(sg.rule, sg.strategy), at: sg.at, ret: r.ret })
+        }
+        // Probation signals aren't handed out: they don't count toward a grade's record.
+        if (!this.grades.has(sg.id) && !sg.probation) {
+          const g = gradeExits === exits ? r : replayAtLiveSpeed(rows, { at: sg.at, price: sg.price, roundTripPct: sg.features?.roundTripPct ?? null, exits: gradeExits, now })
+          if (g.final && g.ret !== null) this.grades.add(sg.id, grade, sg.at, g.ret)
+          else if (g.final) this.grades.skip(sg.id)
+        }
       }
     } finally { this.replaying = false }
+  }
+
+  /** Each grade's record at live speed (GET /v1/tiers, the Signals tab). */
+  gradeRecords(now = Date.now()): GradeRecordView[] {
+    const exits: Record<SignalGrade, string> = {
+      prime: 'Precision: all sold at +6%, stop −7%, 10 minutes at most',
+      core: 'its strategy\'s exits: half at +10%, then a break-even stop and a 25% trail',
+      standard: 'its strategy\'s exits: half at +10%, then a break-even stop and a 25% trail',
+    }
+    const rules = (g: SignalGrade): string[] => g === 'standard' ? ['every other signal bots may trade (not on probation)'] : (() => {
+      const r = GRADE_RULES[g]
+      return [`largest buyer ≤ ${r.maxTopBuyerPct}% of the buying`, `${r.minBuyers}+ buyers`, `buys ${r.minBuySellRatio}× sells or more`, `run-up ≤ +${Math.round((r.maxRunUp - 1) * 100)}%`, `round trip ≤ ${r.maxRoundTripPct}%`, `liquidity $${r.minLiquidityUsd.toLocaleString('en-US')}+`]
+    })()
+    return GRADES.map(g => {
+      const r = this.grades.record(g, now)
+      return { grade: g, trades: r.trades, wins: r.wins, winRate: r.winRate, avgPct: r.avgReturn === null ? null : Math.round(r.avgReturn * 1_000) / 10, review: r.review, exits: exits[g], rules: rules(g) }
+    })
   }
 
   /** A coin's stored trades between two times, oldest first (paged back from `to`). */
@@ -753,7 +801,7 @@ export class Bot implements EngineObserver {
     const probation = Object.fromEntries((['momentum', 'snipe', 'second-leg'] as const).map(k => [k, this.probation(k)?.why ?? null]))
     const liveSpeed = this.liveSpeed.keys().map(k => this.liveSpeed.record(k))
     const routing = { liveSignals: this.liveSignals, paperSignals: this.o.accounts?.paperSignals ?? true }
-    return { mode: this.mode, ...of(paper), byRule, probation, liveSpeed, routing, live: of(this.positions.filter(p => p.mode === 'live')), params: { snipe: this.params('snipe'), 'second-leg': this.params('second-leg'), scalp: this.params('scalp') }, risk: RISK, rules: RULES, watching: this.paths.size }
+    return { mode: this.mode, ...of(paper), byRule, probation, liveSpeed, routing, grades: this.gradeRecords(), live: of(this.positions.filter(p => p.mode === 'live')), params: { snipe: this.params('snipe'), 'second-leg': this.params('second-leg'), scalp: this.params('scalp') }, risk: RISK, rules: RULES, watching: this.paths.size }
   }
 
   status(): BotStatus {

@@ -8,6 +8,7 @@
 import { createPublicClient, fallback, http, isAddress, isHex, type Address, type Hex } from 'viem'
 import { botControlMessage, type BotControl } from '../../../api/_marketProtocol'
 import { ARC } from '../trading/live'
+import { isTier } from './tiers'
 
 export const MAX_AGE_MS = 5 * 60_000
 
@@ -22,6 +23,13 @@ export function parseControl(body: unknown): ControlRequest | string {
   if (typeof b.signature !== 'string' || !isHex(b.signature) || b.signature.length < 132) return 'missing or bad "signature"'
   if (b.action === 'mode' && (b.mode === 'paper' || b.mode === 'live')) return { control: { action: 'mode', mode: b.mode }, at, signature: b.signature as Hex }
   if (b.action === 'close-live') return { control: { action: 'close-live' }, at, signature: b.signature as Hex }
+  if (b.action === 'grant-tier') {
+    const days = Number(b.days)
+    if (typeof b.email !== 'string' || !b.email.includes('@')) return 'missing "email"'
+    if (!isTier(b.tier)) return 'unknown tier'
+    if (!Number.isInteger(days) || days < 0 || days > 3_660) return '"days" must be a whole number from 0 to 3660'
+    return { control: { action: 'grant-tier', email: b.email.trim().toLowerCase(), tier: b.tier, days }, at, signature: b.signature as Hex }
+  }
   return 'unknown action'
 }
 
@@ -36,6 +44,11 @@ export class ControlVerifier {
       const client = createPublicClient({ chain: ARC, transport: fallback(readUrls.map(u => http(u, { timeout: 10_000 }))) })
       return a => client.verifyMessage(a)
     })()
+  }
+
+  /** Whether `address` signed `message` (a wallet linking itself to an account). */
+  signedBy(address: Address, message: string, signature: Hex): Promise<boolean> {
+    return this.verifyMessage({ address, message, signature }).catch(() => false)
   }
 
   /** null when the owner signed this request; otherwise why not. */

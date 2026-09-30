@@ -204,10 +204,20 @@ export interface SignalQuality {
   parts: string[]
   /** What this kind of signal made at live speed (replayed on real trades: engine/src/signals/liveSpeed.ts); live bots trade it only while `ok`. */
   liveSpeed?: { trades: number; winRate: number | null; avgPct: number | null; ok: boolean }
+  /** Its grade as handed out (one lower while its own grade is under review), what it met or missed, and the review (missing on older signals). */
+  level?: SignalGrade
+  levelWhy?: string[]
+  review?: string | null
 }
 
 /** Which rule fired a signal. Momentum bursts count buyers over two minutes, snipes since launch: they're learned apart. */
 export type SignalRule = 'snipe' | 'second-leg' | 'momentum'
+
+/** What a bot can follow: the signals' own strategies, and Precision (Prime signals only, all sold at a small gain; engine/src/signals/grades.ts). */
+export type BotStrategy = 'snipe' | 'second-leg' | 'scalp' | 'precision'
+
+/** A signal's grade (engine/src/signals/grades.ts): Prime, the cleanest; Core; Standard, every other signal bots may trade. */
+export type SignalGrade = 'prime' | 'core' | 'standard'
 
 /** A coin at a signal, in numbers (engine/src/bot/bot.ts). Visitors' bots filter on these and learn from them. */
 export interface SignalFeatures {
@@ -272,7 +282,7 @@ export interface StrategyTuning {
 /** Something a visitor's bot learned or changed, in words. */
 export interface LearnNote {
   at: number
-  strategy: 'snipe' | 'second-leg' | 'scalp'
+  strategy: BotStrategy
   /** The kind of signal the change is about, when it's about one. */
   rule?: SignalRule
   version: number
@@ -293,7 +303,7 @@ export interface PaperEvent {
 /** A (paper) position the bot opened on a signal (engine/src/trading/paper.ts). */
 export interface BotPosition {
   id: string
-  strategy: 'snipe' | 'second-leg' | 'scalp'
+  strategy: BotStrategy
   token: string
   symbol: string
   launchpad: string
@@ -327,6 +337,9 @@ export interface BotPosition {
   low?: number
   /** Why it closed, in words. */
   note?: string
+  /** The signal's grade as handed out, and where the bot stood in the crowd that took it (live: first in line sells first). */
+  grade?: SignalGrade
+  crowd?: { rank: number; bots: number; usd: number; capUsd: number }
   /** A visitor's bot: the platform's 15% of a winning trade's profit (already out of pnlUsd); live, a fee still to send. */
   feeUsd?: number
   feeDue?: number
@@ -419,7 +432,7 @@ export interface PaperAccountView {
   /** The name its owner gave it. */
   name: string
   running: boolean
-  strategies: ('snipe' | 'second-leg' | 'scalp')[]
+  strategies: BotStrategy[]
   cash: number
   deposited: number
   /** Cash plus open positions at the current price. */
@@ -430,16 +443,16 @@ export interface PaperAccountView {
   positions: BotPosition[]
   stats: { closed: number; open: number; wins: number; losses: number; winRate: number | null; totalPnlUsd: number; profitFactor: number | null; expectancyUsd: number | null; maxDrawdownUsd: number }
   /** Per strategy: its learned settings, what a trade costs now (about), and its own results. */
-  tuning: Record<'snipe' | 'second-leg' | 'scalp', StrategyTuning & { sizeUsd: number | null; closed: number; winRate: number | null }>
+  tuning: Record<BotStrategy, StrategyTuning & { sizeUsd: number | null; closed: number; winRate: number | null }>
   /** The profit range each strategy's trades are sized for. */
-  targets: Record<'snipe' | 'second-leg' | 'scalp', [number, number]>
+  targets: Record<BotStrategy, [number, number]>
   /** What it learned (newest first), its activity, and the signals it passed over lately. */
   learnLog: LearnNote[]
   events: PaperEvent[]
   skips: PaperEvent[]
   /** What keeps the account from being drained. */
   /** `maxTradeUsd`: the most one trade may use now (`maxTradeSharePct` of what the bot is worth; null while a live wallet is unread). Both missing on older engines. */
-  protections: { pausedUntil: number | null; lossStreak: number; pauseAfterLosses: number; dailyLossLimitUsd: number; todayPnlUsd: number; stopBelowPct: number; maxTradeSharePct?: number; maxTradeUsd?: number | null; tradeSharePct?: { a: number; b: number }; minTradeUsd?: number }
+  protections: { pausedUntil: number | null; lossStreak: number; pauseAfterLosses: number; dailyLossLimitUsd: number; todayPnlUsd: number; stopBelowPct: number; maxTradeSharePct?: number; maxTradeUsd?: number | null; tradeSharePct?: { a: number; b: number }; minTradeUsd?: number; gradeSharePct?: Record<SignalGrade, number> }
   /** Every closed trade it has made (GET /v1/paper/trades lists them all). */
   tradesLogged: number
   /** Its unique id on the platform (from its name): /bots/<slug>. */
@@ -456,6 +469,8 @@ export interface PaperAccountView {
   liveAvailable?: { ok: boolean; why: string | null }
   /** The team it learns from (missing on older engines). */
   team?: TeamView
+  /** Its closed trades by the signal's grade: what each tier's signals did for this bot. */
+  byGrade?: Partial<Record<SignalGrade, { trades: number; wins: number; pnlUsd: number }>>
 }
 
 /** A bot's paper record against what trading live needs (engine/src/bot/userLive.ts READY). */
@@ -477,7 +492,7 @@ export interface TeamView {
   /** Bots running now. */
   bots: number
   /** The team's record per strategy, the last 7 days (one trade per signal). */
-  byStrategy: Partial<Record<'snipe' | 'second-leg' | 'scalp', { trades: number; winRate: number | null; pnlUsd: number }>>
+  byStrategy: Partial<Record<BotStrategy, { trades: number; winRate: number | null; pnlUsd: number }>>
 }
 
 /** A bot's live side: its own wallet, balance and results. */
@@ -508,6 +523,59 @@ export interface MeResponse {
   team?: TeamView
   /** Whether paper bots get signals now (false: live bots only, the platform's setting). */
   paperSignals?: boolean
+  /** The account's tier: what it holds or was granted, and what it gets now (missing on older engines). */
+  access?: AccessView
+}
+
+// ── Tiers (engine/src/bot/tiers.ts) ─────────────────────────────────────
+
+export type TierId = 'free' | 't1' | 't2' | 't3'
+
+/** A tier: what it takes ($ARCD held in linked wallets, or the owner's grant) and what it gets once tiers are enforced. */
+export interface TierInfo {
+  id: TierId
+  name: string
+  minArcd: number
+  maxBots: number
+  live: boolean
+  grades: SignalGrade[]
+  strategies: BotStrategy[]
+  /** Its place in line when many bots take one signal (higher goes first). */
+  priority: number
+  profitFeePct: number
+  perks: string[]
+}
+
+/** A signed-in account's tier. While tiers aren't enforced, everyone gets every grade and strategy, at the standard fee. */
+export interface AccessView {
+  enforced: boolean
+  /** The tier its $ARCD or grant earns. */
+  entitled: TierId
+  via: 'arcd' | 'grant' | 'none'
+  /** $ARCD in its linked wallets (null: not read yet). */
+  arcdHeld: number | null
+  wallets: string[]
+  grant: { tier: TierId; until: number } | null
+  /** What it gets now. */
+  grades: SignalGrade[]
+  strategies: BotStrategy[]
+  maxBots: number
+  live: boolean
+  profitFeePct: number
+  priority: number
+  /** The next tier up and the $ARCD it takes (null: at the top). */
+  next: { tier: TierId; needArcd: number } | null
+}
+
+/** A grade's public record: its signals replayed at live speed with the exits that grade trades with. */
+export interface GradeRecordView { grade: SignalGrade; trades: number; wins: number; winRate: number | null; avgPct: number | null; review: string | null; exits: string; rules: string[] }
+
+/** GET /v1/tiers. */
+export interface TiersResponse { enforced: boolean; tiers: TierInfo[]; grades: GradeRecordView[]; crowd: { impactShareOfTp: number; maxPoolShare: number; maxBots: number } }
+
+/** The exact text a wallet signs to link to an ARCDEX Autotrade account (its $ARCD counts toward the account's tier). */
+export function tierLinkMessage(email: string, address: string, at: number): string {
+  return `ARCDEX Autotrade\nLink this wallet to ${email}\nWallet: ${address.toLowerCase()}\nAt: ${new Date(at).toISOString()}`
 }
 
 /** A bot in the marketplace (GET /v1/bots): public, no owner details. */
@@ -518,7 +586,7 @@ export interface BotProfit {
   slug: string
   symbol: string
   token: string
-  strategy: 'snipe' | 'second-leg' | 'scalp'
+  strategy: BotStrategy
   mode: 'paper' | 'live'
   /** After the platform's 15% profit fee. */
   pnlUsd: number
@@ -530,7 +598,7 @@ export interface BotProfit {
 export interface MarketBot {
   slug: string
   name: string
-  strategies: ('snipe' | 'second-leg' | 'scalp')[]
+  strategies: BotStrategy[]
   mode: 'paper' | 'live'
   running: boolean
   createdAt: number
@@ -540,7 +608,7 @@ export interface MarketBot {
   winRate: number | null
   closed: number
   /** Its open positions, valued now. */
-  positions: { token: string; symbol: string; strategy: 'snipe' | 'second-leg' | 'scalp'; mode: 'paper' | 'live'; sizeUsd: number; entry: number; price: number | null; pnlUsd: number | null; openedAt: number }[]
+  positions: { token: string; symbol: string; strategy: BotStrategy; mode: 'paper' | 'live'; sizeUsd: number; entry: number; price: number | null; pnlUsd: number | null; openedAt: number }[]
   /** Its paper record, always (for a live bot, what earned it the switch). */
   paper: { pnlUsd: number; winRate: number | null; closed: number }
   /** Learned changes so far, and whether it could go live. */
@@ -578,7 +646,7 @@ export interface RejectionStats {
 export type PaperAction =
   | { action: 'deposit'; amount: number }
   | { action: 'start' } | { action: 'stop' }
-  | { action: 'strategies'; strategies: ('snipe' | 'second-leg' | 'scalp')[] }
+  | { action: 'strategies'; strategies: BotStrategy[] }
   | { action: 'rename'; name: string }
   | { action: 'reset' }
   /** Signed-in owners only (POST /v1/me/bots/:slug): */
@@ -587,16 +655,18 @@ export type PaperAction =
   | { action: 'sell-live' }
 
 /** A new bot (POST /v1/paper/accounts). */
-export interface NewPaperAccount { name: string; strategies: ('snipe' | 'second-leg' | 'scalp')[] }
+export interface NewPaperAccount { name: string; strategies: BotStrategy[] }
 
-/** What the owner can tell the bot (POST /v1/bot/control, signed). */
-export type BotControl = { action: 'mode'; mode: 'paper' | 'live' } | { action: 'close-live' }
+/** What the owner can tell the bot (POST /v1/bot/control, signed). `grant-tier`: an account gets a tier for `days` (0 takes it back). */
+export type BotControl = { action: 'mode'; mode: 'paper' | 'live' } | { action: 'close-live' } | { action: 'grant-tier'; email: string; tier: TierId; days: number }
 
 /** The exact text the owner's wallet signs for a control (the engine rebuilds it to check the signature). */
 export function botControlMessage(c: BotControl, at: number): string {
   const what = c.action === 'mode'
     ? (c.mode === 'live' ? 'Switch the bot to LIVE trading with real money' : 'Switch the bot to paper trading')
-    : 'Sell every live position now'
+    : c.action === 'grant-tier'
+      ? (c.days > 0 ? `Grant ${c.tier} to ${c.email} for ${c.days} days` : `Take back the tier granted to ${c.email}`)
+      : 'Sell every live position now'
   return `ARCDEX signal bot\n${what}\nAt: ${new Date(at).toISOString()}`
 }
 

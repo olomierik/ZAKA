@@ -40,6 +40,7 @@ import type { Bot } from '../bot/bot'
 import { parseControl, type ControlVerifier } from '../bot/control'
 import type { PaperAccounts } from '../bot/paperAccounts'
 import type { Users } from '../bot/users'
+import type { Tiers } from '../bot/tiers'
 import { botApi } from './botApi'
 import type { NewPaperAccount, PaperAction, ScanRow } from '../../../api/_marketProtocol'
 import type { MarketEngine, Publisher } from '../market/engine'
@@ -60,7 +61,8 @@ export class DataApi {
   control: ControlVerifier | null = null
   accounts: PaperAccounts | null = null
   users: Users | null = null
-  attachBot(b: Bot, control: ControlVerifier | null = null, accounts: PaperAccounts | null = null, users: Users | null = null) { this.bot = b; this.control = control; this.accounts = accounts; this.users = users }
+  tiers: Tiers | null = null
+  attachBot(b: Bot, control: ControlVerifier | null = null, accounts: PaperAccounts | null = null, users: Users | null = null, tiers: Tiers | null = null) { this.bot = b; this.control = control; this.accounts = accounts; this.users = users; this.tiers = tiers }
 
   async tokenSnapshot(token: string, limit = 50): Promise<{ stats: TokenStats | null; trades: WireTrade[] }> {
     if (this.engine?.tokens.has(token)) return { stats: this.engine.statsOf(token), trades: this.engine.recentTrades(token, limit) }
@@ -217,9 +219,13 @@ export function startServer({ cfg, api, health }: ServerDeps) {
       }
       if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors(req), 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Content-Type, X-Paper-Key, Authorization', 'Access-Control-Max-Age': '600' } })
       // Accounts, owners' bots and the marketplace (ws/botApi.ts).
-      if (url.pathname.startsWith('/v1/auth/') || url.pathname === '/v1/me' || url.pathname.startsWith('/v1/me/') || url.pathname === '/v1/bots' || url.pathname.startsWith('/v1/bots/')) {
+      if (url.pathname.startsWith('/v1/auth/') || url.pathname === '/v1/me' || url.pathname.startsWith('/v1/me/') || url.pathname === '/v1/bots' || url.pathname.startsWith('/v1/bots/') || url.pathname === '/v1/tiers') {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
-        return botApi(req, url, ip, { users: api.users, accounts: api.accounts }, (status, body, cache) => json(req, status, body, cache))
+        const control = api.control
+        return botApi(req, url, ip, {
+          users: api.users, accounts: api.accounts, tiers: api.tiers, grades: api.bot ? () => api.bot!.gradeRecords() : undefined,
+          signedBy: control ? (a, m, s) => control.signedBy(a, m, s) : undefined,
+        }, (status, body, cache) => json(req, status, body, cache))
       }
       if (url.pathname.startsWith('/v1/paper/')) {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
@@ -273,6 +279,12 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         if (parsed.control.action === 'mode') {
           const r = await bot.setMode(parsed.control.mode)
           return json(req, r.ok ? 200 : 409, r.ok ? { ok: true, status: bot.status() } : { error: r.error })
+        }
+        if (parsed.control.action === 'grant-tier') {
+          const users = api.users
+          if (!users) return json(req, 503, { error: 'accounts are not running in this process' })
+          const r = users.grantTier(parsed.control.email, parsed.control.tier, parsed.control.days)
+          return typeof r === 'string' ? json(req, 404, { error: r }) : json(req, 200, { ok: true, grant: r.grant ?? null, access: api.accounts?.accessOf(r.id) ?? null })
         }
         return json(req, 200, { ok: true, selling: bot.closeLive(), status: bot.status() })
       }

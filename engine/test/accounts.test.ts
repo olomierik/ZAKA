@@ -203,6 +203,35 @@ describe('live: the same bot, from paper to its own wallet', () => {
     for (let i = 0; i < READY.minTrades; i++) a.positions.push(paperTrade(i, i % 4 !== 0)) // 75% won
     return { ...s, a }
   }
+  test('many live bots, one signal: they share its cap in a fair order, with staggered take-profits (bot/crowd.ts)', async () => {
+    const s = setupBots({ balance: 1_000 })
+    const bots: PaperAccount[] = []
+    for (let k = 0; k < 6; k++) {
+      const a = (s.accounts.create(now, { name: `Crowd ${k}`, strategies: ['scalp'] }, `owner${k}`) as { account: PaperAccount }).account
+      for (let i = 0; i < READY.minTrades; i++) a.positions.push({ ...paperTrade(i, i % 4 !== 0), id: `c${k}-${i}` })
+      s.accounts.createWallet(a, now)
+      expect(await s.accounts.setMode(a, 'live', owner, now)).toBeNull()
+      s.accounts.act(a, { action: 'start' }, now)
+      bots.push(a)
+    }
+    // A $20,000 pool, a +10% take-profit: the bots together buy at most $250 (a quarter of the take-profit in price impact). Each wants $50.
+    s.accounts.onSignal(sig({ id: 'crowd-1', liquidityUsd: 20_000 }), Date.now(), { signal: { id: 'crowd-1', token: T, strategy: 'scalp' } as never, pool, meta: { token: T, symbol: 'COIN', launchpad: 'Argus' } as never })
+    await settle()
+    const live = bots.map(a => a.positions.find(p => p.mode === 'live' && p.signalId === 'crowd-1'))
+    const inIt = live.filter(Boolean)
+    expect(inIt).toHaveLength(5)
+    expect(s.wallet.calls.filter(c => c.startsWith('buy '))).toEqual(['buy 50', 'buy 50', 'buy 50', 'buy 50', 'buy 50'])
+    const byRank = [...inIt].sort((x, y) => x!.crowd!.rank - y!.crowd!.rank)
+    expect(byRank.map(p => p!.exits!.tp1Multiple)).toEqual([1.1, 1.1028, 1.1055, 1.1083, 1.111])
+    expect(byRank[0]!.crowd).toMatchObject({ bots: 5, usd: 250, capUsd: 250 })
+    const out = bots[live.findIndex(p => !p)]
+    expect(out.skips[0].text).toMatch(/bots already bought \$250\.00 of this coin, its cap \(\$250\.00.*you're ahead next time/)
+    // The next signal: the bot left out goes first.
+    const T2 = '0x' + 'b2'.repeat(20)
+    s.accounts.onSignal(sig({ id: 'crowd-2', token: T2, liquidityUsd: 20_000 }), Date.now(), { signal: { id: 'crowd-2', token: T2, strategy: 'scalp' } as never, pool: { ...pool, currency1: T2 as Address, base: T2 as Address }, meta: { token: T2, symbol: 'TWO', launchpad: 'Argus' } as never })
+    await settle()
+    expect(out.positions.find(p => p.signalId === 'crowd-2')?.crowd?.rank).toBe(0)
+  })
   test('ready once the paper record is: 20 trades, 55% won, a profit factor of 1.2, a net profit', () => {
     expect(readiness([paperTrade(1, true)]).ok).toBe(false)
     const { a } = readyBot()
@@ -239,7 +268,8 @@ describe('live: the same bot, from paper to its own wallet', () => {
     await settle()
     const p = a.positions.find(x => x.mode === 'live')!
     expect(wallet.calls[0]).toMatch(/^buy \d+(\.\d+)?$/)
-    expect(p).toMatchObject({ status: 'open', strategy: 'scalp', sizeUsd: 20, tuningVersion: 1 }) // 20% of its $100 wallet
+    expect(p).toMatchObject({ status: 'open', strategy: 'scalp', sizeUsd: 10, tuningVersion: 1, grade: 'standard' }) // 10% of its $100 wallet: a Standard signal
+    expect(p.crowd).toMatchObject({ rank: 0, bots: 1, usd: 10 })
     expect(p.targetUsd).toBeGreaterThan(0)
     expect(p.exits).toMatchObject({ tp1Multiple: 1.1, tp1SellPct: 0.5, breakevenAfterTp1: true })
     expect(accounts.holds(T)).toBe(true)

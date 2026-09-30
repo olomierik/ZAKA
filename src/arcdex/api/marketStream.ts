@@ -11,7 +11,7 @@
 // subscription is re-sent, and the engine answers each with a fresh snapshot.
 
 import { useSyncExternalStore } from 'react'
-import { botControlMessage, type BotControl, type BotProfit, type BotPosition, type BotStatus, type PaperAccountView, type PaperAction, type ScanRow, type ScanStats, type SearchHit, type Interval, type LaunchInfo, type NewPaperAccount, type BotUserView, type MeResponse, type MarketBot, type MarketBotDetail, type RejectionStats, type SafetyCheck, type ServerMessage, type TokenStats, type TradeSignal, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
+import { botControlMessage, tierLinkMessage, type AccessView, type GradeRecordView, type TiersResponse, type BotControl, type BotProfit, type BotPosition, type BotStatus, type PaperAccountView, type PaperAction, type ScanRow, type ScanStats, type SearchHit, type Interval, type LaunchInfo, type NewPaperAccount, type BotUserView, type MeResponse, type MarketBot, type MarketBotDetail, type RejectionStats, type SafetyCheck, type ServerMessage, type TokenStats, type TradeSignal, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
 
 const WS_URL = (import.meta.env.VITE_ARCDEX_WS_URL as string | undefined) || undefined
 const API_URL = ((import.meta.env.VITE_ARCDEX_API_URL as string | undefined) || (WS_URL ? WS_URL.replace(/^ws/, 'http').replace(/\/ws\/?$/, '') : '')).replace(/\/$/, '')
@@ -141,6 +141,8 @@ export interface BotStatsResponse extends BotStatsSet {
   liveSpeed?: LiveSpeedRow[]
   /** Where signals go (the platform's setting): live bots every signal not on probation (`all`) or only the proven kinds; paper bots or not. */
   routing?: { liveSignals: 'all' | 'proven'; paperSignals: boolean }
+  /** Each signal grade's record at live speed (engines since the grades, 2026-09-30). */
+  grades?: GradeRecordView[]
 }
 export interface LiveSpeedRow { key: string; trades: number; wins: number; winRate: number | null; avgReturn: number | null; ok: boolean }
 export interface SafetyReport { token: string; launchpad: string; at: number; verdict: 'pass' | 'risky' | 'fail' | 'pending'; score: number; checks: SafetyCheck[]; template: string | null }
@@ -259,6 +261,30 @@ export const getMarketBot = (slug: string) => botFetch<{ bot: MarketBotDetail }>
 export const getRejections = () => get<RejectionStats>('/v1/bot/rejections')
 
 /** The owner's signed switch: paper/live, or sell every live position (engine/src/bot/control.ts). */
+/** The tiers, whether they're enforced, and each signal grade's record (GET /v1/tiers). */
+export const getTiers = () => get<TiersResponse>('/v1/tiers')
+
+/** Links a wallet to the signed-in account: the wallet signs, and its $ARCD counts toward the account's tier. */
+export async function botLinkWallet(email: string, address: string, sign: (message: string) => Promise<`0x${string}`>): Promise<AccessView> {
+  const at = Date.now()
+  const signature = await sign(tierLinkMessage(email, address, at))
+  return botFetch<{ access: AccessView }>('/v1/me/wallets', { method: 'POST', body: { address, at, signature }, auth: true }).then(r => r.access)
+}
+export const botUnlinkWallet = (address: string) => botFetch<{ access: AccessView }>('/v1/me/wallets/remove', { method: 'POST', body: { address }, auth: true }).then(r => r.access)
+
+/** The owner grants an account a tier for some days (0 takes it back), signed by the owner's wallet. */
+export async function sendTierGrant(control: Extract<BotControl, { action: 'grant-tier' }>, sign: (message: string) => Promise<`0x${string}`>): Promise<{ grant: { tier: string; until: number } | null; access: AccessView | null }> {
+  const at = Date.now()
+  const signature = await sign(botControlMessage(control, at))
+  const res = await fetch(`${API_URL}/v1/bot/control`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...control, at, signature }), signal: AbortSignal.timeout(15_000),
+  })
+  const body = await res.json().catch(() => ({})) as { ok?: boolean; grant?: { tier: string; until: number } | null; access?: AccessView | null; error?: string }
+  if (!res.ok || !body.ok) throw new Error(body.error ?? `the engine answered ${res.status}`)
+  return { grant: body.grant ?? null, access: body.access ?? null }
+}
+
 export async function sendBotControl(control: BotControl, sign: (message: string) => Promise<`0x${string}`>): Promise<BotStatus> {
   const at = Date.now()
   const signature = await sign(botControlMessage(control, at))

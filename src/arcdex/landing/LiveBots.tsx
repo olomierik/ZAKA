@@ -11,7 +11,7 @@ import { t } from '../lib/i18n'
 
 const POLL_MS = 5_000
 const STRATEGY: Record<MarketBot['strategies'][number], [string, string]> = {
-  snipe: ['Snipe', '#3b82f6'], scalp: ['Fast scalp', '#f59e0b'], 'second-leg': ['Dip rebound', '#a855f7'],
+  snipe: ['Snipe', '#3b82f6'], scalp: ['Fast scalp', '#f59e0b'], 'second-leg': ['Dip rebound', '#a855f7'], precision: ['Precision', '#facc15'],
 }
 const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const money = (n: number) => `${n < 0 ? '−' : n > 0 ? '+' : ''}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`

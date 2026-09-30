@@ -30,24 +30,34 @@
 //   log       every closed trade is kept (the trade log), with the coin's
 //             numbers at entry and why it closed
 //
+//   grades    every signal comes graded Prime, Core or Standard
+//             (signals/grades.ts); a bot trades the grades its owner's tier
+//             gets (bot/tiers.ts: all of them while tiers aren't enforced),
+//             and a bot following Precision trades Prime signals with it
+//   crowd     live bots share a signal's buying under a cap, in a fair order,
+//             with staggered take-profits (bot/crowd.ts); paper fills pay the
+//             live crowd's price impact
+//
 // Older bots were reached with a random key the browser keeps; the engine
 // stores only its SHA-256. A signed-in owner claims such a bot into their
 // account. Accounts, deposits and cash are capped.
 
 import { createHash, randomBytes } from 'node:crypto'
 import type { Address } from 'viem'
-import type { BotProfit, LaunchInfo, LearnNote, MarketBot, MarketBotDetail, NewPaperAccount, PaperAccountView, PaperAction, PaperEvent, SignalFeatures, SignalQuality, SignalRule, TeamView } from '../../../api/_marketProtocol'
+import type { AccessView, BotProfit, LaunchInfo, LearnNote, MarketBot, MarketBotDetail, NewPaperAccount, PaperAccountView, PaperAction, PaperEvent, SignalFeatures, SignalGrade, SignalQuality, SignalRule, TeamView } from '../../../api/_marketProtocol'
 import type { PoolInfo } from '../dex/pools'
 import { errMsg, log } from '../log'
 import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, RISK, stats, type Fill, type Position, type RiskRules, type Strategy, type StrategyParams } from '../trading/paper'
 import { QUALITY } from '../signals/quality'
+import { CrowdBook, crowdCap, crowdImpact, laddered } from './crowd'
+import { Tiers, TIERS } from './tiers'
 import { admits, defaultTuning, learn, migrateTuning, relax, toParams, upgradeExits, type Tuning } from './learner'
 import type { LiveTrader } from './liveTrader'
 import type { RugAlarm } from './rugGuard'
-import { CAPITAL_SIZING, maxTradeFor, SIZE_LIMITS, sizeFromCapital, TARGETS } from './sizing'
+import { CAPITAL_SIZING, GRADE_SHARE, maxTradeFor, SIZE_LIMITS, sizeFromCapital, TARGETS } from './sizing'
 import type { Signal } from './types'
 import { OutcomeTally } from './scanFeed'
-import { PROFIT_FEE_PCT, profitFee, readinessWithTeam, TEAM_READY, USER_LIVE, type BotWallet, type UserLive } from './userLive'
+import { profitFee, readinessWithTeam, TEAM_READY, USER_LIVE, type BotWallet, type UserLive } from './userLive'
 
 export interface PaperAccount {
   id: string
@@ -89,7 +99,14 @@ export interface PaperAccount {
 }
 
 /** A paper buy waiting for its live-speed fill. */
-interface PendingEntry { accountId: string; sig: PaperSignal; sizeUsd: number; profitUsd: number; share: number; tier: 'A' | 'B'; params: StrategyParams; tuningVersion: number; takeProfit: number; stopLoss: number; balanceUsd: number; at: number; due: number }
+interface PendingEntry { accountId: string; sig: PaperSignal; strategy: Strategy; grade: SignalGrade; sizeUsd: number; profitUsd: number; share: number; params: StrategyParams; tuningVersion: number; takeProfit: number; stopLoss: number; balanceUsd: number; at: number; due: number }
+/** A live bot's claim on a signal, before the crowd is seated (bot/crowd.ts). */
+interface LiveClaim { a: PaperAccount; strategy: Strategy; t: Tuning; sizeUsd: number; profitUsd: number; params: StrategyParams; priority: number }
+
+/** Everyone gets everything while tiers aren't enforced (bot/tiers.ts). */
+const OPEN_ACCESS = new Tiers({ enforced: false, rpc: null }).access(null)
+/** The lowest tier that trades live. */
+const TIER_FOR_LIVE = TIERS.find(t => t.live)?.name ?? 'Tier 1'
 
 /** The team (2026-09-30): a new bot's playbook needs a teammate with this many trades on the strategy; each bot reads the team's new trades every 10 minutes, once 5 have closed. */
 export const TEAM = { playbookMinTrades: 10, syncEveryMs: 10 * 60_000, syncMinTrades: 5 }
@@ -100,8 +117,9 @@ export const PAPER_LIMITS = { maxAccounts: 20_000, maxDeposit: 100_000, maxCash:
 export const PROTECT = { pauseAfterLosses: 4, pauseMin: 30, stopBelowPct: 50, dailyLossPct: 10, dailyLossMinUsd: 10, dailyLossMaxUsd: 100, maxOpen: 5, maxOpenScalp: 4 }
 /** A typical pool, for the size the page shows ("about $X a trade"). */
 const TYPICAL = { roundTripPct: 4, liquidityUsd: 20_000 }
-const STRATEGIES: Strategy[] = ['snipe', 'scalp', 'second-leg']
-const LABEL: Record<Strategy, string> = { snipe: 'snipe', scalp: 'fast scalp', 'second-leg': 'second leg' }
+const STRATEGIES: Strategy[] = ['snipe', 'scalp', 'second-leg', 'precision']
+const LABEL: Record<Strategy, string> = { snipe: 'snipe', scalp: 'fast scalp', 'second-leg': 'second leg', precision: 'precision' }
+const GRADE_LABEL: Record<SignalGrade, string> = { prime: 'Prime', core: 'Core', standard: 'Standard' }
 
 export interface PaperAccountStore {
   paperAccounts(): Promise<PaperAccount[]>
@@ -167,6 +185,19 @@ export function closeNote(p: Position): string {
   }
 }
 
+/** A bot's closed trades by the signal's grade (trades from before the grades are left out). */
+function byGrade(positions: Position[]): PaperAccountView['byGrade'] {
+  const out: NonNullable<PaperAccountView['byGrade']> = {}
+  for (const p of positions) {
+    if (p.status !== 'closed' || !p.grade) continue
+    const g = (out[p.grade] ??= { trades: 0, wins: 0, pnlUsd: 0 })
+    g.trades++
+    if ((p.pnlUsd ?? 0) > 0) g.wins++
+    g.pnlUsd = Math.round((g.pnlUsd + (p.pnlUsd ?? 0)) * 100) / 100
+  }
+  return out
+}
+
 /** Fills in what older rows lack (named bots, owners, learning, the log and live came later). */
 function normalize(a: PaperAccount): PaperAccount {
   const tuning = { ...(a.tuning ?? {}) } as Record<Strategy, Tuning>
@@ -210,12 +241,20 @@ export class PaperAccounts {
 
   /** Whether visitors' paper bots get signals (the owner's setting, BOT_PAPER_SIGNALS; off: live bots only). */
   readonly paperSignals: boolean
+  /** Each signal's live crowd: its cap, who got in, and who waited longest (bot/crowd.ts). */
+  readonly crowd = new CrowdBook()
 
-  /** `speed`: paper fills at live speed (the default); null fills at once (tests of other things). */
-  constructor(private o: { store: PaperAccountStore; priceOf: (token: string) => number | null; params: (s: Strategy) => StrategyParams; live?: UserLive | null; speed?: typeof LIVE_SPEED | null; paperSignals?: boolean }) {
+  /**
+   * `speed`: paper fills at live speed (the default); null fills at once (tests of other things).
+   * `access`: what an owner's tier gets (bot/tiers.ts); everything, for everyone, without it.
+   */
+  constructor(private o: { store: PaperAccountStore; priceOf: (token: string) => number | null; params: (s: Strategy) => StrategyParams; live?: UserLive | null; speed?: typeof LIVE_SPEED | null; paperSignals?: boolean; access?: (ownerId: string | null) => AccessView }) {
     this.speed = o.speed === undefined ? LIVE_SPEED : o.speed
     this.paperSignals = o.paperSignals ?? true
   }
+
+  /** What a bot's owner's tier gets now. */
+  accessOf(ownerId: string | null): AccessView { return this.o.access?.(ownerId) ?? OPEN_ACCESS }
 
   async load() {
     let backfilled = 0
@@ -248,16 +287,20 @@ export class PaperAccounts {
     const name = o.name === undefined ? null : cleanName(o.name)
     if (o.name !== undefined && !name) return { error: 'name your bot: 2–24 letters, digits or spaces' }
     if (name && this.bySlug.has(slugOf(name))) return { error: `the name "${name}" is taken: every bot's name is its own` }
-    if (ownerId && this.ofOwner(ownerId).length >= PAPER_LIMITS.maxPerOwner) return { error: `an account can have ${PAPER_LIMITS.maxPerOwner} bots` }
+    const access = this.accessOf(ownerId)
+    const maxBots = Math.min(PAPER_LIMITS.maxPerOwner, access.maxBots)
+    if (ownerId && this.ofOwner(ownerId).length >= maxBots) return { error: maxBots < PAPER_LIMITS.maxPerOwner ? `your tier has ${maxBots} bot${maxBots === 1 ? '' : 's'}: hold more $ARCD for more` : `an account can have ${maxBots} bots` }
     const strategies = o.strategies === undefined ? ['scalp', 'snipe'] as Strategy[] : this.strategiesOf(o.strategies)
     if (!strategies.length) return { error: 'choose at least one strategy' }
+    const locked = strategies.find(st => !access.strategies.includes(st))
+    if (locked) return { error: `${LABEL[locked]} is for ${Tiers.tierForStrategy(locked).name}` }
     const key = randomBytes(32).toString('hex')
     const id = keyHash(key)
     let fallback = `Bot ${id.slice(0, 4).toUpperCase()}`
     for (let i = 2; !name && this.bySlug.has(slugOf(fallback)); i++) fallback = `Bot ${id.slice(0, 4).toUpperCase()} ${i}`
     const a = normalize({
       id, name: name ?? fallback, slug: '', ownerId, createdAt: now, running: false, startedAt: null, strategies, mode: 'paper', cash: 0, deposited: 0, positions: [], updatedAt: now,
-      tuning: { snipe: defaultTuning('snipe'), scalp: defaultTuning('scalp'), 'second-leg': defaultTuning('second-leg') },
+      tuning: { snipe: defaultTuning('snipe'), scalp: defaultTuning('scalp'), 'second-leg': defaultTuning('second-leg'), precision: defaultTuning('precision') },
       learnLog: [], events: [], skips: [], lossStreak: 0, pausedUntil: null, filterSkips: {}, lastBuyAt: {}, tradesLogged: 0, logged: true, feesPaidUsd: 0, live: null,
     })
     this.event(a, { at: now, kind: 'learn', text: `${a.name} joined the team` })
@@ -331,6 +374,9 @@ export class PaperAccounts {
       case 'strategies': {
         const list = this.strategiesOf((x as { strategies?: unknown }).strategies)
         if (!list.length) return 'choose at least one strategy'
+        const allowed = this.accessOf(a.ownerId).strategies
+        const locked = list.find(st => !allowed.includes(st))
+        if (locked) return `${LABEL[locked]} is for ${Tiers.tierForStrategy(locked).name}`
         a.strategies = list
         break
       }
@@ -353,7 +399,7 @@ export class PaperAccounts {
         for (const [token, list] of this.pending) { const rest = list.filter(e => e.accountId !== a.id); if (rest.length) this.pending.set(token, rest); else this.pending.delete(token) }
         Object.assign(a, {
           running: false, startedAt: null, cash: 0, deposited: 0, positions: [],
-          tuning: { snipe: defaultTuning('snipe'), scalp: defaultTuning('scalp'), 'second-leg': defaultTuning('second-leg') },
+          tuning: { snipe: defaultTuning('snipe'), scalp: defaultTuning('scalp'), 'second-leg': defaultTuning('second-leg'), precision: defaultTuning('precision') },
           learnLog: [], events: [], skips: [], lossStreak: 0, pausedUntil: null, filterSkips: {}, lastBuyAt: {},
         })
         this.event(a, { at: now, kind: 'learn', text: 'Reset: a fresh start (its trade log and live wallet are kept)' })
@@ -400,6 +446,7 @@ export class PaperAccounts {
       return null
     }
     if (a.mode === 'live') return null
+    if (!this.accessOf(a.ownerId).live) return `live trading is for ${TIER_FOR_LIVE} and up: link a wallet holding $ARCD`
     const av = this.o.live?.available ?? { ok: false, why: 'live trading isn\'t available on this engine' }
     if (!av.ok) return av.why
     if (!owner || !a.ownerId) return 'sign in: a live bot belongs to an account'
@@ -469,7 +516,7 @@ export class PaperAccounts {
     if (p.status === 'open') this.track(a, p)
     if (p.status === 'closed' && !this.settled.has(p.id)) {
       this.settled.add(p.id)
-      const fee = profitFee(p.pnlUsd)
+      const fee = profitFee(p.pnlUsd, this.accessOf(a.ownerId).profitFeePct)
       if (fee > 0) { p.feeUsd = fee; p.feeDue = fee; p.pnlUsd = (p.pnlUsd ?? 0) - fee; a.live!.feesPaidUsd = (a.live!.feesPaidUsd ?? 0) + fee }
       this.closed(a, p, now)
       if (fee > 0) void this.sendFee(a, p)
@@ -498,56 +545,93 @@ export class PaperAccounts {
    * doesn't follow the strategy used to pass over signals without a word.
    */
   onSignal(sig: PaperSignal, now = Date.now(), ctx: LiveContext | null = null) {
+    // Its grade as handed out (one lower while its own grade is under review): what each tier gets.
+    const grade: SignalGrade = sig.quality?.level ?? 'standard'
+    const claims: LiveClaim[] = []
     for (const a of this.accounts.values()) {
       const skip = (key: string, why: string) => this.passOver(a, sig, key, why, now)
       // A stopped bot that was never funded is someone's abandoned try: left out.
       if (!a.running) { if (a.mode === 'live' || a.cash >= SIZE_LIMITS.minUsd) skip('not-running', 'not traded: the bot is stopped (press Start)'); continue }
-      if (!a.strategies.includes(sig.strategy)) { skip('strategy', `not traded: this bot follows ${a.strategies.map(x => LABEL[x]).join(', ')}`); continue }
+      const access = this.accessOf(a.ownerId)
+      // Which of its strategies trades this signal: Precision takes Prime signals first, else the signal's own strategy.
+      const precision = grade === 'prime' && a.strategies.includes('precision') && access.strategies.includes('precision')
+      const st: Strategy | null = precision ? 'precision' : a.strategies.includes(sig.strategy) ? sig.strategy : null
+      if (!st) {
+        const onlyPrecision = a.strategies.length === 1 && a.strategies[0] === 'precision'
+        skip('strategy', onlyPrecision && !access.strategies.includes('precision') ? `not traded: Precision is for ${Tiers.tierForStrategy('precision').name}`
+          : onlyPrecision ? `not traded: Precision takes Prime signals only (this one is ${GRADE_LABEL[grade]})`
+          : `not traded: this bot follows ${a.strategies.map(x => LABEL[x]).join(', ')}`)
+        continue
+      }
+      // Its owner's tier (bot/tiers.ts): every grade while tiers aren't enforced.
+      if (!access.grades.includes(grade)) { skip('tier', `not traded: ${GRADE_LABEL[grade]} signals are for ${Tiers.tierFor(grade).name} and up`); continue }
+      if (a.mode === 'live' && !access.live) { skip('tier', `not traded live: live trading is for ${TIER_FOR_LIVE} and up`); continue }
       if (a.mode !== 'live' && !this.paperSignals) { skip('live-only', 'not traded: signals go to live bots only for now (the platform\'s setting)'); continue }
       if (a.pausedUntil && now < a.pausedUntil) { skip('paused', `paused after ${PROTECT.pauseAfterLosses} losses in a row`); continue }
-      const t = a.tuning[sig.strategy]
+      const t = a.tuning[st]
       if (sig.probation) { skip('probation', `not traded: ${sig.probation.why}`); continue }
       // The bottom 20% of signals by quality go to paper bots only (signals/quality.ts): still measured, no real money.
       if (a.mode === 'live' && sig.quality?.grade === 'paper') { skip('paper-grade', `not traded live: in the lowest ${Math.round((1 - QUALITY.liveShare) * 100)}% of recent signals by quality (score ${sig.quality.score}); paper bots take it`); continue }
       const filtered = admits(t, sig.features, sig.rule)
-      if (filtered) { a.filterSkips[sig.strategy] = (a.filterSkips[sig.strategy] ?? 0) + 1; skip('filters', filtered); continue }
-      // Sized from the bot's capital (bot/sizing.ts): 20% of what it's worth on a safe coin, 10% on one with a risk flag, at least $1.
+      if (filtered) { a.filterSkips[st] = (a.filterSkips[st] ?? 0) + 1; skip('filters', filtered); continue }
+      // Sized from the bot's capital and the signal's grade (bot/sizing.ts): 20% Prime, 15% Core, 10% Standard, at least $1.
       const balanceUsd = this.balanceOf(a)
       if (balanceUsd === null) { skip('live-unavailable', 'its wallet\'s balance couldn\'t be read yet'); continue }
-      const risky = (sig.features?.flags.length ?? 0) > 0
-      const tier = risky ? 'B' : 'A'
-      const sized = sizeFromCapital({ capitalUsd: balanceUsd, tier, takeProfit: t.takeProfit, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd, maxUsd: a.mode === 'live' ? USER_LIVE.maxTradeUsd : undefined })
+      const sized = sizeFromCapital({ capitalUsd: balanceUsd, grade, takeProfit: t.takeProfit, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd, maxUsd: a.mode === 'live' ? USER_LIVE.maxTradeUsd : undefined })
       if (!('sizeUsd' in sized)) { skip(sized.key, sized.why); continue }
-      const params = toParams(t, sized.sizeUsd)
+      const params = toParams(t, sized.sizeUsd, st)
       if (a.mode === 'live') {
-        const trader = this.trader(a)
-        if (!trader || !ctx) { skip('live-unavailable', 'live trading is unavailable right now'); continue }
-        a.lastBuyAt[sig.strategy] = now
-        a.filterSkips[sig.strategy] = 0
-        this.outcomes.add(sig.id, 'live-order', now)
-        void trader.open(ctx.signal, sig.strategy, ctx.pool, ctx.meta, { sizeUsd: sized.sizeUsd, idSuffix: a.id.slice(0, 12), priceNow: () => this.o.priceOf(sig.token), extra: { exits: params, targetUsd: sized.profitUsd, tuningVersion: t.version, features: sig.features, rule: sig.rule } })
-          .catch(e => log.warn('user live: open failed', { bot: a.slug, error: errMsg(e) }))
+        if (!this.trader(a) || !ctx) { skip('live-unavailable', 'live trading is unavailable right now'); continue }
+        // Seated with the rest of the live crowd below.
+        claims.push({ a, strategy: st, t, sizeUsd: sized.sizeUsd, profitUsd: sized.profitUsd, params, priority: access.priority })
         continue
       }
       if (a.cash < sized.sizeUsd) { skip('cash', `needs ${money(sized.sizeUsd)}, has ${money(a.cash)} in cash`); continue }
       // Buys waiting for their fill count as open: no second buy of the same coin, and the open-trade limits hold.
-      const waiting = this.pendingOf(a.id).map(e => ({ status: 'open', token: e.sig.token, strategy: e.sig.strategy, openedAt: e.at, mode: 'paper' }) as Position)
-      const allowed = canOpen([...a.positions.filter(p => !isLive(p)), ...waiting], sig.token, now, riskFor(a), sig.strategy)
+      const waiting = this.pendingOf(a.id).map(e => ({ status: 'open', token: e.sig.token, strategy: e.strategy, openedAt: e.at, mode: 'paper' }) as Position)
+      const allowed = canOpen([...a.positions.filter(p => !isLive(p)), ...waiting], sig.token, now, riskFor(a), st)
       if (!allowed.ok) { skip(allowed.key ?? 'max-open', allowed.why); continue }
-      const entry: PendingEntry = { accountId: a.id, sig, sizeUsd: sized.sizeUsd, profitUsd: sized.profitUsd, share: sized.share, tier, params, tuningVersion: t.version, takeProfit: t.takeProfit, stopLoss: t.stopLoss, balanceUsd, at: now, due: now + (this.speed?.entryMs ?? 0) }
+      const entry: PendingEntry = { accountId: a.id, sig, strategy: st, grade, sizeUsd: sized.sizeUsd, profitUsd: sized.profitUsd, share: sized.share, params, tuningVersion: t.version, takeProfit: t.takeProfit, stopLoss: t.stopLoss, balanceUsd, at: now, due: now + (this.speed?.entryMs ?? 0) }
       a.cash -= sized.sizeUsd
-      a.lastBuyAt[sig.strategy] = now
-      a.filterSkips[sig.strategy] = 0
+      a.lastBuyAt[st] = now
+      a.filterSkips[st] = 0
       if (!this.speed) { this.fill(a, entry, sig.price, now); continue }
       // At live speed: the buy fills at the first price 2.5s from now, as a live bot's would.
       this.pending.set(sig.token, [...(this.pending.get(sig.token) ?? []), entry])
       this.save(a, now)
     }
+    if (claims.length && ctx) this.seatLive(sig, grade, claims, ctx, now)
+  }
+
+  /**
+   * The live bots that want a signal share its cap (bot/crowd.ts): tier first,
+   * then the longest wait, then a rotation. Each seat's take-profit is a notch
+   * above the one before, and the orders go out in that order.
+   */
+  private seatLive(sig: PaperSignal, grade: SignalGrade, claims: LiveClaim[], ctx: LiveContext, now: number) {
+    const capUsd = crowdCap({ liquidityUsd: sig.liquidityUsd, takeProfit: Math.min(...claims.map(c => c.params.tp1Multiple)), flags: sig.features?.flags })
+    const byId = new Map(claims.map(c => [c.a.id, c]))
+    const r = this.crowd.allocate(sig.id, claims.map(c => ({ id: c.a.id, priority: c.priority, wantUsd: c.sizeUsd })), capUsd, now)
+    for (const l of r.left) { const c = byId.get(l.id)!; this.passOver(c.a, sig, l.key, l.why, now) }
+    for (const seat of r.seats) {
+      const c = byId.get(seat.id)!, a = c.a
+      const trader = this.trader(a)
+      if (!trader) continue
+      const exits: StrategyParams = { ...c.params, sizeUsd: seat.sizeUsd, tp1Multiple: laddered(c.params.tp1Multiple, seat.rank) }
+      // A seat smaller than the bot wanted makes proportionally less at the same take-profit.
+      const targetUsd = Math.round(c.profitUsd * (seat.sizeUsd / c.sizeUsd) * 100) / 100
+      a.lastBuyAt[c.strategy] = now
+      a.filterSkips[c.strategy] = 0
+      this.outcomes.add(sig.id, 'live-order', now)
+      void trader.open(ctx.signal, c.strategy, ctx.pool, ctx.meta, { sizeUsd: seat.sizeUsd, idSuffix: a.id.slice(0, 12), priceNow: () => this.o.priceOf(sig.token), extra: { exits, targetUsd, tuningVersion: c.t.version, features: sig.features, rule: sig.rule, grade, crowd: { rank: seat.rank, bots: r.seats.length, usd: r.usedUsd, capUsd: r.capUsd } } })
+        .catch(e => log.warn('user live: open failed', { bot: a.slug, error: errMsg(e) }))
+    }
   }
 
   /** A signal a bot passes over: in its list, with why, and counted (GET /v1/bot/rejections). */
   private passOver(a: PaperAccount, sig: PaperSignal, key: string, why: string, now: number) {
-    a.skips = [{ at: now, kind: 'skip' as const, token: sig.token, symbol: sig.symbol, text: `${LABEL[sig.strategy]}: ${why}` }, ...a.skips].slice(0, PAPER_LIMITS.keepSkips)
+    const grade = sig.quality?.level
+    a.skips = [{ at: now, kind: 'skip' as const, token: sig.token, symbol: sig.symbol, text: `${LABEL[sig.strategy]}${grade ? ` (${GRADE_LABEL[grade]})` : ''}: ${why}` }, ...a.skips].slice(0, PAPER_LIMITS.keepSkips)
     this.outcomes.add(sig.id, key, now)
   }
 
@@ -593,17 +677,21 @@ export class PaperAccounts {
   /** Opens a paper buy at `price` (cash already set aside). */
   private fill(a: PaperAccount, e: PendingEntry, price: number, now: number) {
     const sig = e.sig
-    const cost = costPerSide(sig.roundTripPct, e.sizeUsd, sig.liquidityUsd)
+    // The live crowd buys first: a paper fill pays their price impact on top of its own (bot/crowd.ts).
+    const crowd = this.crowd.of(sig.id)
+    const cost = costPerSide(sig.roundTripPct, e.sizeUsd, sig.liquidityUsd) + crowdImpact(crowd?.usedUsd ?? 0, sig.liquidityUsd)
     const p: Position = {
-      ...openPosition({ id: `${sig.id}:${a.id.slice(0, 12)}`, strategy: sig.strategy, token: sig.token, symbol: sig.symbol, launchpad: sig.launchpad, signalId: sig.id, price, cost, now, params: e.params }),
-      mode: 'paper', exits: e.params, targetUsd: e.profitUsd, tuningVersion: e.tuningVersion, features: sig.features, rule: sig.rule,
+      ...openPosition({ id: `${sig.id}:${a.id.slice(0, 12)}`, strategy: e.strategy, token: sig.token, symbol: sig.symbol, launchpad: sig.launchpad, signalId: sig.id, price, cost, now, params: e.params }),
+      mode: 'paper', exits: e.params, targetUsd: e.profitUsd, tuningVersion: e.tuningVersion, features: sig.features, rule: sig.rule, grade: e.grade,
+      ...(crowd?.usedUsd ? { crowd: { rank: crowd.bots, bots: crowd.bots, usd: crowd.usedUsd, capUsd: crowd.capUsd } } : {}),
     }
     a.positions.push(p)
     this.outcomes.add(sig.id, 'traded', now)
     this.track(a, p)
-    const why = `${Math.round(e.share * 100)}% of its ${money(e.balanceUsd)}${e.tier === 'B' ? ', a coin with a risk flag' : ', a safe coin'}${sig.quality ? ` (quality ${sig.quality.score})` : ''}`
+    const why = `${Math.round(e.share * 100)}% of its ${money(e.balanceUsd)}, a ${GRADE_LABEL[e.grade]} signal${sig.quality ? ` (quality ${sig.quality.score})` : ''}`
     const at = price !== sig.price ? `, ${((price / sig.price - 1) * 100).toFixed(1)}% from the signal's price after the 2.5s a buy takes` : ''
-    this.event(a, { at: now, kind: 'buy', token: sig.token, symbol: sig.symbol, text: `Bought $${sig.symbol} for ${money(e.sizeUsd)} (${LABEL[sig.strategy]}; ${why}${at}): sells half at ${move(e.takeProfit)}, then the rest trails 25% below its peak with the stop at break-even; stop at ${move(e.stopLoss)}` })
+    const plan = e.strategy === 'precision' ? `sells all of it at ${move(e.takeProfit)}` : `sells half at ${move(e.takeProfit)}, then the rest trails 25% below its peak with the stop at break-even`
+    this.event(a, { at: now, kind: 'buy', token: sig.token, symbol: sig.symbol, text: `Bought $${sig.symbol} for ${money(e.sizeUsd)} (${LABEL[e.strategy]}; ${why}${at}): ${plan}; stop at ${move(e.stopLoss)}` })
     this.save(a, now)
   }
 
@@ -732,8 +820,8 @@ export class PaperAccounts {
     const tuning = Object.fromEntries(STRATEGIES.map(st => {
       const { prev: _prev, ...t } = a.tuning[st]
       const mine = stats(a.positions.filter(p => p.strategy === st))
-      // What a tier-A trade would be now, in a typical pool (a tier-B one is half).
-      const sized = worth !== null && worth > 0 ? sizeFromCapital({ capitalUsd: worth, tier: 'A', takeProfit: t.takeProfit, ...TYPICAL, maxUsd: a.mode === 'live' ? USER_LIVE.maxTradeUsd : undefined }) : null
+      // What a trade would be now, in a typical pool: Precision on a Prime signal, the others on a Core one.
+      const sized = worth !== null && worth > 0 ? sizeFromCapital({ capitalUsd: worth, grade: st === 'precision' ? 'prime' : 'core', takeProfit: t.takeProfit, ...TYPICAL, maxUsd: a.mode === 'live' ? USER_LIVE.maxTradeUsd : undefined }) : null
       return [st, { ...t, sizeUsd: sized && 'sizeUsd' in sized ? sized.sizeUsd : null, closed: mine.closed, winRate: mine.winRate }]
     })) as PaperAccountView['tuning']
     const trader = a.live && this.o.live ? this.o.live.existing(a.id) : null
@@ -744,14 +832,16 @@ export class PaperAccounts {
       positions: shown.sort((x, y) => y.openedAt - x.openedAt),
       stats: { closed: s.closed, open: s.open, wins: s.wins, losses: s.losses, winRate: s.winRate, totalPnlUsd: s.totalPnlUsd, profitFactor: s.profitFactor === Infinity ? null : s.profitFactor, expectancyUsd: s.expectancyUsd, maxDrawdownUsd: s.maxDrawdownUsd },
       tuning,
-      targets: { snipe: TARGETS.snipe.range, scalp: TARGETS.scalp.range, 'second-leg': TARGETS['second-leg'].range },
+      targets: { snipe: TARGETS.snipe.range, scalp: TARGETS.scalp.range, 'second-leg': TARGETS['second-leg'].range, precision: TARGETS.precision.range },
       learnLog: a.learnLog.slice(0, 30), events: a.events.slice(0, 40), skips: a.skips.slice(0, PAPER_LIMITS.keepSkips),
       protections: {
         pausedUntil: a.pausedUntil && a.pausedUntil > now ? a.pausedUntil : null, lossStreak: a.lossStreak, pauseAfterLosses: PROTECT.pauseAfterLosses,
         dailyLossLimitUsd: riskFor(a).dailyLossUsd, todayPnlUsd: today, stopBelowPct: PROTECT.stopBelowPct,
         maxTradeSharePct: Math.round(SIZE_LIMITS.maxShareOfBalance * 100), maxTradeUsd: worth === null ? null : maxTradeFor(worth),
         tradeSharePct: { a: Math.round(CAPITAL_SIZING.shareA * 100), b: Math.round(CAPITAL_SIZING.shareB * 100) }, minTradeUsd: CAPITAL_SIZING.minUsd,
+        gradeSharePct: { prime: Math.round(GRADE_SHARE.prime * 100), core: Math.round(GRADE_SHARE.core * 100), standard: Math.round(GRADE_SHARE.standard * 100) },
       },
+      byGrade: byGrade(a.positions),
       tradesLogged: a.tradesLogged,
       feesPaidUsd: a.feesPaidUsd + (a.live?.feesPaidUsd ?? 0),
       ready: this.readinessOf(a, now),
@@ -842,8 +932,8 @@ export class PaperAccounts {
     if (!fills.length) return
     for (const f of fills) a.cash += f.usd
     if (p.status === 'closed') {
-      // The platform's share of a paper win (PROFIT_FEE), taken virtually so paper reads like live.
-      const fee = profitFee(p.pnlUsd)
+      // The platform's share of a paper win (PROFIT_FEE; the owner's tier's once tiers are enforced), taken virtually so paper reads like live.
+      const fee = profitFee(p.pnlUsd, this.accessOf(a.ownerId).profitFeePct)
       if (fee > 0) { p.feeUsd = fee; p.pnlUsd = (p.pnlUsd ?? 0) - fee; a.cash -= fee; a.feesPaidUsd += fee }
       this.closed(a, p, now)
     }
@@ -937,7 +1027,7 @@ export class PaperAccounts {
     this.o.store.savePaperTrade(a.id, p)
     a.tradesLogged++
     const won = (p.pnlUsd ?? 0) > 0
-    this.event(a, { at: now, kind: p.exitReason === 'rug' ? 'rug' : 'sell', token: p.token, symbol: p.symbol, text: `${isLive(p) ? 'LIVE ' : ''}Sold $${p.symbol}: ${won ? '+' : ''}${money(p.pnlUsd ?? 0)}${p.feeUsd ? ` after the ${PROFIT_FEE_PCT}% fee (${money(p.feeUsd)})` : ''}. ${p.note}` })
+    this.event(a, { at: now, kind: p.exitReason === 'rug' ? 'rug' : 'sell', token: p.token, symbol: p.symbol, text: `${isLive(p) ? 'LIVE ' : ''}Sold $${p.symbol}: ${won ? '+' : ''}${money(p.pnlUsd ?? 0)}${p.feeUsd ? ` after the ${this.accessOf(a.ownerId).profitFeePct}% fee (${money(p.feeUsd)})` : ''}. ${p.note}` })
     a.lossStreak = won ? 0 : a.lossStreak + 1
     if (!won && a.lossStreak >= PROTECT.pauseAfterLosses && !(a.pausedUntil && a.pausedUntil > now)) {
       a.pausedUntil = now + PROTECT.pauseMin * 60_000

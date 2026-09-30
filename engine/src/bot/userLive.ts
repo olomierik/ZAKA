@@ -69,8 +69,8 @@ export const PROFIT_FEE = { bps: 1_500, wallet: '0x274262A0321A0701b0A46a3576e07
 /** The fee as a percentage, for words ("15%"). */
 export const PROFIT_FEE_PCT = PROFIT_FEE.bps / 100
 
-/** The platform's share of a trade's profit: 15% of a win, nothing on a loss. */
-export const profitFee = (pnlUsd: number | null) => (pnlUsd !== null && pnlUsd > 0 ? Math.round(pnlUsd * PROFIT_FEE.bps) / 10_000 : 0)
+/** The platform's share of a trade's profit: 15% of a win (or the owner's tier's share, `pct`), nothing on a loss. */
+export const profitFee = (pnlUsd: number | null, pct = PROFIT_FEE_PCT) => (pnlUsd !== null && pnlUsd > 0 ? Math.round(pnlUsd * pct * 100) / 10_000 : 0)
 
 /** Whether a bot's paper record is good enough to trade live. */
 /**
@@ -225,7 +225,7 @@ export class UserLive {
     const f = await trader.executor.sendUsdc(PROFIT_FEE.wallet, fee)
     p.txs = [...(p.txs ?? []), { kind: 'fee', hash: f.hash, at: f.at, usd: fee, gasUsd: f.gasUsd }]
     p.feeDue = 0
-    trader.event({ kind: 'sell', token: p.token, symbol: p.symbol, hash: f.hash, text: `Platform fee: $${fee.toFixed(4)} (${PROFIT_FEE_PCT}% of the $${((p.pnlUsd ?? 0) + (p.feeUsd ?? 0)).toFixed(2)} profit on $${p.symbol})` })
+    trader.event({ kind: 'sell', token: p.token, symbol: p.symbol, hash: f.hash, text: `Platform fee: $${fee.toFixed(4)} (${Math.round((fee / Math.max(1e-9, (p.pnlUsd ?? 0) + (p.feeUsd ?? 0))) * 1_000) / 10}% of the $${((p.pnlUsd ?? 0) + (p.feeUsd ?? 0)).toFixed(2)} profit on $${p.symbol})` })
     return f.hash
   }
 

@@ -51,13 +51,13 @@ describe('paper buys at live speed', () => {
     const { accts, a } = setup()
     accts.onSignal(sig(), now)
     expect(a.positions).toHaveLength(0)
-    expect(a.cash).toBe(80)
+    expect(a.cash).toBe(90) // 10% of $100 set aside (a signal without a grade is Standard)
     expect(accts.equity(a).equity).toBe(100)
     expect(accts.holds(T)).toBe(true)
     accts.onPrice(T, 1.01, now + 1_000, false, true)
     expect(a.positions).toHaveLength(0) // not yet
     accts.onPrice(T, 1.03, now + 2_600, false, true)
-    expect(a.positions[0]).toMatchObject({ status: 'open', marketEntry: 1.03, sizeUsd: 20 })
+    expect(a.positions[0]).toMatchObject({ status: 'open', marketEntry: 1.03, sizeUsd: 10 })
     expect(a.events[0].text).toMatch(/3\.0% from the signal's price after the 2\.5s a buy takes/)
   })
   test('not bought when the price moved more than 5% by then (as a live bot)', () => {

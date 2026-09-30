@@ -64,6 +64,8 @@ export interface Config {
    * and measures every signal).
    */
   botSignals: { live: 'all' | 'proven'; paper: boolean }
+  /** Autotrade tiers (bot/tiers.ts): enforced only once TIERS_ENFORCED=true; until then every account gets every tier's signals. */
+  tiersEnforced: boolean
   /** Paper position size in USD for snipes and second legs (default: each strategy's own, $25). */
   botSizeUsd: number | null
   /** Paper position size in USD for scalps, the small fast trades on risky coins (default $5). */
@@ -104,6 +106,7 @@ export function loadConfig(): Config {
     logLevel: (process.env.LOG_LEVEL ?? 'info') as Config['logLevel'],
     botMode: process.env.BOT_MODE === 'off' ? 'off' : process.env.BOT_MODE === 'live' ? 'live' : 'paper',
     botSignals: { live: process.env.BOT_LIVE_SIGNALS === 'proven' ? 'proven' : 'all', paper: process.env.BOT_PAPER_SIGNALS === 'on' },
+    tiersEnforced: process.env.TIERS_ENFORCED === 'true' || process.env.TIERS_ENFORCED === '1',
     botSizeUsd: process.env.BOT_SIZE_USD ? int('BOT_SIZE_USD', 25, 1, 10_000) : null,
     botScalpSizeUsd: process.env.BOT_SCALP_SIZE_USD ? int('BOT_SCALP_SIZE_USD', 5, 1, 10_000) : null,
     botOwner: /^0x[0-9a-fA-F]{40}$/.test(process.env.BOT_OWNER_ADDRESS ?? '') ? process.env.BOT_OWNER_ADDRESS!.toLowerCase() : null,

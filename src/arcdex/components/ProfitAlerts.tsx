@@ -18,7 +18,7 @@ const SINCE_KEY = 'arcdex:profit-since'
 const SEEN_KEY = 'arcdex:profit-seen'
 const ON_KEY = 'arcdex:profit-notify'
 const SHOW_MS = 10_000
-const STRAT: Record<BotProfit['strategy'], string> = { scalp: 'Fast scalp', snipe: 'Snipe', 'second-leg': 'Dip rebound' }
+const STRAT: Record<BotProfit['strategy'], string> = { scalp: 'Fast scalp', snipe: 'Snipe', 'second-leg': 'Dip rebound', precision: 'Precision' }
 
 const read = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
 const write = (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* storage blocked */ } }

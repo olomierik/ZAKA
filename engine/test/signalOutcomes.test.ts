@@ -64,7 +64,7 @@ describe('every signal a bot passes over says why, and is counted', () => {
     accts.act(a, { action: 'deposit', amount: 100 }, now); accts.act(a, { action: 'start' }, now)
     accts.onSignal(sig(), now)
     expect(a.positions).toHaveLength(1)
-    expect(a.positions[0].sizeUsd).toBe(20) // 20% of $100; the $2,000 pool would take up to $30
+    expect(a.positions[0].sizeUsd).toBe(10) // 10% of $100 (a Standard signal); the $2,000 pool would take up to $30
     expect(a.positions[0].targetUsd).toBeGreaterThan(0)
     const big = make('Big Bot', ['scalp'])
     accts.act(big, { action: 'deposit', amount: 10_000 }, now); accts.act(big, { action: 'start' }, now)

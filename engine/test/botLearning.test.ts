@@ -102,7 +102,7 @@ function closed(s: Strategy, o: { pnl: 'win' | 'loss'; reason?: ExitReason; held
   const params = toParams({ ...t, takeProfit: o.tp ?? t.takeProfit }, 10)
   const p = openPosition({ id: `p${o.i ?? Math.random()}`, strategy: s, token: T, symbol: 'C', launchpad: 'ARGUS', signalId: o.signal ?? 'x', price: 1, cost: 0.01, now: now + (o.i ?? 0) * 60_000, params })
   p.exits = params
-  p.rule = o.rule ?? (s === 'scalp' ? 'momentum' : s)
+  p.rule = o.rule ?? (s === 'scalp' || s === 'precision' ? 'momentum' : s)
   p.tuningVersion = o.version ?? 1
   p.features = { ageSec: 300, liquidityUsd: 10_000, marketCapUsd: 50_000, buyers: 10, buySellRatio: 2, runUp: 1.1, topBuyerPct: 15, score: 80, flags: [], roundTripPct: 3, ...o.features }
   p.peak = o.peak ?? (o.pnl === 'win' ? params.tp1Multiple : 1.02)
@@ -342,18 +342,18 @@ describe('a visitor\'s bot, all together', () => {
   })
   test('losing trades teach it: the tuning changes and the log says so', () => {
     const { accts, a } = setup()
-    // Near misses: rise to +12% (short of +15%), then time out below the entry.
+    // Near misses: rise to +8% (short of the +10% take-profit), then time out below the entry.
     let t = now
     for (let i = 1; i <= 9; i++) {
       accts.onSignal(sig(i), t)
       const token = sig(i).token
-      if (i % 3 === 0) accts.onPrice(token, 1.2, t + 1_000, false, true) // a win
-      else { accts.onPrice(token, 1.12, t + 1_000, false, true); accts.onPrice(token, 0.99, t + 11 * 60_000, false, true) }
+      if (i % 3 === 0) { accts.onPrice(token, 1.2, t + 1_000, false, true); accts.onPrice(token, 1.0, t + 2_000, false, true) } // a win: half at the take-profit, the rest at break-even
+      else { accts.onPrice(token, 1.08, t + 1_000, false, true); accts.onPrice(token, 0.99, t + 11 * 60_000, false, true) }
       t += 12 * 60_000
       a.pausedUntil = null // not what this test is about
     }
     expect(a.tuning.scalp.version).toBeGreaterThan(1)
-    expect(a.tuning.scalp.takeProfit).toBeLessThan(1.15)
+    expect(a.tuning.scalp.takeProfit).toBeLessThan(1.1)
     expect(a.learnLog[0].text).toMatch(/takes profit/)
     expect(accts.view(a).learnLog.length).toBeGreaterThan(0)
   })

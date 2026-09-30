@@ -100,7 +100,7 @@ export interface BotCardData {
   link: string
 }
 
-const STRAT_LABEL: Record<string, string> = { scalp: 'Fast scalp', snipe: 'Snipe', 'second-leg': 'Dip rebound' }
+const STRAT_LABEL: Record<string, string> = { scalp: 'Fast scalp', snipe: 'Snipe', 'second-leg': 'Dip rebound', precision: 'Precision' }
 const usdText = (n: number) => `${n < 0 ? '−' : '+'}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 /** The curve: closed trades' P&L, oldest first, added up so it ends at `endUsd`. */

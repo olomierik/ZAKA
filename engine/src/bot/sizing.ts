@@ -25,6 +25,7 @@
 // waits. A pool too thin for the target isn't a reason to put more in: that
 // case keeps the rule above.
 
+import type { SignalGrade } from '../../../api/_marketProtocol'
 import { costPerSide, type Strategy } from '../trading/paper'
 
 /** Profit per winning trade, USD: [low, high] of the range, and the default target. Scalps $1–2, the others $1–5 (owner, 2026-09-30). */
@@ -32,6 +33,7 @@ export const TARGETS: Record<Strategy, { range: [number, number]; target: number
   scalp: { range: [1, 2], target: 1.5 },
   snipe: { range: [1, 5], target: 3 },
   'second-leg': { range: [1, 5], target: 3 },
+  precision: { range: [1, 2], target: 1 },
 }
 
 export const SIZE_LIMITS = {
@@ -128,13 +130,20 @@ export function noSizeWhy(o: { strategy: Strategy; takeProfit: number; roundTrip
 
 export const CAPITAL_SIZING = { shareA: 0.2, shareB: 0.1, minUsd: 1, maxUsd: 250, maxPoolShare: 0.015 }
 
+/**
+ * Since the signal grades (2026-09-30, signals/grades.ts) the share follows the
+ * signal's grade: the replays showed the grade, not a risk flag, marking the
+ * winners (every Prime signal had a risk flag, and won 10 of 11 at +6%).
+ */
+export const GRADE_SHARE: Record<SignalGrade, number> = { prime: 0.2, core: 0.15, standard: 0.1 }
+
 export type CapitalSized = { sizeUsd: number; profitUsd: number; costPct: number; share: number }
 export type NoCapitalSize = { key: 'small-balance' | 'too-thin' | 'costly'; why: string }
 
-/** A trade's size from the bot's capital and the signal's tier, or why there's none. */
-export function sizeFromCapital(o: { capitalUsd: number; tier: 'A' | 'B'; takeProfit: number; roundTripPct: number | null; liquidityUsd: number | null; maxUsd?: number }): CapitalSized | NoCapitalSize {
+/** A trade's size from the bot's capital and the signal's grade (or, before grades, its tier), or why there's none. */
+export function sizeFromCapital(o: { capitalUsd: number; tier?: 'A' | 'B'; grade?: SignalGrade; takeProfit: number; roundTripPct: number | null; liquidityUsd: number | null; maxUsd?: number }): CapitalSized | NoCapitalSize {
   const c = CAPITAL_SIZING
-  const share = o.tier === 'A' ? c.shareA : c.shareB
+  const share = o.grade ? GRADE_SHARE[o.grade] : o.tier === 'B' ? c.shareB : c.shareA
   const floor10 = (x: number) => Math.floor(x * 10 + 1e-9) / 10
   let size = floor10(Math.max(0, o.capitalUsd) * share)
   // A small bot's tier-B trade is the $1 minimum, as long as that's within its 20%.

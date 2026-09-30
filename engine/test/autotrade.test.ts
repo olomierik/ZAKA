@@ -5,7 +5,7 @@ import type { LaunchInfo } from '../../api/_marketProtocol'
 import { MemoryBotStore } from '../src/bot/store'
 import { defaultTuning } from '../src/bot/learner'
 import { keyHash, PaperAccounts, PAPER_LIMITS, type PaperAccount, type PaperSignal } from '../src/bot/paperAccounts'
-import { CAPITAL_SIZING } from '../src/bot/sizing'
+import { GRADE_SHARE } from '../src/bot/sizing'
 import { failing, ScanFeed } from '../src/bot/scanFeed'
 import { STRATEGIES } from '../src/trading/paper'
 
@@ -20,9 +20,9 @@ describe('paper accounts', () => {
     return { store, accts, key, a: account }
   }
   const signal = (o: Partial<PaperSignal> = {}): PaperSignal => ({ id: 's1', token: T, symbol: 'C', launchpad: 'ARGUS', price: 1, strategy: 'snipe', roundTripPct: 2, liquidityUsd: 100_000, ...o })
-  /** A trade from `capital`: 20% on a safe coin, 10% on one with a risk flag (bot/sizing.ts). */
-  const sizeOf = (capital: number, tier: 'A' | 'B' = 'A') => Math.floor(capital * (tier === 'A' ? CAPITAL_SIZING.shareA : CAPITAL_SIZING.shareB) * 10 + 1e-9) / 10
-  const quality = (grade: 'live' | 'paper', tier: 'A' | 'B') => ({ score: grade === 'live' ? 85 : 55, grade, tier, rank: null, parts: [] })
+  /** A trade from `capital`: 20% on a Prime signal, 15% Core, 10% Standard (a signal without a grade counts as Standard; bot/sizing.ts). */
+  const sizeOf = (capital: number, grade: 'prime' | 'core' | 'standard' = 'standard') => Math.floor(capital * GRADE_SHARE[grade] * 10 + 1e-9) / 10
+  const quality = (grade: 'live' | 'paper', tier: 'A' | 'B', level?: 'prime' | 'core' | 'standard') => ({ score: grade === 'live' ? 85 : 55, grade, tier, rank: null, parts: [], ...(level ? { level } : {}) })
   /** A coin's numbers at the signal; `flags` are the risk checks it didn't pass. */
   const features = (flags: string[] = []) => ({ ageSec: 120, liquidityUsd: 100_000, marketCapUsd: 200_000, buyers: 20, buySellRatio: 3, runUp: 1.1, topBuyerPct: 10, score: 90, flags, roundTripPct: 2 })
 
@@ -59,24 +59,29 @@ describe('paper accounts', () => {
     expect(a.positions).toEqual([])
     accts.onSignal(signal({ id: 's3' }), now)
     expect(a.positions).toHaveLength(1)
-    expect(a.positions[0].sizeUsd).toBe(sizeOf(100)) // 20% of $100
-    accts.onSignal(signal({ id: 's4', token: '0x' + 'c2'.repeat(20), strategy: 'scalp' }), now)
-    expect(a.positions[1].sizeUsd).toBeGreaterThanOrEqual(19.8) // 20% of what it's worth now: $80 cash and the open trade
+    expect(a.positions[0].sizeUsd).toBe(sizeOf(100)) // 10% of $100: a signal without a grade is Standard
+    accts.onSignal(signal({ id: 's4', token: '0x' + 'c2'.repeat(20), strategy: 'scalp', quality: quality('live', 'A', 'prime') }), now)
+    expect(a.positions[1].sizeUsd).toBeGreaterThanOrEqual(19.8) // 20% of what it's worth now on a Prime signal: $90 cash and the open trade
     expect(a.positions[1].sizeUsd).toBeLessThanOrEqual(20)
     expect(a.positions[1].targetUsd).toBeGreaterThan(0) // what it makes at the take-profit
     expect(a.positions[1].tuningVersion).toBe(1)
-    expect(a.events[0].text).toMatch(/20% of its \$\d+\.\d\d/)
+    expect(a.positions[1].grade).toBe('prime')
+    expect(a.events[0].text).toMatch(/20% of its \$\d+\.\d\d, a Prime signal/)
   })
-  test('the coin\'s risk sets the share: 20% on a safe coin, 10% on one with a risk flag, whatever its quality tier', () => {
+  test('the signal\'s grade sets the share: 20% Prime, 15% Core, 10% Standard, whatever its risk flags', () => {
     const { accts, a } = setup()
     accts.act(a, { action: 'deposit', amount: 100 }, now); accts.act(a, { action: 'start' }, now)
-    accts.onSignal(signal({ id: 'b1', quality: quality('live', 'B'), features: features() }), now)
-    expect(a.positions[0].sizeUsd).toBe(sizeOf(100)) // a tier-B signal on a safe coin: 20%
-    expect(a.events[0].text).toMatch(/a safe coin/)
-    accts.onSignal(signal({ id: 'r1', token: '0x' + 'c6'.repeat(20), quality: quality('live', 'A'), features: features(['holders']) }), now)
-    expect(a.positions[1].sizeUsd).toBeGreaterThanOrEqual(9.8) // a tier-A signal on a coin with a risk flag: 10% of what it's worth now
-    expect(a.positions[1].sizeUsd).toBeLessThanOrEqual(10)
-    expect(a.events[0].text).toMatch(/a coin with a risk flag/)
+    accts.onSignal(signal({ id: 'p1', quality: quality('live', 'B', 'prime'), features: features(['holders']) }), now)
+    expect(a.positions[0].sizeUsd).toBe(sizeOf(100, 'prime')) // a coin with a risk flag, a Prime signal: 20%
+    expect(a.events[0].text).toMatch(/a Prime signal/)
+    accts.onSignal(signal({ id: 'c1', token: '0x' + 'c6'.repeat(20), quality: quality('live', 'A', 'core'), features: features() }), now)
+    expect(a.positions[1].sizeUsd).toBeGreaterThanOrEqual(14.8) // 15% of what it's worth now
+    expect(a.positions[1].sizeUsd).toBeLessThanOrEqual(15)
+    accts.onSignal(signal({ id: 's1b', token: '0x' + 'c7'.repeat(20), quality: quality('live', 'A', 'standard'), features: features() }), now)
+    expect(a.positions[2].sizeUsd).toBeGreaterThanOrEqual(9.8)
+    expect(a.positions[2].sizeUsd).toBeLessThanOrEqual(10)
+    expect(accts.view(a).byGrade).toEqual({}) // nothing closed yet
+    expect(accts.view(a).protections.gradeSharePct).toEqual({ prime: 20, core: 15, standard: 10 })
   })
   test('a live bot passes over paper-only signals', () => {
     const { accts, a } = setup()
@@ -88,10 +93,10 @@ describe('paper accounts', () => {
     accts.onSignal(signal({ id: 'p2', token: '0x' + 'c4'.repeat(20), quality: quality('paper', 'B') }), now)
     expect(accts.view(a).skips[0].text).toMatch(/not traded live: in the lowest 20% of recent signals by quality \(score 55\)/)
   })
-  test('a $10 bot trades: $2 on a safe coin, $1 on a risky one; the same coin once per 6 hours', () => {
+  test('a $10 bot trades: $2 on a Prime signal, $1 on a Standard one; the same coin once per 6 hours', () => {
     const { accts, a } = setup()
     accts.act(a, { action: 'deposit', amount: 10 }, now); accts.act(a, { action: 'start' }, now)
-    accts.onSignal(signal({ features: features() }), now)
+    accts.onSignal(signal({ features: features(), quality: quality('live', 'A', 'prime') }), now)
     expect(a.positions[0].sizeUsd).toBe(2)
     accts.onSignal(signal({ id: 's2' }), now) // same coin
     expect(a.positions).toHaveLength(1)

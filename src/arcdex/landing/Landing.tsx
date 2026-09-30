@@ -182,7 +182,7 @@ export default function Landing() {
       {/* ── access tiers ────────────────────────────────── */}
       <section className="ld-section" id="tiers">
         <h2>{t('Autotrade access with $ARCD')}</h2>
-        <p className="ld-sub">{t('Hold more $ARCD, unlock more of Autotrade.')}</p>
+        <p className="ld-sub">{t('Tiered by signal quality: the higher the tier, the cleaner the signals. Prime signals, the cleanest, go to Tier 3 with the Precision strategy.')}</p>
         <div className="ld-tiers">
           {ARCD_TIERS.map(tier => (
             <div key={tier.id} className={`ld-card ld-tier${tier.id === 't3' ? ' top' : ''}`}>
@@ -193,7 +193,7 @@ export default function Landing() {
             </div>
           ))}
         </div>
-        {!TIERS_ENFORCED && <p className="ld-note">{t('Announced: nothing is locked yet. Holdings will be checked once accounts can link a wallet.')}</p>}
+        {!TIERS_ENFORCED && <p className="ld-note">{t('Free for now: every tier\'s signals and strategies are open to everyone, so you can see what each one does. Link a wallet in Autotrade to see your tier.')}</p>}
         <div className="ld-cta ld-center"><a className="ld-btn ld-btn-ghost" href={ARCD_APP_PATH}>{t('Buy $ARCD')}</a></div>
       </section>
 

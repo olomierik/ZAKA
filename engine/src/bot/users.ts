@@ -36,7 +36,14 @@ export interface User {
   lastResetAt: number | null
   /** Sessions issued before this are void. */
   sessionsAfter: number
+  /** Wallets linked by signature: their $ARCD counts toward the account's tier (bot/tiers.ts). */
+  wallets?: { address: string; at: number }[]
+  /** A tier the owner granted (a subscription paid some other way), until a time. */
+  grant?: { tier: 'free' | 't1' | 't2' | 't3'; until: number } | null
 }
+
+/** A wallet links to one account at a time, and an account links at most this many. */
+export const MAX_WALLETS = 5
 
 export interface UserStore {
   users(): Promise<User[]>
@@ -90,8 +97,6 @@ export class Users {
     log.info('bot accounts loaded', { users: this.byId.size, email: this.o.mailer.enabled })
   }
 
-  get(id: string) { return this.byId.get(id) ?? null }
-  byEmailOf(email: string) { const id = this.byEmail.get(email); return id ? this.byId.get(id) ?? null : null }
 
   async signup(emailRaw: unknown, passcode: unknown, ip: string, now = Date.now()): Promise<AuthResult> {
     const email = normEmail(emailRaw)
@@ -229,6 +234,39 @@ export class Users {
   }
 
   view(u: User) { return { email: u.email, verified: u.verified, createdAt: u.createdAt } }
+
+  /** Every linked wallet (their $ARCD is read every 10 minutes). */
+  linkedWallets(): string[] { const out: string[] = []; for (const u of this.byId.values()) for (const w of u.wallets ?? []) out.push(w.address); return out }
+
+  /** A signed-in account by its id (a bot's owner). */
+  get(id: string | null | undefined): User | null { return id ? this.byId.get(id) ?? null : null }
+  byEmailOf(emailRaw: unknown): User | null { const e = normEmail(emailRaw); const id = e ? this.byEmail.get(e) : undefined; return id ? this.byId.get(id) ?? null : null }
+
+  /** Links a wallet (its signature already checked); why not, or null. A wallet counts for one account only. */
+  linkWallet(u: User, address: string, now = Date.now()): string | null {
+    const a = address.toLowerCase()
+    for (const other of this.byId.values()) if (other.id !== u.id && other.wallets?.some(w => w.address === a)) return 'this wallet is linked to another account: unlink it there first'
+    const list = u.wallets ?? []
+    if (list.some(w => w.address === a)) return null
+    if (list.length >= MAX_WALLETS) return `an account links at most ${MAX_WALLETS} wallets`
+    u.wallets = [...list, { address: a, at: now }]
+    this.o.store.saveUser(u)
+    return null
+  }
+  unlinkWallet(u: User, address: string) {
+    u.wallets = (u.wallets ?? []).filter(w => w.address !== address.toLowerCase())
+    this.o.store.saveUser(u)
+  }
+
+  /** The owner's grant: a tier for `days` (0 takes it back). */
+  grantTier(email: unknown, tier: 'free' | 't1' | 't2' | 't3', days: number, now = Date.now()): User | string {
+    const u = this.byEmailOf(email)
+    if (!u) return 'no account has that email'
+    u.grant = days > 0 ? { tier, until: now + days * 86_400_000 } : null
+    this.o.store.saveUser(u)
+    log.info('tier granted', { user: u.id, tier: u.grant?.tier ?? null, days })
+    return u
+  }
 
   private token(u: User, now: number) { const body = `${u.id}.${now}`; return `${body}.${this.sign(body)}` }
   private sign(body: string) { return createHmac('sha256', this.secret).update(body).digest('base64url') }

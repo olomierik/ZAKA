@@ -8,9 +8,13 @@
 // cost (pool fees, hook taxes, token taxes), half on entry and half on exit,
 // plus price impact for the size against the pool's liquidity.
 
-import type { SignalFeatures } from '../../../api/_marketProtocol'
+import type { SignalFeatures, SignalGrade } from '../../../api/_marketProtocol'
 
-export type Strategy = 'snipe' | 'second-leg' | 'scalp'
+export type Strategy = 'snipe' | 'second-leg' | 'scalp' | 'precision'
+/** The strategies a signal fires with; Precision is a bot's way of trading Prime signals (signals/grades.ts). */
+export type SignalStrategy = Exclude<Strategy, 'precision'>
+/** Fast strategies: counted against the scalp limit, and back on a coin after 30 minutes. */
+export const isFast = (s: Strategy | undefined) => s === 'scalp' || s === 'precision'
 
 export interface StrategyParams {
   sizeUsd: number
@@ -57,6 +61,12 @@ export const STRATEGIES: Record<Strategy, StrategyParams> = {
   // +10%, the rest trailing 25% with the stop at break-even; −10% stop, out
   // after 3 minutes unless up 3%, an hour at most, and out when the creator sells.
   scalp: { sizeUsd: 5, stopLoss: 0.9, tp1Multiple: 1.1, tp1SellPct: 0.5, trailFromPeak: 0.25, breakevenAfterTp1: true, timeStopMin: 3, timeStopMinGain: 1.03, maxHoldMin: 60, exitOnCreatorSell: true },
+  // Precision (2026-09-30, the top tier's strategy): Prime signals only
+  // (signals/grades.ts), all of it sold at +6%, −7% stop, out after 3 minutes
+  // unless up 2%, 10 minutes at most, and out when the creator sells. On the
+  // 11 Prime signals replayed at live speed it won 10 (+3.1% a trade); the
+  // take-profit came 10–48s in, the creator's first sale about 2 minutes in.
+  precision: { sizeUsd: 10, stopLoss: 0.93, tp1Multiple: 1.06, tp1SellPct: 1, trailFromPeak: 0.25, timeStopMin: 3, timeStopMinGain: 1.02, maxHoldMin: 10, exitOnCreatorSell: true },
 }
 
 export const RISK = {
@@ -127,9 +137,12 @@ export interface Position {
   pendingExit?: { at: number; exits: Exit[]; note?: string }
   /** Why it closed, in words. */
   note?: string
-  /** A visitor's bot: the platform's 2% of a winning trade's profit (already taken from pnlUsd); live, a fee still to send. */
+  /** A visitor's bot: the platform's share of a winning trade's profit (already taken from pnlUsd); live, a fee still to send. */
   feeUsd?: number
   feeDue?: number
+  /** The signal's grade as handed out (signals/grades.ts), and the bot's place in the crowd that took it (bot/crowd.ts). */
+  grade?: SignalGrade
+  crowd?: { rank: number; bots: number; usd: number; capUsd: number }
 }
 
 /** Cost per side: half the measured round trip (at least 1%), plus impact for the size. */
@@ -297,9 +310,9 @@ export function stats(positions: Position[]): Stats {
 export function canOpen(positions: Position[], token: string, now: number, risk: RiskRules = RISK, strategy?: Strategy): { ok: boolean; why: string; key?: 'max-open' | 'cooldown' | 'daily-loss' } {
   const open = positions.filter(p => p.status === 'open')
   if (open.length >= risk.maxOpen) return { ok: false, why: `${open.length} positions open (max ${risk.maxOpen})`, key: 'max-open' }
-  const scalps = open.filter(p => p.strategy === 'scalp').length
-  if (strategy === 'scalp' && scalps >= risk.maxOpenScalp) return { ok: false, why: `${scalps} scalps open (max ${risk.maxOpenScalp})`, key: 'max-open' }
-  const cooldown = (strategy === 'scalp' ? risk.cooldownMinScalp ?? risk.cooldownMin : risk.cooldownMin) * 60_000
+  const scalps = open.filter(p => isFast(p.strategy)).length
+  if (isFast(strategy) && scalps >= risk.maxOpenScalp) return { ok: false, why: `${scalps} scalps open (max ${risk.maxOpenScalp})`, key: 'max-open' }
+  const cooldown = (isFast(strategy) ? risk.cooldownMinScalp ?? risk.cooldownMin : risk.cooldownMin) * 60_000
   if (positions.some(p => p.token === token && (p.status === 'open' || now - (p.closedAt ?? 0) < cooldown))) return { ok: false, why: 'traded this coin recently', key: 'cooldown' }
   const day = new Date(now).toISOString().slice(0, 10)
   const today = positions.filter(p => p.closedAt && new Date(p.closedAt).toISOString().slice(0, 10) === day).reduce((s, p) => s + (p.pnlUsd ?? 0), 0)
