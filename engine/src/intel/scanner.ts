@@ -194,7 +194,8 @@ export function assess(s: StaticFacts, i: ScanInput): SafetyReport {
   const b = i.flow.bundle
   add('bundle', !(b.wallets >= 3 && (b.supplyPct ?? 0) > LIMITS.maxBundleSupplyPct), true, `${b.wallets} wallets bought ${b.supplyPct?.toFixed(1) ?? '?'}% of supply in the first 3 blocks`)
   if (i.clusters === undefined) add('clusters', null, true, 'funding not traced yet')
-  else if (i.clusters === null) add('clusters', null, true, 'funding could not be traced')
+  // Not traced in time: a risk, not a block (a signal within 2 minutes; the coin trades as a small scalp).
+  else if (i.clusters === null) risk('clusters', null, 'funding could not be traced in time')
   else {
     const c = i.clusters
     const bad = c.groups.length > 0 || c.creatorFunded.length >= 2 || c.sameSourceAsCreator.length >= 2
