@@ -30,10 +30,21 @@ export class TokenState {
 
   constructor(readonly token: string) {}
 
-  /** Returns true if this trade is now the latest one for the token. */
+  /**
+   * Returns true if this trade now sets the token's price: the latest trade
+   * in its main (deepest) pool. A coin can have side pools (one Argus coin
+   * had a second pool charging an 80% fee, which arbitrage bots trade
+   * through); their prices say nothing about the coin's, so they move neither
+   * its price nor its candles. Their volume still counts.
+   */
   add(t: Trade, ord: number, now = Date.now()): boolean {
     this.roll(now)
-    const latest = ord > this.lastOrd
+    const newer = ord > this.lastOrd
+    if (t.liquidity !== null && newer && (this.mainPool === null || t.pool === this.mainPool || t.liquidity > (this.liquidityUsd ?? 0))) {
+      this.mainPool = t.pool
+      this.liquidityUsd = t.liquidity
+    }
+    const latest = newer && (this.mainPool === null || t.pool === this.mainPool)
     if (latest && t.priceUsd !== null) {
       this.lastOrd = ord
       this.priceUsd = t.priceUsd
@@ -42,12 +53,8 @@ export class TokenState {
       this.latestBlock = t.blockNumber
       this.latestTs = t.timestamp
     }
-    if (this.firstPriceUsd === null && t.priceUsd !== null) this.firstPriceUsd = t.priceUsd
+    if (this.firstPriceUsd === null && t.priceUsd !== null && latest) this.firstPriceUsd = t.priceUsd
     this.lastTradeAt = now
-    if (t.liquidity !== null && latest && (this.mainPool === null || t.pool === this.mainPool || t.liquidity > (this.liquidityUsd ?? 0))) {
-      this.mainPool = t.pool
-      this.liquidityUsd = t.liquidity
-    }
     const m = Math.floor(t.timestamp / MIN_MS)
     const nowMin = Math.floor(now / MIN_MS)
     if (m <= nowMin - SLOTS || m > nowMin + 1) return latest // outside the 24h window
@@ -57,7 +64,7 @@ export class TokenState {
     this.ring[base + F_VOL] += usd; this.vol24 += usd
     if (t.side === 'BUY') { this.ring[base + F_BVOL] += usd; this.buyVol24 += usd; this.ring[base + F_BUYS]++; this.buys24++ }
     else if (t.side === 'SELL') { this.ring[base + F_SVOL] += usd; this.sellVol24 += usd; this.ring[base + F_SELLS]++; this.sells24++ }
-    if (t.priceUsd !== null && ord > this.ring[base + F_ORD]) { this.ring[base + F_CLOSE] = t.priceUsd; this.ring[base + F_ORD] = ord }
+    if (t.priceUsd !== null && (this.mainPool === null || t.pool === this.mainPool) && ord > this.ring[base + F_ORD]) { this.ring[base + F_CLOSE] = t.priceUsd; this.ring[base + F_ORD] = ord }
     return latest
   }
 

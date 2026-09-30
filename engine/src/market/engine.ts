@@ -73,8 +73,9 @@ export class MarketEngine {
     this.hot.pushTrade(t.token, wire)
     this.history.trade(t)
 
+    // Candles follow the coin's price: its main pool (a side pool's price is not the coin's).
     let cr: ApplyResult | null = null
-    if (t.priceUsd !== null) {
+    if (t.priceUsd !== null && (st.mainPool === null || t.pool === st.mainPool)) {
       cr = this.candles.apply(t.token, t.priceUsd, t.usdValue ?? 0, t.timestamp, ord, priceBefore)
       for (const c of cr.completed) this.history.candle(t.token, c.interval, c.candle)
       for (const r of cr.repair) this.history.repair(t.token, r.interval, r.bucket)

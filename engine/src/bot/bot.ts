@@ -87,18 +87,25 @@ export class Bot implements EngineObserver {
   onTrade(t: Trade, ctx: { replay: boolean }) {
     const meta = this.o.engine.metas.get(t.token)
     if (!meta || t.timestamp - meta.timestamp > WATCH_MS) return
-    this.tapes.add(t.token, tapeTrade(t))
+    // Only the main pool's trades are the coin's price (a side pool's trade is
+    // still a real buyer or seller). Paper stops fired on a side pool's price once.
+    const mainPool = this.o.engine.tokens.get(t.token)?.mainPool
+    const priced = !mainPool || t.pool === mainPool
+    this.tapes.add(t.token, { ...tapeTrade(t), price: priced ? t.priceUsd : null })
     let path = this.paths.get(t.token)
     if (!path) { path = new PricePath(meta.timestamp); this.paths.set(t.token, path) }
-    path.add(t.timestamp, t.priceUsd, t.side, t.usdValue ?? 0)
+    if (priced) path.add(t.timestamp, t.priceUsd, t.side, t.usdValue ?? 0)
     if (ctx.replay || this.o.mode === 'off') return
     const now = Date.now()
+    // The creator selling, in any pool, closes a scalp at the coin's price after the sale.
     const creatorSold = t.side === 'SELL' && !!meta.creator && t.wallet?.toLowerCase() === meta.creator.toLowerCase()
+    const price = this.o.engine.tokens.get(t.token)?.priceUsd ?? null
     for (const p of this.positions) {
-      if (p.status !== 'open' || p.token !== t.token || !t.priceUsd) continue
-      if (creatorSold && this.params(p.strategy).exitOnCreatorSell) this.fills(p, closeNow(p, t.priceUsd, now, 'creator'))
-      else this.fills(p, onPrice(p, t.priceUsd, now, this.params(p.strategy)))
+      if (p.status !== 'open' || p.token !== t.token || !price) continue
+      if (creatorSold && this.params(p.strategy).exitOnCreatorSell) this.fills(p, closeNow(p, price, now, 'creator'))
+      else if (priced) this.fills(p, onPrice(p, price, now, this.params(p.strategy)))
     }
+    if (!priced) return
     if (now - (this.lastEval.get(t.token) ?? 0) >= EVAL_EVERY_MS && !this.evaluating.has(t.token)) {
       this.lastEval.set(t.token, now)
       this.evaluating.add(t.token)

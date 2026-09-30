@@ -80,6 +80,30 @@ describe('TokenState', () => {
     expect(s.stats(now).trades24).toBe(2)
   })
 
+  test('a side pool moves neither the price nor the 24h change, but its volume counts', () => {
+    // Seen on mainnet (2026-09-30): an arbitrage bot bought an Argus coin in a
+    // second pool charging an 80% fee at a fifth of its price, then sold it in
+    // the main pool. The coin's price must stay the main pool's.
+    const s = new TokenState(T)
+    const now = Date.now()
+    s.add(trade({ pool: 'main', priceUsd: 1.6e-5, liquidity: 12_000 }), 10, now)
+    expect(s.add(trade({ pool: 'side', priceUsd: 3.2e-6, liquidity: 50, usdValue: 0.02 }), 11, now)).toBe(false)
+    expect(s.stats(now).priceUsd).toBe(1.6e-5)
+    expect(s.stats(now).chg.m5).toBe(0)
+    expect(s.stats(now).trades24).toBe(2)
+    expect(s.add(trade({ pool: 'main', priceUsd: 1.7e-5, liquidity: 12_000 }), 12, now)).toBe(true)
+    expect(s.stats(now).priceUsd).toBe(1.7e-5)
+  })
+
+  test('a deeper pool becomes the main pool and sets the price', () => {
+    const s = new TokenState(T)
+    const now = Date.now()
+    s.add(trade({ pool: 'curve', priceUsd: 1, liquidity: 5_000 }), 10, now)
+    expect(s.add(trade({ pool: 'graduated', priceUsd: 1.1, liquidity: 20_000 }), 11, now)).toBe(true)
+    expect(s.mainPool).toBe('graduated')
+    expect(s.stats(now).priceUsd).toBe(1.1)
+  })
+
   test('trades roll out of the 24h window', () => {
     const s = new TokenState(T)
     const t0 = Date.now()
