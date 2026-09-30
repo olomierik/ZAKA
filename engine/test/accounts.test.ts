@@ -5,7 +5,7 @@
 // (bot/userLive.ts) against a stand-in wallet, and the HTTP routes
 // (ws/botApi.ts).
 import { describe, expect, test } from 'bun:test'
-import type { Address, Hex } from 'viem'
+import { pad, toHex, type Address, type Hex } from 'viem'
 import type { MeResponse } from '../../api/_marketProtocol'
 import { MemoryMailer, NoMailer } from '../src/bot/mailer'
 import { PaperAccounts, slugOf, type PaperAccount, type PaperSignal } from '../src/bot/paperAccounts'
@@ -17,6 +17,9 @@ import type { PoolInfo } from '../src/dex/pools'
 import { USDC20, type LiveExecutor } from '../src/trading/live'
 import { openPosition, recordSell, STRATEGIES, type Position } from '../src/trading/paper'
 import { botApi } from '../src/ws/botApi'
+import type { Rpc } from '../src/chain/http'
+
+const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
 
 const now = Date.UTC(2026, 8, 30, 12)
 const settle = () => new Promise(r => setTimeout(r, 30))
@@ -110,10 +113,10 @@ function stubWallet(o: { balance: number; sellAt: number }) {
   return { calls, exec: exec as unknown as LiveExecutor, o }
 }
 
-function setupBots(o: { live?: boolean; balance?: number; sellAt?: number } = {}) {
+function setupBots(o: { live?: boolean; balance?: number; sellAt?: number; rpc?: Rpc } = {}) {
   const store = new MemoryBotStore()
   const wallet = stubWallet({ balance: o.balance ?? 100, sellAt: o.sellAt ?? 1.2 })
-  const live = new UserLive({ vault: o.live === false ? null : new WalletVault('11'.repeat(32)), makeExec: () => wallet.exec, pools: () => pool })
+  const live = new UserLive({ vault: o.live === false ? null : new WalletVault('11'.repeat(32)), makeExec: () => wallet.exec, pools: () => pool, rpc: o.rpc })
   let price = 1
   const accounts = new PaperAccounts({ store, priceOf: () => price, params: s => STRATEGIES[s], live })
   return { store, accounts, wallet, live, setPrice: (p: number) => { price = p } }
@@ -201,10 +204,11 @@ describe('live: the same bot, from paper to its own wallet', () => {
     expect(r).toMatchObject({ ok: true, trades: 20 })
     expect(r.winRate).toBe(0.75)
   })
-  test('going live needs the engine\'s secret, a verified owner, the record, a wallet and $10 in it', async () => {
+  test('going live needs the engine\'s secret, a signed-in owner, the record, a wallet and $10 in it (no verified email)', async () => {
     expect(await readyBot({ live: false }).accounts.setMode(readyBot({ live: false }).a, 'live', owner, now)).toMatch(/BOT_WALLET_SECRET/)
     const { accounts, a, wallet } = readyBot({ balance: 5 })
-    expect(await accounts.setMode(a, 'live', { verified: false }, now)).toMatch(/verify your email/)
+    expect(await accounts.setMode(a, 'live', null, now)).toMatch(/sign in/)
+    expect(await accounts.setMode(a, 'live', { verified: false }, now)).toMatch(/make its live wallet first/)
     expect(await accounts.setMode(a, 'live', owner, now)).toMatch(/make its live wallet first/)
     expect(accounts.createWallet(a, now)).toBeNull()
     expect(a.live!.address).toMatch(/^0x[0-9a-f]{40}$/)
@@ -341,6 +345,46 @@ describe('the HTTP routes', () => {
     const other = (await call('POST', '/v1/auth/signup', { email: 'g@x.io', passcode: 'Ok43' })).body.token as string
     expect((await call('POST', '/v1/me/bots/route-bot', { action: 'stop' }, other)).status).toBe(404) // not theirs
     expect((await call('POST', '/v1/auth/login', { email: 'f@x.io', passcode: 'Ok42' })).status).toBe(200)
+  })
+
+  test('without email: live with no verified email, and money out only with the passcode, back to a wallet that funded the bot', async () => {
+    const funder = '0x' + 'f1'.repeat(20), dust = '0x' + 'd0'.repeat(20), stranger = '0x' + 'cd'.repeat(20)
+    // The chain, as the engine reads it: $40 from the funder, $0.50 from a dust sender, $30 from a contract (a sale).
+    const router = '0x' + 'ee'.repeat(20)
+    const rpc: Rpc = {
+      call: async <T>(method: string) => (method === 'eth_blockNumber' ? '0x200000' : null) as T,
+      batch: async <T>(calls: { method: string; params: unknown[] }[]) => calls.map((c, i) => {
+        if (c.method === 'eth_getCode') return ((c.params[0] as string) === router ? '0x6080' : '0x') as T
+        const f = c.params[0] as { topics: string[] }
+        if (i > 0) return [] as T
+        const log = (from: string, usd: number, tx: string) => ({ address: USDC20, topics: [TRANSFER_TOPIC, pad(from as Hex), f.topics[2]], data: toHex(BigInt(Math.round(usd * 1e6))), blockNumber: '0x1', transactionHash: tx, logIndex: '0x0' })
+        return [log(funder, 40, '0xa1'), log(dust, 0.5, '0xa2'), log(router, 30, '0xa3')] as T
+      }),
+    }
+    const { store, accounts, wallet } = setupBots({ rpc, balance: 100 })
+    const users = new Users({ store, mailer: new NoMailer(), secret: 's' })
+    const call = async (method: string, path: string, body?: unknown, token?: string) => {
+      const req = new Request(`http://engine${path}`, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) })
+      const res = await botApi(req, new URL(req.url), '9.9.9.9', { users, accounts }, (status, b) => new Response(JSON.stringify(b), { status }))
+      return { status: res.status, body: await res.json() as Record<string, unknown> }
+    }
+    const token = (await call('POST', '/v1/auth/signup', { email: 'h@x.io', passcode: 'Ok42' })).body.token as string
+    await call('POST', '/v1/me/bots', { name: 'No Mail', strategies: ['scalp'] }, token)
+    const a = accounts.bySlugOf('no-mail')!
+    for (let i = 0; i < READY.minTrades; i++) a.positions.push(paperTrade(i, i % 4 !== 0))
+    expect((await call('POST', '/v1/me/bots/no-mail', { action: 'live-wallet' }, token)).status).toBe(200)
+    expect(await call('POST', '/v1/me/bots/no-mail', { action: 'mode', mode: 'live' }, token)).toMatchObject({ status: 200, body: { account: { mode: 'live' } } })
+    // The funders: the $40 wallet; not the $0.50 one (under $1 and 5%), not the contract.
+    expect((await call('GET', '/v1/me/bots/no-mail/funders', undefined, token)).body).toEqual({ funders: [{ address: funder, usd: 40 }], known: true })
+    const out = (to: string, passcode: string) => call('POST', '/v1/me/bots/no-mail/withdraw', { to, amountUsd: 10, passcode }, token)
+    expect(await out(funder, 'Nope')).toMatchObject({ status: 401, body: { error: 'wrong passcode' } })
+    expect((await out(stranger, 'Ok42')).body.error).toMatch(/goes back only to a wallet that funded this bot/)
+    expect((await out(dust, 'Ok42')).body.error).toMatch(/funded this bot/)
+    expect(await out(funder, 'Ok42')).toMatchObject({ status: 200, body: { hash: '0xf' } })
+    expect(wallet.calls[wallet.calls.length - 1]).toBe(`send 10 to ${funder}`)
+    // Wrong passcodes count toward the sign-in lockout.
+    for (let i = 0; i < AUTH.maxFails; i++) await out(funder, 'Nope')
+    expect((await out(funder, 'Ok42')).body.error).toMatch(/too many wrong passcodes/)
   })
 })
 

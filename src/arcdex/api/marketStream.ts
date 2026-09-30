@@ -240,6 +240,12 @@ export const botWithdrawCode = (slug: string, to: string, amountUsd: number) =>
   botFetch<{ message: string }>(`/v1/me/bots/${encodeURIComponent(slug)}/withdraw/code`, { method: 'POST', body: { to, amountUsd }, auth: true }).then(r => r.message)
 export const botWithdraw = (slug: string, code: string) =>
   botFetch<{ hash: string; account: PaperAccountView }>(`/v1/me/bots/${encodeURIComponent(slug)}/withdraw`, { method: 'POST', body: { code }, auth: true })
+/** Without email: the account passcode, and only back to a wallet that funded the bot (`botFunders`). */
+export const botWithdrawPasscode = (slug: string, to: string, amountUsd: number, passcode: string) =>
+  botFetch<{ hash: string; account: PaperAccountView }>(`/v1/me/bots/${encodeURIComponent(slug)}/withdraw`, { method: 'POST', body: { to, amountUsd, passcode }, auth: true })
+/** The wallets that funded a bot's live wallet (read from the chain by the engine). */
+export const botFunders = (slug: string) =>
+  botFetch<{ funders: { address: string; usd: number }[]; known: boolean }>(`/v1/me/bots/${encodeURIComponent(slug)}/funders`, { auth: true })
 /** The marketplace: every bot, public. */
 export const getMarket = (sort: 'pnl' | 'winrate' | 'new' | 'live' = 'pnl', limit = 100) => botFetch<{ bots: MarketBot[]; total: number }>(`/v1/bots?sort=${sort}&limit=${limit}`)
 export const getMarketBot = (slug: string) => botFetch<{ bot: MarketBotDetail }>(`/v1/bots/${encodeURIComponent(slug)}`).then(r => r.bot)

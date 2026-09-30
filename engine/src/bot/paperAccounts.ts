@@ -349,7 +349,7 @@ export class PaperAccounts {
     return null
   }
 
-  /** Paper ↔ live for the same bot. Live needs a signed-in owner with a verified email, a good paper record and a funded wallet. */
+  /** Paper ↔ live for the same bot. Live needs a signed-in owner, a good paper record and a funded wallet (no verified email since 2026-09-30, the owner's request). */
   async setMode(a: PaperAccount, mode: 'paper' | 'live', owner: { verified: boolean } | null, now = Date.now()): Promise<string | null> {
     if (mode === 'paper') {
       if (a.mode === 'paper') return null
@@ -362,7 +362,6 @@ export class PaperAccounts {
     const av = this.o.live?.available ?? { ok: false, why: 'live trading isn\'t available on this engine' }
     if (!av.ok) return av.why
     if (!owner || !a.ownerId) return 'sign in: a live bot belongs to an account'
-    if (!owner.verified) return 'verify your email first: it confirms every withdrawal from the bot\'s wallet'
     const r = readiness(a.positions)
     if (!r.ok) return `not ready yet: it needs ${r.need.minTrades}+ closed paper trades (has ${r.trades}), a ${Math.round(r.need.minWinRate * 100)}%+ win rate (${r.winRate === null ? '—' : `${Math.round(r.winRate * 100)}%`}), a profit factor of ${r.need.minProfitFactor}+ (${r.profitFactor === null ? '—' : r.profitFactor.toFixed(2)}) and a net profit (${money(r.pnlUsd)})`
     if (!a.live) return 'make its live wallet first, then send it USDC on Arc'
@@ -399,7 +398,15 @@ export class PaperAccounts {
     return Math.max(0, Math.floor((bal - (open ? USER_LIVE.reserveUsd : USER_LIVE.reserveUsd / 5) - owed) * 100) / 100)
   }
 
-  /** Sends USDC from the bot's wallet (the owner confirmed it by email). */
+  /** The wallets that funded the bot's live wallet: where a withdrawal without an emailed code may go. */
+  async funders(a: PaperAccount, now = Date.now()): Promise<{ address: string; usd: number }[] | null> {
+    if (!a.live || !this.o.live) return null
+    const f = await this.o.live.funders(a.live, now)
+    this.save(a, now)
+    return f
+  }
+
+  /** Sends USDC from the bot's wallet (the owner confirmed it: an emailed code, or the passcode to a wallet that funded it). */
   async withdraw(a: PaperAccount, to: Address, usd: number, now = Date.now()): Promise<{ hash: string } | { error: string }> {
     const t = this.trader(a)
     if (!t || !this.o.live) return { error: 'this bot has no live wallet' }

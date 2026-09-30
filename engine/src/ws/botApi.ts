@@ -18,6 +18,9 @@
 //   GET  /v1/me/bots/:slug/trades?limit&before    its whole trade log
 //   POST /v1/me/bots/:slug/withdraw/code {to, amountUsd}   emails a code for exactly that
 //   POST /v1/me/bots/:slug/withdraw {code}        sends it
+//   POST /v1/me/bots/:slug/withdraw {to, amountUsd, passcode}   no email: the account
+//                                                 passcode, and only to a wallet that funded the bot
+//   GET  /v1/me/bots/:slug/funders                the wallets that funded its live wallet
 //   GET  /v1/bots?sort=pnl|winrate|new|live       the marketplace
 //   GET  /v1/bots/:slug                           one bot, public: positions, trades, what it learned
 
@@ -128,7 +131,7 @@ export async function botApi(req: Request, url: URL, ip: string, d: { users: Use
     return json(200, { account: accounts.view(r, now) })
   }
 
-  const m = /^\/v1\/me\/bots\/([^/]+)(\/trades|\/withdraw\/code|\/withdraw)?$/.exec(p)
+  const m = /^\/v1\/me\/bots\/([^/]+)(\/trades|\/withdraw\/code|\/withdraw|\/funders)?$/.exec(p)
   const a: PaperAccount | null = m ? accounts.owned(u.id, decode(m[1])) : null
   if (!m) return json(404, { error: 'not found' })
   if (!a) return json(404, { error: 'no bot of yours by that name' })
@@ -166,8 +169,34 @@ export async function botApi(req: Request, url: URL, ip: string, d: { users: Use
       'Didn\'t ask for this? Don\'t enter the code, and change your passcode: someone may know it.', undefined, now)
     return bad ? json(400, { error: bad }) : json(200, { ok: true, message: `A code is on its way to ${u.email}.` })
   }
+  if (m[2] === '/funders' && req.method === 'GET') {
+    const funders = await accounts.funders(a, now)
+    accounts.flush()
+    return json(200, { funders: funders ?? [], known: funders !== null }, 'no-store')
+  }
+  const body = m[2] === '/withdraw' && req.method === 'POST' ? await readBody(req) : null
+  if (m[2] === '/withdraw' && req.method === 'POST' && body?.passcode !== undefined) {
+    // Without an emailed code (2026-09-30): the account passcode, and only back to a wallet that funded the bot.
+    const b = body
+    const to = typeof b?.to === 'string' ? b.to.trim().toLowerCase() : ''
+    const usd = Math.floor(Number(b?.amountUsd) * 100) / 100
+    if (!/^0x[0-9a-f]{40}$/.test(to)) return json(400, { error: 'enter an Arc wallet address (0x…)' })
+    const wrong = await users.checkPasscode(u, b?.passcode, now)
+    if (wrong) return json(401, { error: wrong })
+    const funders = await accounts.funders(a, now)
+    if (funders === null) return json(400, { error: 'this bot has no live wallet, or its deposits can’t be read right now' })
+    if (!funders.some(f => f.address === to)) {
+      return json(400, { error: funders.length
+        ? `without an emailed code, money goes back only to a wallet that funded this bot: ${funders.map(f => f.address).join(', ')}`
+        : 'no wallet has funded this bot yet (at least $1 of USDC on Arc), so there’s nowhere to send it back to' })
+    }
+    const sent = await accounts.withdraw(a, to as `0x${string}`, usd, now)
+    if ('error' in sent) return json(400, { error: sent.error })
+    metrics.inc('bot_withdrawals')
+    return json(200, { hash: sent.hash, account: accounts.view(a, now) })
+  }
   if (m[2] === '/withdraw' && req.method === 'POST') {
-    const b = await readBody(req)
+    const b = body
     const r = users.confirm(u, `withdraw:${a.id}`, b?.code, now)
     if (typeof r !== 'string') return json(400, { error: r.error })
     const { to, usd } = JSON.parse(r) as { to: `0x${string}`; usd: number }

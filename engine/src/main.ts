@@ -216,6 +216,7 @@ async function main() {
   const userLive = new UserLive({
     vault, why: walletSecret && !vault ? 'the engine\'s wallet secret is misconfigured' : null,
     makeExec: privateKey => new LiveExecutor({ privateKey, readUrls: cfg.httpUrls, sendUrl: cfg.live.sendUrl }),
+    rpc,
     pools: token => { const mp = eng.tokens.get(token)?.mainPool; return mp ? pools.get(mp) ?? null : null },
   })
   log.info('visitors\' bots', { email: mailer.enabled, live: !!vault })

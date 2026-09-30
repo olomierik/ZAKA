@@ -23,15 +23,21 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
 import type { BotControl, BotFilters, BotPosition, BotStatus, LearnNote, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, SignalOutcomes, SignalRule, TradeSignal } from '../../../api/_marketProtocol'
 import { getLaunchpadColor } from '../api/radardex'
-import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botWithdraw, botWithdrawCode, engineEnabled, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse } from '../api/marketStream'
+import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botFunders, botWithdraw, botWithdrawCode, botWithdrawPasscode, engineEnabled, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse } from '../api/marketStream'
 import { AgoText } from '../components/Ago'
+import { openConnectModal } from '../components/ConnectWallet'
+import { PasscodeField, useWithdrawGuard } from '../components/WithdrawGuard'
+import { notifyBalances } from '../lib/balances'
+import { openTradingWallet } from '../lib/tradingWalletSheet'
+import { txErrorText } from '../lib/tx'
+import { useCash, useSendUsdc } from '../lib/usdc'
 import { cardFromAccount, cardFromMarket, ShareBotButton } from '../components/BotShare'
 import { profitNotifyOn, setProfitNotify } from '../components/ProfitAlerts'
 import { ARCD_TIERS, arcdAmount, TIERS_ENFORCED } from '../lib/tiers'
 import type { Page } from '../App'
 import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
 import { N_, t as T } from '../lib/i18n'
-import { shortAddr, useEmbeddedAddress } from '../lib/identity'
+import { shortAddr, useEmbeddedAddress, useTrader } from '../lib/identity'
 
 type Tab = 'all' | 'snipe' | 'scalp' | 'secondLeg'
 type Strategy = TradeSignal['strategy']
@@ -108,7 +114,6 @@ export default function SignalsPage({ navigate, view: pageView, bot }: { navigat
     <div className="token-page content-page">
       <h2 className="page-h" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         ⚡ {T('Autotrade')}
-        {engineEnabled && !down && stats && <ModeBadge mode={mode} />}
       </h2>
       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.5 }}>
         {T('Autotrade scans every new coin on every Arc launchpad, rejects the unsafe ones and trades the rest with the strategies you choose. Start with virtual USDC: paper trading, no money moves.')}
@@ -333,12 +338,11 @@ function MyBots({ navigate }: { navigate: (p: Page) => void }) {
   return (
     <>
       <AccountBar me={me} onChanged={() => void reload()} />
-      <TiersNote />
       {bots.length > 0 && (
         <div className="at-botbar">
           {bots.map(b => (
             <button key={b.slug} className={`at-chip${b.slug === acct?.slug && !creating ? ' on' : ''}`} onClick={() => { setSel(b.slug ?? null); setCreating(false) }}>
-              🤖 {b.name}{b.mode === 'live' ? ` · ${T('LIVE')}` : ''}{b.running ? ' ●' : ''}
+              <span className={`at-dot${b.running ? ' on' : ''}${b.mode === 'live' ? ' live' : ''}`} />{b.name}{b.mode === 'live' ? <span className="at-chip-live">{T('LIVE')}</span> : null}
             </button>
           ))}
           {bots.length < me.maxBots && <button className={`at-chip${creating ? ' on' : ''}`} onClick={() => setCreating(true)}>+ {T('New bot')}</button>}
@@ -347,6 +351,7 @@ function MyBots({ navigate }: { navigate: (p: Page) => void }) {
       {creating || !acct
         ? <CreateBot busy={busy} loading={false} error={error} onCreate={b => void create(b)} onCancel={bots.length ? () => setCreating(false) : undefined} />
         : <BotDashboard key={acct.slug} acct={acct} act={act} busy={busy} error={error} setError={setError} me={me} onMe={() => void reload()} navigate={navigate} />}
+      <TiersNote />
     </>
   )
 }
@@ -454,96 +459,488 @@ function AccountBar({ me, onChanged }: { me: MeResponse; onChanged: () => void }
   )
 }
 
-/** One of the owner's bots: named, its strategies and virtual USDC; it sizes its own trades, gets out of rugs, learns from its losses, and can go live. */
-function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate }: { acct: PaperAccountView; act: (a: PaperAction) => Promise<void>; busy: boolean; error: string | null; setError: (e: string | null) => void; me: MeResponse; onMe: () => void; navigate: (p: Page) => void }) {
-  const [amount, setAmount] = useState('1000')
-  const [resetting, setResetting] = useState(false)
-  const [renaming, setRenaming] = useState<string | null>(null)
-  const [logTab, setLogTab] = useState<'activity' | 'skipped'>('activity')
+type BotTab = 'overview' | 'trades' | 'strategy' | 'learning' | 'activity' | 'settings'
+type WalletPanel = 'fund-paper' | 'fund-live' | 'withdraw' | null
 
-  const pnl = acct.equity - acct.deposited
-  const open = acct.positions.filter(p => p.status === 'open')
-  const toggle = (s: Strategy) => {
-    const next = acct.strategies.includes(s) ? acct.strategies.filter(x => x !== s) : [...acct.strategies, s]
-    if (next.length) void act({ action: 'strategies', strategies: next })
-    else setError(T('Keep at least one strategy.'))
-  }
-  // Older engines don't send these yet: the page shows what it gets.
-  const tuning = acct.tuning as PaperAccountView['tuning'] | undefined
+/**
+ * One of the owner's bots (redesigned 2026-09-30, owner: "PAPER to LIVE on
+ * one toggle button, fund the live and paper wallets, a more professional
+ * bot interface that's easy to navigate"). The header holds the bot, its one
+ * Paper/Live switch and Start/Stop; under it, its two wallets side by side
+ * (paper: virtual USDC; live: its own wallet on Arc), each with Fund; then
+ * the book in use in four numbers; then tabs for everything else.
+ */
+function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate }: { acct: PaperAccountView; act: (a: PaperAction) => Promise<void>; busy: boolean; error: string | null; setError: (e: string | null) => void; me: MeResponse; onMe: () => void; navigate: (p: Page) => void }) {
+  const [tab, setTab] = useState<BotTab>('overview')
+  const [panel, setPanel] = useState<WalletPanel>(null)
+  const [goLive, setGoLive] = useState(false)
+  const [toPaper, setToPaper] = useState(false)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const isLive = acct.mode === 'live'
+  const live = acct.live ?? null
+  const avail = acct.liveAvailable ?? me.liveAvailable
+  const cleanRename = renaming?.replace(/\s+/g, ' ').trim() ?? ''
   const prot = acct.protections as PaperAccountView['protections'] | undefined
   const paused = prot?.pausedUntil ?? null
-  const cleanRename = renaming?.replace(/\s+/g, ' ').trim() ?? ''
+  const open = acct.positions.filter(p => p.status === 'open').sort((a, b) => Number(b.mode === 'live') - Number(a.mode === 'live') || b.openedAt - a.openedAt)
+  const recent = acct.positions.filter(p => p.status === 'closed').sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)).slice(0, 5)
+
+  // The switch: to live opens the checklist (and asks to confirm); back to paper asks once.
+  const flip = () => {
+    setError(null)
+    if (isLive) { setToPaper(t => !t); setGoLive(false) } else { setGoLive(g => !g); setToPaper(false) }
+  }
+  const openPanel = (p: WalletPanel) => setPanel(cur => (cur === p ? null : p))
+
+  const paperPnl = acct.equity - acct.deposited
+  const stats: [string, string, string | undefined, string | undefined][] = isLive && live
+    ? [
+        [T('Live wallet'), usd(live.balanceUsd), T('real USDC on Arc'), undefined],
+        [T('Live P&L'), usd(live.pnlUsd), T('after gas and fees'), live.pnlUsd >= 0 ? 'var(--green)' : '#fca5a5'],
+        [T('Win rate'), live.winRate === null ? '—' : `${Math.round(live.winRate * 100)}%`, T('{n} live trades', { n: live.closed }), undefined],
+        [T('Open trades'), String(live.open), T('fees paid {v}', { v: usd(live.feesPaidUsd) }), undefined],
+      ]
+    : [
+        [T('Account value'), usd(acct.equity), T('{v} in open trades', { v: usd(acct.openValue) }), undefined],
+        [T('Profit / loss'), usd(paperPnl), T('on {d} deposited', { d: usd(acct.deposited, 0) }), paperPnl >= 0 ? 'var(--green)' : '#fca5a5'],
+        [T('Win rate'), acct.stats.winRate === null ? '—' : `${(acct.stats.winRate * 100).toFixed(0)}%`, T('{w} won · {l} lost', { w: acct.stats.wins, l: acct.stats.losses }), undefined],
+        [T('Open trades'), String(acct.stats.open), T('{n} closed', { n: acct.stats.closed }), undefined],
+      ]
+  const TABS: [BotTab, string][] = [['overview', T('Overview')], ['trades', T('Trades')], ['strategy', T('Strategy')], ['learning', T('Learning')], ['activity', T('Activity')], ['settings', T('Settings')]]
 
   return (
     <>
-      <div className="at-card" style={{ marginTop: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span className={`at-run${acct.running ? ' on' : ''}`}>{acct.running ? `● ${T('Running')}` : T('Stopped')}</span>
-          {renaming === null ? (
-            <>
-              <b className="at-bot-name">🤖 {acct.name ?? T('My bot')}</b>
-              <button className="link-btn" style={{ fontSize: '0.72rem' }} onClick={() => setRenaming(acct.name ?? '')} aria-label={T('Rename')}>✎ {T('Rename')}</button>
-            </>
-          ) : (
-            <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-              <input className="at-input at-name" value={renaming} maxLength={24} autoFocus onChange={e => setRenaming(e.target.value)} aria-label={T('Bot name')} />
-              <button className="btn-ghost" disabled={busy || !BOT_NAME.test(cleanRename)} onClick={() => { void act({ action: 'rename', name: cleanRename }); setRenaming(null) }}>{T('Save')}</button>
-              <button className="link-btn" onClick={() => setRenaming(null)}>{T('Cancel')}</button>
-            </span>
-          )}
-          {acct.mode === 'live' ? <Pill color={LIVE_RED}>● {T('LIVE')}</Pill> : <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('Paper account')} · {T('virtual USDC')}</span>}
-          {acct.slug && <button className="link-btn" style={{ fontSize: '0.72rem' }} onClick={() => navigate({ name: 'signals', view: 'market', bot: acct.slug })}>{T('Public page')} ↗</button>}
-          {acct.slug && (acct.stats.closed > 0 || acct.deposited > 0) && <ShareBotButton className="at-share" get={() => cardFromAccount(acct)} mine />}
-          {acct.running && acct.startedAt && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>· {T('started')} <AgoText ts={acct.startedAt} /></span>}
+      <div className={`at-card at-botcard${isLive ? ' live' : ''}`}>
+        <div className="at-bothead">
+          <div className="at-bothead-id">
+            {renaming === null ? (
+              <div className="at-bot-title">
+                <b className="at-bot-name">{acct.name ?? T('My bot')}</b>
+                <span className={`at-run${acct.running ? ' on' : ''}`}>{acct.running ? `● ${T('Running')}` : T('Stopped')}</span>
+              </div>
+            ) : (
+              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input className="at-input at-name" value={renaming} maxLength={24} autoFocus onChange={e => setRenaming(e.target.value)} aria-label={T('Bot name')} />
+                <button className="btn-ghost" disabled={busy || !BOT_NAME.test(cleanRename)} onClick={() => { void act({ action: 'rename', name: cleanRename }); setRenaming(null) }}>{T('Save')}</button>
+                <button className="link-btn" onClick={() => setRenaming(null)}>{T('Cancel')}</button>
+              </span>
+            )}
+            <div className="at-bothead-sub">
+              <span>{acct.strategies.map(s => T(STRATEGY[s])).join(' · ')}</span>
+              {acct.running && acct.startedAt && <span>· {T('started')} <AgoText ts={acct.startedAt} /></span>}
+              {acct.slug && <button className="link-btn" onClick={() => navigate({ name: 'signals', view: 'market', bot: acct.slug })}>{T('Public page')} ↗</button>}
+              {acct.slug && (acct.stats.closed > 0 || acct.deposited > 0) && <ShareBotButton className="at-share" get={() => cardFromAccount(acct)} mine />}
+            </div>
+          </div>
+          <div className="at-bothead-ctl">
+            <ModeSwitch live={isLive} disabled={busy} onFlip={flip} />
+            <button className={`at-startstop${acct.running ? ' stop' : ''}`} disabled={busy} onClick={() => void act({ action: acct.running ? 'stop' : 'start' })}>
+              {acct.running ? `■ ${T('Stop')}` : `▶ ${T('Start')}`}
+            </button>
+          </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginTop: 10 }}>
-          <Stat label={T('Account value')} value={usd(acct.equity)} />
-          <Stat label={T('Cash')} value={usd(acct.cash)} sub={T('{v} in open trades', { v: usd(acct.openValue) })} />
-          <Stat label={T('Profit / loss')} value={usd(pnl)} color={pnl >= 0 ? 'var(--green)' : '#fca5a5'} sub={T('on {d} deposited', { d: usd(acct.deposited, 0) })} />
-          <Stat label={T('Win rate')} value={acct.stats.winRate === null ? '—' : `${(acct.stats.winRate * 100).toFixed(0)}%`} sub={T('{w} won · {l} lost', { w: acct.stats.wins, l: acct.stats.losses })} />
+
+        {goLive && !isLive && <GoLive acct={acct} me={me} act={act} busy={busy} onFund={() => setPanel('fund-live')} onClose={() => setGoLive(false)} />}
+        {toPaper && isLive && (
+          <div className="at-note warn">
+            {T('Back to paper? No new live trades; its open live trades are still managed until they close.')}
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <button className="btn-ghost" disabled={busy} onClick={() => { setToPaper(false); void act({ action: 'mode', mode: 'paper' }) }}>{T('Yes, back to paper')}</button>
+              <button className="link-btn" onClick={() => setToPaper(false)}>{T('Cancel')}</button>
+            </div>
+          </div>
+        )}
+
+        <div className="at-wallets">
+          <div className={`at-wcard${!isLive ? ' on' : ''}`}>
+            <div className="at-wcard-top"><span>🧪 {T('Paper wallet')}</span>{!isLive && <span className="at-wcard-use">{T('in use')}</span>}</div>
+            <div className="at-wcard-bal">{usd(acct.cash)}</div>
+            <div className="at-wcard-sub">{T('virtual USDC · no real money')}</div>
+            <div className="at-wcard-actions">
+              <button className={`at-wbtn${panel === 'fund-paper' ? ' on' : ''}`} disabled={busy} onClick={() => openPanel('fund-paper')}>+ {T('Fund')}</button>
+            </div>
+          </div>
+          <div className={`at-wcard live${isLive ? ' on' : ''}`}>
+            <div className="at-wcard-top"><span>💵 {T('Live wallet')}</span>{isLive && <span className="at-wcard-use live">● {T('in use')}</span>}</div>
+            <div className="at-wcard-bal">{live ? usd(live.balanceUsd) : '—'}</div>
+            <div className="at-wcard-sub">{live ? <>{T('real USDC on Arc')} · <CopyAddr addr={live.wallet} /></> : T('its own wallet on Arc, for real USDC')}</div>
+            <div className="at-wcard-actions">
+              {!live
+                ? <button className="at-wbtn" disabled={busy || !avail.ok} title={avail.ok ? undefined : avail.why ?? undefined} onClick={() => void act({ action: 'live-wallet' })}>{T('Create live wallet')}</button>
+                : <>
+                    <button className={`at-wbtn${panel === 'fund-live' ? ' on' : ''}`} onClick={() => openPanel('fund-live')}>+ {T('Fund')}</button>
+                    <button className={`at-wbtn ghost${panel === 'withdraw' ? ' on' : ''}`} onClick={() => openPanel('withdraw')}>{T('Withdraw')}</button>
+                  </>}
+            </div>
+          </div>
         </div>
-        <ProfitNotifySwitch />
+        {panel === 'fund-paper' && <FundPaper busy={busy} onFund={v => void act({ action: 'deposit', amount: v })} onClose={() => setPanel(null)} />}
+        {panel === 'fund-live' && live && <FundLive wallet={live.wallet} minUsd={live.limits.minBalanceUsd} onDone={onMe} onClose={() => setPanel(null)} />}
+        {panel === 'withdraw' && live && <WithdrawLive acct={acct} me={me} onDone={onMe} onClose={() => setPanel(null)} />}
+
+        <div className="at-stats">
+          {stats.map(([label, value, sub, color]) => <Stat key={label} label={label} value={value} sub={sub} color={color} />)}
+        </div>
         {paused && <div className="at-note warn">⏸ {T('Paused after {n} losses in a row: no new trades until {t} while it learns from them.', { n: prot!.pauseAfterLosses, t: new Date(paused).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}</div>}
-
-        <div className="at-label">{T('Deposit virtual USDC')}</div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          {[100, 1_000, 10_000].map(v => <button key={v} className="at-chip" disabled={busy} onClick={() => void act({ action: 'deposit', amount: v })}>+{usd(v, 0)}</button>)}
-          <input className="at-input" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} aria-label={T('Amount')} />
-          <button className="btn-ghost" disabled={busy || !Number(amount)} onClick={() => void act({ action: 'deposit', amount: Number(amount) })}>{T('Deposit')}</button>
-        </div>
-
-        <div className="at-label">{T('Strategies')} <span style={{ fontWeight: 500, color: 'var(--text-muted)' }}>· {T('use one, or several at once')}</span></div>
-        <StrategyPicker selected={acct.strategies} disabled={busy} onToggle={toggle} />
-
-        <div className="at-label">{T('Trade size: automatic')}</div>
-        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-          {T('You don\'t set an amount: each trade is the smallest that locks in its profit target after fees and price impact, and is sold in full there. A pool too thin to pay it is skipped.')}
-        </div>
-        {tuning && acct.strategies.map(s => <TuningLine key={s} s={s} t={tuning[s]} range={acct.targets?.[s] ?? null} />)}
-
-        <button className={`at-big${acct.running ? ' stop' : ''}`} disabled={busy} onClick={() => void act({ action: acct.running ? 'stop' : 'start' })}>
-          {acct.running ? `■ ${T('Stop trading')}` : `▶ ${T('Start trading')}`}
-        </button>
-        {!acct.running && acct.cash < 2 && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>{T('Deposit virtual USDC first.')}</div>}
+        {!acct.running && acct.cash < 2 && !isLive && <div className="at-hint">{T('Fund the paper wallet, then press Start.')}</div>}
         {error && <div className="at-error">⚠ {error}</div>}
       </div>
 
-      <LivePanel acct={acct} act={act} busy={busy} me={me} onMe={onMe} />
+      <div className="at-tabs" role="tablist">
+        {TABS.map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={tab === k} className={`at-tab${tab === k ? ' on' : ''}`} onClick={() => setTab(k)}>
+            {l}{k === 'overview' && open.length ? ` · ${open.length}` : k === 'trades' ? ` · ${acct.tradesLogged ?? acct.stats.closed}` : ''}
+          </button>
+        ))}
+      </div>
 
-      <Section title={T('What {name} learned', { name: acct.name ?? T('your bot') })}>
-        {!acct.learnLog?.length ? <Empty>{T('Nothing yet. After a few closed trades it reads the losing ones and adjusts its filters and take-profit; every change is shown here with the reason, and a change that does worse is rolled back.')}</Empty>
-          : acct.learnLog.map((n, i) => (
-            <div key={`${n.at}:${i}`} className="at-learn">
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                <Pill color={STRATEGY_COLOR[n.strategy]}>{T(STRATEGY[n.strategy])} · v{n.version}</Pill>
-                <Pill color={LEARN_COLOR[n.kind]}>{T(LEARN_KIND[n.kind])}</Pill>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}><AgoText ts={n.at} /></span>
+      {tab === 'overview' && (
+        <>
+          <Section title={T('Open trades') + ` · ${open.length}`}>
+            {open.length === 0 ? <Empty>{acct.running ? T('Waiting for the next signal. The scanner shows what it is checking.') : T('No open trades. Press Start to trade.')}</Empty> : open.map(p => <PositionRow key={p.id} p={p} navigate={navigate} />)}
+          </Section>
+          <Section title={T('Recent trades')}>
+            {recent.length === 0 ? <Empty>{T('Nothing closed yet.')}</Empty> : recent.map(p => <PositionRow key={p.id} p={p} navigate={navigate} />)}
+            {recent.length > 0 && <button className="link-btn" style={{ marginTop: 6 }} onClick={() => setTab('trades')}>{T('All trades')} →</button>}
+          </Section>
+          {acct.events?.[0] && (
+            <Section title={T('Latest')}>
+              {acct.events.slice(0, 3).map((e, i) => <EventLine key={`${e.at}:${i}`} e={e} navigate={navigate} />)}
+              <button className="link-btn" style={{ marginTop: 6 }} onClick={() => setTab('activity')}>{T('All activity')} →</button>
+            </Section>
+          )}
+        </>
+      )}
+
+      {tab === 'trades' && <TradeLog fetchTrades={(limit, before) => botTrades(acct.slug ?? '', limit, before)} name={acct.name ?? 'bot'} total={acct.tradesLogged ?? acct.stats.closed} fallback={acct.positions.filter(p => p.status === 'closed')} navigate={navigate} />}
+
+      {tab === 'strategy' && (
+        <Section title={T('Strategies')}>
+          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '2px 0 8px' }}>{T('Use one, or several at once.')}</div>
+          <StrategyPicker selected={acct.strategies} disabled={busy} onToggle={s => {
+            const next = acct.strategies.includes(s) ? acct.strategies.filter(x => x !== s) : [...acct.strategies, s]
+            if (next.length) void act({ action: 'strategies', strategies: next })
+            else setError(T('Keep at least one strategy.'))
+          }} />
+          <div className="at-label">{T('Trade size: automatic')}</div>
+          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            {T('You don\'t set an amount: each trade is the smallest that locks in its profit target after fees and price impact, and is sold in full there. A pool too thin to pay it is skipped.')}
+          </div>
+          {acct.tuning && acct.strategies.map(s => <TuningLine key={s} s={s} t={acct.tuning[s]} range={acct.targets?.[s] ?? null} />)}
+        </Section>
+      )}
+
+      {tab === 'learning' && (
+        <Section title={T('What {name} learned', { name: acct.name ?? T('your bot') })}>
+          {!acct.learnLog?.length ? <Empty>{T('Nothing yet. After a few closed trades it reads the losing ones and adjusts its filters and take-profit; every change is shown here with the reason, and a change that does worse is rolled back.')}</Empty>
+            : acct.learnLog.map((n, i) => (
+              <div key={`${n.at}:${i}`} className="at-learn">
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Pill color={STRATEGY_COLOR[n.strategy]}>{T(STRATEGY[n.strategy])} · v{n.version}</Pill>
+                  <Pill color={LEARN_COLOR[n.kind]}>{T(LEARN_KIND[n.kind])}</Pill>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}><AgoText ts={n.at} /></span>
+                </div>
+                <div style={{ fontSize: '0.76rem', lineHeight: 1.45, marginTop: 3 }}>{n.text}</div>
               </div>
-              <div style={{ fontSize: '0.76rem', lineHeight: 1.45, marginTop: 3 }}>{n.text}</div>
-            </div>
-          ))}
-      </Section>
+            ))}
+        </Section>
+      )}
 
+      {tab === 'activity' && <ActivityTab acct={acct} navigate={navigate} />}
+
+      {tab === 'settings' && <SettingsTab acct={acct} act={act} busy={busy} onRename={() => setRenaming(acct.name ?? '')} />}
+    </>
+  )
+}
+
+/** The one Paper/Live switch: a single button that flips the bot's mode (live asks first). */
+function ModeSwitch({ live, disabled, onFlip }: { live: boolean; disabled: boolean; onFlip: () => void }) {
+  return (
+    <button className={`at-mode${live ? ' live' : ''}`} role="switch" aria-checked={live} aria-label={T('Paper or live trading')} disabled={disabled} onClick={onFlip}
+      title={live ? T('Trading real USDC. Click to go back to paper.') : T('Paper trading with virtual USDC. Click to trade live.')}>
+      <span className={`at-mode-opt${!live ? ' on' : ''}`}>{T('PAPER')}</span>
+      <span className={`at-mode-opt${live ? ' on' : ''}`}>● {T('LIVE')}</span>
+    </button>
+  )
+}
+
+/** A wallet address, short, that copies itself. */
+function CopyAddr({ addr }: { addr: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button className="link-btn at-copy" title={addr} onClick={() => { void navigator.clipboard?.writeText(addr).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }) }}>
+      {copied ? T('Copied') : shortAddr(addr)} ⧉
+    </button>
+  )
+}
+
+/** The checklist the switch opens on its way to live: each step with its state and what to do. */
+function GoLive({ acct, me, act, busy, onFund, onClose }: { acct: PaperAccountView; me: MeResponse; act: (a: PaperAction) => Promise<void>; busy: boolean; onFund: () => void; onClose: () => void }) {
+  const [sure, setSure] = useState(false)
+  const avail = acct.liveAvailable ?? me.liveAvailable
+  const ready = acct.ready
+  const live = acct.live ?? null
+  if (!avail.ok) {
+    return (
+      <div className="at-golive">
+        <div className="at-golive-h">{T('Live trading')}<button className="link-btn" onClick={onClose}>✕</button></div>
+        <div className="at-note warn" style={{ marginTop: 0 }}>{T('Live trading for bots isn\'t switched on yet on ARCDEX.')} {avail.why ? <span style={{ opacity: 0.8 }}>({avail.why})</span> : null}</div>
+      </div>
+    )
+  }
+  const pct = (x: number | null) => (x === null ? '—' : `${Math.round(x * 100)}%`)
+  const funded = !!live && (live.balanceUsd ?? 0) >= live.limits.minBalanceUsd
+  const steps: { ok: boolean; title: string; body: React.ReactNode }[] = [
+    {
+      ok: !!ready?.ok,
+      title: T('Proven on paper'),
+      body: ready ? (
+        <>
+          <div className="at-progress"><div style={{ width: `${Math.min(100, (ready.trades / ready.need.minTrades) * 100)}%` }} /></div>
+          <div className="at-step-sub">
+            {T('{a} paper trades (needs {b})', { a: ready.trades, b: ready.need.minTrades })} · {T('won {a} (needs {b})', { a: pct(ready.winRate), b: pct(ready.need.minWinRate) })} · {T('profit factor {a} (needs {b})', { a: ready.profitFactor === null ? '—' : ready.profitFactor.toFixed(2), b: ready.need.minProfitFactor })} · {T('net {a}', { a: usd(ready.pnlUsd) })}
+          </div>
+        </>
+      ) : null,
+    },
+    {
+      ok: funded,
+      title: T('Live wallet funded'),
+      body: !live
+        ? <button className="at-wbtn" disabled={busy} onClick={() => void act({ action: 'live-wallet' })}>{T('Create live wallet')}</button>
+        : funded
+          ? <div className="at-step-sub">{T('{v} in its wallet', { v: usd(live.balanceUsd) })}</div>
+          : <div className="at-step-sub">{T('It has {v}; it needs at least {m} to go live.', { v: usd(live.balanceUsd), m: usd(live.limits.minBalanceUsd, 0) })} <button className="link-btn" onClick={onFund}>{T('Fund it')} →</button></div>,
+    },
+  ]
+  const allOk = steps.every(s => s.ok)
+  return (
+    <div className="at-golive">
+      <div className="at-golive-h">{T('Switch to LIVE')}<button className="link-btn" onClick={onClose} aria-label={T('Close')}>✕</button></div>
+      <ol className="at-steps">
+        {steps.map((s, i) => (
+          <li key={i} className={s.ok ? 'ok' : ''}>
+            <span className="at-step-dot">{s.ok ? '✓' : i + 1}</span>
+            <div><b>{s.title}</b>{s.body}</div>
+          </li>
+        ))}
+      </ol>
+      {!sure ? (
+        <button className="at-golive-go" disabled={busy || !allOk} onClick={() => setSure(true)}>{allOk ? `● ${T('Switch to LIVE')}` : T('Complete the steps above to go live')}</button>
+      ) : (
+        <div className="at-note warn">
+          {T('Real money: this bot will trade its wallet\'s USDC on every signal it takes, with its learned settings, until you switch it back. 2% of each winning trade\'s profit goes to the platform; losing trades pay nothing. Results aren\'t guaranteed: most new coins go to zero.')}
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button className="btn-ghost" style={{ borderColor: LIVE_RED, color: '#fca5a5' }} disabled={busy} onClick={() => { void act({ action: 'mode', mode: 'live' }).then(onClose) }}>{T('Yes, trade live')}</button>
+            <button className="link-btn" onClick={() => setSure(false)}>{T('Cancel')}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Virtual USDC for the paper wallet. */
+function FundPaper({ busy, onFund, onClose }: { busy: boolean; onFund: (v: number) => void; onClose: () => void }) {
+  const [amount, setAmount] = useState('1000')
+  return (
+    <div className="at-fundbox">
+      <div className="at-golive-h">{T('Fund the paper wallet')}<button className="link-btn" onClick={onClose} aria-label={T('Close')}>✕</button></div>
+      <div className="at-step-sub" style={{ marginBottom: 8 }}>{T('Virtual USDC to practise with: no real money moves.')}</div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        {[100, 1_000, 10_000].map(v => <button key={v} className="at-chip" disabled={busy} onClick={() => onFund(v)}>+{usd(v, 0)}</button>)}
+        <input className="at-input" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} aria-label={T('Amount')} />
+        <button className="at-wbtn" disabled={busy || !Number(amount)} onClick={() => onFund(Number(amount))}>{T('Add')}</button>
+      </div>
+    </div>
+  )
+}
+
+/** Real USDC into the bot's live wallet: from the ARCDEX wallet in one tap, or from anywhere to its address. */
+function FundLive({ wallet, minUsd, onDone, onClose }: { wallet: string; minUsd: number; onDone: () => void; onClose: () => void }) {
+  const trader = useTrader()
+  const { cash, refresh } = useCash(trader.address)
+  const send = useSendUsdc(trader)
+  const guard = useWithdrawGuard(trader, wallet)
+  const [amount, setAmount] = useState(String(Math.max(minUsd, 10)))
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string; hash?: string } | null>(null)
+  const [qr, setQr] = useState<string | null>(null)
+  useEffect(() => { void import('qrcode').then(m => m.default.toDataURL(wallet, { margin: 1, width: 160, color: { dark: '#0b1628', light: '#ffffff' } })).then(setQr).catch(() => {}) }, [wallet])
+  const n = Number(amount)
+  const go = async () => {
+    setBusy(true); setMsg(null)
+    try {
+      await guard.confirm()
+      const hash = await send(wallet, amount)
+      setMsg({ ok: true, text: T('Sent {v} to the bot\'s wallet.', { v: usd(n) }), hash })
+      guard.setPasscode(''); refresh(); notifyBalances(); onDone()
+    } catch (e) { setMsg({ ok: false, text: txErrorText(e) }) } finally { setBusy(false) }
+  }
+  const blocked = busy || !(n > 0) || (cash !== null && n > cash) || (guard.needsPasscode && !guard.passcode)
+  return (
+    <div className="at-fundbox">
+      <div className="at-golive-h">{T('Fund the live wallet')}<button className="link-btn" onClick={onClose} aria-label={T('Close')}>✕</button></div>
+      <div className="at-fund-grid">
+        <div className="at-fund-opt">
+          <b>{T('From my ARCDEX wallet')}</b>
+          {!trader.address ? (
+            <>
+              <div className="at-step-sub">{T('Unlock your trading wallet or connect a wallet to send in one tap.')}</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button className="at-wbtn" onClick={() => openTradingWallet()}>{T('Trading wallet')}</button>
+                <button className="at-wbtn ghost" onClick={() => openConnectModal()}>{T('Connect wallet')}</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="at-step-sub">{trader.kind === 'trading-wallet' ? T('Trading wallet') : T('Connected wallet')} {shortAddr(trader.address)} · {T('{v} available', { v: cash === null ? '…' : usd(cash) })}</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                {[10, 25, 50, 100].map(v => <button key={v} className={`at-chip${n === v ? ' on' : ''}`} onClick={() => setAmount(String(v))}>${v}</button>)}
+                <input className="at-input" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} aria-label={T('Amount')} />
+              </div>
+              <PasscodeField guard={guard} onEnter={() => { if (!blocked) void go() }} />
+              <button className="at-wbtn primary" disabled={blocked} onClick={() => void go()}>{busy ? T('Sending…') : T('Send {v} to the bot', { v: n > 0 ? usd(n) : '$' })}</button>
+              {cash !== null && n > cash && <div className="at-error" style={{ marginTop: 0 }}>{T('Not enough USDC in this wallet.')}</div>}
+            </>
+          )}
+        </div>
+        <div className="at-fund-opt">
+          <b>{T('From any wallet or exchange')}</b>
+          <div className="at-fund-qr">
+            {qr && <img src={qr} alt={T('Deposit address QR code')} />}
+            <div>
+              <code className="at-addr">{wallet}</code>
+              <CopyAddr addr={wallet} />
+            </div>
+          </div>
+          <div className="at-step-sub" style={{ color: '#fcd34d' }}>{T('Send only USDC on the Arc network. The bot needs at least {m} to go live.', { m: usd(minUsd, 0) })}</div>
+        </div>
+      </div>
+      {msg && <div className={msg.ok ? 'at-ok' : 'at-error'}>{msg.ok ? '✓ ' : '⚠ '}{msg.text}{msg.hash ? <> · <a href={`${EXPLORER}/tx/${msg.hash}`} target="_blank" rel="noreferrer">tx ↗</a></> : null}</div>}
+    </div>
+  )
+}
+
+/**
+ * Money out of the live wallet. Without email (the default since 2026-09-30):
+ * the account passcode, and only back to a wallet that funded the bot. With a
+ * verified email, a code sent to it allows any address.
+ */
+function WithdrawLive({ acct, me, onDone, onClose }: { acct: PaperAccountView; me: MeResponse; onDone: () => void; onClose: () => void }) {
+  const slug = acct.slug ?? ''
+  const [funders, setFunders] = useState<{ address: string; usd: number }[] | null>(null)
+  const [to, setTo] = useState('')
+  const [amt, setAmt] = useState('')
+  const [pass, setPass] = useState('')
+  const [byEmail, setByEmail] = useState(false)
+  const [code, setCode] = useState('')
+  const [codeSent, setCodeSent] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const emailOk = me.email && me.user.verified
+  useEffect(() => {
+    let alive = true
+    botFunders(slug).then(r => { if (alive) { setFunders(r.funders); if (r.funders[0]) setTo(t => t || r.funders[0].address) } }).catch(() => { if (alive) setFunders([]) })
+    return () => { alive = false }
+  }, [slug])
+  const run = async (f: () => Promise<unknown>) => {
+    setBusy(true); setMsg(null)
+    try { await f() } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(false) }
+  }
+  const sent = (hash: string) => { setMsg({ ok: true, text: T('Sent. Transaction {h}', { h: `${hash.slice(0, 10)}…` }) }); setAmt(''); setPass(''); setCode(''); setCodeSent(false); onDone() }
+  const n = Number(amt)
+  const bal = acct.live?.balanceUsd ?? null
+  return (
+    <div className="at-fundbox">
+      <div className="at-golive-h">{T('Withdraw from the live wallet')}<button className="link-btn" onClick={onClose} aria-label={T('Close')}>✕</button></div>
+      {!byEmail ? (
+        <>
+          <div className="at-step-sub" style={{ marginBottom: 6 }}>{T('Money goes back only to a wallet that funded this bot, confirmed with your account passcode.')}</div>
+          {funders === null ? <div className="at-step-sub">{T('Reading its deposits…')}</div>
+            : funders.length === 0 ? <div className="at-note warn" style={{ marginTop: 0 }}>{T('No wallet has funded this bot yet (at least $1 of USDC on Arc).')}</div>
+            : (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+                {funders.map(f => <button key={f.address} className={`at-chip${to === f.address ? ' on' : ''}`} onClick={() => setTo(f.address)}>{shortAddr(f.address)} · {T('sent {v}', { v: usd(f.usd) })}</button>)}
+              </div>
+            )}
+          {funders && funders.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              <input className="at-input" inputMode="decimal" value={amt} placeholder="$" onChange={e => setAmt(e.target.value.replace(/[^0-9.]/g, ''))} aria-label={T('Amount')} />
+              {bal !== null && <button className="link-btn" onClick={() => setAmt(String(Math.max(0, Math.floor((bal - 1) * 100) / 100)))}>{T('Max')}</button>}
+              <input className="at-input at-pass" type="password" maxLength={4} value={pass} placeholder="••••" onChange={e => setPass(e.target.value.replace(/[^A-Za-z0-9]/g, ''))} aria-label={T('Passcode')} />
+              <button className="at-wbtn primary" disabled={busy || !to || !(n > 0) || pass.length !== 4} onClick={() => void run(async () => sent((await botWithdrawPasscode(slug, to, n, pass)).hash))}>{busy ? T('Sending…') : T('Withdraw')}</button>
+            </div>
+          )}
+          {emailOk && <button className="link-btn" style={{ marginTop: 8 }} onClick={() => { setByEmail(true); setTo(''); setMsg(null) }}>{T('Send to another address (emailed code)')}</button>}
+        </>
+      ) : (
+        <>
+          <div className="at-step-sub" style={{ marginBottom: 6 }}>{T('Any Arc address, confirmed with a code sent to {e}.', { e: me.user.email })}</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input className="at-input at-name" value={to} placeholder="0x…" onChange={e => setTo(e.target.value.trim())} aria-label={T('To address')} disabled={codeSent} />
+            <input className="at-input" inputMode="decimal" value={amt} placeholder="$" onChange={e => setAmt(e.target.value.replace(/[^0-9.]/g, ''))} aria-label={T('Amount')} disabled={codeSent} />
+            {!codeSent
+              ? <button className="at-wbtn" disabled={busy || !/^0x[0-9a-fA-F]{40}$/.test(to) || !(n > 0)} onClick={() => void run(async () => { setMsg({ ok: true, text: await botWithdrawCode(slug, to, n) }); setCodeSent(true) })}>{T('Email me a code')}</button>
+              : <>
+                  <input className="at-input" inputMode="numeric" maxLength={6} value={code} placeholder="123456" onChange={e => setCode(e.target.value.replace(/\D/g, ''))} aria-label={T('Code')} />
+                  <button className="at-wbtn primary" disabled={busy || code.length !== 6} onClick={() => void run(async () => sent((await botWithdraw(slug, code)).hash))}>{T('Withdraw')}</button>
+                </>}
+          </div>
+          <button className="link-btn" style={{ marginTop: 8 }} onClick={() => { setByEmail(false); setCodeSent(false); setMsg(null) }}>{T('Back to a funding wallet')}</button>
+        </>
+      )}
+      {msg && <div className={msg.ok ? 'at-ok' : 'at-error'}>{msg.ok ? '✓ ' : '⚠ '}{msg.text}</div>}
+    </div>
+  )
+}
+
+/** One line of a bot's activity. */
+function EventLine({ e, navigate }: { e: PaperAccountView['events'][number]; navigate: (p: Page) => void }) {
+  return (
+    <div className={`at-event ${e.kind}`}>
+      <span className="at-event-at"><AgoText ts={e.at} /></span>
+      {e.symbol && e.token ? <button className="link-btn" onClick={() => navigate({ name: 'argus', address: e.token!, pool: '' })} style={{ textDecoration: 'none', fontWeight: 800 }}>${e.symbol}</button> : null}
+      <span>{e.text}</span>
+    </div>
+  )
+}
+
+/** What it did, the signals it passed over (and why), and the live wallet's own log. */
+function ActivityTab({ acct, navigate }: { acct: PaperAccountView; navigate: (p: Page) => void }) {
+  const [which, setWhich] = useState<'did' | 'skipped' | 'live'>('did')
+  const liveEvents = acct.live?.events ?? []
+  const list = which === 'did' ? acct.events ?? [] : which === 'skipped' ? acct.skips ?? [] : []
+  return (
+    <Section title={T('Activity')}>
+      <div style={{ display: 'flex', gap: 6, margin: '6px 0', flexWrap: 'wrap' }}>
+        <button className={`at-chip${which === 'did' ? ' on' : ''}`} onClick={() => setWhich('did')}>{T('What it did')}</button>
+        <button className={`at-chip${which === 'skipped' ? ' on' : ''}`} onClick={() => setWhich('skipped')}>{T('Signals it passed over')} {acct.skips?.length ? acct.skips.length : ''}</button>
+        {liveEvents.length > 0 && <button className={`at-chip${which === 'live' ? ' on' : ''}`} onClick={() => setWhich('live')}>{T('Live wallet')}</button>}
+      </div>
+      {which === 'live'
+        ? liveEvents.map((e, i) => (
+            <div key={`${e.at}:${i}`} className="at-event">
+              <span className="at-event-at"><AgoText ts={e.at} /></span>
+              <span>{e.text}{e.hash ? <> · <a href={`${EXPLORER}/tx/${e.hash}`} target="_blank" rel="noreferrer" style={{ color: 'var(--text-muted)' }}>tx ↗</a></> : null}</span>
+            </div>
+          ))
+        : list.length === 0 ? <Empty>{T('Nothing yet.')}</Empty> : list.map((e, i) => <EventLine key={`${e.at}:${i}`} e={e} navigate={navigate} />)}
+    </Section>
+  )
+}
+
+/** Name, notifications, protection, live limits, selling everything live, and starting the paper account over. */
+function SettingsTab({ acct, act, busy, onRename }: { acct: PaperAccountView; act: (a: PaperAction) => Promise<void>; busy: boolean; onRename: () => void }) {
+  const [resetting, setResetting] = useState(false)
+  const prot = acct.protections as PaperAccountView['protections'] | undefined
+  const live = acct.live ?? null
+  return (
+    <>
+      <Section title={T('Bot')}>
+        <div className="at-setting"><span>{T('Name')}: <b>{acct.name}</b></span><button className="link-btn" onClick={onRename}>✎ {T('Rename')}</button></div>
+        <ProfitNotifySwitch />
+      </Section>
       {prot && (
         <Section title={T('Protection')}>
           <ul className="at-protect">
@@ -555,34 +952,26 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate }: 
           </ul>
         </Section>
       )}
-
-      <Section title={T('Open trades') + ` · ${open.length}`}>
-        {open.length === 0 ? <Empty>{acct.running ? T('Waiting for the next signal. The scanner above shows what it is checking.') : T('No open trades.')}</Empty> : open.map(p => <PositionRow key={p.id} p={p} navigate={navigate} />)}
-      </Section>
-      <TradeLog fetchTrades={(limit, before) => botTrades(acct.slug ?? '', limit, before)} name={acct.name ?? 'bot'} total={acct.tradesLogged ?? acct.stats.closed} fallback={acct.positions.filter(p => p.status === 'closed')} navigate={navigate} />
-      {acct.events && (
-        <Section title={T('Activity')}>
-          <div style={{ display: 'flex', gap: 6, margin: '6px 0' }}>
-            <button className={`at-chip${logTab === 'activity' ? ' on' : ''}`} onClick={() => setLogTab('activity')}>{T('What it did')}</button>
-            <button className={`at-chip${logTab === 'skipped' ? ' on' : ''}`} onClick={() => setLogTab('skipped')}>{T('Signals it passed over')} {acct.skips?.length ? acct.skips.length : ''}</button>
-          </div>
-          {(logTab === 'activity' ? acct.events : acct.skips ?? []).length === 0 ? <Empty>{T('Nothing yet.')}</Empty>
-            : (logTab === 'activity' ? acct.events : acct.skips ?? []).map((e, i) => (
-              <div key={`${e.at}:${i}`} className={`at-event ${e.kind}`}>
-                <span className="at-event-at"><AgoText ts={e.at} /></span>
-                {e.symbol && e.token ? <button className="link-btn" onClick={() => navigate({ name: 'argus', address: e.token!, pool: '' })} style={{ textDecoration: 'none', fontWeight: 800 }}>${e.symbol}</button> : null}
-                <span>{e.text}</span>
-              </div>
-            ))}
+      {live && (
+        <Section title={T('Live wallet')}>
+          <ul className="at-protect">
+            <li>💵 {T('Trades up to {x} a trade and keeps {r} for gas. Only this bot uses the wallet.', { x: usd(live.limits.maxTradeUsd, 0), r: usd(live.limits.reserveUsd, 0) })}</li>
+            {live.limits.maxSharePct !== undefined && <li>⚖ {T('It reads its balance before every buy and never puts more than {p}% of what it is worth into one trade.', { p: live.limits.maxSharePct })}</li>}
+            {live.limits.preflight && <li>✓ {T('Every buy is checked first: the bot\'s wallet simulates the buy and selling it all straight back. A coin it couldn\'t sell, or a round trip costing over {p}%, is never bought.', { p: live.limits.maxRoundTripPct ?? 20 })}</li>}
+            <li>✍ {T('The bot\'s own wallet signs every trade: no approvals to click. Buys pay USDC directly; each coin is approved once, by the bot, so it can always sell.')}</li>
+          </ul>
+          {live.open > 0 && <button className="btn-ghost" style={{ marginTop: 8 }} disabled={busy} onClick={() => void act({ action: 'sell-live' })}>{T('Sell all live positions ({n})', { n: live.open })}</button>}
         </Section>
       )}
-      <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-        {resetting ? (
-          <>{T('Start over with an empty account? Its trade log is kept.')}{' '}
-            <button className="link-btn" onClick={() => { void act({ action: 'reset' }); setResetting(false) }}>{T('Yes, reset it')}</button>{' · '}
-            <button className="link-btn" onClick={() => setResetting(false)}>{T('Cancel')}</button></>
-        ) : <button className="link-btn" onClick={() => setResetting(true)}>{T('Reset my paper account')}</button>}
-      </div>
+      <Section title={T('Paper account')}>
+        <div className="at-setting">
+          {resetting ? (
+            <span>{T('Start over with an empty account? Its trade log is kept.')}{' '}
+              <button className="link-btn" onClick={() => { void act({ action: 'reset' }); setResetting(false) }}>{T('Yes, reset it')}</button>{' · '}
+              <button className="link-btn" onClick={() => setResetting(false)}>{T('Cancel')}</button></span>
+          ) : <><span>{T('Clears the paper wallet and its open paper trades.')}</span><button className="link-btn" onClick={() => setResetting(true)}>{T('Reset my paper account')}</button></>}
+        </div>
+      </Section>
     </>
   )
 }
@@ -700,119 +1089,6 @@ function tradesCsv(list: BotPosition[]): string {
     p.targetUsd, p.tuningVersion, p.features?.liquidityUsd, p.features?.buyers, p.features?.buySellRatio, p.features?.runUp, p.features?.score, p.features?.flags.join(' '), p.note,
   ].map(cell).join(','))
   return [head.join(','), ...rows].join('\n')
-}
-
-/**
- * Live for this bot: its paper record against what live needs, the owner's
- * verified email, its own wallet (address, balance), the Paper/Live switch,
- * its live results, selling everything, and withdrawing with an emailed code.
- */
-function LivePanel({ acct, act, busy, me, onMe }: { acct: PaperAccountView; act: (a: PaperAction) => Promise<void>; busy: boolean; me: MeResponse; onMe: () => void }) {
-  const [confirming, setConfirming] = useState(false)
-  const [to, setTo] = useState('')
-  const [amt, setAmt] = useState('')
-  const [code, setCode] = useState('')
-  const [codeSent, setCodeSent] = useState(false)
-  const [wBusy, setWBusy] = useState(false)
-  const [wMsg, setWMsg] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
-  const ready = acct.ready
-  const live = acct.live ?? null
-  const avail = acct.liveAvailable ?? me.liveAvailable
-  if (!ready) return null // an engine from before live bots
-  const pct = (x: number | null) => (x === null ? '—' : `${Math.round(x * 100)}%`)
-  const lines: [boolean, string][] = [
-    [ready.trades >= ready.need.minTrades, T('{a} of {b} closed paper trades', { a: ready.trades, b: ready.need.minTrades })],
-    [(ready.winRate ?? 0) >= ready.need.minWinRate, T('win rate {a} (needs {b})', { a: pct(ready.winRate), b: pct(ready.need.minWinRate) })],
-    [(ready.profitFactor ?? 0) >= ready.need.minProfitFactor, T('profit factor {a} (needs {b})', { a: ready.profitFactor === null ? '—' : ready.profitFactor.toFixed(2), b: ready.need.minProfitFactor })],
-    [ready.pnlUsd > 0, T('net paper profit {a}', { a: usd(ready.pnlUsd) })],
-  ]
-  const sendCode = async () => {
-    setWBusy(true); setWMsg(null)
-    try { setWMsg(await botWithdrawCode(acct.slug ?? '', to.trim(), Number(amt))); setCodeSent(true) } catch (e) { setWMsg(`⚠ ${(e as Error).message}`) } finally { setWBusy(false) }
-  }
-  const withdraw = async () => {
-    setWBusy(true); setWMsg(null)
-    try { const r = await botWithdraw(acct.slug ?? '', code); setWMsg(T('Sent. Transaction {h}', { h: `${r.hash.slice(0, 10)}…` })); setCodeSent(false); setCode(''); setAmt(''); onMe() } catch (e) { setWMsg(`⚠ ${(e as Error).message}`) } finally { setWBusy(false) }
-  }
-  return (
-    <Section title={acct.mode === 'live' ? `● ${T('Trading LIVE')}` : T('Trade live with this bot')}>
-      {!avail.ok && <div className="at-note warn">{T('Live trading for bots isn\'t switched on yet on ARCDEX.')} <span style={{ opacity: 0.8 }}>({avail.why})</span></div>}
-      <div className="at-label" style={{ marginTop: 6 }}>{T('1. Prove it on paper')} {ready.ok ? <Pill color="#22c55e">✓ {T('ready')}</Pill> : null}</div>
-      <ul className="at-protect">{lines.map(([ok, text], i) => <li key={i} style={{ color: ok ? '#86efac' : undefined }}>{ok ? '✓' : '…'} {text}</li>)}</ul>
-      <div className="at-label">{T('2. Verify your email')} {me.user.verified ? <Pill color="#22c55e">✓ {T('verified')}</Pill> : null}</div>
-      {me.user.verified ? <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>{T('Withdrawals are confirmed with a code sent to {e}.', { e: me.user.email })}</div>
-        : me.email ? <VerifyEmail onDone={onMe} /> : <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>{T('Email isn\'t set up on ARCDEX yet.')}</div>}
-      <div className="at-label">{T('3. Fund its own wallet')}</div>
-      {!live ? (
-        <button className="btn-ghost" disabled={busy || !avail.ok} onClick={() => void act({ action: 'live-wallet' })}>{T('Make its live wallet')}</button>
-      ) : (
-        <>
-          <div className="at-wallet">
-            <code>{live.wallet}</code>
-            <button className="link-btn" onClick={() => { void navigator.clipboard?.writeText(live.wallet).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }) }}>{copied ? T('Copied') : T('Copy')}</button>
-            <a href={`${EXPLORER}/address/${live.wallet}`} target="_blank" rel="noreferrer" style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{T('explorer')} ↗</a>
-          </div>
-          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            {T('Send USDC on Arc to this address: at least {m} to go live. It trades up to {x} a trade and keeps {r} for gas. Only this bot uses it.', { m: usd(live.limits.minBalanceUsd, 0), x: usd(live.limits.maxTradeUsd, 0), r: usd(live.limits.reserveUsd, 0) })}
-            {live.limits.maxSharePct !== undefined && <> {T('It reads its balance before every buy and never puts more than {p}% of what it is worth into one trade.', { p: live.limits.maxSharePct })}</>}
-          </div>
-          {live.limits.preflight && (
-            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 4 }}>
-              ✓ {T('Every buy is checked first: the bot\'s wallet simulates the buy and selling it all straight back. A coin it couldn\'t sell, or a round trip costing over {p}%, is never bought.', { p: live.limits.maxRoundTripPct ?? 20 })}
-            </div>
-          )}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginTop: 8 }}>
-            <Stat label={T('Wallet balance')} value={usd(live.balanceUsd)} small />
-            <Stat label={T('Live P&L')} value={usd(live.pnlUsd)} color={live.pnlUsd >= 0 ? 'var(--green)' : '#fca5a5'} small sub={T('{n} trades, {w} won', { n: live.closed, w: pct(live.winRate) })} />
-            <Stat label={T('Platform fees paid')} value={usd(live.feesPaidUsd, 4)} small sub={T('2% of winning trades\' profit')} />
-          </div>
-        </>
-      )}
-      <div className="at-label">{T('4. Switch it')}</div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <Segmented value={acct.mode ?? 'paper'} disabled={busy} onChange={v => { if (v === 'live') setConfirming(true); else void act({ action: 'mode', mode: 'paper' }) }} options={[['paper', T('Paper')], ['live', T('Live')]]} />
-        {live && live.open > 0 && <button className="btn-ghost" disabled={busy} onClick={() => void act({ action: 'sell-live' })}>{T('Sell all live positions ({n})', { n: live.open })}</button>}
-      </div>
-      {confirming && (
-        <div className="at-note warn">
-          {T('Real money: this bot will trade its wallet\'s USDC on every signal it takes, with its learned settings, until you switch it back. 2% of each winning trade\'s profit goes to the platform; losing trades pay nothing. Results aren\'t guaranteed: most new coins go to zero.')}
-          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <button className="btn-ghost" style={{ borderColor: LIVE_RED, color: '#fca5a5' }} disabled={busy} onClick={() => { setConfirming(false); void act({ action: 'mode', mode: 'live' }) }}>{T('Yes, trade live')}</button>
-            <button className="link-btn" onClick={() => setConfirming(false)}>{T('Cancel')}</button>
-          </div>
-        </div>
-      )}
-      {live && me.user.verified && (
-        <>
-          <div className="at-label">{T('Withdraw')}</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-            <input className="at-input at-name" value={to} placeholder="0x…" onChange={e => setTo(e.target.value.trim())} aria-label={T('To address')} disabled={codeSent} />
-            <input className="at-input" inputMode="decimal" value={amt} placeholder="$" onChange={e => setAmt(e.target.value.replace(/[^0-9.]/g, ''))} aria-label={T('Amount')} disabled={codeSent} />
-            {!codeSent
-              ? <button className="btn-ghost" disabled={wBusy || !/^0x[0-9a-fA-F]{40}$/.test(to) || !(Number(amt) > 0)} onClick={() => void sendCode()}>{T('Email me a code')}</button>
-              : <>
-                  <input className="at-input" inputMode="numeric" maxLength={6} value={code} placeholder="123456" onChange={e => setCode(e.target.value.replace(/\D/g, ''))} aria-label={T('Code')} />
-                  <button className="btn-ghost" disabled={wBusy || code.length !== 6} onClick={() => void withdraw()}>{T('Withdraw')}</button>
-                  <button className="link-btn" onClick={() => { setCodeSent(false); setCode('') }}>{T('Cancel')}</button>
-                </>}
-          </div>
-          {wMsg && <div style={{ fontSize: '0.72rem', color: wMsg.startsWith('⚠') ? '#fca5a5' : 'var(--text-muted)', marginTop: 4 }}>{wMsg}</div>}
-        </>
-      )}
-      {live && live.events.length > 0 && (
-        <details style={{ marginTop: 10 }}>
-          <summary style={{ cursor: 'pointer', fontSize: '0.76rem', fontWeight: 800 }}>{T('Live activity')}</summary>
-          {live.events.map((e, i) => (
-            <div key={`${e.at}:${i}`} className="at-event">
-              <span className="at-event-at"><AgoText ts={e.at} /></span>
-              <span>{e.text}{e.hash ? <> · <a href={`${EXPLORER}/tx/${e.hash}`} target="_blank" rel="noreferrer" style={{ color: 'var(--text-muted)' }}>tx ↗</a></> : null}</span>
-            </div>
-          ))}
-        </details>
-      )}
-    </Section>
-  )
 }
 
 /** Every bot on ARCDEX, best first: P&L, win rate, open positions. */

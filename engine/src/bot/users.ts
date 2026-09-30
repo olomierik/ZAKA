@@ -170,6 +170,20 @@ export class Users {
     return { user: u, token: this.token(u, now) }
   }
 
+  /** The account's passcode, checked as at sign-in: wrong tries count toward the same lockout. Null when it's right. */
+  async checkPasscode(u: User, passcode: unknown, now = Date.now()): Promise<string | null> {
+    if (u.lockedUntil && u.lockedUntil > now) return `too many wrong passcodes: try again in ${Math.ceil((u.lockedUntil - now) / 60_000)} min`
+    const ok = typeof passcode === 'string' && AUTH.passcode.test(passcode) && timingSafeEqual(await scrypt(passcode, u.salt), Buffer.from(u.passHash, 'hex'))
+    if (!ok) {
+      u.failed++
+      if (u.failed % AUTH.maxFails === 0) u.lockedUntil = now + Math.min(86_400_000, AUTH.lockMin * 60_000 * 2 ** (u.failed / AUTH.maxFails - 1))
+      this.o.store.saveUser(u)
+      return 'wrong passcode'
+    }
+    if (u.failed || u.lockedUntil) { u.failed = 0; u.lockedUntil = null; this.o.store.saveUser(u) }
+    return null
+  }
+
   signOutEverywhere(u: User, now = Date.now()) { u.sessionsAfter = now + 1; this.o.store.saveUser(u) }
 
   /** Emails a code confirming the address. */

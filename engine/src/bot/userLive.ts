@@ -32,10 +32,12 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import type { Address, Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import type { BotReadiness } from '../../../api/_marketProtocol'
+import type { Rpc } from '../chain/http'
 import type { PoolInfo } from '../dex/pools'
 import { errMsg, log } from '../log'
 import type { LiveExecutor } from '../trading/live'
 import { stats, type Position } from '../trading/paper'
+import { emptyLedger, FUNDER, knownFunders, scanFunding, type FundingLedger } from './funders'
 import { LiveTrader, type LiveLimits } from './liveTrader'
 
 export const READY = { minTrades: 20, minWinRate: 0.55, minProfitFactor: 1.2 }
@@ -80,6 +82,8 @@ export interface BotWallet {
   since?: number | null
   startBalanceUsd?: number | null
   feesPaidUsd?: number
+  /** Its deposits, read from the chain (bot/funders.ts): who may receive a withdrawal without an emailed code. */
+  funding?: FundingLedger
 }
 
 /** Makes and opens bots' wallets with one 32-byte secret. */
@@ -119,7 +123,31 @@ export class UserLive {
   private traders = new Map<string, LiveTrader>()
   private balances = new Map<string, { usd: number; at: number }>()
 
-  constructor(private o: { vault: WalletVault | null; makeExec: (key: Hex) => LiveExecutor; pools: (token: string) => PoolInfo | null; why?: string | null }) {}
+  private scanning = new Map<string, Promise<FundingLedger>>()
+
+  /** `rpc`: reads the wallets' deposits (the funders a withdrawal without an emailed code may go to). */
+  constructor(private o: { vault: WalletVault | null; makeExec: (key: Hex) => LiveExecutor; pools: (token: string) => PoolInfo | null; why?: string | null; rpc?: Rpc | null }) {}
+
+  /** The wallets that funded this bot wallet (its deposits scanned up to now; one scan at a time per wallet). Null without a way to read the chain. */
+  async funders(w: BotWallet, now = Date.now()): Promise<{ address: string; usd: number }[] | null> {
+    const rpc = this.o.rpc
+    if (!rpc) return null
+    let run = this.scanning.get(w.address)
+    if (!run) {
+      run = (async () => {
+        const l = w.funding ?? emptyLedger()
+        // A new ledger starts before the wallet was made (counting blocks generously).
+        const head = l.scannedTo ? 0 : Number(BigInt(await rpc.call<string>('eth_blockNumber', [])))
+        const start = l.scannedTo ? l.scannedTo + 1 : Math.max(0, head - Math.ceil((now - w.createdAt) / FUNDER.msPerBlock) - FUNDER.margin)
+        return scanFunding(rpc, w.address, l, start)
+      })().finally(() => this.scanning.delete(w.address))
+      this.scanning.set(w.address, run)
+    }
+    try {
+      w.funding = await run
+      return knownFunders(w.funding)
+    } catch (e) { log.warn('user live: funding scan failed', { error: errMsg(e) }); return w.funding ? knownFunders(w.funding) : null }
+  }
 
   get available(): { ok: boolean; why: string | null } {
     return this.o.vault ? { ok: true, why: null } : { ok: false, why: this.o.why ?? 'live trading for bots isn\'t switched on yet: the platform owner sets BOT_WALLET_SECRET on the engine' }
@@ -172,7 +200,7 @@ export class UserLive {
     return f.hash
   }
 
-  /** Sends `usd` of the wallet's USDC to `to` (the owner confirmed it by email). */
+  /** Sends `usd` of the wallet's USDC to `to` (the owner confirmed it: an emailed code, or the passcode to a wallet that funded it). */
   async withdraw(accountId: string, trader: LiveTrader, to: Address, usd: number): Promise<{ hash: string }> {
     const f = await trader.executor.sendUsdc(to, usd)
     trader.event({ kind: 'mode', hash: f.hash, text: `Withdrew $${usd.toFixed(2)} to ${to}` })
