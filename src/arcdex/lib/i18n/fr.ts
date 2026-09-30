@@ -1713,5 +1713,10 @@ const d: Record<string, string> = {
   "Notify me of every profit": "M'avertir à chaque gain",
   "Your browser blocked notifications for this site: allow them in its settings.": "Votre navigateur bloque les notifications de ce site : autorisez-les dans ses réglages.",
   "A notification each time a trade closes in profit, even with this tab in the background.": "Une notification à chaque trade clôturé en gain, même avec cet onglet en arrière-plan.",
+  "Momentum bursts": "Poussées de momentum",
+  "Snipes": "Snipes",
+  "Dip rebounds": "Rebonds après repli",
+  "skipped for now (they kept losing)": "ignorés pour l'instant (ils perdaient)",
+  "On probation: bots sit it out": "En observation : les bots s'abstiennent",
 }
 export default d

@@ -3,8 +3,8 @@
 // the win rate increases"). Each bot has its own settings per strategy (a
 // StrategyTuning): its exits, the profit a trade is sized for, and entry
 // filters on the numbers every signal carries (SignalFeatures). After its
-// trades close, the learner reads the losing ones and changes one thing at a
-// time, within fixed bounds, saying why in words:
+// trades close, the learner reads the losing ones and changes what they show,
+// within fixed bounds, saying why in words:
 //
 //   rugs and dumps      losses closed by the rug guard, the creator selling or
 //                       a failed re-check: more liquidity and a higher safety
@@ -20,13 +20,22 @@
 //   one number          a threshold on one feature (liquidity, buyers,
 //                       buys ÷ sells, safety score, run-up, largest buyer)
 //                       that would have kept out most losses and few wins
+//   a losing kind       a kind of signal that lost 3 of its last 4 or worse
+//                       for this bot is skipped, and tried again 12 hours later
+//
+// Entry filters are learned per kind of signal (2026-10-01): a fast scalp
+// comes from momentum bursts (buyers counted over two minutes: 6–30) and from
+// snipes on risky coins (buyers since launch: 30–450), so a buyer count learned
+// on one blocked every signal of the other, and bots stopped trading. And a
+// bot with few trades of its own reads other bots' results on the same kind of
+// signal too (`shared`), so a new or losing bot learns before its 20th trade.
 //
 // Every change is a new version. A version that then wins clearly less often
 // than the one before it is rolled back, and filters that keep the bot from
 // trading at all are loosened again, so learning can't lock a bot up.
 // Nothing here promises a win rate: it only stops repeating what lost.
 
-import type { BotFilters, LearnNote, SignalFeatures, StrategyTuning } from '../../../api/_marketProtocol'
+import type { BotFilters, LearnNote, SignalFeatures, SignalRule, StrategyTuning } from '../../../api/_marketProtocol'
 import type { Position, Strategy, StrategyParams } from '../trading/paper'
 import { TARGETS } from './sizing'
 
@@ -35,6 +44,10 @@ export type Tuning = StrategyTuning & { prev?: StrategyTuning | null }
 
 /** No filtering beyond the signal engine's own rules (the scanner already needs $1,000 of liquidity). */
 export const OPEN_FILTERS: BotFilters = { minLiquidityUsd: 1_000, minBuyers: 0, minBuySellRatio: 0, maxRunUp: 100, minScore: 0, maxTopBuyerPct: 100, avoidFlags: [] }
+
+/** The kinds of signal each strategy trades. */
+export const RULES_OF: Record<Strategy, SignalRule[]> = { scalp: ['momentum', 'snipe'], snipe: ['snipe'], 'second-leg': ['second-leg'] }
+export const RULE_LABEL: Record<SignalRule, string> = { momentum: 'momentum bursts', snipe: 'snipes', 'second-leg': 'dip rebounds' }
 
 const EXITS: Record<Strategy, Pick<StrategyTuning, 'takeProfit' | 'stopLoss' | 'timeStopMin' | 'maxHoldMin'>> = {
   scalp: { takeProfit: 1.15, stopLoss: 0.9, timeStopMin: 3, maxHoldMin: 10 },
@@ -47,12 +60,13 @@ export const TP_BOUNDS: Record<Strategy, [number, number]> = { scalp: [1.06, 1.3
 export const FILTER_CAPS = { minLiquidityUsd: 25_000, minBuyers: 40, minBuySellRatio: 4, maxRunUp: 1.02, minScore: 90, maxTopBuyerPct: 10 }
 
 export const LEARN = {
-  /** The trades read: the last 20 of the strategy. */
+  /** The trades read: the last 20 of the kind of signal. */
   window: 20,
   minTrades: 6,
   minLosses: 3,
-  /** A version is judged on at least this many of its own trades before the next change. */
+  /** A version is judged on at least this many of its own trades before the next change (a bot with under 10 trades: 3). */
   perVersion: 5,
+  perVersionNew: 3,
   /** A pattern counts when this share of the losses shows it. */
   share: 0.3,
   /** Rolled back after this many trades if its win rate is this far under the version before. */
@@ -61,10 +75,22 @@ export const LEARN = {
   /** Loosened after this many signals skipped by learned filters, with no trade for this long. */
   relaxAfterSkips: 15,
   relaxAfterMs: 2 * 3_600_000,
+  /** A kind of signal it skips (it kept losing) is tried again after this long. */
+  retryRuleAfterMs: 12 * 3_600_000,
 }
 
 export function defaultTuning(s: Strategy): Tuning {
-  return { version: 1, ...EXITS[s], targetUsd: TARGETS[s].target, filters: { ...OPEN_FILTERS, avoidFlags: [] }, changedAt: null, basis: null, prev: null }
+  return { version: 1, ...EXITS[s], targetUsd: TARGETS[s].target, filters: { ...OPEN_FILTERS, avoidFlags: [] }, rules: {}, changedAt: null, basis: null, prev: null }
+}
+
+/** The kind of signal a position came from; an older one without it: what its strategy implies (a fast scalp's is unknown). */
+export function ruleOfPosition(p: Pick<Position, 'rule' | 'strategy'>): SignalRule | null {
+  return p.rule ?? (p.strategy === 'snipe' ? 'snipe' : p.strategy === 'second-leg' ? 'second-leg' : null)
+}
+
+/** The filters a kind of signal is checked against: its own, else the strategy-wide ones. */
+export function filtersFor(t: StrategyTuning, rule: SignalRule | null | undefined): BotFilters {
+  return (rule && t.rules?.[rule]) || t.filters
 }
 
 /** The exits a position opened with this tuning trades with: everything sold at the take-profit. */
@@ -82,9 +108,10 @@ const pct = (x: number) => `${Math.round(x * 100)}%`
 const gain = (m: number) => `+${Math.round((m - 1) * 100)}%`
 
 /** Why a bot with this tuning won't take a signal, or null if it will. Signals without features are taken. */
-export function admits(t: StrategyTuning, f: SignalFeatures | undefined): string | null {
+export function admits(t: StrategyTuning, f: SignalFeatures | undefined, rule?: SignalRule | null): string | null {
+  const x = filtersFor(t, rule)
+  if (rule && x.skip) return `it learned to skip ${RULE_LABEL[rule]} for now (they kept losing)`
   if (!f) return null
-  const x = t.filters
   if (f.liquidityUsd !== null && f.liquidityUsd < x.minLiquidityUsd) return `liquidity ${money(f.liquidityUsd)} is under its learned minimum ${money(x.minLiquidityUsd)}`
   if (f.buyers < x.minBuyers) return `${f.buyers} buyers, it now needs ${x.minBuyers}`
   if ((f.buySellRatio ?? Infinity) < x.minBuySellRatio) return `buys only ${f.buySellRatio!.toFixed(1)}× sells, it now needs ${x.minBuySellRatio.toFixed(2)}×`
@@ -99,7 +126,7 @@ export function admits(t: StrategyTuning, f: SignalFeatures | undefined): string
 const won = (p: Position) => (p.pnlUsd ?? 0) > 0
 const RUGGY = new Set(['rug', 'creator', 'safety'])
 
-type NumFilter = Exclude<keyof BotFilters, 'avoidFlags'>
+type NumFilter = Exclude<keyof BotFilters, 'avoidFlags' | 'skip' | 'skippedAt'>
 interface Feature { key: 'liquidityUsd' | 'buyers' | 'buySellRatio' | 'score' | 'runUp' | 'topBuyerPct'; dir: 'min' | 'max'; filter: NumFilter; label: string; fmt: (v: number) => string }
 const FEATURES: Feature[] = [
   { key: 'liquidityUsd', dir: 'min', filter: 'minLiquidityUsd', label: 'liquidity', fmt: money },
@@ -121,7 +148,7 @@ const capped = (filter: NumFilter, v: number) => {
 }
 
 /** The one threshold that would have kept out the most losses for the fewest wins, if it's clearly worth it. */
-function bestThreshold(t: StrategyTuning, trades: Position[]): { f: Feature; th: number; lost: number; wins: number; L: number; W: number } | null {
+function bestThreshold(cur: BotFilters, trades: Position[]): { f: Feature; th: number; lost: number; wins: number; L: number; W: number } | null {
   let best: { f: Feature; th: number; lost: number; wins: number; L: number; W: number; score: number } | null = null
   for (const f of FEATURES) {
     const rows = trades.map(p => ({ v: valueOf(p, f.key), win: won(p) })).filter((r): r is { v: number; win: boolean } => r.v !== null)
@@ -137,7 +164,7 @@ function bestThreshold(t: StrategyTuning, trades: Position[]): { f: Feature; th:
       const out = (v: number) => (f.dir === 'min' ? v < th : v > th)
       const lost = rows.filter(r => !r.win && out(r.v)).length, wins = rows.filter(r => r.win && out(r.v)).length
       if (lost < Math.max(2, Math.ceil(0.4 * L)) || wins > 0.2 * W || rows.length - lost - wins < 4) continue
-      const tighter = f.dir === 'min' ? th > t.filters[f.filter] : th < t.filters[f.filter]
+      const tighter = f.dir === 'min' ? th > cur[f.filter] : th < cur[f.filter]
       if (!tighter) continue
       const score = lost / L - wins / Math.max(1, W)
       if (!best || score > best.score) best = { f, th, lost, wins, L, W, score }
@@ -147,41 +174,25 @@ function bestThreshold(t: StrategyTuning, trades: Position[]): { f: Feature; th:
 }
 
 const strip = (t: Tuning): StrategyTuning => { const { prev: _prev, ...rest } = t; return structuredClone(rest) }
+const openCopy = (): BotFilters => ({ ...OPEN_FILTERS, avoidFlags: [] })
 
-/**
- * Reads a strategy's closed trades (oldest first) and returns the bot's next
- * tuning with notes, or null if there's nothing to change yet.
- */
-export function learn(t: Tuning, s: Strategy, trades: Position[], now: number): { tuning: Tuning; notes: LearnNote[] } | null {
-  const closed = trades.filter(p => p.status === 'closed')
-  const cur = closed.filter(p => (p.tuningVersion ?? 0) === t.version)
+/** What one kind of signal's losing trades say about its entry filters: changes `f` and adds notes. */
+function tightenFor(rule: SignalRule, s: Strategy, f: BotFilters, w: Position[], own: Position[], now: number, say: (kind: LearnNote['kind'], text: string) => void) {
+  const losses = w.filter(p => !won(p)), wins = w.filter(won)
+  const share = (xs: Position[]) => xs.length / Math.max(1, losses.length)
+  const wr = wins.length / Math.max(1, w.length)
   const winsOf = (xs: Position[]) => xs.filter(won).length
-  const note = (version: number, kind: LearnNote['kind'], text: string): LearnNote => ({ at: now, strategy: s, version, kind, text })
+  const tag = RULE_LABEL[rule]
 
-  // A change that did clearly worse than the settings before it goes back.
-  if (t.prev && t.basis && t.basis.trades >= LEARN.perVersion && cur.length >= LEARN.rollbackAfter) {
-    const wr = winsOf(cur) / cur.length, before = t.basis.wins / t.basis.trades
-    if (wr + LEARN.rollbackGap < before) {
-      const version = t.version + 1
-      return {
-        tuning: { ...structuredClone(t.prev), version, changedAt: now, basis: { trades: cur.length, wins: winsOf(cur) }, prev: null },
-        notes: [note(version, 'revert', `Rolled back version ${t.version}: it won ${pct(wr)} of ${cur.length} trades, the settings before it ${pct(before)} of ${t.basis.trades}.`)],
-      }
-    }
+  // A kind of signal that keeps losing for this bot: skipped for now, tried again later (relax).
+  const recent = own.slice(-6)
+  const recentPnl = recent.reduce((sum, p) => sum + (p.pnlUsd ?? 0), 0)
+  if (!f.skip && s === 'scalp' && recent.length >= 4 && winsOf(recent) / recent.length <= 0.25 && recentPnl < 0) {
+    f.skip = true; f.skippedAt = now
+    say('tighten', `${tag}: won ${winsOf(recent)} of its last ${recent.length} (${money(recentPnl)}): it skips them for now and tries again in 12 hours.`)
   }
 
-  if (cur.length < LEARN.perVersion) return null
-  const w = closed.slice(-LEARN.window)
-  if (w.length < LEARN.minTrades) return null
-  const losses = w.filter(p => !won(p)), wins = w.filter(won)
-  if (losses.length < LEARN.minLosses) return null
-
-  const next: Tuning = { ...structuredClone(strip(t)), prev: null }
-  const f = next.filters
-  const notes: { kind: LearnNote['kind']; text: string }[] = []
-  const share = (xs: Position[]) => xs.length / losses.length
-  const wr = wins.length / w.length
-
+  if (w.length < LEARN.minTrades || losses.length < LEARN.minLosses) return
   // Rugs and dumps.
   const rugs = losses.filter(p => RUGGY.has(p.exitReason ?? ''))
   if (rugs.length >= 2 && share(rugs) >= LEARN.share) {
@@ -196,22 +207,9 @@ export function learn(t: Tuning, s: Strategy, trades: Position[], now: number): 
     }).map(([g]) => g)
     if (liq > f.minLiquidityUsd || score > f.minScore || flags.length) {
       f.minLiquidityUsd = liq; f.minScore = score; f.avoidFlags = [...f.avoidFlags, ...flags]
-      notes.push({ kind: 'tighten', text: `${rugs.length} of ${losses.length} losses were rugs or dumps: it now needs ${money(liq)} of liquidity and a safety score of ${score}${flags.length ? `, and skips coins flagged ${flags.map(g => `"${g}"`).join(', ')}` : ''}.` })
+      say('tighten', `${tag}: ${rugs.length} of ${losses.length} losses were rugs or dumps: it now needs ${money(liq)} of liquidity and a safety score of ${score}${flags.length ? `, and skips coins flagged ${flags.map(g => `"${g}"`).join(', ')}` : ''}.`)
     }
   }
-
-  // Near misses: the take-profit was too far.
-  const tpOf = (p: Position) => p.exits?.tp1Multiple ?? t.takeProfit
-  const near = losses.filter(p => p.marketEntry > 0 && p.peak / p.marketEntry >= 1 + 0.6 * (tpOf(p) - 1))
-  if (near.length >= 2 && share(near) >= LEARN.share) {
-    const [lo] = TP_BOUNDS[s]
-    const tp = Math.max(lo, Math.round((1 + (t.takeProfit - 1) * 0.85) * 1_000) / 1_000)
-    if (tp < t.takeProfit - 0.004) {
-      next.takeProfit = tp
-      notes.push({ kind: 'exit', text: `${near.length} losing trades rose most of the way to ${gain(t.takeProfit)} before turning: it takes profit at ${gain(tp)} now (each trade is sized up to keep the $${t.targetUsd} target).` })
-    }
-  }
-
   // Stopped out fast: it bought into selling.
   const fastMs = s === 'scalp' ? 90_000 : 180_000
   const fast = losses.filter(p => p.exitReason === 'stop' && (p.closedAt ?? 0) - p.openedAt <= fastMs)
@@ -222,49 +220,139 @@ export function learn(t: Tuning, s: Strategy, trades: Position[], now: number): 
     const runUp = median !== null ? capped('maxRunUp', Math.round(Math.min(f.maxRunUp, median) * 100) / 100) : f.maxRunUp
     if (ratio > f.minBuySellRatio || runUp < f.maxRunUp) {
       f.minBuySellRatio = ratio; f.maxRunUp = runUp
-      notes.push({ kind: 'tighten', text: `${fast.length} losses were stopped out within ${fastMs / 60_000 >= 2 ? `${fastMs / 60_000} minutes` : '90 seconds'} (bought into selling): buys must now be at least ${ratio}× sells${runUp < 100 ? `, and it skips coins already up more than ${gain(runUp)}` : ''}.` })
+      say('tighten', `${tag}: ${fast.length} losses were stopped out within ${fastMs / 60_000 >= 2 ? `${fastMs / 60_000} minutes` : '90 seconds'} (bought into selling): buys must now be at least ${ratio}× sells${runUp < 100 ? `, and it skips coins already up more than ${gain(runUp)}` : ''}.`)
     }
   }
-
   // Timed out without moving.
   const slow = losses.filter(p => p.exitReason === 'time')
   if (slow.length >= 2 && slow.length / losses.length >= 0.4) {
     const buyers = capped('minBuyers', f.minBuyers + 2)
     if (buyers > f.minBuyers) {
       f.minBuyers = buyers
-      notes.push({ kind: 'tighten', text: `${slow.length} losses timed out without moving: it now needs ${buyers} buyers.` })
+      say('tighten', `${tag}: ${slow.length} losses timed out without moving: it now needs ${buyers} buyers.`)
     }
   }
-
   // One number that separates the losses from the wins.
-  const b = bestThreshold(next, w)
+  const b = bestThreshold(f, w)
   if (b) {
     const th = capped(b.f.filter, b.th)
     const tighter = b.f.dir === 'min' ? th > f[b.f.filter] : th < f[b.f.filter]
     if (tighter) {
       f[b.f.filter] = th
-      notes.push({ kind: 'tighten', text: `${b.lost} of ${b.L} losses had ${b.f.label} ${b.f.dir === 'min' ? 'under' : 'over'} ${b.f.fmt(th)}, only ${b.wins} of ${b.W} wins did: it now needs ${b.f.label} ${b.f.dir === 'min' ? 'of at least' : 'of at most'} ${b.f.fmt(th)}.` })
+      say('tighten', `${tag}: ${b.lost} of ${b.L} losses had ${b.f.label} ${b.f.dir === 'min' ? 'under' : 'over'} ${b.f.fmt(th)}, only ${b.wins} of ${b.W} wins did: it now needs ${b.f.label} ${b.f.dir === 'min' ? 'of at least' : 'of at most'} ${b.f.fmt(th)}.`)
     }
+  }
+}
+
+/**
+ * Reads a strategy's closed trades (oldest first) and returns the bot's next
+ * tuning with notes, or null if there's nothing to change yet. `shared`:
+ * other bots' closed trades of the strategy (one per signal), read for a kind
+ * of signal where this bot has fewer than 20 of its own.
+ */
+export function learn(t: Tuning, s: Strategy, trades: Position[], now: number, shared: Position[] = []): { tuning: Tuning; notes: LearnNote[] } | null {
+  const closed = trades.filter(p => p.status === 'closed')
+  const cur = closed.filter(p => (p.tuningVersion ?? 0) === t.version)
+  const winsOf = (xs: Position[]) => xs.filter(won).length
+  const note = (version: number, kind: LearnNote['kind'], text: string, rule?: SignalRule): LearnNote => ({ at: now, strategy: s, version, kind, text, ...(rule ? { rule } : {}) })
+
+  // A change that did clearly worse than the settings before it goes back.
+  if (t.prev && t.basis && t.basis.trades >= LEARN.perVersion && cur.length >= LEARN.rollbackAfter) {
+    const wr = winsOf(cur) / cur.length, before = t.basis.wins / t.basis.trades
+    if (wr + LEARN.rollbackGap < before) {
+      const version = t.version + 1
+      return {
+        tuning: { ...structuredClone(t.prev), version, changedAt: now, basis: { trades: cur.length, wins: winsOf(cur) }, prev: null },
+        notes: [note(version, 'revert', `Rolled back version ${t.version}: it won ${pct(wr)} of ${cur.length} trades, the settings before it ${pct(before)} of ${t.basis.trades}.`)],
+      }
+    }
+  }
+
+  if (cur.length < (closed.length < 10 ? LEARN.perVersionNew : LEARN.perVersion)) return null
+  const next: Tuning = { ...structuredClone(strip(t)), prev: null }
+  next.rules = { ...(next.rules ?? {}) }
+  const notes: { kind: LearnNote['kind']; text: string; rule?: SignalRule }[] = []
+
+  // Exits, for the strategy as a whole: near misses mean the take-profit was too far.
+  const w = closed.slice(-LEARN.window)
+  const losses = w.filter(p => !won(p))
+  if (w.length >= LEARN.minTrades && losses.length >= LEARN.minLosses) {
+    const tpOf = (p: Position) => p.exits?.tp1Multiple ?? t.takeProfit
+    const near = losses.filter(p => p.marketEntry > 0 && p.peak / p.marketEntry >= 1 + 0.6 * (tpOf(p) - 1))
+    if (near.length >= 2 && near.length / losses.length >= LEARN.share) {
+      const [lo] = TP_BOUNDS[s]
+      const tp = Math.max(lo, Math.round((1 + (t.takeProfit - 1) * 0.85) * 1_000) / 1_000)
+      if (tp < t.takeProfit - 0.004) {
+        next.takeProfit = tp
+        notes.push({ kind: 'exit', text: `${near.length} losing trades rose most of the way to ${gain(t.takeProfit)} before turning: it takes profit at ${gain(tp)} now (each trade is sized up to keep the $${t.targetUsd} target).` })
+      }
+    }
+  }
+
+  // Entry filters, per kind of signal: its own trades, and other bots' on the same kind while it has few.
+  for (const rule of RULES_OF[s]) {
+    const own = closed.filter(p => ruleOfPosition(p) === rule)
+    const ownIds = new Set(own.map(p => p.signalId))
+    const others = own.length >= LEARN.window ? [] : shared.filter(p => ruleOfPosition(p) === rule && !ownIds.has(p.signalId) && p.status === 'closed')
+    const rw = [...others.slice(-(LEARN.window - own.length)), ...own.slice(-LEARN.window)].sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0))
+    if (rw.length < 4) continue
+    const f: BotFilters = structuredClone(t.rules?.[rule] ?? openCopy())
+    const before = JSON.stringify(f)
+    const borrowed = rw.length - Math.min(own.length, LEARN.window)
+    tightenFor(rule, s, f, rw, own, now, (kind, text) => notes.push({ kind, rule, text: borrowed > 0 && !text.includes('skips them for now') ? `${text} (read from its ${Math.min(own.length, LEARN.window)} trades and ${borrowed} of other bots')` : text }))
+    if (JSON.stringify(f) !== before) next.rules[rule] = f
   }
 
   if (!notes.length) return null
   const version = t.version + 1
   Object.assign(next, { version, changedAt: now, basis: { trades: cur.length, wins: winsOf(cur) }, prev: strip(t) })
-  return { tuning: next, notes: notes.map(n => note(version, n.kind, n.text)) }
+  return { tuning: next, notes: notes.map(n => note(version, n.kind, n.text, n.rule)) }
 }
 
-/** Filters that kept the bot from trading at all come partway back toward open. */
+/**
+ * Filters that kept the bot from trading at all come partway back toward
+ * open; a kind of signal it skipped is tried again after 12 hours.
+ */
 export function relax(t: Tuning, s: Strategy, skipped: number, lastBuyAt: number | null, now: number): { tuning: Tuning; notes: LearnNote[] } | null {
-  const f = t.filters
-  const open = OPEN_FILTERS
-  const tight = (Object.keys(open) as (keyof BotFilters)[]).some(k => k === 'avoidFlags' ? f.avoidFlags.length > 0 : f[k] !== open[k])
-  if (!tight || skipped < LEARN.relaxAfterSkips || now - Math.max(lastBuyAt ?? 0, t.changedAt ?? 0) < LEARN.relaxAfterMs) return null
+  const notes: LearnNote[] = []
   const next: Tuning = { ...structuredClone(strip(t)), prev: strip(t) }
-  const back = (k: NumFilter, digits: number) => { const v = f[k] + (open[k] - f[k]) * 0.4; next.filters[k] = Math.round(v * 10 ** digits) / 10 ** digits }
-  back('minLiquidityUsd', -2); back('minBuyers', 0); back('minBuySellRatio', 2); back('maxRunUp', 2); back('minScore', 0); back('maxTopBuyerPct', 0)
-  next.filters.avoidFlags = f.avoidFlags.slice(0, -1)
+  next.rules = { ...(next.rules ?? {}) }
   const version = t.version + 1
+  // A kind of signal skipped long enough: tried again.
+  for (const rule of RULES_OF[s]) {
+    const r = next.rules[rule]
+    if (r?.skip && now - (r.skippedAt ?? 0) >= LEARN.retryRuleAfterMs) {
+      next.rules[rule] = { ...r, skip: false, skippedAt: undefined }
+      notes.push({ at: now, strategy: s, rule, version, kind: 'loosen', text: `${RULE_LABEL[rule]}: skipped for 12 hours, it tries them again.` })
+    }
+  }
+  // Filters that skipped everything for hours: partway back toward open.
+  const open = OPEN_FILTERS
+  const all: BotFilters[] = [next.filters, ...Object.values(next.rules).filter((x): x is BotFilters => !!x)]
+  const tight = all.some(f => (Object.keys(open) as (keyof BotFilters)[]).some(k => k === 'avoidFlags' ? f.avoidFlags.length > 0 : f[k] !== open[k]))
+  if (tight && skipped >= LEARN.relaxAfterSkips && now - Math.max(lastBuyAt ?? 0, t.changedAt ?? 0) >= LEARN.relaxAfterMs) {
+    for (const f of all) {
+      const back = (k: NumFilter, digits: number) => { const v = f[k] + (open[k] - f[k]) * 0.4; f[k] = Math.round(v * 10 ** digits) / 10 ** digits }
+      back('minLiquidityUsd', -2); back('minBuyers', 0); back('minBuySellRatio', 2); back('maxRunUp', 2); back('minScore', 0); back('maxTopBuyerPct', 0)
+      f.avoidFlags = f.avoidFlags.slice(0, -1)
+    }
+    const hours = Math.round((now - Math.max(lastBuyAt ?? 0, t.changedAt ?? 0)) / 3_600_000)
+    notes.push({ at: now, strategy: s, version, kind: 'loosen', text: `Its filters skipped ${skipped} signals in ${hours}h without a trade: loosened them partway back.` })
+  }
+  if (!notes.length) return null
   Object.assign(next, { version, changedAt: now, basis: t.basis })
-  const hours = Math.round((now - Math.max(lastBuyAt ?? 0, t.changedAt ?? 0)) / 3_600_000)
-  return { tuning: next, notes: [{ at: now, strategy: s, version, kind: 'loosen', text: `Its filters skipped ${skipped} signals in ${hours}h without a trade: loosened them partway back.` }] }
+  return { tuning: next, notes }
+}
+
+/**
+ * An older tuning (before 2026-10-01) kept one set of filters for the whole
+ * strategy. They move to the kind of signal they were learned on: a fast
+ * scalp's came almost all from snipes on risky coins (momentum starts open),
+ * a snipe's and a dip rebound's from their own kind.
+ */
+export function migrateTuning(t: Tuning, s: Strategy): Tuning {
+  if (t.rules) return t
+  const learned = JSON.stringify(t.filters) !== JSON.stringify(OPEN_FILTERS)
+  const rule: SignalRule = s === 'second-leg' ? 'second-leg' : 'snipe'
+  return { ...t, filters: openCopy(), rules: learned ? { [rule]: structuredClone(t.filters) } : {}, prev: null }
 }

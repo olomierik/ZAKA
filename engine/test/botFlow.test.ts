@@ -58,7 +58,7 @@ function setup() {
 describe('the bot, end to end', () => {
   test('a momentum burst becomes a fast-scalp signal with the coin\'s numbers; a visitor\'s bot buys it at its own size', async () => {
     const { bot, sent, account, trade } = setup()
-    const t0 = Date.now() - 100_000
+    const t0 = Date.now() - 80_000 // eight buyers in two minutes, the last two in the last 30 seconds
     for (let k = 0; k < 8; k++) trade({ price: 1 + k * 0.012, at: t0 + k * 10_000 })
     await settle()
     bot.sweep(Date.now() + 5_000) // every coin trading now is evaluated, not only on its own trades
@@ -74,7 +74,7 @@ describe('the bot, end to end', () => {
 
   test('liquidity pulled: the rug guard closes every position at once and quarantines the coin', async () => {
     const { bot, account, trade, sent } = setup()
-    const t0 = Date.now() - 100_000
+    const t0 = Date.now() - 80_000 // eight buyers in two minutes, the last two in the last 30 seconds
     for (let k = 0; k < 8; k++) trade({ price: 1 + k * 0.012, at: t0 + k * 10_000 })
     await settle(); bot.sweep(Date.now() + 5_000); await settle()
     expect(account.positions[0].status).toBe('open')

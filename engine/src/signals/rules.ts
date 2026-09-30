@@ -29,6 +29,14 @@ import type { Flow, Window } from '../intel/flow'
 // (`MAX_ROUND_TRIP_PCT`); a snipe or rebound 12% or less. 22 trades is a
 // small sample: the per-rule results (GET /v1/bot/stats `byRule`) say whether
 // it helped.
+//
+// Next round (owner: "refine the signal engine to produce quality signals"):
+// momentum bursts still won 4 of 14 (−$7.79) while snipes on risky coins won
+// 12 of 16 (+$11.79). Snipes are left as they are. A momentum burst now needs
+// 8 buyers and to be still bought in its last 30 seconds (8 of its 10 losses
+// were stopped out within 90 seconds). And a rule whose recent paper record
+// loses is on probation (bot/probation.ts): it still fires and is measured,
+// but no bot trades it until its record recovers.
 export const RULES = {
   snipe: {
     /** Let the first blocks' bundlers show before judging. */
@@ -52,8 +60,9 @@ export const RULES = {
     windowSec: 120,
     /** After the first minute's bundlers and bots have shown. */
     minAgeSec: 60,
-    /** Enough different buyers that it's a crowd, not a few wallets (2026-10-01: was 3). */
-    minBuyers: 6,
+    /** Enough different buyers that it's a crowd, not a few wallets (was 3, then 6; 8 since 2026-09-30:
+     * momentum bursts with 3–7 buyers lost 3 of 4 in the house book). */
+    minBuyers: 8,
     minBuyUsd: 100,
     /** Buy volume at least this many times sell volume in the window. */
     minBuySellRatio: 1.6,
@@ -64,6 +73,11 @@ export const RULES = {
     minOfHigh: 0.92,
     /** No single buyer above this share of the window's buys. */
     maxTopBuyerPct: 40,
+    /** Still being bought right now (2026-09-30): in the last 30 seconds buys at least match sells,
+     * from at least 2 wallets. 8 of 10 momentum losses were stopped out within 90s of buying: the
+     * burst had ended by the time it was read. */
+    confirmSec: 30,
+    minRecentBuyers: 2,
     /** Deep enough that a $1–2 profit survives the costs. */
     minLiquidityUsd: 2_000,
     /** The same coin scalped again only after this long. */
@@ -130,7 +144,7 @@ export function snipeReady(flow: Flow, ageSec: number, r = RULES.snipe): RuleRes
 }
 
 /** A momentum scalp: the last 2 minutes of a coin's trading (`w`, from the recent tape). */
-export function scalpReady(w: Window, ageSec: number, liquidityUsd: number | null, r = RULES.scalp): RuleResult {
+export function scalpReady(w: Window, ageSec: number, liquidityUsd: number | null, last: Window, r = RULES.scalp): RuleResult {
   const reasons: string[] = []
   const failed: string[] = []
   const need = (id: string, cond: boolean, pass: string, fail: string) => { reasons.push(cond ? pass : `✗ ${fail}`); if (!cond) failed.push(id); return cond }
@@ -146,6 +160,8 @@ export function scalpReady(w: Window, ageSec: number, liquidityUsd: number | nul
     need('offhigh', ofHigh !== null && ofHigh >= r.minOfHigh, `${((ofHigh ?? 0) * 100).toFixed(0)}% of its 2-min high`, `${(100 - (ofHigh ?? 0) * 100).toFixed(0)}% off its 2-min high`),
     need('topbuyer', w.topBuyerPct <= r.maxTopBuyerPct, `largest buyer ${w.topBuyerPct.toFixed(0)}% of buys`, `one buyer is ${w.topBuyerPct.toFixed(0)}% of the buying`),
     need('liquidity', liquidityUsd !== null && liquidityUsd >= r.minLiquidityUsd, `$${Math.round(liquidityUsd ?? 0).toLocaleString('en-US')} liquidity`, `liquidity $${Math.round(liquidityUsd ?? 0).toLocaleString('en-US')} (need $${r.minLiquidityUsd.toLocaleString('en-US')} for a scalp)`),
+    need('now', last.buyers >= r.minRecentBuyers && last.buyUsd >= last.sellUsd, `still bought in the last ${r.confirmSec}s (${last.buyers} buyers)`,
+      last.buyUsd < last.sellUsd ? `sold more than bought in the last ${r.confirmSec}s: the burst is over` : `${last.buyers} buyer${last.buyers === 1 ? '' : 's'} in the last ${r.confirmSec}s (need ${r.minRecentBuyers})`),
   ].every(Boolean)
   return { ok, reasons, failed }
 }

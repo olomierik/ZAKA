@@ -17,7 +17,7 @@ export const REASON_LABELS: Record<string, string> = {
   'snipe:ratio': 'snipe: sells too heavy', 'snipe:topbuyer': 'snipe: one buyer dominates', 'snipe:late': 'snipe: already ran too far', 'snipe:offpeak': 'snipe: already falling from its peak',
   'scalp:age': 'scalp: under a minute old', 'scalp:buyers': 'scalp: too few buyers in 2 minutes', 'scalp:bought': 'scalp: too little bought in 2 minutes',
   'scalp:ratio': 'scalp: sells too heavy', 'scalp:move': 'scalp: no move (or a spike)', 'scalp:offhigh': 'scalp: off its 2-minute high',
-  'scalp:topbuyer': 'scalp: one buyer dominates', 'scalp:liquidity': 'scalp: pool too thin',
+  'scalp:topbuyer': 'scalp: one buyer dominates', 'scalp:now': 'scalp: no longer being bought (last 30s)', 'scalp:liquidity': 'scalp: pool too thin',
   'leg:peak': 'dip rebound: hasn\'t run 2× yet', 'leg:drawdown': 'dip rebound: no 25–70% pullback', 'leg:bottom': 'dip rebound: bottom too recent',
   'leg:higherlow': 'dip rebound: no higher low', 'leg:bounce': 'dip rebound: not off the bottom yet', 'leg:buying': 'dip rebound: no buying back',
   'leg:atpeak': 'dip rebound: still at its peak', 'leg:age': 'over 48 hours old', 'leg:notrades': 'no trades',
@@ -37,7 +37,7 @@ export const SKIP_LABELS: Record<string, string> = {
   'not-running': 'bot funded but not started (press Start)', strategy: 'bot doesn\'t follow that strategy', paused: 'bot paused after 4 losses in a row',
   filters: 'the bot\'s learned filters', 'too-thin': 'pool too thin or too costly to net $1', cash: 'not enough cash in the bot', 'small-balance': 'bot too small: a trade is at most 20% of it',
   'max-open': 'too many trades already open', cooldown: 'traded that coin recently', 'daily-loss': 'daily loss limit reached',
-  'live-unavailable': 'live wallet unavailable', 'live-cap': 'over the live size cap', 'live-order': 'sent to a live wallet',
+  probation: 'the rule is on probation (its paper record is losing)', 'live-unavailable': 'live wallet unavailable', 'live-cap': 'over the live size cap', 'live-order': 'sent to a live wallet',
 }
 
 /**

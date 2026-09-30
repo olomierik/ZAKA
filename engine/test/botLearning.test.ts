@@ -2,8 +2,8 @@
 // their losses: bot/sizing.ts, bot/rugGuard.ts, bot/learner.ts, the momentum
 // scalp rule, and how bot/paperAccounts.ts puts them together.
 import { describe, expect, test } from 'bun:test'
-import type { SignalFeatures } from '../../api/_marketProtocol'
-import { admits, defaultTuning, learn, LEARN, relax, toParams, type Tuning } from '../src/bot/learner'
+import type { SignalFeatures, SignalRule } from '../../api/_marketProtocol'
+import { admits, defaultTuning, learn, LEARN, migrateTuning, OPEN_FILTERS, relax, toParams, type Tuning } from '../src/bot/learner'
 import { PaperAccounts, PROTECT, riskFor, type PaperAccount, type PaperSignal } from '../src/bot/paperAccounts'
 import { RugWatch } from '../src/bot/rugGuard'
 import { netAtTakeProfit, sizeForTarget, TARGETS } from '../src/bot/sizing'
@@ -83,25 +83,26 @@ describe('the rug guard', () => {
 describe('the momentum scalp rule', () => {
   const burst = (n: number, o: (i: number) => Partial<TapeTrade> = () => ({})) => Array.from({ length: n }, (_, i) => trade({ ts: now - 100_000 + i * 10_000, wallet: `0x${i}`, usd: 60, price: 1 + i * 0.012, ...o(i) }))
   test('a burst of buying from several wallets, still near its high, in a deep enough pool', () => {
-    const r = scalpReady(windowOf(burst(8)), 600, 10_000)
+    const r = scalpReady(windowOf(burst(8)), 600, 10_000, windowOf(burst(8).slice(-3)))
     expect(r.reasons.filter(x => x.startsWith('✗'))).toEqual([])
     expect(r.ok).toBe(true)
   })
   test('not a spike, not sell-heavy, not one buyer, not a thin pool, not a brand-new coin', () => {
-    expect(scalpReady(windowOf(burst(8, i => ({ price: 1 + i * 0.1 }))), 600, 10_000).reasons.join()).toMatch(/a spike/)
-    expect(scalpReady(windowOf(burst(8, i => ({ side: i % 2 ? 'SELL' : 'BUY' }))), 600, 10_000).ok).toBe(false)
-    expect(scalpReady(windowOf(burst(8, () => ({ wallet: '0xone' }))), 600, 10_000).ok).toBe(false)
-    expect(scalpReady(windowOf(burst(8)), 600, 1_000).reasons.join()).toMatch(/need \$2,000 for a scalp/)
-    expect(scalpReady(windowOf(burst(8)), 30, 10_000).ok).toBe(false)
+    expect(scalpReady(windowOf(burst(8, i => ({ price: 1 + i * 0.1 }))), 600, 10_000, windowOf(burst(8, i => ({ price: 1 + i * 0.1 })).slice(-3))).reasons.join()).toMatch(/a spike/)
+    expect(scalpReady(windowOf(burst(8, i => ({ side: i % 2 ? 'SELL' : 'BUY' }))), 600, 10_000, windowOf(burst(8, i => ({ side: i % 2 ? 'SELL' : 'BUY' })).slice(-3))).ok).toBe(false)
+    expect(scalpReady(windowOf(burst(8, () => ({ wallet: '0xone' }))), 600, 10_000, windowOf(burst(8, () => ({ wallet: '0xone' })).slice(-3))).ok).toBe(false)
+    expect(scalpReady(windowOf(burst(8)), 600, 1_000, windowOf(burst(8).slice(-3))).reasons.join()).toMatch(/need \$2,000 for a scalp/)
+    expect(scalpReady(windowOf(burst(8)), 30, 10_000, windowOf(burst(8).slice(-3))).ok).toBe(false)
   })
 })
 
 /** A closed position of `s` with the given outcome. */
-function closed(s: Strategy, o: { pnl: 'win' | 'loss'; reason?: ExitReason; heldMs?: number; peak?: number; features?: Partial<SignalFeatures>; version?: number; i?: number; tp?: number }): Position {
+function closed(s: Strategy, o: { pnl: 'win' | 'loss'; reason?: ExitReason; heldMs?: number; peak?: number; features?: Partial<SignalFeatures>; version?: number; i?: number; tp?: number; rule?: SignalRule; signal?: string }): Position {
   const t = defaultTuning(s)
   const params = toParams({ ...t, takeProfit: o.tp ?? t.takeProfit }, 10)
-  const p = openPosition({ id: `p${o.i ?? Math.random()}`, strategy: s, token: T, symbol: 'C', launchpad: 'ARGUS', signalId: 'x', price: 1, cost: 0.01, now: now + (o.i ?? 0) * 60_000, params })
+  const p = openPosition({ id: `p${o.i ?? Math.random()}`, strategy: s, token: T, symbol: 'C', launchpad: 'ARGUS', signalId: o.signal ?? 'x', price: 1, cost: 0.01, now: now + (o.i ?? 0) * 60_000, params })
   p.exits = params
+  p.rule = o.rule ?? (s === 'scalp' ? 'momentum' : s)
   p.tuningVersion = o.version ?? 1
   p.features = { ageSec: 300, liquidityUsd: 10_000, marketCapUsd: 50_000, buyers: 10, buySellRatio: 2, runUp: 1.1, topBuyerPct: 15, score: 80, flags: [], roundTripPct: 3, ...o.features }
   p.peak = o.peak ?? (o.pnl === 'win' ? params.tp1Multiple : 1.02)
@@ -137,10 +138,13 @@ describe('the learner reads the losing trades', () => {
       ...Array.from({ length: 3 }, (_, i) => closed(s, { pnl: 'loss', i: 10 + i, reason: 'rug', features: { flags: ['holders'] } })),
     ]
     const r = learn(t, s, trades, now)!
-    expect(r.tuning.filters.minLiquidityUsd).toBe(1_500)
-    expect(r.tuning.filters.minScore).toBe(5)
-    expect(r.tuning.filters.avoidFlags).toEqual(['holders'])
-    expect(admits(r.tuning, { ...closed(s, { pnl: 'win' }).features!, flags: ['holders'] })).toMatch(/learned to skip/)
+    const f = r.tuning.rules!.momentum!
+    expect(f.minLiquidityUsd).toBe(1_500)
+    expect(f.minScore).toBe(5)
+    expect(f.avoidFlags).toEqual(['holders'])
+    expect(admits(r.tuning, { ...closed(s, { pnl: 'win' }).features!, flags: ['holders'] }, 'momentum')).toMatch(/learned to skip/)
+    // Learned on momentum bursts: a snipe's signals aren't held to it.
+    expect(admits(r.tuning, { ...closed(s, { pnl: 'win' }).features!, flags: ['holders'] }, 'snipe')).toBeNull()
   })
   test('fast stop-outs: buys must outweigh sells more, late entries are skipped', () => {
     const t = defaultTuning(s)
@@ -149,10 +153,11 @@ describe('the learner reads the losing trades', () => {
       ...Array.from({ length: 4 }, (_, i) => closed(s, { pnl: 'loss', i: 10 + i, heldMs: 40_000, features: { runUp: 1.25 + i * 0.02 } })),
     ]
     const r = learn(t, s, trades, now)!
-    expect(r.tuning.filters.minBuySellRatio).toBe(1.25)
-    expect(r.tuning.filters.maxRunUp).toBeLessThan(1.3)
-    expect(r.tuning.filters.maxRunUp).toBeGreaterThan(1.05) // the winners' entries still pass
-    expect(admits(r.tuning, { ...trades[0].features! })).toBeNull()
+    const f = r.tuning.rules!.momentum!
+    expect(f.minBuySellRatio).toBe(1.25)
+    expect(f.maxRunUp).toBeLessThan(1.3)
+    expect(f.maxRunUp).toBeGreaterThan(1.05) // the winners' entries still pass
+    expect(admits(r.tuning, { ...trades[0].features! }, 'momentum')).toBeNull()
   })
   test('one number that separates losses from wins becomes a filter', () => {
     const t = defaultTuning(s)
@@ -161,8 +166,61 @@ describe('the learner reads the losing trades', () => {
       ...Array.from({ length: 4 }, (_, i) => closed(s, { pnl: 'loss', i: 20 + i, heldMs: 400_000, peak: 1.01, features: { liquidityUsd: 2_000 + i * 300 } })),
     ]
     const r = learn(t, s, trades, now)!
-    expect(r.tuning.filters.minLiquidityUsd).toBe(8_000)
-    expect(r.notes.map(n => n.text).join(' ')).toMatch(/4 of 4 losses had liquidity under \$8,000, only 0 of 7 wins did/)
+    expect(r.tuning.rules!.momentum!.minLiquidityUsd).toBe(8_000)
+    expect(r.tuning.filters).toEqual(OPEN_FILTERS)
+    expect(r.notes.map(n => n.text).join(' ')).toMatch(/momentum bursts: 4 of 4 losses had liquidity under \$8,000, only 0 of 7 wins did/)
+    expect(r.notes.every(n => n.rule === 'momentum')).toBe(true)
+  })
+  test('each kind of signal learns apart: buyers since launch (snipes) never block momentum bursts (buyers in 2 minutes)', () => {
+    const t = defaultTuning(s)
+    const trades = [
+      ...Array.from({ length: 7 }, (_, i) => closed(s, { pnl: 'win', i, rule: 'snipe', features: { buyers: 300 + i * 20 } })),
+      ...Array.from({ length: 4 }, (_, i) => closed(s, { pnl: 'loss', i: 20 + i, rule: 'snipe', heldMs: 400_000, peak: 1.01, features: { buyers: 40 + i } })),
+    ]
+    const r = learn(t, s, trades, now)!
+    expect(r.tuning.rules!.snipe!.minBuyers).toBe(40) // capped (FILTER_CAPS)
+    expect(r.tuning.rules!.momentum).toBeUndefined()
+    expect(admits(r.tuning, { ...trades[0].features!, buyers: 12 }, 'momentum')).toBeNull()
+    expect(admits(r.tuning, { ...trades[0].features!, buyers: 12 }, 'snipe')).toMatch(/12 buyers, it now needs 40/)
+  })
+  test('a new bot learns from other bots’ trades on the same kind of signal', () => {
+    const t = defaultTuning(s)
+    const own = Array.from({ length: 3 }, (_, i) => closed(s, { pnl: 'win', i, signal: `own${i}`, features: { liquidityUsd: 9_000 } }))
+    const others = [
+      ...Array.from({ length: 6 }, (_, i) => closed(s, { pnl: 'win', i: 5 + i, signal: `w${i}`, features: { liquidityUsd: 8_000 + i * 1_000 } })),
+      ...Array.from({ length: 5 }, (_, i) => closed(s, { pnl: 'loss', i: 20 + i, signal: `l${i}`, heldMs: 400_000, peak: 1.01, features: { liquidityUsd: 2_000 + i * 300 } })),
+    ]
+    expect(learn(t, s, own, now)).toBeNull()
+    const r = learn(t, s, own, now, others)!
+    expect(r.tuning.rules!.momentum!.minLiquidityUsd).toBe(8_000)
+    expect(r.notes[0].text).toMatch(/read from its 3 trades and 11 of other bots'/)
+  })
+  test('a kind of signal that keeps losing is skipped, then tried again 12 hours later', () => {
+    const t = defaultTuning(s)
+    const trades = [
+      ...Array.from({ length: 2 }, (_, i) => closed(s, { pnl: 'win', i, rule: 'snipe' })),
+      closed(s, { pnl: 'win', i: 5 }),
+      ...Array.from({ length: 4 }, (_, i) => closed(s, { pnl: 'loss', i: 10 + i })),
+    ]
+    const r = learn(t, s, trades, now)!
+    expect(r.tuning.rules!.momentum!.skip).toBe(true)
+    expect(admits(r.tuning, trades[0].features, 'momentum')).toMatch(/learned to skip momentum bursts/)
+    expect(admits(r.tuning, trades[0].features, 'snipe')).toBeNull()
+    expect(relax(r.tuning, s, 1, now, now + 3_600_000)).toBeNull()
+    const back = relax(r.tuning, s, 1, now, now + LEARN.retryRuleAfterMs)!
+    expect(back.tuning.rules!.momentum!.skip).toBe(false)
+    expect(back.notes[0]).toMatchObject({ kind: 'loosen', rule: 'momentum' })
+  })
+  test('an older bot’s one set of filters moves to the kind of signal it was learned on', () => {
+    const old: Tuning = { ...defaultTuning(s), version: 6, filters: { ...OPEN_FILTERS, minBuyers: 40, avoidFlags: [] } }
+    delete old.rules
+    const m = migrateTuning(old, s)
+    expect(m.filters).toEqual(OPEN_FILTERS)
+    expect(m.rules!.snipe!.minBuyers).toBe(40)
+    expect(m.version).toBe(6)
+    expect(migrateTuning(m, s)).toBe(m)
+    const fresh = defaultTuning('second-leg'); delete fresh.rules
+    expect(migrateTuning(fresh, 'second-leg').rules).toEqual({})
   })
   test('a version that wins clearly less often than the one before it is rolled back', () => {
     const base = defaultTuning(s)

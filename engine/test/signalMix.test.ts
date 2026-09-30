@@ -97,8 +97,8 @@ function rebound(trade: ReturnType<typeof setup>['trade']) {
   trade({ price: 2.2, at: m(15) })
   trade({ side: 'SELL', price: 1.3, at: m(12) })
   trade({ price: 1.38, at: m(8) })
-  // Seven buyers in the last two minutes: a crowd, as the momentum rule wants (6+ since 2026-10-01).
-  for (let k = 0; k < 7; k++) trade({ price: 1.4 + k * 0.012, at: now - 110_000 + k * 15_000 })
+  // Nine buyers in the last two minutes, two of them in the last 30 seconds: a crowd still buying, as the momentum rule wants.
+  for (let k = 0; k < 9; k++) trade({ price: 1.4 + k * 0.012, at: now - 110_000 + k * 12_000 })
 }
 
 describe('the rules\' order and the scan\'s unknowns', () => {

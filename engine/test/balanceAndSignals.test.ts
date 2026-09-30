@@ -51,16 +51,25 @@ describe('trade size and the bot\'s balance', () => {
 
 describe('the cleanest signals', () => {
   const w = (o: Partial<Window> = {}): Window => ({ trades: 10, buyers: 8, sellers: 2, buyUsd: 400, sellUsd: 100, firstPrice: 1, lastPrice: 1.08, high: 1.09, low: 1, topBuyerPct: 20, ...o })
-  test('a momentum scalp needs 6 buyers in its two minutes, not 3', () => {
-    expect(RULES.scalp.minBuyers).toBe(6)
-    expect(scalpReady(w(), 600, 20_000).ok).toBe(true)
-    const few = scalpReady(w({ buyers: 5 }), 600, 20_000)
+  /** The last 30 seconds: still being bought. */
+  const last = (o: Partial<Window> = {}): Window => ({ trades: 3, buyers: 3, sellers: 0, buyUsd: 120, sellUsd: 0, firstPrice: 1.07, lastPrice: 1.08, high: 1.08, low: 1.07, topBuyerPct: 40, ...o })
+  test('a momentum scalp needs 8 buyers in its two minutes (was 3, then 6)', () => {
+    expect(RULES.scalp.minBuyers).toBe(8)
+    expect(scalpReady(w(), 600, 20_000, last()).ok).toBe(true)
+    const few = scalpReady(w({ buyers: 7 }), 600, 20_000, last())
     expect(few.ok).toBe(false)
     expect(few.failed).toEqual(['buyers'])
   })
+  test('and still being bought in its last 30 seconds: a burst that has ended is no signal', () => {
+    const over = scalpReady(w(), 600, 20_000, last({ buyUsd: 40, sellUsd: 90, sellers: 2 }))
+    expect(over.failed).toEqual(['now'])
+    expect(over.reasons.join(' ')).toMatch(/the burst is over/)
+    expect(scalpReady(w(), 600, 20_000, last({ buyers: 1 })).failed).toEqual(['now'])
+    expect(scalpReady(w(), 600, 20_000, last({ buyers: 2, buyUsd: 50, sellUsd: 50 })).ok).toBe(true)
+  })
   test('and no spike: a coin already up over 20% in the window is late', () => {
-    expect(scalpReady(w({ lastPrice: 1.19, high: 1.19 }), 600, 20_000).ok).toBe(true)
-    const late = scalpReady(w({ lastPrice: 1.26, high: 1.27 }), 600, 20_000)
+    expect(scalpReady(w({ lastPrice: 1.19, high: 1.19 }), 600, 20_000, last()).ok).toBe(true)
+    const late = scalpReady(w({ lastPrice: 1.26, high: 1.27 }), 600, 20_000, last())
     expect(late.failed).toEqual(['move'])
     expect(late.reasons.join(' ')).toMatch(/a spike, too late/)
   })

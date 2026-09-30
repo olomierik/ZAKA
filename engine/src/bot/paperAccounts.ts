@@ -36,11 +36,11 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 import type { Address } from 'viem'
-import type { BotProfit, LaunchInfo, LearnNote, MarketBot, MarketBotDetail, NewPaperAccount, PaperAccountView, PaperAction, PaperEvent, SignalFeatures } from '../../../api/_marketProtocol'
+import type { BotProfit, LaunchInfo, LearnNote, MarketBot, MarketBotDetail, NewPaperAccount, PaperAccountView, PaperAction, PaperEvent, SignalFeatures, SignalRule } from '../../../api/_marketProtocol'
 import type { PoolInfo } from '../dex/pools'
 import { errMsg, log } from '../log'
 import { canOpen, closeNow, costPerSide, onPrice, openPosition, RISK, stats, type Fill, type Position, type RiskRules, type Strategy, type StrategyParams } from '../trading/paper'
-import { admits, defaultTuning, learn, relax, toParams, type Tuning } from './learner'
+import { admits, defaultTuning, learn, migrateTuning, relax, toParams, type Tuning } from './learner'
 import type { LiveTrader } from './liveTrader'
 import type { RugAlarm } from './rugGuard'
 import { maxTradeFor, noSizeWhy, SIZE_LIMITS, sizeForTrade, TARGETS } from './sizing'
@@ -103,7 +103,7 @@ export interface PaperAccountStore {
   paperTrades(accountId: string, limit: number, before?: number): Promise<Position[]>
 }
 
-export interface PaperSignal { id: string; token: string; symbol: string; launchpad: string; price: number; strategy: Strategy; roundTripPct: number | null; liquidityUsd: number | null; features?: SignalFeatures }
+export interface PaperSignal { id: string; token: string; symbol: string; launchpad: string; price: number; strategy: Strategy; roundTripPct: number | null; liquidityUsd: number | null; features?: SignalFeatures; rule?: SignalRule; probation?: { why: string } | null }
 /** What a live bot needs to trade a signal: the signal itself, the coin's pool and its launch. */
 export interface LiveContext { signal: Signal; pool: PoolInfo | null; meta: LaunchInfo }
 
@@ -151,7 +151,7 @@ export function closeNote(p: Position): string {
 /** Fills in what older rows lack (named bots, owners, learning, the log and live came later). */
 function normalize(a: PaperAccount): PaperAccount {
   const tuning = { ...(a.tuning ?? {}) } as Record<Strategy, Tuning>
-  for (const s of STRATEGIES) if (!tuning[s]) tuning[s] = defaultTuning(s)
+  for (const s of STRATEGIES) tuning[s] = migrateTuning(tuning[s] ?? defaultTuning(s), s)
   const name = cleanName(a.name) ?? `Bot ${a.id.slice(0, 4).toUpperCase()}`
   return {
     ...a,
@@ -173,6 +173,8 @@ export class PaperAccounts {
   /** Live positions already settled (fee, log, learning) after closing. */
   private settled = new Set<string>()
   private lastFeeTry = new Map<string, number>()
+  /** Every bot's closed trades (and the engine's paper book's), one per signal, the last 300 per strategy: what a bot with few trades of its own also learns from. */
+  private shared = new Map<Strategy, Position[]>()
 
   constructor(private o: { store: PaperAccountStore; priceOf: (token: string) => number | null; params: (s: Strategy) => StrategyParams; live?: UserLive | null }) {}
 
@@ -187,7 +189,7 @@ export class PaperAccounts {
       this.accounts.set(a.id, a)
       this.bySlug.set(a.slug, a.id)
       this.index(a)
-      for (const p of a.positions) if (p.status === 'closed') this.settled.add(p.id)
+      for (const p of a.positions) if (p.status === 'closed') { this.settled.add(p.id); this.observe(p) }
       if (!a.logged) {
         for (const p of a.positions) if (p.status === 'closed') { this.o.store.savePaperTrade(a.id, p); a.tradesLogged++; backfilled++ }
         a.logged = true
@@ -458,7 +460,8 @@ export class PaperAccounts {
       if (!a.strategies.includes(sig.strategy)) { skip('strategy', `not traded: this bot follows ${a.strategies.map(x => LABEL[x]).join(', ')}`); continue }
       if (a.pausedUntil && now < a.pausedUntil) { skip('paused', `paused after ${PROTECT.pauseAfterLosses} losses in a row`); continue }
       const t = a.tuning[sig.strategy]
-      const filtered = admits(t, sig.features)
+      if (sig.probation) { skip('probation', `not traded: ${sig.probation.why}`); continue }
+      const filtered = admits(t, sig.features, sig.rule)
       if (filtered) { a.filterSkips[sig.strategy] = (a.filterSkips[sig.strategy] ?? 0) + 1; skip('filters', filtered); continue }
       // Sized for its target, never over 20% of what the bot is worth; a thinner or costlier
       // pool gets the size for $1 (the low end of the range), a small bot the 20% for what it nets.
@@ -474,7 +477,7 @@ export class PaperAccounts {
         a.lastBuyAt[sig.strategy] = now
         a.filterSkips[sig.strategy] = 0
         this.outcomes.add(sig.id, 'live-order', now)
-        void trader.open(ctx.signal, sig.strategy, ctx.pool, ctx.meta, { sizeUsd: sized.sizeUsd, idSuffix: a.id.slice(0, 12), extra: { exits: params, targetUsd: sized.targetUsd, tuningVersion: t.version, features: sig.features } })
+        void trader.open(ctx.signal, sig.strategy, ctx.pool, ctx.meta, { sizeUsd: sized.sizeUsd, idSuffix: a.id.slice(0, 12), extra: { exits: params, targetUsd: sized.targetUsd, tuningVersion: t.version, features: sig.features, rule: sig.rule } })
           .catch(e => log.warn('user live: open failed', { bot: a.slug, error: errMsg(e) }))
         continue
       }
@@ -484,7 +487,7 @@ export class PaperAccounts {
       const cost = costPerSide(sig.roundTripPct, sized.sizeUsd, sig.liquidityUsd)
       const p: Position = {
         ...openPosition({ id: `${sig.id}:${a.id.slice(0, 12)}`, strategy: sig.strategy, token: sig.token, symbol: sig.symbol, launchpad: sig.launchpad, signalId: sig.id, price: sig.price, cost, now, params }),
-        mode: 'paper', exits: params, targetUsd: sized.targetUsd, tuningVersion: t.version, features: sig.features,
+        mode: 'paper', exits: params, targetUsd: sized.targetUsd, tuningVersion: t.version, features: sig.features, rule: sig.rule,
       }
       a.cash -= sized.sizeUsd
       a.positions.push(p)
@@ -730,6 +733,17 @@ export class PaperAccounts {
     this.save(a, now)
   }
 
+  /** A closed trade for the shared pool (another bot's, or the engine's own paper book's): the first one per signal is kept. */
+  observe(p: Position) {
+    if (p.status !== 'closed' || !p.features) return
+    const list = this.shared.get(p.strategy) ?? []
+    if (list.some(x => x.signalId === p.signalId)) return
+    list.push(p)
+    if (list.length > 1 && (list[list.length - 2].closedAt ?? 0) > (p.closedAt ?? 0)) list.sort((x, y) => (x.closedAt ?? 0) - (y.closedAt ?? 0))
+    if (list.length > 300) list.splice(0, list.length - 300)
+    this.shared.set(p.strategy, list)
+  }
+
   /** A position closed: the log, the loss streak, learning, and the drain guard. */
   private closed(a: PaperAccount, p: Position, now: number) {
     this.byToken.get(p.token)?.delete(a.id)
@@ -745,8 +759,9 @@ export class PaperAccounts {
     }
     this.trim(a)
     const trades = a.positions.filter(x => x.strategy === p.strategy && x.status === 'closed').sort((x, y) => (x.closedAt ?? 0) - (y.closedAt ?? 0))
-    const r = learn(a.tuning[p.strategy], p.strategy, trades, now)
+    const r = learn(a.tuning[p.strategy], p.strategy, trades, now, this.shared.get(p.strategy) ?? [])
     if (r) { a.tuning[p.strategy] = r.tuning; this.learned(a, r.notes, now) }
+    this.observe(p)
     if (a.running && a.mode === 'paper' && a.deposited > 0) {
       const { equity } = this.equity(a)
       if (equity < a.deposited * (1 - PROTECT.stopBelowPct / 100)) {

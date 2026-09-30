@@ -184,10 +184,15 @@ export interface TradeSignal {
   /** Whether ARCDEX can trade it today. */
   executable: boolean
   /** Which rule fired: a scalp comes from a snipe on a risky coin or from a momentum burst (missing on older signals). */
-  rule?: 'snipe' | 'second-leg' | 'momentum'
+  rule?: SignalRule
   /** The coin at the signal, in numbers: what a bot's learned filters read (missing on older signals). */
   features?: SignalFeatures
+  /** The rule's recent paper record is losing: the signal is still measured, but bots don't trade it (2026-10-01). */
+  probation?: { why: string } | null
 }
+
+/** Which rule fired a signal. Momentum bursts count buyers over two minutes, snipes since launch: they're learned apart. */
+export type SignalRule = 'snipe' | 'second-leg' | 'momentum'
 
 /** A coin at a signal, in numbers (engine/src/bot/bot.ts). Visitors' bots filter on these and learn from them. */
 export interface SignalFeatures {
@@ -221,6 +226,9 @@ export interface BotFilters {
   maxTopBuyerPct: number
   /** Risk flags it no longer trades. */
   avoidFlags: string[]
+  /** It learned to skip this kind of signal altogether (it kept losing on it); tried again later. */
+  skip?: boolean
+  skippedAt?: number
 }
 
 /** A visitor's bot's settings for one strategy: exits, the profit each trade is sized for, and its filters. */
@@ -235,7 +243,10 @@ export interface StrategyTuning {
   maxHoldMin: number
   /** The profit a winning trade secures: each trade's size is the smallest that nets it at `takeProfit`. */
   targetUsd: number
+  /** The strategy-wide filters (open since 2026-10-01: learned filters are per rule, below). */
   filters: BotFilters
+  /** Learned filters per kind of signal: a fast scalp comes from momentum bursts and from snipes, which count buyers differently. */
+  rules?: Partial<Record<SignalRule, BotFilters>>
   changedAt: number | null
   /** Closed trades and wins behind the version before this one (a change that did worse is rolled back). */
   basis: { trades: number; wins: number } | null
@@ -245,6 +256,8 @@ export interface StrategyTuning {
 export interface LearnNote {
   at: number
   strategy: 'snipe' | 'second-leg' | 'scalp'
+  /** The kind of signal the change is about, when it's about one. */
+  rule?: SignalRule
   version: number
   kind: 'tighten' | 'loosen' | 'exit' | 'revert'
   text: string

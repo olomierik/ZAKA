@@ -1713,5 +1713,10 @@ const d: Record<string, string> = {
   "Notify me of every profit": "每次盈利都通知我",
   "Your browser blocked notifications for this site: allow them in its settings.": "你的浏览器已屏蔽本站通知：请在浏览器设置中允许。",
   "A notification each time a trade closes in profit, even with this tab in the background.": "每当交易盈利平仓时发送通知，即使本标签页在后台。",
+  "Momentum bursts": "动量爆发",
+  "Snipes": "狙击",
+  "Dip rebounds": "回调反弹",
+  "skipped for now (they kept losing)": "暂时跳过（持续亏损）",
+  "On probation: bots sit it out": "观察期：机器人暂不交易",
 }
 export default d

@@ -1249,6 +1249,7 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .at-protect { margin: 6px 0 2px; padding-left: 2px; list-style: none; display: flex; flex-direction: column; gap: 5px; font-size: 0.75rem; color: var(--text-muted); line-height: 1.45; }
 .at-byrule { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; padding: 8px 12px; border: 1px solid var(--adx-card-border); border-radius: 10px; background: var(--adx-card-bg); font-size: 0.74rem; color: var(--text-muted); }
 .at-byrule b { color: var(--text); font-weight: 700; }
+.at-probation { font-size: 0.7rem; font-weight: 700; color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.4); background: rgba(251, 191, 36, 0.08); border-radius: 999px; padding: 1px 8px; }
 .at-byrule-h { width: 100%; font-weight: 800; color: var(--text); font-size: 0.72rem; }
 .at-event { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--adx-card-border); font-size: 0.74rem; line-height: 1.45; }
 .at-event:last-child { border-bottom: none; }

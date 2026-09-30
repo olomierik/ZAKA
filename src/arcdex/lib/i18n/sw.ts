@@ -1713,5 +1713,10 @@ const d: Record<string, string> = {
   "Notify me of every profit": "Nijulishe kila faida",
   "Your browser blocked notifications for this site: allow them in its settings.": "Kivinjari chako kimezuia arifa za tovuti hii: ziruhusu kwenye mipangilio yake.",
   "A notification each time a trade closes in profit, even with this tab in the background.": "Arifa kila biashara inapofungwa kwa faida, hata kichupo hiki kikiwa nyuma.",
+  "Momentum bursts": "Mlipuko wa kasi",
+  "Snipes": "Snipes",
+  "Dip rebounds": "Kurudi baada ya kushuka",
+  "skipped for now (they kept losing)": "yameachwa kwa sasa (yaliendelea kupoteza)",
+  "On probation: bots sit it out": "Chini ya uangalizi: bots hazifanyi biashara",
 }
 export default d

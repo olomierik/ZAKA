@@ -21,7 +21,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
-import type { BotControl, BotPosition, BotStatus, LearnNote, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, SignalOutcomes, TradeSignal } from '../../../api/_marketProtocol'
+import type { BotControl, BotFilters, BotPosition, BotStatus, LearnNote, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, SignalOutcomes, SignalRule, TradeSignal } from '../../../api/_marketProtocol'
 import { getLaunchpadColor } from '../api/radardex'
 import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botWithdraw, botWithdrawCode, engineEnabled, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse } from '../api/marketStream'
 import { AgoText } from '../components/Ago'
@@ -30,7 +30,7 @@ import { profitNotifyOn, setProfitNotify } from '../components/ProfitAlerts'
 import { ARCD_TIERS, arcdAmount, TIERS_ENFORCED } from '../lib/tiers'
 import type { Page } from '../App'
 import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
-import { t as T } from '../lib/i18n'
+import { N_, t as T } from '../lib/i18n'
 import { shortAddr, useEmbeddedAddress } from '../lib/identity'
 
 type Tab = 'all' | 'snipe' | 'scalp' | 'secondLeg'
@@ -590,9 +590,13 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate }: 
 const pctMove = (m: number) => `${m >= 1 ? '+' : '−'}${Math.abs(Math.round((m - 1) * 100))}%`
 
 /** One strategy's settings: its size now, exits, target, what it learned to filter, and its record. */
-function TuningLine({ s, t, range }: { s: Strategy; t: PaperAccountView['tuning'][Strategy]; range: [number, number] | null }) {
-  const f = t.filters
-  const learned = [
+/** The kinds of signal a bot learns filters for apart (since 2026-09-30). */
+const RULE_NAME: Record<SignalRule, string> = { momentum: N_('Momentum bursts'), snipe: N_('Snipes'), 'second-leg': N_('Dip rebounds') }
+
+/** A set of learned entry filters, in words. */
+function filterWords(f: BotFilters): string[] {
+  if (f.skip) return [T('skipped for now (they kept losing)')]
+  return [
     f.minLiquidityUsd > 1_000 && T('liquidity ≥ {v}', { v: big(f.minLiquidityUsd) }),
     f.minBuyers > 0 && T('≥ {v} buyers', { v: f.minBuyers }),
     f.minBuySellRatio > 0 && T('buys ≥ {v}× sells', { v: f.minBuySellRatio }),
@@ -600,7 +604,15 @@ function TuningLine({ s, t, range }: { s: Strategy; t: PaperAccountView['tuning'
     f.minScore > 0 && T('safety score ≥ {v}', { v: f.minScore }),
     f.maxTopBuyerPct < 100 && T('largest buyer ≤ {v}%', { v: Math.round(f.maxTopBuyerPct) }),
     f.avoidFlags.length > 0 && T('skips {v}', { v: f.avoidFlags.map(x => `“${x}”`).join(', ') }),
-  ].filter(Boolean)
+  ].filter((x): x is string => !!x)
+}
+
+function TuningLine({ s, t, range }: { s: Strategy; t: PaperAccountView['tuning'][Strategy]; range: [number, number] | null }) {
+  // Learned per kind of signal: a momentum burst and a snipe count buyers differently.
+  const learned = [
+    ...filterWords(t.filters),
+    ...(Object.entries(t.rules ?? {}) as [SignalRule, BotFilters][]).map(([r, f]) => { const w = filterWords(f); return w.length ? `${T(RULE_NAME[r])}: ${w.join(', ')}` : '' }).filter(Boolean),
+  ]
   return (
     <div className="at-tune">
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1046,6 +1058,7 @@ function SignalRow({ s, navigate }: { s: TradeSignal; navigate: (p: Page) => voi
         <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
         <Pill color={getLaunchpadColor(s.launchpad)}>{s.launchpad}</Pill>
         <Pill color={STRATEGY_COLOR[s.strategy] ?? '#64748b'}>{T(STRATEGY[s.strategy] ?? s.strategy)}</Pill>
+        {s.probation && <span className="at-probation" title={s.probation.why}>{T('On probation: bots sit it out')}</span>}
         {s.strategy === 'scalp' && s.rule === 'snipe' && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }} title={T('The snipe rule fired, but the coin carries a risk, so it trades small and sells fast')}>{T('from a snipe on a risky coin')}</span>}
         {!s.executable && <Pill color="#64748b">{T('Paper only')}</Pill>}
         <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)' }}><AgoText ts={s.at} /></span>

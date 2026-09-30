@@ -40,10 +40,11 @@ import { log, errMsg } from '../log'
 import type { EngineObserver, MarketEngine } from '../market/engine'
 import { metrics } from '../metrics'
 import { PricePath, RULES, scalpReady, secondLegReady, snipeReady, tooCostly } from '../signals/rules'
-import type { BotStatus, ScanRow, SignalFeatures } from '../../../api/_marketProtocol'
+import type { BotStatus, ScanRow, SignalFeatures, SignalRule } from '../../../api/_marketProtocol'
 import { canOpen, closeNow, costPerSide, onPrice, openPosition, RISK, STRATEGIES, stats, type Position, type Strategy, type StrategyParams } from '../trading/paper'
 import type { LiveTrader } from './liveTrader'
 import type { PaperAccounts } from './paperAccounts'
+import { probationOf } from './probation'
 import { RugWatch } from './rugGuard'
 import { failing, ScanFeed, OutcomeTally } from './scanFeed'
 import type { BotStore } from './store'
@@ -140,6 +141,9 @@ export class Bot implements EngineObserver {
     this.positions = await this.o.store.positions(30).catch(e => { log.warn('bot: could not load positions', { error: errMsg(e) }); return [] })
     this.recentSignals = await this.o.store.signals(200).catch(() => [])
     this.scan.seedSignals(this.recentSignals.map(s => s.at))
+    // Its closed paper trades are what visitors' bots with few trades of their own also learn from.
+    const ruleOf = new Map(this.recentSignals.map(s => [s.id, s.rule]))
+    for (const p of this.positions) if (p.mode !== 'live') { p.rule ??= ruleOf.get(p.signalId); this.o.accounts?.observe(p) }
     // A scalp from a snipe on a risky coin counts as that coin's snipe; a momentum scalp as its scalp.
     for (const s of this.recentSignals) this.fired.set(`${s.rule === 'momentum' ? 'scalp' : s.strategy === 'scalp' ? 'snipe' : s.strategy}:${s.token}`, s.at)
     // The owner's last choice survives a restart (live only while a bot wallet is configured).
@@ -377,7 +381,7 @@ export class Bot implements EngineObserver {
     const lastScalp = Math.max(this.fired.get(`scalp:${token}`) ?? 0, this.fired.get(`snipe:${token}`) ?? 0, lastLeg)
     if (now - lastScalp >= RULES.scalp.repeatMin * 60_000) {
       const w = windowOf(this.recent.window(token, now, RULES.scalp.windowSec * 1_000))
-      const rule = scalpReady(w, ageSec, st.liquidityUsd)
+      const rule = scalpReady(w, ageSec, st.liquidityUsd, windowOf(this.recent.window(token, now, RULES.scalp.confirmSec * 1_000)))
       if (rule.ok) { this.scan.record(base, await this.tryFire('momentum', token, rule.reasons, ageSec, windowFeatures(w))); return }
       scalpWaiting = failing(rule.reasons).slice(0, 2).map(r => r.replace(/^✗ /, '✗ scalp: '))
       keys.push(...rule.failed.map(f => `scalp:${f}`))
@@ -442,6 +446,9 @@ export class Bot implements EngineObserver {
     if (strategy === 'scalp' && r.verdict === 'risky') reasons = [...reasons, ...r.checks.filter(c => c.risk && c.ok !== true).map(c => `risk (${c.id}): ${c.detail}`)]
     const meta = this.o.engine.metas.get(token)!, st = this.o.engine.tokens.get(token)!
     const now = Date.now()
+    // A rule whose paper record is losing: still fired and measured here, but no bot trades it (bot/probation.ts).
+    const probation = this.probation(rule, now)
+    if (probation) { reasons = [...reasons, `⚠ on probation: ${probation.why}`]; metrics.inc(`bot_${rule}_probation`) }
     const pool = st.mainPool ? this.o.pools.get(st.mainPool) ?? null : null
     const s = st.stats(now)
     const features: SignalFeatures = {
@@ -455,7 +462,7 @@ export class Bot implements EngineObserver {
       price: st.priceUsd!, marketCapUsd: s.marketCapUsd, liquidityUsd: st.liquidityUsd, ageSec: Math.round(ageSec), reasons,
       safety: { verdict: r.verdict, score: r.score, checks: r.checks },
       executable: pool ? true : EXECUTABLE_CURVES.has(meta.launchpad),
-      rule, features,
+      rule, features, probation,
     }
     this.fired.set(`${rule === 'momentum' ? 'scalp' : rule}:${token}`, now)
     this.riskWait.delete(`${rule}:${token}`)
@@ -467,8 +474,11 @@ export class Bot implements EngineObserver {
     const fired = { status: 'signal' as const, stage, strategy, reasons }
     if (this.mode === 'off') return fired
     // Visitors' bots that follow this strategy (each with its own learned filters and sizes).
-    this.o.accounts?.onSignal({ id: signal.id, token, symbol: meta.symbol, launchpad: meta.launchpad, price: signal.price, strategy, roundTripPct: r.honeypot?.roundTripLossPct ?? null, liquidityUsd: st.liquidityUsd, features }, now, { signal, pool, meta })
-    if (this.mode === 'live' && this.o.live) void this.o.live.open(signal, strategy, pool, meta)
+    this.o.accounts?.onSignal({ id: signal.id, token, symbol: meta.symbol, launchpad: meta.launchpad, price: signal.price, strategy, roundTripPct: r.honeypot?.roundTripLossPct ?? null, liquidityUsd: st.liquidityUsd, features, rule, probation }, now, { signal, pool, meta })
+    if (this.mode === 'live' && this.o.live) {
+      if (probation) this.o.live.event({ kind: 'skip', text: `$${meta.symbol}: not bought live, ${probation.why}` })
+      else void this.o.live.open(signal, strategy, pool, meta)
+    }
     const allowed = canOpen(this.positions.filter(p => p.mode !== 'live'), token, now, RISK, strategy)
     if (!allowed.ok) { this.outcomes.add(signal.id, allowed.key ?? 'max-open', now); log.info('bot: not opening', { token, strategy, why: allowed.why }); return fired }
     this.outcomes.add(signal.id, 'traded', now)
@@ -499,7 +509,10 @@ export class Bot implements EngineObserver {
     if (fills.length === 0 && p.fills.length > 1) return
     this.o.store.savePosition(p)
     this.o.publish(['signals'], { t: 'BOT_POSITION', d: p })
-    if (p.status === 'closed') log.info('bot: position closed', { token: p.token, strategy: p.strategy, reason: p.exitReason, pnlUsd: p.pnlUsd?.toFixed(2) })
+    if (p.status === 'closed') {
+      log.info('bot: position closed', { token: p.token, strategy: p.strategy, reason: p.exitReason, pnlUsd: p.pnlUsd?.toFixed(2) })
+      if (p.mode !== 'live') this.o.accounts?.observe(p)
+    }
   }
 
   // ── safety ──────────────────────────────────────────────────────────
@@ -604,6 +617,11 @@ export class Bot implements EngineObserver {
   // ── reads (REST) ────────────────────────────────────────────────────
 
   signals(limit: number) { return this.recentSignals.slice(0, limit) }
+  /** Why a rule is on probation now, or null. */
+  probation(rule: SignalRule, now = Date.now()) {
+    const ruleOf = new Map(this.recentSignals.map(s => [s.id, s.rule]))
+    return probationOf(rule, this.positions, p => p.rule ?? ruleOf.get(p.signalId), now)
+  }
   async safety(token: string) { return this.reports.get(token) ?? (await this.report(token, false).catch(() => null)) }
   stats() {
     const of = (list: Position[]) => {
@@ -615,7 +633,8 @@ export class Bot implements EngineObserver {
     const paper = this.positions.filter(p => p.mode !== 'live')
     const ruleOf = new Map(this.recentSignals.map(s => [s.id, s.rule]))
     const byRule = Object.fromEntries((['momentum', 'snipe', 'second-leg'] as const).map(k => [k, stats(paper.filter(p => (p.rule ?? ruleOf.get(p.signalId)) === k))]))
-    return { mode: this.mode, ...of(paper), byRule, live: of(this.positions.filter(p => p.mode === 'live')), params: { snipe: this.params('snipe'), 'second-leg': this.params('second-leg'), scalp: this.params('scalp') }, risk: RISK, rules: RULES, watching: this.paths.size }
+    const probation = Object.fromEntries((['momentum', 'snipe', 'second-leg'] as const).map(k => [k, this.probation(k)?.why ?? null]))
+    return { mode: this.mode, ...of(paper), byRule, probation, live: of(this.positions.filter(p => p.mode === 'live')), params: { snipe: this.params('snipe'), 'second-leg': this.params('second-leg'), scalp: this.params('scalp') }, risk: RISK, rules: RULES, watching: this.paths.size }
   }
 
   status(): BotStatus {
