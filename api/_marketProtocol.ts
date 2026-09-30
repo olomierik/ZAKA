@@ -259,7 +259,8 @@ export interface LearnNote {
   /** The kind of signal the change is about, when it's about one. */
   rule?: SignalRule
   version: number
-  kind: 'tighten' | 'loosen' | 'exit' | 'revert'
+  /** `team`: settings taken from the team (a new bot starting from its best teammate's). */
+  kind: 'tighten' | 'loosen' | 'exit' | 'revert' | 'team'
   text: string
 }
 
@@ -436,6 +437,8 @@ export interface PaperAccountView {
   live?: BotLiveView | null
   /** Whether this engine can trade live for visitors' bots at all. */
   liveAvailable?: { ok: boolean; why: string | null }
+  /** The team it learns from (missing on older engines). */
+  team?: TeamView
 }
 
 /** A bot's paper record against what trading live needs (engine/src/bot/userLive.ts READY). */
@@ -445,7 +448,19 @@ export interface BotReadiness {
   winRate: number | null
   profitFactor: number | null
   pnlUsd: number
-  need: { minTrades: number; minWinRate: number; minProfitFactor: number }
+  need: { minTrades: number; minWinRate: number; minProfitFactor: number; minOwnWithTeam?: number }
+  /** How it qualified: its own record, or the team's with a few trades of its own (null: not yet). */
+  via?: 'own' | 'team' | null
+  /** The team's record on its strategies, the last 7 days (every bot's trades, paper and live, one per signal). */
+  team?: { trades: number; winRate: number | null; profitFactor: number | null; pnlUsd: number; ok: boolean }
+}
+
+/** The team: every bot on ARCDEX learning from one another's trades. */
+export interface TeamView {
+  /** Bots running now. */
+  bots: number
+  /** The team's record per strategy, the last 7 days (one trade per signal). */
+  byStrategy: Partial<Record<'snipe' | 'second-leg' | 'scalp', { trades: number; winRate: number | null; pnlUsd: number }>>
 }
 
 /** A bot's live side: its own wallet, balance and results. */
@@ -472,6 +487,8 @@ export interface MeResponse {
   email: boolean
   maxBots: number
   liveAvailable: { ok: boolean; why: string | null }
+  /** The team every bot learns from (missing on older engines). */
+  team?: TeamView
 }
 
 /** A bot in the marketplace (GET /v1/bots): public, no owner details. */

@@ -193,7 +193,7 @@ describe('the learner reads the losing trades', () => {
     expect(learn(t, s, own, now)).toBeNull()
     const r = learn(t, s, own, now, others)!
     expect(r.tuning.rules!.momentum!.minLiquidityUsd).toBe(8_000)
-    expect(r.notes[0].text).toMatch(/read from its 3 trades and 11 of other bots'/)
+    expect(r.notes[0].text).toMatch(/read from its 3 trades and 11 of the team's/)
   })
   test('a kind of signal that keeps losing is skipped, then tried again 12 hours later', () => {
     const t = defaultTuning(s)

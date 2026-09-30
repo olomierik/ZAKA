@@ -36,7 +36,7 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 import type { Address } from 'viem'
-import type { BotProfit, LaunchInfo, LearnNote, MarketBot, MarketBotDetail, NewPaperAccount, PaperAccountView, PaperAction, PaperEvent, SignalFeatures, SignalRule } from '../../../api/_marketProtocol'
+import type { BotProfit, LaunchInfo, LearnNote, MarketBot, MarketBotDetail, NewPaperAccount, PaperAccountView, PaperAction, PaperEvent, SignalFeatures, SignalRule, TeamView } from '../../../api/_marketProtocol'
 import type { PoolInfo } from '../dex/pools'
 import { errMsg, log } from '../log'
 import { canOpen, closeNow, costPerSide, onPrice, openPosition, RISK, stats, type Fill, type Position, type RiskRules, type Strategy, type StrategyParams } from '../trading/paper'
@@ -46,7 +46,7 @@ import type { RugAlarm } from './rugGuard'
 import { maxTradeFor, noSizeWhy, SIZE_LIMITS, sizeForTrade, TARGETS } from './sizing'
 import type { Signal } from './types'
 import { OutcomeTally } from './scanFeed'
-import { profitFee, readiness, USER_LIVE, type BotWallet, type UserLive } from './userLive'
+import { profitFee, readinessWithTeam, TEAM_READY, USER_LIVE, type BotWallet, type UserLive } from './userLive'
 
 export interface PaperAccount {
   id: string
@@ -86,6 +86,10 @@ export interface PaperAccount {
   /** Older rows only: the visitor's own trade size, from before sizing became automatic. Ignored. */
   tradeUsd?: number
 }
+
+/** The team (2026-09-30): a new bot's playbook needs a teammate with this many trades on the strategy; each bot reads the team's new trades every 10 minutes, once 5 have closed. */
+export const TEAM = { playbookMinTrades: 10, syncEveryMs: 10 * 60_000, syncMinTrades: 5 }
+export type MarketList = { bots: MarketBot[]; total: number; counts: { live: number; paper: number } }
 
 export const PAPER_LIMITS = { maxAccounts: 20_000, maxDeposit: 100_000, maxCash: 1_000_000, keepClosed: 200, keepEvents: 60, keepLearn: 50, keepSkips: 20, maxPerOwner: 5 }
 /** What keeps a bot from draining its account. */
@@ -173,8 +177,11 @@ export class PaperAccounts {
   /** Live positions already settled (fee, log, learning) after closing. */
   private settled = new Set<string>()
   private lastFeeTry = new Map<string, number>()
-  /** Every bot's closed trades (and the engine's paper book's), one per signal, the last 300 per strategy: what a bot with few trades of its own also learns from. */
+  /** The team: every bot's closed trades, paper and live, and the engine's paper book's, one per signal, the last 300 per strategy. What each bot learns from beside its own. */
   private shared = new Map<Strategy, Position[]>()
+  /** When each bot last read the team's new trades (tick). */
+  private teamSyncAt = new Map<string, number>()
+  private teamCache: { at: number; value: TeamView } | null = null
 
   constructor(private o: { store: PaperAccountStore; priceOf: (token: string) => number | null; params: (s: Strategy) => StrategyParams; live?: UserLive | null }) {}
 
@@ -221,9 +228,10 @@ export class PaperAccounts {
       tuning: { snipe: defaultTuning('snipe'), scalp: defaultTuning('scalp'), 'second-leg': defaultTuning('second-leg') },
       learnLog: [], events: [], skips: [], lossStreak: 0, pausedUntil: null, filterSkips: {}, lastBuyAt: {}, tradesLogged: 0, logged: true, feesPaidUsd: 0, live: null,
     })
-    this.event(a, { at: now, kind: 'learn', text: `${a.name} is ready: deposit virtual USDC and press Start` })
+    this.event(a, { at: now, kind: 'learn', text: `${a.name} joined the team` })
     this.accounts.set(a.id, a)
     this.bySlug.set(a.slug, a.id)
+    this.teamPlaybook(a, now)
     this.save(a, now)
     return { key, account: a }
   }
@@ -362,8 +370,8 @@ export class PaperAccounts {
     const av = this.o.live?.available ?? { ok: false, why: 'live trading isn\'t available on this engine' }
     if (!av.ok) return av.why
     if (!owner || !a.ownerId) return 'sign in: a live bot belongs to an account'
-    const r = readiness(a.positions)
-    if (!r.ok) return `not ready yet: it needs ${r.need.minTrades}+ closed paper trades (has ${r.trades}), a ${Math.round(r.need.minWinRate * 100)}%+ win rate (${r.winRate === null ? '—' : `${Math.round(r.winRate * 100)}%`}), a profit factor of ${r.need.minProfitFactor}+ (${r.profitFactor === null ? '—' : r.profitFactor.toFixed(2)}) and a net profit (${money(r.pnlUsd)})`
+    const r = this.readinessOf(a, now)
+    if (!r.ok) return `not ready yet: it needs ${r.need.minTrades}+ closed paper trades (has ${r.trades}), a ${Math.round(r.need.minWinRate * 100)}%+ win rate (${r.winRate === null ? '—' : `${Math.round(r.winRate * 100)}%`}), a profit factor of ${r.need.minProfitFactor}+ (${r.profitFactor === null ? '—' : r.profitFactor.toFixed(2)}) and a net profit (${money(r.pnlUsd)}); or ${TEAM_READY.minOwn} of its own without a loss while the team's record on its strategies qualifies (the team: ${r.team?.trades ?? 0} trades, ${r.team?.winRate == null ? '—' : `${Math.round(r.team.winRate * 100)}%`} won)`
     if (!a.live) return 'make its live wallet first, then send it USDC on Arc'
     const t = this.trader(a)
     const bal = await this.o.live!.balance(a.id, t, true)
@@ -562,6 +570,7 @@ export class PaperAccounts {
     for (const a of this.accounts.values()) {
       if (a.live && (a.mode === 'live' || a.positions.some(p => (isLive(p) && p.status === 'open') || (p.feeDue ?? 0) > 0))) this.tickLive(a, now)
       if (!a.running) continue
+      this.teamSync(a, now)
       for (const s of a.strategies) {
         const skipped = a.filterSkips[s] ?? 0
         if (skipped < 1) continue
@@ -648,7 +657,8 @@ export class PaperAccounts {
       },
       tradesLogged: a.tradesLogged,
       feesPaidUsd: a.feesPaidUsd + (a.live?.feesPaidUsd ?? 0),
-      ready: readiness(a.positions),
+      ready: this.readinessOf(a, now),
+      team: this.team(now),
       live: a.live ? {
         wallet: a.live.address, balanceUsd: this.o.live?.cachedBalance(a.id) ?? null,
         pnlUsd: liveStats.totalPnlUsd, closed: liveStats.closed, open: liveStats.open, winRate: liveStats.winRate, feesPaidUsd: a.live.feesPaidUsd ?? 0,
@@ -687,30 +697,33 @@ export class PaperAccounts {
       slug: a.slug, name: a.name, strategies: a.strategies, mode: a.mode, running: a.running, createdAt: a.createdAt,
       pnlUsd, pnlPct, winRate: s.winRate, closed: s.closed, positions,
       paper: { pnlUsd: a.mode === 'live' ? this.equity(a).equity - a.deposited : pnlUsd, winRate: paper.winRate, closed: paper.closed },
-      learned: a.learnLog.length, ready: readiness(a.positions).ok, wallet: live ? a.live?.address ?? null : null,
+      learned: a.learnLog.length, ready: this.readinessOf(a, now).ok, wallet: live ? a.live?.address ?? null : null,
     }
   }
 
   /** Every bot, best first (by P&L, win rate, newest, or live ones first). */
-  market(sort: 'pnl' | 'winrate' | 'new' | 'live' = 'pnl', limit = 100, now = Date.now()): { bots: MarketBot[]; total: number } {
-    const key = `${sort}:${limit}`
+  /** The marketplace; `mode` lists only live or only paper bots (`counts` has both). */
+  market(sort: 'pnl' | 'winrate' | 'new' | 'live' = 'pnl', limit = 100, now = Date.now(), mode?: 'paper' | 'live'): MarketList {
+    const key = `${sort}:${limit}:${mode ?? 'all'}`
     const hit = this.marketCache.get(key)
     if (hit && now - hit.at < 5_000) return hit.value
-    const value = this.marketNow(sort, limit, now)
+    const value = this.marketNow(sort, limit, now, mode)
     this.marketCache.set(key, { at: now, value })
     return value
   }
-  private marketCache = new Map<string, { at: number; value: { bots: MarketBot[]; total: number } }>()
+  private marketCache = new Map<string, { at: number; value: MarketList }>()
 
-  private marketNow(sort: 'pnl' | 'winrate' | 'new' | 'live', limit: number, now: number): { bots: MarketBot[]; total: number } {
-    const all = [...this.accounts.values()].filter(a => a.deposited > 0 || a.live || a.positions.length > 0).map(a => this.publicView(a, now))
+  private marketNow(sort: 'pnl' | 'winrate' | 'new' | 'live', limit: number, now: number, mode?: 'paper' | 'live'): MarketList {
+    const every = [...this.accounts.values()].filter(a => a.deposited > 0 || a.live || a.positions.length > 0).map(a => this.publicView(a, now))
+    const counts = { live: every.filter(b => b.mode === 'live').length, paper: every.filter(b => b.mode !== 'live').length }
+    const all = mode ? every.filter(b => (b.mode === 'live') === (mode === 'live')) : every
     const by: Record<typeof sort, (x: MarketBot, y: MarketBot) => number> = {
       pnl: (x, y) => y.pnlUsd - x.pnlUsd,
       winrate: (x, y) => (y.winRate ?? -1) - (x.winRate ?? -1) || y.closed - x.closed,
       new: (x, y) => y.createdAt - x.createdAt,
       live: (x, y) => Number(y.mode === 'live') - Number(x.mode === 'live') || y.pnlUsd - x.pnlUsd,
     }
-    return { bots: all.sort(by[sort]).slice(0, limit), total: all.length }
+    return { bots: all.sort(by[sort]).slice(0, limit), total: all.length, counts }
   }
 
   async publicDetail(slug: string, now = Date.now()): Promise<MarketBotDetail | null> {
@@ -738,6 +751,74 @@ export class PaperAccounts {
       this.closed(a, p, now)
     }
     this.save(a, now)
+  }
+
+  /** The team's closed trades (one per signal), oldest first: of these strategies, closed since `since`. */
+  teamTrades(strategies?: readonly Strategy[], since = 0): Position[] {
+    const out: Position[] = []
+    for (const [s, list] of this.shared) if (!strategies || strategies.includes(s)) for (const p of list) if ((p.closedAt ?? 0) >= since) out.push(p)
+    return out.sort((x, y) => (x.closedAt ?? 0) - (y.closedAt ?? 0))
+  }
+
+  /** Whether a bot may go live: its own paper record, or the team's on its strategies with 5 trades of its own. */
+  readinessOf(a: PaperAccount, now = Date.now()) {
+    return readinessWithTeam(a.positions, this.teamTrades(a.strategies, now - TEAM_READY.days * 86_400_000))
+  }
+
+  /** The team in numbers: bots running, and each strategy's record over the last 7 days (kept 30s). */
+  team(now = Date.now()): TeamView {
+    if (this.teamCache && now - this.teamCache.at < 30_000) return this.teamCache.value
+    const since = now - TEAM_READY.days * 86_400_000
+    const byStrategy: TeamView['byStrategy'] = {}
+    for (const s of STRATEGIES) {
+      const st = stats(this.teamTrades([s], since))
+      if (st.closed) byStrategy[s] = { trades: st.closed, winRate: st.winRate, pnlUsd: Math.round(st.totalPnlUsd * 100) / 100 }
+    }
+    const value = { bots: this.running, byStrategy }
+    this.teamCache = { at: now, value }
+    return value
+  }
+
+  /**
+   * A new bot starts from the team's best settings for each strategy: the
+   * teammate with the best record on it (10+ closed trades there, in profit,
+   * the most made per trade). Its exits and learned filters, as a first version.
+   */
+  private teamPlaybook(a: PaperAccount, now: number) {
+    const took: LearnNote[] = []
+    for (const s of STRATEGIES) {
+      let best: { b: PaperAccount; n: number; wr: number; per: number } | null = null
+      for (const b of this.accounts.values()) {
+        if (b.id === a.id || !b.tuning[s]) continue
+        const theirs = b.positions.filter(p => p.strategy === s && p.status === 'closed')
+        if (theirs.length < TEAM.playbookMinTrades) continue
+        const st = stats(theirs)
+        if (st.totalPnlUsd <= 0) continue
+        const per = st.totalPnlUsd / theirs.length
+        if (!best || per > best.per) best = { b, n: theirs.length, wr: st.winRate ?? 0, per }
+      }
+      if (!best) continue
+      const { prev: _prev, ...src } = best.b.tuning[s]
+      a.tuning[s] = { ...structuredClone(src), version: 1, changedAt: now, basis: null, prev: null }
+      if (a.strategies.includes(s)) took.push({ at: now, strategy: s, version: 1, kind: 'team', text: `Started from the team's best ${LABEL[s]} settings: ${best.b.name}'s (${best.n} trades, ${Math.round(best.wr * 100)}% won).` })
+    }
+    if (took.length) this.learned(a, took, now)
+  }
+
+  /** Every 10 minutes, each running bot reads the team's trades closed since its settings last changed (5 or more): it learns from signals it didn't take. */
+  private teamSync(a: PaperAccount, now: number) {
+    if (now - (this.teamSyncAt.get(a.id) ?? 0) < TEAM.syncEveryMs) return
+    this.teamSyncAt.set(a.id, now)
+    for (const s of a.strategies) {
+      const t = a.tuning[s]
+      const pool = this.shared.get(s) ?? []
+      const own = a.positions.filter(p => p.strategy === s && p.status === 'closed').sort((x, y) => (x.closedAt ?? 0) - (y.closedAt ?? 0))
+      const ownIds = new Set(own.map(p => p.signalId))
+      const fresh = pool.filter(p => (p.closedAt ?? 0) > (t.changedAt ?? a.createdAt) && !ownIds.has(p.signalId)).length
+      if (fresh < TEAM.syncMinTrades) continue
+      const r = learn(t, s, own, now, pool, true)
+      if (r) { a.tuning[s] = r.tuning; this.learned(a, r.notes, now) }
+    }
   }
 
   /** A closed trade for the shared pool (another bot's, or the engine's own paper book's): the first one per signal is kept. */

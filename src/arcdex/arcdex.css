@@ -1414,3 +1414,16 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
   .at-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .at-bothead-ctl { width: 100%; justify-content: space-between; }
 }
+
+/* The team and the marketplace's live and paper bots (2026-09-30) */
+.at-strat-team { display: block; margin-top: 6px; font-size: 0.68rem; color: #5eead4; }
+.at-team { display: flex; flex-direction: column; gap: 6px; }
+.at-team-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 0.76rem; color: var(--text-muted); }
+.at-team-on { font-size: 0.68rem; color: #86efac; }
+.at-market-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.at-market-mode { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--adx-card-border); background: var(--bg-2); color: var(--text-muted); cursor: pointer; }
+.at-market-mode b { color: var(--text); font-size: 0.86rem; }
+.at-market-mode span { font-size: 0.7rem; }
+.at-market-mode.on { border-color: var(--adx-accent); background: rgba(59, 130, 246, 0.1); }
+.at-market-mode.live.on { border-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
+.at-market-mode.live b { color: #fca5a5; }

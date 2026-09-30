@@ -21,7 +21,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
-import type { BotControl, BotFilters, BotPosition, BotStatus, LearnNote, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, SignalOutcomes, SignalRule, TradeSignal } from '../../../api/_marketProtocol'
+import type { BotControl, BotFilters, BotPosition, BotStatus, LearnNote, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, SignalOutcomes, SignalRule, TeamView, TradeSignal } from '../../../api/_marketProtocol'
 import { getLaunchpadColor } from '../api/radardex'
 import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botFunders, botWithdraw, botWithdrawCode, botWithdrawPasscode, engineEnabled, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse } from '../api/marketStream'
 import { AgoText } from '../components/Ago'
@@ -59,8 +59,8 @@ const STRATEGY_HELP: Record<TradeSignal['strategy'], string> = {
 }
 /** A bot's name: as the engine checks it (bot/paperAccounts.ts cleanName). */
 const BOT_NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._'-]{0,22}[\p{L}\p{N}.]$/u
-const LEARN_KIND: Record<LearnNote['kind'], string> = { tighten: 'Tightened', loosen: 'Loosened', exit: 'New exit', revert: 'Rolled back' }
-const LEARN_COLOR: Record<LearnNote['kind'], string> = { tighten: '#a78bfa', loosen: '#38bdf8', exit: '#22c55e', revert: '#f59e0b' }
+const LEARN_KIND: Record<LearnNote['kind'], string> = { tighten: 'Tightened', loosen: 'Loosened', exit: 'New exit', revert: 'Rolled back', team: 'From the team' }
+const LEARN_COLOR: Record<LearnNote['kind'], string> = { tighten: '#a78bfa', loosen: '#38bdf8', exit: '#22c55e', revert: '#f59e0b', team: '#2dd4bf' }
 const SCAN_STATUS: Record<ScanRow['status'], [string, string]> = {
   new: ['New', '#64748b'], watching: ['Watching', '#3b82f6'], checking: ['Checking', '#f59e0b'], rejected: ['Rejected', '#ef4444'], signal: ['Signal', '#22c55e'],
 }
@@ -206,9 +206,10 @@ function ScannerPanel({ scan, navigate }: { scan: { rows: ScanRow[]; stats: Scan
 }
 
 /** A new bot: its name and strategies (the engine sizes its trades). */
-function CreateBot({ busy, loading, error, onCreate, onCancel }: { busy: boolean; loading: boolean; error: string | null; onCreate: (bot: NewPaperAccount) => void; onCancel?: () => void }) {
+function CreateBot({ busy, loading, error, onCreate, onCancel, team }: { busy: boolean; loading: boolean; error: string | null; onCreate: (bot: NewPaperAccount) => void; onCancel?: () => void; team?: TeamView }) {
   const [name, setName] = useState('')
-  const [strategies, setStrategies] = useState<Strategy[]>(['scalp'])
+  // Both by default (2026-09-30): the team's clean-coin snipes won 6 of 6, and a scalp-only bot never saw them.
+  const [strategies, setStrategies] = useState<Strategy[]>(['snipe', 'scalp'])
   const clean = name.replace(/\s+/g, ' ').trim()
   const valid = BOT_NAME.test(clean)
   const toggle = (s: Strategy) => setStrategies(list => list.includes(s) ? list.filter(x => x !== s) : [...list, s])
@@ -216,13 +217,13 @@ function CreateBot({ busy, loading, error, onCreate, onCancel }: { busy: boolean
     <div className="at-card at-hero">
       <div className="at-hero-title">{T('Create your Autotrade bot')}</div>
       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-        {T('Name it, pick its strategies and fund it with virtual USDC. It sizes every trade itself to lock in $1–4 (fast scalps $1–2), gets out of rugs at once and learns from its losing trades. It keeps trading with this page closed. No wallet or real money needed.')}
+        {T('Name it and pick its strategies: it starts trading at once with $1,000 of virtual USDC and the team\'s best settings. It sizes every trade itself to lock in $1–4 (fast scalps $1–2), gets out of rugs at once, and learns from its own trades and every other bot\'s. It keeps trading with this page closed. No wallet or real money needed.')}
       </div>
       <div className="at-label">{T('Bot name')}</div>
       <input className="at-input at-name" value={name} maxLength={24} placeholder={T('e.g. Night Owl')} onChange={e => setName(e.target.value)} aria-label={T('Bot name')} />
       {name && !valid && <div style={{ fontSize: '0.72rem', color: '#fca5a5', marginTop: 4 }}>{T('2–24 letters, digits or spaces.')}</div>}
       <div className="at-label">{T('Strategies')} <span style={{ fontWeight: 500, color: 'var(--text-muted)' }}>· {T('use one, or several at once')}</span></div>
-      <StrategyPicker selected={strategies} disabled={busy} onToggle={toggle} />
+      <StrategyPicker selected={strategies} disabled={busy} onToggle={toggle} team={team} />
       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('Its name is its unique id on ARCDEX: the marketplace shows it at /bots/<name>.')}</div>
       <button className="at-big" disabled={busy || loading || !valid || !strategies.length} onClick={() => onCreate({ name: clean, strategies })}>{busy || loading ? T('Loading…') : `🤖 ${T('Create my bot')}`}</button>
       {onCancel && <button className="link-btn" onClick={onCancel}>{T('Cancel')}</button>}
@@ -231,15 +232,18 @@ function CreateBot({ busy, loading, error, onCreate, onCancel }: { busy: boolean
   )
 }
 
-function StrategyPicker({ selected, disabled, onToggle }: { selected: Strategy[]; disabled: boolean; onToggle: (s: Strategy) => void }) {
+/** The strategies to pick from, each with the team's record on it this week when the engine sends it. */
+function StrategyPicker({ selected, disabled, onToggle, team }: { selected: Strategy[]; disabled: boolean; onToggle: (s: Strategy) => void; team?: TeamView }) {
   return (
     <div className="at-strats">
-      {(['scalp', 'snipe', 'second-leg'] as const).map(s => {
+      {(['snipe', 'scalp', 'second-leg'] as const).map(s => {
         const on = selected.includes(s)
+        const rec = team?.byStrategy[s]
         return (
           <button key={s} className={`at-strat${on ? ' on' : ''}`} style={{ borderColor: on ? STRATEGY_COLOR[s] : undefined }} disabled={disabled} onClick={() => onToggle(s)} aria-pressed={on}>
             <span className="at-strat-head"><span className="at-check" style={{ background: on ? STRATEGY_COLOR[s] : 'transparent', borderColor: STRATEGY_COLOR[s] }}>{on ? '✓' : ''}</span>{T(STRATEGY[s])}</span>
             <span className="at-strat-help">{T(STRATEGY_HELP[s])}</span>
+            <span className="at-strat-team">{rec ? T('Team, 7 days: {n} trades, {w} won, {p}', { n: rec.trades, w: rec.winRate === null ? '—' : `${Math.round(rec.winRate * 100)}%`, p: usd(rec.pnlUsd) }) : T('Team, 7 days: no trades yet')}</span>
           </button>
         )
       })}
@@ -349,7 +353,7 @@ function MyBots({ navigate }: { navigate: (p: Page) => void }) {
         </div>
       )}
       {creating || !acct
-        ? <CreateBot busy={busy} loading={false} error={error} onCreate={b => void create(b)} onCancel={bots.length ? () => setCreating(false) : undefined} />
+        ? <CreateBot busy={busy} loading={false} error={error} onCreate={b => void create(b)} onCancel={bots.length ? () => setCreating(false) : undefined} team={me.team} />
         : <BotDashboard key={acct.slug} acct={acct} act={act} busy={busy} error={error} setError={setError} me={me} onMe={() => void reload()} navigate={navigate} />}
       <TiersNote />
     </>
@@ -596,6 +600,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate }: 
 
       {tab === 'overview' && (
         <>
+          {acct.team && <TeamCard team={acct.team} acct={acct} onStrategy={() => setTab('strategy')} />}
           <Section title={T('Open trades') + ` · ${open.length}`}>
             {open.length === 0 ? <Empty>{acct.running ? T('Waiting for the next signal. The scanner shows what it is checking.') : T('No open trades. Press Start to trade.')}</Empty> : open.map(p => <PositionRow key={p.id} p={p} navigate={navigate} />)}
           </Section>
@@ -617,7 +622,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate }: 
       {tab === 'strategy' && (
         <Section title={T('Strategies')}>
           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '2px 0 8px' }}>{T('Use one, or several at once.')}</div>
-          <StrategyPicker selected={acct.strategies} disabled={busy} onToggle={s => {
+          <StrategyPicker selected={acct.strategies} disabled={busy} team={acct.team} onToggle={s => {
             const next = acct.strategies.includes(s) ? acct.strategies.filter(x => x !== s) : [...acct.strategies, s]
             if (next.length) void act({ action: 'strategies', strategies: next })
             else setError(T('Keep at least one strategy.'))
@@ -650,6 +655,41 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate }: 
 
       {tab === 'settings' && <SettingsTab acct={acct} act={act} busy={busy} onRename={() => setRenaming(acct.name ?? '')} />}
     </>
+  )
+}
+
+/**
+ * The team this bot works with: every bot on ARCDEX reads the others' trades
+ * (paper and live) and learns from signals it didn't take. The team's record
+ * this week per strategy, and a nudge when a winning one isn't followed.
+ */
+function TeamCard({ team, acct, onStrategy }: { team: TeamView; acct: PaperAccountView; onStrategy: () => void }) {
+  const rows = (['snipe', 'scalp', 'second-leg'] as const).filter(s => team.byStrategy[s])
+  const missing = rows.filter(s => !acct.strategies.includes(s) && (team.byStrategy[s]!.winRate ?? 0) >= 0.6 && team.byStrategy[s]!.pnlUsd > 0)
+  const fromTeam = acct.learnLog?.filter(n => n.kind === 'team' || /of the team's\)/.test(n.text)).length ?? 0
+  return (
+    <Section title={`🤝 ${T('Team')} · ${T('{n} bots trading', { n: team.bots })}`}>
+      <div className="at-step-sub" style={{ marginBottom: 6 }}>
+        {T('Every bot learns from every other bot\'s trades, paper and live, including signals it didn\'t take.')}{fromTeam ? ` ${T('{name} has learned {n} times from the team.', { name: acct.name, n: fromTeam })}` : ''}
+      </div>
+      <div className="at-team">
+        {rows.length === 0 ? <span className="at-step-sub">{T('No team trades this week yet.')}</span> : rows.map(s => {
+          const r = team.byStrategy[s]!
+          return (
+            <div key={s} className="at-team-row">
+              <Pill color={STRATEGY_COLOR[s]}>{T(STRATEGY[s])}</Pill>
+              <span>{T('{n} trades', { n: r.trades })}</span>
+              <span>{r.winRate === null ? '—' : T('{w} won', { w: `${Math.round(r.winRate * 100)}%` })}</span>
+              <b style={{ color: r.pnlUsd >= 0 ? 'var(--green)' : '#fca5a5', fontFamily: 'var(--mono)' }}>{usd(r.pnlUsd)}</b>
+              {acct.strategies.includes(s) ? <span className="at-team-on">✓ {T('following')}</span> : null}
+            </div>
+          )
+        })}
+      </div>
+      {missing.length > 0 && <div className="at-note" style={{ background: 'rgba(45,212,191,0.08)', border: '1px solid rgba(45,212,191,0.35)', color: '#99f6e4' }}>
+        {T('The team is winning with {s}, which this bot doesn\'t follow.', { s: missing.map(s => T(STRATEGY[s])).join(', ') })} <button className="link-btn" onClick={onStrategy}>{T('Add it')} →</button>
+      </div>}
+    </Section>
   )
 }
 
@@ -693,13 +733,19 @@ function GoLive({ acct, me, act, busy, onFund, onClose }: { acct: PaperAccountVi
   const steps: { ok: boolean; title: string; body: React.ReactNode }[] = [
     {
       ok: !!ready?.ok,
-      title: T('Proven on paper'),
+      title: ready?.via === 'team' ? T('Proven by the team') : T('Proven on paper'),
       body: ready ? (
         <>
-          <div className="at-progress"><div style={{ width: `${Math.min(100, (ready.trades / ready.need.minTrades) * 100)}%` }} /></div>
+          <div className="at-progress"><div style={{ width: `${Math.min(100, (ready.trades / (ready.team?.ok && ready.need.minOwnWithTeam ? ready.need.minOwnWithTeam : ready.need.minTrades)) * 100)}%` }} /></div>
           <div className="at-step-sub">
-            {T('{a} paper trades (needs {b})', { a: ready.trades, b: ready.need.minTrades })} · {T('won {a} (needs {b})', { a: pct(ready.winRate), b: pct(ready.need.minWinRate) })} · {T('profit factor {a} (needs {b})', { a: ready.profitFactor === null ? '—' : ready.profitFactor.toFixed(2), b: ready.need.minProfitFactor })} · {T('net {a}', { a: usd(ready.pnlUsd) })}
+            {T('Its own: {a} paper trades (needs {b})', { a: ready.trades, b: ready.need.minTrades })} · {T('won {a} (needs {b})', { a: pct(ready.winRate), b: pct(ready.need.minWinRate) })} · {T('profit factor {a} (needs {b})', { a: ready.profitFactor === null ? '—' : ready.profitFactor.toFixed(2), b: ready.need.minProfitFactor })} · {T('net {a}', { a: usd(ready.pnlUsd) })}
           </div>
+          {ready.team && (
+            <div className="at-step-sub">
+              {ready.team.ok ? '✓ ' : ''}{T('Or the team: {n} trades on its strategies this week, {w} won, {p}', { n: ready.team.trades, w: pct(ready.team.winRate), p: usd(ready.team.pnlUsd) })}
+              {ready.team.ok && ready.need.minOwnWithTeam ? ` · ${T('then {m} of its own without a loss (has {a})', { m: ready.need.minOwnWithTeam, a: ready.trades })}` : ''}
+            </div>
+          )}
         </>
       ) : null,
     },
@@ -1092,28 +1138,41 @@ function tradesCsv(list: BotPosition[]): string {
 }
 
 /** Every bot on ARCDEX, best first: P&L, win rate, open positions. */
+/** Every bot on ARCDEX, live and paper apart (owner's request, 2026-09-30), best first: P&L, win rate, open positions. */
 function Marketplace({ navigate, slug }: { navigate: (p: Page) => void; slug: string | null }) {
-  const [sort, setSort] = useState<'pnl' | 'winrate' | 'new' | 'live'>('pnl')
-  const [data, setData] = useState<{ bots: MarketBot[]; total: number } | null>(null)
+  const [sort, setSort] = useState<'pnl' | 'winrate' | 'new'>('pnl')
+  const [mode, setMode] = useState<'live' | 'paper'>('live')
+  const [data, setData] = useState<{ bots: MarketBot[]; total: number; counts?: { live: number; paper: number } } | null>(null)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     if (slug) return
     let alive = true
-    const load = () => getMarket(sort, 100).then(d => { if (alive) { setData(d); setError(null) } }).catch((e: Error) => { if (alive) setError(e.message) })
+    // An engine from before ?mode= sends every bot: kept apart here too.
+    const load = () => getMarket(sort, 100, mode).then(d => { if (alive) { setData({ ...d, bots: d.bots.filter(b => (b.mode === 'live') === (mode === 'live')) }); setError(null) } }).catch((e: Error) => { if (alive) setError(e.message) })
     void load()
     const id = setInterval(() => { if (!document.hidden) void load() }, 15_000)
     return () => { alive = false; clearInterval(id) }
-  }, [sort, slug])
+  }, [sort, mode, slug])
+  // No live bots yet: open on paper.
+  useEffect(() => { if (data?.counts && data.counts.live === 0 && mode === 'live' && data.counts.paper > 0) setMode('paper') }, [data?.counts, mode])
   if (slug) return <MarketBotPage slug={slug} navigate={navigate} />
+  const live = mode === 'live'
   return (
-    <Section title={T('Bot marketplace') + (data ? ` · ${data.total}` : '')}>
-      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5, margin: '2px 0 8px' }}>
-        {T('Every bot on ARCDEX, with its results and what it holds right now. Paper bots trade virtual USDC; live bots trade their own wallet.')}
+    <Section title={T('Bot marketplace')}>
+      <div className="at-market-modes" role="tablist">
+        <button role="tab" aria-selected={live} className={`at-market-mode live${live ? ' on' : ''}`} onClick={() => setMode('live')}>
+          <b>● {T('Live bots')}</b><span>{data?.counts ? data.counts.live : '…'} · {T('real USDC, their own wallets')}</span>
+        </button>
+        <button role="tab" aria-selected={!live} className={`at-market-mode${!live ? ' on' : ''}`} onClick={() => setMode('paper')}>
+          <b>🧪 {T('Paper bots')}</b><span>{data?.counts ? data.counts.paper : '…'} · {T('virtual USDC, no real money')}</span>
+        </button>
       </div>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-        {([['pnl', T('Top P&L')], ['winrate', T('Win rate')], ['live', T('Live first')], ['new', T('Newest')]] as const).map(([k, l]) => <button key={k} className={`at-chip${sort === k ? ' on' : ''}`} onClick={() => setSort(k)}>{l}</button>)}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '8px 0 6px' }}>
+        {([['pnl', T('Top P&L')], ['winrate', T('Win rate')], ['new', T('Newest')]] as const).map(([k, l]) => <button key={k} className={`at-chip${sort === k ? ' on' : ''}`} onClick={() => setSort(k)}>{l}</button>)}
       </div>
-      {error ? <Empty>⚠ {error}</Empty> : !data ? <Empty>{T('Loading…')}</Empty> : data.bots.length === 0 ? <Empty>{T('No bots yet. Create the first one under My bots.')}</Empty> : data.bots.map((b, i) => (
+      {error ? <Empty>⚠ {error}</Empty> : !data ? <Empty>{T('Loading…')}</Empty> : data.bots.length === 0
+        ? <Empty>{live ? T('No live bots yet. A bot goes live once its paper record, or the team\'s, proves it.') : T('No bots yet. Create the first one under My bots.')}</Empty>
+        : data.bots.map((b, i) => (
         <button key={b.slug} className="at-market-row" onClick={() => navigate({ name: 'signals', view: 'market', bot: b.slug })}>
           <span className="at-rank">{i + 1}</span>
           <span style={{ minWidth: 0, flex: 1 }}>
@@ -1126,6 +1185,7 @@ function Marketplace({ navigate, slug }: { navigate: (p: Page) => void; slug: st
             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
               {T('{n} trades, {w} won', { n: b.closed, w: b.winRate === null ? '—' : `${Math.round(b.winRate * 100)}%` })} · {T('{n} open', { n: b.positions.length })}{b.learned ? ` · ${T('learned {n} times', { n: b.learned })}` : ''}
               {b.mode === 'live' && b.paper ? ` · ${T('paper record {v}', { v: usd(b.paper.pnlUsd) })}` : ''}
+              {b.mode === 'live' && b.wallet ? ` · ${shortAddr(b.wallet)}` : ''}
             </span>
           </span>
           <span style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>

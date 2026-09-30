@@ -24,7 +24,7 @@ describe('probation', () => {
   const now = revised + 3_600_000
   test('a rule that won 4 of 14 and lost money is on probation; one that wins is not', () => {
     const book = Array.from({ length: 14 }, (_, i) => closedAt(i, i < 4))
-    expect(probationOf('momentum', book, ruleOf, now)?.why).toMatch(/Momentum bursts won 4 of their last 14 paper trades \(−\$.*\): bots sit them out/)
+    expect(probationOf('momentum', book, ruleOf, now)?.why).toMatch(/Momentum bursts won 4 of their last 14 trades \(−\$.*\): bots sit them out/)
     const snipes = Array.from({ length: 16 }, (_, i) => closedAt(100 + i, i < 12, { rule: 'snipe' }))
     expect(probationOf('snipe', [...book, ...snipes], ruleOf, now)).toBeNull()
   })
@@ -51,7 +51,7 @@ describe('bots and a rule on probation', () => {
   const sig = (o: Partial<PaperSignal> = {}): PaperSignal => ({ id: 's1', token: T, symbol: 'C', launchpad: 'ARGUS', price: 1, strategy: 'scalp', roundTripPct: 2, liquidityUsd: 30_000, rule: 'momentum', ...o })
   test('a bot sits out a signal on probation, and says why', () => {
     const { accts, a } = setup()
-    accts.onSignal(sig({ probation: { why: 'Momentum bursts won 4 of their last 14 paper trades' } }), revised + 1_000)
+    accts.onSignal(sig({ probation: { why: 'Momentum bursts won 4 of their last 14 trades' } }), revised + 1_000)
     expect(a.positions).toHaveLength(0)
     expect(a.skips[0].text).toMatch(/not traded: Momentum bursts won 4 of their last 14/)
   })

@@ -247,7 +247,9 @@ export const botWithdrawPasscode = (slug: string, to: string, amountUsd: number,
 export const botFunders = (slug: string) =>
   botFetch<{ funders: { address: string; usd: number }[]; known: boolean }>(`/v1/me/bots/${encodeURIComponent(slug)}/funders`, { auth: true })
 /** The marketplace: every bot, public. */
-export const getMarket = (sort: 'pnl' | 'winrate' | 'new' | 'live' = 'pnl', limit = 100) => botFetch<{ bots: MarketBot[]; total: number }>(`/v1/bots?sort=${sort}&limit=${limit}`)
+/** The marketplace; `mode` lists only live or only paper bots (`counts` has both; older engines leave it out). */
+export const getMarket = (sort: 'pnl' | 'winrate' | 'new' | 'live' = 'pnl', limit = 100, mode?: 'live' | 'paper') =>
+  botFetch<{ bots: MarketBot[]; total: number; counts?: { live: number; paper: number } }>(`/v1/bots?sort=${sort}&limit=${limit}${mode ? `&mode=${mode}` : ''}`)
 export const getMarketBot = (slug: string) => botFetch<{ bot: MarketBotDetail }>(`/v1/bots/${encodeURIComponent(slug)}`).then(r => r.bot)
 export const getRejections = () => get<RejectionStats>('/v1/bot/rejections')
 

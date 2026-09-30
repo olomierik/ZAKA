@@ -26,9 +26,15 @@
 // Entry filters are learned per kind of signal (2026-10-01): a fast scalp
 // comes from momentum bursts (buyers counted over two minutes: 6–30) and from
 // snipes on risky coins (buyers since launch: 30–450), so a buyer count learned
-// on one blocked every signal of the other, and bots stopped trading. And a
-// bot with few trades of its own reads other bots' results on the same kind of
-// signal too (`shared`), so a new or losing bot learns before its 20th trade.
+// on one blocked every signal of the other, and bots stopped trading.
+//
+// The bots are a team (owner's request: "learn from other bots, paper or
+// live; work together as a team"). Every bot reads the team's closed trades
+// of each kind of signal too (`shared`: every other bot's, paper and live, and
+// the engine's own paper book, one per signal), the last 20 beside its own
+// last 20. So a new bot learns before its first trade closes, and every bot
+// learns from signals it didn't take. Exits are still learned from its own
+// trades only: they depend on its own settings.
 //
 // Every change is a new version. A version that then wins clearly less often
 // than the one before it is rolled back, and filters that keep the bot from
@@ -247,10 +253,11 @@ function tightenFor(rule: SignalRule, s: Strategy, f: BotFilters, w: Position[],
 /**
  * Reads a strategy's closed trades (oldest first) and returns the bot's next
  * tuning with notes, or null if there's nothing to change yet. `shared`:
- * other bots' closed trades of the strategy (one per signal), read for a kind
- * of signal where this bot has fewer than 20 of its own.
+ * the team's closed trades of the strategy (one per signal). `force`: learn
+ * now, without waiting for its own trades on the current version (the team's
+ * trades are enough: PaperAccounts' team sync).
  */
-export function learn(t: Tuning, s: Strategy, trades: Position[], now: number, shared: Position[] = []): { tuning: Tuning; notes: LearnNote[] } | null {
+export function learn(t: Tuning, s: Strategy, trades: Position[], now: number, shared: Position[] = [], force = false): { tuning: Tuning; notes: LearnNote[] } | null {
   const closed = trades.filter(p => p.status === 'closed')
   const cur = closed.filter(p => (p.tuningVersion ?? 0) === t.version)
   const winsOf = (xs: Position[]) => xs.filter(won).length
@@ -268,7 +275,7 @@ export function learn(t: Tuning, s: Strategy, trades: Position[], now: number, s
     }
   }
 
-  if (cur.length < (closed.length < 10 ? LEARN.perVersionNew : LEARN.perVersion)) return null
+  if (!force && cur.length < (closed.length < 10 ? LEARN.perVersionNew : LEARN.perVersion)) return null
   const next: Tuning = { ...structuredClone(strip(t)), prev: null }
   next.rules = { ...(next.rules ?? {}) }
   const notes: { kind: LearnNote['kind']; text: string; rule?: SignalRule }[] = []
@@ -289,17 +296,17 @@ export function learn(t: Tuning, s: Strategy, trades: Position[], now: number, s
     }
   }
 
-  // Entry filters, per kind of signal: its own trades, and other bots' on the same kind while it has few.
+  // Entry filters, per kind of signal: its own last 20 trades and the team's last 20 (signals it didn't take).
   for (const rule of RULES_OF[s]) {
     const own = closed.filter(p => ruleOfPosition(p) === rule)
     const ownIds = new Set(own.map(p => p.signalId))
-    const others = own.length >= LEARN.window ? [] : shared.filter(p => ruleOfPosition(p) === rule && !ownIds.has(p.signalId) && p.status === 'closed')
-    const rw = [...others.slice(-(LEARN.window - own.length)), ...own.slice(-LEARN.window)].sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0))
+    const team = shared.filter(p => ruleOfPosition(p) === rule && !ownIds.has(p.signalId) && p.status === 'closed').slice(-LEARN.window)
+    const mine = own.slice(-LEARN.window)
+    const rw = [...team, ...mine].sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0))
     if (rw.length < 4) continue
     const f: BotFilters = structuredClone(t.rules?.[rule] ?? openCopy())
     const before = JSON.stringify(f)
-    const borrowed = rw.length - Math.min(own.length, LEARN.window)
-    tightenFor(rule, s, f, rw, own, now, (kind, text) => notes.push({ kind, rule, text: borrowed > 0 && !text.includes('skips them for now') ? `${text} (read from its ${Math.min(own.length, LEARN.window)} trades and ${borrowed} of other bots')` : text }))
+    tightenFor(rule, s, f, rw, own, now, (kind, text) => notes.push({ kind, rule, text: team.length > 0 && !text.includes('skips them for now') ? `${text} (read from its ${mine.length} trades and ${team.length} of the team's)` : text }))
     if (JSON.stringify(f) !== before) next.rules[rule] = f
   }
 

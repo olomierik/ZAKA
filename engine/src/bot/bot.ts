@@ -620,7 +620,8 @@ export class Bot implements EngineObserver {
   /** Why a rule is on probation now, or null. */
   probation(rule: SignalRule, now = Date.now()) {
     const ruleOf = new Map(this.recentSignals.map(s => [s.id, s.rule]))
-    return probationOf(rule, this.positions, p => p.rule ?? ruleOf.get(p.signalId), now)
+    // The engine's paper book first, then the team's trades (every bot's, paper and live).
+    return probationOf(rule, [...this.positions.filter(p => p.mode !== 'live'), ...(this.o.accounts?.teamTrades() ?? [])], p => p.rule ?? ruleOf.get(p.signalId), now)
   }
   async safety(token: string) { return this.reports.get(token) ?? (await this.report(token, false).catch(() => null)) }
   stats() {

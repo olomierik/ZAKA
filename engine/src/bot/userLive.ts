@@ -66,6 +66,28 @@ export const PROFIT_FEE = { bps: 200, wallet: '0x274262A0321A0701b0A46a3576e07aE
 export const profitFee = (pnlUsd: number | null) => (pnlUsd !== null && pnlUsd > 0 ? Math.round(pnlUsd * PROFIT_FEE.bps) / 10_000 : 0)
 
 /** Whether a bot's paper record is good enough to trade live. */
+/**
+ * Going live on the team's record (2026-09-30, owner: "the time a new bot
+ * takes to start trading; they work together as a team"): the team's trades on
+ * the bot's strategies, the last 7 days (every bot's, paper and live, one per
+ * signal), meet READY, and the bot has 5 closed paper trades of its own
+ * without a net loss. Otherwise its own 20.
+ */
+export const TEAM_READY = { minOwn: 5, days: 7 }
+
+export function readinessWithTeam(positions: Position[], team: Position[]): BotReadiness {
+  const own = readiness(positions)
+  const ts = stats(team)
+  const pf = ts.profitFactor === Infinity ? 99 : ts.profitFactor
+  const teamOk = ts.closed >= READY.minTrades && (ts.winRate ?? 0) >= READY.minWinRate && (pf ?? 0) >= READY.minProfitFactor && ts.totalPnlUsd > 0
+  const viaTeam = teamOk && own.trades >= TEAM_READY.minOwn && own.pnlUsd >= 0
+  return {
+    ...own, ok: own.ok || viaTeam, via: own.ok ? 'own' : viaTeam ? 'team' : null,
+    team: { trades: ts.closed, winRate: ts.winRate, profitFactor: pf, pnlUsd: ts.totalPnlUsd, ok: teamOk },
+    need: { ...own.need, minOwnWithTeam: TEAM_READY.minOwn },
+  }
+}
+
 export function readiness(positions: Position[]): BotReadiness {
   const s = stats(positions.filter(p => p.mode !== 'live' && p.status === 'closed'))
   const pf = s.profitFactor === Infinity ? 99 : s.profitFactor

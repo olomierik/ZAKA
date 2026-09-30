@@ -337,7 +337,7 @@ describe('the HTTP routes', () => {
     const me = (await call('GET', '/v1/me', undefined, token)).body as unknown as MeResponse
     expect(me.user).toEqual({ email: 'f@x.io', verified: false, createdAt: expect.any(Number) })
     expect(me.bots.map(b => b.slug)).toEqual(['route-bot'])
-    expect(me.bots[0].deposited).toBe(50)
+    expect(me.bots[0].deposited).toBe(1_050) // a new bot starts with $1,000 of virtual USDC
     const market = await call('GET', '/v1/bots')
     expect((market.body.bots as { slug: string }[]).map(b => b.slug)).toEqual(['route-bot'])
     expect(JSON.stringify(market.body)).not.toContain('f@x.io')

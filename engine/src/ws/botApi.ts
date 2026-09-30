@@ -35,6 +35,9 @@ const decode = (s: string) => { try { return decodeURIComponent(s) } catch { ret
 const bearer = (req: Request) => req.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim() ?? null
 const money = (n: number) => `$${n.toFixed(2)}`
 
+/** Virtual USDC a new bot starts with, running. */
+const NEW_BOT_PAPER_USD = 1_000
+
 async function readBody(req: Request): Promise<Record<string, unknown> | null> {
   if (Number(req.headers.get('content-length') ?? 0) > 4_096) return null
   const b = await req.json().catch(() => null)
@@ -51,7 +54,8 @@ export async function botApi(req: Request, url: URL, ip: string, d: { users: Use
   if (req.method === 'GET' && p === '/v1/bots') {
     const sort = url.searchParams.get('sort')
     const limit = Math.max(1, Math.min(500, Number(url.searchParams.get('limit')) || 100))
-    return json(200, accounts.market(sort === 'winrate' || sort === 'new' || sort === 'live' ? sort : 'pnl', limit, now), 'public, max-age=5')
+    const mode = url.searchParams.get('mode')
+    return json(200, accounts.market(sort === 'winrate' || sort === 'new' || sort === 'live' ? sort : 'pnl', limit, now, mode === 'live' || mode === 'paper' ? mode : undefined), 'public, max-age=5')
   }
   const pub = /^\/v1\/bots\/([^/]+)$/.exec(p)
   if (req.method === 'GET' && pub) {
@@ -106,7 +110,7 @@ export async function botApi(req: Request, url: URL, ip: string, d: { users: Use
   if (req.method === 'GET' && p === '/v1/me') {
     const bots = accounts.ofOwner(u.id)
     await Promise.all(bots.map(a => accounts.refreshLive(a)))
-    const me: MeResponse = { user: users.view(u), bots: bots.map(a => accounts.view(a, now)), email: users.mailEnabled, maxBots: 5, liveAvailable: accounts.liveAvailable }
+    const me: MeResponse = { user: users.view(u), bots: bots.map(a => accounts.view(a, now)), email: users.mailEnabled, maxBots: 5, liveAvailable: accounts.liveAvailable, team: accounts.team(now) }
     return json(200, me)
   }
   if (req.method === 'GET' && p === '/v1/me/profits') {
@@ -120,6 +124,9 @@ export async function botApi(req: Request, url: URL, ip: string, d: { users: Use
     const made = accounts.create(now, { name: b.name as string | undefined ?? '', strategies: b.strategies as never }, u.id)
     if (!made) return json(503, { error: 'Autotrade is full right now' })
     if ('error' in made) return json(400, { error: made.error })
+    // Trading at once (2026-09-30): $1,000 of virtual USDC and started, so its first signal is its first trade.
+    accounts.act(made.account, { action: 'deposit', amount: NEW_BOT_PAPER_USD }, now)
+    accounts.act(made.account, { action: 'start' }, now)
     accounts.flush()
     metrics.inc('paper_accounts_created')
     return json(200, { account: accounts.view(made.account, now) })
