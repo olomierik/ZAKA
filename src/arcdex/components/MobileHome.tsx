@@ -20,7 +20,7 @@ export default function MobileHome({ navigate }: { navigate: (p: Page) => void }
   const [withdraw, setWithdraw] = useState(false)
   const [live, setLive] = useState(false)
   const [scanning, setScanning] = useState<number | null>(null)
-  const [mine, setMine] = useState<{ running: boolean; equity: number } | null>(null)
+  const [mine, setMine] = useState<{ running: boolean; equity: number; name: string | null } | null>(null)
 
   useEffect(() => {
     if (!engineEnabled) return
@@ -29,7 +29,7 @@ export default function MobileHome({ navigate }: { navigate: (p: Page) => void }
       void getScan(1).then(s => { if (alive) setScanning(s.stats.watching) }).catch(() => {})
       void getBotStatus().then(s => { if (alive) setLive(s.mode === 'live') }).catch(() => {})
       const key = paperKey()
-      if (key) void getPaperAccount(key).then(a => { if (alive) setMine({ running: a.running, equity: a.equity }) }).catch(() => {})
+      if (key) void getPaperAccount(key).then(a => { if (alive) setMine({ running: a.running, equity: a.equity, name: a.name ?? null }) }).catch(() => {})
     }
     load()
     const id = setInterval(() => { if (!document.hidden) load() }, 30_000)
@@ -69,7 +69,7 @@ export default function MobileHome({ navigate }: { navigate: (p: Page) => void }
           <span className="m-autotrade-text">
             <b>AUTOTRADE</b>
             <span>
-              {mine?.running ? <><span className="m-autotrade-dot" />{T('Running · {v} virtual', { v: usd(mine.equity) })}</>
+              {mine?.running ? <><span className="m-autotrade-dot" />{mine.name ? `${mine.name} · ` : ''}{T('Running · {v} virtual', { v: usd(mine.equity) })}</>
                 : scanning !== null ? <><span className="m-autotrade-dot" />{T('Scanning {n} coins · start with virtual USDC', { n: scanning.toLocaleString() })}</>
                 : T('Start with virtual USDC')}
             </span>

@@ -11,7 +11,7 @@
 // subscription is re-sent, and the engine answers each with a fresh snapshot.
 
 import { useSyncExternalStore } from 'react'
-import { botControlMessage, type BotControl, type BotPosition, type BotStatus, type PaperAccountView, type PaperAction, type ScanRow, type ScanStats, type SearchHit, type Interval, type LaunchInfo, type SafetyCheck, type ServerMessage, type TokenStats, type TradeSignal, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
+import { botControlMessage, type BotControl, type BotPosition, type BotStatus, type PaperAccountView, type PaperAction, type ScanRow, type ScanStats, type SearchHit, type Interval, type LaunchInfo, type NewPaperAccount, type SafetyCheck, type ServerMessage, type TokenStats, type TradeSignal, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
 
 const WS_URL = (import.meta.env.VITE_ARCDEX_WS_URL as string | undefined) || undefined
 const API_URL = ((import.meta.env.VITE_ARCDEX_API_URL as string | undefined) || (WS_URL ? WS_URL.replace(/^ws/, 'http').replace(/\/ws\/?$/, '') : '')).replace(/\/$/, '')
@@ -166,14 +166,21 @@ async function paperFetch(path: string, init: RequestInit & { key?: string | nul
   if (!res.ok || !body.account) throw new Error(body.error ?? `the engine answered ${res.status}`)
   return body as { key?: string; account: PaperAccountView }
 }
-/** A new paper account for this browser. */
-export async function createPaperAccount(): Promise<PaperAccountView> {
-  const r = await paperFetch('/v1/paper/accounts', { method: 'POST', body: '{}' })
+/** A new bot for this browser: its name and strategies. */
+export async function createPaperAccount(bot: NewPaperAccount): Promise<PaperAccountView> {
+  const r = await paperFetch('/v1/paper/accounts', { method: 'POST', body: JSON.stringify(bot) })
   if (r.key) setPaperKey(r.key)
   return r.account
 }
 export const getPaperAccount = (key: string) => paperFetch('/v1/paper/account', { key }).then(r => r.account)
 export const paperAction = (key: string, action: PaperAction) => paperFetch('/v1/paper/account', { method: 'POST', key, body: JSON.stringify(action) }).then(r => r.account)
+/** The bot's trade log: every closed trade, newest first (`before`: a closing time, for the next page). */
+export async function getPaperTrades(key: string, limit = 100, before?: number): Promise<{ trades: BotPosition[]; total: number }> {
+  const res = await fetch(`${API_URL}/v1/paper/trades?limit=${limit}${before ? `&before=${before}` : ''}`, { headers: { 'X-Paper-Key': key }, signal: AbortSignal.timeout(10_000) })
+  const body = await res.json().catch(() => ({})) as { trades?: BotPosition[]; total?: number; error?: string }
+  if (!res.ok || !body.trades) throw new Error(body.error ?? `the engine answered ${res.status}`)
+  return { trades: body.trades, total: body.total ?? body.trades.length }
+}
 
 /** The owner's signed switch: paper/live, or sell every live position (engine/src/bot/control.ts). */
 export async function sendBotControl(control: BotControl, sign: (message: string) => Promise<`0x${string}`>): Promise<BotStatus> {
