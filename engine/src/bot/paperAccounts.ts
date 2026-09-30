@@ -10,7 +10,10 @@
 //   size      not the visitor's choice: each trade is the smallest amount
 //             that nets the strategy's profit target at its take-profit
 //             ($1–2 for a fast scalp, $1–5 otherwise; bot/sizing.ts), and
-//             is sold in full there ("secure the profit and close")
+//             is sold in full there ("secure the profit and close"). Never
+//             more than 20% of what the bot is worth (paper: cash plus open
+//             trades; live: its wallet, read again before each buy): a small
+//             bot trades smaller and aims for less
 //   learning  each bot has its own settings per strategy; after trades close
 //             it reads the losing ones and adjusts them (bot/learner.ts)
 //   live      once its paper record is good enough, its owner can switch the
@@ -40,7 +43,7 @@ import { canOpen, closeNow, costPerSide, onPrice, openPosition, RISK, stats, typ
 import { admits, defaultTuning, learn, relax, toParams, type Tuning } from './learner'
 import type { LiveTrader } from './liveTrader'
 import type { RugAlarm } from './rugGuard'
-import { SIZE_LIMITS, sizeForTrade, TARGETS } from './sizing'
+import { maxTradeFor, noSizeWhy, SIZE_LIMITS, sizeForTrade, TARGETS } from './sizing'
 import type { Signal } from './types'
 import { OutcomeTally } from './scanFeed'
 import { profitFee, readiness, USER_LIVE, type BotWallet, type UserLive } from './userLive'
@@ -445,9 +448,12 @@ export class PaperAccounts {
       const t = a.tuning[sig.strategy]
       const filtered = admits(t, sig.features)
       if (filtered) { a.filterSkips[sig.strategy] = (a.filterSkips[sig.strategy] ?? 0) + 1; skip('filters', filtered); continue }
-      // Sized for its target; a thinner or costlier pool gets the size for $1 (the low end of the range) instead.
-      const sized = sizeForTrade({ strategy: sig.strategy, targetUsd: t.targetUsd, takeProfit: t.takeProfit, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd })
-      if (!sized) { skip('too-thin', `the pool is too thin (or the coin too costly to trade) to net even $${TARGETS[sig.strategy].range[0]} at ${move(t.takeProfit)}`); continue }
+      // Sized for its target, never over 20% of what the bot is worth; a thinner or costlier
+      // pool gets the size for $1 (the low end of the range), a small bot the 20% for what it nets.
+      const balanceUsd = this.balanceOf(a)
+      const want = { strategy: sig.strategy, targetUsd: t.targetUsd, takeProfit: t.takeProfit, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd, balanceUsd: balanceUsd ?? undefined }
+      const sized = sizeForTrade(want)
+      if (!sized) { const n = noSizeWhy(want); skip(n.key, n.why); continue }
       const params = toParams(t, sized.sizeUsd)
       if (a.mode === 'live') {
         const trader = this.trader(a)
@@ -474,7 +480,8 @@ export class PaperAccounts {
       a.filterSkips[sig.strategy] = 0
       this.outcomes.add(sig.id, 'traded', now)
       this.track(a, p)
-      const aim = sized.targetUsd < t.targetUsd ? ` (a thin pool: aiming for $${sized.targetUsd}, not $${t.targetUsd})` : ''
+      const aim = sized.small ? ` (a small bot: at most ${Math.round(SIZE_LIMITS.maxShareOfBalance * 100)}% of its ${money(balanceUsd ?? 0)} a trade, so aiming for ${money(sized.targetUsd)}, not $${t.targetUsd})`
+        : sized.targetUsd < t.targetUsd ? ` (a thin pool: aiming for $${sized.targetUsd}, not $${t.targetUsd})` : ''
       this.event(a, { at: now, kind: 'buy', token: sig.token, symbol: sig.symbol, text: `Bought $${sig.symbol} for ${money(sized.sizeUsd)} (${LABEL[sig.strategy]}): sells all at ${move(t.takeProfit)} to make about ${money(sized.profitUsd)}${aim}, stop at ${move(t.stopLoss)}` })
       this.save(a, now)
     }
@@ -568,6 +575,19 @@ export class PaperAccounts {
   /** Every closed trade the bot has made, newest first (the trade log). */
   trades(a: PaperAccount, limit: number, before?: number) { return this.o.store.paperTrades(a.id, limit, before) }
 
+  /**
+   * What the bot is worth for sizing: paper, its cash and open paper trades;
+   * live, its wallet's USDC (last read, at most 15s old) and what its open live
+   * trades cost; null while the wallet hasn't been read (the live trader reads
+   * it before the buy and applies the same 20%).
+   */
+  balanceOf(a: PaperAccount): number | null {
+    if (a.mode !== 'live') return this.equity(a).equity
+    const bal = this.o.live?.cachedBalance(a.id) ?? null
+    if (bal === null) return null
+    return bal + a.positions.filter(p => isLive(p) && p.status === 'open').reduce((sum, p) => sum + p.sizeUsd * (p.remaining / (p.qty || 1)), 0)
+  }
+
   /** Paper cash plus open paper positions at the current price. */
   equity(a: PaperAccount) {
     let openValue = 0
@@ -582,10 +602,11 @@ export class PaperAccounts {
     const shown = [...a.positions.filter(p => p.status === 'open'), ...a.positions.filter(p => p.status === 'closed').sort((x, y) => (y.closedAt ?? 0) - (x.closedAt ?? 0)).slice(0, 50)]
     const day = new Date(now).toISOString().slice(0, 10)
     const today = paper.filter(p => p.closedAt && new Date(p.closedAt).toISOString().slice(0, 10) === day).reduce((sum, p) => sum + (p.pnlUsd ?? 0), 0)
+    const worth = this.balanceOf(a)
     const tuning = Object.fromEntries(STRATEGIES.map(st => {
       const { prev: _prev, ...t } = a.tuning[st]
       const mine = stats(a.positions.filter(p => p.strategy === st))
-      const sized = sizeForTrade({ strategy: st, targetUsd: t.targetUsd, takeProfit: t.takeProfit, ...TYPICAL })
+      const sized = sizeForTrade({ strategy: st, targetUsd: t.targetUsd, takeProfit: t.takeProfit, ...TYPICAL, balanceUsd: worth !== null && worth > 0 ? worth : undefined })
       return [st, { ...t, sizeUsd: sized?.sizeUsd ?? null, closed: mine.closed, winRate: mine.winRate }]
     })) as PaperAccountView['tuning']
     const trader = a.live && this.o.live ? this.o.live.existing(a.id) : null
@@ -601,6 +622,7 @@ export class PaperAccounts {
       protections: {
         pausedUntil: a.pausedUntil && a.pausedUntil > now ? a.pausedUntil : null, lossStreak: a.lossStreak, pauseAfterLosses: PROTECT.pauseAfterLosses,
         dailyLossLimitUsd: riskFor(a).dailyLossUsd, todayPnlUsd: today, stopBelowPct: PROTECT.stopBelowPct,
+        maxTradeSharePct: Math.round(SIZE_LIMITS.maxShareOfBalance * 100), maxTradeUsd: worth === null ? null : maxTradeFor(worth),
       },
       tradesLogged: a.tradesLogged,
       feesPaidUsd: a.feesPaidUsd + (a.live?.feesPaidUsd ?? 0),
@@ -608,7 +630,7 @@ export class PaperAccounts {
       live: a.live ? {
         wallet: a.live.address, balanceUsd: this.o.live?.cachedBalance(a.id) ?? null,
         pnlUsd: liveStats.totalPnlUsd, closed: liveStats.closed, open: liveStats.open, winRate: liveStats.winRate, feesPaidUsd: a.live.feesPaidUsd ?? 0,
-        limits: { maxTradeUsd: USER_LIVE.maxTradeUsd, minBalanceUsd: USER_LIVE.minBalanceUsd, reserveUsd: USER_LIVE.reserveUsd, maxOpen: USER_LIVE.maxOpen, dailyLossUsd: trader?.limits.dailyLossUsd ?? USER_LIVE.dailyLossMinUsd, preflight: true, maxRoundTripPct: USER_LIVE.maxRoundTripPct },
+        limits: { maxTradeUsd: USER_LIVE.maxTradeUsd, minBalanceUsd: USER_LIVE.minBalanceUsd, reserveUsd: USER_LIVE.reserveUsd, maxOpen: USER_LIVE.maxOpen, dailyLossUsd: trader?.limits.dailyLossUsd ?? USER_LIVE.dailyLossMinUsd, preflight: true, maxRoundTripPct: USER_LIVE.maxRoundTripPct, maxSharePct: Math.round(USER_LIVE.maxShareOfBalance * 100) },
         events: trader?.events.slice(0, 30) ?? [],
       } : null,
       liveAvailable: this.o.live?.available ?? { ok: false, why: 'live trading isn\'t available on this engine' },

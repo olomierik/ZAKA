@@ -241,6 +241,44 @@ describe('live: the same bot, from paper to its own wallet', () => {
     expect(p.feeDue).toBe(0)
     expect(accounts.view(a).live).toMatchObject({ closed: 1, feesPaidUsd: p.feeUsd })
   })
+  test('a fee that can\'t be sent yet is owed: held back from withdrawals and sent at the next try', async () => {
+    const { accounts, a, wallet } = readyBot({ balance: 100, sellAt: 1.2 })
+    accounts.createWallet(a, now)
+    await accounts.setMode(a, 'live', owner, now)
+    accounts.act(a, { action: 'start' }, now)
+    const send = wallet.exec.sendUsdc.bind(wallet.exec)
+    let down = true
+    ;(wallet.exec as unknown as { sendUsdc: typeof send }).sendUsdc = async (to, usd) => { if (down) throw new Error('node busy'); return send(to, usd) }
+    accounts.onSignal(sig(), Date.now(), { signal: { id: 'sig-fee', token: T, strategy: 'scalp' } as never, pool, meta: { token: T, symbol: 'COIN', launchpad: 'Argus' } as never })
+    await settle()
+    accounts.onPrice(T, 1.2, Date.now(), false, true)
+    await settle()
+    const p = a.positions.find(x => x.mode === 'live')!
+    expect(p).toMatchObject({ status: 'closed', exitReason: 'tp1' })
+    expect(p.feeUsd).toBeGreaterThan(0)
+    expect(p.feeDue).toBe(p.feeUsd) // owed: the send failed
+    expect(p.txs?.some(t => t.kind === 'fee')).toBe(false)
+    const bal = wallet.o.balance
+    expect(await accounts.withdrawable(a)).toBeCloseTo(Math.floor((bal - 0.2 - p.feeUsd!) * 100) / 100, 6) // the fee stays in the wallet
+    down = false
+    accounts.tick(Date.now() + 61_000) // retried after a minute
+    await settle()
+    expect(p.feeDue).toBe(0)
+    expect(wallet.calls).toContain(`send ${p.feeUsd} to ${PROFIT_FEE.wallet}`)
+    expect(p.txs?.some(t => t.kind === 'fee')).toBe(true)
+  })
+  test('a small live wallet: no buy over 20% of what it is worth, read before the buy', async () => {
+    const { accounts, a, wallet } = readyBot({ balance: 20, sellAt: 1.2 })
+    accounts.createWallet(a, now)
+    await accounts.setMode(a, 'live', owner, now)
+    accounts.act(a, { action: 'start' }, now)
+    accounts.onSignal(sig(), Date.now(), { signal: { id: 'sig-small', token: T, strategy: 'scalp' } as never, pool, meta: { token: T, symbol: 'COIN', launchpad: 'Argus' } as never })
+    await settle()
+    const bought = Number(/^buy (\d+(?:\.\d+)?)$/.exec(wallet.calls[0] ?? '')?.[1])
+    expect(bought).toBeGreaterThan(0)
+    expect(bought).toBeLessThanOrEqual(4) // 20% of $20
+    expect(accounts.view(a).protections).toMatchObject({ maxTradeSharePct: 20 })
+  })
   test('a rug alarm sells a live position at once; withdrawals go only where asked', async () => {
     const { accounts, a, wallet } = readyBot({ balance: 100, sellAt: 0.9 })
     accounts.createWallet(a, now)

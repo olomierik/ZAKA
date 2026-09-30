@@ -104,6 +104,8 @@ export interface Position {
   /** A visitor's bot: the profit its size was chosen to secure, and the tuning version that opened it. */
   targetUsd?: number
   tuningVersion?: number
+  /** The rule that fired the signal (momentum burst, snipe, dip rebound); on the engine's own positions since 2026-10-01. */
+  rule?: 'snipe' | 'second-leg' | 'momentum'
   /** What the coin looked like at entry (the learner reads these on losing trades). */
   features?: SignalFeatures
   /** The lowest market price while open (with `peak`: how far it went each way). */

@@ -27,7 +27,7 @@ export const REASON_LABELS: Record<string, string> = {
   'safety:selfdestruct': 'safety: can self-destruct', 'safety:rug-guard': 'rug guard alarm (30-minute quarantine)', 'safety:risky-for-rebound': 'dip rebound needs a clean coin',
   'pending:honeypot': 'checking: honeypot probe', 'pending:clusters': 'checking: funding trace', 'pending:liquidity': 'checking: liquidity',
   'pending:holders': 'checking: holders',
-  'safety:unavailable': 'safety scan unavailable',
+  'safety:unavailable': 'safety scan unavailable', 'safety:costly': 'costs too much to buy and sell back (scalps: over 5%)',
 }
 
 const DAY = 86_400_000
@@ -35,7 +35,7 @@ const DAY = 86_400_000
 /** Why a signal wasn't traded, in words (keys from PaperAccounts.onSignal and canOpen). */
 export const SKIP_LABELS: Record<string, string> = {
   'not-running': 'bot funded but not started (press Start)', strategy: 'bot doesn\'t follow that strategy', paused: 'bot paused after 4 losses in a row',
-  filters: 'the bot\'s learned filters', 'too-thin': 'pool too thin or too costly to net $1', cash: 'not enough cash in the bot',
+  filters: 'the bot\'s learned filters', 'too-thin': 'pool too thin or too costly to net $1', cash: 'not enough cash in the bot', 'small-balance': 'bot too small: a trade is at most 20% of it',
   'max-open': 'too many trades already open', cooldown: 'traded that coin recently', 'daily-loss': 'daily loss limit reached',
   'live-unavailable': 'live wallet unavailable', 'live-cap': 'over the live size cap', 'live-order': 'sent to a live wallet',
 }

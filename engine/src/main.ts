@@ -67,6 +67,7 @@ const rpc = new HttpRpc(cfg.httpUrls)
 const ws = new WsProvider(cfg.wsUrls, { staleHeadMs: cfg.staleHeadMs })
 
 let engine: MarketEngine | null = null
+let botsHealth: (() => { email: boolean; userLive: boolean; ownerWallet: boolean; mode: string | null; bots: number; running: number }) | null = null
 let stream: ChainStream | null = null
 let redisOk = hot.kind === 'memory'
 
@@ -93,6 +94,8 @@ const health = () => {
     db,
     ws: { clients: metrics.gauges.ws_clients ?? 0 },
     lastNewTokenAt: engine?.lastNewTokenAt || null,
+    // What's switched on for visitors' bots (yes/no only; never a secret): email (RESEND_API_KEY), live (BOT_WALLET_SECRET), the owner's bot wallet (BOT_PRIVATE_KEY).
+    bots: botsHealth?.() ?? null,
   }
 }
 
@@ -216,6 +219,7 @@ async function main() {
     pools: token => { const mp = eng.tokens.get(token)?.mainPool; return mp ? pools.get(mp) ?? null : null },
   })
   log.info('visitors\' bots', { email: mailer.enabled, live: !!vault })
+  botsHealth = () => ({ email: mailer.enabled, userLive: !!vault, ownerWallet: !!live, mode: botRef?.mode ?? null, bots: accounts?.count ?? 0, running: accounts?.running ?? 0 })
   const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => botRef?.priceOf(token) ?? eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s), live: userLive })
   if (accounts) await accounts.load().catch(e => log.error('paper accounts: load failed', { error: errMsg(e) }))
   const bot = cfg.botMode === 'off' ? null : new Bot({

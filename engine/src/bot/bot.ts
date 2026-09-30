@@ -39,7 +39,7 @@ import { assess, staticFacts, type SafetyReport, type ScanInput, type StaticFact
 import { log, errMsg } from '../log'
 import type { EngineObserver, MarketEngine } from '../market/engine'
 import { metrics } from '../metrics'
-import { PricePath, RULES, scalpReady, secondLegReady, snipeReady } from '../signals/rules'
+import { PricePath, RULES, scalpReady, secondLegReady, snipeReady, tooCostly } from '../signals/rules'
 import type { BotStatus, ScanRow, SignalFeatures } from '../../../api/_marketProtocol'
 import { canOpen, closeNow, costPerSide, onPrice, openPosition, RISK, STRATEGIES, stats, type Position, type Strategy, type StrategyParams } from '../trading/paper'
 import type { LiveTrader } from './liveTrader'
@@ -395,6 +395,9 @@ export class Bot implements EngineObserver {
       }
       return outcome()
     }
+    // The cleanest signals (2026-10-01): a coin whose round trip eats the take-profit isn't one.
+    const costly = tooCostly(strategy, r.honeypot?.roundTripLossPct ?? null)
+    if (costly) { metrics.inc(`bot_${rule}_blocked_costly`); return { status: 'rejected', stage: 'safety', reasons: [`✗ costs: ${costly}`], keys: ['safety:costly'] } }
     if (strategy === 'scalp' && r.verdict === 'risky') reasons = [...reasons, ...r.checks.filter(c => c.risk && c.ok !== true).map(c => `risk (${c.id}): ${c.detail}`)]
     const meta = this.o.engine.metas.get(token)!, st = this.o.engine.tokens.get(token)!
     const now = Date.now()
@@ -430,7 +433,7 @@ export class Bot implements EngineObserver {
     this.outcomes.add(signal.id, 'traded', now)
     const params = this.params(strategy)
     const cost = costPerSide(r.honeypot?.roundTripLossPct ?? null, params.sizeUsd, st.liquidityUsd)
-    const p: Position = { ...openPosition({ id: `${signal.id}:paper`, strategy, token, symbol: meta.symbol, launchpad: meta.launchpad, signalId: signal.id, price: signal.price, cost, now, params }), mode: 'paper', features }
+    const p: Position = { ...openPosition({ id: `${signal.id}:paper`, strategy, token, symbol: meta.symbol, launchpad: meta.launchpad, signalId: signal.id, price: signal.price, cost, now, params }), mode: 'paper', features, rule }
     this.positions.push(p)
     this.fills(p, [])
     return fired
@@ -567,7 +570,11 @@ export class Bot implements EngineObserver {
       return { all: stats(list), snipe: by('snipe'), secondLeg: by('second-leg'), scalp: by('scalp') }
     }
     // Top level: paper results (every signal); `live`: the bot wallet's real trades.
-    return { mode: this.mode, ...of(this.positions.filter(p => p.mode !== 'live')), live: of(this.positions.filter(p => p.mode === 'live')), params: { snipe: this.params('snipe'), 'second-leg': this.params('second-leg'), scalp: this.params('scalp') }, risk: RISK, rules: RULES, watching: this.paths.size }
+    // By the rule that fired it: a fast scalp from a momentum burst and one from a snipe on a risky coin read differently.
+    const paper = this.positions.filter(p => p.mode !== 'live')
+    const ruleOf = new Map(this.recentSignals.map(s => [s.id, s.rule]))
+    const byRule = Object.fromEntries((['momentum', 'snipe', 'second-leg'] as const).map(k => [k, stats(paper.filter(p => (p.rule ?? ruleOf.get(p.signalId)) === k))]))
+    return { mode: this.mode, ...of(paper), byRule, live: of(this.positions.filter(p => p.mode === 'live')), params: { snipe: this.params('snipe'), 'second-leg': this.params('second-leg'), scalp: this.params('scalp') }, risk: RISK, rules: RULES, watching: this.paths.size }
   }
 
   status(): BotStatus {

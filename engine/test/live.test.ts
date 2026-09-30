@@ -154,18 +154,38 @@ describe('the live trader (stand-in wallet)', () => {
   }
   const settle = () => new Promise(r => setTimeout(r, 10))
 
-  test('buys the strategy size (capped), approves the sale right away', async () => {
-    const { lt, calls, positions, meta, signal } = setup()
+  test('buys the strategy size (capped at the limit), approves the sale right away', async () => {
+    const { lt, calls, positions, meta, signal } = setup({ balance: 1_000 })
     await lt.open(signal('s1'), 'snipe', pool, meta)
     expect(calls).toEqual(['buy 25', 'approve'])
     expect(positions[0]).toMatchObject({ mode: 'live', strategy: 'snipe', sizeUsd: 25, status: 'open' })
     expect(positions[0].qty).toBeCloseTo(25_000, 6)
   })
-  test('never trades below the reserve', async () => {
-    const { lt, calls, positions, meta, signal } = setup({ balance: 6 })
-    await lt.open(signal('s1'), 'scalp', pool, meta) // $5 + $2 reserve > $6
+  test('reads the balance before every buy: no trade over 20% of what the wallet is worth, and the target shrinks with it', async () => {
+    const { lt, calls, positions, meta, signal } = setup({ balance: 30 })
+    await lt.open(signal('s1'), 'snipe', pool, meta, { sizeUsd: 10, extra: { targetUsd: 3 } })
+    expect(calls).toEqual(['buy 6', 'approve']) // 20% of $30
+    expect(positions[0]).toMatchObject({ sizeUsd: 6, targetUsd: 1.8 })
+  })
+  test('open trades count toward what the wallet is worth', async () => {
+    const { lt, calls, positions, meta, signal } = setup({ balance: 30 })
+    positions.push({ mode: 'live', status: 'open', token: '0x' + 'c3'.repeat(20), strategy: 'snipe', sizeUsd: 20, qty: 1, remaining: 1 } as Position)
+    await lt.open(signal('s1'), 'scalp', pool, meta, { sizeUsd: 12 })
+    expect(calls).toEqual(['buy 10', 'approve']) // 20% of $30 + $20 open
+  })
+  test('a wallet too small for a $2 trade waits', async () => {
+    const { lt, calls, positions, meta, signal } = setup({ balance: 8 })
+    await lt.open(signal('s1'), 'scalp', pool, meta, { sizeUsd: 5 })
     expect(calls).toEqual([])
     expect(positions).toEqual([])
+    expect(lt.events[0].text).toMatch(/at most 20% of it, under the \$2 minimum/)
+  })
+  test('never trades below the reserve', async () => {
+    const { lt, calls, positions, meta, signal } = setup({ balance: 6 })
+    positions.push({ mode: 'live', status: 'open', token: '0x' + 'c3'.repeat(20), strategy: 'snipe', sizeUsd: 40, qty: 1, remaining: 1 } as Position)
+    await lt.open(signal('s1'), 'scalp', pool, meta) // 20% of $46 allows $5, but $5 + $2 reserve > $6
+    expect(calls).toEqual([])
+    expect(positions).toHaveLength(1)
     expect(lt.events[0].text).toMatch(/keeps \$2 back/)
   })
   test('a venue it can\'t reach stays paper', async () => {

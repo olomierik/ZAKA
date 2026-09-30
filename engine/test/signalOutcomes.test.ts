@@ -89,11 +89,11 @@ describe('every signal a bot passes over says why, and is counted', () => {
     accts.act(rich, { action: 'deposit', amount: 100 }, now); accts.act(rich, { action: 'start' }, now)
     accts.act(poor, { action: 'deposit', amount: 6 }, now); accts.act(poor, { action: 'start' }, now)
     accts.onSignal(sig(), now)
-    accts.onSignal(sig({ id: 's2' }), now + 1_000) // the same coin again: the rich bot's cooldown, the poor bot's cash
+    accts.onSignal(sig({ id: 's2' }), now + 1_000) // the same coin again: the rich bot's cooldown; the poor bot is too small either time
     const o = accts.outcomes.summary(now + 1_000)
     expect(o).toMatchObject({ signals: 2, traded: 1 })
-    expect(Object.fromEntries(o.reasons.map(r => [r.key, r.count]))).toEqual({ cash: 2, cooldown: 1 })
-    expect(poor.skips[0].text).toMatch(/^fast scalp: needs \$\d+\.\d\d, has \$6\.00 in cash$/)
+    expect(Object.fromEntries(o.reasons.map(r => [r.key, r.count]))).toEqual({ 'small-balance': 2, cooldown: 1 })
+    expect(poor.skips[0].text).toMatch(/^fast scalp: the bot is worth \$6\.00: a trade is at most 20% of it \(\$1\.00\)/)
   })
   test('the counts cover the last 24 hours', () => {
     const t = new OutcomeTally()

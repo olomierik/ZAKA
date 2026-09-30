@@ -61,7 +61,7 @@ export interface Config {
   /** The wallet that may switch paper/live (its signature is checked). The bot wallet's key is read in main.ts, never kept here. */
   botOwner: string | null
   /** Live trading limits (bot/liveTrader.ts). */
-  live: { maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; reserveUsd: number; preflight: boolean; maxRoundTripPct: number; sendUrl: string }
+  live: { maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; reserveUsd: number; preflight: boolean; maxRoundTripPct: number; maxShareOfBalance: number; sendUrl: string }
 }
 
 export function loadConfig(): Config {
@@ -106,6 +106,8 @@ export function loadConfig(): Config {
       // Every buy is simulated with its sale first (trading/preflight.ts); only BOT_LIVE_PREFLIGHT=off turns that off.
       preflight: !/^(0|off|false|no)$/i.test(process.env.BOT_LIVE_PREFLIGHT ?? ''),
       maxRoundTripPct: int('BOT_LIVE_MAX_ROUND_TRIP_PCT', 20, 1, 90),
+      // No trade over this share of what the wallet is worth (its USDC, read before every buy, plus open trades).
+      maxShareOfBalance: int('BOT_LIVE_MAX_SHARE_PCT', 20, 1, 100) / 100,
       sendUrl: urls('ARC_SEND_URL', ['https://rpc.mainnet.arc.io'], http)[0],
     },
   }

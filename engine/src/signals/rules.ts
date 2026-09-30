@@ -16,6 +16,19 @@ import type { Flow, Window } from '../intel/flow'
 // (was 10×), a 25–70% pullback (50–85%), 3 minutes off the bottom (10), 8%
 // up from it (20%), $100 bought in 15 minutes (200). The rug guard and the
 // safety scan stay as strict as they were.
+//
+// 2026-10-01, owner: "refine the trading signals so we have the cleanest
+// signals". Production's first 22 closed paper trades (the engine's own book)
+// showed the momentum scalp's losers apart from its winners: the two winners
+// had 17 and 19 buyers in the window, while the three with 3–5 buyers all
+// ran out of time without moving; the two that were already up 26% and 29%
+// in the window both lost; and the coins costing 5.9% and 7.8% to buy and
+// sell back lost to their costs (a +15% take-profit keeps about half of it
+// after 7.8%). So a momentum scalp now needs 6 buyers (was 3), a move of 2–20%
+// (was up to 35%), and every fast scalp a round trip of 5% or less
+// (`MAX_ROUND_TRIP_PCT`); a snipe or rebound 12% or less. 22 trades is a
+// small sample: the per-rule results (GET /v1/bot/stats `byRule`) say whether
+// it helped.
 export const RULES = {
   snipe: {
     /** Let the first blocks' bundlers show before judging. */
@@ -39,13 +52,14 @@ export const RULES = {
     windowSec: 120,
     /** After the first minute's bundlers and bots have shown. */
     minAgeSec: 60,
-    minBuyers: 3,
+    /** Enough different buyers that it's a crowd, not a few wallets (2026-10-01: was 3). */
+    minBuyers: 6,
     minBuyUsd: 100,
     /** Buy volume at least this many times sell volume in the window. */
     minBuySellRatio: 1.6,
-    /** The price up at least this much in the window, and not more than this (not the top of a spike). */
+    /** The price up at least this much in the window, and not more than this (not the top of a spike; 2026-10-01: was 1.35). */
     minMove: 1.02,
-    maxMove: 1.35,
+    maxMove: 1.2,
     /** Still near the window's high. */
     minOfHigh: 0.92,
     /** No single buyer above this share of the window's buys. */
@@ -75,6 +89,16 @@ export const RULES = {
     /** Fired again on the same coin after this long. */
     repeatMin: 60,
   },
+}
+
+/** The most a signal's coin may cost to buy and sell straight back (the honeypot probe's round trip, %). */
+export const MAX_ROUND_TRIP_PCT = { scalp: 5, other: 12 }
+
+/** Why a coin costs too much to trade on this signal, or null. A fast scalp's small take-profit can't carry a big round trip. */
+export function tooCostly(strategy: 'snipe' | 'second-leg' | 'scalp', roundTripPct: number | null): string | null {
+  if (roundTripPct === null) return null
+  const max = strategy === 'scalp' ? MAX_ROUND_TRIP_PCT.scalp : MAX_ROUND_TRIP_PCT.other
+  return roundTripPct > max ? `buying and selling straight back costs ${roundTripPct}%, over the ${max}% a ${strategy === 'scalp' ? 'fast scalp' : strategy === 'snipe' ? 'snipe' : 'dip rebound'} allows` : null
 }
 
 /** `failed`: short ids of the unmet conditions ("buyers", "ratio"…), counted by the scanner (GET /v1/bot/rejections). */

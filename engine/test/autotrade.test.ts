@@ -60,15 +60,27 @@ describe('paper accounts', () => {
     expect(a.cash).toBeCloseTo(100 - sizeOf('snipe') - sizeOf('scalp'), 6)
     expect(a.positions[1]).toMatchObject({ targetUsd: TARGETS.scalp.target, tuningVersion: 1 })
   })
-  test('no cash, no trade; the same coin once per 6 hours', () => {
+  test('a small bot trades at most 20% of what it is worth, for a smaller profit; the same coin once per 6 hours', () => {
     const { accts, a } = setup()
-    const size = sizeOf('snipe')
-    accts.act(a, { action: 'deposit', amount: size + 1 }, now); accts.act(a, { action: 'start' }, now)
+    expect(sizeOf('snipe')).toBeGreaterThan(4) // what a $3 target needs here
+    accts.act(a, { action: 'deposit', amount: 20 }, now); accts.act(a, { action: 'start' }, now)
     accts.onSignal(signal(), now)
-    accts.onSignal(signal({ id: 's2' }), now) // same coin
-    accts.onSignal(signal({ id: 's3', token: '0x' + 'c2'.repeat(20) }), now) // $1 left
     expect(a.positions).toHaveLength(1)
-    expect(accts.view(a).skips.map(x => x.text).join(' | ')).toMatch(/has \$1\.00 in cash/)
+    // At most 20% of $20 ($4): the smallest size in that which nets $1, the low end of the range.
+    expect(a.positions[0].sizeUsd).toBeLessThanOrEqual(4)
+    expect(a.positions[0].targetUsd).toBe(1)
+    expect(a.events[0].text).toMatch(/a small bot: at most 20% of its \$20\.00 a trade/)
+    accts.onSignal(signal({ id: 's2' }), now) // same coin
+    expect(a.positions).toHaveLength(1)
+    expect(accts.view(a).protections).toMatchObject({ maxTradeSharePct: 20 })
+    expect(accts.view(a).protections.maxTradeUsd).toBeLessThanOrEqual(4)
+  })
+  test('a bot too small for even a $2 trade waits, and says why', () => {
+    const { accts, a } = setup()
+    accts.act(a, { action: 'deposit', amount: 9 }, now); accts.act(a, { action: 'start' }, now)
+    accts.onSignal(signal(), now)
+    expect(a.positions).toEqual([])
+    expect(accts.view(a).skips[0].text).toMatch(/the bot is worth \$9\.00: a trade is at most 20% of it \(\$1\.50\)/)
   })
   test('exits pay back into cash; the creator selling closes a position at once', () => {
     const { accts, a } = setup()

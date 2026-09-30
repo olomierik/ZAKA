@@ -3,9 +3,12 @@
 // sale really paid, gas included. Paper trading keeps running beside it on
 // every signal, so the two can be compared.
 //
-// Limits (all hard): a size cap per trade, positions open at once (scalps
-// separately), a daily realized loss after which no new position opens, a
-// USDC reserve the wallet never trades below, and slippage caps. A coin whose
+// Limits (all hard): a size cap per trade, and a share of what the wallet is
+// worth that no trade goes over (20%: the wallet's USDC is read again right
+// before every buy, open trades counted at cost; owner's request, 2026-10-01),
+// positions open at once (scalps separately), a daily realized loss after
+// which no new position opens, a USDC reserve the wallet never trades below,
+// and slippage caps. A coin whose
 // venue the executor can't reach (a launchpad curve, a v3 pool) stays paper.
 //
 // Every swap is meant to go through on-chain (owner's request, 2026-09-30):
@@ -51,9 +54,14 @@ export interface LiveLimits {
   preflight: boolean
   /** No buy whose simulated round trip loses more than this share (pool fees, taxes, price impact both ways). */
   maxRoundTripPct: number
+  /** No trade over this share of what the wallet is worth (its USDC, read before the buy, plus open trades at cost). Missing: 20%. */
+  maxShareOfBalance?: number
 }
 
-export const DEFAULT_LIMITS: LiveLimits = { maxTradeUsd: 25, dailyLossUsd: 50, maxOpen: 3, maxOpenScalp: 2, slippageBps: 1_000, exitSlippageBps: [1_500, 3_500, 6_000], reserveUsd: 2, preflight: true, maxRoundTripPct: 20 }
+/** The smallest live trade: below this, a wallet is too small to trade (gas and rounding eat it). */
+export const MIN_LIVE_TRADE_USD = 2
+
+export const DEFAULT_LIMITS: LiveLimits = { maxTradeUsd: 25, dailyLossUsd: 50, maxOpen: 3, maxOpenScalp: 2, slippageBps: 1_000, exitSlippageBps: [1_500, 3_500, 6_000], reserveUsd: 2, preflight: true, maxRoundTripPct: 20, maxShareOfBalance: 0.2 }
 
 /**
  * Whether a simulated round trip leaves the trade worth taking; why not, or
@@ -124,15 +132,27 @@ export class LiveTrader {
     const now = Date.now()
     const allowed = canOpen(this.live(), token, now, { maxOpen: this.o.limits.maxOpen, maxOpenScalp: this.o.limits.maxOpenScalp, cooldownMin: RISK.cooldownMin, cooldownMinScalp: RISK.cooldownMinScalp, dailyLossUsd: this.o.limits.dailyLossUsd }, strategy)
     if (!allowed.ok) { this.event({ kind: 'skip', token, symbol, text: `$${symbol}: not bought (${allowed.why})` }); return }
-    const size = Math.min(opts.sizeUsd ?? this.o.params(strategy).sizeUsd, this.o.limits.maxTradeUsd)
+    let size = Math.min(opts.sizeUsd ?? this.o.params(strategy).sizeUsd, this.o.limits.maxTradeUsd)
+    let targetUsd = opts.extra?.targetUsd
     const exits = opts.extra?.exits ?? this.o.params(strategy)
-    const check = this.o.limits.preflight === false ? undefined
-      : (rt: RoundTrip) => roundTripVerdict(rt, { tpMultiple: exits.tp1Multiple, maxLossPct: this.o.limits.maxRoundTripPct, sizeUsd: size, targetUsd: opts.extra?.targetUsd })
     this.opening.add(token)
     try {
+      // The balance, read now: no trade over its share of what the wallet is worth.
       await this.refreshBalance()
       const bal = this.balance!.usd
+      const share = this.o.limits.maxShareOfBalance ?? 0.2
+      const worth = bal + this.live().filter(p => p.status === 'open').reduce((sum, p) => sum + p.sizeUsd * (p.remaining / (p.qty || 1)), 0)
+      const cap = Math.floor(worth * share * 2) / 2
+      if (size > cap) {
+        if (cap < MIN_LIVE_TRADE_USD) { this.event({ kind: 'skip', token, symbol, text: `$${symbol}: not bought (the wallet is worth $${worth.toFixed(2)}; a trade is at most ${Math.round(share * 100)}% of it, under the $${MIN_LIVE_TRADE_USD} minimum)` }); return }
+        // A smaller trade makes proportionally less at the same take-profit.
+        if (targetUsd) targetUsd = Math.round(targetUsd * (cap / size) * 100) / 100
+        size = cap
+      }
       if (bal < size + this.o.limits.reserveUsd) { this.event({ kind: 'skip', token, symbol, text: `$${symbol}: not bought (wallet has $${bal.toFixed(2)}; a $${size} trade keeps $${this.o.limits.reserveUsd} back)` }); return }
+      if (targetUsd !== opts.extra?.targetUsd) opts = { ...opts, extra: { ...opts.extra, targetUsd } }
+      const check = this.o.limits.preflight === false ? undefined
+        : (rt: RoundTrip) => roundTripVerdict(rt, { tpMultiple: exits.tp1Multiple, maxLossPct: this.o.limits.maxRoundTripPct, sizeUsd: size, targetUsd })
       const f = await this.o.exec.buy(pool, token, size, this.o.limits.slippageBps, check)
       if (f.roundTrip) metrics.inc('live_preflight_passed')
       const checked = f.roundTrip ? `; checked first: it sells straight back for $${f.roundTrip.backUsd.toFixed(2)} (${f.roundTrip.lossPct ?? '?'}% round trip)` : ''

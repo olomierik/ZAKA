@@ -312,7 +312,7 @@ export interface BotStatus {
     wallet: string | null
     balanceUsd: number | null
     /** `preflight`: every buy is simulated with its sale first, as the bot wallet (engines from before 2026-09-30 don't say). */
-    limits: { maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; exitSlippageBps: number[]; reserveUsd: number; preflight?: boolean; maxRoundTripPct?: number } | null
+    limits: { maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; exitSlippageBps: number[]; reserveUsd: number; preflight?: boolean; maxRoundTripPct?: number; maxShareOfBalance?: number } | null
     todayPnlUsd: number
     open: number
     events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
@@ -407,7 +407,8 @@ export interface PaperAccountView {
   events: PaperEvent[]
   skips: PaperEvent[]
   /** What keeps the account from being drained. */
-  protections: { pausedUntil: number | null; lossStreak: number; pauseAfterLosses: number; dailyLossLimitUsd: number; todayPnlUsd: number; stopBelowPct: number }
+  /** `maxTradeUsd`: the most one trade may use now (`maxTradeSharePct` of what the bot is worth; null while a live wallet is unread). Both missing on older engines. */
+  protections: { pausedUntil: number | null; lossStreak: number; pauseAfterLosses: number; dailyLossLimitUsd: number; todayPnlUsd: number; stopBelowPct: number; maxTradeSharePct?: number; maxTradeUsd?: number | null }
   /** Every closed trade it has made (GET /v1/paper/trades lists them all). */
   tradesLogged: number
   /** Its unique id on the platform (from its name): /bots/<slug>. */
@@ -444,7 +445,7 @@ export interface BotLiveView {
   open: number
   winRate: number | null
   feesPaidUsd: number
-  limits: { maxTradeUsd: number; minBalanceUsd: number; reserveUsd: number; maxOpen: number; dailyLossUsd: number; preflight?: boolean; maxRoundTripPct?: number }
+  limits: { maxTradeUsd: number; minBalanceUsd: number; reserveUsd: number; maxOpen: number; dailyLossUsd: number; preflight?: boolean; maxRoundTripPct?: number; maxSharePct?: number }
   events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
 }
 

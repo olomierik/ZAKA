@@ -16,7 +16,8 @@
 //            of what owners deposit: keep the secret and the database safe.
 //   trades   the bot wallet's existing executor and trader (trading/live.ts,
 //            bot/liveTrader.ts): Uniswap v4 pools against USDC, each trade
-//            sized for the bot's profit target, capped at $50, the bot's own
+//            sized for the bot's profit target, capped at $50 and at 20% of
+//            what the wallet is worth (read before each buy), the bot's own
 //            learned exits, the rug guard, retries on a failing sale. Every
 //            buy is simulated with its sale first, as the bot's wallet, and
 //            sent only if both go through (trading/preflight.ts)
@@ -50,6 +51,8 @@ export const USER_LIVE = {
   exitSlippageBps: [1_500, 3_500, 6_000],
   /** Every buy is simulated with its sale first (trading/preflight.ts); none whose round trip costs more than this. */
   maxRoundTripPct: 20,
+  /** No trade over this share of what the wallet is worth (its USDC, read before the buy, plus open trades). */
+  maxShareOfBalance: 0.2,
   /** The day's loss limit: this share of the wallet, between the two amounts. */
   dailyLossPct: 10, dailyLossMinUsd: 5, dailyLossMaxUsd: 100,
   /** Live stops (back to paper) once the wallet and its open trades are worth this share of what it went live with. */
@@ -134,7 +137,7 @@ export class UserLive {
     if (!this.o.vault || !wallet) return null
     let exec: LiveExecutor
     try { exec = this.o.makeExec(this.o.vault.open(wallet, accountId)) } catch (e) { log.error('user live: wallet did not open', { error: errMsg(e) }); return null }
-    const limits: LiveLimits = { maxTradeUsd: USER_LIVE.maxTradeUsd, dailyLossUsd: USER_LIVE.dailyLossMinUsd, maxOpen: USER_LIVE.maxOpen, maxOpenScalp: USER_LIVE.maxOpenScalp, slippageBps: USER_LIVE.slippageBps, exitSlippageBps: USER_LIVE.exitSlippageBps, reserveUsd: USER_LIVE.reserveUsd, preflight: true, maxRoundTripPct: USER_LIVE.maxRoundTripPct }
+    const limits: LiveLimits = { maxTradeUsd: USER_LIVE.maxTradeUsd, dailyLossUsd: USER_LIVE.dailyLossMinUsd, maxOpen: USER_LIVE.maxOpen, maxOpenScalp: USER_LIVE.maxOpenScalp, slippageBps: USER_LIVE.slippageBps, exitSlippageBps: USER_LIVE.exitSlippageBps, reserveUsd: USER_LIVE.reserveUsd, preflight: true, maxRoundTripPct: USER_LIVE.maxRoundTripPct, maxShareOfBalance: USER_LIVE.maxShareOfBalance }
     const t = new LiveTrader({ exec, limits, positions: hooks.positions, params: hooks.params, save: hooks.save })
     t.setPools(this.o.pools)
     this.traders.set(accountId, t)
