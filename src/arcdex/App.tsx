@@ -21,6 +21,7 @@ const TransfersPage   = lazy(() => import('./pages/TransfersPage'))
 const BurnPage        = lazy(() => import('./pages/BurnPage'))
 const AlertsPage      = lazy(() => import('./pages/AlertsPage'))
 const DeployCurveRouter = lazy(() => import('./pages/DeployCurveRouter'))
+const SignalsPage     = lazy(() => import('./pages/SignalsPage'))
 import TradingWalletPanel from './components/TradingWalletPanel'
 import DiscoveryPanel from './components/DiscoveryPanel'
 import { DiscoverClans, FollowTopTraders, TickerBar } from './components/Rails'
@@ -61,6 +62,7 @@ export type Page =
   | { name: 'swap' }
   | { name: 'bridge'; dir?: 'in' | 'out' }
   | { name: 'deploy-curve-router' }
+  | { name: 'signals' }
 
 const fromUrl = (): Page => pathToPage(window.location.pathname, window.location.search) ?? { name: 'terminal' }
 
@@ -68,6 +70,7 @@ const MOBILE_NAV: [Page, string, string][] = [
   [{ name: 'terminal' }, '◈', N_('Terminal')], [{ name: 'feed' }, '◉', N_('Feed')], [{ name: 'leaderboard' }, '♛', N_('Leaderboard')],
   [{ name: 'clans' }, '⚑', N_('Clans')], [{ name: 'rewards' }, '✦', N_('Rewards')], [{ name: 'launchpad' }, '◆', N_('Launchpad')],
   [{ name: 'swap' }, '⇄', N_('Swap')], [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'portfolio' }, '▤', N_('Portfolio')],
+  [{ name: 'signals' }, '⚡', N_('Signals')],
 ]
 
 export default function App() {
@@ -156,6 +159,7 @@ export default function App() {
           {page.name === 'transfers'   && <TransfersPage navigate={navigate} />}
           {page.name === 'burn'        && <BurnPage navigate={navigate} />}
           {page.name === 'deploy-curve-router' && <DeployCurveRouter />}
+          {page.name === 'signals'     && <SignalsPage navigate={navigate} />}
           </Suspense>
         </main>
 

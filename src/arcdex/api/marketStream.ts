@@ -11,14 +11,14 @@
 // subscription is re-sent, and the engine answers each with a fresh snapshot.
 
 import { useSyncExternalStore } from 'react'
-import type { Interval, LaunchInfo, ServerMessage, TokenStats, WireCandle, WireTrade } from '../../../api/_marketProtocol'
+import type { BotPosition, Interval, LaunchInfo, SafetyCheck, ServerMessage, TokenStats, TradeSignal, WireCandle, WireTrade } from '../../../api/_marketProtocol'
 
 const WS_URL = (import.meta.env.VITE_ARCDEX_WS_URL as string | undefined) || undefined
 const API_URL = ((import.meta.env.VITE_ARCDEX_API_URL as string | undefined) || (WS_URL ? WS_URL.replace(/^ws/, 'http').replace(/\/ws\/?$/, '') : '')).replace(/\/$/, '')
 
 export const engineEnabled = Boolean(WS_URL)
 
-type Sub = { channel: 'token' | 'candles' | 'new_tokens' | 'market'; token?: string; interval?: Interval }
+type Sub = { channel: 'token' | 'candles' | 'new_tokens' | 'market' | 'signals'; token?: string; interval?: Interval }
 export type EngineStatus = 'off' | 'connecting' | 'open' | 'closed'
 
 const keyOf = (s: Sub) => s.channel === 'candles' ? `candles:${s.token}:${s.interval}` : s.token ? `${s.channel}:${s.token}` : s.channel
@@ -82,6 +82,7 @@ class MarketStream {
         m.t === 'CANDLE_UPDATE' ? `candles:${m.k}:${m.i}`
         : m.t === 'NEW_TOKEN' ? 'new_tokens'
         : m.t === 'TICKS' ? 'market'
+        : m.t === 'SIGNAL' || m.t === 'BOT_POSITION' ? 'signals'
         : k ? `token:${k}` : null
       if (target) this.subs.get(target)?.handlers.forEach(h => h(m))
     }
@@ -121,6 +122,22 @@ export const getEngineToken = (token: string) =>
   get<{ token: string; meta: LaunchInfo | null; stats: TokenStats | null }>(`/v1/tokens/${token.toLowerCase()}`)
 export const getNewTokens = (limit = 100) =>
   get<{ launches: LaunchInfo[] }>(`/v1/tokens/new?limit=${limit}`).then(r => r.launches)
+
+// ── signals and paper trading (engine/src/bot) ───────────────────────────
+
+export interface BotStats {
+  closed: number; open: number; wins: number; losses: number
+  winRate: number | null; avgWinUsd: number | null; avgLossUsd: number | null
+  profitFactor: number | null; expectancyUsd: number | null; totalPnlUsd: number; maxDrawdownUsd: number
+}
+export interface BotStatsResponse { mode: 'paper' | 'off'; all: BotStats; snipe: BotStats; secondLeg: BotStats; watching: number }
+export interface SafetyReport { token: string; launchpad: string; at: number; verdict: 'pass' | 'fail' | 'pending'; score: number; checks: SafetyCheck[]; template: string | null }
+
+export const getSignals = (limit = 100) => get<{ signals: TradeSignal[] }>(`/v1/signals?limit=${limit}`).then(r => r.signals)
+export const getBotStats = () => get<BotStatsResponse>('/v1/bot/stats')
+export const getBotPositions = (status: 'open' | 'closed' | 'all' = 'all', limit = 200) =>
+  get<{ positions: BotPosition[] }>(`/v1/bot/positions?status=${status}&limit=${limit}`).then(r => r.positions)
+export const getSafety = (token: string) => get<{ report: SafetyReport }>(`/v1/safety/${token.toLowerCase()}`).then(r => r.report)
 
 // ── recent launches (shared: Terminal, search) ───────────────────────────
 let launches: LaunchInfo[] = []

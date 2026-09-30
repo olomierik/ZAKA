@@ -37,6 +37,7 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
     { label: T('Bridge'),      page: { name: 'bridge' } },
     { label: T('Launchpad'),   page: { name: 'launchpad' } },
     { label: T('Portfolio'),   page: { name: 'portfolio' } },
+    { label: T('Signals'),     page: { name: 'signals' }, secondary: true },
     { label: T('Feed'),        page: { name: 'feed' }, secondary: true },
     { label: T('Leaderboard'), page: { name: 'leaderboard' }, secondary: true },
     { label: T('Clans'),       page: { name: 'clans' }, secondary: true },
