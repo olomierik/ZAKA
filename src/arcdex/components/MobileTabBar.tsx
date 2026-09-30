@@ -1,4 +1,4 @@
-// Phones: a native-style bottom tab bar (Home · Feed · Swap · Portfolio ·
+// Phones: a native-style bottom tab bar (Home · Signals · Swap · Portfolio ·
 // More) instead of a hamburger drawer. "More" opens a sheet with every other
 // page, plus the lists panel (watchlist, trending, most held…).
 // Hidden on coin pages, which have their own sticky Buy/Sell bar.
@@ -11,14 +11,14 @@ import { t as T, N_ } from '../lib/i18n'
 
 const TABS: { page: Page['name']; icon: string; label: string; to: Page }[] = [
   { page: 'terminal', icon: '◈', label: N_('Home'), to: { name: 'terminal' } },
-  { page: 'feed', icon: '◉', label: N_('Feed'), to: { name: 'feed' } },
+  { page: 'signals', icon: '⚡', label: N_('Signals'), to: { name: 'signals' } },
   { page: 'swap', icon: '⇄', label: N_('Swap'), to: { name: 'swap' } },
   { page: 'portfolio', icon: '▤', label: N_('Portfolio'), to: { name: 'portfolio' } },
 ]
 
 const MORE: { icon: string; label: string; to: Page }[] = [
   { icon: '◆', label: N_('Launchpad'), to: { name: 'launchpad' } },
-  { icon: '⚡', label: N_('Signals'), to: { name: 'signals' } },
+  { icon: '◉', label: N_('Feed'), to: { name: 'feed' } },
   { icon: '◎', label: N_('Bridge'), to: { name: 'bridge' } },
   { icon: '♛', label: N_('Leaderboard'), to: { name: 'leaderboard' } },
   { icon: '⚑', label: N_('Clans'), to: { name: 'clans' } },

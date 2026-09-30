@@ -1,37 +1,33 @@
 import { useEffect, useState } from 'react'
-import Avatar from './Avatar'
+import type { TradeSignal } from '../../../api/_marketProtocol'
 import { DepositModal, WithdrawModal } from './CashModals'
-import { getLeaderboard, getProfiles, type LeaderRow, type Profile } from '../api/social'
-import { shortAddr, useTrader } from '../lib/identity'
+import { AgoText } from './Ago'
+import { engineEnabled, getBotStatus, getSignals } from '../api/marketStream'
+import { useTrader } from '../lib/identity'
 import { useCash } from '../lib/usdc'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 
 const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-const pnl = (n: number) => `${n >= 0 ? '+' : '-'}$${Math.abs(n) >= 1e6 ? (Math.abs(n) / 1e6).toFixed(2) + 'M' : Math.abs(n) >= 1e3 ? (Math.abs(n) / 1e3).toFixed(2) + 'K' : Math.abs(n).toFixed(0)}`
+const STRATEGY: Record<TradeSignal['strategy'], string> = { snipe: 'Snipe', scalp: 'Fast scalp', 'second-leg': 'Second leg' }
 
-/** The top of the phone home, the way fomo's app opens: your cash and a
- * Deposit button (or, with no wallet yet, one tap to get one), then the
- * week's top traders side by side. The coin list follows. */
+/** The top of the phone home: only what matters. Your cash with Deposit
+ * and Withdraw (or, with no wallet yet, one tap to get one), and the signal
+ * bot's latest pick. The coin list follows. */
 export default function MobileHome({ navigate }: { navigate: (p: Page) => void }) {
   const trader = useTrader()
   const { cash } = useCash(trader.address)
   const [deposit, setDeposit] = useState(false)
   const [withdraw, setWithdraw] = useState(false)
-  const [top, setTop] = useState<LeaderRow[]>([])
-  const [profiles, setProfiles] = useState<Map<string, Profile>>(new Map())
+  const [latest, setLatest] = useState<TradeSignal | null>(null)
+  const [live, setLive] = useState(false)
 
   useEffect(() => {
+    if (!engineEnabled) return
     let alive = true
-    void getLeaderboard('7d', 12).then(async rows => {
-      if (!alive) return
-      // Winners first (by realized PnL), then the most active by volume.
-      const list = [...rows].sort((a, b) => Math.max(0, b.realized_pnl) - Math.max(0, a.realized_pnl) || b.volume_usdc - a.volume_usdc).slice(0, 10)
-      setTop(list.length >= 3 ? list : [])
-      const p = await getProfiles(list.map(r => r.trader)).catch(() => new Map<string, Profile>())
-      if (alive) setProfiles(p)
-    }).catch(() => {})
+    void getSignals(1).then(s => { if (alive) setLatest(s[0] ?? null) }).catch(() => {})
+    void getBotStatus().then(s => { if (alive) setLive(s.mode === 'live') }).catch(() => {})
     return () => { alive = false }
   }, [])
 
@@ -62,23 +58,17 @@ export default function MobileHome({ navigate }: { navigate: (p: Page) => void }
         </div>
       )}
 
-      {top.length > 0 && (
-        <div className="m-home-traders" aria-label={T('Top traders this week')}>
-          {top.map(r => {
-            const p = profiles.get(r.trader)
-            return (
-              <button key={r.trader} className="m-trader-card" onClick={() => navigate({ name: 'trader', address: r.trader })}>
-                <span className="m-trader-name">
-                  <Avatar address={r.trader} url={p?.avatar_url} size={18} />
-                  <span>{p?.username ? p.username : p?.display_name || shortAddr(r.trader)}</span>
-                </span>
-                {r.realized_pnl > 0
-                  ? <span className="m-trader-pnl">{pnl(r.realized_pnl)}</span>
-                  : <span className="m-trader-vol">{T('{usd} traded', { usd: pnl(r.volume_usdc).slice(1) })}</span>}
-              </button>
-            )
-          })}
-        </div>
+      {engineEnabled && (
+        <button className="m-home-signal" onClick={() => navigate({ name: 'signals' })}>
+          <span className="m-home-signal-icon">⚡</span>
+          <span className="m-home-signal-text">
+            {latest
+              ? <>{T('Latest signal')} <b>${latest.symbol}</b> · {T(STRATEGY[latest.strategy] ?? latest.strategy)} · <AgoText ts={latest.at} /></>
+              : T("Signals: the bot's picks and results")}
+          </span>
+          {live && <span className="m-home-live">{T('LIVE')}</span>}
+          <span aria-hidden>›</span>
+        </button>
       )}
 
       {deposit && trader.address && <DepositModal trader={trader} navigate={navigate} onClose={() => setDeposit(false)} />}

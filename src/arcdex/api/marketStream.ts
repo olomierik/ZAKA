@@ -11,7 +11,7 @@
 // subscription is re-sent, and the engine answers each with a fresh snapshot.
 
 import { useSyncExternalStore } from 'react'
-import type { BotPosition, Interval, LaunchInfo, SafetyCheck, ServerMessage, TokenStats, TradeSignal, WireCandle, WireTrade } from '../../../api/_marketProtocol'
+import { botControlMessage, type BotControl, type BotPosition, type BotStatus, type Interval, type LaunchInfo, type SafetyCheck, type ServerMessage, type TokenStats, type TradeSignal, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
 
 const WS_URL = (import.meta.env.VITE_ARCDEX_WS_URL as string | undefined) || undefined
 const API_URL = ((import.meta.env.VITE_ARCDEX_API_URL as string | undefined) || (WS_URL ? WS_URL.replace(/^ws/, 'http').replace(/\/ws\/?$/, '') : '')).replace(/\/$/, '')
@@ -123,14 +123,16 @@ export const getEngineToken = (token: string) =>
 export const getNewTokens = (limit = 100) =>
   get<{ launches: LaunchInfo[] }>(`/v1/tokens/new?limit=${limit}`).then(r => r.launches)
 
-// ── signals and paper trading (engine/src/bot) ───────────────────────────
+// ── signals, paper and live trading (engine/src/bot) ─────────────────────
 
 export interface BotStats {
   closed: number; open: number; wins: number; losses: number
   winRate: number | null; avgWinUsd: number | null; avgLossUsd: number | null
   profitFactor: number | null; expectancyUsd: number | null; totalPnlUsd: number; maxDrawdownUsd: number
 }
-export interface BotStatsResponse { mode: 'paper' | 'off'; all: BotStats; snipe: BotStats; secondLeg: BotStats; /** Missing from engines before scalps (2026-09-30). */ scalp?: BotStats; watching: number }
+export interface BotStatsSet { all: BotStats; snipe: BotStats; secondLeg: BotStats; /** Missing from engines before scalps (2026-09-30). */ scalp?: BotStats }
+/** Top level: paper results; `live`: the bot wallet's real trades (engines before live trading lack it). */
+export interface BotStatsResponse extends BotStatsSet { mode: 'paper' | 'live' | 'off'; live?: BotStatsSet; watching: number }
 export interface SafetyReport { token: string; launchpad: string; at: number; verdict: 'pass' | 'risky' | 'fail' | 'pending'; score: number; checks: SafetyCheck[]; template: string | null }
 
 export const getSignals = (limit = 100) => get<{ signals: TradeSignal[] }>(`/v1/signals?limit=${limit}`).then(r => r.signals)
@@ -138,6 +140,20 @@ export const getBotStats = () => get<BotStatsResponse>('/v1/bot/stats')
 export const getBotPositions = (status: 'open' | 'closed' | 'all' = 'all', limit = 200) =>
   get<{ positions: BotPosition[] }>(`/v1/bot/positions?status=${status}&limit=${limit}`).then(r => r.positions)
 export const getSafety = (token: string) => get<{ report: SafetyReport }>(`/v1/safety/${token.toLowerCase()}`).then(r => r.report)
+export const getBotStatus = () => get<BotStatus>('/v1/bot/status')
+
+/** The owner's signed switch: paper/live, or sell every live position (engine/src/bot/control.ts). */
+export async function sendBotControl(control: BotControl, sign: (message: string) => Promise<`0x${string}`>): Promise<BotStatus> {
+  const at = Date.now()
+  const signature = await sign(botControlMessage(control, at))
+  const res = await fetch(`${API_URL}/v1/bot/control`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...control, at, signature }), signal: AbortSignal.timeout(15_000),
+  })
+  const body = await res.json().catch(() => ({})) as { status?: BotStatus; error?: string }
+  if (!res.ok || !body.status) throw new Error(body.error ?? `the engine answered ${res.status}`)
+  return body.status
+}
 
 // ── recent launches (shared: Terminal, search) ───────────────────────────
 let launches: LaunchInfo[] = []

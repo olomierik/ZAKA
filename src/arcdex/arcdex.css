@@ -793,13 +793,11 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .m-home-actions { display: flex; gap: 8px; }
 .m-home-actions button { flex: 1; padding: 9px 10px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--adx-card-border); color: var(--text); font-weight: 700; font-size: 0.82rem; cursor: pointer; }
 .m-home-cta { flex-shrink: 0; padding: 12px 22px; border-radius: 14px; border: none; background: #5b5ff5; color: #fff; font-weight: 800; font-size: 0.95rem; cursor: pointer; box-shadow: 0 6px 18px rgba(91,95,245,0.35); }
-.m-home-traders { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -14px; padding: 0 14px 2px; scroll-snap-type: x proximity; }
-.m-home-traders::-webkit-scrollbar { display: none; }
-.m-trader-card { flex: 0 0 auto; min-width: 128px; max-width: 170px; display: flex; flex-direction: column; gap: 6px; padding: 9px 11px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--adx-card-border); color: var(--text); text-align: left; cursor: pointer; scroll-snap-align: start; }
-.m-trader-name { display: flex; align-items: center; gap: 6px; font-size: 0.76rem; font-weight: 700; min-width: 0; }
-.m-trader-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.m-trader-pnl { font-family: var(--mono); font-weight: 800; font-size: 0.95rem; color: var(--green); }
-.m-trader-vol { font-family: var(--mono); font-weight: 700; font-size: 0.8rem; color: var(--text-muted); }
+.m-home-signal { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--adx-card-border); color: var(--text); font-size: 0.8rem; text-align: left; cursor: pointer; }
+.m-home-signal-icon { color: #f59e0b; }
+.m-home-signal-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+.m-home-signal-text b { color: var(--text); }
+.m-home-live { font-size: 0.62rem; font-weight: 900; letter-spacing: 0.5px; padding: 2px 7px; border-radius: 999px; background: #ef4444; color: #fff; }
 
 @media (max-width: 767px) {
   html body { font-size: 14px; }

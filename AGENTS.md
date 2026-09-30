@@ -192,9 +192,10 @@ Why buys, swaps and bridges failed for people, and the fixes:
     - A browser check reads the chart's canvas pixels. It covers the room, the pulse, walking and re-fitting, the glide (a drop and a new high), drag and double-click, resizes, candles, phones and reduced motion.
 
 ### Phone home and desktop nav (2026-09-26)
-- **Phone home** (`components/MobileHome.tsx`, top of the Terminal on phones), like fomo's app:
-  - Your cash with Deposit; with no wallet yet, "Get started" opens the trading wallet.
-  - A side-scrolling strip of the week's top traders: PnL if positive, else volume.
+- **Phone home** (`components/MobileHome.tsx`, top of the Terminal on phones): only what matters (owner's request, 2026-09-30).
+  - Your cash with Deposit and Withdraw; with no wallet yet, "Get started" opens the trading wallet.
+  - One line to Signals: the bot's latest signal (coin, strategy, age), with a LIVE badge in live mode.
+  - The week's top-traders strip was removed (owner's request); the leaderboard stays under More.
 - **Desktop nav** has Swap and Bridge. Below 1180px wide, Feed, Leaderboard, Clans and Rewards drop out of the top bar; they stay in the left panel and the account menu.
 
 ### Trading wallet: withdraw, Portfolio, GeckoTerminal chart (2026-09-26)
@@ -612,7 +613,7 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
 ## Phones: native-app layout (2026-09-26)
 
 One breakpoint, `max-width: 767px` (`lib/useMobile.ts`, and the last block of `arcdex.css`). Desktop is unchanged.
-- **Shell:** a bottom tab bar (`MobileTabBar`: Home, Feed, Swap, Portfolio, More) replaces the hamburger. "More" is a sheet with every other page, the trading wallet, and the lists drawer (watchlist, trending, most held). The top bar respects safe areas (`viewport-fit=cover`).
+- **Shell:** a bottom tab bar (`MobileTabBar`: Home, Signals, Swap, Portfolio, More; Feed moved to More on 2026-09-30) replaces the hamburger. "More" is a sheet with every other page, the trading wallet, and the lists drawer (watchlist, trending, most held). The top bar respects safe areas (`viewport-fit=cover`).
 - **Coin pages** (Argus, launchpad, other tokens) are pushed screens. The top bar has a back arrow (in-app history depth in `App.tsx`), and there is no tab bar.
   - Order: header → chart (edge to edge, 300px) → stats → tabs → position/safety/about.
   - A sticky Buy / Sell bar (`TradeBar`) opens the swap box in a bottom sheet (`Sheet`); widgets take `initialMode`.
@@ -654,15 +655,48 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
     - Snipe: 20s–10min old, 8+ buyers, $300+ bought, buys 1.5× sells, no buyer over 25% of buys, not yet 5× from its first trade, within 15% of its peak.
     - Second leg: ran 10×+, fell 50–85%, held a higher low for 10+ minutes, 20%+ off the bottom, buying back (last 15 minutes' buys 1.3× sells, $200+).
     - A candidate gets a deep scan (probe, holders, funding; cached 2 minutes) and fires only if it passes. Each signal says whether ARCDEX can trade it today (`executable`: not Peach's or Faze's curves yet).
-  - **Paper trading (`trading/paper.ts`, `BOT_MODE=paper`, the default; `off` stops it; `live` refuses to start, since it isn't built).** $25 a position (`BOT_SIZE_USD`). Costs both ways: half the probe's measured round trip plus impact for the size against liquidity.
+  - **Paper trading (`trading/paper.ts`; `BOT_MODE=paper`, the default, or `off`).** Every signal opens a paper position, in live mode too. $25 a position (`BOT_SIZE_USD`). Costs both ways: half the probe's measured round trip plus impact for the size against liquidity.
     - Snipe exits: −35% stop, half at 2×, the rest trailing 35% under its peak, out after 45 minutes unless up 10%. Second leg: −20% stop, half at 1.8×, 25% trail, 6 hours.
     - **Scalp** (a snipe on a risky coin): $5 (`BOT_SCALP_SIZE_USD`; `BOT_SIZE_USD` sizes only snipes and second legs), 75% sold at +30%, the rest trailing 15% under its peak, −15% stop, out after 5 minutes unless up 5%, never held past 15 minutes (`maxHoldMin`), and closed on the creator's first sell (`exitOnCreatorSell`: the bot closes at that sale's price, after the dump, as a real exit would be). At most 3 scalps open, within the 5. A creator's dump gaps through the stop, so a scalp's loss can be most of its $5 while a win is about $1.5: its results line on `/signals` shows whether it pays.
     - Risk: 5 open at most, one coin not traded again for 6 hours, no new positions after a $100 loss in a UTC day. Open coins are re-scanned each minute and closed if they fail (turned honeypot, creator dumping).
     - Results: `GET /v1/bot/stats` (win rate, average win and loss, profit factor, expectancy, drawdown, per strategy), `/v1/bot/positions`, `/v1/signals`, `/v1/safety/:token`, and the `signals` WebSocket channel (`SIGNAL`, `BOT_POSITION`). Kept in the engine's Postgres (`arcdex_bot_signals`, `arcdex_bot_positions`), else memory.
     - `/metrics` counts which checks block candidates (`bot_block_fail_<check>`, `bot_block_pending_<check>`), and each blocked candidate is logged once with its failing checks.
-  - **Site: `/signals` (`pages/SignalsPage.tsx`; nav, and More on phones).** Results per strategy (Snipe, Fast scalp, Second leg), live signals with their checks (a scalp's risk flags in amber), and open and closed paper positions, read from the engine (`getBotStats`, `getSignals`, `getBotPositions` and the `signals` channel in `api/marketStream.ts`). It says the results are measured, not promised, and that no money moves. Without an engine running the bot it says the signal engine isn't reachable.
+  - **Live trading (2026-09-30; owner's request: "a toggle to switch paper or live").** In live mode the bot wallet also trades each signal it can reach with real USDC. Paper keeps running beside it, and the two sets of results are kept apart (`stats().live`, `Position.mode`).
+    - **Executor (`trading/live.ts`):** Uniswap's own Universal Router (2.1.2, else 2.1.1, whichever answers for the PoolManager), not ArcDexSwapRouter. That keeps the bot's trades out of ARCDEX's fee totals, leaderboards and feeds.
+      - Buy: one transaction. The USDC goes in as `msg.value`, and the router pays the pool from it (SETTLE, payer: router; SETTLE_ALL for native pools, as the site does). TAKE_ALL sends the coins, at least the minimum, and SWEEP returns what the pool didn't take. On Arc the native balance is the USDC ERC-20 balance, so this works for ERC-20 USDC and native-USDC pools alike, and **no USDC approval is ever given**.
+      - Sell: the coin comes in through Permit2, approved right after the buy (once per coin), so an exit never waits on an approval. TAKE_ALL sends the USDC to the bot.
+      - Every transaction is simulated first (retried briefly for a lagging node), sent one at a time with its own nonce through the public RPC (`ARC_SEND_URL`), and read back from its receipt. Money in and out comes from the native-USDC logger `0xff…fe` (an ERC-20 USDC transfer is logged there and by `0x3600…`, so only one is read), plus the gas.
+      - Only v4 pools against USDC. Launchpad curves, v3 and pools quoted in other coins stay paper ("paper only" in the live activity).
+    - **Trader (`bot/liveTrader.ts`):** the same exits as paper (`exitsAt`), filled at what each sale really paid. The creator selling (in any pool) closes a live scalp at once. A failing sale is retried at 15%, 35% and 60% slippage, then marked stuck and tried again every 15s.
+    - **Limits (Railway variables):**
+      - `BOT_LIVE_MAX_TRADE_USD` 25: cap per trade, whatever the strategy's size.
+      - `BOT_LIVE_MAX_OPEN` 3 and `BOT_LIVE_MAX_OPEN_SCALP` 2: positions open at once.
+      - `BOT_LIVE_DAILY_LOSS_USD` 50: no new position after that realized loss in a UTC day.
+      - `BOT_LIVE_RESERVE_USD` 2: USDC never traded, kept for gas.
+      - `BOT_LIVE_SLIPPAGE_BPS` 1000: buys at most 10% under the V4Quoter's quote.
+      - The same coin isn't bought again for 6 hours.
+    - **The switch (`bot/control.ts`, `POST /v1/bot/control`):** the owner's wallet (`BOT_OWNER_ADDRESS`) signs the exact text from `botControlMessage` in `api/_marketProtocol.ts`. The engine checks it for EOAs and contract wallets (`verifyMessage`); a signature is good for 5 minutes and once.
+      - Actions: paper, live, or "sell every live position".
+      - The mode is kept in Postgres (`arcdex_bot_settings`), so it survives a restart. Live is refused without a bot wallet. Switching to paper stops new live trades; open ones are still managed.
+      - `GET /v1/bot/status` publishes the mode, the owner, the bot wallet, its balance, the limits, today's live P&L and the last 40 live events. The send URL is never published or logged (a private RPC URL can carry a token).
+    - **Owner setup:**
+      1. Make a **new** wallet that holds only what the bot may trade, and put its key in Railway as `BOT_PRIVATE_KEY` (0x + 64 hex). The engine reads it in `main.ts` only; it's never in the config object or the logs.
+      2. Set `BOT_OWNER_ADDRESS` to the wallet you open arcdex.online with (the trading wallet or a connected one).
+      3. Fund the bot wallet with USDC on Arc, then switch to Live on `/signals`.
+      - Without `BOT_PRIVATE_KEY` the page says live trading isn't set up, and nothing can switch it on.
+    - **Checked:**
+      - `engine/test/live.test.ts`: encodings byte for byte against a real Arc buy (`fixtures/ur-swaps.json`, `scripts/capture-ur-swaps.ts`) and the site's encoder; receipt reading; the signed switch; the trader's limits, exits and retries against a stand-in wallet.
+      - `bun engine/scripts/check-live-trade.ts`: the exact buy and sell calls, simulated on mainnet from a throwaway address (balance, token and Permit2 storage overrides), in the busiest ERC-20 USDC and native-USDC pools. Each goes through with its minimum and is refused with a minimum of twice the quote. It passed for both on 2026-09-30.
+      - A local engine with throwaway, unfunded keys: status, a stranger's, stale, replayed and altered signatures refused, and the owner's live, sell-all and paper accepted.
+      - Not checked yet: a real funded trade (that's the owner's first live trade), and the owner switching from the page with their own wallet (the page signs the same message the script did).
+  - **Site: `/signals` (`pages/SignalsPage.tsx`; nav, and a tab on phones).**
+    - A PAPER/LIVE badge, and the bot panel: the mode switch (only the owner's wallet, signed; live asks to confirm, with the limits shown), the bot wallet, its balance, today's live P&L, the limits, "Sell all live positions", and the live activity log.
+    - Results per strategy (Snipe, Fast scalp, Second leg), for Paper or Live.
+    - Live signals with their checks (a scalp's risk flags in amber). Open and closed positions of the chosen book; live ones carry their transactions (explorer links), the gas, and a sale that keeps failing.
+    - Read from the engine (`getBotStats`, `getSignals`, `getBotPositions`, `getBotStatus`, `sendBotControl` and the `signals` channel in `api/marketStream.ts`); an engine without `/v1/bot/status` still shows the rest.
+    - It says the results are measured, not promised. Without an engine running the bot it says the signal engine isn't reachable.
     - The engine answers the site only from `WS_ALLOWED_ORIGINS` (CORS). To try it locally, run the engine with `WS_ALLOWED_ORIGINS=http://localhost:5173` and set `VITE_ARCDEX_WS_URL=ws://localhost:8099/ws` in `.env.development.local` (gitignored).
-  - Tests: `engine/test/intel.test.ts`, `scanner.test.ts`, `trading.test.ts`.
+  - Tests: `engine/test/intel.test.ts`, `scanner.test.ts`, `trading.test.ts`, `live.test.ts`.
 - **Argus launches (measured 2026-09-25):**
   - Portal 7 `0xB021…97Da` handles ~3,000 launches/day. Its event `0x1d891723…` carries token, creator, name, symbol and poolId.
   - Portal 8 `0xeed7…5D93` handles ~125/day through `Launched` + `LaunchMetadata`.
