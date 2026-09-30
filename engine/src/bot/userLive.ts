@@ -1,6 +1,6 @@
 // Live trading for visitors' bots (owner's request, 2026-09-30: "the self
 // learning starts in paper trading, and once the bot improves, toggle LIVE
-// for the same bot"; "a 2% fee on each trade's profit to the platform fee
+// for the same bot"; "a fee on each trade's profit to the platform fee
 // wallet; losing trades aren't charged").
 //
 //   ready    a bot can go live once its paper record shows it: 20+ closed
@@ -21,7 +21,7 @@
 //            learned exits, the rug guard, retries on a failing sale. Every
 //            buy is simulated with its sale first, as the bot's wallet, and
 //            sent only if both go through (trading/preflight.ts)
-//   fee      a winning live trade sends 2% of its profit to the platform
+//   fee      a winning live trade sends 15% of its profit to the platform
 //            fee wallet (0x2742…86Bb) right after it closes; a loss pays
 //            nothing. Paper bots are charged the same fee virtually, so
 //            their results read like live ones.
@@ -60,9 +60,16 @@ export const USER_LIVE = {
   /** Live stops (back to paper) once the wallet and its open trades are worth this share of what it went live with. */
   stopBelowPct: 50,
 }
-export const PROFIT_FEE = { bps: 200, wallet: '0x274262A0321A0701b0A46a3576e07aE881c286Bb' as Address }
+/**
+ * The platform's share of each winning trade's profit, sent to the fee wallet
+ * when the trade closes (15% since 2026-09-30, the owner's decision; it was
+ * 2%). Losing trades pay nothing, and the swaps themselves pay no fee.
+ */
+export const PROFIT_FEE = { bps: 1_500, wallet: '0x274262A0321A0701b0A46a3576e07aE881c286Bb' as Address }
+/** The fee as a percentage, for words ("15%"). */
+export const PROFIT_FEE_PCT = PROFIT_FEE.bps / 100
 
-/** The platform's share of a trade's profit: 2% of a win, nothing on a loss. */
+/** The platform's share of a trade's profit: 15% of a win, nothing on a loss. */
 export const profitFee = (pnlUsd: number | null) => (pnlUsd !== null && pnlUsd > 0 ? Math.round(pnlUsd * PROFIT_FEE.bps) / 10_000 : 0)
 
 /** Whether a bot's paper record is good enough to trade live. */
@@ -218,7 +225,7 @@ export class UserLive {
     const f = await trader.executor.sendUsdc(PROFIT_FEE.wallet, fee)
     p.txs = [...(p.txs ?? []), { kind: 'fee', hash: f.hash, at: f.at, usd: fee, gasUsd: f.gasUsd }]
     p.feeDue = 0
-    trader.event({ kind: 'sell', token: p.token, symbol: p.symbol, hash: f.hash, text: `Platform fee: $${fee.toFixed(4)} (2% of the $${((p.pnlUsd ?? 0) + (p.feeUsd ?? 0)).toFixed(2)} profit on $${p.symbol})` })
+    trader.event({ kind: 'sell', token: p.token, symbol: p.symbol, hash: f.hash, text: `Platform fee: $${fee.toFixed(4)} (${PROFIT_FEE_PCT}% of the $${((p.pnlUsd ?? 0) + (p.feeUsd ?? 0)).toFixed(2)} profit on $${p.symbol})` })
     return f.hash
   }
 

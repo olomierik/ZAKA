@@ -1826,5 +1826,9 @@ const d: Record<string, string> = {
   "Every signal is replayed on its coin's real trades as a live bot trades it: bought 2.5s after the signal, sold 2s after each trigger, costs included.": "Kila ishara hurudiwa kwenye biashara halisi za sarafu yake kama bot halisi inavyoifanya: kununuliwa sekunde 2.5 baada ya ishara, kuuzwa sekunde 2 baada ya kila kichocheo, gharama zikiwemo.",
   "Right now live bots take every signal not on probation (the platform's setting): these are the numbers to watch.": "Kwa sasa bot halisi huchukua kila ishara isiyo chini ya uangalizi (mpangilio wa jukwaa): hizi ndizo takwimu za kufuatilia.",
   "Live bots trade a kind of signal only once its last 10 or more replays average +0.5% a trade or better.": "Bot halisi hufanya biashara ya aina ya ishara pale tu marudio yake 10 au zaidi ya mwisho yanapokuwa na wastani wa +0.5% kwa biashara au zaidi.",
+  "Real money: this bot will trade its wallet's USDC on every signal it takes, with its learned settings, until you switch it back. 15% of each winning trade's profit goes to the platform; losing trades pay nothing, and the swaps themselves pay no fee. Results aren't guaranteed: most new coins go to zero.": "Pesa halisi: bot hii itafanya biashara ya USDC za pochi yake kwenye kila ishara inayochukua, kwa mipangilio iliyojifunza, hadi uirudishe kwenye karatasi. Asilimia 15 ya faida ya kila biashara iliyoshinda huenda kwa jukwaa; biashara zilizopoteza hazilipi chochote, na swap zenyewe hazilipi ada. Matokeo hayahakikishwi: sarafu nyingi mpya hushuka hadi sifuri.",
+  "15% profit fee {v}": "ada ya faida ya 15% {v}",
+  "after the 15% profit fee": "baada ya ada ya faida ya 15%",
+  "Half the profit fee: 7.5% instead of 15%": "Nusu ya ada ya faida: 7.5% badala ya 15%",
 }
 export default d

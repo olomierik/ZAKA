@@ -12,7 +12,7 @@ export const ARCD_TIERS: ArcdTier[] = [
   { id: 'free', name: N_('Free'), minArcd: 0, perks: [N_('Paper trading'), N_('1 bot')] },
   { id: 't1', name: N_('Tier 1'), minArcd: 5_000_000, perks: [N_('Live trading'), N_('Up to 3 bots')] },
   { id: 't2', name: N_('Tier 2'), minArcd: 20_000_000, perks: [N_('Live trading'), N_('Up to 5 bots')] },
-  { id: 't3', name: N_('Tier 3'), minArcd: 50_000_000, perks: [N_('Live trading'), N_('Up to 5 bots'), N_('1% profit fee instead of 2%')] },
+  { id: 't3', name: N_('Tier 3'), minArcd: 50_000_000, perks: [N_('Live trading'), N_('Up to 5 bots'), N_('Half the profit fee: 7.5% instead of 15%')] },
 ]
 
 /** Whether the engine checks holdings yet (it doesn't: the tiers are announced). */

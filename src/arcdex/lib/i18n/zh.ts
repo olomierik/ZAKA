@@ -1826,5 +1826,9 @@ const d: Record<string, string> = {
   "Every signal is replayed on its coin's real trades as a live bot trades it: bought 2.5s after the signal, sold 2s after each trigger, costs included.": "每个信号都按实盘机器人的方式在该币的真实成交上重放：信号后 2.5 秒买入，每次触发后 2 秒卖出，含成本。",
   "Right now live bots take every signal not on probation (the platform's setting): these are the numbers to watch.": "目前实盘机器人接收所有不在观察期的信号（平台设置）：这些是需要关注的数字。",
   "Live bots trade a kind of signal only once its last 10 or more replays average +0.5% a trade or better.": "只有当某类信号最近 10 次以上的重放平均每笔达到 +0.5% 或更好时，实盘机器人才会交易它。",
+  "Real money: this bot will trade its wallet's USDC on every signal it takes, with its learned settings, until you switch it back. 15% of each winning trade's profit goes to the platform; losing trades pay nothing, and the swaps themselves pay no fee. Results aren't guaranteed: most new coins go to zero.": "真实资金：此机器人会用其学到的设置，以钱包中的 USDC 交易它接收的每个信号，直到你切回模拟。每笔盈利交易利润的 15% 归平台；亏损交易不收费，兑换本身也不收手续费。结果不作保证：大多数新币会归零。",
+  "15% profit fee {v}": "15% 利润费 {v}",
+  "after the 15% profit fee": "扣除 15% 利润费后",
+  "Half the profit fee: 7.5% instead of 15%": "利润费减半：7.5% 而非 15%",
 }
 export default d

@@ -6,7 +6,7 @@
 //                 USDC, pick strategies, Start: they trade on the engine 24/7
 //                 with every device off. Once a bot's paper record is good
 //                 enough, its owner switches the same bot to LIVE: its own
-//                 wallet trades real USDC (2% of each winning trade's profit
+//                 wallet trades real USDC (15% of each winning trade's profit
 //                 goes to the platform)
 //   Marketplace   every bot, its P&L and open positions (/bots, /bots/<name>)
 //   Scanner       every coin being scanned, live, and why it isn't a signal
@@ -823,7 +823,7 @@ function GoLive({ acct, me, act, busy, onFund, onClose }: { acct: PaperAccountVi
         <button className="at-golive-go" disabled={busy || !allOk} onClick={() => setSure(true)}>{allOk ? `● ${T('Switch to LIVE')}` : T('Complete the steps above to go live')}</button>
       ) : (
         <div className="at-note warn">
-          {T('Real money: this bot will trade its wallet\'s USDC on every signal it takes, with its learned settings, until you switch it back. 2% of each winning trade\'s profit goes to the platform; losing trades pay nothing. Results aren\'t guaranteed: most new coins go to zero.')}
+          {T('Real money: this bot will trade its wallet\'s USDC on every signal it takes, with its learned settings, until you switch it back. 15% of each winning trade\'s profit goes to the platform; losing trades pay nothing, and the swaps themselves pay no fee. Results aren\'t guaranteed: most new coins go to zero.')}
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button className="btn-ghost" style={{ borderColor: LIVE_RED, color: '#fca5a5' }} disabled={busy} onClick={() => { void act({ action: 'mode', mode: 'live' }).then(onClose) }}>{T('Yes, trade live')}</button>
             <button className="link-btn" onClick={() => setSure(false)}>{T('Cancel')}</button>
@@ -1497,7 +1497,7 @@ function PositionRow({ p, navigate }: { p: BotPosition; navigate: (p: Page) => v
         <span>{T('in')} {price(p.marketEntry)} · {usd(p.sizeUsd, p.sizeUsd < 100 ? 2 : 0)}</span>
         {sold.length > 0 && <span>{T('sold')} {sold.map(f => price(f.price)).join(', ')}</span>}
         {p.status === 'closed'
-          ? <b style={{ color: (p.pnlUsd ?? 0) >= 0 ? 'var(--green)' : '#fca5a5' }}>{usd(p.pnlUsd)} ({pnlPct! >= 0 ? '+' : ''}{pnlPct!.toFixed(0)}%) · {T(EXIT[p.exitReason ?? ''] ?? p.exitReason ?? '')}{p.feeUsd ? <span style={{ fontWeight: 500, color: 'var(--text-muted)' }}> · {T('2% fee {v}', { v: usd(p.feeUsd, 4) })}</span> : null}</b>
+          ? <b style={{ color: (p.pnlUsd ?? 0) >= 0 ? 'var(--green)' : '#fca5a5' }}>{usd(p.pnlUsd)} ({pnlPct! >= 0 ? '+' : ''}{pnlPct!.toFixed(0)}%) · {T(EXIT[p.exitReason ?? ''] ?? p.exitReason ?? '')}{p.feeUsd ? <span style={{ fontWeight: 500, color: 'var(--text-muted)' }}> · {T('15% profit fee {v}', { v: usd(p.feeUsd, 4) })}</span> : null}</b>
           : <span style={{ color: 'var(--text)' }}>{p.tp1Done ? T('profit taken, trailing') : T('open')}</span>}
       </div>
       {p.status === 'closed' && p.note && <div style={{ width: '100%', fontSize: '0.72rem', color: p.exitReason === 'rug' ? '#fcd34d' : 'var(--text-muted)' }}>{p.exitReason === 'rug' ? '🛡 ' : ''}{p.note}</div>}

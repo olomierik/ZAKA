@@ -19,7 +19,7 @@
 //   live      once its paper record is good enough, its owner can switch the
 //             same bot to live: its own wallet trades real USDC
 //             (bot/userLive.ts)
-//   fee       2% of a winning trade's profit goes to the platform (live: sent
+//   fee       15% of a winning trade's profit goes to the platform (live: sent
 //             to the fee wallet; paper: taken virtually); losses pay nothing
 //   rugs      the rug guard's alarms (bot/rugGuard.ts) and the creator
 //             selling close its positions in the coin at once
@@ -47,7 +47,7 @@ import type { RugAlarm } from './rugGuard'
 import { CAPITAL_SIZING, maxTradeFor, SIZE_LIMITS, sizeFromCapital, TARGETS } from './sizing'
 import type { Signal } from './types'
 import { OutcomeTally } from './scanFeed'
-import { profitFee, readinessWithTeam, TEAM_READY, USER_LIVE, type BotWallet, type UserLive } from './userLive'
+import { PROFIT_FEE_PCT, profitFee, readinessWithTeam, TEAM_READY, USER_LIVE, type BotWallet, type UserLive } from './userLive'
 
 export interface PaperAccount {
   id: string
@@ -80,7 +80,7 @@ export interface PaperAccount {
   /** Closed trades written to the trade log. Older rows are backfilled once (`logged`). */
   tradesLogged: number
   logged?: boolean
-  /** The platform's 2% of paper wins (virtual). */
+  /** The platform's share of paper wins (virtual; PROFIT_FEE). */
   feesPaidUsd: number
   /** Its live wallet, once the owner made one. */
   live?: BotWallet | null
@@ -824,7 +824,7 @@ export class PaperAccounts {
     if (!fills.length) return
     for (const f of fills) a.cash += f.usd
     if (p.status === 'closed') {
-      // The platform's 2% of a paper win, taken virtually so paper reads like live.
+      // The platform's share of a paper win (PROFIT_FEE), taken virtually so paper reads like live.
       const fee = profitFee(p.pnlUsd)
       if (fee > 0) { p.feeUsd = fee; p.pnlUsd = (p.pnlUsd ?? 0) - fee; a.cash -= fee; a.feesPaidUsd += fee }
       this.closed(a, p, now)
@@ -919,7 +919,7 @@ export class PaperAccounts {
     this.o.store.savePaperTrade(a.id, p)
     a.tradesLogged++
     const won = (p.pnlUsd ?? 0) > 0
-    this.event(a, { at: now, kind: p.exitReason === 'rug' ? 'rug' : 'sell', token: p.token, symbol: p.symbol, text: `${isLive(p) ? 'LIVE ' : ''}Sold $${p.symbol}: ${won ? '+' : ''}${money(p.pnlUsd ?? 0)}${p.feeUsd ? ` after the 2% fee (${money(p.feeUsd)})` : ''}. ${p.note}` })
+    this.event(a, { at: now, kind: p.exitReason === 'rug' ? 'rug' : 'sell', token: p.token, symbol: p.symbol, text: `${isLive(p) ? 'LIVE ' : ''}Sold $${p.symbol}: ${won ? '+' : ''}${money(p.pnlUsd ?? 0)}${p.feeUsd ? ` after the ${PROFIT_FEE_PCT}% fee (${money(p.feeUsd)})` : ''}. ${p.note}` })
     a.lossStreak = won ? 0 : a.lossStreak + 1
     if (!won && a.lossStreak >= PROTECT.pauseAfterLosses && !(a.pausedUntil && a.pausedUntil > now)) {
       a.pausedUntil = now + PROTECT.pauseMin * 60_000

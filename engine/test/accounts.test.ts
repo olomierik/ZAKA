@@ -153,8 +153,8 @@ describe('bots: unique names, owners and the marketplace', () => {
     expect(accounts.owned('owner', 'anon')).toBeNull()
     expect(accounts.owned('friend', 'anon')?.name).toBe('Anon')
   })
-  test('2% of a winning trade\'s profit goes to the platform; a loss pays nothing', () => {
-    expect(profitFee(10)).toBe(0.2)
+  test('15% of a winning trade\'s profit goes to the platform; a loss pays nothing', () => {
+    expect(profitFee(10)).toBe(1.5)
     expect(profitFee(-3)).toBe(0)
     const { accounts, setPrice } = setupBots()
     const a = (accounts.create(now, { name: 'Payer', strategies: ['scalp'] }, 'u') as { account: PaperAccount }).account
@@ -164,7 +164,7 @@ describe('bots: unique names, owners and the marketplace', () => {
     accounts.onPrice(T, 1.2, now + 1_000, false, true)
     const p = a.positions[0]
     const gross = (p.pnlUsd ?? 0) + (p.feeUsd ?? 0)
-    expect(p.feeUsd).toBeCloseTo(gross * 0.02, 4)
+    expect(p.feeUsd).toBeCloseTo(gross * 0.15, 4)
     expect(a.feesPaidUsd).toBeCloseTo(p.feeUsd!, 6)
     expect(p.note).toMatch(/Took the profit/)
     accounts.onSignal(sig({ id: 's2', token: '0x' + 'c3'.repeat(20) }), now + 2_000)

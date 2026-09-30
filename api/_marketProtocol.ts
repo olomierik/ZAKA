@@ -325,7 +325,7 @@ export interface BotPosition {
   low?: number
   /** Why it closed, in words. */
   note?: string
-  /** A visitor's bot: the platform's 2% of a winning trade's profit (already out of pnlUsd); live, a fee still to send. */
+  /** A visitor's bot: the platform's 15% of a winning trade's profit (already out of pnlUsd); live, a fee still to send. */
   feeUsd?: number
   feeDue?: number
 }
@@ -444,7 +444,7 @@ export interface PaperAccountView {
   slug?: string
   /** paper: virtual USDC; live: its own wallet trades real USDC. */
   mode?: 'paper' | 'live'
-  /** The platform's 2% of winning trades' profit: virtual (paper) and sent (live). */
+  /** The platform's 15% of winning trades' profit: virtual (paper) and sent (live). */
   feesPaidUsd?: number
   /** Whether its paper record is good enough to trade live, and how far it is. */
   ready?: BotReadiness
@@ -482,7 +482,7 @@ export interface TeamView {
 export interface BotLiveView {
   wallet: string
   balanceUsd: number | null
-  /** Realized live P&L (after gas and the 2% fee), closed and open trades, win rate. */
+  /** Realized live P&L (after gas and the 15% profit fee), closed and open trades, win rate. */
   pnlUsd: number
   closed: number
   open: number
@@ -518,7 +518,7 @@ export interface BotProfit {
   token: string
   strategy: 'snipe' | 'second-leg' | 'scalp'
   mode: 'paper' | 'live'
-  /** After the platform's 2% fee. */
+  /** After the platform's 15% profit fee. */
   pnlUsd: number
   pnlPct: number | null
   feeUsd: number | null

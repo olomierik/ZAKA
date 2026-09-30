@@ -1826,5 +1826,9 @@ const d: Record<string, string> = {
   "Every signal is replayed on its coin's real trades as a live bot trades it: bought 2.5s after the signal, sold 2s after each trigger, costs included.": "Cada señal se reproduce sobre las operaciones reales de su moneda como la opera un bot real: comprada 2,5 s después de la señal, vendida 2 s después de cada disparador, con costes.",
   "Right now live bots take every signal not on probation (the platform's setting): these are the numbers to watch.": "Ahora mismo los bots reales toman cada señal que no está en observación (ajuste de la plataforma): estas son las cifras a vigilar.",
   "Live bots trade a kind of signal only once its last 10 or more replays average +0.5% a trade or better.": "Los bots reales operan un tipo de señal solo cuando sus últimas 10 o más reproducciones promedian +0,5 % por operación o más.",
+  "Real money: this bot will trade its wallet's USDC on every signal it takes, with its learned settings, until you switch it back. 15% of each winning trade's profit goes to the platform; losing trades pay nothing, and the swaps themselves pay no fee. Results aren't guaranteed: most new coins go to zero.": "Dinero real: este bot operará los USDC de su billetera en cada señal que tome, con sus ajustes aprendidos, hasta que lo vuelvas a papel. El 15 % de la ganancia de cada operación ganadora va a la plataforma; las operaciones perdedoras no pagan nada, y los swaps en sí no pagan comisión. Resultados no garantizados: la mayoría de las monedas nuevas llegan a cero.",
+  "15% profit fee {v}": "comisión del 15 % sobre la ganancia {v}",
+  "after the 15% profit fee": "tras la comisión del 15 % sobre la ganancia",
+  "Half the profit fee: 7.5% instead of 15%": "La mitad de la comisión sobre la ganancia: 7,5 % en vez de 15 %",
 }
 export default d

@@ -116,7 +116,7 @@ export default function ProfitAlerts({ navigate }: { navigate: (p: Page) => void
                 <button className="profit-toast-x" aria-label={T('Close')} onClick={() => setShown(list => list.filter(x => x.id !== p.id))}>✕</button>
               </div>
               <div className="profit-toast-amt">{money(p.pnlUsd)} <span>{T('on')} ${p.symbol}{p.pnlPct !== null ? ` · +${p.pnlPct.toFixed(1)}%` : ''}</span></div>
-              <div className="profit-toast-meta">{T(STRAT[p.strategy])} · {p.mode === 'live' ? <b style={{ color: '#ef4444' }}>{T('LIVE')}</b> : T('paper')}{p.feeUsd ? ` · ${T('after the 2% fee')}` : ''}</div>
+              <div className="profit-toast-meta">{T(STRAT[p.strategy])} · {p.mode === 'live' ? <b style={{ color: '#ef4444' }}>{T('LIVE')}</b> : T('paper')}{p.feeUsd ? ` · ${T('after the 15% profit fee')}` : ''}</div>
               <div className="profit-toast-btns">
                 <button onClick={() => void openShare(p)}>📤 {T('Share P&L card')}</button>
                 <button onClick={() => { navigate({ name: 'signals' }); setShown(list => list.filter(x => x.id !== p.id)) }}>{T('View')}</button>
