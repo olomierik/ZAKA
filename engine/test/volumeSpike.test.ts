@@ -80,7 +80,7 @@ class TestBot extends Bot {
   }
 }
 
-function setup(o: { ageMin: number; liquidityUsd?: number }) {
+function setup(o: { ageMin: number; liquidityUsd?: number; stored?: Trade[] }) {
   const now = Date.now()
   const meta: LaunchInfo = { token: T, name: 'Coin', symbol: 'COIN', decimals: 18, creator: A(0xde5), txHash: '0x', blockNumber: 1, timestamp: now - o.ageMin * 60_000, pool: null, quote: null, launchpad: 'ARGUS', chain: 'ARC', status: 'LIVE' }
   const st = new TokenState(T)
@@ -88,7 +88,9 @@ function setup(o: { ageMin: number; liquidityUsd?: number }) {
   const engine = { metas: new Map([[T, meta]]), tokens: new Map([[T, st]]) } as unknown as MarketEngine
   const rpc = { call: async () => { throw new Error('no chain here') }, batch: async () => [] } as unknown as Rpc
   const sent: ServerMessage[] = []
-  const bot = new TestBot({ rpc, engine, pools: { get: () => null } as unknown as PoolRegistry, store: new MemoryBotStore(), publish: (_t, m) => sent.push(m), mode: 'paper', speed: null })
+  // The engine's stored trades (history), newest first: what a tape that misses the coin's start is filled from.
+  const history = o.stored ? { trades: async (_t: string, limit: number, before?: number) => [...o.stored!].reverse().filter(t => before === undefined || t.timestamp < before).slice(0, limit) } : undefined
+  const bot = new TestBot({ rpc, engine, pools: { get: () => null } as unknown as PoolRegistry, store: new MemoryBotStore(), publish: (_t, m) => sent.push(m), mode: 'paper', speed: null, history })
   let i = 0
   const trade = (t: { side?: 'BUY' | 'SELL'; price: number; usd: number; at: number; wallet: string }) => {
     i++
@@ -107,7 +109,7 @@ function setup(o: { ageMin: number; liquidityUsd?: number }) {
   }
   const signals = () => sent.filter((m): m is Extract<ServerMessage, { t: 'SIGNAL' }> => m.t === 'SIGNAL').map(m => m.d)
   const sweep = async () => { await settle(); bot.sweep(now + 3_000); await settle() }
-  return { bot, spike, signals, sweep }
+  return { bot, spike, signals, sweep, launched: meta.timestamp }
 }
 
 describe('the engine fires it', () => {
@@ -118,6 +120,20 @@ describe('the engine fires it', () => {
     const s = signals().find(x => x.rule === 'volume')
     expect(s).toMatchObject({ strategy: 'scalp', rule: 'volume', symbol: 'COIN' })
     expect(s!.reasons.join(' · ')).toMatch(/\$720 traded in the last minute · .*× its usual \$\d+ a minute · 100% of it buying · .*52 holders · market cap \$10,\d+ · \$12,000 liquidity/)
+  })
+  test('holders counted with the stored trades when the tape misses the start of the coin (after a restart)', async () => {
+    const now = Date.now(), launched = now - 20 * 60_000
+    // 40 wallets bought in its first minutes; the tape this engine holds starts later, with 5 holders and the spike's 12.
+    const stored = Array.from({ length: 40 }, (_, k) => ({ tradeId: `s${k}`, timestamp: launched + 60_000 + k * 3_000, blockNumber: 2 + k, side: 'BUY', wallet: A(9_000 + k), usdValue: 20, tokenAmount: 2_000_000, priceUsd: 0.00001 }) as unknown as Trade)
+    const { spike, signals, sweep } = setup({ ageMin: 20, stored })
+    spike(5)
+    await sweep()
+    expect(signals().find(x => x.rule === 'volume')?.reasons.join(' · ')).toMatch(/57 holders/)
+    // Without the stored trades: 17 holders, not a signal.
+    const bare = setup({ ageMin: 20 })
+    bare.spike(5)
+    await bare.sweep()
+    expect(bare.signals().filter(x => x.rule === 'volume')).toEqual([])
   })
   test('not under 30 holders, under $5,000 of liquidity, or on a coin in its first 10 minutes', async () => {
     for (const [o, holders] of [[{ ageMin: 20 }, 15], [{ ageMin: 20, liquidityUsd: 4_500 }, 40], [{ ageMin: 8 }, 40]] as const) {

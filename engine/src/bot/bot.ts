@@ -495,7 +495,14 @@ export class Bot implements EngineObserver {
     const lastVolume = Math.max(this.fired.get(`volume:${token}`) ?? 0, this.fired.get(`scalp:${token}`) ?? 0, this.fired.get(`snipe:${token}`) ?? 0, lastLeg)
     if (!snipeWaiting && ageSec >= RULES.volume.minAgeSec && now - lastVolume >= RULES.volume.repeatMin * 60_000) {
       const last = windowOf(this.recent.window(token, now, RULES.volume.windowSec * 1_000))
-      const rule = volumeReady({ ageSec, last, baselinePerMin: path ? baselinePerMin(path, now) : 0, holders: tapeHolders(this.tapes.get(token)), marketCapUsd: base.marketCapUsd, liquidityUsd: st.liquidityUsd })
+      const input = { ageSec, last, baselinePerMin: path ? baselinePerMin(path, now) : 0, holders: tapeHolders(this.tapes.get(token)), marketCapUsd: base.marketCapUsd, liquidityUsd: st.liquidityUsd }
+      let rule = volumeReady(input)
+      // Short only of holders, on a tape that may not reach back to the launch (after a restart a coin's tape is its last
+      // 100 trades): counted again with its stored trades before it's turned away.
+      if (!rule.ok && rule.failed.length === 1 && rule.failed[0] === 'holders') {
+        const full = await this.fullTape(token, meta, now).catch(() => null)
+        if (full) rule = volumeReady({ ...input, holders: tapeHolders(full) })
+      }
       if (rule.ok) {
         const flow = computeFlow(this.tapes.get(token), { launchBlock: meta.blockNumber, creator: meta.creator, supply: st.supply })
         this.scan.record(base, await this.tryFire('volume', token, rule.reasons, ageSec, { ...windowFeatures(last), launchTopBuyerPct: flow.organic.topBuyerPct }))
