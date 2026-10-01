@@ -1,98 +1,106 @@
-// Live trading on the dollar plan (owner, 2026-10-01: "bring back LIVE trading
-// using the snipe and fast scalp strategies that paper bots used yesterday
-// afternoon and were self improving; live bots trade those signals at only $2
-// a trade, take $1 profit and close; let the agent also self improve by
-// learning from mistakes"). The default since then (BOT_LIVE_GRADES=dollar).
+// Live trading on the $2 plan ("the dollar plan"; BOT_LIVE_GRADES=dollar, the default).
 //
-//   signals   snipes and fast scalps, with the rules as they were on the
-//             afternoon of 30 September (signals/rules.ts). No grade, quality
-//             or strategy-board gate: a live bot takes every one, whatever it
-//             picked, unless its rule is on probation (below) or the bot
-//             learned to skip it.
-//   size      $2 a trade, flat (it no longer grows with profit).
-//   exit      all of it once selling would make $1 (about +52% after the
-//             sale's cost), else out at −10% (fast scalps −7%), when the
-//             creator sells, or after 10 minutes (fast scalps 20). The $1 is
-//             the trade's profit before the platform's 15% fee.
-//   learning  every snipe and fast-scalp signal is replayed on its coin's real
-//             trades at live speed with this plan (Bot.replayDue): a rule
-//             whose last 20 replays lost money and won under half is on
-//             probation, and live bots sit it out. Each live bot also learns
-//             its own entry filters per kind of signal (bot/learner.ts) from
-//             its own live trades and the team's (every other live bot's, and
-//             the replays), and skips a kind that lost 3 of its last 4 for
-//             12 hours. The take-profit stays at $1: learning changes what it
-//             buys, never the target.
+// Version 1 (2026-10-01 06:00 UTC, owner: "bring back LIVE trading using the snipe and fast scalp strategies …
+// at only $2 a trade, take $1 profit and close; let the agent also self improve by learning from mistakes"): $2 a
+// trade, all of it sold once it made $1 (about +52%), held up to 10–20 minutes. Its live bots took one trade in four
+// hours: the filters they learned from the replays (no run-up over +8%, no copycat flag, …) and the losing patterns
+// left almost nothing to buy.
 //
-// Measured before it went live, on 72 hours of real trades (149 coins; buys
-// 2.5s after the signal, sales 2s after their trigger, 1.2% a side), with the
-// rules of that afternoon fired on every coin:
-//   snipes       54 trades, 20 sold at +$1, 39 closed in profit, +$0.13 a
-//                trade ($6.85 in all), in profit in both halves of the period
-//                (+7.7% and +4.5% a trade); the average loser lost 32%, the
-//                worst 90% (a rug no stop catches at live speed).
-//   fast scalps  112 trades, +$0.02 to +$0.04 a trade: about break-even.
-// On the signals production actually fired (after the safety scanner), the
-// same plan made +3.4% a trade on snipes on risky coins (25 trades) and lost
-// 20% a trade on momentum bursts (22): probation keeps those off live bots
-// until their replays recover. Nothing here guarantees a profit.
+// Version 2, quick take-profits (2026-10-01 12:45 UTC, owner: "Nothing happened, no trades, I hate waiting for hours
+// in meme coin trading, I prefer quick take profits and leave"):
+//
+//   signals   snipes (clean coins, and risky coins as fast scalps), with the rules of the afternoon of 30 September
+//             (signals/rules.ts), on coins with no more than 80 buyers in. Momentum bursts and comebacks are replayed
+//             and measured first, and traded live once their replays prove them (PROVE_FIRST).
+//   size      $2 a trade, flat.
+//   exit      all of it once selling nets +7.5% after costs (about +10% on the price, $0.15 on $2), else out at −7%,
+//             when the creator sells, or after 3 minutes.
+//   learning  every signal is replayed on its coin's real trades at live speed with these exits (Bot.replayDue).
+//             Each live bot learns its own entry filters per kind of signal from its own live trades and the team's,
+//             starting open again on this version; a lesson that would turn away more than half of a kind's recent
+//             signals isn't taken (QUICK_LEARN), so learning can't stop a bot from trading again.
+//
+// Measured before the switch: every snipe and momentum signal of the last two days (166 fired by the rules on 72
+// hours of real trades, 64 production fired after its safety scanner), traded at live speed (buys 2.5s after the
+// signal, sales 2s after their trigger, 1.2% a side), gains over +20% counted as +20 so one spike can't carry a result:
+//   snipes, 80 buyers or fewer   research: 48 trades, 85% won, +3.1% a trade; production: 30 trades, 80% won,
+//                                +0.7% a trade (+5.3% and −1.6% in its two halves). Half the trades were over in
+//                                under 40 seconds.
+//   momentum bursts              production: 24 trades, 46% won, −7.9% a trade, with every exit tried.
+//   80+ buyers already in        far worse in every version: the crowd has already bought.
+// About break-even, with most trades won and closed within a minute: a rug (−76% to −90%, no stop catches one at live
+// speed) costs as much as 8–10 wins. Nothing here guarantees a profit.
 
+import type { SignalFeatures, SignalRule } from '../../../api/_marketProtocol'
 import type { Position, Strategy, StrategyParams } from '../trading/paper'
-import { defaultTuning, type Tuning } from './learner'
+import { defaultTuning, type LearnOptions, type Tuning } from './learner'
 
 export const DOLLAR_PLAN = {
+  /** Bumped when the plan's exits change: a live bot's learned filters start over on a new version. */
+  version: 2,
   sizeUsd: 2,
-  targetUsd: 1,
-  /**
-   * The strategies live bots trade on the plan. A comeback (the dip-rebound rule, `second-leg`: a coin that ran, pulled
-   * back and is being bought again) only once its own replays prove it (COMEBACK).
-   */
+  /** All of it is sold once selling nets this much over what it paid (+7.5%, about +10% on the price). */
+  netGain: 0.075,
+  /** The strategies live bots trade on the plan. */
   strategies: ['snipe', 'scalp', 'second-leg'] as const,
   exits: {
-    snipe: { stopLoss: 0.9, maxHoldMin: 10 },
-    scalp: { stopLoss: 0.93, maxHoldMin: 20 },
-    'second-leg': { stopLoss: 0.9, maxHoldMin: 20 },
+    snipe: { stopLoss: 0.93, maxHoldMin: 3 },
+    scalp: { stopLoss: 0.93, maxHoldMin: 3 },
+    'second-leg': { stopLoss: 0.93, maxHoldMin: 3 },
   },
-  /** When the plan started (its trades and replays are judged from then). */
-  since: Date.UTC(2026, 9, 1, 6, 0),
+  /** No coin with more buyers than this already in (the crowd has bought: far worse in every test). */
+  maxBuyers: 80,
+  /** When this version started (its trades and the day's loss are counted from then). */
+  since: Date.UTC(2026, 9, 1, 12, 45),
 }
+
+/** What one winning trade makes at the take-profit, before the platform's 15% fee. */
+export const DOLLAR_TARGET_USD = Math.round(DOLLAR_PLAN.sizeUsd * DOLLAR_PLAN.netGain * 100) / 100
 
 export type DollarStrategy = (typeof DOLLAR_PLAN.strategies)[number]
 export const isDollarStrategy = (s: Strategy | string): s is DollarStrategy => s === 'snipe' || s === 'scalp' || s === 'second-leg'
 
 /**
- * Comebacks are watched and measured from the start, and traded live only once proven (2026-10-01): re-entering a coin
- * after it dumped lost in every version tried on two days of trades. Live bots take a comeback once its last replays on
- * the plan number 10+, won half or more, and made money.
+ * Kinds of signal measured first and traded live only once proven: momentum bursts (production's lost 8% a trade with
+ * quick exits) and comebacks (re-entering a coin after it dumped lost in every version tried). Live bots take one once
+ * its last replays on the plan number 10+, won half or more, and made money.
  */
-export const COMEBACK = { minReplays: 10, minWinRate: 0.5 }
+export const PROVE_FIRST: { rules: readonly SignalRule[]; minReplays: number; minWinRate: number } = { rules: ['momentum', 'second-leg'], minReplays: 10, minWinRate: 0.5 }
+
+/** How a live bot learns on the plan: the take-profit never moves, and no lesson may turn away over half the signals. */
+export const QUICK_LEARN: LearnOptions = { pinTakeProfit: true, minAdmitShare: 0.5 }
 
 /**
- * The price, as a multiple of the entry the exits compare against, at which
- * selling all of it makes `targetUsd` on `sizeUsd`. `costIn`: the buy's cost
- * not yet in that entry (paper: the modelled cost; live: 0, its entry is what
- * it paid); `costOut`: the sale's.
+ * The price, as a multiple of the entry the exits compare against, at which selling all of it nets `netGain`.
+ * `costIn`: the buy's cost not yet in that entry (paper: the modelled cost; live: 0, its entry is what it paid);
+ * `costOut`: the sale's.
  */
-export function dollarTakeProfit(o: { sizeUsd?: number; targetUsd?: number; costIn: number; costOut: number }): number {
-  const size = o.sizeUsd ?? DOLLAR_PLAN.sizeUsd, target = o.targetUsd ?? DOLLAR_PLAN.targetUsd
-  return Math.round(((size + target) / size) * ((1 + o.costIn) / (1 - Math.min(0.5, o.costOut))) * 10_000) / 10_000
+export function dollarTakeProfit(o: { netGain?: number; costIn: number; costOut: number }): number {
+  const net = o.netGain ?? DOLLAR_PLAN.netGain
+  return Math.round((1 + net) * ((1 + o.costIn) / (1 - Math.min(0.5, o.costOut))) * 10_000) / 10_000
 }
 
-/** A trade's exits on the plan: all of it at +$1, the stop, out when the creator sells, the longest hold. */
+/** A trade's exits on the plan: all of it at +7.5% after costs, −7%, out when the creator sells, 3 minutes at most. */
 export function dollarParams(s: DollarStrategy, o: { costIn: number; costOut: number; sizeUsd?: number }): StrategyParams {
   const e = DOLLAR_PLAN.exits[s]
   return {
     sizeUsd: o.sizeUsd ?? DOLLAR_PLAN.sizeUsd,
     stopLoss: e.stopLoss,
-    tp1Multiple: dollarTakeProfit({ sizeUsd: o.sizeUsd, costIn: o.costIn, costOut: o.costOut }),
+    tp1Multiple: dollarTakeProfit({ costIn: o.costIn, costOut: o.costOut }),
     tp1SellPct: 1,
     trailFromPeak: 0.25,
-    // No early time stop: a trade gets its whole hold to reach +$1.
+    // No earlier time stop: the whole trade is 3 minutes.
     timeStopMin: e.maxHoldMin,
     timeStopMinGain: 0,
     maxHoldMin: e.maxHoldMin,
     exitOnCreatorSell: true,
   }
+}
+
+/** Why live bots don't trade a signal on the plan whatever they learned, or null. Signals without the count are taken. */
+export function planBlocks(f: SignalFeatures | undefined): string | null {
+  if (f?.totalBuyers != null && f.totalBuyers > DOLLAR_PLAN.maxBuyers) return `${f.totalBuyers} buyers already in (live bots buy coins with ${DOLLAR_PLAN.maxBuyers} or fewer: later, the crowd has bought)`
+  return null
 }
 
 /** A position traded on the plan (live bots' trades, and the replays of every signal). */
@@ -101,14 +109,17 @@ export const isDollarTrade = (p: Pick<Position, 'plan'>) => p.plan === 'dollar'
 /** The plan in words, for the site. */
 export function dollarPlanText(s: DollarStrategy): string {
   const e = DOLLAR_PLAN.exits[s]
-  return `$${DOLLAR_PLAN.sizeUsd} a trade, all of it sold once it makes $${DOLLAR_PLAN.targetUsd}; out at −${Math.round((1 - e.stopLoss) * 100)}%, when the creator sells, or after ${e.maxHoldMin} minutes`
+  return `$${DOLLAR_PLAN.sizeUsd} a trade, all of it sold at +${Math.round(DOLLAR_PLAN.netGain * 1_000) / 10}% after costs (about +10% on the price); out at −${Math.round((1 - e.stopLoss) * 100)}%, when the creator sells, or after ${e.maxHoldMin} minutes`
 }
 
 /**
- * A live bot's settings on the plan, per strategy: the plan's exits (fixed) and
- * the entry filters it learns per kind of signal (open to start with).
+ * A live bot's settings on the plan, per strategy: the plan's exits (fixed) and the entry filters it learns per kind of
+ * signal (open to start with). `livePlan` says which version they were learned on.
  */
 export function defaultDollarTuning(s: DollarStrategy): Tuning {
   const e = DOLLAR_PLAN.exits[s]
-  return { ...defaultTuning(s), takeProfit: 1 + DOLLAR_PLAN.targetUsd / DOLLAR_PLAN.sizeUsd, stopLoss: e.stopLoss, timeStopMin: e.maxHoldMin, maxHoldMin: e.maxHoldMin, targetUsd: DOLLAR_PLAN.targetUsd }
+  return { ...defaultTuning(s), takeProfit: 1 + DOLLAR_PLAN.netGain, stopLoss: e.stopLoss, timeStopMin: e.maxHoldMin, maxHoldMin: e.maxHoldMin, targetUsd: DOLLAR_TARGET_USD, livePlan: DOLLAR_PLAN.version }
 }
+
+/** A live bot's settings learned on an earlier version of the plan start over (their filters were learned on other exits). */
+export const onThisPlan = (t: Tuning | undefined): t is Tuning => !!t && t.livePlan === DOLLAR_PLAN.version

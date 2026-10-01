@@ -890,7 +890,7 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
       - **Site:** a note on the Scanner tab when it's on, and the reason's label, in all six languages. `GET /v1/bot/stats` `routing.launchpadOnly`.
       - **Checked:** the real engine run locally (`routing.launchpadOnly: strict`), and the Scanner tab at 360px (no sideways scroll, no page errors).
       - Tests: `engine/test/launchpadGate.test.ts`: the gate in each mode; an "Other" crowd rejected without a scan while the same crowd on an Argus coin fires; and a held coin not sold for the rule but closed on a honeypot. With that last exclusion removed, the test fails. `scanner.test.ts` covers the hard check.
-    - **The dollar plan: live bots on snipes and fast scalps at $2, sold at +$1, learning from mistakes (2026-10-01, owner: "bring back LIVE trading using the snipe and fast scalp strategies that paper bots used yesterday afternoon and were self improving; live bots use those signals, trades at only $2, take $1 profit and close; let the agent also self improve by learning from mistakes").** The default (`BOT_LIVE_GRADES=dollar`); `board` brings the strategy board back. Nothing here promises a profit.
+    - **The dollar plan: live bots on snipes and fast scalps at $2, sold at +$1, learning from mistakes (2026-10-01, owner: "bring back LIVE trading using the snipe and fast scalp strategies that paper bots used yesterday afternoon and were self improving; live bots use those signals, trades at only $2, take $1 profit and close; let the agent also self improve by learning from mistakes").** Version 1 of the $2 plan: from 12:45 UTC the same day, version 2 (quick take-profits, below) replaced its exits and its learned filters. The default (`BOT_LIVE_GRADES=dollar`); `board` brings the strategy board back. Nothing here promises a profit.
       - **The signals (`signals/rules.ts`):** the snipe and momentum rules are back at their thresholds of the afternoon of 30 September (commit d381135). Snipes: 6 buyers, $200 bought, buys 1.3× sells, no buyer over 25%. Momentum: 6 buyers in 2 minutes, buys 1.6× sells, up 2–20%, $2,000 of liquidity, and no "still bought in the last 30 seconds" check (`minRecentBuyers` 0). `RULE_REVISED` moved to 2026-10-01 06:00 UTC for both rules.
       - **Routing (`PaperAccounts.dollarClaim`, `liveRouting: 'dollar'`):** a live bot takes every snipe and fast-scalp signal, whatever it picked. There's no grade, quality or board gate. It sits out a rule on probation, a kind its own learned filters skip, and dip rebounds. Tiers still apply once enforced.
       - **The trade (`bot/dollarPlan.ts`):** $2 flat (no growth with profit). All of it is sold once selling would make $1 (`dollarTakeProfit`: about +52% over what it paid, after the sale's estimated cost); this is the trade's profit before the 15% platform fee. Otherwise it's out at −10% (fast scalps −7%), when the creator sells, or after 10 minutes (fast scalps 20), with no earlier time stop. Positions carry `plan: 'dollar'`. The platform's bot wallet trades the same way.
@@ -922,6 +922,40 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
       - **The comeback watch (`Bot.watchView`, `DollarPlanView.watch`):** coins a live trade lost on and coins live bots sat out for a pattern, the last 6 hours, with their price since and where the scanner has them. Every coin is re-checked by the rules every few seconds for 48 hours; a comeback is the dip-rebound rule (`second-leg`: ran, pulled back, being bought again) firing on one. Comebacks are replayed on the plan (stop −10%, 20 minutes) and traded live only once their last 10+ replays won half or more and made money (`COMEBACK`); the account side takes one only when the engine says so.
       - **Site:** the Live plan card adds "Why trades lose" (each pattern: trades, won, average, P&L, the other coins' average) and "Comeback watch"; comebacks have their own row; a bot's Strategy tab shows the new learned filters in words. Every new string is in all six dictionaries.
       - Tests: `engine/test/patterns.test.ts` (the crowd numbers; patterns found, lifted by themselves, not from too few trades, winning kinds, unknown numbers or stale trades; a launcher's momentum; a bot learning to skip crowded coins and saying why, and older tunings unchanged; the engine firing a crowded snipe with live bots told why, a small-crowd snipe going to them, a paper bot still taking a pattern signal, the comeback watch, and a tape seeded after a restart filled before its crowd is counted; without the fix that test fails).
+    - **Quick take-profits: the $2 plan, version 2 (2026-10-01, owner: "Nothing happened, no trades, I hate waiting for hours in meme coin trading, I prefer quick take profits and leave").** The default (`BOT_LIVE_GRADES=dollar`). Nothing here promises a profit.
+      - **Why nothing traded:** after the two live trades on $NOAH (07:53 and 07:55 UTC), live bots bought nothing for five hours.
+        - First, each bot's learned filters passed over every signal. They were learned from the replays on the +$1 exits: no run-up over +8%, no "copycat" flag, buys at least 1.25× sells.
+        - From about 10:00 UTC the snipe rule itself was on probation ("Snipes won 5 of their last 13"), judged with the +$1 exits (−10% stop, 10 minutes).
+        - From 08:00 to 12:10, 16 signals fired; 7 were snipes on coins with 80 or fewer buyers.
+      - **The plan (`bot/dollarPlan.ts`, `DOLLAR_PLAN.version` 2, from `since`):**
+        - $2 a trade. All of it is sold once selling nets +7.5% after costs (`netGain`, `dollarTakeProfit`): about +10% on the price, $0.15 before the 15% fee. Otherwise it's out at −7%, when the creator sells, or after 3 minutes.
+        - Live bots take snipes (clean coins, and risky coins as fast scalps) on coins with 80 or fewer buyers already in (`maxBuyers`, `planBlocks`; skip key `crowded`).
+        - Momentum bursts and comebacks are replayed and measured first. They're traded live once their last 10+ replays on the plan won half or more and made money (`PROVE_FIRST`, `Bot.provenRecord`; skip key `prove-first`).
+        - Probation and the proofs count only the signals live bots would buy (80 or fewer buyers), and only this version's live trades (`Bot.dollarTrades`, `PaperAccounts.dollarLive`).
+        - The day's loss counts from `since`.
+      - **Measured first** (research scripts outside the repo). Every snipe and momentum signal of two days: 166 fired by the rules on 72 hours of tapes, and 64 that production fired after its scanner. Buys filled 2.5s after the signal and sales 2s after their trigger, at 1.2% a side. Gains over +20% were counted as +20%, so one spike can't carry a result.
+        - Snipes with 80 or fewer buyers, at +10% / −7% / 3 minutes:
+          - research: 48 trades, 85% won, +3.1% a trade;
+          - production: 30 trades, 80% won, +0.7% a trade (+5.3% and −1.6% in its two halves);
+          - the median trade was over in about 40 seconds.
+        - +8% within 2 minutes and +12% / −8% did about as well; +5% did worse, because costs eat more of it.
+        - Momentum bursts lost with every exit tried: production's 24 trades won 46%, −7.9% a trade.
+        - About break-even overall. Most trades are small wins, and one rug (−76% to −90%, which no stop catches at live speed) costs as much as 8–10 of them.
+      - **Learning can't stop a bot from trading (`bot/learner.ts` `LearnOptions.minAdmitShare`; `QUICK_LEARN` is 0.5):**
+        - Each lesson is tried on its own. A lesson that would turn away more than half of the kind's recent signals isn't taken; those signals are the trades it learns from, its own and the team's.
+        - Skipping a whole kind of signal is therefore never taken on the plan. A losing streak pauses a bot through the 4-loss pause (30 minutes) and the day's loss limit instead.
+      - **Fresh settings:** a live bot's settings learned on the +$1 plan start over when it loads (`StrategyTuning.livePlan`, `onThisPlan`), with a note in its log. Its learn notes read "Live ($2, quick take-profits): …".
+      - **Site:** the Live plan card (title, how it works, each kind's "took profit" counts), the live note on a bot's Overview, and its Strategy tab. Every changed string is in all six dictionaries.
+      - **Tests:**
+        - `engine/test/dollarPlan.test.ts` covers:
+          - the take-profit math ($0.15 on $2), the exits and the 80-buyer limit;
+          - a live bot buying a snipe it didn't pick and selling it at +12%;
+          - a crowded coin, a momentum burst and a comeback passed over, and a momentum burst bought once the engine says it's proven;
+          - four losses pausing a bot without any lesson that stops it;
+          - learning from the team's replays, and the guard refusing a lesson that turns away 6 of 10;
+          - settings from the +$1 plan starting over on load;
+          - the engine's replays, probation and proofs.
+        - `patterns.test.ts` now runs with the guard.
     - **Dip rebound** (the `second-leg` strategy; it needed a 10× run): ran 2×+, pulled back 25–70% (was 50–85%), held a higher low for 3+ minutes (10), 8%+ off the bottom (20%), buying back (last 15 minutes' buys 1.2× sells, $100+). The same coin again after an hour (6).
     - **Signals within 2 minutes:** each part of the deep scan gets a time budget (honeypot probe 10s, holders 12s, funding trace 15s). Funding not traced in time is a risk flag (the coin can still be a fast scalp), not a hard block, and a scan missing an answer is retried after 15s instead of being held 2 minutes. A honeypot probe that doesn't answer still blocks.
     - **Why fast scalps outnumbered snipes and dip rebounds (2026-09-30, owner: "improve the other signals; leave the fast scalper, it works"):**

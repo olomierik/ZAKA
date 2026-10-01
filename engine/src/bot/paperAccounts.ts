@@ -51,8 +51,8 @@ import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, QUIC
 import { QUALITY } from '../signals/quality'
 import { CrowdBook, crowdCap, crowdImpact, laddered } from './crowd'
 import { Tiers, TIERS } from './tiers'
-import { admits, defaultTuning, DOLLAR_LEARN, learn, migrateTuning, relax, toParams, upgradeExits, type Tuning } from './learner'
-import { DOLLAR_PLAN, defaultDollarTuning, dollarParams, isDollarStrategy, isDollarTrade, type DollarStrategy } from './dollarPlan'
+import { admits, defaultTuning, learn, migrateTuning, relax, toParams, upgradeExits, type Tuning } from './learner'
+import { DOLLAR_PLAN, DOLLAR_TARGET_USD, defaultDollarTuning, dollarParams, isDollarStrategy, isDollarTrade, onThisPlan, planBlocks, PROVE_FIRST, QUICK_LEARN, type DollarStrategy } from './dollarPlan'
 import type { LiveTrader } from './liveTrader'
 import type { RugAlarm } from './rugGuard'
 import { CAPITAL_SIZING, GRADE_SHARE, liveTradeSize, maxTradeFor, SIZE_LIMITS, sizeForLive, sizeFromCapital, TARGETS, type LiveGrowth } from './sizing'
@@ -97,8 +97,8 @@ export interface PaperAccount {
   /** Its live wallet, once the owner made one. */
   live?: BotWallet | null
   /**
-   * Live, on the dollar plan (bot/dollarPlan.ts): its settings per strategy. The exits are the plan's; the entry
-   * filters per kind of signal are what it learned from its own live trades and the team's.
+   * Live, on the $2 plan (bot/dollarPlan.ts): its settings per strategy. The exits are the plan's; the entry filters
+   * per kind of signal are what it learned from its own live trades and the team's, on the plan's current version.
    */
   dollarTuning?: Partial<Record<DollarStrategy, Tuning>>
   /** Older rows only: the visitor's own trade size, from before sizing became automatic. Ignored. */
@@ -218,6 +218,16 @@ function normalize(a: PaperAccount): PaperAccount {
     tuning[s] = up.tuning
     if (up.note && (a.strategies ?? []).includes(s)) notes.push(up.note)
   }
+  // Live settings learned on an earlier version of the $2 plan start over (they were learned on other exits).
+  const dollarTuning: Partial<Record<DollarStrategy, Tuning>> = {}
+  for (const st of DOLLAR_PLAN.strategies) {
+    const t = a.dollarTuning?.[st]
+    if (onThisPlan(t)) dollarTuning[st] = t
+    else if (st !== 'second-leg') dollarTuning[st] = defaultDollarTuning(st)
+  }
+  if (a.mode === 'live' && a.dollarTuning && !onThisPlan(a.dollarTuning.snipe)) {
+    notes.push({ at: Date.now(), strategy: 'snipe', version: dollarTuning.snipe!.version, kind: 'loosen', text: `${livePlanTag()}: the live plan changed to quick take-profits (all of it sold at about +10%, out at −7% or after 3 minutes), so what it learned for live trades on the +$1 plan starts over. It learns again from its own trades and the team's, and no lesson may turn away more than half of a kind's signals.` })
+  }
   const name = cleanName(a.name) ?? `Bot ${a.id.slice(0, 4).toUpperCase()}`
   // Bots trade three strategies since 2026-10-01: a dip rebound pick is dropped.
   const picks = (a.strategies ?? []).filter(s => BOT_STRATEGIES.includes(s))
@@ -228,9 +238,12 @@ function normalize(a: PaperAccount): PaperAccount {
     tuning, learnLog: [...notes, ...(a.learnLog ?? [])], events: a.events ?? [], skips: a.skips ?? [],
     lossStreak: a.lossStreak ?? 0, pausedUntil: a.pausedUntil ?? null, filterSkips: a.filterSkips ?? {}, lastBuyAt: a.lastBuyAt ?? {},
     tradesLogged: a.tradesLogged ?? 0, feesPaidUsd: a.feesPaidUsd ?? 0, live: a.live ?? null,
-    dollarTuning: { snipe: a.dollarTuning?.snipe ?? defaultDollarTuning('snipe'), scalp: a.dollarTuning?.scalp ?? defaultDollarTuning('scalp') },
+    dollarTuning,
   }
 }
+
+/** How a lesson learned for live trades on the $2 plan is labelled in a bot's learning log. */
+const livePlanTag = () => `Live ($${DOLLAR_PLAN.sizeUsd}, quick take-profits)`
 
 export class PaperAccounts {
   private accounts = new Map<string, PaperAccount>()
@@ -319,6 +332,7 @@ export class PaperAccounts {
     let backfilled = 0
     for (const raw of await this.o.store.paperAccounts()) {
       const a = normalize(raw)
+      if (raw.dollarTuning && !onThisPlan(raw.dollarTuning.snipe)) this.save(a, a.updatedAt)
       // Names from before they had to be unique: the later bot gets a number.
       let slug = a.slug, n = 2
       while (this.bySlug.has(slug)) { a.name = `${a.name.slice(0, 20)} ${n}`; slug = slugOf(a.name); n++ }
@@ -727,36 +741,42 @@ export class PaperAccounts {
   }
 
   /**
-   * A live bot on the dollar plan (bot/dollarPlan.ts): every snipe and fast scalp, whatever it picked, at $2, all of it
-   * sold once it makes $1. Its own learned entry filters per kind of signal decide; a rule on probation is sat out.
+   * A live bot on the $2 plan (bot/dollarPlan.ts): every snipe and fast scalp, whatever it picked, at $2, all of it
+   * sold at about +10% (quick take-profits, 3 minutes at most). Its own learned entry filters per kind of signal decide;
+   * a rule on probation, a crowded coin and a kind not yet proven (momentum bursts, comebacks) are sat out.
    */
   private dollarClaim(a: PaperAccount, sig: PaperSignal, grade: SignalGrade, access: AccessView, now: number, skip: (key: string, why: string) => void): LiveClaim | null {
     const st = sig.strategy
-    if (!isDollarStrategy(st)) { skip('strategy', `not traded live: live bots trade snipes, fast scalps and proven comebacks ($${DOLLAR_PLAN.sizeUsd} each, sold once it makes $${DOLLAR_PLAN.targetUsd})`); return null }
+    if (!isDollarStrategy(st)) { skip('strategy', `not traded live: live bots trade snipes and fast scalps ($${DOLLAR_PLAN.sizeUsd} each, quick take-profits)`); return null }
     if (!access.grades.includes(grade)) { skip('tier', `not traded: ${GRADE_LABEL[grade]} signals are for ${Tiers.tierFor(grade).name} and up`); return null }
     if (!access.live) { skip('tier', `not traded live: live trading is for ${TIER_FOR_LIVE} and up`); return null }
     if (a.pausedUntil && now < a.pausedUntil) { skip('paused', `paused after ${PROTECT.pauseAfterLosses} losses in a row`); return null }
     if (sig.probation) { skip('probation', `not traded: ${sig.probation.why}`); return null }
-    // A kind of coin that keeps losing (bot/patterns.ts), or a comeback not yet proven: the engine says why.
-    if (sig.quality?.liveOk === false) { skip(sig.quality.pattern ? 'pattern' : st === 'second-leg' ? 'comeback' : 'grade-live', `not traded live: ${sig.quality.liveWhy ?? 'the engine sits it out'}`); return null }
-    // A comeback only once the engine has said its replays prove it (COMEBACK), never by default.
-    if (st === 'second-leg' && sig.quality?.liveOk !== true) { skip('comeback', 'not traded live: comebacks are watched and measured first, and traded once their replays prove them'); return null }
+    // A crowded coin: the plan's own limit, whatever the bot learned.
+    const crowded = planBlocks(sig.features)
+    if (crowded) { skip('crowded', `not traded live: ${crowded}`); return null }
+    // A kind of coin that keeps losing (bot/patterns.ts), or a kind not yet proven: the engine says why.
+    const proveFirst = !!sig.rule && PROVE_FIRST.rules.includes(sig.rule)
+    if (sig.quality?.liveOk === false) { skip(sig.quality.pattern ? 'pattern' : proveFirst ? 'prove-first' : 'grade-live', `not traded live: ${sig.quality.liveWhy ?? 'the engine sits it out'}`); return null }
+    // Momentum bursts and comebacks only once the engine has said their replays prove them (PROVE_FIRST), never by default.
+    if ((proveFirst || st === 'second-leg') && sig.quality?.liveOk !== true) { skip('prove-first', 'not traded live: momentum bursts and comebacks are replayed and measured first, and traded once their replays prove them'); return null }
     const t = this.dollarTuningOf(a, st)
     const filtered = admits(t, sig.features, sig.rule)
     if (filtered) { a.filterSkips[st] = (a.filterSkips[st] ?? 0) + 1; skip('filters', `not traded live: ${filtered}`); return null }
     if (this.balanceOf(a) === null) { skip('live-unavailable', 'its wallet\'s balance couldn\'t be read yet'); return null }
     if (!this.trader(a)) { skip('live-unavailable', 'live trading is unavailable right now'); return null }
-    // The sale's cost decides how far the price must go for $1: about +52% at a 2% round trip.
+    // The sale's cost decides how far the price must go for +7.5% after costs: about +10% at a 2.4% round trip.
     const params = dollarParams(st, { costIn: 0, costOut: costPerSide(sig.roundTripPct, DOLLAR_PLAN.sizeUsd, sig.liquidityUsd) })
     const sized = sizeForLive({ sizeUsd: DOLLAR_PLAN.sizeUsd, growthPct: 0, takeProfit: params.tp1Multiple, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd })
     if (!('sizeUsd' in sized)) { skip(sized.key, sized.why); return null }
-    return { a, strategy: st, t, sizeUsd: sized.sizeUsd, profitUsd: DOLLAR_PLAN.targetUsd * (sized.sizeUsd / DOLLAR_PLAN.sizeUsd), params: { ...params, sizeUsd: sized.sizeUsd }, priority: access.priority, plan: 'dollar' }
+    return { a, strategy: st, t, sizeUsd: sized.sizeUsd, profitUsd: Math.round(DOLLAR_TARGET_USD * (sized.sizeUsd / DOLLAR_PLAN.sizeUsd) * 100) / 100, params: { ...params, sizeUsd: sized.sizeUsd }, priority: access.priority, plan: 'dollar' }
   }
 
-  /** A bot's settings on the dollar plan for a strategy. */
+  /** A bot's settings on the $2 plan for a strategy (learned on the plan's current version). */
   private dollarTuningOf(a: PaperAccount, s: DollarStrategy): Tuning {
     a.dollarTuning ??= {}
-    return (a.dollarTuning[s] ??= defaultDollarTuning(s))
+    const t = a.dollarTuning[s]
+    return onThisPlan(t) ? t : (a.dollarTuning[s] = defaultDollarTuning(s))
   }
 
   /** A trade on the dollar plan for the team's pool (a live bot's, or a signal's replay): the first one per signal is kept. */
@@ -776,17 +796,18 @@ export class PaperAccounts {
   /** Every live bot's closed trades on the dollar plan (the plan's live record and its probation). */
   dollarLive(now = Date.now()): Position[] {
     const out: Position[] = []
-    for (const a of this.accounts.values()) for (const p of a.positions) if (isLive(p) && isDollarTrade(p) && p.status === 'closed' && now - (p.closedAt ?? 0) <= 7 * 86_400_000) out.push(p)
+    // The plan's current version only: trades on the +$1 plan had other exits.
+    for (const a of this.accounts.values()) for (const p of a.positions) if (isLive(p) && isDollarTrade(p) && p.status === 'closed' && p.openedAt >= DOLLAR_PLAN.since && now - (p.closedAt ?? 0) <= 7 * 86_400_000) out.push(p)
     return out.sort((x, y) => (x.closedAt ?? 0) - (y.closedAt ?? 0))
   }
 
-  /** A live trade on the dollar plan closed: the bot learns from it (its entry filters per kind; the $1 take-profit stays), and so does the team. */
+  /** A live trade on the $2 plan closed: the bot learns from it (its entry filters per kind; the take-profit stays), and so does the team. */
   private learnDollar(a: PaperAccount, p: Position, now: number) {
     this.observeDollar(p)
     if (!isDollarStrategy(p.strategy)) return
     const st = p.strategy
-    const own = a.positions.filter(x => x.strategy === st && x.status === 'closed' && isLive(x) && isDollarTrade(x)).sort((x, y) => (x.closedAt ?? 0) - (y.closedAt ?? 0))
-    const r = learn(this.dollarTuningOf(a, st), st, own, now, this.dollarTeam(st), false, DOLLAR_LEARN)
+    const own = a.positions.filter(x => x.strategy === st && x.status === 'closed' && isLive(x) && isDollarTrade(x) && x.openedAt >= DOLLAR_PLAN.since).sort((x, y) => (x.closedAt ?? 0) - (y.closedAt ?? 0))
+    const r = learn(this.dollarTuningOf(a, st), st, own, now, this.dollarTeam(st), false, QUICK_LEARN)
     if (r) this.dollarLearned(a, st, r, now)
   }
 
@@ -796,11 +817,11 @@ export class PaperAccounts {
     this.dollarSyncAt.set(a.id, now)
     for (const st of DOLLAR_PLAN.strategies) {
       const t = this.dollarTuningOf(a, st)
-      const own = a.positions.filter(x => x.strategy === st && x.status === 'closed' && isLive(x) && isDollarTrade(x)).sort((x, y) => (x.closedAt ?? 0) - (y.closedAt ?? 0))
+      const own = a.positions.filter(x => x.strategy === st && x.status === 'closed' && isLive(x) && isDollarTrade(x) && x.openedAt >= DOLLAR_PLAN.since).sort((x, y) => (x.closedAt ?? 0) - (y.closedAt ?? 0))
       const ownIds = new Set(own.map(x => x.signalId))
       const fresh = this.dollarTeam(st).filter(x => (x.closedAt ?? 0) > (t.changedAt ?? 0) && !ownIds.has(x.signalId)).length
       if (fresh < TEAM.syncMinTrades) continue
-      const r = learn(t, st, own, now, this.dollarTeam(st), true, DOLLAR_LEARN)
+      const r = learn(t, st, own, now, this.dollarTeam(st), true, QUICK_LEARN)
       if (r) this.dollarLearned(a, st, r, now)
     }
     // Filters that kept it from trading for hours come partway back; a kind it skipped is tried again after 12 hours.
@@ -813,7 +834,7 @@ export class PaperAccounts {
 
   private dollarLearned(a: PaperAccount, st: DollarStrategy, r: { tuning: Tuning; notes: LearnNote[] }, now: number) {
     a.dollarTuning = { ...a.dollarTuning, [st]: r.tuning }
-    this.learned(a, r.notes.map(n => ({ ...n, text: `Live ($${DOLLAR_PLAN.sizeUsd}, sold at +$${DOLLAR_PLAN.targetUsd}): ${n.text}` })), now)
+    this.learned(a, r.notes.map(n => ({ ...n, text: `${livePlanTag()}: ${n.text}` })), now)
     this.save(a, now)
   }
 
@@ -1061,7 +1082,7 @@ export class PaperAccounts {
         limits: { maxTradeUsd: USER_LIVE.maxTradeUsd, minBalanceUsd: USER_LIVE.minBalanceUsd, reserveUsd: USER_LIVE.reserveUsd, maxOpen: USER_LIVE.maxOpen, dailyLossUsd: trader?.limits.dailyLossUsd ?? USER_LIVE.dailyLossMinUsd, preflight: true, maxRoundTripPct: USER_LIVE.maxRoundTripPct, maxSharePct: Math.round(USER_LIVE.maxShareOfBalance * 100), baseTradeUsd: USER_LIVE.baseTradeUsd },
         // On the dollar plan: $2 flat, and what it learned for live trades (its entry filters per kind of signal).
         sizing: this.liveRouting === 'dollar' ? { tradeUsd: DOLLAR_PLAN.sizeUsd, growthPct: 0, pnlUsd: this.livePnl(a) } : (({ sizeUsd, growthPct }) => ({ tradeUsd: sizeUsd, growthPct, pnlUsd: this.livePnl(a) }))(this.liveGrowth(a, worth)),
-        ...(this.liveRouting === 'dollar' ? { plan: { sizeUsd: DOLLAR_PLAN.sizeUsd, targetUsd: DOLLAR_PLAN.targetUsd, tuning: Object.fromEntries(DOLLAR_PLAN.strategies.map(st => { const { prev: _prev, ...t } = this.dollarTuningOf(a, st); return [st, t] })) as Record<DollarStrategy, StrategyTuning> } } : {}),
+        ...(this.liveRouting === 'dollar' ? { plan: { sizeUsd: DOLLAR_PLAN.sizeUsd, targetUsd: DOLLAR_TARGET_USD, takeProfitPct: DOLLAR_PLAN.netGain * 100, maxHoldMin: DOLLAR_PLAN.exits.snipe.maxHoldMin, tuning: Object.fromEntries(DOLLAR_PLAN.strategies.map(st => { const { prev: _prev, ...t } = this.dollarTuningOf(a, st); return [st, t] })) as Record<DollarStrategy, StrategyTuning> } } : {}),
         events: trader?.events.slice(0, 30) ?? [],
       } : null,
       liveAvailable: this.o.live?.available ?? { ok: false, why: 'live trading isn\'t available on this engine' },

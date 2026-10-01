@@ -237,19 +237,32 @@ const strip = (t: Tuning): StrategyTuning => { const { prev: _prev, ...rest } = 
 const openCopy = (): BotFilters => ({ ...OPEN_FILTERS, avoidFlags: [] })
 
 /** What one kind of signal's losing trades say about its entry filters: changes `f` and adds notes. */
-function tightenFor(rule: SignalRule, s: Strategy, f: BotFilters, w: Position[], own: Position[], now: number, say: (kind: LearnNote['kind'], text: string) => void, skipAnyKind = false) {
+function tightenFor(rule: SignalRule, s: Strategy, f: BotFilters, w: Position[], own: Position[], now: number, say: (kind: LearnNote['kind'], text: string) => void, skipAnyKind = false, keeps: ((f: BotFilters) => boolean) | null = null) {
   const losses = w.filter(p => !won(p)), wins = w.filter(won)
   const share = (xs: Position[]) => xs.length / Math.max(1, losses.length)
   const wr = wins.length / Math.max(1, w.length)
   const winsOf = (xs: Position[]) => xs.filter(won).length
   const tag = RULE_LABEL[rule]
+  // Each lesson is tried on its own: one that would turn away too many of the kind's recent signals is undone, unsaid.
+  const attempt = (kind: LearnNote['kind'], apply: () => string) => {
+    const before = structuredClone(f)
+    const text = apply()
+    if (keeps && !keeps(f)) {
+      for (const k of Object.keys(f) as (keyof BotFilters)[]) if (!(k in before)) delete f[k]
+      Object.assign(f, before)
+      return
+    }
+    say(kind, text)
+  }
 
   // A kind of signal that keeps losing for this bot: skipped for now, tried again later (relax).
   const recent = own.slice(-6)
   const recentPnl = recent.reduce((sum, p) => sum + (p.pnlUsd ?? 0), 0)
   if (!f.skip && (s === 'scalp' || skipAnyKind) && recent.length >= 4 && winsOf(recent) / recent.length <= 0.25 && recentPnl < 0) {
-    f.skip = true; f.skippedAt = now
-    say('tighten', `${tag}: won ${winsOf(recent)} of its last ${recent.length} (${money(recentPnl)}): it skips them for now and tries again in 12 hours.`)
+    attempt('tighten', () => {
+      f.skip = true; f.skippedAt = now
+      return `${tag}: won ${winsOf(recent)} of its last ${recent.length} (${money(recentPnl)}): it skips them for now and tries again in 12 hours.`
+    })
   }
 
   if (w.length < LEARN.minTrades || losses.length < LEARN.minLosses) return
@@ -266,8 +279,10 @@ function tightenFor(rule: SignalRule, s: Strategy, f: BotFilters, w: Position[],
       return winsOf(withFlag) / withFlag.length < wr
     }).map(([g]) => g)
     if (liq > f.minLiquidityUsd || score > f.minScore || flags.length) {
-      f.minLiquidityUsd = liq; f.minScore = score; f.avoidFlags = [...f.avoidFlags, ...flags]
-      say('tighten', `${tag}: ${rugs.length} of ${losses.length} losses were rugs or dumps: it now needs ${money(liq)} of liquidity and a safety score of ${score}${flags.length ? `, and skips coins flagged ${flags.map(g => `"${g}"`).join(', ')}` : ''}.`)
+      attempt('tighten', () => {
+        f.minLiquidityUsd = liq; f.minScore = score; f.avoidFlags = [...f.avoidFlags, ...flags]
+        return `${tag}: ${rugs.length} of ${losses.length} losses were rugs or dumps: it now needs ${money(liq)} of liquidity and a safety score of ${score}${flags.length ? `, and skips coins flagged ${flags.map(g => `"${g}"`).join(', ')}` : ''}.`
+      })
     }
   }
   // Stopped out fast: it bought into selling.
@@ -279,8 +294,10 @@ function tightenFor(rule: SignalRule, s: Strategy, f: BotFilters, w: Position[],
     const median = runUps.length >= 2 ? runUps[Math.floor(runUps.length / 2)] : null
     const runUp = median !== null ? capped('maxRunUp', Math.round(Math.min(f.maxRunUp, median) * 100) / 100) : f.maxRunUp
     if (ratio > f.minBuySellRatio || runUp < f.maxRunUp) {
-      f.minBuySellRatio = ratio; f.maxRunUp = runUp
-      say('tighten', `${tag}: ${fast.length} losses were stopped out within ${fastMs / 60_000 >= 2 ? `${fastMs / 60_000} minutes` : '90 seconds'} (bought into selling): buys must now be at least ${ratio}× sells${runUp < 100 ? `, and it skips coins already up more than ${gain(runUp)}` : ''}.`)
+      attempt('tighten', () => {
+        f.minBuySellRatio = ratio; f.maxRunUp = runUp
+        return `${tag}: ${fast.length} losses were stopped out within ${fastMs / 60_000 >= 2 ? `${fastMs / 60_000} minutes` : '90 seconds'} (bought into selling): buys must now be at least ${ratio}× sells${runUp < 100 ? `, and it skips coins already up more than ${gain(runUp)}` : ''}.`
+      })
     }
   }
   // Timed out without moving.
@@ -288,8 +305,10 @@ function tightenFor(rule: SignalRule, s: Strategy, f: BotFilters, w: Position[],
   if (slow.length >= 2 && slow.length / losses.length >= 0.4) {
     const buyers = capped('minBuyers', f.minBuyers + 2)
     if (buyers > f.minBuyers) {
-      f.minBuyers = buyers
-      say('tighten', `${tag}: ${slow.length} losses timed out without moving: it now needs ${buyers} buyers.`)
+      attempt('tighten', () => {
+        f.minBuyers = buyers
+        return `${tag}: ${slow.length} losses timed out without moving: it now needs ${buyers} buyers.`
+      })
     }
   }
   // One number that separates the losses from the wins.
@@ -298,19 +317,22 @@ function tightenFor(rule: SignalRule, s: Strategy, f: BotFilters, w: Position[],
     const th = capped(b.f.filter, b.th)
     const tighter = b.f.dir === 'min' ? th > curOf(f, b.f.filter, b.f.dir) : th < curOf(f, b.f.filter, b.f.dir)
     if (tighter) {
-      f[b.f.filter] = th
-      say('tighten', `${tag}: ${b.lost} of ${b.L} losses had ${b.f.label} ${b.f.dir === 'min' ? 'under' : 'over'} ${b.f.fmt(th)}, only ${b.wins} of ${b.W} wins did: it now needs ${b.f.label} ${b.f.dir === 'min' ? 'of at least' : 'of at most'} ${b.f.fmt(th)}.`)
+      attempt('tighten', () => {
+        f[b.f.filter] = th
+        return `${tag}: ${b.lost} of ${b.L} losses had ${b.f.label} ${b.f.dir === 'min' ? 'under' : 'over'} ${b.f.fmt(th)}, only ${b.wins} of ${b.W} wins did: it now needs ${b.f.label} ${b.f.dir === 'min' ? 'of at least' : 'of at most'} ${b.f.fmt(th)}.`
+      })
     }
   }
 }
 
 /**
- * How a bot learns on the dollar plan (bot/dollarPlan.ts): the take-profit is
- * the owner's $1 and never moves; any kind of signal that keeps losing is
- * skipped for a while (on paper, only a fast scalp's kinds are).
+ * How a bot learns. `pinTakeProfit`: the take-profit never moves (the $2 plan's is fixed). `skipAnyKind`: any kind of
+ * signal that keeps losing may be skipped for a while (by default only a fast scalp's kinds are). `minAdmitShare`: a
+ * lesson that would turn away more than this share of the kind's recent signals (the trades it learns from, its own
+ * and the team's) isn't taken: on 2026-10-01 lessons learned from the replays left the $2 plan's live bots nothing
+ * to buy for hours (bot/dollarPlan.ts QUICK_LEARN).
  */
-export interface LearnOptions { pinTakeProfit?: boolean; skipAnyKind?: boolean }
-export const DOLLAR_LEARN: LearnOptions = { pinTakeProfit: true, skipAnyKind: true }
+export interface LearnOptions { pinTakeProfit?: boolean; skipAnyKind?: boolean; minAdmitShare?: number }
 
 /**
  * Reads a strategy's closed trades (oldest first) and returns the bot's next
@@ -368,7 +390,13 @@ export function learn(t: Tuning, s: Strategy, trades: Position[], now: number, s
     if (rw.length < 4) continue
     const f: BotFilters = structuredClone(t.rules?.[rule] ?? openCopy())
     const before = JSON.stringify(f)
-    tightenFor(rule, s, f, rw, own, now, (kind, text) => notes.push({ kind, rule, text: team.length > 0 && !text.includes('skips them for now') ? `${text} (read from its ${mine.length} trades and ${team.length} of the team's)` : text }), opts.skipAnyKind)
+    // Whether a bot with these filters would still take enough of the kind's recent signals.
+    const share = opts.minAdmitShare
+    const keeps = share ? (x: BotFilters) => {
+      const tt: StrategyTuning = { ...t, rules: { ...(t.rules ?? {}), [rule]: x } }
+      return rw.filter(p => !admits(tt, p.features, rule)).length >= share * rw.length
+    } : null
+    tightenFor(rule, s, f, rw, own, now, (kind, text) => notes.push({ kind, rule, text: team.length > 0 && !text.includes('skips them for now') ? `${text} (read from its ${mine.length} trades and ${team.length} of the team's)` : text }), opts.skipAnyKind, keeps)
     if (JSON.stringify(f) !== before) next.rules[rule] = f
   }
 

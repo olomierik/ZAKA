@@ -301,6 +301,8 @@ export interface StrategyTuning {
   changedAt: number | null
   /** Its exit plan (2: half at the take-profit, the rest trailing with a break-even stop; missing: all sold at the take-profit). */
   plan?: number
+  /** A live bot's settings on the $2 plan: the plan's version they were learned on (an older version's start over). */
+  livePlan?: number
   /** Closed trades and wins behind the version before this one (a change that did worse is rolled back). */
   basis: { trades: number; wins: number } | null
 }
@@ -369,7 +371,7 @@ export interface BotPosition {
   /** A visitor's bot: the platform's 15% of a winning trade's profit (already out of pnlUsd); live, a fee still to send. */
   feeUsd?: number
   feeDue?: number
-  /** Traded on the dollar plan: $2, all of it sold once it makes $1 (engine/src/bot/dollarPlan.ts). */
+  /** Traded on the $2 plan (engine/src/bot/dollarPlan.ts): $2, all of it sold at the take-profit. */
   plan?: 'dollar'
 }
 
@@ -541,8 +543,8 @@ export interface BotLiveView {
   limits: { maxTradeUsd: number; minBalanceUsd: number; reserveUsd: number; maxOpen: number; dailyLossUsd: number; preflight?: boolean; maxRoundTripPct?: number; maxSharePct?: number; baseTradeUsd?: number }
   /** A live trade's size now: the base grown by `growthPct`, what its realized live P&L (`pnlUsd`) has added to its starting capital. */
   sizing?: { tradeUsd: number; growthPct: number; pnlUsd: number }
-  /** On the dollar plan: $2 a trade, all of it sold once it makes $1, and the entry filters it learned for live trades per strategy. */
-  plan?: { sizeUsd: number; targetUsd: number; tuning: Record<'snipe' | 'scalp', StrategyTuning> & { 'second-leg'?: StrategyTuning } }
+  /** On the $2 plan: $2 a trade, all of it sold at the take-profit (quick take-profits since 2026-10-01), and the entry filters it learned for live trades per strategy. */
+  plan?: { sizeUsd: number; targetUsd: number; takeProfitPct?: number; maxHoldMin?: number; tuning: Record<'snipe' | 'scalp', StrategyTuning> & { 'second-leg'?: StrategyTuning } }
   events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
 }
 
@@ -622,7 +624,11 @@ export type LiveRouting = 'dollar' | 'board' | 'proven' | 'all' | 'off'
  */
 export interface DollarPlanView {
   sizeUsd: number
+  /** What a winning trade makes at the take-profit, before the 15% fee ($0.15 on $2 since the quick plan; $1 before). */
   targetUsd: number
+  /** The take-profit after costs, in percent (7.5: about +10% on the price), and the most buyers a coin may have in. */
+  netGainPct?: number
+  maxBuyers?: number
   exits: { strategy: 'snipe' | 'scalp' | 'second-leg'; stopLoss: number; maxHoldMin: number; text: string }[]
   kinds: {
     rule: SignalRule

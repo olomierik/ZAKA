@@ -47,7 +47,7 @@ import { crowdCap } from './crowd'
 import { QUALITY, QualityRank, qualityScore, type RuleRecord } from '../signals/quality'
 import { LIVE_GATE, liveKey, LiveSpeedBook, replayAtLiveSpeed, type LiveSpeedRecord, type Replay } from '../signals/liveSpeed'
 import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, QUICK_EXITS, RISK, STRATEGIES, stats, type ExitReason, type Position, type Strategy, type StrategyParams } from '../trading/paper'
-import { COMEBACK, DOLLAR_PLAN, dollarParams, dollarPlanText, isDollarStrategy, isDollarTrade, type DollarStrategy } from './dollarPlan'
+import { DOLLAR_PLAN, DOLLAR_TARGET_USD, dollarParams, dollarPlanText, isDollarStrategy, isDollarTrade, planBlocks, PROVE_FIRST, type DollarStrategy } from './dollarPlan'
 import { PatternBook, patternWhy, type Outcome } from './patterns'
 import type { HistoryStore } from '../store/history'
 import { defaultTuning, toParams } from './learner'
@@ -599,7 +599,10 @@ export class Bot implements EngineObserver {
     if (dollarMode) this.patterns.refresh(() => this.planOutcomes(now), now)
     const lossPattern = dollarMode && !probation ? this.patterns.match(features, rule) : null
     if (lossPattern) { reasons = [...reasons, `⚠ live bots sit it out: ${patternWhy(lossPattern)}`]; metrics.inc(`bot_pattern_${lossPattern.id}`) }
-    const comeback = dollarMode && strategy === 'second-leg' ? this.comebackRecord(now) : null
+    // On the $2 plan: a coin with 80+ buyers already in isn't one live bots buy (the crowd has bought), and momentum
+    // bursts and comebacks are measured first, traded once their replays prove them (bot/dollarPlan.ts).
+    const crowded = dollarMode ? planBlocks(features) : null
+    const proving = dollarMode && (PROVE_FIRST.rules.includes(rule) || strategy === 'second-leg') ? this.provenRecord(strategy === 'second-leg' ? 'second-leg' : rule, now) : null
     if (probation) { reasons = [...reasons, `⚠ on probation: ${probation.why}`]; metrics.inc(`bot_${rule}_probation`) }
     // What this kind of signal makes at live speed (replayed on real trades): live bots trade it only while that's a profit.
     const ls = this.liveSpeed.record(liveKey(rule, strategy), now)
@@ -611,10 +614,11 @@ export class Bot implements EngineObserver {
     const ranked = this.liveSignals === 'all' && !probation ? { ...graded, grade: 'live' as const } : graded
     // Live bots trade Prime and grades proven at live speed (signals/grades.ts liveGrade).
     const forLive = this.liveGrades === 'off' ? { ok: false, why: 'live trading is paused by the platform (no new live buys)' }
-      : dollarMode ? (!isDollarStrategy(strategy) ? { ok: false, why: 'live bots trade snipes, fast scalps and proven comebacks only' }
+      : dollarMode ? (!isDollarStrategy(strategy) ? { ok: false, why: 'live bots trade snipes and fast scalps only' }
         : probation ? { ok: false, why: probation.why }
+        : crowded ? { ok: false, why: crowded }
+        : proving && !proving.ok ? { ok: false, why: proving.why }
         : lossPattern ? { ok: false, why: patternWhy(lossPattern) }
-        : comeback && !comeback.ok ? { ok: false, why: comeback.why }
         : { ok: true, why: null })
       : this.liveGrades === 'all' ? { ok: true, why: null }
       : this.liveGrades === 'board' ? this.boardLive(handed.grade === 'prime' ? 'precision' : strategy, handed.grade, now)
@@ -656,10 +660,10 @@ export class Bot implements EngineObserver {
       else {
         // As visitors' live bots trade it: a Prime signal with Precision (all of it at +10%), any other with the quick
         // exits (all of it at +6%; trading/paper.ts QUICK_EXITS).
-        // The dollar plan: the signal's own strategy, $2, all of it sold once it makes $1 (bot/dollarPlan.ts).
+        // The $2 plan: the signal's own strategy, $2, all of it sold at about +10%, 3 minutes at most (bot/dollarPlan.ts).
         const dollar = dollarMode && isDollarStrategy(strategy)
         const liveStrategy: Strategy = dollar ? strategy : handed.grade === 'prime' ? 'precision' : strategy
-        // $2, grown in step with what the bot wallet's live trades made (bot/sizing.ts liveTradeSize); $2 flat on the dollar plan.
+        // $2, grown in step with what the bot wallet's live trades made (bot/sizing.ts liveTradeSize); $2 flat on the $2 plan.
         const want = dollar ? DOLLAR_PLAN.sizeUsd : this.liveSize().sizeUsd
         // On the strategy board: the settings of the paper book doing best on the strategy (its exits and learned filters).
         const pick = this.liveGrades === 'board' ? this.o.accounts?.boardPick(liveStrategy, now) ?? null : null
@@ -674,7 +678,7 @@ export class Bot implements EngineObserver {
         else {
           const size = Math.min(want, left)
           this.o.accounts?.crowd.take(signal.id, capUsd, size)
-          void this.o.live.open(signal, liveStrategy, pool, meta, { sizeUsd: size, priceNow: () => this.priceOf(token), extra: { exits: { ...exits, sizeUsd: size }, features, rule, grade: handed.grade, ...(dollar ? { plan: 'dollar' as const, targetUsd: DOLLAR_PLAN.targetUsd } : {}) } })
+          void this.o.live.open(signal, liveStrategy, pool, meta, { sizeUsd: size, priceNow: () => this.priceOf(token), extra: { exits: { ...exits, sizeUsd: size }, features, rule, grade: handed.grade, ...(dollar ? { plan: 'dollar' as const, targetUsd: DOLLAR_TARGET_USD } : {}) } })
         }
       }
     }
@@ -730,7 +734,7 @@ export class Bot implements EngineObserver {
         const until = Math.min(now, sg.at + (hold + 2) * 60_000)
         const rows = await this.tradesBetween(sg.token, sg.at - 5_000, until).catch(() => null)
         if (!rows) continue
-        // The dollar plan, as live bots trade it now: $2, all of it sold once it makes $1 (bot/dollarPlan.ts).
+        // The $2 plan, as live bots trade it now: all of it sold at about +10%, out at −7% or after 3 minutes (bot/dollarPlan.ts).
         if (this.dollarDue(sg)) {
           const c = (sg.features?.roundTripPct ?? 4) / 200
           const d = replayAtLiveSpeed(rows, { at: sg.at, price: sg.price, roundTripPct: sg.features?.roundTripPct ?? null, exits: dollarParams(sg.strategy as DollarStrategy, { costIn: c, costOut: c }), now })
@@ -1015,7 +1019,7 @@ export class Bot implements EngineObserver {
   /** Every signal's outcome on the dollar plan, one per signal: live bots' trades first, then the replays (bot/patterns.ts). */
   private planOutcomes(now: number): Outcome[] {
     const seen = new Set<string>(), out: Outcome[] = []
-    const live = [...(this.o.accounts?.dollarLive(now) ?? []), ...this.positions.filter(p => p.mode === 'live' && isDollarTrade(p) && p.status === 'closed')]
+    const live = [...(this.o.accounts?.dollarLive(now) ?? []), ...this.positions.filter(p => p.mode === 'live' && isDollarTrade(p) && p.status === 'closed' && p.openedAt >= DOLLAR_PLAN.since)]
     for (const p of [...live, ...this.dollar.values()]) {
       if (seen.has(p.signalId) || !p.sizeUsd) continue
       seen.add(p.signalId)
@@ -1024,12 +1028,16 @@ export class Bot implements EngineObserver {
     return out
   }
 
-  /** Comebacks (dip rebounds) are traded live only once their replays on the plan prove them (bot/dollarPlan.ts COMEBACK). */
-  private comebackRecord(now: number): { ok: boolean; why: string } {
-    const list = this.dollarTrades('second-leg', now).slice(-PROBATION.window)
+  /**
+   * Momentum bursts and comebacks (dip rebounds) are traded live only once their replays on the plan prove them
+   * (bot/dollarPlan.ts PROVE_FIRST): 10+ of them, half or more won, and a profit.
+   */
+  private provenRecord(rule: SignalRule, now: number): { ok: boolean; why: string } {
+    const list = this.dollarTrades(rule, now).slice(-PROBATION.window)
     const wins = list.filter(p => (p.pnlUsd ?? 0) > 0).length, pnl = list.reduce((sum, p) => sum + (p.pnlUsd ?? 0), 0)
-    const ok = list.length >= COMEBACK.minReplays && wins / list.length >= COMEBACK.minWinRate && pnl > 0
-    return ok ? { ok, why: '' } : { ok, why: `comebacks are watched and measured first: ${list.length < COMEBACK.minReplays ? `${list.length} of the ${COMEBACK.minReplays} replays needed so far` : `they won ${wins} of their last ${list.length} on the $2 plan (${pnl < 0 ? '−' : ''}$${Math.abs(pnl).toFixed(2)})`}` }
+    const ok = list.length >= PROVE_FIRST.minReplays && wins / list.length >= PROVE_FIRST.minWinRate && pnl > 0
+    const kind = rule === 'second-leg' ? 'comebacks' : 'momentum bursts'
+    return ok ? { ok, why: '' } : { ok, why: `${kind} are replayed and measured first: ${list.length < PROVE_FIRST.minReplays ? `${list.length} of the ${PROVE_FIRST.minReplays} replays needed so far` : `they won ${wins} of their last ${list.length} on the $2 plan (${pnl < 0 ? '−' : ''}$${Math.abs(pnl).toFixed(2)})`}` }
   }
 
   /**
@@ -1075,11 +1083,14 @@ export class Bot implements EngineObserver {
     this.o.accounts?.observeDollar(p)
   }
 
-  /** A rule's trades on the dollar plan: live bots' (real fills) first, then every signal's replay, one per signal. */
+  /**
+   * A rule's trades on the $2 plan: live bots' (real fills) first, then every signal's replay, one per signal. Only the
+   * signals live bots would buy count (80 buyers or fewer in), and only the plan's current version.
+   */
   private dollarTrades(rule: SignalRule, now: number): Position[] {
     const live = this.o.accounts?.dollarLive(now) ?? []
-    return [...live, ...this.positions.filter(p => p.mode === 'live' && isDollarTrade(p)), ...this.dollar.values()]
-      .filter(p => p.status === 'closed' && p.rule === rule && now - (p.closedAt ?? 0) <= PROBATION.maxAgeMs)
+    return [...live, ...this.positions.filter(p => p.mode === 'live' && isDollarTrade(p) && p.openedAt >= DOLLAR_PLAN.since), ...this.dollar.values()]
+      .filter(p => p.status === 'closed' && p.rule === rule && now - (p.closedAt ?? 0) <= PROBATION.maxAgeMs && !planBlocks(p.features))
   }
 
   /**
@@ -1100,7 +1111,7 @@ export class Bot implements EngineObserver {
     const kinds = [['snipe', 'snipe'], ['snipe', 'scalp'], ['momentum', 'scalp'], ['second-leg', 'second-leg']] as const
     const live = (this.o.accounts?.dollarLive(now) ?? []).concat(this.positions.filter(p => p.mode === 'live' && isDollarTrade(p)))
     return {
-      sizeUsd: DOLLAR_PLAN.sizeUsd, targetUsd: DOLLAR_PLAN.targetUsd,
+      sizeUsd: DOLLAR_PLAN.sizeUsd, targetUsd: DOLLAR_TARGET_USD, netGainPct: DOLLAR_PLAN.netGain * 100, maxBuyers: DOLLAR_PLAN.maxBuyers,
       exits: DOLLAR_PLAN.strategies.map(s => ({ strategy: s, stopLoss: DOLLAR_PLAN.exits[s].stopLoss, maxHoldMin: DOLLAR_PLAN.exits[s].maxHoldMin, text: dollarPlanText(s) })),
       kinds: kinds.map(([rule, strategy]) => {
         const rep = [...this.dollar.values()].filter(p => p.rule === rule && p.strategy === strategy && now - (p.closedAt ?? 0) <= week).sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0)).slice(-PROBATION.window)
@@ -1110,7 +1121,7 @@ export class Bot implements EngineObserver {
           rule, strategy,
           replays: { trades: rep.length, wins: rep.filter(p => (p.pnlUsd ?? 0) > 0).length, hits: rep.filter(p => p.exitReason === 'tp1').length, avgPct: rep.length ? Math.round((pnl(rep) / rep.length / DOLLAR_PLAN.sizeUsd) * 1_000) / 10 : null, pnlUsd: pnl(rep) },
           live: { trades: mine.length, wins: mine.filter(p => (p.pnlUsd ?? 0) > 0).length, hits: mine.filter(p => p.exitReason === 'tp1').length, pnlUsd: pnl(mine) },
-          probation: this.dollarProbation(rule, now)?.why ?? (rule === 'second-leg' ? (this.comebackRecord(now).ok ? null : this.comebackRecord(now).why) : null),
+          probation: this.dollarProbation(rule, now)?.why ?? (PROVE_FIRST.rules.includes(rule) ? (({ ok, why }) => (ok ? null : why))(this.provenRecord(rule, now)) : null),
         }
       }),
       patterns: this.patterns.view(),

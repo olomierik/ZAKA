@@ -6,8 +6,8 @@
 import { describe, expect, test } from 'bun:test'
 import type { LaunchInfo, ServerMessage, SignalFeatures, Trade } from '../../api/_marketProtocol'
 import { Bot } from '../src/bot/bot'
-import { dollarParams } from '../src/bot/dollarPlan'
-import { admits, defaultTuning, DOLLAR_LEARN, learn } from '../src/bot/learner'
+import { dollarParams, QUICK_LEARN } from '../src/bot/dollarPlan'
+import { admits, defaultTuning, learn } from '../src/bot/learner'
 import { PaperAccounts, type PaperAccount } from '../src/bot/paperAccounts'
 import { findPatterns, PatternBook, patternWhy, PATTERNS, type Outcome } from '../src/bot/patterns'
 import { MemoryBotStore } from '../src/bot/store'
@@ -97,7 +97,7 @@ describe('each bot learns the same numbers from its own and the team\'s trades',
   }
   test('crowded coins kept losing: it learns to skip them, and says why', () => {
     const team = Array.from({ length: 20 }, (_, i) => (i % 2 ? trade(i, 30 + i, true) : trade(i, 120 + i, false)))
-    const r = learn(defaultTuning('snipe'), 'snipe', [], now, team, true, DOLLAR_LEARN)!
+    const r = learn(defaultTuning('snipe'), 'snipe', [], now, team, true, QUICK_LEARN)!
     const learned = r.tuning.rules!.snipe!
     expect(learned.maxTotalBuyers).toBeLessThanOrEqual(118)
     expect(learned.maxTotalBuyers).toBeGreaterThanOrEqual(49)
@@ -200,7 +200,8 @@ describe('the engine: live bots sit out a losing kind of coin, and watch for a c
     expect(s.features).toMatchObject({ totalBuyers: 140, farmShare: 0, creatorLaunches: 0 })
     expect(s.quality!.liveOk).toBe(false)
     expect(s.quality!.pattern).toMatch(/^\d+\+ buyers already in$/)
-    expect(s.quality!.liveWhy).toMatch(/buyers already in: coins like this won 0 of their last 20/)
+    // The plan's own limit says why first; the losing pattern is still named.
+    expect(s.quality!.liveWhy).toMatch(/^140 buyers already in \(live bots buy coins with 80 or fewer/)
     expect(bot.dollarView().patterns!.map(p => p.id)).toContain('crowded')
     expect(bot.dollarView().watch!.map(w => [w.symbol, w.why])).toEqual([['COIN', expect.stringMatching(/^sat out: \d+\+ buyers already in$/)]])
   })
