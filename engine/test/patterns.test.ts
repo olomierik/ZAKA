@@ -162,6 +162,32 @@ function seedReplays(bot: Bot) {
   }
 }
 
+describe('after a restart', () => {
+  test("a tape seeded with a coin's last 100 trades is filled from the stored trades before its crowd is counted", async () => {
+    const L = Date.now() - 30 * 60_000
+    const meta: LaunchInfo = { token: T, name: 'Noah', symbol: 'NOAH', decimals: 18, creator: DEV, txHash: '0x', blockNumber: 1, timestamp: L, pool: null, quote: null, launchpad: 'ARGUS', chain: 'ARC', status: 'LIVE' }
+    // The launch (the creator's $2,500 bag), 40 buyers in the first 40 seconds, then 109 later trades.
+    const all: Trade[] = [
+      { tradeId: 't0', timestamp: L, blockNumber: 1, side: 'BUY', wallet: DEV, usdValue: 2_500, tokenAmount: 500_000_000, priceUsd: 0.00001 },
+      ...Array.from({ length: 40 }, (_, k) => ({ tradeId: `b${k}`, timestamp: L + 4_000 + k * 1_000, blockNumber: 10 + k, side: 'BUY' as const, wallet: A(k + 1), usdValue: 2, tokenAmount: 180_000, priceUsd: 0.000011 })),
+      ...Array.from({ length: 109 }, (_, k) => ({ tradeId: `l${k}`, timestamp: L + 44_000 + k * 300, blockNumber: 100 + k, side: 'SELL' as const, wallet: A(500 + k), usdValue: 1, tokenAmount: 100_000, priceUsd: 0.000003 })),
+    ].map(t => ({ ...t, chain: 'ARC', token: T, pair: '', pool: 'pool1', quote: '', baseAmount: t.tokenAmount, quoteAmount: t.usdValue, price: t.priceUsd, txHash: t.tradeId, logIndex: 0, dex: 'uniswap-v4', launchpad: 'ARGUS', liquidity: 10_000 }) as Trade)
+    const wire = (t: Trade) => ({ id: t.tradeId, s: t.side === 'BUY' ? 'B' : 'S', pu: t.priceUsd, pl: 'pool1', b: t.blockNumber, ts: t.timestamp, w: t.wallet, u: t.usdValue, ba: t.tokenAmount })
+    const newestFirst = [...all].reverse()
+    const engine = { metas: new Map([[T, meta]]), tokens: new Map(), recentTrades: (_t: string, n: number) => newestFirst.slice(0, n).map(wire) } as unknown as MarketEngine
+    const history = { trades: async (_t: string, limit: number, before?: number) => newestFirst.filter(t => before === undefined || t.timestamp < before).slice(0, limit) }
+    const rpc = { call: async () => { throw new Error('no chain here') }, batch: async () => [] } as unknown as Rpc
+    const bot = new TestBot({ rpc, engine, pools: { get: () => null } as unknown as PoolRegistry, store: new MemoryBotStore(), publish: () => {}, mode: 'paper', speed: null, history, liveGrades: 'dollar' })
+    bot.seed()
+    expect(bot.tapes.get(T)).toHaveLength(100) // the last 100: the launch and the first buyers are gone
+    expect(bot.tapes.get(T)[0].ts).toBeLessThan(L + 60_000) // yet it starts within a minute of the launch, as NOAH's did
+    const at = L + 45_000
+    const crowd = await (bot as unknown as { crowdOf: (t: string, m: LaunchInfo, at: number, liq: number, px: number) => Promise<SignalFeatures> }).crowdOf(T, meta, at, 10_000, 0.000011)
+    expect(crowd).toMatchObject({ totalBuyers: 40, sellUsd: 4, overhang: 0.55 }) // four $1 sales came before the entry
+    expect(bot.tapes.get(T)).toHaveLength(150) // filled once, for the rules too
+  })
+})
+
 describe('the engine: live bots sit out a losing kind of coin, and watch for a comeback', () => {
   test('a snipe on a crowded coin still fires (paper measures it), with live bots told why they sit it out', async () => {
     const { bot, trade, signals, sweep } = setup(3)

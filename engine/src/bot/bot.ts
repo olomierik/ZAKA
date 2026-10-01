@@ -149,6 +149,8 @@ export class Bot implements EngineObserver {
   private byCreatorTokens = new Map<string, string[]>()
   /** Coins whose tape was filled from the stored trades (it missed the coin's start: a restart). */
   private backfilled = new Set<string>()
+  /** Coins whose tape was seeded after a restart (its last 100 trades only): filled from the stored trades before it's counted. */
+  private seeded = new Set<string>()
   /** The kinds of coin that keep losing on the dollar plan (bot/patterns.ts): live bots sit them out. */
   readonly patterns = new PatternBook()
   private recentSignals: Signal[] = []
@@ -301,7 +303,9 @@ export class Bot implements EngineObserver {
       const mainPool = this.o.engine.tokens.get(token)?.mainPool
       let path = this.paths.get(token)
       if (!path) { path = new PricePath(meta.timestamp); this.paths.set(token, path) }
-      for (const w of [...this.o.engine.recentTrades(token, 100)].reverse()) {
+      const kept = this.o.engine.recentTrades(token, 100)
+      if (kept.length) this.seeded.add(token)
+      for (const w of [...kept].reverse()) {
         const priced = w.pu !== null && (!mainPool || w.pl === mainPool)
         const side = w.s === 'B' ? 'BUY' as const : w.s === 'S' ? 'SELL' as const : 'UNKNOWN' as const
         const tape = { block: w.b, ts: w.ts, wallet: w.w?.toLowerCase() ?? null, side, usd: w.u ?? 0, tokens: w.ba, price: priced ? w.pu : null }
@@ -978,7 +982,9 @@ export class Bot implements EngineObserver {
   /** A coin's tape up to `at`. One that misses the coin's start (kept since a restart) is filled once from the stored trades. */
   private async fullTape(token: string, meta: LaunchInfo, at: number): Promise<TapeTrade[]> {
     const tape = this.tapes.get(token)
-    const missing = !tape.length || tape[0].ts > meta.timestamp + 60_000
+    // Seeded after a restart, a tape holds the coin's last 100 trades: it can start within a minute of the launch and
+    // still miss the launch block (NOAH: 28 buyers counted where there were 40, and no creator's bag).
+    const missing = !tape.length || tape[0].ts > meta.timestamp + 60_000 || (this.seeded.has(token) && !this.backfilled.has(token))
     if (!missing || !this.o.history || at - meta.timestamp > WATCH_MS) return tape.filter(t => t.ts <= at)
     const older: TapeTrade[] = []
     let before = (tape[0]?.ts ?? at) + 1
@@ -990,7 +996,7 @@ export class Bot implements EngineObserver {
       if (before <= meta.timestamp) break
     }
     older.sort((a, b) => a.block - b.block || a.ts - b.ts)
-    if (tape.length && !this.backfilled.has(token)) { this.tapes.prepend(token, older); this.backfilled.add(token) }
+    if (!this.backfilled.has(token)) { if (tape.length) this.tapes.prepend(token, older); this.backfilled.add(token) }
     return [...older, ...tape].filter(t => t.ts <= at)
   }
 
