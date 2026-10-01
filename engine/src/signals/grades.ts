@@ -33,6 +33,9 @@
 //                   over 20% of the buying, buys at least twice sells, not up
 //                   more than 20%. All of it at +10%: 21 of 21, then 8 of 8
 //                   (+7% a trade); still 28 of 29 with the signal 15s late.
+//   late crowd      the same, 75s to 10 minutes after launch (coins whose crowd
+//                   came later): 3 of 3, then 7 of 7 (+8.4%). Few trades in the
+//                   first half: the grade's own record is the check.
 //   crowd momentum  a minute or more old, not an early-crowd coin: 12+ buyers
 //                   in two minutes, buying at least twice selling, up 2-15% in
 //                   that window, no wallet over 20% of all its buying since
@@ -77,7 +80,8 @@ function lines(f: SignalFeatures, r: (typeof GRADE_RULES)['prime' | 'core']): Li
 
 /** The two Prime strategies (the search above). */
 export const PRIME_RULES = {
-  early: { maxAgeSec: 75, minBuyers: 10, maxTopBuyerPct: 20, minBuySellRatio: 2, maxRunUp: 1.2, minLiquidityUsd: 5_000, maxRoundTripPct: 3 },
+  /** `maxAgeSec`: an early crowd (the mark crowd momentum reads); `lateMaxAgeSec`: a late crowd, the same numbers later on. */
+  early: { maxAgeSec: 75, lateMaxAgeSec: 600, minBuyers: 10, maxTopBuyerPct: 20, minBuySellRatio: 2, maxRunUp: 1.2, minLiquidityUsd: 5_000, maxRoundTripPct: 3 },
   momentum: { minBuyers: 12, minBuySellRatio: 2, minMove: 1.02, maxMove: 1.15, maxLaunchTopBuyerPct: 20, minLiquidityUsd: 5_000, maxRoundTripPct: 3 },
 } as const
 
@@ -93,7 +97,7 @@ function primeLines(f: SignalFeatures, rule?: SignalRule): Line[] | null {
   if (rule === 'snipe') {
     const r = PRIME_RULES.early
     return [
-      { ok: f.ageSec <= r.maxAgeSec, text: `early crowd: ${f.ageSec}s after launch (≤ ${r.maxAgeSec}s)` },
+      { ok: f.ageSec <= r.lateMaxAgeSec, text: `${f.ageSec <= r.maxAgeSec ? 'early' : 'late'} crowd: ${f.ageSec}s after launch (≤ ${r.lateMaxAgeSec / 60} min)` },
       { ok: f.buyers >= r.minBuyers, text: `${f.buyers} buyers (${r.minBuyers}+)` },
       { ok: f.topBuyerPct <= r.maxTopBuyerPct, text: `largest buyer ${Math.round(f.topBuyerPct)}% (≤ ${r.maxTopBuyerPct}%)` },
       { ok: f.buySellRatio === null || f.buySellRatio >= r.minBuySellRatio, text: f.buySellRatio === null ? 'no sells yet' : `buys ${f.buySellRatio.toFixed(1)}× sells (${r.minBuySellRatio}×+)` },

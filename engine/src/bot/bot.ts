@@ -646,7 +646,7 @@ export class Bot implements EngineObserver {
     }
     const e = PRIME_RULES.early, m = PRIME_RULES.momentum
     const rules = (g: SignalGrade): string[] => g === 'standard' ? ['every other signal bots may trade (not on probation)'] : g === 'prime' ? [
-      `early crowd: within ${e.maxAgeSec}s of launch, ${e.minBuyers}+ buyers, none over ${e.maxTopBuyerPct}% of the buying, buys ${e.minBuySellRatio}× sells, up no more than ${Math.round((e.maxRunUp - 1) * 100)}%`,
+      `early or late crowd: within ${e.lateMaxAgeSec / 60} minutes of launch, ${e.minBuyers}+ buyers, none over ${e.maxTopBuyerPct}% of the buying, buys ${e.minBuySellRatio}× sells, up no more than ${Math.round((e.maxRunUp - 1) * 100)}%`,
       `crowd momentum: ${m.minBuyers}+ buyers in 2 minutes, buys ${m.minBuySellRatio}× sells, up ${Math.round((m.minMove - 1) * 100)}-${Math.round((m.maxMove - 1) * 100)}%, no wallet over ${m.maxLaunchTopBuyerPct}% of the buying since launch, not an early-crowd coin`,
       `liquidity $${e.minLiquidityUsd.toLocaleString('en-US')}+, round trip ≤ ${e.maxRoundTripPct}%`,
     ] : (() => {
