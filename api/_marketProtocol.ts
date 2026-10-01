@@ -486,7 +486,7 @@ export interface PaperAccountView {
   skips: PaperEvent[]
   /** What keeps the account from being drained. */
   /** `maxTradeUsd`: the most one trade may use now (`maxTradeSharePct` of what the bot is worth; null while a live wallet is unread). Both missing on older engines. */
-  protections: { pausedUntil: number | null; lossStreak: number; pauseAfterLosses: number; dailyLossLimitUsd: number; todayPnlUsd: number; stopBelowPct: number; maxTradeSharePct?: number; maxTradeUsd?: number | null; tradeSharePct?: { a: number; b: number }; minTradeUsd?: number; gradeSharePct?: Record<SignalGrade, number> }
+  protections: { pausedUntil: number | null; lossStreak: number; pauseAfterLosses: number; dailyLossLimitUsd: number; todayPnlUsd: number; stopBelowPct: number; /** Losses never stop this bot: no pause, no daily loss limit, no stop (the numbers above aren't applied). */ neverStops?: boolean; maxTradeSharePct?: number; maxTradeUsd?: number | null; tradeSharePct?: { a: number; b: number }; minTradeUsd?: number; gradeSharePct?: Record<SignalGrade, number> }
   /** Every closed trade it has made (GET /v1/paper/trades lists them all). */
   tradesLogged: number
   /** Its unique id on the platform (from its name): /bots/<slug>. */

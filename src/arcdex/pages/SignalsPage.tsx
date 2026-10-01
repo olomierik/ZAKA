@@ -1349,7 +1349,8 @@ function SettingsTab({ acct, act, busy, onRename }: { acct: PaperAccountView; ac
             <li>🛡 {T('Rug guard: out at once when liquidity is pulled, an early insider or a whale dumps, the price crashes on heavy selling, or the creator sells.')}</li>
             {prot.maxTradeSharePct !== undefined && !(acct.mode === 'live' && live?.limits.baseTradeUsd !== undefined) && <li>⚖ {T('Each trade is {p}% of what the bot is worth on a Prime signal, {c}% on Core, {s}% on Standard (now at most {m}), at least {min}: a small bot trades small.', { p: prot.gradeSharePct?.prime ?? prot.maxTradeSharePct, c: prot.gradeSharePct?.core ?? 15, s: prot.gradeSharePct?.standard ?? 10, m: prot.maxTradeUsd == null ? '—' : usd(prot.maxTradeUsd), min: usd(prot.minTradeUsd ?? 1, 0) })}</li>}
             <li>👥 {T('Shares each signal with the other bots: together they never buy enough to move the price against themselves, and the one that waited longest goes first.')}</li>
-            {!(acct.mode === 'live' && live?.plan?.neverStops) && (<>
+            {prot.neverStops && acct.mode !== 'live' && <li>♾ {T('Never stopped by losses, rugs included: no pause after losing trades, no daily loss limit, no stop when the account falls. It trades as long as it has the cash for a trade.')}</li>}
+            {!(prot.neverStops || (acct.mode === 'live' && live?.plan?.neverStops)) && (<>
             <li>⏸ {T('Pauses new trades for 30 minutes after {n} losses in a row (now {s} in a row).', { n: prot.pauseAfterLosses, s: prot.lossStreak })}</li>
             <li>📉 {T('Daily loss limit {l}: no new trades after it until tomorrow (UTC). Today: {t}.', { l: usd(prot.dailyLossLimitUsd, 0), t: usd(prot.todayPnlUsd) })}</li>
             <li>🛑 {T('Stops if the account falls {p}% below what was deposited.', { p: prot.stopBelowPct })}</li>

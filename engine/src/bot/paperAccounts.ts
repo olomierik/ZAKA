@@ -121,7 +121,13 @@ export type MarketList = { bots: MarketBot[]; total: number; counts: { live: num
 
 export const PAPER_LIMITS = { maxAccounts: 20_000, maxDeposit: 100_000, maxCash: 1_000_000, keepClosed: 200, keepEvents: 60, keepLearn: 50, keepSkips: 20, maxPerOwner: 5 }
 /** What keeps a bot from draining its account. */
-export const PROTECT = { pauseAfterLosses: 4, pauseMin: 30, stopBelowPct: 50, dailyLossPct: 10, dailyLossMinUsd: 10, dailyLossMaxUsd: 100, maxOpen: 5, maxOpenScalp: 4 }
+/**
+ * `neverStops` (owner, 2026-10-01: "do not allow the bot to be stopped even if there is a rug", for live bots, then "make
+ * it happen for paper bots also"): no bot is stopped by losses, paper or live. No pause after `pauseAfterLosses` losses
+ * in a row, no daily loss limit, no stop when a paper account falls `stopBelowPct` below its deposits, and no switch
+ * back to paper when a live wallet does. The numbers stay for the day the switch is turned off.
+ */
+export const PROTECT = { neverStops: true, pauseAfterLosses: 4, pauseMin: 30, stopBelowPct: 50, dailyLossPct: 10, dailyLossMinUsd: 10, dailyLossMaxUsd: 100, maxOpen: 5, maxOpenScalp: 4 }
 /** A typical pool, for the size the page shows ("about $X a trade"). */
 const TYPICAL = { roundTripPct: 4, liquidityUsd: 20_000 }
 /** Every strategy a bot keeps settings for (dip rebounds from before 2026-10-01 included). */
@@ -333,6 +339,12 @@ export class PaperAccounts {
     for (const raw of await this.o.store.paperAccounts()) {
       const a = normalize(raw)
       if (raw.dollarTuning && !onThisPlan(raw.dollarTuning.snipe)) this.save(a, a.updatedAt)
+      // A paper bot the drain guard stopped (its last word was that stop) runs again now that losses never stop a bot.
+      if (PROTECT.neverStops && !a.running && a.mode === 'paper' && a.events[0]?.kind === 'stop' && a.events[0].text.startsWith('Stopped: the account is down')) {
+        a.running = true
+        this.event(a, { at: Date.now(), kind: 'learn', text: 'Running again: bots are no longer stopped by losses.' })
+        this.save(a, a.updatedAt)
+      }
       // Names from before they had to be unique: the later bot gets a number.
       let slug = a.slug, n = 2
       while (this.bySlug.has(slug)) { a.name = `${a.name.slice(0, 20)} ${n}`; slug = slugOf(a.name); n++ }
@@ -490,10 +502,15 @@ export class PaperAccounts {
   private trader(a: PaperAccount): LiveTrader | null {
     if (!this.o.live || !a.live) return null
     const t = this.o.live.trader(a.id, a.live, { positions: () => a.positions, params: s => this.o.params(s), save: p => this.liveSaved(a, p) })
-    // On the dollar plan the day's loss counts from the plan's start, and since 2026-10-01 15:00 UTC there's no daily
-    // loss limit at all: live bots on the plan are never stopped by losses (DOLLAR_PLAN.neverStops).
-    if (t && this.liveRouting === 'dollar') { t.limits.lossSince = DOLLAR_PLAN.since; t.limits.noDailyLoss = DOLLAR_PLAN.neverStops }
+    // On the dollar plan the day's loss counts from the plan's start; a bot that never stops has no daily loss limit at all.
+    if (t && this.liveRouting === 'dollar') t.limits.lossSince = DOLLAR_PLAN.since
+    if (t) t.limits.noDailyLoss = this.neverStops(true)
     return t
+  }
+
+  /** Whether losses never stop a bot (PROTECT.neverStops; a live bot on the $2 plan never stops either way). */
+  private neverStops(live: boolean): boolean {
+    return PROTECT.neverStops || (live && this.liveRouting === 'dollar' && DOLLAR_PLAN.neverStops)
   }
 
   get liveAvailable(): { ok: boolean; why: string | null } { return this.o.live?.available ?? { ok: false, why: 'live trading isn\'t available on this engine' } }
@@ -669,7 +686,7 @@ export class PaperAccounts {
       // Otherwise: live bots trade Prime and Core signals, and Standard once proven at live speed (signals/grades.ts liveGrade).
       if (!auto && a.mode === 'live' && sig.quality?.liveOk === false) { skip('grade-live', `not traded live: ${sig.quality.liveWhy ?? 'its grade isn\'t proven at live speed yet'}`); continue }
       if (a.mode !== 'live' && !this.paperSignals) { skip('live-only', 'not traded: signals go to live bots only for now (the platform\'s setting)'); continue }
-      if (a.pausedUntil && now < a.pausedUntil) { skip('paused', `paused after ${PROTECT.pauseAfterLosses} losses in a row`); continue }
+      if (!this.neverStops(a.mode === 'live') && a.pausedUntil && now < a.pausedUntil) { skip('paused', `paused after ${PROTECT.pauseAfterLosses} losses in a row`); continue }
       // Live bots trade the platform's proven settings, not their own tuning (2026-10-01: per-bot learning only ever
       // tightened, from 3-6 losses under exits that no longer exist). Paper bots keep learning.
       // On the board, live bots trade with the settings of the paper book doing best on the strategy: a paper bot's
@@ -702,7 +719,7 @@ export class PaperAccounts {
       if (a.cash < sized.sizeUsd) { skip('cash', `needs ${money(sized.sizeUsd)}, has ${money(a.cash)} in cash`); continue }
       // Buys waiting for their fill count as open: no second buy of the same coin, and the open-trade limits hold.
       const waiting = this.pendingOf(a.id).map(e => ({ status: 'open', token: e.sig.token, strategy: e.strategy, openedAt: e.at, mode: 'paper' }) as Position)
-      const allowed = canOpen([...a.positions.filter(p => !isLive(p)), ...waiting], sig.token, now, riskFor(a), st)
+      const allowed = canOpen([...a.positions.filter(p => !isLive(p)), ...waiting], sig.token, now, { ...riskFor(a), ...(this.neverStops(false) ? { dailyLossUsd: Infinity } : {}) }, st)
       if (!allowed.ok) { skip(allowed.key ?? 'max-open', allowed.why); continue }
       const entry: PendingEntry = { accountId: a.id, sig, strategy: st, grade, sizeUsd: sized.sizeUsd, profitUsd: sized.profitUsd, share: sized.share, params, tuningVersion: t.version, takeProfit: t.takeProfit, stopLoss: t.stopLoss, balanceUsd, at: now, due: now + (this.speed?.entryMs ?? 0) }
       a.cash -= sized.sizeUsd
@@ -985,8 +1002,8 @@ export class PaperAccounts {
     t.tick(now, token => this.o.priceOf(token))
     for (const p of a.positions) if (p.feeDue && p.feeDue > 0 && now - (this.lastFeeTry.get(p.id) ?? 0) > 60_000) void this.sendFee(a, p)
     void this.o.live!.balance(a.id, t).then(bal => {
-      // Live bots on the plan never go back to paper for losses (DOLLAR_PLAN.neverStops).
-      if (bal === null || a.mode !== 'live' || !a.live?.startBalanceUsd || (this.liveRouting === 'dollar' && DOLLAR_PLAN.neverStops)) return
+      // A bot that never stops doesn't go back to paper for losses.
+      if (bal === null || a.mode !== 'live' || !a.live?.startBalanceUsd || this.neverStops(true)) return
       let open = 0
       for (const p of a.positions) if (isLive(p) && p.status === 'open') open += p.remaining * (this.o.priceOf(p.token) ?? p.marketEntry)
       if (bal + open < a.live.startBalanceUsd * (1 - USER_LIVE.stopBelowPct / 100)) {
@@ -1076,8 +1093,8 @@ export class PaperAccounts {
       targets: { snipe: TARGETS.snipe.range, scalp: TARGETS.scalp.range, 'second-leg': TARGETS['second-leg'].range, precision: TARGETS.precision.range },
       learnLog: a.learnLog.slice(0, 30), events: a.events.slice(0, 40), skips: a.skips.slice(0, PAPER_LIMITS.keepSkips),
       protections: {
-        pausedUntil: a.pausedUntil && a.pausedUntil > now ? a.pausedUntil : null, lossStreak: a.lossStreak, pauseAfterLosses: PROTECT.pauseAfterLosses,
-        dailyLossLimitUsd: riskFor(a).dailyLossUsd, todayPnlUsd: today, stopBelowPct: PROTECT.stopBelowPct,
+        pausedUntil: !this.neverStops(a.mode === 'live') && a.pausedUntil && a.pausedUntil > now ? a.pausedUntil : null, lossStreak: a.lossStreak, pauseAfterLosses: PROTECT.pauseAfterLosses,
+        dailyLossLimitUsd: riskFor(a).dailyLossUsd, todayPnlUsd: today, stopBelowPct: PROTECT.stopBelowPct, neverStops: this.neverStops(a.mode === 'live'),
         maxTradeSharePct: Math.round(SIZE_LIMITS.maxShareOfBalance * 100), maxTradeUsd: worth === null ? null : maxTradeFor(worth),
         tradeSharePct: { a: Math.round(CAPITAL_SIZING.shareA * 100), b: Math.round(CAPITAL_SIZING.shareB * 100) }, minTradeUsd: CAPITAL_SIZING.minUsd,
         gradeSharePct: { prime: Math.round(GRADE_SHARE.prime * 100), core: Math.round(GRADE_SHARE.core * 100), standard: Math.round(GRADE_SHARE.standard * 100) },
@@ -1273,8 +1290,8 @@ export class PaperAccounts {
     const won = (p.pnlUsd ?? 0) > 0
     this.event(a, { at: now, kind: p.exitReason === 'rug' ? 'rug' : 'sell', token: p.token, symbol: p.symbol, text: `${isLive(p) ? 'LIVE ' : ''}Sold $${p.symbol}: ${won ? '+' : ''}${money(p.pnlUsd ?? 0)}${p.feeUsd ? ` after the ${this.accessOf(a.ownerId).profitFeePct}% fee (${money(p.feeUsd)})` : ''}. ${p.note}` })
     a.lossStreak = won ? 0 : a.lossStreak + 1
-    // Live bots on the plan are never paused (DOLLAR_PLAN.neverStops); their streak is still counted.
-    const neverPaused = isLive(p) && this.liveRouting === 'dollar' && DOLLAR_PLAN.neverStops
+    // A bot that never stops is never paused; its streak is still counted.
+    const neverPaused = this.neverStops(isLive(p))
     if (!won && !neverPaused && a.lossStreak >= PROTECT.pauseAfterLosses && !(a.pausedUntil && a.pausedUntil > now)) {
       a.pausedUntil = now + PROTECT.pauseMin * 60_000
       this.event(a, { at: now, kind: 'pause', text: `${a.lossStreak} losses in a row: no new trades for ${PROTECT.pauseMin} minutes while it learns from them` })
@@ -1286,7 +1303,7 @@ export class PaperAccounts {
     const r = learn(a.tuning[p.strategy], p.strategy, trades, now, this.shared.get(p.strategy) ?? [])
     if (r) { a.tuning[p.strategy] = r.tuning; this.learned(a, r.notes, now) }
     this.observe(p)
-    if (a.running && a.mode === 'paper' && a.deposited > 0) {
+    if (!this.neverStops(false) && a.running && a.mode === 'paper' && a.deposited > 0) {
       const { equity } = this.equity(a)
       if (equity < a.deposited * (1 - PROTECT.stopBelowPct / 100)) {
         a.running = false

@@ -1954,6 +1954,7 @@ const d: Record<string, string> = {
   "Every live trade is {p}% of what the wallet is worth (now {s}, at least {min}), so it grows with the capital, and all of it is sold at +{g}% after costs, or within {m} minutes. What it learned for live trades, from its own and the team's:": "每笔实盘交易为钱包价值的 {p}%（目前 {s}，至少 {min}），随资金增长而增大；扣除成本后 +{g}% 或 {m} 分钟内全部卖出。它从自己和团队的交易中为实盘学到的：",
   "Each trade is {p}% of what the wallet is worth: {now} now, at least {min}, at most {max}, so it grows with the capital. Keeps {r} for gas. Only this bot uses the wallet.": "每笔交易为钱包价值的 {p}%：目前 {now}，至少 {min}，最多 {max}，随资金增长而增大。保留 {r} 作为 gas。只有这个机器人使用该钱包。",
   "Never stopped by losses, rugs included: no daily loss limit, no pause after losing trades, no switch back to paper. It trades as long as the wallet can pay {min} and gas.": "不会因亏损而停止，包括跑路（rug）：没有每日亏损上限，亏损交易后不暂停，也不切回模拟盘。只要钱包付得起 {min} 和 gas，它就会继续交易。",
+  "Never stopped by losses, rugs included: no pause after losing trades, no daily loss limit, no stop when the account falls. It trades as long as it has the cash for a trade.": "不会因亏损而停止，包括跑路（rug）：亏损交易后不暂停，没有每日亏损上限，账户下跌也不停止。只要还有一笔交易的资金，它就会继续交易。",
   "Nothing learned yet: it takes every signal of this kind.": "尚未学到任何内容：它接收这一类的每个信号。",
   "Comebacks: dip rebounds": "回归：回调后的反弹",
   "Why trades lose: kinds of coin live bots sit out": "交易为何亏损：实盘机器人会跳过的币种类型",

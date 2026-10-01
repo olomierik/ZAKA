@@ -311,28 +311,79 @@ describe('a visitor\'s bot, all together', () => {
     expect(log.map(x => x.id)).toEqual([p.id])
     expect(accts.view(a).tradesLogged).toBe(1)
   })
-  test('4 losses in a row pause new trades for 30 minutes', () => {
+  test('never stopped by losses: 4 losses in a row, and the next signal is still traded', () => {
     const { accts, a } = setup()
     for (let i = 1; i <= 4; i++) {
       accts.onSignal(sig(i), now + i)
-      accts.onPrice(sig(i).token, 0.89, now + i + 1, false, true) // stopped out (under the day's loss limit: 20% trades lose about $23 each)
+      accts.onPrice(sig(i).token, 0.89, now + i + 1, false, true) // stopped out
     }
     expect(a.lossStreak).toBe(4)
-    expect(a.pausedUntil).toBe(now + 4 + 1 + PROTECT.pauseMin * 60_000)
+    expect(a.pausedUntil).toBeNull()
     accts.onSignal(sig(9), now + 60_000)
-    expect(a.positions.filter(p => p.status === 'open')).toHaveLength(0)
-    expect(a.skips[0].text).toMatch(/paused/)
+    expect(a.positions.filter(p => p.status === 'open')).toHaveLength(1)
+    expect(accts.view(a).protections).toMatchObject({ neverStops: true, pausedUntil: null })
   })
-  test('the daily loss limit follows the deposits; an account down 50% stops', () => {
+  test('no daily loss limit and no stop at −50% either', () => {
     expect(riskFor({ deposited: 50 }).dailyLossUsd).toBe(10)
     expect(riskFor({ deposited: 500 }).dailyLossUsd).toBe(50)
     expect(riskFor({ deposited: 50_000 }).dailyLossUsd).toBe(100)
     const { accts, a } = setup()
-    a.cash = 400 // as if most of it was lost already
+    a.deposited = 50 // a $10 daily limit, if it applied
     accts.onSignal(sig(1), now)
-    accts.onPrice(sig(1).token, 0.8, now + 1_000, false, true)
-    expect(a.running).toBe(false)
-    expect(a.events[0].text).toMatch(/Stopped: the account is down/)
+    accts.onPrice(sig(1).token, 0.8, now + 1_000, false, true) // about −$20
+    accts.onSignal(sig(2), now + 2_000)
+    expect(a.positions.filter(p => p.status === 'open')).toHaveLength(1)
+    const b = setup()
+    b.a.cash = 400 // as if most of it was lost already
+    b.accts.onSignal(sig(1), now)
+    b.accts.onPrice(sig(1).token, 0.8, now + 1_000, false, true)
+    expect(b.a.running).toBe(true)
+    expect(b.a.events.some(e => /Stopped: the account is down/.test(e.text))).toBe(false)
+  })
+  test('a paper bot the drain guard stopped before runs again when it loads; one its owner stopped stays stopped', async () => {
+    const { store, a } = setup()
+    a.running = false
+    a.events = [{ at: now, kind: 'stop', text: 'Stopped: the account is down 52% from what was deposited. Open trades are still managed; press Start to go on.' }, ...a.events]
+    store.savePaperAccount(a)
+    const mine = setup()
+    mine.accts.act(mine.a, { action: 'stop' }, now)
+    mine.store.savePaperAccount(mine.a)
+    const again = new PaperAccounts({ speed: null, store, priceOf: () => 1, params: st => STRATEGIES[st] })
+    await again.load()
+    expect(again.bySlugOf(a.slug)!.running).toBe(true)
+    expect(again.bySlugOf(a.slug)!.events[0].text).toMatch(/Running again: bots are no longer stopped by losses/)
+    const again2 = new PaperAccounts({ speed: null, store: mine.store, priceOf: () => 1, params: st => STRATEGIES[st] })
+    await again2.load()
+    expect(again2.bySlugOf(mine.a.slug)!.running).toBe(false)
+  })
+  test('with the switch off, the old protections are back: a 30-minute pause after 4 losses, the daily limit, the stop at −50%', () => {
+    PROTECT.neverStops = false
+    try {
+      const { accts, a } = setup()
+      for (let i = 1; i <= 4; i++) {
+        accts.onSignal(sig(i), now + i)
+        accts.onPrice(sig(i).token, 0.89, now + i + 1, false, true) // stopped out (under the day's loss limit: 20% trades lose about $23 each)
+      }
+      expect(a.lossStreak).toBe(4)
+      expect(a.pausedUntil).toBe(now + 4 + 1 + PROTECT.pauseMin * 60_000)
+      accts.onSignal(sig(9), now + 60_000)
+      expect(a.positions.filter(p => p.status === 'open')).toHaveLength(0)
+      expect(a.skips[0].text).toMatch(/paused/)
+      const d = setup()
+      d.a.deposited = 50
+      d.accts.onSignal(sig(1), now)
+      d.accts.onPrice(sig(1).token, 0.8, now + 1_000, false, true)
+      d.accts.onSignal(sig(2), now + 2_000)
+      expect(d.a.positions.filter(p => p.status === 'open')).toHaveLength(0)
+      const b = setup()
+      b.a.cash = 400 // as if most of it was lost already
+      b.accts.onSignal(sig(1), now)
+      b.accts.onPrice(sig(1).token, 0.8, now + 1_000, false, true)
+      expect(b.a.running).toBe(false)
+      expect(b.a.events[0].text).toMatch(/Stopped: the account is down/)
+    } finally {
+      PROTECT.neverStops = true
+    }
   })
   test('learned filters skip signals, and say why', () => {
     const { accts, a } = setup()
