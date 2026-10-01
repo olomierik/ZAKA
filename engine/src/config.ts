@@ -118,9 +118,9 @@ export function loadConfig(): Config {
       if (!Number.isFinite(t)) throw new Error(`TIERS_ENFORCE_AT must be an ISO time or "never" (got ${raw})`)
       return t
     })(),
-    // 2026-10-01: off by default (the owner: "the live trades are eating my capital"): no new live buys
-    // until BOT_LIVE_GRADES=proven (or all) is set on Railway. Open live trades are still managed.
-    liveGrades: process.env.BOT_LIVE_GRADES === 'all' ? 'all' : process.env.BOT_LIVE_GRADES === 'proven' ? 'proven' : 'off',
+    // 2026-10-01: paused for an hour after DEGEN (-94%), then resumed by the owner with live trades capped at $2
+    // (USER_LIVE.maxTradeUsd). `off` pauses every new live buy; open live trades are still managed.
+    liveGrades: process.env.BOT_LIVE_GRADES === 'all' ? 'all' : process.env.BOT_LIVE_GRADES === 'off' ? 'off' : 'proven',
     botSizeUsd: process.env.BOT_SIZE_USD ? int('BOT_SIZE_USD', 25, 1, 10_000) : null,
     botScalpSizeUsd: process.env.BOT_SCALP_SIZE_USD ? int('BOT_SCALP_SIZE_USD', 5, 1, 10_000) : null,
     botOwner: /^0x[0-9a-fA-F]{40}$/.test(process.env.BOT_OWNER_ADDRESS ?? '') ? process.env.BOT_OWNER_ADDRESS!.toLowerCase() : null,

@@ -42,7 +42,8 @@ import { LiveTrader, type LiveLimits } from './liveTrader'
 
 export const READY = { minTrades: 20, minWinRate: 0.55, minProfitFactor: 1.2 }
 export const USER_LIVE = {
-  maxTradeUsd: 50,
+  /** 2026-10-01 (owner): at most $2 a live trade, for every live bot (was $50). */
+  maxTradeUsd: 2,
   /** A bot goes live with at least this in its wallet. */
   minBalanceUsd: 10,
   /** Never traded: gas for the exits and the fee (a swap on Arc costs about $0.005; was $1 until 2026-09-30, a tenth of a $10 bot). */
