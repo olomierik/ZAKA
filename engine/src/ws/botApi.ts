@@ -58,7 +58,7 @@ export interface BotApiDeps {
   accounts: PaperAccounts | null
   tiers?: Tiers | null
   grades?: () => GradeRecordView[]
-  liveGrades?: 'proven' | 'all'
+  liveGrades?: 'proven' | 'all' | 'off'
   signedBy?: (address: Address, message: string, signature: Hex) => Promise<boolean>
 }
 

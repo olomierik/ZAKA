@@ -69,7 +69,7 @@ export interface Config {
   /** When tiers start by themselves (TIERS_ENFORCE_AT, an ISO time; default 3 October 2026, 00:00 UTC; "never" turns it off). */
   tiersEnforceAt: number | null
   /** Which grades live bots trade (BOT_LIVE_GRADES): `proven` (Prime, and grades proven at live speed; the default) or `all`. */
-  liveGrades: 'proven' | 'all'
+  liveGrades: 'proven' | 'all' | 'off'
   /** Paper position size in USD for snipes and second legs (default: each strategy's own, $25). */
   botSizeUsd: number | null
   /** Paper position size in USD for scalps, the small fast trades on risky coins (default $5). */
@@ -118,7 +118,9 @@ export function loadConfig(): Config {
       if (!Number.isFinite(t)) throw new Error(`TIERS_ENFORCE_AT must be an ISO time or "never" (got ${raw})`)
       return t
     })(),
-    liveGrades: process.env.BOT_LIVE_GRADES === 'all' ? 'all' : 'proven',
+    // 2026-10-01: off by default (the owner: "the live trades are eating my capital"): no new live buys
+    // until BOT_LIVE_GRADES=proven (or all) is set on Railway. Open live trades are still managed.
+    liveGrades: process.env.BOT_LIVE_GRADES === 'all' ? 'all' : process.env.BOT_LIVE_GRADES === 'proven' ? 'proven' : 'off',
     botSizeUsd: process.env.BOT_SIZE_USD ? int('BOT_SIZE_USD', 25, 1, 10_000) : null,
     botScalpSizeUsd: process.env.BOT_SCALP_SIZE_USD ? int('BOT_SCALP_SIZE_USD', 5, 1, 10_000) : null,
     botOwner: /^0x[0-9a-fA-F]{40}$/.test(process.env.BOT_OWNER_ADDRESS ?? '') ? process.env.BOT_OWNER_ADDRESS!.toLowerCase() : null,

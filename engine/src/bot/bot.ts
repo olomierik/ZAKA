@@ -159,10 +159,10 @@ export class Bot implements EngineObserver {
   /** Live bots: every signal not on probation (`all`), or only the proven kinds, not the lowest 20% (`proven`). */
   readonly liveSignals: 'all' | 'proven'
   /** Which grades live bots trade: Prime and grades proven at live speed (`proven`), or every grade (`all`). */
-  readonly liveGrades: 'proven' | 'all'
+  readonly liveGrades: 'proven' | 'all' | 'off'
 
   /** `history`: the coins' stored trades (replays); `speed`: the paper book at live speed (the default; null: at once). */
-  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null; history?: Pick<HistoryStore, 'trades'> | null; speed?: typeof LIVE_SPEED | null; liveSignals?: 'all' | 'proven'; liveGrades?: 'proven' | 'all' }) {
+  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null; history?: Pick<HistoryStore, 'trades'> | null; speed?: typeof LIVE_SPEED | null; liveSignals?: 'all' | 'proven'; liveGrades?: 'proven' | 'all' | 'off' }) {
     this.speed = o.speed === undefined ? LIVE_SPEED : o.speed
     this.liveSignals = o.liveSignals ?? 'proven'
     this.liveGrades = o.liveGrades ?? 'proven'
@@ -527,7 +527,8 @@ export class Bot implements EngineObserver {
     // `all` (the owner's setting): every signal not on probation goes to live bots; the rank still sets the tier (the size).
     const ranked = this.liveSignals === 'all' && !probation ? { ...graded, grade: 'live' as const } : graded
     // Live bots trade Prime and grades proven at live speed (signals/grades.ts liveGrade).
-    const forLive = this.liveGrades === 'all' ? { ok: true, why: null } : liveGrade(this.grades, handed.grade, now)
+    const forLive = this.liveGrades === 'off' ? { ok: false, why: 'live trading is paused by the platform (no new live buys)' }
+      : this.liveGrades === 'all' ? { ok: true, why: null } : liveGrade(this.grades, handed.grade, now)
     const quality: SignalQuality = {
       score: scored.score, ...ranked, ...(this.liveSignals === 'proven' && ranked.grade === 'live' && !ls.ok ? { grade: 'paper' as const } : {}), parts: scored.parts,
       liveSpeed: { trades: ls.trades, winRate: ls.winRate, avgPct: ls.avgReturn === null ? null : Math.round(ls.avgReturn * 1_000) / 10, ok: ls.ok },
@@ -655,7 +656,7 @@ export class Bot implements EngineObserver {
     })()
     return GRADES.map(g => {
       const r = this.grades.record(g, now)
-      return { grade: g, trades: r.trades, wins: r.wins, winRate: r.winRate, avgPct: r.avgReturn === null ? null : Math.round(r.avgReturn * 1_000) / 10, review: r.review, exits: exits[g], rules: rules(g), live: this.liveGrades === 'all' || liveGrade(this.grades, g, now).ok }
+      return { grade: g, trades: r.trades, wins: r.wins, winRate: r.winRate, avgPct: r.avgReturn === null ? null : Math.round(r.avgReturn * 1_000) / 10, review: r.review, exits: exits[g], rules: rules(g), live: this.liveGrades !== 'off' && (this.liveGrades === 'all' || liveGrade(this.grades, g, now).ok) }
     })
   }
 

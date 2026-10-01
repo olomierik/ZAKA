@@ -30,7 +30,7 @@ describe('signal grades', () => {
   test('early crowd: the serial launches with 22-27 buyers and the largest at 13-19% are Prime now (8 of 8 on unseen coins)', () => {
     const agi: SignalFeatures = { ...PRIME, ageSec: 30, buyers: 25, topBuyerPct: 16.2, buySellRatio: 9.9, runUp: 1.042, liquidityUsd: 10_167, roundTripPct: 1.99 }
     expect(gradeOf(agi, 'snipe').grade).toBe('prime')
-    expect(gradeOf({ ...agi, ageSec: 300 }, 'snipe').grade).toBe('prime') // a late crowd (10 of 10 in the search)
+    expect(gradeOf({ ...agi, ageSec: 300 }, 'snipe').grade).not.toBe('prime') // the late crowd was taken out (DEGEN, -94%)
     expect(gradeOf({ ...agi, ageSec: 300, runUp: 1.3 }, 'snipe').grade).not.toBe('prime') // already up 30%
     expect(gradeOf({ ...agi, ageSec: 700 }, 'snipe').grade).not.toBe('prime') // past the snipe window
     const g = gradeOf({ ...agi, topBuyerPct: 25 }, 'snipe')

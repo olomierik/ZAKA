@@ -581,7 +581,7 @@ export interface AccessView {
 export interface GradeRecordView { grade: SignalGrade; trades: number; wins: number; winRate: number | null; avgPct: number | null; review: string | null; exits: string; rules: string[]; /** Live bots trade it now. */ live?: boolean }
 
 /** GET /v1/tiers. */
-export interface TiersResponse { enforced: boolean; /** When tiers start by themselves (ms), if set. */ enforceAt?: number | null; tiers: TierInfo[]; grades: GradeRecordView[]; crowd: { impactShareOfTp: number; maxPoolShare: number; maxBots: number }; /** Which grades live bots trade: `proven` (Prime and grades proven at live speed) or `all`. */ liveGrades?: 'proven' | 'all' }
+export interface TiersResponse { enforced: boolean; /** When tiers start by themselves (ms), if set. */ enforceAt?: number | null; tiers: TierInfo[]; grades: GradeRecordView[]; crowd: { impactShareOfTp: number; maxPoolShare: number; maxBots: number }; /** Which grades live bots trade: `proven` (Prime and grades proven at live speed) or `all`. */ liveGrades?: 'proven' | 'all' | 'off' }
 
 /** The exact text a wallet signs to link to an ARCDEX Autotrade account (its $ARCD counts toward the account's tier). */
 export function tierLinkMessage(email: string, address: string, at: number): string {

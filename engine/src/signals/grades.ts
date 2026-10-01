@@ -97,7 +97,8 @@ function primeLines(f: SignalFeatures, rule?: SignalRule): Line[] | null {
   if (rule === 'snipe') {
     const r = PRIME_RULES.early
     return [
-      { ok: f.ageSec <= r.lateMaxAgeSec, text: `${f.ageSec <= r.maxAgeSec ? 'early' : 'late'} crowd: ${f.ageSec}s after launch (≤ ${r.lateMaxAgeSec / 60} min)` },
+      // The late crowd (to 10 minutes) was taken back out the same day: its first live trade, DEGEN at 399s, was rugged -94% in 12s.
+      { ok: f.ageSec <= r.maxAgeSec, text: `early crowd: ${f.ageSec}s after launch (≤ ${r.maxAgeSec}s)` },
       { ok: f.buyers >= r.minBuyers, text: `${f.buyers} buyers (${r.minBuyers}+)` },
       { ok: f.topBuyerPct <= r.maxTopBuyerPct, text: `largest buyer ${Math.round(f.topBuyerPct)}% (≤ ${r.maxTopBuyerPct}%)` },
       { ok: f.buySellRatio === null || f.buySellRatio >= r.minBuySellRatio, text: f.buySellRatio === null ? 'no sells yet' : `buys ${f.buySellRatio.toFixed(1)}× sells (${r.minBuySellRatio}×+)` },
