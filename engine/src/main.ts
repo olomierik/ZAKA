@@ -52,6 +52,7 @@ import { Tiers } from './bot/tiers'
 import { MemoryBotStore, PostgresBotStore } from './bot/store'
 import { LiveExecutor } from './trading/live'
 import { DataApi, startServer } from './ws/server'
+import { startSignalEngine, type QuantBoot } from './quant/boot'
 
 const cfg = loadConfig()
 setLogLevel(cfg.logLevel)
@@ -73,6 +74,7 @@ const ws = new WsProvider(cfg.wsUrls, { staleHeadMs: cfg.staleHeadMs })
 let engine: MarketEngine | null = null
 let botsHealth: (() => { email: boolean; userLive: boolean; ownerWallet: boolean; mode: string | null; bots: number; running: number }) | null = null
 let stream: ChainStream | null = null
+let quant: QuantBoot | null = null
 let redisOk = hot.kind === 'memory'
 
 const health = () => {
@@ -102,6 +104,8 @@ const health = () => {
     lastNewTokenAt: engine?.lastNewTokenAt || null,
     // What's switched on for visitors' bots (yes/no only; never a secret): email (RESEND_API_KEY), live (BOT_WALLET_SECRET), the owner's bot wallet (BOT_PRIVATE_KEY).
     bots: botsHealth?.() ?? null,
+    // The signal engine (engine/src/quant): on, warm, the regime, signals kept, open paper positions.
+    quant: quant?.health() ?? null,
   }
 }
 
@@ -189,13 +193,15 @@ async function main() {
   // Live trading needs a bot wallet: BOT_PRIVATE_KEY, set by the owner (read here only, never logged).
   let botRef: Bot | null = null
   let live: LiveTrader | null = null
+  // The bot wallet's executor, shared with the signal engine's live orders (one nonce sequence for the wallet).
+  let exec: LiveExecutor | null = null
   const key = process.env.BOT_PRIVATE_KEY?.trim()
   if (cfg.botMode !== 'off' && key) {
     if (!/^0x[0-9a-fA-F]{64}$/.test(key)) log.error('BOT_PRIVATE_KEY is not a 0x-prefixed 32-byte hex key: live trading stays off')
     else {
       // The send endpoint stays out of the published limits and the logs (a private RPC URL can carry a token).
       const { sendUrl, ...limits } = cfg.live
-      const exec = new LiveExecutor({ privateKey: key as `0x${string}`, readUrls: cfg.httpUrls, sendUrl })
+      exec = new LiveExecutor({ privateKey: key as `0x${string}`, readUrls: cfg.httpUrls, sendUrl })
       live = new LiveTrader({
         exec,
         // On the dollar plan the day's loss counts from the plan's start (bot/dollarPlan.ts).
@@ -246,11 +252,16 @@ async function main() {
     live, owner: cfg.botOwner, history: history.enabled ? history : null, liveSignals: cfg.botSignals.live, liveGrades: cfg.liveGrades, launchpadOnly: cfg.launchpadOnly,
   })
   botRef = bot
+  const control = new ControlVerifier(cfg.botOwner as `0x${string}` | null, cfg.httpUrls)
   if (bot) {
     eng.observers.push(bot)
     await bot.start()
-    dataApi?.attachBot(bot, new ControlVerifier(cfg.botOwner as `0x${string}` | null, cfg.httpUrls), accounts, users, tiers)
+    dataApi?.attachBot(bot, control, accounts, users, tiers)
   }
+  // The signal engine (engine/src/quant): its own scoring, strategies, paper book and validation; live orders only
+  // behind its live gate (SIG_LIVE_ALLOWED, the owner's switch, walk-forward and paper records).
+  quant = await startSignalEngine({ eng, pools, bot, exec, databaseUrl: cfg.databaseUrl, control: cfg.botOwner ? control : null, metricsToken: cfg.metricsToken })
+  if (quant && dataApi) dataApi.quant = quant.api
   await eng.warmStart()
   // The scanner lists every launch of the last 48h at once, not only coins that trade after a restart.
   bot?.seed()

@@ -888,6 +888,12 @@ export class Bot implements EngineObserver {
 
   // ── safety ──────────────────────────────────────────────────────────
 
+  /** The coin's last safety report if it's recent (the signal engine reads it without waiting: engine/src/quant). */
+  reportCached(token: string, maxAgeMs = 180_000, now = Date.now()): SafetyReport | null {
+    const r = this.reports.get(token)
+    return r && now - r.at <= maxAgeMs ? r : null
+  }
+
   /** The coin's safety report; `deep` adds the probe, holders and funding (cached 2 minutes). */
   async report(token: string, deep: boolean): Promise<SafetyReport | null> {
     const meta = this.o.engine.metas.get(token)

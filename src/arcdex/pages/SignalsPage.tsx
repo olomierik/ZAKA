@@ -15,6 +15,10 @@
 //   Signals       the signals, with every check behind them, each graded
 //                 Prime, Core or Standard, and each grade's record at live
 //                 speed (engine/src/signals/grades.ts)
+//   Signal engine the 100-point signal engine (engine/src/quant): every coin
+//                 scored live, its signals and why, paper trades, strategy
+//                 results, walk-forward validation and the live gate,
+//                 smart money, and the owner's signed controls
 //   Bot results   the bot's own paper and live results, and the owner's
 //                 live switch (a signed message)
 //
@@ -38,6 +42,7 @@ import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { txErrorText } from '../lib/tx'
 import { useCash, useSendUsdc } from '../lib/usdc'
 import { cardFromAccount, cardFromMarket, ShareBotButton } from '../components/BotShare'
+import SignalEnginePanel from '../components/SignalEngine'
 import { profitNotifyOn, setProfitNotify } from '../components/ProfitAlerts'
 import { ARCD_TIERS, arcdAmount, countdown, GRADE_COLOR, GRADE_NAME, GRADE_TIER, STRATEGY_TIER, TIERS_ENFORCED, TIERS_START, tierName } from '../lib/tiers'
 import type { Page } from '../App'
@@ -48,7 +53,7 @@ import { shortAddr, useEmbeddedAddress, useTrader } from '../lib/identity'
 type Tab = 'all' | 'snipe' | 'scalp' | 'secondLeg'
 type Strategy = BotStrategy
 type Book = 'paper' | 'live'
-type View = 'mine' | 'market' | 'scanner' | 'signals' | 'bot'
+type View = 'mine' | 'market' | 'scanner' | 'signals' | 'engine' | 'bot'
 const EXPLORER = 'https://explorer.arc.io'
 const LIVE_RED = '#ef4444'
 const VIEW_KEY = 'arcdex:autotrade-view'
@@ -117,7 +122,7 @@ export default function SignalsPage({ navigate, view: pageView, bot }: { navigat
   }, [])
 
   const mode = status?.mode ?? stats?.mode ?? 'paper'
-  const VIEWS: [View, string][] = [['mine', T('My bots')], ['market', T('Marketplace')], ['scanner', T('Scanner')], ['signals', T('Signals')], ['bot', T('Bot results')]]
+  const VIEWS: [View, string][] = [['mine', T('My bots')], ['market', T('Marketplace')], ['scanner', T('Scanner')], ['signals', T('Signals')], ['engine', T('Signal engine')], ['bot', T('Bot results')]]
 
   return (
     <div className="token-page content-page">
@@ -149,6 +154,7 @@ export default function SignalsPage({ navigate, view: pageView, bot }: { navigat
               : 'Launchpad coins only: a coin can become a signal only if a known Arc launchpad launched it (Argus, ARCDEX, Mercuri, SolonPad, Peach, Faze, Aka.fun, o1, Minara, Long.supply). Coins from anywhere else are listed, never traded.')}</div>
           )}
           {view === 'scanner' && <><RejectionsCard /><ScannerPanel scan={scan} navigate={navigate} /></>}
+          {view === 'engine' && <SignalEnginePanel navigate={navigate} />}
           {view === 'signals' && <StrategyBoardCard />}
           {view === 'signals' && <GradesCard grades={stats?.grades} />}
           {view === 'signals' && stats?.liveSpeed && <LiveSpeedCard rows={stats.liveSpeed} all={stats.routing?.liveSignals === 'all'} />}

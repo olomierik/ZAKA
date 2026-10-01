@@ -1186,6 +1186,27 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
   - **Search:** includes fresh launches.
 - **Tests:** `bun run engine:test` — 53 tests (+2 Postgres ones that need `PG_TEST_URL`; `engine/test/curves.test.ts` covers Mercuri and SolonPad), including catch-up backpressure, live batching, replays of recorded mainnet data (`engine/test/fixtures/mainnet.json`) and a RESP3 Redis round-trip against Bun's client. Live latency: `bun engine/scripts/latency-check.ts <ws-url> 60`.
 
+## The signal engine — `engine/src/quant` (2026-10-02)
+
+A 100-point meme-coin signal engine built into the market engine, beside the existing bot (which it doesn't change). Full design, formulas, strategies, risk controls, measurements, environment and the steps before live: **`engine/SIGNAL_ENGINE.md`**.
+- **What it does:** every coin of the scored launchpads (`SIG_LAUNCHPADS`, Argus by default) is scored on flow 20, momentum 15, volume 15, liquidity 15, smart money 10, holders 10, safety 10 and regime 5 (`quant/score.ts`). Three strategies (`early_momentum`, `breakout`, `smart_money`) say what kind of setup it is. A trade needs the score, safety (`quant/safety.ts` over the existing scanner and rug guard), exhaustion, distribution, the expected value after costs and the risk limits to agree.
+- **Positions:** sell 20% at +12%, 25% at +25% and 25% at +50%, then trail the rest. Volatility stops, break-even after the first target, and exits when liquidity, distribution, momentum or time say so.
+- **Reused, not duplicated:** the trade stream (an `EngineObserver`), the scanner (`Bot.reportCached` / `report`), the rug guard, the bot wallet's executor (shared, one nonce sequence), the Postgres store (new `arcdex_sig_*` tables, created on start; `engine/sql/20261002000000_signal_engine.sql`) and the owner's signed controls (`ControlVerifier.verifyText`, `api/_quantProtocol.ts`).
+- **Paper only by default.** Live orders need all of these (`quant/risk.ts liveGate`):
+  - `SIG_LIVE_ALLOWED=1` on Railway;
+  - the owner's signed `{"risk":{"liveEnabled":true}}`;
+  - a walk-forward run with 30+ out-of-sample trades and a profit factor of 1.2+;
+  - the paper book over 2+ days and 30+ trades passing the same bars.
+
+  None of that was done on 2026-10-02.
+- **Validation:** `quant/backtest.ts` replays recorded trades through the same engine (a test checks for no look-ahead). `quant/walkforward.ts` chooses on training windows, checks on validation and reports untouched test windows. The engine re-runs it on the last 48h every 12h on a worker thread (`quant/validator.ts`). CLI: `bun engine/scripts/quant-backtest.ts --tapes <dir> [--walkforward]`, or `--api <engine url> --hours 48`.
+- **Measured on 3.6 days of Argus trades (190 coins):**
+  - Scores clustered at 55–68. The bar to trade is 60 (`gates.minSignalScore`), not the 75 of the "trade candidate" band.
+  - Walk-forward out of sample: 23 trades, 39% won, profit factor 1.26, +7.4% a trade. That average rests on one +85% trade, and two of three folds lost. Inconclusive.
+- **API:** `GET /v1/quant/status|signals|radar|positions|wallets|events|validations|dataset`, `POST /v1/quant/control` (signed settings patch, kill switch, validate now). Site: /autotrade → **Signal engine** tab (`components/SignalEngine.tsx`), every string in all six dictionaries.
+- **Tests:** `engine/test/quantCore.test.ts`, `quantTrading.test.ts`, `quantEngine.test.ts` (55 tests). The store's SQL was run against PGlite (schema, batched upserts, the dataset join).
+- **Railway:** the Dockerfile copies `api/_quantProtocol.ts`, and `railway.toml` watches it. Railway's own service settings (Watch Paths) should get it too, or a change to that file alone won't redeploy the engine.
+
 ## Hosting — arcdex.online only
 
 **Every commit to `main` deploys to arcdex.online, and nowhere else** (owner decision, 2026-09-24).

@@ -26,6 +26,7 @@
 //   GET /v1/bot/rejections                      why watched coins aren't signals, by main reason
 //   GET /v1/bot/board                           the strategy board: which of the three strategies live bots trade, with whose settings
 //   /v1/auth/*, /v1/me…, /v1/bots…               accounts, owners' bots, the marketplace (ws/botApi.ts)
+//   /v1/quant/*                                 the signal engine: signals, radar, positions, wallets, validation, controls (quant/api.ts)
 //   GET /health           summary (200 ok/degraded, 503 down)
 //   GET /metrics          full metrics (Bearer METRICS_TOKEN when set)
 
@@ -48,6 +49,7 @@ import type { MarketEngine, Publisher } from '../market/engine'
 import type { HistoryStore } from '../store/history'
 import type { HotStore } from '../store/hot'
 import type { Traffic } from '../traffic'
+import { quantApi, type QuantApiDeps } from '../quant/api'
 
 interface Conn { id: number; ip: string; subs: Set<string>; allowance: number; last: number }
 
@@ -66,6 +68,8 @@ export class DataApi {
   tiers: Tiers | null = null
   /** The site's traffic counter (traffic.ts). */
   traffic: Traffic | null = null
+  /** The signal engine (engine/src/quant), when this process runs it. */
+  quant: QuantApiDeps | null = null
   attachBot(b: Bot, control: ControlVerifier | null = null, accounts: PaperAccounts | null = null, users: Users | null = null, tiers: Tiers | null = null) { this.bot = b; this.control = control; this.accounts = accounts; this.users = users; this.tiers = tiers }
 
   async tokenSnapshot(token: string, limit = 50): Promise<{ stats: TokenStats | null; trades: WireTrade[] }> {
@@ -237,6 +241,13 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         }
         if (req.method === 'GET') return json(req, 200, await traffic.counts(), 'public, max-age=5')
         return json(req, 405, { error: 'method not allowed' })
+      }
+      // The signal engine (quant/api.ts).
+      if (url.pathname.startsWith('/v1/quant/')) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        if (!api.quant) return json(req, 503, { error: 'the signal engine is not running in this process' })
+        try { return await quantApi(req, url, api.quant, (status, body, cache) => json(req, status, body, cache)) }
+        catch (e) { log.warn('quant api error', { path: url.pathname, error: errMsg(e) }); return json(req, 500, { error: 'internal error' }) }
       }
       // Accounts, owners' bots and the marketplace (ws/botApi.ts).
       if (url.pathname.startsWith('/v1/auth/') || url.pathname === '/v1/me' || url.pathname.startsWith('/v1/me/') || url.pathname === '/v1/bots' || url.pathname.startsWith('/v1/bots/') || url.pathname === '/v1/tiers') {

@@ -52,12 +52,17 @@ export class ControlVerifier {
   }
 
   /** null when the owner signed this request; otherwise why not. */
-  async verify(r: ControlRequest, now = Date.now()): Promise<string | null> {
+  verify(r: ControlRequest, now = Date.now()): Promise<string | null> {
+    return this.verifyText(botControlMessage(r.control, r.at), r.at, r.signature, now)
+  }
+
+  /** null when the owner signed `message` (made at `at`, within 5 minutes, used once); otherwise why not. The signal engine's controls use it too. */
+  async verifyText(message: string, at: number, signature: Hex, now = Date.now()): Promise<string | null> {
     if (!this.owner || !isAddress(this.owner)) return 'no owner wallet is configured on the engine (BOT_OWNER_ADDRESS)'
-    if (Math.abs(now - r.at) > MAX_AGE_MS) return 'the signature is too old (or the clock is off); sign again'
-    const key = r.signature.toLowerCase()
+    if (Math.abs(now - at) > MAX_AGE_MS) return 'the signature is too old (or the clock is off); sign again'
+    const key = signature.toLowerCase()
     if (this.used.has(key)) return 'this signature was already used; sign again'
-    const ok = await this.verifyMessage({ address: this.owner, message: botControlMessage(r.control, r.at), signature: r.signature }).catch(() => false)
+    const ok = await this.verifyMessage({ address: this.owner, message, signature }).catch(() => false)
     if (!ok) return "not signed by the owner's wallet"
     this.used.set(key, now)
     for (const [k, t] of this.used) if (now - t > MAX_AGE_MS * 2) this.used.delete(k)

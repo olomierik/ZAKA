@@ -10,7 +10,7 @@ RUN cd engine && bun install --frozen-lockfile --production
 
 # The engine plus the shared modules it imports from api/ (no Vercel functions run here).
 # engine/test/image.test.ts fails if the engine imports one that isn't listed here.
-COPY api/_arcLogs.ts api/_arcSwaps.ts api/_curves.ts api/_marketProtocol.ts api/_supabaseAdmin.ts ./api/
+COPY api/_arcLogs.ts api/_arcSwaps.ts api/_curves.ts api/_marketProtocol.ts api/_quantProtocol.ts api/_supabaseAdmin.ts ./api/
 COPY engine/src ./engine/src
 
 ENV NODE_ENV=production PORT=8080
