@@ -241,6 +241,9 @@ export interface SignalFeatures {
   flags: string[]
   /** What a $1 round trip cost in the honeypot probe, %. */
   roundTripPct: number | null
+  /** A momentum signal: the largest buyer's share of all the market's buying since launch, %, and whether the coin had an early crowd (engine/src/signals/grades.ts). */
+  launchTopBuyerPct?: number | null
+  earlyCrowd?: boolean
 }
 
 /** The entry filters a visitor's bot has learned, per strategy (engine/src/bot/learner.ts). */

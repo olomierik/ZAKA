@@ -8,7 +8,7 @@ import { toParams, defaultTuning } from '../src/bot/learner'
 import { PaperAccounts, type PaperAccount, type PaperSignal } from '../src/bot/paperAccounts'
 import { MemoryBotStore } from '../src/bot/store'
 import { Tiers, TIERS } from '../src/bot/tiers'
-import { GRADE_REVIEW, GradeBook, gradeOf } from '../src/signals/grades'
+import { GRADE_REVIEW, GradeBook, gradeOf, isEarlyCrowd } from '../src/signals/grades'
 import { exitsAt, openPosition, STRATEGIES } from '../src/trading/paper'
 import type { Rpc } from '../src/chain/http'
 
@@ -25,12 +25,30 @@ describe('signal grades', () => {
     expect(g.why.join(' · ')).toMatch(/largest buyer 8%/)
   })
   test('a risk flag doesn\'t stop a Prime grade (every Prime signal in the replays had one)', () => {
-    expect(gradeOf({ ...PRIME, flags: ['holders', 'serial', 'copycat'] }).grade).toBe('prime')
+    expect(gradeOf({ ...PRIME, flags: ['holders', 'serial', 'copycat'] }, 'snipe').grade).toBe('prime')
   })
-  test('one buyer with 18% of the buying: Core, and it says what Prime needs', () => {
-    const g = gradeOf({ ...PRIME, topBuyerPct: 18 })
-    expect(g.grade).toBe('core')
-    expect(g.why).toEqual(['Prime needs largest buyer 18% (≤ 10%)'])
+  test('early crowd: the serial launches with 22-27 buyers and the largest at 13-19% are Prime now (8 of 8 on unseen coins)', () => {
+    const agi: SignalFeatures = { ...PRIME, ageSec: 30, buyers: 25, topBuyerPct: 16.2, buySellRatio: 9.9, runUp: 1.042, liquidityUsd: 10_167, roundTripPct: 1.99 }
+    expect(gradeOf(agi, 'snipe').grade).toBe('prime')
+    expect(gradeOf({ ...agi, ageSec: 90 }, 'snipe').grade).not.toBe('prime') // late: the edge is in the first seconds
+    const g = gradeOf({ ...agi, topBuyerPct: 25 }, 'snipe')
+    expect(g.grade).not.toBe('prime')
+    expect(g.why).toContain('Prime needs largest buyer 25% (≤ 20%)')
+  })
+  test('crowd momentum: 12+ buyers in two minutes, no wallet over 20% since launch, not an early-crowd coin', () => {
+    const burst: SignalFeatures = { ...PRIME, ageSec: 900, buyers: 15, buySellRatio: 3, runUp: 1.08, topBuyerPct: 30, launchTopBuyerPct: 12, earlyCrowd: false, liquidityUsd: 20_000 }
+    expect(gradeOf(burst, 'momentum').grade).toBe('prime')
+    expect(gradeOf({ ...burst, earlyCrowd: true }, 'momentum').grade).not.toBe('prime')
+    expect(gradeOf({ ...burst, launchTopBuyerPct: 25 }, 'momentum').grade).not.toBe('prime')
+    expect(gradeOf({ ...burst, runUp: 1.2 }, 'momentum').grade).not.toBe('prime')
+    expect(gradeOf({ ...burst, launchTopBuyerPct: undefined }, 'momentum').grade).not.toBe('prime') // not measured: not Prime
+    expect(gradeOf(burst).grade).not.toBe('prime') // a rule it doesn't belong to
+  })
+  test('the engine marks early crowds as it watches a coin', () => {
+    expect(isEarlyCrowd({ buyers: 10, topBuyerPct: 20, buySellRatio: 2, runUp: 1.2 }, 25)).toBe(true)
+    expect(isEarlyCrowd({ buyers: 9, topBuyerPct: 20, buySellRatio: 2, runUp: 1.2 }, 25)).toBe(false)
+    expect(isEarlyCrowd({ buyers: 10, topBuyerPct: 20, buySellRatio: 2, runUp: 1.2 }, 15)).toBe(false) // too early to judge
+    expect(isEarlyCrowd({ buyers: 10, topBuyerPct: 20, buySellRatio: 2, runUp: 1.2 }, 80)).toBe(false)
   })
   test('already up 30%, or few buyers: Standard', () => {
     expect(gradeOf({ ...PRIME, runUp: 1.3 }).grade).toBe('standard')
@@ -38,7 +56,7 @@ describe('signal grades', () => {
     expect(gradeOf(undefined).grade).toBe('standard')
   })
   test('no sells yet counts as buying well ahead', () => {
-    expect(gradeOf({ ...PRIME, buySellRatio: null }).grade).toBe('prime')
+    expect(gradeOf({ ...PRIME, buySellRatio: null }, 'snipe').grade).toBe('prime')
   })
   test('a grade whose replays fail is under review: its signals go out one grade lower until it recovers', () => {
     const book = new GradeBook()
@@ -54,17 +72,18 @@ describe('signal grades', () => {
   })
 })
 
-describe('Precision: Prime signals, all of it sold at +6%', () => {
+describe('Precision: Prime signals, all of it sold at +10%', () => {
   test('the strategy and a bot\'s tuning of it', () => {
-    expect(STRATEGIES.precision).toMatchObject({ tp1Multiple: 1.06, tp1SellPct: 1, stopLoss: 0.93, maxHoldMin: 10, exitOnCreatorSell: true })
-    expect(toParams(defaultTuning('precision'), 10, 'precision')).toMatchObject({ tp1Multiple: 1.06, tp1SellPct: 1, stopLoss: 0.93, timeStopMinGain: 1.02, maxHoldMin: 10 })
+    expect(STRATEGIES.precision).toMatchObject({ tp1Multiple: 1.1, tp1SellPct: 1, stopLoss: 0.9, maxHoldMin: 10, exitOnCreatorSell: true })
+    expect(toParams(defaultTuning('precision'), 10, 'precision')).toMatchObject({ tp1Multiple: 1.1, tp1SellPct: 1, stopLoss: 0.9, maxHoldMin: 10 })
+    expect(toParams(defaultTuning('precision'), 10, 'precision').timeStopMinGain).toBeCloseTo(1.0333, 3)
     expect(toParams(defaultTuning('precision'), 10, 'precision').breakevenAfterTp1).toBeUndefined()
   })
-  test('sells everything at +6% and closes', () => {
+  test('sells everything at +10% and closes', () => {
     const p = openPosition({ id: 'p', strategy: 'precision', token: T(1), symbol: 'C', launchpad: 'ARGUS', signalId: 's', price: 1, cost: 0.01, now })
-    expect(exitsAt(p, 1.059, now + 1_000)).toEqual([])
-    expect(exitsAt(p, 1.061, now + 2_000)).toEqual([{ qty: p.qty, reason: 'tp1' }])
-    expect(exitsAt(p, 0.929, now + 3_000)).toEqual([{ qty: p.qty, reason: 'stop' }])
+    expect(exitsAt(p, 1.099, now + 1_000)).toEqual([])
+    expect(exitsAt(p, 1.101, now + 2_000)).toEqual([{ qty: p.qty, reason: 'tp1' }])
+    expect(exitsAt(p, 0.899, now + 3_000)).toEqual([{ qty: p.qty, reason: 'stop' }])
     expect(exitsAt(p, 1.01, now + 3 * 60_000 + 1)).toEqual([{ qty: p.qty, reason: 'time' }]) // not up 2% after 3 minutes
   })
 })
@@ -179,13 +198,13 @@ describe('visitors\' bots with grades, Precision and tiers', () => {
     return () => tiers.access({ wallets: [], grant: tier === 'free' ? null : { tier, until: now + 86_400_000 * 30 } }, now)
   }
 
-  test('a bot following Precision trades a Prime signal with it: all of it at +6%', () => {
+  test('a bot following Precision trades a Prime signal with it: all of it at +10%', () => {
     const { accts, make } = setup()
     const a = make('Sharp', ['precision', 'snipe'])
     accts.onSignal(sig({ quality: quality('prime') }), now)
     expect(a.positions[0]).toMatchObject({ strategy: 'precision', grade: 'prime', sizeUsd: 20 })
-    expect(a.positions[0].exits).toMatchObject({ tp1Multiple: 1.06, tp1SellPct: 1 })
-    expect(a.events[0].text).toMatch(/precision; 20% of its \$100\.00, a Prime signal.*sells all of it at \+6%/)
+    expect(a.positions[0].exits).toMatchObject({ tp1Multiple: 1.1, tp1SellPct: 1 })
+    expect(a.events[0].text).toMatch(/precision; 20% of its \$100\.00, a Prime signal.*sells all of it at \+10%/)
     // A Core signal goes to its snipe strategy.
     accts.onSignal(sig({ id: 's2', token: T(2), quality: quality('core') }), now)
     expect(a.positions[1]).toMatchObject({ strategy: 'snipe', grade: 'core' })

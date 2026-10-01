@@ -1916,5 +1916,8 @@ const d: Record<string, string> = {
   "Live bots trade Prime signals now, the cleanest: all of it sold at +6%, fast. Other grades join by themselves once they prove a profit at live speed (the Signals tab shows each grade's record).": "实盘机器人现在只交易最干净的 Prime 信号：+6% 全部卖出，速进速出。其他级别在实盘速度下证明盈利后会自动加入（信号标签页显示每个级别的记录）。",
   "Live bots trade it": "实盘机器人交易它",
   "🎉 Free live trading: every account trades live without $ARCD until {d}. Then tiers start.": "🎉 免费实盘交易：{d} 之前，所有账户无需 $ARCD 即可实盘交易。之后等级开始生效。",
+  "Prime signals only: an early crowd (10+ buyers in a coin's first minute, none over 20% of the buying) or a crowd momentum burst. All of it sold at +10%, −10% stop, 10 minutes at most, out at once if the creator sells.": "仅 Prime 信号：早期人群（币上线第一分钟内 10+ 个买家，单个买家不超过买盘 20%）或人群动量爆发。+10% 全部卖出，止损 −10%，最长 10 分钟，创建者一卖出即离场。",
+  "Live bots trade Prime signals now: early crowds and crowd momentum bursts, all of it sold at +10%, fast. Other grades join by themselves once they prove a profit at live speed (the Signals tab shows each grade's record).": "实盘机器人现在交易 Prime 信号：早期人群与人群动量爆发，+10% 全部卖出，速进速出。其他级别在实盘速度下证明盈利后会自动加入（信号标签页显示每个级别的记录）。",
+  "Precision: all sold at +10%, stop −10%, 10 minutes at most": "精准：+10% 全部卖出，止损 −10%，最长 10 分钟",
 }
 export default d

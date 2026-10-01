@@ -66,7 +66,8 @@ export const STRATEGIES: Record<Strategy, StrategyParams> = {
   // unless up 2%, 10 minutes at most, and out when the creator sells. On the
   // 11 Prime signals replayed at live speed it won 10 (+3.1% a trade); the
   // take-profit came 10–48s in, the creator's first sale about 2 minutes in.
-  precision: { sizeUsd: 10, stopLoss: 0.93, tp1Multiple: 1.06, tp1SellPct: 1, trailFromPeak: 0.25, timeStopMin: 3, timeStopMinGain: 1.02, maxHoldMin: 10, exitOnCreatorSell: true },
+  // 2026-10-01: all of it at +10% (was +6%), -10% stop: the two Prime strategies tested best there (signals/grades.ts).
+  precision: { sizeUsd: 10, stopLoss: 0.9, tp1Multiple: 1.1, tp1SellPct: 1, trailFromPeak: 0.25, timeStopMin: 3, timeStopMinGain: 1.0333, maxHoldMin: 10, exitOnCreatorSell: true },
 }
 
 export const RISK = {

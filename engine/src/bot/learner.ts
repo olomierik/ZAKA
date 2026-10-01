@@ -60,11 +60,11 @@ const EXITS: Record<Strategy, Pick<StrategyTuning, 'takeProfit' | 'stopLoss' | '
   snipe: { takeProfit: 1.1, stopLoss: 0.9, timeStopMin: 3, maxHoldMin: 60 },
   'second-leg': { takeProfit: 1.35, stopLoss: 0.85, timeStopMin: 120, maxHoldMin: 360 },
   // Prime signals only: all of it at +6% (signals/grades.ts).
-  precision: { takeProfit: 1.06, stopLoss: 0.93, timeStopMin: 3, maxHoldMin: 10 },
+  precision: { takeProfit: 1.1, stopLoss: 0.9, timeStopMin: 3, maxHoldMin: 10 },
 }
 
 /** How far learning may move a take-profit. */
-export const TP_BOUNDS: Record<Strategy, [number, number]> = { scalp: [1.06, 1.3], snipe: [1.06, 1.6], 'second-leg': [1.15, 1.8], precision: [1.03, 1.1] }
+export const TP_BOUNDS: Record<Strategy, [number, number]> = { scalp: [1.06, 1.3], snipe: [1.06, 1.6], 'second-leg': [1.15, 1.8], precision: [1.05, 1.15] }
 
 /**
  * The exit plan (2026-09-30): half sold at the take-profit, then the stop at

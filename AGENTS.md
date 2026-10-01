@@ -816,6 +816,25 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
       - **Site:** a banner on every Autotrade tab ("Free live trading … {time} left", counting down), the same on the landing's tiers section, "LIVE" on signals live bots trade, "Live bots trade it now / not yet" on each grade, and a note on live bots' Overview.
       - **Sharing:** a live bot's P&L card shows its P&L as a % of what its wallet held when it went live (`BotLiveView.startBalanceUsd`), and the post adds "🔥 N wins in a row" from 3 on.
       - Tests: `tiers.test.ts` (the deadline, which grades live bots trade), `accounts.test.ts` (a live bot trades a Prime scalp with Precision at 20% of its wallet, and passes over a Standard signal).
+    - **Two strategies found by search, now Prime (2026-10-01, owner: "monitor the engine until it's profitable; refine it with more strategies until you find two or three correct ones with a good win rate"; and "live trades don't take positions at all").**
+      - **Why live bots took nothing:** they trade Prime only, and no signal had graded Prime since the grades went live. The 8 signals since were Core or Standard (Core 4 of 7 won, −2.6% a trade; Standard 4 of 20, −7.5%).
+      - **The search** (research scripts outside the repo): every coin of the engine's 72 hours with 15+ trades (139), walked trade by trade as the engine sees it. A buy fills 2.5s after the rule, each sale 2s after its trigger, with 1.2% costs a side. Rules were chosen on the first half of the coins by launch time and judged on the second half, which the choice never saw.
+        - **Early crowd** (the snipe rule): 20–75s after launch, 10+ of the market's own buyers, none over 20% of the buying, buys at least 2× sells, up no more than 20%. All of it at +10%: 21 of 21, then 8 of 8 on the unseen half (+7% a trade). With the signal 15s late (the scan's time), still 28 of 29.
+        - **Crowd momentum** (the momentum rule): a minute or more old and not an early-crowd coin; 12+ buyers in two minutes, buying 2× selling, up 2–15% in the window, no wallet over 20% of all its buying since launch, $5,000+ liquidity. At +10%: 14 of 16, then 21 of 23 (+6.8%).
+        - **Losing variants:** on early-crowd coins momentum loses (they dump after the pump). A 10% crowd limit brings back −90% trades. Dip rebounds fell apart with small changes. Momentum without the crowd limit made +16%, then −0.5% on the unseen half.
+        - **Signal timing:** the same coins entered when the engine actually signaled (31–43s, after its scan) won 27 of 41 (−2.8%). Entered at the first trade with 10+ buyers (about 20s), they won 36 of 42 (+4.7%).
+      - **In the engine:**
+        - `PRIME_RULES`, `isEarlyCrowd` and `gradeOf(features, rule)` in `signals/grades.ts`.
+        - Momentum signals carry `launchTopBuyerPct` and `earlyCrowd` (`SignalFeatures`).
+        - The bot marks early crowds as it watches a coin (`Bot.earlyCrowd`).
+        - A young coin with 5+ market buyers gets its safety scan started at once, so the signal isn't held for it.
+        - A Prime signal is past rule probation; its grade's own live-speed record decides.
+        - The rules now fire where the strategies start (a snipe fires once per coin; firing at 4 buyers used up a coin's one signal on a losing grade):
+          - snipe: 10+ buyers, buys 2×, largest buyer 20% or less;
+          - momentum: 12+ buyers, buys 2×, up 15% at most, $5,000+ liquidity.
+        - Precision sells all at +10% (was +6%), −10% stop, out after 3 minutes unless up 3.3%, 10 minutes at most. Paper bots still on the old +6% Precision tuning start over on it.
+      - **What to expect:** both strategies fired about 10 times a day each in the data, mostly on a few serial launchers' coins, so a launcher changing its pattern changes the results. The Prime grade's live-speed record (the Signals tab) and its review are the check: a failing record hands Prime signals out as Core, and live bots stop taking them.
+      - Tests: `tiers.test.ts` (both Prime strategies, the early-crowd mark, Precision at +10%), `balanceAndSignals.test.ts`, `botLearning.test.ts`, `signalMix.test.ts`, `botFlow.test.ts` (the rules at their new thresholds).
       - Tests: `liveSpeed.test.ts` (live bots only; readiness on the team's record), `botFlow.test.ts` (every signal to live bots).
     - **Dip rebound** (the `second-leg` strategy; it needed a 10× run): ran 2×+, pulled back 25–70% (was 50–85%), held a higher low for 3+ minutes (10), 8%+ off the bottom (20%), buying back (last 15 minutes' buys 1.2× sells, $100+). The same coin again after an hour (6).
     - **Signals within 2 minutes:** each part of the deep scan gets a time budget (honeypot probe 10s, holders 12s, funding trace 15s). Funding not traced in time is a risk flag (the coin can still be a fast scalp), not a hard block, and a scan missing an answer is retried after 15s instead of being held 2 minutes. A honeypot probe that doesn't answer still blocks.

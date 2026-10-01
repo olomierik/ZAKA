@@ -23,13 +23,13 @@ const DEV = A(0xde5)
 const tape = (o: Partial<TapeTrade>): TapeTrade => ({ block: 110, ts: 0, wallet: A(1), side: 'BUY', usd: 60, tokens: 1_000, price: 0.01, ...o })
 
 describe('the snipe rule reads the market\'s own buying', () => {
-  const organic = Array.from({ length: 8 }, (_, i) => tape({ wallet: A(i + 1), block: 110 + i, price: 0.02 + i * 0.001 }))
+  const organic = Array.from({ length: 12 }, (_, i) => tape({ wallet: A(i + 1), block: 110 + i, price: 0.02 + i * 0.001 }))
   const devBuy = tape({ wallet: DEV, block: 100, usd: 2_500, tokens: 499_000_000, price: 0.005 })
   test('a creator who bought $2,500 at launch no longer blocks it as "one buyer"', () => {
     const f = computeFlow([devBuy, ...organic], { launchBlock: 100, creator: DEV, supply: 1e9 })
-    expect(f.topBuyerPct).toBeGreaterThan(80) // what the rule used to read
-    expect(f.organic).toMatchObject({ buyers: 8, buyUsd: 480, sellUsd: 0 })
-    expect(f.organic.topBuyerPct).toBeCloseTo(12.5, 6)
+    expect(f.topBuyerPct).toBeGreaterThan(70) // what the rule used to read
+    expect(f.organic).toMatchObject({ buyers: 12, buyUsd: 720, sellUsd: 0 })
+    expect(f.organic.topBuyerPct).toBeCloseTo(100 / 12, 6)
     expect(snipeReady(f, 120).ok).toBe(true)
   })
   test('nor passes it on its own: $2,500 of dev buying and two small buyers isn\'t demand', () => {
@@ -44,8 +44,8 @@ describe('the snipe rule reads the market\'s own buying', () => {
       ...organic,
       tape({ wallet: A(50), side: 'SELL', block: 130, usd: 400, price: 0.027 }),
     ], { launchBlock: 100, creator: DEV, supply: 1e9 })
-    expect(f.organic).toMatchObject({ buyers: 8, buyUsd: 480, sellUsd: 400, firstPrice: 0.02 })
-    expect(snipeReady(f, 120).failed).toContain('ratio') // $480 bought vs $400 sold
+    expect(f.organic).toMatchObject({ buyers: 12, buyUsd: 720, sellUsd: 400, firstPrice: 0.02 })
+    expect(snipeReady(f, 120).failed).toContain('ratio') // $720 bought vs $400 sold: under 2x
   })
 })
 
@@ -97,8 +97,8 @@ function rebound(trade: ReturnType<typeof setup>['trade']) {
   trade({ price: 2.2, at: m(15) })
   trade({ side: 'SELL', price: 1.3, at: m(12) })
   trade({ price: 1.38, at: m(8) })
-  // Nine buyers in the last two minutes, two of them in the last 30 seconds: a crowd still buying, as the momentum rule wants.
-  for (let k = 0; k < 9; k++) trade({ price: 1.4 + k * 0.012, at: now - 110_000 + k * 12_000 })
+  // Thirteen buyers in the last two minutes, several in the last 30 seconds: a crowd still buying, as the momentum rule wants.
+  for (let k = 0; k < 13; k++) trade({ price: 1.4 + k * 0.01, at: now - 110_000 + k * 8_500 })
 }
 
 describe('the rules\' order and the scan\'s unknowns', () => {
@@ -120,7 +120,7 @@ describe('the rules\' order and the scan\'s unknowns', () => {
     const { bot, trade, signals, sweep } = setup(2)
     bot.holdersOk = null
     const now = Date.now()
-    for (let k = 0; k < 8; k++) trade({ price: 1 + k * 0.01, at: now - 60_000 + k * 5_000 })
+    for (let k = 0; k < 12; k++) trade({ price: 1 + k * 0.01, at: now - 60_000 + k * 4_500 })
     await sweep()
     expect(signals()).toEqual([])
     expect(bot.scan.get(T)).toMatchObject({ status: 'checking', keys: ['pending:holders'] })
@@ -132,7 +132,7 @@ describe('the rules\' order and the scan\'s unknowns', () => {
     const { bot, trade, signals, sweep } = setup(2)
     bot.holdersOk = null
     const now = Date.now()
-    for (let k = 0; k < 8; k++) trade({ price: 1 + k * 0.01, at: now - 60_000 + k * 5_000 })
+    for (let k = 0; k < 12; k++) trade({ price: 1 + k * 0.01, at: now - 60_000 + k * 4_500 })
     await sweep()
     ;(bot as unknown as { riskWait: Map<string, number> }).riskWait.set(`snipe:${T}`, Date.now() - 60_000) // waited past the limit
     await sweep()

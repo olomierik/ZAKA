@@ -60,7 +60,7 @@ const STRATEGY: Record<BotStrategy, string> = { snipe: 'Snipe', scalp: 'Fast sca
 const STRATEGY_COLOR: Record<BotStrategy, string> = { snipe: '#3b82f6', scalp: '#f59e0b', 'second-leg': '#a855f7', precision: '#facc15' }
 const ALL_STRATEGIES: BotStrategy[] = ['precision', 'snipe', 'scalp', 'second-leg']
 const STRATEGY_HELP: Record<BotStrategy, string> = {
-  precision: 'Prime signals only, the cleanest: the market\'s own buying, spread wide and early. All of it sold at +6%, −7% stop, 10 minutes at most, out at once if the creator sells. A small gain, taken fast.',
+  precision: 'Prime signals only: an early crowd (10+ buyers in a coin\'s first minute, none over 20% of the buying) or a crowd momentum burst. All of it sold at +10%, −10% stop, 10 minutes at most, out at once if the creator sells.',
   snipe: 'New coins in their first 10 minutes that pass every safety check and show real buying. Half sold at +10%, then the stop moves to break-even and the rest trails 25% under its peak; −10% stop, an hour at most.',
   scalp: 'Quick in and out: bursts of real buying on any safe coin, and new coins with a risk flag. Half sold at +10%, then the stop moves to break-even and the rest trails 25% under its peak; −10% stop, an hour at most, and out at once if the creator sells.',
   'second-leg': 'Coins that ran 2× or more, pulled back 25–70% and are being bought again. Half sold at the take-profit (+35% to start), then the stop moves to break-even and the rest trails; held up to 6 hours.',
@@ -752,7 +752,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, li
       {tab === 'overview' && (
         <>
           {isLive && liveSpeed && <LiveGateNote rows={liveSpeed} strategies={acct.strategies} />}
-          {isLive && <div className="at-note" style={{ marginTop: 12 }}>◆ {T('Live bots trade Prime signals now, the cleanest: all of it sold at +6%, fast. Other grades join by themselves once they prove a profit at live speed (the Signals tab shows each grade\'s record).')}</div>}
+          {isLive && <div className="at-note" style={{ marginTop: 12 }}>◆ {T('Live bots trade Prime signals now: early crowds and crowd momentum bursts, all of it sold at +10%, fast. Other grades join by themselves once they prove a profit at live speed (the Signals tab shows each grade\'s record).')}</div>}
           {!isLive && me.paperSignals === false && <div className="at-note warn" style={{ marginTop: 12 }}>{T('Signals go to live bots only for now (the platform\'s setting): this paper bot isn\'t trading. Switch it to LIVE to trade.')}</div>}
           {acct.team && <TeamCard team={acct.team} acct={acct} onStrategy={() => setTab('strategy')} />}
           <GradeStats acct={acct} />

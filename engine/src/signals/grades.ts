@@ -2,9 +2,11 @@
 // highest-quality signals, even at a small % gain, with a strategy made for
 // them"). Every signal is graded when it fires:
 //
-//   prime     the cleanest: the market's own buying, spread wide and early.
-//             Traded by the Precision strategy: all of it sold at a small gain
-//             (+6%), fast. The top tier's signals.
+//   prime     one of the two strategies that held up on coins the search never
+//             saw (2026-10-01, below): an early crowd, or a crowd momentum
+//             burst. Traded by the Precision strategy: all of it sold at +10%,
+//             fast. The top tier's signals, and the only ones live bots take
+//             until another grade proves itself.
 //   core      clean, not Prime: a wide crowd of buyers, buying well ahead of
 //             selling, not yet run up.
 //   standard  every other signal a bot may trade (not on probation).
@@ -22,8 +24,26 @@
 //   - A risk flag (the creator holding a lot, a serial launcher) didn't mark
 //     the losers: the Prime signals all had one.
 //
-// That's one day of signals, and most Prime coins came from one serial
-// launcher's pattern. So a grade's own record is kept (every signal replayed
+// The strategy search (2026-10-01): every coin of the engine's 72 hours with
+// 15+ trades (139), walked trade by trade as the engine sees it, bought 2.5s
+// after the rule and sold 2s after each exit trigger, costs both ways. Rules
+// were chosen on the first half of the coins by launch time and judged on the
+// second, which the choice never saw:
+//   early crowd     20-75s after launch: 10+ buyers (the market's own), none
+//                   over 20% of the buying, buys at least twice sells, not up
+//                   more than 20%. All of it at +10%: 21 of 21, then 8 of 8
+//                   (+7% a trade); still 28 of 29 with the signal 15s late.
+//   crowd momentum  a minute or more old, not an early-crowd coin: 12+ buyers
+//                   in two minutes, buying at least twice selling, up 2-15% in
+//                   that window, no wallet over 20% of all its buying since
+//                   launch, $5,000+ liquidity. At +10%: 14 of 16, then 21 of 23
+//                   (+6.8%). On early-crowd coins it loses (they dump after
+//                   their pump); with a 10% crowd limit, -90% trades come back.
+// Rejected in the same search: dip rebounds (fell apart with small changes),
+// momentum without the crowd limit (+16% then -0.5% on the unseen half).
+//
+// That's three days of coins, and many of them came from a few serial
+// launchers' patterns. So a grade's own record is kept (every signal replayed
 // at live speed with its grade's exits, GradeBook below), shown to everyone,
 // and a grade whose record fails is put under review: its signals are handed
 // out one grade lower until it recovers. Nothing here promises a win.
@@ -55,15 +75,58 @@ function lines(f: SignalFeatures, r: (typeof GRADE_RULES)['prime' | 'core']): Li
   ]
 }
 
+/** The two Prime strategies (the search above). */
+export const PRIME_RULES = {
+  early: { maxAgeSec: 75, minBuyers: 10, maxTopBuyerPct: 20, minBuySellRatio: 2, maxRunUp: 1.2, minLiquidityUsd: 5_000, maxRoundTripPct: 3 },
+  momentum: { minBuyers: 12, minBuySellRatio: 2, minMove: 1.02, maxMove: 1.15, maxLaunchTopBuyerPct: 20, minLiquidityUsd: 5_000, maxRoundTripPct: 3 },
+} as const
+
+/** Whether a coin's market buying, `ageSec` after launch, is an early crowd (the engine marks such coins: crowd momentum leaves them out). */
+export function isEarlyCrowd(f: Pick<SignalFeatures, 'buyers' | 'topBuyerPct' | 'buySellRatio' | 'runUp'>, ageSec: number): boolean {
+  const r = PRIME_RULES.early
+  return ageSec >= 20 && ageSec <= r.maxAgeSec && f.buyers >= r.minBuyers && f.topBuyerPct <= r.maxTopBuyerPct && (f.buySellRatio === null || f.buySellRatio >= r.minBuySellRatio) && (f.runUp ?? 1) <= r.maxRunUp
+}
+
+function primeLines(f: SignalFeatures, rule?: SignalRule): Line[] | null {
+  const rt = f.roundTripPct ?? 4
+  const pct = (x: number) => `${Math.round((x - 1) * 100)}%`
+  if (rule === 'snipe') {
+    const r = PRIME_RULES.early
+    return [
+      { ok: f.ageSec <= r.maxAgeSec, text: `early crowd: ${f.ageSec}s after launch (≤ ${r.maxAgeSec}s)` },
+      { ok: f.buyers >= r.minBuyers, text: `${f.buyers} buyers (${r.minBuyers}+)` },
+      { ok: f.topBuyerPct <= r.maxTopBuyerPct, text: `largest buyer ${Math.round(f.topBuyerPct)}% (≤ ${r.maxTopBuyerPct}%)` },
+      { ok: f.buySellRatio === null || f.buySellRatio >= r.minBuySellRatio, text: f.buySellRatio === null ? 'no sells yet' : `buys ${f.buySellRatio.toFixed(1)}× sells (${r.minBuySellRatio}×+)` },
+      { ok: (f.runUp ?? 1) <= r.maxRunUp, text: `up ${pct(f.runUp ?? 1)} (≤ ${pct(r.maxRunUp)})` },
+      { ok: (f.liquidityUsd ?? 0) >= r.minLiquidityUsd, text: `liquidity $${Math.round(f.liquidityUsd ?? 0).toLocaleString('en-US')} ($${r.minLiquidityUsd.toLocaleString('en-US')}+)` },
+      { ok: rt <= r.maxRoundTripPct, text: `round trip ${rt.toFixed(1)}% (≤ ${r.maxRoundTripPct}%)` },
+    ]
+  }
+  if (rule === 'momentum') {
+    const r = PRIME_RULES.momentum
+    const lt = f.launchTopBuyerPct ?? 100
+    return [
+      { ok: !f.earlyCrowd, text: f.earlyCrowd ? 'it had an early crowd (they dump after it)' : 'no early crowd' },
+      { ok: f.buyers >= r.minBuyers, text: `crowd momentum: ${f.buyers} buyers in 2 minutes (${r.minBuyers}+)` },
+      { ok: f.buySellRatio === null || f.buySellRatio >= r.minBuySellRatio, text: f.buySellRatio === null ? 'no sells in the window' : `buys ${f.buySellRatio.toFixed(1)}× sells (${r.minBuySellRatio}×+)` },
+      { ok: (f.runUp ?? 1) >= r.minMove && (f.runUp ?? 1) <= r.maxMove, text: `up ${pct(f.runUp ?? 1)} in the window (${pct(r.minMove)} to ${pct(r.maxMove)})` },
+      { ok: lt <= r.maxLaunchTopBuyerPct, text: `largest buyer since launch ${Math.round(lt)}% (≤ ${r.maxLaunchTopBuyerPct}%)` },
+      { ok: (f.liquidityUsd ?? 0) >= r.minLiquidityUsd, text: `liquidity $${Math.round(f.liquidityUsd ?? 0).toLocaleString('en-US')} ($${r.minLiquidityUsd.toLocaleString('en-US')}+)` },
+      { ok: rt <= r.maxRoundTripPct, text: `round trip ${rt.toFixed(1)}% (≤ ${r.maxRoundTripPct}%)` },
+    ]
+  }
+  return null
+}
+
 /** A signal's grade, and why: what it met of the grade it got, or what it missed of the one above. */
-export function gradeOf(f: SignalFeatures | undefined, _rule?: SignalRule): { grade: SignalGrade; why: string[] } {
+export function gradeOf(f: SignalFeatures | undefined, rule?: SignalRule): { grade: SignalGrade; why: string[] } {
   if (!f) return { grade: 'standard', why: ['no numbers to grade it on'] }
-  const prime = lines(f, GRADE_RULES.prime)
-  if (prime.every(l => l.ok)) return { grade: 'prime', why: prime.map(l => l.text) }
+  const prime = primeLines(f, rule)
+  if (prime?.every(l => l.ok)) return { grade: 'prime', why: prime.map(l => l.text) }
   const core = lines(f, GRADE_RULES.core)
-  const missedPrime = prime.filter(l => !l.ok).map(l => `Prime needs ${l.text}`)
+  const missedPrime = (prime ?? []).filter(l => !l.ok).map(l => `Prime needs ${l.text}`)
   if (core.every(l => l.ok)) return { grade: 'core', why: missedPrime }
-  return { grade: 'standard', why: core.filter(l => !l.ok).map(l => `Core needs ${l.text}`) }
+  return { grade: 'standard', why: [...missedPrime, ...core.filter(l => !l.ok).map(l => `Core needs ${l.text}`)].slice(0, 4) }
 }
 
 /**

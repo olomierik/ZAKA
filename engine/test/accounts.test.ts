@@ -243,7 +243,7 @@ describe('live: the same bot, from paper to its own wallet', () => {
     await settle()
     const p = a.positions.find(x => x.mode === 'live' && x.signalId === 'pr1')!
     expect(p).toMatchObject({ strategy: 'precision', grade: 'prime', sizeUsd: 20 }) // 20% of its $100 wallet on a Prime signal
-    expect(p.exits).toMatchObject({ tp1Multiple: 1.06, tp1SellPct: 1 })
+    expect(p.exits).toMatchObject({ tp1Multiple: 1.1, tp1SellPct: 1 })
     const T2 = '0x' + 'b3'.repeat(20)
     const standard = { ...prime, level: 'standard' as const, liveOk: false, liveWhy: 'live bots trade Prime signals, and other grades once proven at live speed' }
     accounts.onSignal(sig({ id: 'st1', token: T2, quality: standard }), Date.now(), ctx('st1', T2))

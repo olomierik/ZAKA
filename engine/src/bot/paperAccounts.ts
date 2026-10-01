@@ -204,7 +204,9 @@ function normalize(a: PaperAccount): PaperAccount {
   const notes: LearnNote[] = []
   for (const s of STRATEGIES) {
     // Older bots: learned filters per kind of signal, then the exit plan (half at the take-profit, the rest trailing).
-    const up = upgradeExits(migrateTuning(tuning[s] ?? defaultTuning(s), s), s)
+    // Precision's exits moved to +10% / -10% (2026-10-01): a bot still on the first ones starts over on them.
+    const stale = s === 'precision' && tuning[s]?.takeProfit === 1.06 && tuning[s]?.stopLoss === 0.93
+    const up = upgradeExits(migrateTuning(stale ? defaultTuning(s) : tuning[s] ?? defaultTuning(s), s), s)
     tuning[s] = up.tuning
     if (up.note && (a.strategies ?? []).includes(s)) notes.push(up.note)
   }

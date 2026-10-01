@@ -50,13 +50,13 @@ describe('trade size and the bot\'s balance', () => {
 })
 
 describe('the cleanest signals', () => {
-  const w = (o: Partial<Window> = {}): Window => ({ trades: 10, buyers: 8, sellers: 2, buyUsd: 400, sellUsd: 100, firstPrice: 1, lastPrice: 1.08, high: 1.09, low: 1, topBuyerPct: 20, ...o })
+  const w = (o: Partial<Window> = {}): Window => ({ trades: 14, buyers: 12, sellers: 2, buyUsd: 400, sellUsd: 100, firstPrice: 1, lastPrice: 1.08, high: 1.09, low: 1, topBuyerPct: 20, ...o })
   /** The last 30 seconds: still being bought. */
   const last = (o: Partial<Window> = {}): Window => ({ trades: 3, buyers: 3, sellers: 0, buyUsd: 120, sellUsd: 0, firstPrice: 1.07, lastPrice: 1.08, high: 1.08, low: 1.07, topBuyerPct: 40, ...o })
-  test('a momentum scalp needs 8 buyers in its two minutes (was 3, then 6)', () => {
-    expect(RULES.scalp.minBuyers).toBe(8)
+  test('a momentum scalp needs 12 buyers in its two minutes (was 3, then 6, then 8; crowd momentum, 2026-10-01)', () => {
+    expect(RULES.scalp.minBuyers).toBe(12)
     expect(scalpReady(w(), 600, 20_000, last()).ok).toBe(true)
-    const few = scalpReady(w({ buyers: 7 }), 600, 20_000, last())
+    const few = scalpReady(w({ buyers: 11 }), 600, 20_000, last())
     expect(few.ok).toBe(false)
     expect(few.failed).toEqual(['buyers'])
   })
@@ -67,9 +67,9 @@ describe('the cleanest signals', () => {
     expect(scalpReady(w(), 600, 20_000, last({ buyers: 1 })).failed).toEqual(['now'])
     expect(scalpReady(w(), 600, 20_000, last({ buyers: 2, buyUsd: 50, sellUsd: 50 })).ok).toBe(true)
   })
-  test('and no spike: a coin already up over 20% in the window is late', () => {
-    expect(scalpReady(w({ lastPrice: 1.19, high: 1.19 }), 600, 20_000, last()).ok).toBe(true)
-    const late = scalpReady(w({ lastPrice: 1.26, high: 1.27 }), 600, 20_000, last())
+  test('and no spike: a coin already up over 15% in the window is late', () => {
+    expect(scalpReady(w({ lastPrice: 1.14, high: 1.14 }), 600, 20_000, last()).ok).toBe(true)
+    const late = scalpReady(w({ lastPrice: 1.18, high: 1.19 }), 600, 20_000, last())
     expect(late.failed).toEqual(['move'])
     expect(late.reasons.join(' ')).toMatch(/a spike, too late/)
   })

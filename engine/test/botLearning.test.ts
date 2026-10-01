@@ -83,16 +83,16 @@ describe('the rug guard', () => {
 describe('the momentum scalp rule', () => {
   const burst = (n: number, o: (i: number) => Partial<TapeTrade> = () => ({})) => Array.from({ length: n }, (_, i) => trade({ ts: now - 100_000 + i * 10_000, wallet: `0x${i}`, usd: 60, price: 1 + i * 0.012, ...o(i) }))
   test('a burst of buying from several wallets, still near its high, in a deep enough pool', () => {
-    const r = scalpReady(windowOf(burst(8)), 600, 10_000, windowOf(burst(8).slice(-3)))
+    const r = scalpReady(windowOf(burst(12)), 600, 10_000, windowOf(burst(12).slice(-3)))
     expect(r.reasons.filter(x => x.startsWith('✗'))).toEqual([])
     expect(r.ok).toBe(true)
   })
   test('not a spike, not sell-heavy, not one buyer, not a thin pool, not a brand-new coin', () => {
-    expect(scalpReady(windowOf(burst(8, i => ({ price: 1 + i * 0.1 }))), 600, 10_000, windowOf(burst(8, i => ({ price: 1 + i * 0.1 })).slice(-3))).reasons.join()).toMatch(/a spike/)
-    expect(scalpReady(windowOf(burst(8, i => ({ side: i % 2 ? 'SELL' : 'BUY' }))), 600, 10_000, windowOf(burst(8, i => ({ side: i % 2 ? 'SELL' : 'BUY' })).slice(-3))).ok).toBe(false)
-    expect(scalpReady(windowOf(burst(8, () => ({ wallet: '0xone' }))), 600, 10_000, windowOf(burst(8, () => ({ wallet: '0xone' })).slice(-3))).ok).toBe(false)
-    expect(scalpReady(windowOf(burst(8)), 600, 1_000, windowOf(burst(8).slice(-3))).reasons.join()).toMatch(/need \$2,000 for a scalp/)
-    expect(scalpReady(windowOf(burst(8)), 30, 10_000, windowOf(burst(8).slice(-3))).ok).toBe(false)
+    expect(scalpReady(windowOf(burst(12, i => ({ price: 1 + i * 0.1 }))), 600, 10_000, windowOf(burst(12, i => ({ price: 1 + i * 0.1 })).slice(-3))).reasons.join()).toMatch(/a spike/)
+    expect(scalpReady(windowOf(burst(12, i => ({ side: i % 2 ? 'SELL' : 'BUY' }))), 600, 10_000, windowOf(burst(12, i => ({ side: i % 2 ? 'SELL' : 'BUY' })).slice(-3))).ok).toBe(false)
+    expect(scalpReady(windowOf(burst(12, () => ({ wallet: '0xone' }))), 600, 10_000, windowOf(burst(12, () => ({ wallet: '0xone' })).slice(-3))).ok).toBe(false)
+    expect(scalpReady(windowOf(burst(12)), 600, 1_000, windowOf(burst(12).slice(-3))).reasons.join()).toMatch(/need \$5,000 for a scalp/)
+    expect(scalpReady(windowOf(burst(12)), 30, 10_000, windowOf(burst(12).slice(-3))).ok).toBe(false)
   })
 })
 

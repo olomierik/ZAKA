@@ -41,7 +41,7 @@ import type { EngineObserver, MarketEngine } from '../market/engine'
 import { metrics } from '../metrics'
 import { PricePath, RULES, scalpReady, secondLegReady, snipeReady, tooCostly } from '../signals/rules'
 import type { BotStatus, GradeRecordView, ScanRow, SignalFeatures, SignalGrade, SignalQuality, SignalRule } from '../../../api/_marketProtocol'
-import { GRADE_RULES, GRADES, GradeBook, gradeOf, liveGrade } from '../signals/grades'
+import { GRADE_RULES, GRADES, GradeBook, gradeOf, isEarlyCrowd, liveGrade, PRIME_RULES } from '../signals/grades'
 import { crowdCap } from './crowd'
 import { QUALITY, QualityRank, qualityScore, type RuleRecord } from '../signals/quality'
 import { LIVE_GATE, liveKey, LiveSpeedBook, replayAtLiveSpeed, type LiveSpeedRecord } from '../signals/liveSpeed'
@@ -100,7 +100,7 @@ class Limiter {
 }
 
 /** A rule's numbers, before the safety scan adds its own. */
-type RuleFeatures = Pick<SignalFeatures, 'buyers' | 'buySellRatio' | 'runUp' | 'topBuyerPct'>
+type RuleFeatures = Pick<SignalFeatures, 'buyers' | 'buySellRatio' | 'runUp' | 'topBuyerPct' | 'launchTopBuyerPct' | 'earlyCrowd'>
 const ratio = (buy: number, sell: number) => (sell > 0 ? Math.round((buy / sell) * 100) / 100 : null)
 /** A snipe's numbers: the market's own buying, as the rule read it (Flow.organic). */
 const flowFeatures = (f: Flow): RuleFeatures => ({ buyers: f.organic.buyers, buySellRatio: ratio(f.organic.buyUsd, f.organic.sellUsd), runUp: f.organic.firstPrice && f.organic.lastPrice ? f.organic.lastPrice / f.organic.firstPrice : null, topBuyerPct: f.organic.topBuyerPct })
@@ -150,6 +150,8 @@ export class Bot implements EngineObserver {
   readonly liveSpeed = new LiveSpeedBook()
   /** Each grade's signals replayed at live speed with the exits that grade trades with: its public record and its review (signals/grades.ts). */
   readonly grades = new GradeBook()
+  /** Coins that had an early crowd (signals/grades.ts): crowd momentum leaves them out. */
+  private earlyCrowd = new Set<string>()
   private replaying = false
   /** The paper book's buys waiting for their live-speed fill, by token. */
   private pendingHouse = new Map<string, { signal: Signal; strategy: Strategy; params: StrategyParams; cost: number; features: SignalFeatures; rule: SignalRule; due: number }>()
@@ -384,6 +386,10 @@ export class Bot implements EngineObserver {
     const keys: string[] = []
     if (ageSec <= RULES.snipe.maxAgeSec && !this.fired.has(`snipe:${token}`)) {
       const flow = computeFlow(this.tapes.get(token), { launchBlock: meta.blockNumber, creator: meta.creator, supply: st.supply })
+      // An early crowd is marked; and a young coin drawing buyers gets its safety scan started now, so its
+      // signal isn't held 10-20s waiting for it (the early crowd's edge is in its first seconds).
+      if (isEarlyCrowd(flowFeatures(flow), ageSec)) this.earlyCrowd.add(token)
+      if (ageSec <= 120 && flow.organic.buyers >= 5) void this.report(token, true).catch(() => {})
       const rule = snipeReady(flow, ageSec)
       if (rule.ok) { this.scan.record(base, await this.tryFire('snipe', token, rule.reasons, ageSec, flowFeatures(flow))); return }
       snipeWaiting = [...failing(rule.reasons), `snipe window: ${Math.max(0, Math.floor(RULES.snipe.maxAgeSec - ageSec))}s left`]
@@ -422,7 +428,12 @@ export class Bot implements EngineObserver {
     if (now - lastScalp >= RULES.scalp.repeatMin * 60_000) {
       const w = windowOf(this.recent.window(token, now, RULES.scalp.windowSec * 1_000))
       const rule = scalpReady(w, ageSec, st.liquidityUsd, windowOf(this.recent.window(token, now, RULES.scalp.confirmSec * 1_000)))
-      if (rule.ok) { this.scan.record(base, await this.tryFire('momentum', token, rule.reasons, ageSec, windowFeatures(w))); return }
+      if (rule.ok) {
+        // Crowd momentum reads the largest buyer since launch, and leaves out coins that had an early crowd.
+        const flow = computeFlow(this.tapes.get(token), { launchBlock: meta.blockNumber, creator: meta.creator, supply: st.supply })
+        this.scan.record(base, await this.tryFire('momentum', token, rule.reasons, ageSec, { ...windowFeatures(w), launchTopBuyerPct: flow.organic.topBuyerPct, earlyCrowd: this.earlyCrowd.has(token) }))
+        return
+      }
       scalpWaiting = failing(rule.reasons).slice(0, 2).map(r => r.replace(/^✗ /, '✗ scalp: '))
       keys.push(...rule.failed.map(f => `scalp:${f}`))
     }
@@ -489,9 +500,6 @@ export class Bot implements EngineObserver {
     if (strategy === 'scalp' && r.verdict === 'risky') reasons = [...reasons, ...r.checks.filter(c => c.risk && c.ok !== true).map(c => `risk (${c.id}): ${c.detail}`)]
     const meta = this.o.engine.metas.get(token)!, st = this.o.engine.tokens.get(token)!
     const now = Date.now()
-    // A rule whose paper record is losing: still fired and measured here, but no bot trades it (bot/probation.ts).
-    const probation = this.probation(rule, now)
-    if (probation) { reasons = [...reasons, `⚠ on probation: ${probation.why}`]; metrics.inc(`bot_${rule}_probation`) }
     const pool = st.mainPool ? this.o.pools.get(st.mainPool) ?? null : null
     const s = st.stats(now)
     const features: SignalFeatures = {
@@ -499,7 +507,17 @@ export class Bot implements EngineObserver {
       buyers: feats.buyers, buySellRatio: feats.buySellRatio, runUp: feats.runUp === null ? null : Math.round(feats.runUp * 1_000) / 1_000,
       topBuyerPct: Math.round(feats.topBuyerPct * 10) / 10, score: r.score,
       flags: r.checks.filter(c => c.risk && c.ok !== true).map(c => c.id), roundTripPct: r.honeypot?.roundTripLossPct ?? null,
+      ...(feats.launchTopBuyerPct != null ? { launchTopBuyerPct: Math.round(feats.launchTopBuyerPct * 10) / 10 } : {}),
+      ...(feats.earlyCrowd !== undefined ? { earlyCrowd: feats.earlyCrowd } : {}),
     }
+    // Its grade (signals/grades.ts): Prime, Core or Standard, handed out one lower while its own grade's record is under review.
+    const graded2 = gradeOf(features, rule)
+    const handed = this.grades.effective(graded2.grade, now)
+    // A rule whose paper record is losing: still fired and measured here, but no bot trades it (bot/probation.ts).
+    // A Prime signal is past it: its own grade's record at live speed is what decides (the momentum rule's losers
+    // were the bursts crowd momentum leaves out).
+    const probation = handed.grade === 'prime' ? null : this.probation(rule, now)
+    if (probation) { reasons = [...reasons, `⚠ on probation: ${probation.why}`]; metrics.inc(`bot_${rule}_probation`) }
     // What this kind of signal makes at live speed (replayed on real trades): live bots trade it only while that's a profit.
     const ls = this.liveSpeed.record(liveKey(rule, strategy), now)
     // Its quality, ranked against the last signals: the top 80% are live-grade, the rest paper only. The rule's record is
@@ -508,9 +526,6 @@ export class Bot implements EngineObserver {
     const graded = probation ? { grade: 'paper' as const, tier: 'B' as const, rank: null } : this.qualityRank.grade(scored.score)
     // `all` (the owner's setting): every signal not on probation goes to live bots; the rank still sets the tier (the size).
     const ranked = this.liveSignals === 'all' && !probation ? { ...graded, grade: 'live' as const } : graded
-    // Its grade (signals/grades.ts): Prime, Core or Standard, handed out one lower while its own grade's record is under review.
-    const graded2 = gradeOf(features, rule)
-    const handed = this.grades.effective(graded2.grade, now)
     // Live bots trade Prime and grades proven at live speed (signals/grades.ts liveGrade).
     const forLive = this.liveGrades === 'all' ? { ok: true, why: null } : liveGrade(this.grades, handed.grade, now)
     const quality: SignalQuality = {
@@ -625,11 +640,16 @@ export class Bot implements EngineObserver {
   /** Each grade's record at live speed (GET /v1/tiers, the Signals tab). */
   gradeRecords(now = Date.now()): GradeRecordView[] {
     const exits: Record<SignalGrade, string> = {
-      prime: 'Precision: all sold at +6%, stop −7%, 10 minutes at most',
+      prime: 'Precision: all sold at +10%, stop −10%, 10 minutes at most',
       core: 'its strategy\'s exits: half at +10%, then a break-even stop and a 25% trail',
       standard: 'its strategy\'s exits: half at +10%, then a break-even stop and a 25% trail',
     }
-    const rules = (g: SignalGrade): string[] => g === 'standard' ? ['every other signal bots may trade (not on probation)'] : (() => {
+    const e = PRIME_RULES.early, m = PRIME_RULES.momentum
+    const rules = (g: SignalGrade): string[] => g === 'standard' ? ['every other signal bots may trade (not on probation)'] : g === 'prime' ? [
+      `early crowd: within ${e.maxAgeSec}s of launch, ${e.minBuyers}+ buyers, none over ${e.maxTopBuyerPct}% of the buying, buys ${e.minBuySellRatio}× sells, up no more than ${Math.round((e.maxRunUp - 1) * 100)}%`,
+      `crowd momentum: ${m.minBuyers}+ buyers in 2 minutes, buys ${m.minBuySellRatio}× sells, up ${Math.round((m.minMove - 1) * 100)}-${Math.round((m.maxMove - 1) * 100)}%, no wallet over ${m.maxLaunchTopBuyerPct}% of the buying since launch, not an early-crowd coin`,
+      `liquidity $${e.minLiquidityUsd.toLocaleString('en-US')}+, round trip ≤ ${e.maxRoundTripPct}%`,
+    ] : (() => {
       const r = GRADE_RULES[g]
       return [`largest buyer ≤ ${r.maxTopBuyerPct}% of the buying`, `${r.minBuyers}+ buyers`, `buys ${r.minBuySellRatio}× sells or more`, `run-up ≤ +${Math.round((r.maxRunUp - 1) * 100)}%`, `round trip ≤ ${r.maxRoundTripPct}%`, `liquidity $${r.minLiquidityUsd.toLocaleString('en-US')}+`]
     })()

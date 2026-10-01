@@ -58,13 +58,13 @@ function setup(o: { liveSignals?: 'all' | 'proven' } = {}) {
 describe('the bot, end to end', () => {
   test('a momentum burst becomes a fast-scalp signal with the coin\'s numbers; a visitor\'s bot buys it at its own size', async () => {
     const { bot, sent, account, trade } = setup()
-    const t0 = Date.now() - 80_000 // eight buyers in two minutes, the last two in the last 30 seconds
-    for (let k = 0; k < 8; k++) trade({ price: 1 + k * 0.012, at: t0 + k * 10_000 })
+    const t0 = Date.now() - 80_000 // thirteen buyers in two minutes, the last few in the last 30 seconds
+    for (let k = 0; k < 13; k++) trade({ price: 1 + k * 0.01, at: t0 + k * 6_000 })
     await settle()
     bot.sweep(Date.now() + 5_000) // every coin trading now is evaluated, not only on its own trades
     await settle()
     const sig = sent.find(m => m.t === 'SIGNAL')
-    expect(sig?.t === 'SIGNAL' && sig.d).toMatchObject({ strategy: 'scalp', rule: 'momentum', features: { buyers: 8, score: 88, flags: [] } })
+    expect(sig?.t === 'SIGNAL' && sig.d).toMatchObject({ strategy: 'scalp', rule: 'momentum', features: { buyers: 13, score: 88, flags: [] } })
     const pos = account.positions[0]
     expect(pos).toMatchObject({ status: 'open', strategy: 'scalp', tuningVersion: 1 })
     // Sized from the bot's capital: 20% of its $500 on a tier-A signal, 10% on B (the first signals rank by score alone).
@@ -79,7 +79,7 @@ describe('the bot, end to end', () => {
   test('live bots take every signal not on probation (the owner’s setting), even before it proves itself at live speed', async () => {
     const { bot, sent, trade } = setup({ liveSignals: 'all' })
     const t0 = Date.now() - 80_000
-    for (let k = 0; k < 8; k++) trade({ price: 1 + k * 0.012, at: t0 + k * 10_000 })
+    for (let k = 0; k < 13; k++) trade({ price: 1 + k * 0.01, at: t0 + k * 6_000 })
     await settle(); bot.sweep(Date.now() + 5_000); await settle()
     const sig = sent.find(m => m.t === 'SIGNAL')
     expect(sig?.t === 'SIGNAL' && sig.d.quality).toMatchObject({ grade: 'live', liveSpeed: { trades: 0, ok: false } })
@@ -88,8 +88,8 @@ describe('the bot, end to end', () => {
 
   test('liquidity pulled: the rug guard closes every position at once and quarantines the coin', async () => {
     const { bot, account, trade, sent } = setup()
-    const t0 = Date.now() - 80_000 // eight buyers in two minutes, the last two in the last 30 seconds
-    for (let k = 0; k < 8; k++) trade({ price: 1 + k * 0.012, at: t0 + k * 10_000 })
+    const t0 = Date.now() - 80_000 // thirteen buyers in two minutes, the last few in the last 30 seconds
+    for (let k = 0; k < 13; k++) trade({ price: 1 + k * 0.01, at: t0 + k * 6_000 })
     await settle(); bot.sweep(Date.now() + 5_000); await settle()
     expect(account.positions[0].status).toBe('open')
     trade({ side: 'SELL', price: 1.02, usd: 20, liquidity: 9_000 })
@@ -99,7 +99,7 @@ describe('the bot, end to end', () => {
     expect(sent.some(m => m.t === 'BOT_POSITION' && m.d.exitReason === 'rug')).toBe(true)
     // A new burst on the same coin isn't bought while it's quarantined.
     const t1 = Date.now() - 50_000
-    for (let k = 0; k < 8; k++) trade({ price: 1.05 + k * 0.012, at: t1 + k * 5_000, liquidity: 9_000 })
+    for (let k = 0; k < 13; k++) trade({ price: 1.05 + k * 0.01, at: t1 + k * 5_000, liquidity: 9_000 })
     await settle(); bot.sweep(Date.now() + 5_000); await settle()
     expect(account.positions).toHaveLength(1)
     expect(bot.positions).toHaveLength(1)
@@ -110,7 +110,7 @@ describe('the bot, end to end', () => {
     trade({ price: 1, liquidity: 20_000, at: Date.now() - 60_000 })
     trade({ side: 'SELL', price: 0.99, usd: 10, liquidity: 10_000, at: Date.now() - 50_000 }) // −50%: an alarm
     const t0 = Date.now() - 45_000
-    for (let k = 0; k < 8; k++) trade({ price: 1 + k * 0.012, at: t0 + k * 5_000, liquidity: 10_000 })
+    for (let k = 0; k < 13; k++) trade({ price: 1 + k * 0.01, at: t0 + k * 5_000, liquidity: 10_000 })
     await settle(); bot.sweep(Date.now() + 5_000); await settle()
     expect(bot.scan.get(T)).toMatchObject({ status: 'rejected', stage: 'safety' })
     expect(bot.scan.get(T)!.reasons[0]).toMatch(/^✗ rug guard .* liquidity fell 50%/)

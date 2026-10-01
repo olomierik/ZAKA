@@ -42,12 +42,14 @@ export const RULES = {
     /** Let the first blocks' bundlers show before judging. */
     minAgeSec: 20,
     maxAgeSec: 600,
-    minBuyers: 4, // 2026-10-01: was 6 (more signals; live bots still take only Prime, 30+ buyers)
+    // 2026-10-01: 10 (was 6, briefly 4): a snipe fires once per coin, so firing before the early crowd
+    // (10+ buyers, signals/grades.ts) used up the coin's one signal on a losing Standard grade.
+    minBuyers: 10,
     minBuyUsd: 120, // was 200
     /** Buy volume at least this many times sell volume. */
-    minBuySellRatio: 1.3,
+    minBuySellRatio: 2, // was 1.3 (the early crowd's)
     /** No single buyer above this share of buy volume. */
-    maxTopBuyerPct: 25,
+    maxTopBuyerPct: 20, // was 25 (the early crowd's)
     /** Not late: the price hasn't already run this far from its first trade. */
     maxRunUp: 5,
     /** Not already falling: within this share of its peak. */
@@ -62,13 +64,13 @@ export const RULES = {
     minAgeSec: 60,
     /** Enough different buyers that it's a crowd, not a few wallets (was 3, then 6; 8 since 2026-09-30:
      * momentum bursts with 3–7 buyers lost 3 of 4 in the house book). */
-    minBuyers: 8,
+    minBuyers: 12, // 2026-10-01: was 8 (crowd momentum, signals/grades.ts)
     minBuyUsd: 100,
     /** Buy volume at least this many times sell volume in the window. */
-    minBuySellRatio: 1.6,
+    minBuySellRatio: 2, // was 1.6
     /** The price up at least this much in the window, and not more than this (not the top of a spike; 2026-10-01: was 1.35). */
     minMove: 1.02,
-    maxMove: 1.2,
+    maxMove: 1.15, // was 1.2
     /** Still near the window's high. */
     minOfHigh: 0.92,
     /** No single buyer above this share of the window's buys. */
@@ -79,7 +81,7 @@ export const RULES = {
     confirmSec: 30,
     minRecentBuyers: 2,
     /** Deep enough that a $1–2 profit survives the costs. */
-    minLiquidityUsd: 2_000,
+    minLiquidityUsd: 5_000, // was 2,000
     /** The same coin scalped again only after this long. */
     repeatMin: 30,
   },
