@@ -10,8 +10,9 @@
 // in meme coin trading, I prefer quick take profits and leave"):
 //
 //   signals   snipes (clean coins, and risky coins as fast scalps), with the rules of the afternoon of 30 September
-//             (signals/rules.ts), on coins with no more than 80 buyers in. Momentum bursts and comebacks are replayed
-//             and measured first, and traded live once their replays prove them (PROVE_FIRST).
+//             (signals/rules.ts), on coins with no more than 80 buyers in and no wallet over 15% of the buying.
+//             Momentum bursts and comebacks are replayed and measured first, and traded live once their replays prove
+//             them (PROVE_FIRST).
 //   size      $2 a trade, flat.
 //   exit      all of it once selling nets +7.5% after costs (about +10% on the price, $0.15 on $2), else out at −7%,
 //             when the creator sells, or after 3 minutes.
@@ -26,10 +27,15 @@
 //   snipes, 80 buyers or fewer   research: 48 trades, 85% won, +3.1% a trade; production: 30 trades, 80% won,
 //                                +0.7% a trade (+5.3% and −1.6% in its two halves). Half the trades were over in
 //                                under 40 seconds.
+//   … and no wallet over 15%     both together: 55 trades (about 30 a day), 87% won, +3.8% a trade, in profit in both
+//     of the buying              halves (+5.7% and +1.3%), and no rug. Over 15%: 23 trades, −1.8% a trade, and both
+//                                of the sample's rugs. The largest buyer's share was already the best separator of
+//                                winners on 30 September (signals/grades.ts).
 //   momentum bursts              production: 24 trades, 46% won, −7.9% a trade, with every exit tried.
 //   80+ buyers already in        far worse in every version: the crowd has already bought.
-// About break-even, with most trades won and closed within a minute: a rug (−76% to −90%, no stop catches one at live
-// speed) costs as much as 8–10 wins. Nothing here guarantees a profit.
+// Then checked on the signals that fired on 1 October after that sample (06:00–12:48 UTC): with no wallet over 15%,
+// 6 trades, 5 won, +$0.50; over 15%, 7 trades and −$4.71, among them all three of the day's rugs (NOAH 24.9%, UBI 17.2%,
+// 四 20.9%: −76% to −86% each, which no stop catches at live speed). Small samples: nothing here guarantees a profit.
 
 import type { SignalFeatures, SignalRule } from '../../../api/_marketProtocol'
 import type { Position, Strategy, StrategyParams } from '../trading/paper'
@@ -50,6 +56,8 @@ export const DOLLAR_PLAN = {
   },
   /** No coin with more buyers than this already in (the crowd has bought: far worse in every test). */
   maxBuyers: 80,
+  /** No coin where one wallet bought more than this share of the market's own buying, in percent (who dumps first). */
+  maxTopBuyerPct: 15,
   /** When this version started (its trades and the day's loss are counted from then). */
   since: Date.UTC(2026, 9, 1, 12, 45),
 }
@@ -97,9 +105,10 @@ export function dollarParams(s: DollarStrategy, o: { costIn: number; costOut: nu
   }
 }
 
-/** Why live bots don't trade a signal on the plan whatever they learned, or null. Signals without the count are taken. */
-export function planBlocks(f: SignalFeatures | undefined): string | null {
-  if (f?.totalBuyers != null && f.totalBuyers > DOLLAR_PLAN.maxBuyers) return `${f.totalBuyers} buyers already in (live bots buy coins with ${DOLLAR_PLAN.maxBuyers} or fewer: later, the crowd has bought)`
+/** Why live bots don't trade a signal on the plan whatever they learned, or null. A number the signal lacks isn't checked. */
+export function planBlocks(f: SignalFeatures | undefined): { key: 'crowded' | 'top-buyer'; why: string } | null {
+  if (f?.totalBuyers != null && f.totalBuyers > DOLLAR_PLAN.maxBuyers) return { key: 'crowded', why: `${f.totalBuyers} buyers already in (live bots buy coins with ${DOLLAR_PLAN.maxBuyers} or fewer: later, the crowd has bought)` }
+  if (f && f.topBuyerPct > DOLLAR_PLAN.maxTopBuyerPct) return { key: 'top-buyer', why: `one wallet bought ${Math.round(f.topBuyerPct)}% of the buying (live bots buy coins where none is over ${DOLLAR_PLAN.maxTopBuyerPct}%: a big early wallet is who dumps)` }
   return null
 }
 

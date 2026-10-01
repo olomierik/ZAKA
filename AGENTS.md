@@ -929,9 +929,9 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
         - From 08:00 to 12:10, 16 signals fired; 7 were snipes on coins with 80 or fewer buyers.
       - **The plan (`bot/dollarPlan.ts`, `DOLLAR_PLAN.version` 2, from `since`):**
         - $2 a trade. All of it is sold once selling nets +7.5% after costs (`netGain`, `dollarTakeProfit`): about +10% on the price, $0.15 before the 15% fee. Otherwise it's out at −7%, when the creator sells, or after 3 minutes.
-        - Live bots take snipes (clean coins, and risky coins as fast scalps) on coins with 80 or fewer buyers already in (`maxBuyers`, `planBlocks`; skip key `crowded`).
+        - Live bots take snipes (clean coins, and risky coins as fast scalps) on coins with 80 or fewer buyers already in (`maxBuyers`, `planBlocks`; skip key `crowded`) and no wallet over 15% of the market's own buying (`maxTopBuyerPct`, the signal's `topBuyerPct`; skip key `top-buyer`).
         - Momentum bursts and comebacks are replayed and measured first. They're traded live once their last 10+ replays on the plan won half or more and made money (`PROVE_FIRST`, `Bot.provenRecord`; skip key `prove-first`).
-        - Probation and the proofs count only the signals live bots would buy (80 or fewer buyers), and only this version's live trades (`Bot.dollarTrades`, `PaperAccounts.dollarLive`).
+        - Probation and the proofs count only the signals live bots would buy (both limits above), and only this version's live trades (`Bot.dollarTrades`, `PaperAccounts.dollarLive`).
         - The day's loss counts from `since`.
       - **Measured first** (research scripts outside the repo). Every snipe and momentum signal of two days: 166 fired by the rules on 72 hours of tapes, and 64 that production fired after its scanner. Buys filled 2.5s after the signal and sales 2s after their trigger, at 1.2% a side. Gains over +20% were counted as +20%, so one spike can't carry a result.
         - Snipes with 80 or fewer buyers, at +10% / −7% / 3 minutes:
@@ -939,6 +939,8 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
           - production: 30 trades, 80% won, +0.7% a trade (+5.3% and −1.6% in its two halves);
           - the median trade was over in about 40 seconds.
         - +8% within 2 minutes and +12% / −8% did about as well; +5% did worse, because costs eat more of it.
+        - **The largest buyer** (the best separator of winners already on 30 September, `signals/grades.ts`): with no wallet over 15% of the buying, both sources together made 55 trades (about 30 a day), 87% won, +3.8% a trade, in profit in both halves (+5.7% and +1.3%), with no rug. Over 15%: 23 trades, −1.8% a trade, and both of the sample's rugs.
+        - **Then checked on the day's own signals** (06:00–12:48 UTC, after that sample), replayed the same way: with no wallet over 15%, 6 trades, 5 won, +$0.50; over 15%, 7 trades and −$4.71, among them all three of the day's rugs (NOAH 24.9%, UBI 17.2%, 四 20.9%: −76% to −86% each). Without the 15% limit the plan would have lost $4.21 on that morning's 13 trades.
         - Momentum bursts lost with every exit tried: production's 24 trades won 46%, −7.9% a trade.
         - About break-even overall. Most trades are small wins, and one rug (−76% to −90%, which no stop catches at live speed) costs as much as 8–10 of them.
       - **Learning can't stop a bot from trading (`bot/learner.ts` `LearnOptions.minAdmitShare`; `QUICK_LEARN` is 0.5):**
@@ -948,9 +950,9 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
       - **Site:** the Live plan card (title, how it works, each kind's "took profit" counts), the live note on a bot's Overview, and its Strategy tab. Every changed string is in all six dictionaries.
       - **Tests:**
         - `engine/test/dollarPlan.test.ts` covers:
-          - the take-profit math ($0.15 on $2), the exits and the 80-buyer limit;
+          - the take-profit math ($0.15 on $2), the exits, the 80-buyer limit and the 15% largest-buyer limit;
           - a live bot buying a snipe it didn't pick and selling it at +12%;
-          - a crowded coin, a momentum burst and a comeback passed over, and a momentum burst bought once the engine says it's proven;
+          - a crowded coin, a coin with one wallet at 25% of the buying, a momentum burst and a comeback passed over, and a momentum burst bought once the engine says it's proven;
           - four losses pausing a bot without any lesson that stops it;
           - learning from the team's replays, and the guard refusing a lesson that turns away 6 of 10;
           - settings from the +$1 plan starting over on load;

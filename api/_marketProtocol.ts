@@ -626,9 +626,10 @@ export interface DollarPlanView {
   sizeUsd: number
   /** What a winning trade makes at the take-profit, before the 15% fee ($0.15 on $2 since the quick plan; $1 before). */
   targetUsd: number
-  /** The take-profit after costs, in percent (7.5: about +10% on the price), and the most buyers a coin may have in. */
+  /** The take-profit after costs, in percent (7.5: about +10% on the price), the most buyers a coin may have in, and the largest share of its buying one wallet may have (percent). */
   netGainPct?: number
   maxBuyers?: number
+  maxTopBuyerPct?: number
   exits: { strategy: 'snipe' | 'scalp' | 'second-leg'; stopLoss: number; maxHoldMin: number; text: string }[]
   kinds: {
     rule: SignalRule

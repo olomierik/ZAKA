@@ -599,8 +599,8 @@ export class Bot implements EngineObserver {
     if (dollarMode) this.patterns.refresh(() => this.planOutcomes(now), now)
     const lossPattern = dollarMode && !probation ? this.patterns.match(features, rule) : null
     if (lossPattern) { reasons = [...reasons, `⚠ live bots sit it out: ${patternWhy(lossPattern)}`]; metrics.inc(`bot_pattern_${lossPattern.id}`) }
-    // On the $2 plan: a coin with 80+ buyers already in isn't one live bots buy (the crowd has bought), and momentum
-    // bursts and comebacks are measured first, traded once their replays prove them (bot/dollarPlan.ts).
+    // On the $2 plan: a coin with 80+ buyers already in, or one wallet over 15% of the buying, isn't one live bots buy,
+    // and momentum bursts and comebacks are measured first, traded once their replays prove them (bot/dollarPlan.ts).
     const crowded = dollarMode ? planBlocks(features) : null
     const proving = dollarMode && (PROVE_FIRST.rules.includes(rule) || strategy === 'second-leg') ? this.provenRecord(strategy === 'second-leg' ? 'second-leg' : rule, now) : null
     if (probation) { reasons = [...reasons, `⚠ on probation: ${probation.why}`]; metrics.inc(`bot_${rule}_probation`) }
@@ -616,7 +616,7 @@ export class Bot implements EngineObserver {
     const forLive = this.liveGrades === 'off' ? { ok: false, why: 'live trading is paused by the platform (no new live buys)' }
       : dollarMode ? (!isDollarStrategy(strategy) ? { ok: false, why: 'live bots trade snipes and fast scalps only' }
         : probation ? { ok: false, why: probation.why }
-        : crowded ? { ok: false, why: crowded }
+        : crowded ? { ok: false, why: crowded.why }
         : proving && !proving.ok ? { ok: false, why: proving.why }
         : lossPattern ? { ok: false, why: patternWhy(lossPattern) }
         : { ok: true, why: null })
@@ -1085,7 +1085,7 @@ export class Bot implements EngineObserver {
 
   /**
    * A rule's trades on the $2 plan: live bots' (real fills) first, then every signal's replay, one per signal. Only the
-   * signals live bots would buy count (80 buyers or fewer in), and only the plan's current version.
+   * signals live bots would buy count (80 buyers or fewer in, no wallet over 15%), and only the plan's current version.
    */
   private dollarTrades(rule: SignalRule, now: number): Position[] {
     const live = this.o.accounts?.dollarLive(now) ?? []
@@ -1111,7 +1111,7 @@ export class Bot implements EngineObserver {
     const kinds = [['snipe', 'snipe'], ['snipe', 'scalp'], ['momentum', 'scalp'], ['second-leg', 'second-leg']] as const
     const live = (this.o.accounts?.dollarLive(now) ?? []).concat(this.positions.filter(p => p.mode === 'live' && isDollarTrade(p)))
     return {
-      sizeUsd: DOLLAR_PLAN.sizeUsd, targetUsd: DOLLAR_TARGET_USD, netGainPct: DOLLAR_PLAN.netGain * 100, maxBuyers: DOLLAR_PLAN.maxBuyers,
+      sizeUsd: DOLLAR_PLAN.sizeUsd, targetUsd: DOLLAR_TARGET_USD, netGainPct: DOLLAR_PLAN.netGain * 100, maxBuyers: DOLLAR_PLAN.maxBuyers, maxTopBuyerPct: DOLLAR_PLAN.maxTopBuyerPct,
       exits: DOLLAR_PLAN.strategies.map(s => ({ strategy: s, stopLoss: DOLLAR_PLAN.exits[s].stopLoss, maxHoldMin: DOLLAR_PLAN.exits[s].maxHoldMin, text: dollarPlanText(s) })),
       kinds: kinds.map(([rule, strategy]) => {
         const rep = [...this.dollar.values()].filter(p => p.rule === rule && p.strategy === strategy && now - (p.closedAt ?? 0) <= week).sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0)).slice(-PROBATION.window)

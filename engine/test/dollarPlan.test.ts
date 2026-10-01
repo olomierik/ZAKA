@@ -53,10 +53,13 @@ describe('the take-profit: +7.5% after costs on $2', () => {
     expect(exitsAt(p, 0.92, now + 60_000)[0].reason).toBe('stop')
     expect(DOLLAR_PLAN).toMatchObject({ version: 2, sizeUsd: 2, netGain: 0.075, maxBuyers: 80 })
   })
-  test('80 buyers or fewer already in; a signal without the count is taken', () => {
+  test('80 buyers or fewer already in, and no wallet over 15% of the buying; a count the signal lacks isn\'t checked', () => {
     expect(planBlocks(features({ totalBuyers: 80 }))).toBeNull()
-    expect(planBlocks(features({ totalBuyers: 81 }))).toMatch(/^81 buyers already in \(live bots buy coins with 80 or fewer/)
+    expect(planBlocks(features({ totalBuyers: 81 }))).toMatchObject({ key: 'crowded', why: expect.stringMatching(/^81 buyers already in \(live bots buy coins with 80 or fewer/) })
     expect(planBlocks(features())).toBeNull()
+    expect(planBlocks(features({ topBuyerPct: 15 }))).toBeNull()
+    // Today's three rugs: one wallet held 17–25% of the buying.
+    expect(planBlocks(features({ topBuyerPct: 17.2 }))).toMatchObject({ key: 'top-buyer', why: expect.stringMatching(/^one wallet bought 17% of the buying \(live bots buy coins where none is over 15%/) })
   })
 })
 
@@ -123,12 +126,14 @@ describe('live bots on the plan', () => {
   test('passed over: a crowded coin, a momentum burst and a comeback not yet proven', async () => {
     const { a, wallet, signal } = await liveBot()
     signal({ id: 'cr1', token: tok(0xb4), features: features({ totalBuyers: 140 }) })
+    signal({ id: 'tb1', token: tok(0xb6), features: features({ topBuyerPct: 24.9 }) })
     signal({ id: 'mo1', token: tok(0xb2), strategy: 'scalp', rule: 'momentum' })
     signal({ id: 'dr1', token: tok(0xb3), strategy: 'second-leg', rule: 'second-leg' })
     await settle()
     expect(wallet.calls).toEqual([])
     const texts = a.skips.map(s => s.text)
     expect(texts.some(t => /not traded live: 140 buyers already in \(live bots buy coins with 80 or fewer/.test(t))).toBe(true)
+    expect(texts.some(t => /not traded live: one wallet bought 25% of the buying/.test(t))).toBe(true)
     expect(texts.filter(t => /momentum bursts and comebacks are replayed and measured first/.test(t))).toHaveLength(2)
     // Once the engine says a momentum burst is proven (its replays on the plan made money), it's bought.
     signal({ id: 'mo2', token: tok(0xb5), strategy: 'scalp', rule: 'momentum', quality: { score: 70, grade: 'live', tier: 'A', rank: null, parts: [], liveOk: true, liveWhy: null } as never })
@@ -276,7 +281,7 @@ describe('the engine replays every snipe and fast scalp on the plan', () => {
     expect(accounts.dollarTeam('scalp')).toHaveLength(11) // what live bots learn from
     expect(bot.dollarProbation('momentum', now)?.why).toMatch(/Momentum bursts won 0 of their last 11 trades/)
     const v = bot.dollarView(now)
-    expect(v).toMatchObject({ sizeUsd: 2, targetUsd: 0.15, netGainPct: 7.5, maxBuyers: 80 })
+    expect(v).toMatchObject({ sizeUsd: 2, targetUsd: 0.15, netGainPct: 7.5, maxBuyers: 80, maxTopBuyerPct: 15 })
     expect(v.kinds.find(k => k.rule === 'momentum')).toMatchObject({ replays: { trades: 11, wins: 0, hits: 0 }, probation: expect.stringMatching(/won 0 of their last 11/) })
     expect(v.exits.map(e => e.text)).toEqual(Array(3).fill('$2 a trade, all of it sold at +7.5% after costs (about +10% on the price); out at −7%, when the creator sells, or after 3 minutes'))
   })

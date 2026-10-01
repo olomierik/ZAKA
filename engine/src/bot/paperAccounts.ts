@@ -743,7 +743,8 @@ export class PaperAccounts {
   /**
    * A live bot on the $2 plan (bot/dollarPlan.ts): every snipe and fast scalp, whatever it picked, at $2, all of it
    * sold at about +10% (quick take-profits, 3 minutes at most). Its own learned entry filters per kind of signal decide;
-   * a rule on probation, a crowded coin and a kind not yet proven (momentum bursts, comebacks) are sat out.
+   * a rule on probation, a crowded coin, one with a wallet over 15% of the buying, and a kind not yet proven (momentum
+   * bursts, comebacks) are sat out.
    */
   private dollarClaim(a: PaperAccount, sig: PaperSignal, grade: SignalGrade, access: AccessView, now: number, skip: (key: string, why: string) => void): LiveClaim | null {
     const st = sig.strategy
@@ -752,9 +753,9 @@ export class PaperAccounts {
     if (!access.live) { skip('tier', `not traded live: live trading is for ${TIER_FOR_LIVE} and up`); return null }
     if (a.pausedUntil && now < a.pausedUntil) { skip('paused', `paused after ${PROTECT.pauseAfterLosses} losses in a row`); return null }
     if (sig.probation) { skip('probation', `not traded: ${sig.probation.why}`); return null }
-    // A crowded coin: the plan's own limit, whatever the bot learned.
-    const crowded = planBlocks(sig.features)
-    if (crowded) { skip('crowded', `not traded live: ${crowded}`); return null }
+    // A crowded coin, or one wallet with a big share of the buying: the plan's own limits, whatever the bot learned.
+    const blocked = planBlocks(sig.features)
+    if (blocked) { skip(blocked.key, `not traded live: ${blocked.why}`); return null }
     // A kind of coin that keeps losing (bot/patterns.ts), or a kind not yet proven: the engine says why.
     const proveFirst = !!sig.rule && PROVE_FIRST.rules.includes(sig.rule)
     if (sig.quality?.liveOk === false) { skip(sig.quality.pattern ? 'pattern' : proveFirst ? 'prove-first' : 'grade-live', `not traded live: ${sig.quality.liveWhy ?? 'the engine sits it out'}`); return null }
