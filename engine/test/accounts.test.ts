@@ -57,7 +57,7 @@ describe('accounts: email and a 4-character passcode', () => {
     expect('token' in await users.login('b@x.io', 'Pass', '2.2.2.2', now + 16 * 60_000)).toBe(true)
     for (let i = 0; i < 30; i++) await users.login(`nobody${i}@x.io`, 'Nope', '3.3.3.3', now)
     expect(await users.login('b@x.io', 'Pass', '3.3.3.3', now)).toMatchObject({ status: 429 })
-  })
+  }, 20_000) // about 40 scrypt hashes: past bun's 5s default when the whole suite runs at once
   test('forgot: a new passcode by email, every device signed out; unknown emails look the same', async () => {
     const { users, mailer } = setupUsers()
     const r = await users.signup('c@x.io', 'Old1', '4.4.4.4', now) as { token: string }

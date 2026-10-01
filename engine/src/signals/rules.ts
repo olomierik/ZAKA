@@ -37,19 +37,27 @@ import type { Flow, Window } from '../intel/flow'
 // were stopped out within 90 seconds). And a rule whose recent paper record
 // loses is on probation (bot/probation.ts): it still fires and is measured,
 // but no bot trades it until its record recovers.
+// 2026-10-01 (owner: "bring back live trading using the snipe and fast scalp
+// strategies paper bots used yesterday afternoon"): the snipe and momentum
+// rules are back at their thresholds of the afternoon of 30 September (commit
+// d381135), after a morning at 10 buyers, 2× and 20% (snipes) and 12 buyers,
+// 2×, +15% and $5,000 with a "still bought now" check (momentum). Replayed on
+// 72 hours of real trades with the dollar plan live bots trade (bot/
+// dollarPlan.ts), the afternoon's snipes did at least as well as the morning's
+// and held up in both halves of the period; momentum bursts were about
+// break-even either way, and probation keeps them off live bots while their
+// replays lose.
 export const RULES = {
   snipe: {
     /** Let the first blocks' bundlers show before judging. */
     minAgeSec: 20,
     maxAgeSec: 600,
-    // 2026-10-01: 10 (was 6, briefly 4): a snipe fires once per coin, so firing before the early crowd
-    // (10+ buyers, signals/grades.ts) used up the coin's one signal on a losing Standard grade.
-    minBuyers: 10,
-    minBuyUsd: 120, // was 200
+    minBuyers: 6,
+    minBuyUsd: 200,
     /** Buy volume at least this many times sell volume. */
-    minBuySellRatio: 2, // was 1.3 (the early crowd's)
+    minBuySellRatio: 1.3,
     /** No single buyer above this share of buy volume. */
-    maxTopBuyerPct: 20, // was 25 (the early crowd's)
+    maxTopBuyerPct: 25,
     /** Not late: the price hasn't already run this far from its first trade. */
     maxRunUp: 5,
     /** Not already falling: within this share of its peak. */
@@ -62,26 +70,24 @@ export const RULES = {
     windowSec: 120,
     /** After the first minute's bundlers and bots have shown. */
     minAgeSec: 60,
-    /** Enough different buyers that it's a crowd, not a few wallets (was 3, then 6; 8 since 2026-09-30:
-     * momentum bursts with 3–7 buyers lost 3 of 4 in the house book). */
-    minBuyers: 12, // 2026-10-01: was 8 (crowd momentum, signals/grades.ts)
+    /** Enough different buyers that it's a crowd, not a few wallets. */
+    minBuyers: 6,
     minBuyUsd: 100,
     /** Buy volume at least this many times sell volume in the window. */
-    minBuySellRatio: 2, // was 1.6
-    /** The price up at least this much in the window, and not more than this (not the top of a spike; 2026-10-01: was 1.35). */
+    minBuySellRatio: 1.6,
+    /** The price up at least this much in the window, and not more than this (not the top of a spike). */
     minMove: 1.02,
-    maxMove: 1.15, // was 1.2
+    maxMove: 1.2,
     /** Still near the window's high. */
     minOfHigh: 0.92,
     /** No single buyer above this share of the window's buys. */
     maxTopBuyerPct: 40,
-    /** Still being bought right now (2026-09-30): in the last 30 seconds buys at least match sells,
-     * from at least 2 wallets. 8 of 10 momentum losses were stopped out within 90s of buying: the
-     * burst had ended by the time it was read. */
+    /** Still being bought right now: in the last 30 seconds buys at least match sells, from at least
+     * this many wallets (0: not checked, as on the afternoon of 30 September; it was 2 from that evening). */
     confirmSec: 30,
-    minRecentBuyers: 2,
+    minRecentBuyers: 0,
     /** Deep enough that a $1–2 profit survives the costs. */
-    minLiquidityUsd: 5_000, // was 2,000
+    minLiquidityUsd: 2_000,
     /** The same coin scalped again only after this long. */
     repeatMin: 30,
   },
@@ -162,7 +168,7 @@ export function scalpReady(w: Window, ageSec: number, liquidityUsd: number | nul
     need('offhigh', ofHigh !== null && ofHigh >= r.minOfHigh, `${((ofHigh ?? 0) * 100).toFixed(0)}% of its 2-min high`, `${(100 - (ofHigh ?? 0) * 100).toFixed(0)}% off its 2-min high`),
     need('topbuyer', w.topBuyerPct <= r.maxTopBuyerPct, `largest buyer ${w.topBuyerPct.toFixed(0)}% of buys`, `one buyer is ${w.topBuyerPct.toFixed(0)}% of the buying`),
     need('liquidity', liquidityUsd !== null && liquidityUsd >= r.minLiquidityUsd, `$${Math.round(liquidityUsd ?? 0).toLocaleString('en-US')} liquidity`, `liquidity $${Math.round(liquidityUsd ?? 0).toLocaleString('en-US')} (need $${r.minLiquidityUsd.toLocaleString('en-US')} for a scalp)`),
-    need('now', last.buyers >= r.minRecentBuyers && last.buyUsd >= last.sellUsd, `still bought in the last ${r.confirmSec}s (${last.buyers} buyers)`,
+    need('now', r.minRecentBuyers === 0 || (last.buyers >= r.minRecentBuyers && last.buyUsd >= last.sellUsd), `still bought in the last ${r.confirmSec}s (${last.buyers} buyers)`,
       last.buyUsd < last.sellUsd ? `sold more than bought in the last ${r.confirmSec}s: the burst is over` : `${last.buyers} buyer${last.buyers === 1 ? '' : 's'} in the last ${r.confirmSec}s (need ${r.minRecentBuyers})`),
   ].every(Boolean)
   return { ok, reasons, failed }

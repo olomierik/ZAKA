@@ -1940,5 +1940,18 @@ const d: Record<string, string> = {
   "Launchpad coins only: a coin can become a signal only if a known Arc launchpad launched it (Argus, ARCDEX, Mercuri, SolonPad, Peach, Faze, Aka.fun, o1, Minara, Long.supply) and it runs that launchpad's standard code. Coins from anywhere else are listed, never traded.": "仅限启动平台代币：只有由已知 Arc 启动平台（Argus, ARCDEX, Mercuri, SolonPad, Peach, Faze, Aka.fun, o1, Minara, Long.supply）发行、且使用该平台标准代码的代币才能成为信号。其他来源的代币只列出，从不交易。",
   "Launchpad coins only: a coin can become a signal only if a known Arc launchpad launched it (Argus, ARCDEX, Mercuri, SolonPad, Peach, Faze, Aka.fun, o1, Minara, Long.supply). Coins from anywhere else are listed, never traded.": "仅限启动平台代币：只有由已知 Arc 启动平台（Argus, ARCDEX, Mercuri, SolonPad, Peach, Faze, Aka.fun, o1, Minara, Long.supply）发行的代币才能成为信号。其他来源的代币只列出，从不交易。",
   "not a launchpad coin, or not its standard code": "不是启动平台代币，或不是其标准代码",
+  "Fast scalps: snipes on risky coins": "快速剥头皮：高风险币的狙击",
+  "Fast scalps: momentum bursts": "快速剥头皮：动量爆发",
+  "Live plan: {s} a trade, sold once it makes {t}": "实盘方案：每笔 {s}，赚到 {t} 即全部卖出",
+  "Live bots take every snipe and fast-scalp signal: {s} each, all of it sold once it makes {t} (about +52% after costs). Each bot learns its own entry filters from its losing trades and the team's. Every signal is also replayed on its coin's real trades at live speed; a kind whose replays lose is sat out until they recover. A trade that doesn't get there is sold at its stop, when the creator sells, or when its time is up, so most trades don't make the full {t}.": "实盘机器人接收每个狙击和快速剥头皮信号：每笔 {s}，赚到 {t}（扣除成本后约 +52%）即全部卖出。每个机器人都从自己和团队的亏损交易中学习自己的入场过滤条件。每个信号还会以实盘速度在该币的真实交易上回放；回放亏损的类型会被暂停，直到恢复。达不到目标的交易会在止损、创建者卖出或时间到时卖出，所以大多数交易拿不到完整的 {t}。",
+  "All of it at +{t}; out at {sl}, when the creator sells, or after {m} minutes": "全部在 +{t} 卖出；在 {sl}、创建者卖出时或 {m} 分钟后离场",
+  "SAT OUT": "暂停",
+  "{n} replays · {h} made {t} · {w} won · {p}": "{n} 次回放 · {h} 次赚到 {t} · {w} 次盈利 · {p}",
+  "Live bots: {n} trades, {h} made {t}, {w} won, {p}": "实盘机器人：{n} 笔交易，{h} 笔赚到 {t}，{w} 笔盈利，{p}",
+  "Live bots trade every snipe and fast scalp now, whatever they picked: {s} a trade, all of it sold once it makes {t}. Your bot learns from its losing trades and the team's which coins to skip; the {t} target never moves.": "实盘机器人现在交易每个狙击和快速剥头皮信号，无论它们选了什么：每笔 {s}，赚到 {t} 即全部卖出。你的机器人从自己和团队的亏损交易中学习该跳过哪些币；{t} 的目标永远不变。",
+  "Live bots trade every snipe and fast scalp at {s}, sold once it makes {t}; your picks are what this bot trades on paper.": "实盘机器人以 {s} 交易每个狙击和快速剥头皮信号，赚到 {t} 即卖出；你的选择是这个机器人在模拟盘交易的内容。",
+  "Live: {s} a trade, sold once it makes {t}": "实盘：每笔 {s}，赚到 {t} 即卖出",
+  "Every live trade is {s}, whatever the wallet holds, and all of it is sold once it makes {t}. What it learned for live trades, from its own and the team's:": "每笔实盘交易都是 {s}，无论钱包里有多少，赚到 {t} 即全部卖出。它从自己和团队的交易中为实盘学到的：",
+  "Nothing learned yet: it takes every signal of this kind.": "尚未学到任何内容：它接收这一类的每个信号。",
 }
 export default d

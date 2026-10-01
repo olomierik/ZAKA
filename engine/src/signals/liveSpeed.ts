@@ -16,7 +16,7 @@
 // resumes by itself when one qualifies. Nothing here promises a profit: it
 // keeps real money out of what is losing at the speed real money trades.
 
-import { LIVE_SPEED, onPrice, openPosition, type Strategy, type StrategyParams } from '../trading/paper'
+import { closeNow, LIVE_SPEED, onPrice, openPosition, type Strategy, type StrategyParams } from '../trading/paper'
 
 export const LIVE_GATE = {
   /** Replays counted: the last this many of a kind, within this many days. */
@@ -27,7 +27,8 @@ export const LIVE_GATE = {
   minAvgReturn: 0.005,
 }
 
-export interface Tick { ts: number; price: number }
+/** A trade on the coin: its time and price, and whether it was the coin's creator selling (exits that close on it do). */
+export interface Tick { ts: number; price: number; creatorSold?: boolean }
 
 export interface Replay {
   /** The return of a buy at live speed, after costs (0.05 = +5%); null: not bought (the price moved too far first). */
@@ -35,6 +36,9 @@ export interface Replay {
   reason: string
   /** Whether it's settled: an exit happened, or the longest hold passed. */
   final: boolean
+  /** When it was bought and sold (or, still open, the last trade read). */
+  openedAt?: number
+  closedAt?: number
 }
 
 /** Replays a signal on its coin's trades (oldest first) at live speed. */
@@ -47,17 +51,19 @@ export function replayAtLiveSpeed(rows: Tick[], o: { at: number; price: number; 
   pos.exits = o.exits
   for (const r of rows) {
     if (r.ts <= entry.ts) continue
-    onPrice(pos, r.price, r.ts, o.exits, speed.exitMs)
+    // The creator selling: out, filled as a live sale would be (2s later).
+    if (r.creatorSold && o.exits.exitOnCreatorSell && !pos.pendingExit) closeNow(pos, r.price, r.ts, 'creator', undefined, speed.exitMs)
+    else onPrice(pos, r.price, r.ts, o.exits, speed.exitMs)
     if (pos.status === 'closed') break
   }
-  if (pos.status === 'closed') return { ret: (pos.pnlUsd ?? 0) / pos.sizeUsd, reason: pos.exitReason ?? 'closed', final: true }
+  if (pos.status === 'closed') return { ret: (pos.pnlUsd ?? 0) / pos.sizeUsd, reason: pos.exitReason ?? 'closed', final: true, openedAt: entry.ts, closedAt: pos.closedAt ?? undefined }
   // Still open: settled once its longest hold has passed, at the last price.
   const last = rows[rows.length - 1]
   const held = o.now - entry.ts
   const value = pos.remaining * last.price * (1 - pos.cost)
   const sold = pos.fills.filter(f => f.reason !== 'entry').reduce((sum, f) => sum + f.usd, 0)
   const ret = (sold + value - pos.sizeUsd) / pos.sizeUsd
-  return { ret, reason: 'open', final: held >= (o.exits.maxHoldMin ?? 60) * 60_000 }
+  return { ret, reason: 'open', final: held >= (o.exits.maxHoldMin ?? 60) * 60_000, openedAt: entry.ts, closedAt: last.ts }
 }
 
 export interface ReplayResult { signalId: string; key: string; at: number; ret: number }

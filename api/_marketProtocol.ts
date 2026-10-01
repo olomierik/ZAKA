@@ -349,6 +349,8 @@ export interface BotPosition {
   /** A visitor's bot: the platform's 15% of a winning trade's profit (already out of pnlUsd); live, a fee still to send. */
   feeUsd?: number
   feeDue?: number
+  /** Traded on the dollar plan: $2, all of it sold once it makes $1 (engine/src/bot/dollarPlan.ts). */
+  plan?: 'dollar'
 }
 
 /** The bot's mode and live wallet (GET /v1/bot/status). */
@@ -519,6 +521,8 @@ export interface BotLiveView {
   limits: { maxTradeUsd: number; minBalanceUsd: number; reserveUsd: number; maxOpen: number; dailyLossUsd: number; preflight?: boolean; maxRoundTripPct?: number; maxSharePct?: number; baseTradeUsd?: number }
   /** A live trade's size now: the base grown by `growthPct`, what its realized live P&L (`pnlUsd`) has added to its starting capital. */
   sizing?: { tradeUsd: number; growthPct: number; pnlUsd: number }
+  /** On the dollar plan: $2 a trade, all of it sold once it makes $1, and the entry filters it learned for live trades per strategy. */
+  plan?: { sizeUsd: number; targetUsd: number; tuning: Record<'snipe' | 'scalp', StrategyTuning> }
   events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
 }
 
@@ -586,7 +590,28 @@ export interface AccessView {
 export interface GradeRecordView { grade: SignalGrade; trades: number; wins: number; winRate: number | null; avgPct: number | null; review: string | null; exits: string; rules: string[]; /** Live bots trade it now. */ live?: boolean }
 
 /** GET /v1/tiers. */
-export interface TiersResponse { enforced: boolean; /** When tiers start by themselves (ms), if set. */ enforceAt?: number | null; tiers: TierInfo[]; grades: GradeRecordView[]; crowd: { impactShareOfTp: number; maxPoolShare: number; maxBots: number }; /** Which signals live bots trade: `board` (the strategy board), `proven` (Prime and grades proven at live speed), `all` or `off`. */ liveGrades?: 'board' | 'proven' | 'all' | 'off' }
+export interface TiersResponse { enforced: boolean; /** When tiers start by themselves (ms), if set. */ enforceAt?: number | null; tiers: TierInfo[]; grades: GradeRecordView[]; crowd: { impactShareOfTp: number; maxPoolShare: number; maxBots: number }; /** Which signals live bots trade: `dollar` (snipes and fast scalps at $2, sold at +$1), `board` (the strategy board), `proven` (Prime and grades proven at live speed), `all` or `off`. */ liveGrades?: LiveRouting }
+
+/** How live bots are routed (BOT_LIVE_GRADES on the engine). */
+export type LiveRouting = 'dollar' | 'board' | 'proven' | 'all' | 'off'
+
+/**
+ * The dollar plan (engine/src/bot/dollarPlan.ts, 2026-10-01): live bots trade every snipe and fast scalp at $2, sold in
+ * full once it makes $1. Each kind of signal's record: every signal replayed on its coin's real trades at live speed
+ * with the plan (`replays`), and live bots' own trades on it (`live`). A kind on probation is sat out by live bots.
+ */
+export interface DollarPlanView {
+  sizeUsd: number
+  targetUsd: number
+  exits: { strategy: 'snipe' | 'scalp'; stopLoss: number; maxHoldMin: number; text: string }[]
+  kinds: {
+    rule: SignalRule
+    strategy: 'snipe' | 'scalp'
+    replays: { trades: number; wins: number; hits: number; avgPct: number | null; pnlUsd: number }
+    live: { trades: number; wins: number; hits: number; pnlUsd: number }
+    probation: string | null
+  }[]
+}
 
 /**
  * One of the three strategies on the strategy board (engine/src/bot/strategyBoard.ts, 2026-10-01): whether live bots
@@ -606,7 +631,7 @@ export interface StrategyBoardEntry {
 }
 
 /** GET /v1/bot/board. */
-export interface StrategyBoardResponse { at: number; routing: 'board' | 'proven' | 'all' | 'off'; strategies: StrategyBoardEntry[] }
+export interface StrategyBoardResponse { at: number; routing: LiveRouting; strategies: StrategyBoardEntry[]; /** On the dollar plan: what live bots trade and each kind's record. */ dollar?: DollarPlanView }
 
 /** The exact text a wallet signs to link to an ARCDEX Autotrade account (its $ARCD counts toward the account's tier). */
 export function tierLinkMessage(email: string, address: string, at: number): string {

@@ -73,7 +73,7 @@ export interface Config {
    * bot/strategyBoard.ts, switches each of the three strategies on or off by its paper record at live speed),
    * `proven` (Prime and Core unless their record fails, Standard once proven), `all`, or `off` (no new live buys).
    */
-  liveGrades: 'board' | 'proven' | 'all' | 'off'
+  liveGrades: 'dollar' | 'board' | 'proven' | 'all' | 'off'
   /** Launchpad coins only (SIGNALS_LAUNCHPAD_ONLY, intel/launchpadGate.ts): `strict` (the default), `origin` or `off`. */
   launchpadOnly: 'strict' | 'origin' | 'off'
   /** Paper position size in USD for snipes and second legs (default: each strategy's own, $25). */
@@ -127,8 +127,10 @@ export function loadConfig(): Config {
     })(),
     // 2026-10-01: paused for an hour after DEGEN (-94%), then resumed by the owner with live trades at $2, growing with
     // their realized profit (bot/sizing.ts liveTradeSize). `off` pauses every new live buy; open live trades are still managed.
-    // `board` (the default since 2026-10-01): the strategy board decides, from the paper bots' records at live speed.
-    liveGrades: (['all', 'off', 'proven'] as const).find(v => v === process.env.BOT_LIVE_GRADES) ?? 'board',
+    // `board`: the strategy board decides, from the paper bots' records at live speed.
+    // `dollar` (the default since 2026-10-01, owner's request): live bots trade every snipe and fast scalp at $2, all of
+    // it sold once it makes $1, and learn from their own and the team's trades (bot/dollarPlan.ts).
+    liveGrades: (['all', 'off', 'proven', 'board'] as const).find(v => v === process.env.BOT_LIVE_GRADES) ?? 'dollar',
     // Only coins a known Arc launchpad launched, with its standard code, become signals (2026-10-01).
     launchpadOnly: (['origin', 'off'] as const).find(v => v === process.env.SIGNALS_LAUNCHPAD_ONLY) ?? 'strict',
     botSizeUsd: process.env.BOT_SIZE_USD ? int('BOT_SIZE_USD', 25, 1, 10_000) : null,

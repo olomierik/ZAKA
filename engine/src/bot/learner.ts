@@ -216,7 +216,7 @@ const strip = (t: Tuning): StrategyTuning => { const { prev: _prev, ...rest } = 
 const openCopy = (): BotFilters => ({ ...OPEN_FILTERS, avoidFlags: [] })
 
 /** What one kind of signal's losing trades say about its entry filters: changes `f` and adds notes. */
-function tightenFor(rule: SignalRule, s: Strategy, f: BotFilters, w: Position[], own: Position[], now: number, say: (kind: LearnNote['kind'], text: string) => void) {
+function tightenFor(rule: SignalRule, s: Strategy, f: BotFilters, w: Position[], own: Position[], now: number, say: (kind: LearnNote['kind'], text: string) => void, skipAnyKind = false) {
   const losses = w.filter(p => !won(p)), wins = w.filter(won)
   const share = (xs: Position[]) => xs.length / Math.max(1, losses.length)
   const wr = wins.length / Math.max(1, w.length)
@@ -226,7 +226,7 @@ function tightenFor(rule: SignalRule, s: Strategy, f: BotFilters, w: Position[],
   // A kind of signal that keeps losing for this bot: skipped for now, tried again later (relax).
   const recent = own.slice(-6)
   const recentPnl = recent.reduce((sum, p) => sum + (p.pnlUsd ?? 0), 0)
-  if (!f.skip && s === 'scalp' && recent.length >= 4 && winsOf(recent) / recent.length <= 0.25 && recentPnl < 0) {
+  if (!f.skip && (s === 'scalp' || skipAnyKind) && recent.length >= 4 && winsOf(recent) / recent.length <= 0.25 && recentPnl < 0) {
     f.skip = true; f.skippedAt = now
     say('tighten', `${tag}: won ${winsOf(recent)} of its last ${recent.length} (${money(recentPnl)}): it skips them for now and tries again in 12 hours.`)
   }
@@ -284,13 +284,21 @@ function tightenFor(rule: SignalRule, s: Strategy, f: BotFilters, w: Position[],
 }
 
 /**
+ * How a bot learns on the dollar plan (bot/dollarPlan.ts): the take-profit is
+ * the owner's $1 and never moves; any kind of signal that keeps losing is
+ * skipped for a while (on paper, only a fast scalp's kinds are).
+ */
+export interface LearnOptions { pinTakeProfit?: boolean; skipAnyKind?: boolean }
+export const DOLLAR_LEARN: LearnOptions = { pinTakeProfit: true, skipAnyKind: true }
+
+/**
  * Reads a strategy's closed trades (oldest first) and returns the bot's next
  * tuning with notes, or null if there's nothing to change yet. `shared`:
  * the team's closed trades of the strategy (one per signal). `force`: learn
  * now, without waiting for its own trades on the current version (the team's
  * trades are enough: PaperAccounts' team sync).
  */
-export function learn(t: Tuning, s: Strategy, trades: Position[], now: number, shared: Position[] = [], force = false): { tuning: Tuning; notes: LearnNote[] } | null {
+export function learn(t: Tuning, s: Strategy, trades: Position[], now: number, shared: Position[] = [], force = false, opts: LearnOptions = {}): { tuning: Tuning; notes: LearnNote[] } | null {
   const closed = trades.filter(p => p.status === 'closed')
   const cur = closed.filter(p => (p.tuningVersion ?? 0) === t.version)
   const winsOf = (xs: Position[]) => xs.filter(won).length
@@ -316,7 +324,7 @@ export function learn(t: Tuning, s: Strategy, trades: Position[], now: number, s
   // Exits, for the strategy as a whole: near misses mean the take-profit was too far.
   const w = closed.slice(-LEARN.window)
   const losses = w.filter(p => !won(p))
-  if (w.length >= LEARN.minTrades && losses.length >= LEARN.minLosses) {
+  if (!opts.pinTakeProfit && w.length >= LEARN.minTrades && losses.length >= LEARN.minLosses) {
     const tpOf = (p: Position) => p.exits?.tp1Multiple ?? t.takeProfit
     const near = losses.filter(p => p.marketEntry > 0 && p.peak / p.marketEntry >= 1 + 0.6 * (tpOf(p) - 1))
     if (near.length >= 2 && near.length / losses.length >= LEARN.share) {
@@ -339,7 +347,7 @@ export function learn(t: Tuning, s: Strategy, trades: Position[], now: number, s
     if (rw.length < 4) continue
     const f: BotFilters = structuredClone(t.rules?.[rule] ?? openCopy())
     const before = JSON.stringify(f)
-    tightenFor(rule, s, f, rw, own, now, (kind, text) => notes.push({ kind, rule, text: team.length > 0 && !text.includes('skips them for now') ? `${text} (read from its ${mine.length} trades and ${team.length} of the team's)` : text }))
+    tightenFor(rule, s, f, rw, own, now, (kind, text) => notes.push({ kind, rule, text: team.length > 0 && !text.includes('skips them for now') ? `${text} (read from its ${mine.length} trades and ${team.length} of the team's)` : text }), opts.skipAnyKind)
     if (JSON.stringify(f) !== before) next.rules[rule] = f
   }
 

@@ -311,7 +311,7 @@ export function startServer({ cfg, api, health }: ServerDeps) {
           // The strategy board (bot/strategyBoard.ts): which of the three strategies live bots trade now, with whose settings.
           if (url.pathname === '/v1/bot/board') {
             if (!api.accounts) return json(req, 503, { error: 'bots are off on this engine' })
-            return json(req, 200, { at: Date.now(), routing: bot.liveGrades, strategies: api.accounts.boardView() }, 'public, max-age=5')
+            return json(req, 200, { at: Date.now(), routing: bot.liveGrades, strategies: api.accounts.boardView(), ...(bot.liveGrades === 'dollar' ? { dollar: bot.dollarView() } : {}) }, 'public, max-age=5')
           }
           if (url.pathname === '/v1/bot/rejections') return json(req, 200, { ...bot.scan.rejections(), signals: { owner: bot.outcomes.summary(), bots: api.accounts?.outcomes.summary() ?? null } }, 'public, max-age=10')
           if (url.pathname === '/v1/bot/scan') {

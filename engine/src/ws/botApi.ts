@@ -28,7 +28,7 @@
 //   POST /v1/me/wallets/remove {address}          unlinks one
 
 import { isAddress, isHex, type Address, type Hex } from 'viem'
-import { tierLinkMessage, type GradeRecordView, type MeResponse, type PaperAction, type TiersResponse } from '../../../api/_marketProtocol'
+import { tierLinkMessage, type GradeRecordView, type LiveRouting, type MeResponse, type PaperAction, type TiersResponse } from '../../../api/_marketProtocol'
 import { CROWD } from '../bot/crowd'
 import type { PaperAccount, PaperAccounts } from '../bot/paperAccounts'
 import type { Tiers } from '../bot/tiers'
@@ -58,7 +58,7 @@ export interface BotApiDeps {
   accounts: PaperAccounts | null
   tiers?: Tiers | null
   grades?: () => GradeRecordView[]
-  liveGrades?: 'board' | 'proven' | 'all' | 'off'
+  liveGrades?: LiveRouting
   signedBy?: (address: Address, message: string, signature: Hex) => Promise<boolean>
 }
 

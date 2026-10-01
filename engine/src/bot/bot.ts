@@ -41,17 +41,18 @@ import { log, errMsg } from '../log'
 import type { EngineObserver, MarketEngine } from '../market/engine'
 import { metrics } from '../metrics'
 import { PricePath, RULES, scalpReady, secondLegReady, snipeReady, tooCostly } from '../signals/rules'
-import type { BotStatus, GradeRecordView, ScanRow, SignalFeatures, SignalGrade, SignalQuality, SignalRule } from '../../../api/_marketProtocol'
+import type { BotStatus, DollarPlanView, GradeRecordView, LiveRouting, ScanRow, SignalFeatures, SignalGrade, SignalQuality, SignalRule } from '../../../api/_marketProtocol'
 import { GRADE_RULES, GRADES, GradeBook, gradeOf, isEarlyCrowd, liveGrade, PRIME_RULES } from '../signals/grades'
 import { crowdCap } from './crowd'
 import { QUALITY, QualityRank, qualityScore, type RuleRecord } from '../signals/quality'
-import { LIVE_GATE, liveKey, LiveSpeedBook, replayAtLiveSpeed, type LiveSpeedRecord } from '../signals/liveSpeed'
-import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, QUICK_EXITS, RISK, STRATEGIES, stats, type Position, type Strategy, type StrategyParams } from '../trading/paper'
+import { LIVE_GATE, liveKey, LiveSpeedBook, replayAtLiveSpeed, type LiveSpeedRecord, type Replay } from '../signals/liveSpeed'
+import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, QUICK_EXITS, RISK, STRATEGIES, stats, type ExitReason, type Position, type Strategy, type StrategyParams } from '../trading/paper'
+import { DOLLAR_PLAN, dollarParams, dollarPlanText, isDollarStrategy, isDollarTrade, type DollarStrategy } from './dollarPlan'
 import type { HistoryStore } from '../store/history'
 import { defaultTuning, toParams } from './learner'
 import type { LiveTrader } from './liveTrader'
 import type { PaperAccounts } from './paperAccounts'
-import { probationOf } from './probation'
+import { PROBATION, probationOf } from './probation'
 import { RugWatch } from './rugGuard'
 import { LIVE_SIZE, liveTradeSize, type LiveGrowth } from './sizing'
 import { boardAdmits, boardParams, platformParams } from './strategyBoard'
@@ -162,6 +163,12 @@ export class Bot implements EngineObserver {
   readonly liveSpeed = new LiveSpeedBook()
   /** Each grade's signals replayed at live speed with the exits that grade trades with: its public record and its review (signals/grades.ts). */
   readonly grades = new GradeBook()
+  /**
+   * Every snipe and fast-scalp signal replayed on its coin's real trades at live speed on the dollar plan (bot/
+   * dollarPlan.ts), as a closed $2 position: the plan's public record, its probation, and what live bots learn from.
+   */
+  readonly dollar = new Map<string, Position>()
+  private dollarSkipped = new Set<string>()
   /** Coins that had an early crowd (signals/grades.ts): crowd momentum leaves them out. */
   private earlyCrowd = new Set<string>()
   private replaying = false
@@ -170,8 +177,12 @@ export class Bot implements EngineObserver {
   private speed: typeof LIVE_SPEED | null
   /** Live bots: every signal not on probation (`all`), or only the proven kinds, not the lowest 20% (`proven`). */
   readonly liveSignals: 'all' | 'proven'
-  /** Which signals live bots trade: the strategy board (`board`, bot/strategyBoard.ts), Prime and grades proven at live speed (`proven`), every grade (`all`), or none (`off`). */
-  readonly liveGrades: 'board' | 'proven' | 'all' | 'off'
+  /**
+   * Which signals live bots trade: every snipe and fast scalp on the dollar plan (`dollar`, bot/dollarPlan.ts), the
+   * strategy board (`board`, bot/strategyBoard.ts), Prime and grades proven at live speed (`proven`), every grade
+   * (`all`), or none (`off`).
+   */
+  readonly liveGrades: LiveRouting
   /**
    * The bot wallet's growth since it went live (bot/sizing.ts liveTradeSize): its balance then, and its realized
    * live P&L since, kept in the settings so a restart doesn't reset its trade size. Null until the balance is read.
@@ -183,7 +194,7 @@ export class Bot implements EngineObserver {
   private grown = new Set<string>()
 
   /** `history`: the coins' stored trades (replays); `speed`: the paper book at live speed (the default; null: at once). */
-  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null; history?: Pick<HistoryStore, 'trades'> | null; speed?: typeof LIVE_SPEED | null; liveSignals?: 'all' | 'proven'; liveGrades?: 'board' | 'proven' | 'all' | 'off'; launchpadOnly?: LaunchpadOnly }) {
+  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null; history?: Pick<HistoryStore, 'trades'> | null; speed?: typeof LIVE_SPEED | null; liveSignals?: 'all' | 'proven'; liveGrades?: LiveRouting; launchpadOnly?: LaunchpadOnly }) {
     this.speed = o.speed === undefined ? LIVE_SPEED : o.speed
     this.liveSignals = o.liveSignals ?? 'proven'
     this.liveGrades = o.liveGrades ?? 'proven'
@@ -566,7 +577,9 @@ export class Bot implements EngineObserver {
     // A Prime or Core signal is past it: its own grade's record at live speed, with the exits live bots trade it with,
     // is what decides (the momentum rule's losers were the bursts crowd momentum leaves out; the rule's paper record
     // is kept with other exits). A grade under review is handed out as Standard, and probation applies again.
-    const probation = handed.grade === 'standard' ? this.probation(rule, now) : null
+    // On the dollar plan, every grade: the rule's replays on the plan decide (bot/dollarPlan.ts).
+    const dollarMode = this.liveGrades === 'dollar'
+    const probation = dollarMode ? this.dollarProbation(rule, now) : handed.grade === 'standard' ? this.probation(rule, now) : null
     if (probation) { reasons = [...reasons, `⚠ on probation: ${probation.why}`]; metrics.inc(`bot_${rule}_probation`) }
     // What this kind of signal makes at live speed (replayed on real trades): live bots trade it only while that's a profit.
     const ls = this.liveSpeed.record(liveKey(rule, strategy), now)
@@ -578,6 +591,7 @@ export class Bot implements EngineObserver {
     const ranked = this.liveSignals === 'all' && !probation ? { ...graded, grade: 'live' as const } : graded
     // Live bots trade Prime and grades proven at live speed (signals/grades.ts liveGrade).
     const forLive = this.liveGrades === 'off' ? { ok: false, why: 'live trading is paused by the platform (no new live buys)' }
+      : dollarMode ? (!isDollarStrategy(strategy) ? { ok: false, why: 'live bots trade snipes and fast scalps only' } : probation ? { ok: false, why: probation.why } : { ok: true, why: null })
       : this.liveGrades === 'all' ? { ok: true, why: null }
       : this.liveGrades === 'board' ? this.boardLive(handed.grade === 'prime' ? 'precision' : strategy, handed.grade, now)
       : liveGrade(this.grades, handed.grade, now)
@@ -617,12 +631,15 @@ export class Bot implements EngineObserver {
       else {
         // As visitors' live bots trade it: a Prime signal with Precision (all of it at +10%), any other with the quick
         // exits (all of it at +6%; trading/paper.ts QUICK_EXITS).
-        const liveStrategy: Strategy = handed.grade === 'prime' ? 'precision' : strategy
-        // $2, grown in step with what the bot wallet's live trades made (bot/sizing.ts liveTradeSize).
-        const want = this.liveSize().sizeUsd
+        // The dollar plan: the signal's own strategy, $2, all of it sold once it makes $1 (bot/dollarPlan.ts).
+        const dollar = dollarMode && isDollarStrategy(strategy)
+        const liveStrategy: Strategy = dollar ? strategy : handed.grade === 'prime' ? 'precision' : strategy
+        // $2, grown in step with what the bot wallet's live trades made (bot/sizing.ts liveTradeSize); $2 flat on the dollar plan.
+        const want = dollar ? DOLLAR_PLAN.sizeUsd : this.liveSize().sizeUsd
         // On the strategy board: the settings of the paper book doing best on the strategy (its exits and learned filters).
         const pick = this.liveGrades === 'board' ? this.o.accounts?.boardPick(liveStrategy, now) ?? null : null
-        const exits: StrategyParams = pick ? boardParams(pick, want) : liveStrategy === 'precision' ? { ...this.params('precision'), sizeUsd: want } : { ...QUICK_EXITS, sizeUsd: want }
+        const exits: StrategyParams = dollar ? dollarParams(strategy as DollarStrategy, { costIn: 0, costOut: costPerSide(r.honeypot?.roundTripLossPct ?? null, want, st.liquidityUsd), sizeUsd: want })
+          : pick ? boardParams(pick, want) : liveStrategy === 'precision' ? { ...this.params('precision'), sizeUsd: want } : { ...QUICK_EXITS, sizeUsd: want }
         const filtered = pick ? boardAdmits(pick, features, rule) : null
         // Visitors' bots were seated first (bot/crowd.ts): the platform's bot takes only what they left under the cap.
         const capUsd = crowdCap({ liquidityUsd: st.liquidityUsd, takeProfit: exits.tp1Multiple, flags: features.flags })
@@ -632,7 +649,7 @@ export class Bot implements EngineObserver {
         else {
           const size = Math.min(want, left)
           this.o.accounts?.crowd.take(signal.id, capUsd, size)
-          void this.o.live.open(signal, liveStrategy, pool, meta, { sizeUsd: size, priceNow: () => this.priceOf(token), extra: { exits: { ...exits, sizeUsd: size }, features, rule, grade: handed.grade } })
+          void this.o.live.open(signal, liveStrategy, pool, meta, { sizeUsd: size, priceNow: () => this.priceOf(token), extra: { exits: { ...exits, sizeUsd: size }, features, rule, grade: handed.grade, ...(dollar ? { plan: 'dollar' as const, targetUsd: DOLLAR_PLAN.targetUsd } : {}) } })
         }
       }
     }
@@ -676,7 +693,7 @@ export class Bot implements EngineObserver {
     if (!h || this.replaying) return
     this.replaying = true
     try {
-      const due = this.recentSignals.filter(sg => (!this.liveSpeed.has(sg.id) || !this.grades.has(sg.id)) && now - sg.at >= 60_000 && now - sg.at <= LIVE_GATE.days * 86_400_000).slice(0, batch)
+      const due = this.recentSignals.filter(sg => (!this.liveSpeed.has(sg.id) || !this.grades.has(sg.id) || this.dollarDue(sg)) && now - sg.at >= 60_000 && now - sg.at <= LIVE_GATE.days * 86_400_000).slice(0, batch)
       for (const sg of due) {
         if (!(sg.strategy in STRATEGIES)) { this.liveSpeed.skip(sg.id); continue }
         // The exits a new bot trades with (the rule's live-speed record); a grade's record with the exits live bots trade
@@ -688,6 +705,12 @@ export class Bot implements EngineObserver {
         const until = Math.min(now, sg.at + (hold + 2) * 60_000)
         const rows = await this.tradesBetween(sg.token, sg.at - 5_000, until).catch(() => null)
         if (!rows) continue
+        // The dollar plan, as live bots trade it now: $2, all of it sold once it makes $1 (bot/dollarPlan.ts).
+        if (this.dollarDue(sg)) {
+          const c = (sg.features?.roundTripPct ?? 4) / 200
+          const d = replayAtLiveSpeed(rows, { at: sg.at, price: sg.price, roundTripPct: sg.features?.roundTripPct ?? null, exits: dollarParams(sg.strategy as DollarStrategy, { costIn: c, costOut: c }), now })
+          if (d.final) this.addDollar(sg, d)
+        }
         const r = replayAtLiveSpeed(rows, { at: sg.at, price: sg.price, roundTripPct: sg.features?.roundTripPct ?? null, exits, now })
         if (r.final && !this.liveSpeed.has(sg.id)) {
           if (r.ret === null) this.liveSpeed.skip(sg.id)
@@ -699,6 +722,9 @@ export class Bot implements EngineObserver {
           const g = gradeExits === exits ? r : replayAtLiveSpeed(rows, { at: sg.at, price: sg.price, roundTripPct: sg.features?.roundTripPct ?? null, exits: gradeExits, now })
           if (g.final && g.ret !== null) this.grades.add(sg.id, grade, sg.at, g.ret)
           else if (g.final) this.grades.skip(sg.id)
+        } else if (!this.grades.has(sg.id)) {
+          // Never counted: marked done, so it doesn't stay due and fill every batch ahead of signals still to replay.
+          this.grades.skip(sg.id)
         }
       }
     } finally { this.replaying = false }
@@ -723,18 +749,19 @@ export class Bot implements EngineObserver {
     return GRADES.map(g => {
       const r = this.grades.record(g, now)
       // On the strategy board a grade doesn't decide what live bots trade (the strategy does): no live line.
-      const live = this.liveGrades === 'board' ? undefined : this.liveGrades !== 'off' && (this.liveGrades === 'all' || liveGrade(this.grades, g, now).ok)
+      const live = this.liveGrades === 'board' || this.liveGrades === 'dollar' ? undefined : this.liveGrades !== 'off' && (this.liveGrades === 'all' || liveGrade(this.grades, g, now).ok)
       return { grade: g, trades: r.trades, wins: r.wins, winRate: r.winRate, avgPct: r.avgReturn === null ? null : Math.round(r.avgReturn * 1_000) / 10, review: r.review, exits: exits[g], rules: rules(g), live }
     })
   }
 
   /** A coin's stored trades between two times, oldest first (paged back from `to`). */
   private async tradesBetween(token: string, from: number, to: number) {
-    const out: { ts: number; price: number }[] = []
+    const out: { ts: number; price: number; creatorSold?: boolean }[] = []
+    const creator = this.o.engine.metas.get(token)?.creator?.toLowerCase() ?? null
     let before = to + 1
     for (let page = 0; page < 10; page++) {
       const got = await this.o.history!.trades(token, 500, before)
-      for (const t of got) if (t.timestamp >= from && t.timestamp <= to && (t.priceUsd ?? 0) > 0) out.push({ ts: t.timestamp, price: t.priceUsd! })
+      for (const t of got) if (t.timestamp >= from && t.timestamp <= to && (t.priceUsd ?? 0) > 0) out.push({ ts: t.timestamp, price: t.priceUsd!, ...(creator && t.side === 'SELL' && t.wallet?.toLowerCase() === creator ? { creatorSold: true } : {}) })
       if (got.length < 500) break
       const oldest = Math.min(...got.map(t => t.timestamp))
       if (oldest <= from) break
@@ -907,6 +934,65 @@ export class Bot implements EngineObserver {
       .sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0))
       .slice(-QUALITY.ruleWindow)
     return { trades: list.length, winRate: list.length ? list.filter(p => (p.pnlUsd ?? 0) > 0).length / list.length : null }
+  }
+
+  /** A snipe or fast-scalp signal not yet replayed on the dollar plan. */
+  private dollarDue(sg: Signal) { return isDollarStrategy(sg.strategy) && !this.dollar.has(sg.id) && !this.dollarSkipped.has(sg.id) }
+
+  /** A finished replay on the dollar plan, kept as a closed $2 position, and handed to the team live bots learn from. */
+  private addDollar(sg: Signal, d: Replay) {
+    if (d.ret === null) { this.dollarSkipped.add(sg.id); return }
+    const size = DOLLAR_PLAN.sizeUsd
+    const reason: ExitReason = d.reason === 'open' || d.reason === 'closed' ? 'time' : d.reason as ExitReason
+    const p: Position = {
+      id: `${sg.id}:dollar`, mode: 'paper', plan: 'dollar', strategy: sg.strategy, token: sg.token, symbol: sg.symbol, launchpad: sg.launchpad, signalId: sg.id,
+      openedAt: d.openedAt ?? sg.at, marketEntry: sg.price, entryPrice: sg.price, sizeUsd: size, qty: 0, remaining: 0, cost: 0, peak: sg.price,
+      tp1Done: reason === 'tp1', fills: [], status: 'closed', closedAt: d.closedAt ?? sg.at, exitReason: reason, pnlUsd: Math.round(d.ret * size * 100) / 100,
+      rule: sg.rule, features: sg.features,
+    }
+    this.dollar.set(sg.id, p)
+    this.o.accounts?.observeDollar(p)
+  }
+
+  /** A rule's trades on the dollar plan: live bots' (real fills) first, then every signal's replay, one per signal. */
+  private dollarTrades(rule: SignalRule, now: number): Position[] {
+    const live = this.o.accounts?.dollarLive(now) ?? []
+    return [...live, ...this.positions.filter(p => p.mode === 'live' && isDollarTrade(p)), ...this.dollar.values()]
+      .filter(p => p.status === 'closed' && p.rule === rule && now - (p.closedAt ?? 0) <= PROBATION.maxAgeMs)
+  }
+
+  /**
+   * On the dollar plan: a rule whose last 20 trades on the plan (live bots' and the replays, one per signal) lost money
+   * and won under half is on probation. Until it has 10, the paper book's record decides, as before.
+   */
+  dollarProbation(rule: SignalRule, now = Date.now()) {
+    const list = this.dollarTrades(rule, now)
+    const seen = new Set<string>()
+    const n = list.filter(p => !seen.has(p.signalId) && (seen.add(p.signalId), true)).length
+    if (n < PROBATION.minTrades) return this.probation(rule, now)
+    return probationOf(rule, list, p => p.rule, now)
+  }
+
+  /** The dollar plan as the site shows it (GET /v1/bot/board): the exits, and each kind's record (replays and live trades). */
+  dollarView(now = Date.now()): DollarPlanView {
+    const week = 7 * 86_400_000
+    const kinds = [['snipe', 'snipe'], ['snipe', 'scalp'], ['momentum', 'scalp']] as const
+    const live = (this.o.accounts?.dollarLive(now) ?? []).concat(this.positions.filter(p => p.mode === 'live' && isDollarTrade(p)))
+    return {
+      sizeUsd: DOLLAR_PLAN.sizeUsd, targetUsd: DOLLAR_PLAN.targetUsd,
+      exits: DOLLAR_PLAN.strategies.map(s => ({ strategy: s, stopLoss: DOLLAR_PLAN.exits[s].stopLoss, maxHoldMin: DOLLAR_PLAN.exits[s].maxHoldMin, text: dollarPlanText(s) })),
+      kinds: kinds.map(([rule, strategy]) => {
+        const rep = [...this.dollar.values()].filter(p => p.rule === rule && p.strategy === strategy && now - (p.closedAt ?? 0) <= week).sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0)).slice(-PROBATION.window)
+        const mine = live.filter(p => p.status === 'closed' && p.rule === rule && p.strategy === strategy && (p.closedAt ?? 0) >= DOLLAR_PLAN.since)
+        const pnl = (xs: Position[]) => Math.round(xs.reduce((sum, p) => sum + (p.pnlUsd ?? 0), 0) * 100) / 100
+        return {
+          rule, strategy,
+          replays: { trades: rep.length, wins: rep.filter(p => (p.pnlUsd ?? 0) > 0).length, hits: rep.filter(p => p.exitReason === 'tp1').length, avgPct: rep.length ? Math.round((pnl(rep) / rep.length / DOLLAR_PLAN.sizeUsd) * 1_000) / 10 : null, pnlUsd: pnl(rep) },
+          live: { trades: mine.length, wins: mine.filter(p => (p.pnlUsd ?? 0) > 0).length, hits: mine.filter(p => p.exitReason === 'tp1').length, pnlUsd: pnl(mine) },
+          probation: this.dollarProbation(rule, now)?.why ?? null,
+        }
+      }),
+    }
   }
 
   /** Why a rule is on probation now, or null. */

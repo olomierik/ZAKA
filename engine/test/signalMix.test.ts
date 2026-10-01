@@ -43,10 +43,10 @@ describe('the snipe rule reads the market\'s own buying', () => {
     const f = computeFlow([
       tape({ wallet: A(50), block: 101, usd: 900, price: 0.004 }), // a launch-block sniper
       ...organic,
-      tape({ wallet: A(50), side: 'SELL', block: 130, usd: 400, price: 0.027 }),
+      tape({ wallet: A(50), side: 'SELL', block: 130, usd: 600, price: 0.027 }),
     ], { launchBlock: 100, creator: DEV, supply: 1e9 })
-    expect(f.organic).toMatchObject({ buyers: 12, buyUsd: 720, sellUsd: 400, firstPrice: 0.02 })
-    expect(snipeReady(f, 120).failed).toContain('ratio') // $720 bought vs $400 sold: under 2x
+    expect(f.organic).toMatchObject({ buyers: 12, buyUsd: 720, sellUsd: 600, firstPrice: 0.02 })
+    expect(snipeReady(f, 120).failed).toContain('ratio') // $720 bought vs $600 sold: under 1.3x
   })
 })
 

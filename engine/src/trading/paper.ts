@@ -97,7 +97,7 @@ export const RISK = {
 }
 
 /** rug: the rug guard (bot/rugGuard.ts) saw liquidity pulled, an insider or whale dump, or a crash on heavy selling. */
-export interface RiskRules { maxOpen: number; maxOpenScalp: number; cooldownMin: number; cooldownMinScalp?: number; dailyLossUsd: number }
+export interface RiskRules { maxOpen: number; maxOpenScalp: number; cooldownMin: number; cooldownMinScalp?: number; dailyLossUsd: number; /** Only trades closed from this time count toward the day's loss (a new plan starts the day over). */ since?: number }
 
 export type ExitReason = 'tp1' | 'trail' | 'stop' | 'time' | 'safety' | 'creator' | 'rug' | 'manual'
 
@@ -158,6 +158,8 @@ export interface Position {
   /** The signal's grade as handed out (signals/grades.ts), and the bot's place in the crowd that took it (bot/crowd.ts). */
   grade?: SignalGrade
   crowd?: { rank: number; bots: number; usd: number; capUsd: number }
+  /** Traded on the dollar plan ($2, all of it sold at +$1; bot/dollarPlan.ts): live bots' trades and the replays of every signal. */
+  plan?: 'dollar'
 }
 
 /** Cost per side: half the measured round trip (at least 1%), plus impact for the size. */
@@ -330,7 +332,7 @@ export function canOpen(positions: Position[], token: string, now: number, risk:
   const cooldown = (isFast(strategy) ? risk.cooldownMinScalp ?? risk.cooldownMin : risk.cooldownMin) * 60_000
   if (positions.some(p => p.token === token && (p.status === 'open' || now - (p.closedAt ?? 0) < cooldown))) return { ok: false, why: 'traded this coin recently', key: 'cooldown' }
   const day = new Date(now).toISOString().slice(0, 10)
-  const today = positions.filter(p => p.closedAt && new Date(p.closedAt).toISOString().slice(0, 10) === day).reduce((s, p) => s + (p.pnlUsd ?? 0), 0)
+  const today = positions.filter(p => p.closedAt && p.closedAt >= (risk.since ?? 0) && new Date(p.closedAt).toISOString().slice(0, 10) === day).reduce((s, p) => s + (p.pnlUsd ?? 0), 0)
   if (today <= -risk.dailyLossUsd) return { ok: false, why: `today's loss $${(-today).toFixed(2)} reached the $${risk.dailyLossUsd} limit`, key: 'daily-loss' }
   return { ok: true, why: '' }
 }

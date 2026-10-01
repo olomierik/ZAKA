@@ -13,6 +13,7 @@
 //
 //   bun engine/src/main.ts          (see engine/README.md)
 
+import { DOLLAR_PLAN } from './bot/dollarPlan'
 import { every, keepAliveOnUnhandled, startWithRetry } from './lifecycle'
 import { randomBytes } from 'node:crypto'
 import { RedisClient } from 'bun'
@@ -196,7 +197,8 @@ async function main() {
       const exec = new LiveExecutor({ privateKey: key as `0x${string}`, readUrls: cfg.httpUrls, sendUrl })
       live = new LiveTrader({
         exec,
-        limits: { ...DEFAULT_LIMITS, ...limits },
+        // On the dollar plan the day's loss counts from the plan's start (bot/dollarPlan.ts).
+        limits: { ...DEFAULT_LIMITS, ...limits, ...(cfg.liveGrades === 'dollar' ? { lossSince: DOLLAR_PLAN.since } : {}) },
         positions: () => botRef?.positions ?? [],
         params: s => botRef!.params(s),
         save: p => botRef?.persist(p),
@@ -232,7 +234,7 @@ async function main() {
   const readHoldings = () => { for (const w of users?.linkedWallets() ?? []) void tiers.read(w) }
   readHoldings()
   every(10 * 60_000, 'tier holdings', readHoldings)
-  const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => botRef?.priceOf(token) ?? eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s), live: userLive, paperSignals: cfg.botSignals.paper, access: ownerId => tiers.access(users?.get(ownerId) ?? null), liveRouting: cfg.liveGrades === 'board' ? 'board' : 'grades' })
+  const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => botRef?.priceOf(token) ?? eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s), live: userLive, paperSignals: cfg.botSignals.paper, access: ownerId => tiers.access(users?.get(ownerId) ?? null), liveRouting: cfg.liveGrades === 'board' ? 'board' : cfg.liveGrades === 'dollar' ? 'dollar' : 'grades' })
   if (accounts) await accounts.load().catch(e => log.error('paper accounts: load failed', { error: errMsg(e) }))
   const bot = cfg.botMode === 'off' ? null : new Bot({
     rpc, engine: eng, pools, mode: cfg.botMode, sizeUsd: cfg.botSizeUsd ?? undefined, scalpSizeUsd: cfg.botScalpSizeUsd ?? undefined,

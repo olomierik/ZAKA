@@ -27,7 +27,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
-import type { AccessView, BotControl, BotFilters, BotPosition, BotStatus, BotStrategy, GradeRecordView, LearnNote, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, SignalGrade, SignalOutcomes, SignalRule, StrategyBoardEntry, StrategyBoardResponse, TeamView, TierId, TiersResponse, TradeSignal } from '../../../api/_marketProtocol'
+import type { AccessView, BotControl, BotFilters, BotPosition, BotStatus, BotStrategy, DollarPlanView, GradeRecordView, LearnNote, StrategyTuning, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, SignalGrade, SignalOutcomes, SignalRule, StrategyBoardEntry, StrategyBoardResponse, TeamView, TierId, TiersResponse, TradeSignal } from '../../../api/_marketProtocol'
 import { getLaunchpadColor } from '../api/radardex'
 import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botFunders, botWithdraw, botWithdrawCode, botWithdrawPasscode, botLinkWallet, botUnlinkWallet, engineEnabled, getTiers, sendTierGrant, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, getStrategyBoard, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse, type LiveSpeedRow } from '../api/marketStream'
 import { AgoText } from '../components/Ago'
@@ -409,9 +409,50 @@ const BOARD_STATUS: Record<StrategyBoardEntry['status'], { label: string; color:
   paused: { label: 'PAUSED', color: '#94a3b8' },
 }
 
+/** The kinds of signal live bots trade on the dollar plan. */
+const DOLLAR_KIND: Record<string, string> = {
+  'snipe/snipe': N_('Snipes'),
+  'snipe/scalp': N_('Fast scalps: snipes on risky coins'),
+  'momentum/scalp': N_('Fast scalps: momentum bursts'),
+}
+
+/**
+ * The dollar plan (engine/src/bot/dollarPlan.ts, 2026-10-01): live bots take every snipe and fast scalp at $2 and sell
+ * all of it once it makes $1. Each kind's record: its signals replayed on the coins' real trades at live speed, and live
+ * bots' own trades. A kind on probation is sat out.
+ */
+function DollarPlanCard({ plan }: { plan: DollarPlanView }) {
+  const money = (x: number) => `${x < 0 ? '−' : x > 0 ? '+' : ''}$${Math.abs(x).toFixed(2)}`
+  return (
+    <Section title={T('Live plan: {s} a trade, sold once it makes {t}', { s: usd(plan.sizeUsd, 0), t: usd(plan.targetUsd, 0) })}>
+      <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>{T('Live bots take every snipe and fast-scalp signal: {s} each, all of it sold once it makes {t} (about +52% after costs). Each bot learns its own entry filters from its losing trades and the team\'s. Every signal is also replayed on its coin\'s real trades at live speed; a kind whose replays lose is sat out until they recover. A trade that doesn\'t get there is sold at its stop, when the creator sells, or when its time is up, so most trades don\'t make the full {t}.', { s: usd(plan.sizeUsd, 0), t: usd(plan.targetUsd, 0) })}</div>
+      {plan.exits.map(e => (
+        <div key={e.strategy} style={{ fontSize: '0.74rem', margin: '2px 0', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Pill color={STRATEGY_COLOR[e.strategy]}>{T(STRATEGY[e.strategy])}</Pill>
+          <span style={{ color: 'var(--text-muted)' }}>{T('All of it at +{t}; out at {sl}, when the creator sells, or after {m} minutes', { t: usd(plan.targetUsd, 0), sl: pctMove(e.stopLoss), m: e.maxHoldMin })}</span>
+        </div>
+      ))}
+      {plan.kinds.map(k => (
+        <div key={`${k.rule}/${k.strategy}`} className="at-grade-row">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Pill color={STRATEGY_COLOR[k.strategy]}>{T(DOLLAR_KIND[`${k.rule}/${k.strategy}`] ?? STRATEGY[k.strategy])}</Pill>
+            <span style={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.04em', color: k.probation ? '#94a3b8' : '#22c55e', border: `1px solid ${k.probation ? '#94a3b8' : '#22c55e'}`, borderRadius: 6, padding: '1px 6px' }}>{k.probation ? T('SAT OUT') : T('LIVE')}</span>
+            <span style={{ fontFamily: 'var(--mono)', fontSize: '0.74rem' }}>
+              {k.replays.trades ? T('{n} replays · {h} made {t} · {w} won · {p}', { n: k.replays.trades, h: k.replays.hits, t: usd(plan.targetUsd, 0), w: k.replays.wins, p: money(k.replays.pnlUsd) }) : T('no replays yet')}
+            </span>
+          </div>
+          {k.live.trades > 0 && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{T('Live bots: {n} trades, {h} made {t}, {w} won, {p}', { n: k.live.trades, h: k.live.hits, t: usd(plan.targetUsd, 0), w: k.live.wins, p: money(k.live.pnlUsd) })}</div>}
+          {k.probation && <div className="at-note warn" style={{ marginTop: 4 }}>{T(k.probation)}</div>}
+        </div>
+      ))}
+    </Section>
+  )
+}
+
 /** Which of the three strategies live bots trade now, with whose settings: the paper book doing best on each (engine/src/bot/strategyBoard.ts). */
 function StrategyBoardCard() {
   const board = useBoard()
+  if (board?.routing === 'dollar' && board.dollar) return <DollarPlanCard plan={board.dollar} />
   if (!board?.strategies.length) return null
   const pct = (x: number) => `${x > 0 ? '+' : ''}${x}%`
   return (
@@ -807,7 +848,9 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, li
           {isLive && liveSpeed && <LiveGateNote rows={liveSpeed} strategies={acct.strategies} />}
           {isLive && board?.routing === 'board' && <div className="at-note" style={{ marginTop: 12 }}>◆ {T('Live bots trade by themselves now: whichever of the three strategies is in profit on paper at live speed, with the settings of the paper bot doing best on it. A strategy that stops working is paused for live until paper proves it again (the strategy board shows each one).')}</div>}
           {isLive && board?.routing === 'board' && <StrategyBoardCard />}
-          {isLive && board?.routing !== 'board' && <div className="at-note" style={{ marginTop: 12 }}>◆ {T('Live bots trade Prime and Core signals now: Prime with Precision (all of it sold at +10%), Core with the quick exits (all of it sold at +6%, −7% stop, 10 minutes at most). A grade whose record at live speed fails is passed over until it recovers, and Standard joins once it proves a profit (the Signals tab shows each grade\'s record).')}</div>}
+          {isLive && board?.routing === 'dollar' && <div className="at-note" style={{ marginTop: 12 }}>◆ {T('Live bots trade every snipe and fast scalp now, whatever they picked: {s} a trade, all of it sold once it makes {t}. Your bot learns from its losing trades and the team\'s which coins to skip; the {t} target never moves.', { s: usd(acct.live?.plan?.sizeUsd ?? 2, 0), t: usd(acct.live?.plan?.targetUsd ?? 1, 0) })}</div>}
+          {isLive && board?.routing === 'dollar' && <StrategyBoardCard />}
+          {isLive && board?.routing !== 'board' && board?.routing !== 'dollar' && <div className="at-note" style={{ marginTop: 12 }}>◆ {T('Live bots trade Prime and Core signals now: Prime with Precision (all of it sold at +10%), Core with the quick exits (all of it sold at +6%, −7% stop, 10 minutes at most). A grade whose record at live speed fails is passed over until it recovers, and Standard joins once it proves a profit (the Signals tab shows each grade\'s record).')}</div>}
           {!isLive && me.paperSignals === false && <div className="at-note warn" style={{ marginTop: 12 }}>{T('Signals go to live bots only for now (the platform\'s setting): this paper bot isn\'t trading. Switch it to LIVE to trade.')}</div>}
           {acct.team && <TeamCard team={acct.team} acct={acct} onStrategy={() => setTab('strategy')} />}
           <GradeStats acct={acct} />
@@ -833,12 +876,19 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, li
         <Section title={T('Strategies')}>
           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '2px 0 8px' }}>{T('Use one, or several at once.')}</div>
           {board?.routing === 'board' && <div className="at-note" style={{ marginBottom: 8 }}>{T('Live bots trade all three strategies by themselves, switched by the strategy board; your picks are what this bot trades on paper.')}</div>}
+          {board?.routing === 'dollar' && <div className="at-note" style={{ marginBottom: 8 }}>{T('Live bots trade every snipe and fast scalp at {s}, sold once it makes {t}; your picks are what this bot trades on paper.', { s: usd(board.dollar?.sizeUsd ?? 2, 0), t: usd(board.dollar?.targetUsd ?? 1, 0) })}</div>}
           <StrategyPicker selected={acct.strategies} disabled={busy} team={acct.team} access={me.access} onToggle={s => {
             const next = acct.strategies.includes(s) ? acct.strategies.filter(x => x !== s) : [...acct.strategies, s]
             if (next.length) void act({ action: 'strategies', strategies: next })
             else setError(T('Keep at least one strategy.'))
           }} />
-          {isLive && acct.live?.limits.baseTradeUsd !== undefined ? (<>
+          {isLive && acct.live?.plan ? (<>
+          <div className="at-label">{T('Live: {s} a trade, sold once it makes {t}', { s: usd(acct.live.plan.sizeUsd, 0), t: usd(acct.live.plan.targetUsd, 0) })}</div>
+          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            {T('Every live trade is {s}, whatever the wallet holds, and all of it is sold once it makes {t}. What it learned for live trades, from its own and the team\'s:', { s: usd(acct.live.plan.sizeUsd, 0), t: usd(acct.live.plan.targetUsd, 0) })}
+          </div>
+          {(['snipe', 'scalp'] as const).map(st => <DollarTuningLine key={st} s={st} t={acct.live!.plan!.tuning[st]} />)}
+          </>) : isLive && acct.live?.limits.baseTradeUsd !== undefined ? (<>
           <div className="at-label">{T('Live trade size: from {b}, growing with profit', { b: usd(acct.live.limits.baseTradeUsd, 0) })}</div>
           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
             {T('Each live trade starts at {b} and grows in step with what its live trades make: once they have added 50% to what the wallet went live with, trades are 50% bigger. Losses never take it under {b}, and deposits and withdrawals don\'t count. Above {b}, never more than {p}% of what the wallet holds, and at most {x}. Now: {now} a trade ({g} grown).', { b: usd(acct.live.limits.baseTradeUsd, 0), p: acct.live.limits.maxSharePct ?? 20, x: usd(acct.live.limits.maxTradeUsd, 0), now: usd(acct.live.sizing?.tradeUsd ?? acct.live.limits.baseTradeUsd), g: `${acct.live.sizing?.growthPct ?? 0}%` })}
@@ -1331,6 +1381,19 @@ function TuningLine({ s, t }: { s: Strategy; t: PaperAccountView['tuning'][Strat
         })}
       </div>
       {learned.length > 0 && <div style={{ fontSize: '0.72rem', color: '#c4b5fd', marginTop: 2 }}>{T('Learned:')} {learned.join(' · ')}</div>}
+    </div>
+  )
+}
+
+/** What a live bot learned on the dollar plan for one strategy: its entry filters per kind of signal (the exits are the plan's). */
+function DollarTuningLine({ s, t }: { s: 'snipe' | 'scalp'; t: StrategyTuning }) {
+  const learned = (Object.entries(t.rules ?? {}) as [SignalRule, BotFilters][]).map(([r, f]) => { const w = filterWords(f); return w.length ? `${T(RULE_NAME[r])}: ${w.join(', ')}` : '' }).filter(Boolean)
+  return (
+    <div className="at-tune">
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Pill color={STRATEGY_COLOR[s]}>{T(STRATEGY[s])} · v{t.version}</Pill>
+        <span style={{ fontSize: '0.72rem', color: learned.length ? '#c4b5fd' : 'var(--text-muted)' }}>{learned.length ? `${T('Learned:')} ${learned.join(' · ')}` : T('Nothing learned yet: it takes every signal of this kind.')}</span>
+      </div>
     </div>
   )
 }
