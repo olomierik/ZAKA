@@ -5,10 +5,12 @@
 //   prime     one of the two strategies that held up on coins the search never
 //             saw (2026-10-01, below): an early crowd, or a crowd momentum
 //             burst. Traded by the Precision strategy: all of it sold at +10%,
-//             fast. The top tier's signals, and the only ones live bots take
-//             until another grade proves itself.
+//             fast. The top tier's signals.
 //   core      clean, not Prime: a wide crowd of buyers, buying well ahead of
-//             selling, not yet run up.
+//             selling, not yet run up. Live bots take these too (since
+//             2026-10-01), all of it sold at +6% (QUICK_EXITS).
+// Live bots take Prime and Core while their records hold, and Standard once
+// its record proves it (liveGrade).
 //   standard  every other signal a bot may trade (not on probation).
 //
 // Why these lines (every stored signal replayed at live speed on the coin's
@@ -139,17 +141,27 @@ export function gradeOf(f: SignalFeatures | undefined, rule?: SignalRule): { gra
  * a performance they'll market"): Prime, unless it's under review, and any
  * other grade once it's proven at live speed (the same bar as the review: 10+
  * replays, at least 60% won, a profit). On that day's replays only Prime was
- * (10 of 11 won); Standard won 1 of 12. So live bots trade Prime signals, and
- * start on another grade by themselves once its record earns it.
+ * (10 of 11 won); Standard won 1 of 12.
+ *
+ * Core too since 2026-10-01 (owner: "live bots take positions with small
+ * gains, but regular trades every day"), traded with the quick exits (all of
+ * it at +6%, trading/paper.ts QUICK_EXITS): Prime alone fired too seldom for
+ * regular trades. Core is a wide crowd too (the largest buyer at most 20% of
+ * the buying, the line that separated winners best), and like Prime it keeps
+ * its own record at live speed with the exits live bots trade it with: under
+ * review, its signals are handed out as Standard, and live bots stop taking
+ * them until it recovers. Standard still needs proof.
  */
+export const LIVE_GRADES: readonly SignalGrade[] = ['prime', 'core']
+
 export function liveGrade(book: GradeBook, grade: SignalGrade, now = Date.now()): { ok: boolean; why: string | null } {
   const r = book.record(grade, now)
-  if (grade === 'prime' && !r.review) return { ok: true, why: null }
+  if (LIVE_GRADES.includes(grade) && !r.review) return { ok: true, why: null }
   const ok = r.trades >= GRADE_REVIEW.minTrades && (r.avgReturn ?? -1) >= GRADE_REVIEW.minAvg && (r.winRate ?? 0) >= GRADE_REVIEW.minWinRate
   if (ok) return { ok: true, why: null }
   const name = grade === 'prime' ? 'Prime' : grade === 'core' ? 'Core' : 'Standard'
   const rec = r.trades ? `${name} signals won ${r.wins} of their last ${r.trades} at live speed (${(r.avgReturn ?? 0) >= 0 ? '+' : ''}${((r.avgReturn ?? 0) * 100).toFixed(1)}% a trade)` : `${name} signals have no record at live speed yet`
-  return { ok: false, why: `live bots trade Prime signals, and other grades once proven at live speed (${GRADE_REVIEW.minTrades}+ replays, ${Math.round(GRADE_REVIEW.minWinRate * 100)}% won, a profit): ${rec}` }
+  return { ok: false, why: `live bots trade Prime and Core signals, and Standard once proven at live speed (${GRADE_REVIEW.minTrades}+ replays, ${Math.round(GRADE_REVIEW.minWinRate * 100)}% won, a profit): ${rec}` }
 }
 
 /** One grade lower (a grade under review hands its signals out as the next one down). */

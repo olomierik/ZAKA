@@ -68,8 +68,14 @@ export interface Config {
   tiersEnforced: boolean
   /** When tiers start by themselves (TIERS_ENFORCE_AT, an ISO time; default 3 October 2026, 00:00 UTC; "never" turns it off). */
   tiersEnforceAt: number | null
-  /** Which grades live bots trade (BOT_LIVE_GRADES): `proven` (Prime, and grades proven at live speed; the default) or `all`. */
-  liveGrades: 'proven' | 'all' | 'off'
+  /**
+   * Which signals live bots trade (BOT_LIVE_GRADES): `board` (the default since 2026-10-01: the strategy board,
+   * bot/strategyBoard.ts, switches each of the three strategies on or off by its paper record at live speed),
+   * `proven` (Prime and Core unless their record fails, Standard once proven), `all`, or `off` (no new live buys).
+   */
+  liveGrades: 'board' | 'proven' | 'all' | 'off'
+  /** Launchpad coins only (SIGNALS_LAUNCHPAD_ONLY, intel/launchpadGate.ts): `strict` (the default), `origin` or `off`. */
+  launchpadOnly: 'strict' | 'origin' | 'off'
   /** Paper position size in USD for snipes and second legs (default: each strategy's own, $25). */
   botSizeUsd: number | null
   /** Paper position size in USD for scalps, the small fast trades on risky coins (default $5). */
@@ -77,7 +83,7 @@ export interface Config {
   /** The wallet that may switch paper/live (its signature is checked). The bot wallet's key is read in main.ts, never kept here. */
   botOwner: string | null
   /** Live trading limits (bot/liveTrader.ts). */
-  live: { maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; reserveUsd: number; preflight: boolean; maxRoundTripPct: number; maxShareOfBalance: number; sendUrl: string }
+  live: { minTradeUsd: number; maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; reserveUsd: number; preflight: boolean; maxRoundTripPct: number; maxShareOfBalance: number; sendUrl: string }
 }
 
 export function loadConfig(): Config {
@@ -109,7 +115,8 @@ export function loadConfig(): Config {
     tradeRetentionHours: int('HISTORY_TRADE_RETENTION_HOURS', 72, 1, 24 * 3650),
     logLevel: (process.env.LOG_LEVEL ?? 'info') as Config['logLevel'],
     botMode: process.env.BOT_MODE === 'off' ? 'off' : process.env.BOT_MODE === 'live' ? 'live' : 'paper',
-    botSignals: { live: process.env.BOT_LIVE_SIGNALS === 'proven' ? 'proven' : 'all', paper: process.env.BOT_PAPER_SIGNALS === 'on' },
+    // Paper bots trade signals again (2026-10-01): they're what live bots learn from (bot/strategyBoard.ts). BOT_PAPER_SIGNALS=off stops them.
+    botSignals: { live: process.env.BOT_LIVE_SIGNALS === 'proven' ? 'proven' : 'all', paper: !/^(0|off|false|no)$/i.test(process.env.BOT_PAPER_SIGNALS ?? '') },
     tiersEnforced: process.env.TIERS_ENFORCED === 'true' || process.env.TIERS_ENFORCED === '1',
     tiersEnforceAt: (() => {
       const raw = process.env.TIERS_ENFORCE_AT?.trim()
@@ -118,13 +125,18 @@ export function loadConfig(): Config {
       if (!Number.isFinite(t)) throw new Error(`TIERS_ENFORCE_AT must be an ISO time or "never" (got ${raw})`)
       return t
     })(),
-    // 2026-10-01: paused for an hour after DEGEN (-94%), then resumed by the owner with live trades capped at $2
-    // (USER_LIVE.maxTradeUsd). `off` pauses every new live buy; open live trades are still managed.
-    liveGrades: process.env.BOT_LIVE_GRADES === 'all' ? 'all' : process.env.BOT_LIVE_GRADES === 'off' ? 'off' : 'proven',
+    // 2026-10-01: paused for an hour after DEGEN (-94%), then resumed by the owner with live trades at $2, growing with
+    // their realized profit (bot/sizing.ts liveTradeSize). `off` pauses every new live buy; open live trades are still managed.
+    // `board` (the default since 2026-10-01): the strategy board decides, from the paper bots' records at live speed.
+    liveGrades: (['all', 'off', 'proven'] as const).find(v => v === process.env.BOT_LIVE_GRADES) ?? 'board',
+    // Only coins a known Arc launchpad launched, with its standard code, become signals (2026-10-01).
+    launchpadOnly: (['origin', 'off'] as const).find(v => v === process.env.SIGNALS_LAUNCHPAD_ONLY) ?? 'strict',
     botSizeUsd: process.env.BOT_SIZE_USD ? int('BOT_SIZE_USD', 25, 1, 10_000) : null,
     botScalpSizeUsd: process.env.BOT_SCALP_SIZE_USD ? int('BOT_SCALP_SIZE_USD', 5, 1, 10_000) : null,
     botOwner: /^0x[0-9a-fA-F]{40}$/.test(process.env.BOT_OWNER_ADDRESS ?? '') ? process.env.BOT_OWNER_ADDRESS!.toLowerCase() : null,
     live: {
+      // The bot wallet's trades start at BOT_LIVE_TRADE_USD ($2) and grow with what its live trades make, up to BOT_LIVE_MAX_TRADE_USD.
+      minTradeUsd: int('BOT_LIVE_TRADE_USD', 2, 1, 10_000),
       maxTradeUsd: int('BOT_LIVE_MAX_TRADE_USD', 25, 1, 10_000),
       dailyLossUsd: int('BOT_LIVE_DAILY_LOSS_USD', 50, 1, 100_000),
       maxOpen: int('BOT_LIVE_MAX_OPEN', 3, 1, 50),

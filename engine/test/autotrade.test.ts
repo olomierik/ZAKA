@@ -44,7 +44,7 @@ describe('paper accounts', () => {
     expect(accts.act(a, { action: 'deposit', amount: 1_000 }, now)).toBeNull()
     expect(accts.act(a, { action: 'strategies', strategies: [] }, now)).toMatch(/at least one/)
     expect(accts.act(a, { action: 'strategies', strategies: ['snipe', 'bogus' as never, 'second-leg'] }, now)).toBeNull()
-    expect(a.strategies).toEqual(['snipe', 'second-leg'])
+    expect(a.strategies).toEqual(['snipe']) // three strategies since 2026-10-01: dip rebounds are measured on paper by the engine only
     expect(accts.act(a, { action: 'size', usd: 50 }, now)).toMatch(/automatically/)
     expect(accts.act(a, { action: 'start' }, now)).toBeNull()
     expect(a).toMatchObject({ running: true, cash: 1_000, startedAt: now })

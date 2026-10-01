@@ -17,6 +17,7 @@ import type { SafetyReport } from '../src/intel/scanner'
 import type { MarketEngine } from '../src/market/engine'
 import { TokenState } from '../src/market/tokenState'
 import { snipeReady } from '../src/signals/rules'
+import { openPosition, recordSell, type Position } from '../src/trading/paper'
 
 const A = (n: number) => '0x' + n.toString(16).padStart(40, '0')
 const DEV = A(0xde5)
@@ -137,5 +138,38 @@ describe('the rules\' order and the scan\'s unknowns', () => {
     ;(bot as unknown as { riskWait: Map<string, number> }).riskWait.set(`snipe:${T}`, Date.now() - 60_000) // waited past the limit
     await sweep()
     expect(signals().map(s => [s.strategy, s.rule])).toEqual([['scalp', 'snipe']])
+  })
+})
+
+describe('Core signals go to live bots, past their rule\'s probation (2026-10-01: regular live trades)', () => {
+  /** Twelve losing paper snipes: the snipe rule is on probation. */
+  const losingSnipes = (): Position[] => Array.from({ length: 12 }, (_, i) => {
+    const p: Position = { ...openPosition({ id: `l${i}`, strategy: 'snipe', token: A(0x900 + i), symbol: 'L', launchpad: 'ARGUS', signalId: `l${i}`, price: 1, cost: 0.01, now: Date.now() - 3_600_000 + i * 60_000 }), mode: 'paper', rule: 'snipe' }
+    recordSell(p, p.qty, p.sizeUsd * 0.85, p.openedAt + 60_000, 'stop')
+    return p
+  })
+  const buyers = (trade: ReturnType<typeof setup>['trade'], n: number) => {
+    const now = Date.now()
+    for (let k = 0; k < n; k++) trade({ price: 1 + k * 0.008, at: now - 60_000 + k * 3_000 })
+  }
+  test('a wide crowd (Core) fires without the rule\'s probation, and live bots may take it', async () => {
+    const { bot, trade, signals, sweep } = setup(2)
+    bot.positions.push(...losingSnipes())
+    buyers(trade, 16)
+    await sweep()
+    const [s] = signals()
+    expect(s.quality?.level).toBe('core')
+    expect(s.probation).toBeNull()
+    expect(s.quality?.liveOk).toBe(true)
+  })
+  test('a Standard signal still carries it, and live bots pass it over', async () => {
+    const { bot, trade, signals, sweep } = setup(2)
+    bot.positions.push(...losingSnipes())
+    buyers(trade, 11)
+    await sweep()
+    const [s] = signals()
+    expect(s.quality?.level).toBe('standard')
+    expect(s.probation?.why).toMatch(/Snipes won 0 of their last 12/)
+    expect(s.quality?.liveOk).toBe(false)
   })
 })

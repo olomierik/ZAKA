@@ -83,7 +83,7 @@ describe('the bot, end to end', () => {
     await settle(); bot.sweep(Date.now() + 5_000); await settle()
     const sig = sent.find(m => m.t === 'SIGNAL')
     expect(sig?.t === 'SIGNAL' && sig.d.quality).toMatchObject({ grade: 'live', liveSpeed: { trades: 0, ok: false } })
-    expect(bot.stats().routing).toEqual({ liveSignals: 'all', paperSignals: true })
+    expect(bot.stats().routing).toEqual({ liveSignals: 'all', paperSignals: true, launchpadOnly: 'off' })
   })
 
   test('liquidity pulled: the rug guard closes every position at once and quarantines the coin', async () => {

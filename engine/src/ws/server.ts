@@ -24,6 +24,7 @@
 //   GET|POST /v1/paper/account                  the bot behind the X-Paper-Key header; POST acts on it
 //   GET /v1/paper/trades?limit=100&before=ms    every closed trade of that bot, newest first (the trade log)
 //   GET /v1/bot/rejections                      why watched coins aren't signals, by main reason
+//   GET /v1/bot/board                           the strategy board: which of the three strategies live bots trade, with whose settings
 //   /v1/auth/*, /v1/me…, /v1/bots…               accounts, owners' bots, the marketplace (ws/botApi.ts)
 //   GET /health           summary (200 ok/degraded, 503 down)
 //   GET /metrics          full metrics (Bearer METRICS_TOKEN when set)
@@ -307,6 +308,11 @@ export function startServer({ cfg, api, health }: ServerDeps) {
           if (url.pathname === '/v1/signals') return json(req, 200, { signals: bot.signals(limit(50, 500)) }, 'public, max-age=1')
           if (url.pathname === '/v1/bot/stats') return json(req, 200, bot.stats(), 'public, max-age=2')
           if (url.pathname === '/v1/bot/status') return json(req, 200, bot.status(), 'no-store')
+          // The strategy board (bot/strategyBoard.ts): which of the three strategies live bots trade now, with whose settings.
+          if (url.pathname === '/v1/bot/board') {
+            if (!api.accounts) return json(req, 503, { error: 'bots are off on this engine' })
+            return json(req, 200, { at: Date.now(), routing: bot.liveGrades, strategies: api.accounts.boardView() }, 'public, max-age=5')
+          }
           if (url.pathname === '/v1/bot/rejections') return json(req, 200, { ...bot.scan.rejections(), signals: { owner: bot.outcomes.summary(), bots: api.accounts?.outcomes.summary() ?? null } }, 'public, max-age=10')
           if (url.pathname === '/v1/bot/scan') {
             const st = url.searchParams.get('status') as ScanRow['status'] | null

@@ -362,7 +362,9 @@ export interface BotStatus {
     wallet: string | null
     balanceUsd: number | null
     /** `preflight`: every buy is simulated with its sale first, as the bot wallet (engines from before 2026-09-30 don't say). */
-    limits: { maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; exitSlippageBps: number[]; reserveUsd: number; preflight?: boolean; maxRoundTripPct?: number; maxShareOfBalance?: number } | null
+    limits: { maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; exitSlippageBps: number[]; reserveUsd: number; preflight?: boolean; maxRoundTripPct?: number; maxShareOfBalance?: number; minTradeUsd?: number } | null
+    /** A live trade's size now: `minTradeUsd` grown by what the bot wallet's live trades made since it went live (from 2026-10-01). */
+    sizing?: { tradeUsd: number; growthPct: number; pnlUsd: number; startUsd: number | null }
     todayPnlUsd: number
     open: number
     events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
@@ -513,7 +515,10 @@ export interface BotLiveView {
   feesPaidUsd: number
   /** What the wallet held when it went live (its P&L % is measured against it). */
   startBalanceUsd?: number | null
-  limits: { maxTradeUsd: number; minBalanceUsd: number; reserveUsd: number; maxOpen: number; dailyLossUsd: number; preflight?: boolean; maxRoundTripPct?: number; maxSharePct?: number }
+  /** `baseTradeUsd`: every live trade starts here; `maxTradeUsd` is the most a grown trade may be (engines from before 2026-10-01: the cap, no base). */
+  limits: { maxTradeUsd: number; minBalanceUsd: number; reserveUsd: number; maxOpen: number; dailyLossUsd: number; preflight?: boolean; maxRoundTripPct?: number; maxSharePct?: number; baseTradeUsd?: number }
+  /** A live trade's size now: the base grown by `growthPct`, what its realized live P&L (`pnlUsd`) has added to its starting capital. */
+  sizing?: { tradeUsd: number; growthPct: number; pnlUsd: number }
   events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
 }
 
@@ -581,7 +586,27 @@ export interface AccessView {
 export interface GradeRecordView { grade: SignalGrade; trades: number; wins: number; winRate: number | null; avgPct: number | null; review: string | null; exits: string; rules: string[]; /** Live bots trade it now. */ live?: boolean }
 
 /** GET /v1/tiers. */
-export interface TiersResponse { enforced: boolean; /** When tiers start by themselves (ms), if set. */ enforceAt?: number | null; tiers: TierInfo[]; grades: GradeRecordView[]; crowd: { impactShareOfTp: number; maxPoolShare: number; maxBots: number }; /** Which grades live bots trade: `proven` (Prime and grades proven at live speed) or `all`. */ liveGrades?: 'proven' | 'all' | 'off' }
+export interface TiersResponse { enforced: boolean; /** When tiers start by themselves (ms), if set. */ enforceAt?: number | null; tiers: TierInfo[]; grades: GradeRecordView[]; crowd: { impactShareOfTp: number; maxPoolShare: number; maxBots: number }; /** Which signals live bots trade: `board` (the strategy board), `proven` (Prime and grades proven at live speed), `all` or `off`. */ liveGrades?: 'board' | 'proven' | 'all' | 'off' }
+
+/**
+ * One of the three strategies on the strategy board (engine/src/bot/strategyBoard.ts, 2026-10-01): whether live bots
+ * trade it now (`live`: the best paper book on it is in profit; `trial`: not enough paper trades yet, traded at the $2
+ * base; `paused`: no paper book in profit, or live bots' own last trades on it lost), and whose settings they use.
+ */
+export interface StrategyBoardEntry {
+  strategy: BotStrategy
+  status: 'live' | 'trial' | 'paused'
+  /** The paper book its settings come from (or, paused, the best of those that lost): its last trades at live speed. */
+  source: { kind: 'house' | 'bot'; name: string; slug?: string; trades: number; wins: number; avgPct: number; pnlUsd: number } | null
+  /** Live bots' own last trades on it (24 hours). */
+  live: { trades: number; wins: number; avgPct: number; pnlUsd: number } | null
+  /** The exits live bots trade it with now: take-profit and the share sold there, stop, longest hold. */
+  exits: { takeProfit: number; sellPct: number; stopLoss: number; maxHoldMin: number | null }
+  why: string
+}
+
+/** GET /v1/bot/board. */
+export interface StrategyBoardResponse { at: number; routing: 'board' | 'proven' | 'all' | 'off'; strategies: StrategyBoardEntry[] }
 
 /** The exact text a wallet signs to link to an ARCDEX Autotrade account (its $ARCD counts toward the account's tier). */
 export function tierLinkMessage(email: string, address: string, at: number): string {

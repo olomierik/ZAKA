@@ -44,19 +44,20 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 import type { Address } from 'viem'
-import type { AccessView, BotProfit, LaunchInfo, LearnNote, MarketBot, MarketBotDetail, NewPaperAccount, PaperAccountView, PaperAction, PaperEvent, SignalFeatures, SignalGrade, SignalQuality, SignalRule, TeamView } from '../../../api/_marketProtocol'
+import type { AccessView, BotProfit, LaunchInfo, LearnNote, MarketBot, MarketBotDetail, NewPaperAccount, PaperAccountView, PaperAction, PaperEvent, SignalFeatures, SignalGrade, SignalQuality, SignalRule, StrategyBoardEntry, TeamView } from '../../../api/_marketProtocol'
 import type { PoolInfo } from '../dex/pools'
 import { errMsg, log } from '../log'
-import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, RISK, stats, type Fill, type Position, type RiskRules, type Strategy, type StrategyParams } from '../trading/paper'
+import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, QUICK_EXITS, RISK, stats, type Fill, type Position, type RiskRules, type Strategy, type StrategyParams } from '../trading/paper'
 import { QUALITY } from '../signals/quality'
 import { CrowdBook, crowdCap, crowdImpact, laddered } from './crowd'
 import { Tiers, TIERS } from './tiers'
 import { admits, defaultTuning, learn, migrateTuning, relax, toParams, upgradeExits, type Tuning } from './learner'
 import type { LiveTrader } from './liveTrader'
 import type { RugAlarm } from './rugGuard'
-import { CAPITAL_SIZING, GRADE_SHARE, maxTradeFor, SIZE_LIMITS, sizeFromCapital, TARGETS } from './sizing'
+import { CAPITAL_SIZING, GRADE_SHARE, liveTradeSize, maxTradeFor, SIZE_LIMITS, sizeForLive, sizeFromCapital, TARGETS, type LiveGrowth } from './sizing'
 import type { Signal } from './types'
 import { OutcomeTally } from './scanFeed'
+import { BOARD, boardAdmits, boardEntry, boardParams, BOT_STRATEGIES, pickStrategy, type BoardPick, type Candidate } from './strategyBoard'
 import { profitFee, readinessWithTeam, TEAM_READY, USER_LIVE, type BotWallet, type UserLive } from './userLive'
 
 export interface PaperAccount {
@@ -117,6 +118,7 @@ export const PAPER_LIMITS = { maxAccounts: 20_000, maxDeposit: 100_000, maxCash:
 export const PROTECT = { pauseAfterLosses: 4, pauseMin: 30, stopBelowPct: 50, dailyLossPct: 10, dailyLossMinUsd: 10, dailyLossMaxUsd: 100, maxOpen: 5, maxOpenScalp: 4 }
 /** A typical pool, for the size the page shows ("about $X a trade"). */
 const TYPICAL = { roundTripPct: 4, liquidityUsd: 20_000 }
+/** Every strategy a bot keeps settings for (dip rebounds from before 2026-10-01 included). */
 const STRATEGIES: Strategy[] = ['snipe', 'scalp', 'second-leg', 'precision']
 const LABEL: Record<Strategy, string> = { snipe: 'snipe', scalp: 'fast scalp', 'second-leg': 'second leg', precision: 'precision' }
 const GRADE_LABEL: Record<SignalGrade, string> = { prime: 'Prime', core: 'Core', standard: 'Standard' }
@@ -211,8 +213,11 @@ function normalize(a: PaperAccount): PaperAccount {
     if (up.note && (a.strategies ?? []).includes(s)) notes.push(up.note)
   }
   const name = cleanName(a.name) ?? `Bot ${a.id.slice(0, 4).toUpperCase()}`
+  // Bots trade three strategies since 2026-10-01: a dip rebound pick is dropped.
+  const picks = (a.strategies ?? []).filter(s => BOT_STRATEGIES.includes(s))
   return {
     ...a,
+    strategies: picks.length ? picks : ['snipe', 'scalp'],
     name, slug: a.slug || slugOf(name), ownerId: a.ownerId ?? null, mode: a.mode === 'live' ? 'live' : 'paper',
     tuning, learnLog: [...notes, ...(a.learnLog ?? [])], events: a.events ?? [], skips: a.skips ?? [],
     lossStreak: a.lossStreak ?? 0, pausedUntil: a.pausedUntil ?? null, filterSkips: a.filterSkips ?? {}, lastBuyAt: a.lastBuyAt ?? {},
@@ -243,6 +248,14 @@ export class PaperAccounts {
 
   /** Whether visitors' paper bots get signals (the owner's setting, BOT_PAPER_SIGNALS; off: live bots only). */
   readonly paperSignals: boolean
+  /**
+   * How live bots pick their signals: `board` (the strategy board, bot/strategyBoard.ts: each of the three strategies
+   * on or off by its paper record at live speed, with the best paper book's settings), or `grades` (the signal's grade).
+   */
+  readonly liveRouting: 'board' | 'grades'
+  /** The engine's own paper book and live bot wallet (Bot): one of the board's paper books, and its live trades. */
+  private house: { paper: () => Position[]; live: () => Position[] } | null = null
+  private boardCache: { at: number; picks: Map<Strategy, BoardPick> } | null = null
   /** Each signal's live crowd: its cap, who got in, and who waited longest (bot/crowd.ts). */
   readonly crowd = new CrowdBook()
 
@@ -250,10 +263,42 @@ export class PaperAccounts {
    * `speed`: paper fills at live speed (the default); null fills at once (tests of other things).
    * `access`: what an owner's tier gets (bot/tiers.ts); everything, for everyone, without it.
    */
-  constructor(private o: { store: PaperAccountStore; priceOf: (token: string) => number | null; params: (s: Strategy) => StrategyParams; live?: UserLive | null; speed?: typeof LIVE_SPEED | null; paperSignals?: boolean; access?: (ownerId: string | null) => AccessView }) {
+  constructor(private o: { store: PaperAccountStore; priceOf: (token: string) => number | null; params: (s: Strategy) => StrategyParams; live?: UserLive | null; speed?: typeof LIVE_SPEED | null; paperSignals?: boolean; access?: (ownerId: string | null) => AccessView; liveRouting?: 'board' | 'grades' }) {
     this.speed = o.speed === undefined ? LIVE_SPEED : o.speed
     this.paperSignals = o.paperSignals ?? true
+    this.liveRouting = o.liveRouting ?? 'grades'
   }
+
+  /** The engine's own paper book and its live trades (set by the Bot). */
+  setHouse(h: { paper: () => Position[]; live: () => Position[] }) { this.house = h; this.boardCache = null }
+
+  /**
+   * Where each of the three strategies stands for live bots now (recomputed every 10 seconds): every paper book's
+   * last trades on it at live speed (each bot's, and the engine's own), and live bots' own (bot/strategyBoard.ts).
+   */
+  board(now = Date.now()): Map<Strategy, BoardPick> {
+    if (this.boardCache && now - this.boardCache.at < BOARD.everyMs) return this.boardCache.picks
+    const picks = new Map<Strategy, BoardPick>()
+    for (const s of BOT_STRATEGIES) {
+      const candidates: Candidate[] = []
+      if (this.house) candidates.push({ kind: 'house', id: 'house', name: 'ARCDEX', trades: this.house.paper().filter(p => p.strategy === s && p.mode !== 'live'), tuning: null })
+      const live: Position[] = this.house ? this.house.live().filter(p => p.strategy === s) : []
+      for (const a of this.accounts.values()) {
+        const mine = a.positions.filter(p => p.strategy === s && p.status === 'closed')
+        const paper = mine.filter(p => !isLive(p))
+        if (paper.length >= BOARD.minTrades) candidates.push({ kind: 'bot', id: a.id, name: a.name, slug: a.slug, trades: paper, tuning: a.tuning[s] })
+        for (const p of mine) if (isLive(p)) live.push(p)
+      }
+      picks.set(s, pickStrategy(s, candidates, live, now))
+    }
+    this.boardCache = { at: now, picks }
+    return picks
+  }
+
+  boardPick(s: Strategy, now = Date.now()): BoardPick { return this.board(now).get(s) ?? pickStrategy(s, [], [], now) }
+
+  /** The board as the site shows it (GET /v1/bot/board). */
+  boardView(now = Date.now()): StrategyBoardEntry[] { return BOT_STRATEGIES.map(s => boardEntry(this.boardPick(s, now))) }
 
   /** What a bot's owner's tier gets now. */
   accessOf(ownerId: string | null): AccessView { return this.o.access?.(ownerId) ?? OPEN_ACCESS }
@@ -292,7 +337,8 @@ export class PaperAccounts {
     const access = this.accessOf(ownerId)
     const maxBots = Math.min(PAPER_LIMITS.maxPerOwner, access.maxBots)
     if (ownerId && this.ofOwner(ownerId).length >= maxBots) return { error: maxBots < PAPER_LIMITS.maxPerOwner ? `your tier has ${maxBots} bot${maxBots === 1 ? '' : 's'}: hold more $ARCD for more` : `an account can have ${maxBots} bots` }
-    const strategies = o.strategies === undefined ? ['scalp', 'snipe'] as Strategy[] : this.strategiesOf(o.strategies)
+    // New bots follow all three strategies their tier gets (2026-10-01).
+    const strategies = o.strategies === undefined ? BOT_STRATEGIES.filter(st => access.strategies.includes(st)) : this.strategiesOf(o.strategies)
     if (!strategies.length) return { error: 'choose at least one strategy' }
     const locked = strategies.find(st => !access.strategies.includes(st))
     if (locked) return { error: `${LABEL[locked]} is for ${Tiers.tierForStrategy(locked).name}` }
@@ -348,8 +394,9 @@ export class PaperAccounts {
   /** Whether any bot has a position open in `token` (its safety is re-checked, its rugs watched). */
   holds(token: string) { return (this.byToken.get(token)?.size ?? 0) > 0 || (this.pending.get(token)?.length ?? 0) > 0 }
 
+  /** A bot picks among the three strategies (dip rebounds are measured on paper by the engine only, since 2026-10-01). */
   private strategiesOf(list: unknown): Strategy[] {
-    return [...new Set((Array.isArray(list) ? list : []).filter((s): s is Strategy => STRATEGIES.includes(s as Strategy)))]
+    return [...new Set((Array.isArray(list) ? list : []).filter((s): s is Strategy => BOT_STRATEGIES.includes(s as Strategy)))]
   }
 
   /** Applies an action that needs nothing from the chain; returns why not, or null. Live actions: setMode, createWallet, sellLive. */
@@ -462,7 +509,8 @@ export class PaperAccounts {
     a.mode = 'live'
     a.live.since = now
     a.live.startBalanceUsd = bal
-    this.event(a, { at: now, kind: 'learn', text: `LIVE: trading real USDC from ${a.live.address} (${money(bal)}), trades up to $${USER_LIVE.maxTradeUsd}` })
+    a.live.pnlUsd = 0
+    this.event(a, { at: now, kind: 'learn', text: `LIVE: trading real USDC from ${a.live.address} (${money(bal)}): $${USER_LIVE.baseTradeUsd} a trade, growing with what its trades make` })
     this.save(a, now)
     this.flush()
     return null
@@ -520,6 +568,9 @@ export class PaperAccounts {
       this.settled.add(p.id)
       const fee = profitFee(p.pnlUsd, this.accessOf(a.ownerId).profitFeePct)
       if (fee > 0) { p.feeUsd = fee; p.feeDue = fee; p.pnlUsd = (p.pnlUsd ?? 0) - fee; a.live!.feesPaidUsd = (a.live!.feesPaidUsd ?? 0) + fee }
+      // What its trades made since it went live: what grows its trade size (a bot without the running total yet counts
+      // its closed live trades, this one included).
+      if (a.live) a.live.pnlUsd = typeof a.live.pnlUsd === 'number' ? a.live.pnlUsd + (p.pnlUsd ?? 0) : this.livePnl(a)
       this.closed(a, p, now)
       if (fee > 0) void this.sendFee(a, p)
     }
@@ -555,12 +606,16 @@ export class PaperAccounts {
       // A stopped bot that was never funded is someone's abandoned try: left out.
       if (!a.running) { if (a.mode === 'live' || a.cash >= SIZE_LIMITS.minUsd) skip('not-running', 'not traded: the bot is stopped (press Start)'); continue }
       const access = this.accessOf(a.ownerId)
+      // On the strategy board, a live bot switches by itself (2026-10-01): it trades whichever of the three strategies
+      // the signal calls for (a Prime signal with Precision), its picks or not, while the board has it on.
+      const auto = a.mode === 'live' && this.liveRouting === 'board'
       // Which of its strategies trades this signal: Precision takes Prime signals first, else the signal's own strategy.
       // A live bot trades a Prime signal with Precision whenever it follows the strategy the signal fired with (all of it
       // at +6%: 10 of 11 won at live speed; the default exits made more on average, but lost 30% twice).
       const precision = grade === 'prime' && access.strategies.includes('precision')
-        && (a.strategies.includes('precision') || (a.mode === 'live' && a.strategies.includes(sig.strategy)))
-      const st: Strategy | null = precision ? 'precision' : a.strategies.includes(sig.strategy) ? sig.strategy : null
+        && (auto || a.strategies.includes('precision') || (a.mode === 'live' && a.strategies.includes(sig.strategy)))
+      const st: Strategy | null = precision ? 'precision' : auto ? (BOT_STRATEGIES.includes(sig.strategy) ? sig.strategy : null) : a.strategies.includes(sig.strategy) ? sig.strategy : null
+      if (auto && !st) { skip('strategy', 'not traded live: live bots trade Precision, Snipe and Fast scalp (dip rebounds are measured on paper only)'); continue }
       if (!st) {
         const onlyPrecision = a.strategies.length === 1 && a.strategies[0] === 'precision'
         skip('strategy', onlyPrecision && !access.strategies.includes('precision') ? `not traded: Precision is for ${Tiers.tierForStrategy('precision').name}`
@@ -571,24 +626,36 @@ export class PaperAccounts {
       // Its owner's tier (bot/tiers.ts): every grade while tiers aren't enforced.
       if (!access.grades.includes(grade)) { skip('tier', `not traded: ${GRADE_LABEL[grade]} signals are for ${Tiers.tierFor(grade).name} and up`); continue }
       if (a.mode === 'live' && !access.live) { skip('tier', `not traded live: live trading is for ${TIER_FOR_LIVE} and up`); continue }
-      // Live bots trade Prime signals, and other grades once proven at live speed (signals/grades.ts liveGrade).
-      if (a.mode === 'live' && sig.quality?.liveOk === false) { skip('grade-live', `not traded live: ${sig.quality.liveWhy ?? 'its grade isn\'t proven at live speed yet'}`); continue }
+      // On the board: the strategy's standing decides (paused: its paper books lost, or live bots' own trades did).
+      const pick = auto ? this.boardPick(st, now) : null
+      if (pick?.status === 'paused') { skip('board', `not traded live: ${pick.why}`); continue }
+      // Otherwise: live bots trade Prime and Core signals, and Standard once proven at live speed (signals/grades.ts liveGrade).
+      if (!auto && a.mode === 'live' && sig.quality?.liveOk === false) { skip('grade-live', `not traded live: ${sig.quality.liveWhy ?? 'its grade isn\'t proven at live speed yet'}`); continue }
       if (a.mode !== 'live' && !this.paperSignals) { skip('live-only', 'not traded: signals go to live bots only for now (the platform\'s setting)'); continue }
       if (a.pausedUntil && now < a.pausedUntil) { skip('paused', `paused after ${PROTECT.pauseAfterLosses} losses in a row`); continue }
       // Live bots trade the platform's proven settings, not their own tuning (2026-10-01: per-bot learning only ever
       // tightened, from 3-6 losses under exits that no longer exist). Paper bots keep learning.
-      const t = a.mode === 'live' ? defaultTuning(st) : a.tuning[st]
+      // On the board, live bots trade with the settings of the paper book doing best on the strategy: a paper bot's
+      // learned exits and filters (bot/strategyBoard.ts), else the platform's.
+      const learned = pick?.status === 'live' && pick.source?.kind === 'bot' ? pick.source.tuning : null
+      const t: Tuning = learned ?? (a.mode === 'live' ? defaultTuning(st) : a.tuning[st])
+      // Live: Prime with Precision (all at +10%), anything else with the quick exits (all at +6%; trading/paper.ts QUICK_EXITS).
+      const quick = a.mode === 'live' && st !== 'precision'
+      const takeProfit = pick ? boardParams(pick, 1).tp1Multiple : quick ? QUICK_EXITS.tp1Multiple : t.takeProfit
       if (sig.probation) { skip('probation', `not traded: ${sig.probation.why}`); continue }
       // The bottom 20% of signals by quality go to paper bots only (signals/quality.ts): still measured, no real money.
       if (a.mode === 'live' && sig.quality?.grade === 'paper') { skip('paper-grade', `not traded live: in the lowest ${Math.round((1 - QUALITY.liveShare) * 100)}% of recent signals by quality (score ${sig.quality.score}); paper bots take it`); continue }
-      const filtered = admits(t, sig.features, sig.rule)
+      const filtered = pick ? boardAdmits(pick, sig.features, sig.rule) : admits(t, sig.features, sig.rule)
       if (filtered) { a.filterSkips[st] = (a.filterSkips[st] ?? 0) + 1; skip('filters', filtered); continue }
-      // Sized from the bot's capital and the signal's grade (bot/sizing.ts): 20% Prime, 15% Core, 10% Standard, at least $1.
+      // Paper: sized from the bot's capital and the signal's grade (bot/sizing.ts): 20% Prime, 15% Core, 10% Standard, at
+      // least $1. Live: $2, grown in step with what its live trades have made (liveTradeSize).
       const balanceUsd = this.balanceOf(a)
       if (balanceUsd === null) { skip('live-unavailable', 'its wallet\'s balance couldn\'t be read yet'); continue }
-      const sized = sizeFromCapital({ capitalUsd: balanceUsd, grade, takeProfit: t.takeProfit, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd, maxUsd: a.mode === 'live' ? USER_LIVE.maxTradeUsd : undefined })
+      const sized = a.mode === 'live'
+        ? sizeForLive({ ...this.liveGrowth(a, balanceUsd), takeProfit, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd })
+        : sizeFromCapital({ capitalUsd: balanceUsd, grade, takeProfit: t.takeProfit, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd })
       if (!('sizeUsd' in sized)) { skip(sized.key, sized.why); continue }
-      const params = toParams(t, sized.sizeUsd, st)
+      const params: StrategyParams = pick ? boardParams(pick, sized.sizeUsd) : quick ? { ...QUICK_EXITS, sizeUsd: sized.sizeUsd } : toParams(t, sized.sizeUsd, st)
       if (a.mode === 'live') {
         if (!this.trader(a) || !ctx) { skip('live-unavailable', 'live trading is unavailable right now'); continue }
         // Seated with the rest of the live crowd below.
@@ -810,6 +877,23 @@ export class PaperAccounts {
     return bal + a.positions.filter(p => isLive(p) && p.status === 'open').reduce((sum, p) => sum + p.sizeUsd * (p.remaining / (p.qty || 1)), 0)
   }
 
+  /**
+   * Its realized live P&L since it went live (after gas and the platform's fee). Kept as a running total, since
+   * closed trades are trimmed from the account; a bot that went live before the total was kept starts from the
+   * closed live trades it still has.
+   */
+  livePnl(a: PaperAccount): number {
+    if (!a.live) return 0
+    if (typeof a.live.pnlUsd === 'number') return a.live.pnlUsd
+    const since = a.live.since ?? 0
+    return a.positions.filter(p => isLive(p) && p.status === 'closed' && (p.closedAt ?? 0) >= since).reduce((sum, p) => sum + (p.pnlUsd ?? 0), 0)
+  }
+
+  /** A live trade's size now: $2, grown in step with what its live trades made (bot/sizing.ts liveTradeSize). */
+  liveGrowth(a: PaperAccount, worthUsd: number | null = this.balanceOf(a)): LiveGrowth {
+    return liveTradeSize({ startUsd: a.live?.startBalanceUsd, pnlUsd: this.livePnl(a), worthUsd, baseUsd: USER_LIVE.baseTradeUsd, maxUsd: USER_LIVE.maxTradeUsd })
+  }
+
   /** Paper cash plus open paper positions at the current price. */
   equity(a: PaperAccount) {
     let openValue = 0
@@ -829,8 +913,10 @@ export class PaperAccounts {
     const tuning = Object.fromEntries(STRATEGIES.map(st => {
       const { prev: _prev, ...t } = a.tuning[st]
       const mine = stats(a.positions.filter(p => p.strategy === st))
-      // What a trade would be now, in a typical pool: Precision on a Prime signal, the others on a Core one.
-      const sized = worth !== null && worth > 0 ? sizeFromCapital({ capitalUsd: worth, grade: st === 'precision' ? 'prime' : 'core', takeProfit: t.takeProfit, ...TYPICAL, maxUsd: a.mode === 'live' ? USER_LIVE.maxTradeUsd : undefined }) : null
+      // What a trade would be now, in a typical pool: Precision on a Prime signal, the others on a Core one (live: its $2 grown size).
+      const sized = worth === null || worth <= 0 ? null
+        : a.mode === 'live' ? sizeForLive({ ...this.liveGrowth(a, worth), takeProfit: st === 'precision' ? t.takeProfit : QUICK_EXITS.tp1Multiple, ...TYPICAL })
+        : sizeFromCapital({ capitalUsd: worth, grade: st === 'precision' ? 'prime' : 'core', takeProfit: t.takeProfit, ...TYPICAL })
       return [st, { ...t, sizeUsd: sized && 'sizeUsd' in sized ? sized.sizeUsd : null, closed: mine.closed, winRate: mine.winRate }]
     })) as PaperAccountView['tuning']
     const trader = a.live && this.o.live ? this.o.live.existing(a.id) : null
@@ -858,7 +944,8 @@ export class PaperAccounts {
       live: a.live ? {
         wallet: a.live.address, balanceUsd: this.o.live?.cachedBalance(a.id) ?? null,
         pnlUsd: liveStats.totalPnlUsd, closed: liveStats.closed, open: liveStats.open, winRate: liveStats.winRate, feesPaidUsd: a.live.feesPaidUsd ?? 0, startBalanceUsd: a.live.startBalanceUsd ?? null,
-        limits: { maxTradeUsd: USER_LIVE.maxTradeUsd, minBalanceUsd: USER_LIVE.minBalanceUsd, reserveUsd: USER_LIVE.reserveUsd, maxOpen: USER_LIVE.maxOpen, dailyLossUsd: trader?.limits.dailyLossUsd ?? USER_LIVE.dailyLossMinUsd, preflight: true, maxRoundTripPct: USER_LIVE.maxRoundTripPct, maxSharePct: Math.round(USER_LIVE.maxShareOfBalance * 100) },
+        limits: { maxTradeUsd: USER_LIVE.maxTradeUsd, minBalanceUsd: USER_LIVE.minBalanceUsd, reserveUsd: USER_LIVE.reserveUsd, maxOpen: USER_LIVE.maxOpen, dailyLossUsd: trader?.limits.dailyLossUsd ?? USER_LIVE.dailyLossMinUsd, preflight: true, maxRoundTripPct: USER_LIVE.maxRoundTripPct, maxSharePct: Math.round(USER_LIVE.maxShareOfBalance * 100), baseTradeUsd: USER_LIVE.baseTradeUsd },
+        sizing: (({ sizeUsd, growthPct }) => ({ tradeUsd: sizeUsd, growthPct, pnlUsd: this.livePnl(a) }))(this.liveGrowth(a, worth)),
         events: trader?.events.slice(0, 30) ?? [],
       } : null,
       liveAvailable: this.o.live?.available ?? { ok: false, why: 'live trading isn\'t available on this engine' },

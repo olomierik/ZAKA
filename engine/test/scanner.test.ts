@@ -149,6 +149,16 @@ describe('the safety report', () => {
     biggerSameTicker: [], creatorLaunches24h: 0,
   }
   const failed = (s: StaticFacts, i: ScanInput) => assess(s, i).checks.filter(c => c.ok === false).map(c => c.id)
+  test('launchpad coins only (2026-10-01): not from a known launchpad, or a custom contract on one, fails hard; no setting, no check', () => {
+    expect(assess(trusted, clean).checks.some(c => c.id === 'launchpad')).toBe(false)
+    expect(failed(trusted, { ...clean, launchpadOnly: 'strict' })).toEqual([])
+    const other = assess(trusted, { ...clean, meta: { ...meta, launchpad: 'Other', entry: A(0x77) }, launchpadOnly: 'strict' })
+    expect(other.verdict).toBe('fail')
+    expect(other.checks.find(c => c.id === 'launchpad')).toMatchObject({ ok: false, hard: true, detail: expect.stringMatching(/not launched by a known Arc launchpad \(Other, via 0x/) })
+    const custom: StaticFacts = { ...trusted, template: null }
+    expect(failed(custom, { ...clean, launchpadOnly: 'strict' })).toContain('launchpad')
+    expect(failed(custom, { ...clean, launchpadOnly: 'origin' })).not.toContain('launchpad')
+  })
 
   test('a clean coin passes', () => {
     const r = assess(trusted, clean)
