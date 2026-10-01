@@ -628,6 +628,7 @@ export class Bot implements EngineObserver {
       liveSpeed: { trades: ls.trades, winRate: ls.winRate, avgPct: ls.avgReturn === null ? null : Math.round(ls.avgReturn * 1_000) / 10, ok: ls.ok },
       level: handed.grade, levelWhy: graded2.why, review: handed.review, liveOk: forLive.ok, liveWhy: forLive.why,
       ...(lossPattern ? { pattern: lossPattern.label } : {}),
+      ...(crowded ? { limit: crowded.label } : {}),
     }
     reasons = [...reasons, `grade: ${handed.grade}${handed.grade !== graded2.grade ? ` (${graded2.grade} under review)` : ''}`]
     metrics.inc(`bot_signals_level_${handed.grade}`)
@@ -1016,12 +1017,17 @@ export class Bot implements EngineObserver {
     return out
   }
 
-  /** Every signal's outcome on the dollar plan, one per signal: live bots' trades first, then the replays (bot/patterns.ts). */
+  /**
+   * Every signal's outcome on the $2 plan, one per signal: live bots' trades first, then the replays (bot/patterns.ts).
+   * Only the signals live bots would buy: a pattern found among coins the plan's limits already keep out (on 1 October,
+   * "the creator holds coins worth 10%+ of the pool", carried by the rugs the 15% largest-buyer limit stops) would also
+   * keep out the coins it buys, where that same bag marked the winners (51 trades, 92% won).
+   */
   private planOutcomes(now: number): Outcome[] {
     const seen = new Set<string>(), out: Outcome[] = []
     const live = [...(this.o.accounts?.dollarLive(now) ?? []), ...this.positions.filter(p => p.mode === 'live' && isDollarTrade(p) && p.status === 'closed' && p.openedAt >= DOLLAR_PLAN.since)]
     for (const p of [...live, ...this.dollar.values()]) {
-      if (seen.has(p.signalId) || !p.sizeUsd) continue
+      if (seen.has(p.signalId) || !p.sizeUsd || planBlocks(p.features)) continue
       seen.add(p.signalId)
       out.push({ signalId: p.signalId, at: p.openedAt, rule: p.rule ?? null, features: p.features, ret: (p.pnlUsd ?? 0) / p.sizeUsd })
     }
@@ -1055,7 +1061,10 @@ export class Bot implements EngineObserver {
     }
     const live = [...(this.o.accounts?.dollarLive(now) ?? []), ...this.positions.filter(p => p.mode === 'live' && isDollarTrade(p))]
     for (const p of live) if (p.status === 'closed' && (p.pnlUsd ?? 0) < 0 && (p.closedAt ?? 0) >= since) add(p.token, p.symbol, `a live trade lost $${Math.abs(p.pnlUsd ?? 0).toFixed(2)} (${p.exitReason ?? 'closed'})`, p.closedAt!, p.fills.length > 1 ? p.fills[p.fills.length - 1].price : null)
-    for (const sg of this.recentSignals) if (sg.at >= since && sg.quality?.pattern) add(sg.token, sg.symbol, `sat out: ${sg.quality.pattern}`, sg.at, sg.price)
+    for (const sg of this.recentSignals) {
+      const why = sg.quality?.limit ?? sg.quality?.pattern
+      if (sg.at >= since && why) add(sg.token, sg.symbol, `sat out: ${why}`, sg.at, sg.price)
+    }
     for (const w of items.values()) {
       const back = this.recentSignals.find(sg => sg.token === w.token && sg.strategy === 'second-leg' && sg.at > w.since)
       w.comeback = back?.at ?? null
@@ -1114,7 +1123,8 @@ export class Bot implements EngineObserver {
       sizeUsd: DOLLAR_PLAN.sizeUsd, targetUsd: DOLLAR_TARGET_USD, netGainPct: DOLLAR_PLAN.netGain * 100, maxBuyers: DOLLAR_PLAN.maxBuyers, maxTopBuyerPct: DOLLAR_PLAN.maxTopBuyerPct,
       exits: DOLLAR_PLAN.strategies.map(s => ({ strategy: s, stopLoss: DOLLAR_PLAN.exits[s].stopLoss, maxHoldMin: DOLLAR_PLAN.exits[s].maxHoldMin, text: dollarPlanText(s) })),
       kinds: kinds.map(([rule, strategy]) => {
-        const rep = [...this.dollar.values()].filter(p => p.rule === rule && p.strategy === strategy && now - (p.closedAt ?? 0) <= week).sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0)).slice(-PROBATION.window)
+        // The signals live bots would buy (the plan's limits), as probation and the proofs count them.
+        const rep = [...this.dollar.values()].filter(p => p.rule === rule && p.strategy === strategy && now - (p.closedAt ?? 0) <= week && !planBlocks(p.features)).sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0)).slice(-PROBATION.window)
         const mine = live.filter(p => p.status === 'closed' && p.rule === rule && p.strategy === strategy && (p.closedAt ?? 0) >= DOLLAR_PLAN.since)
         const pnl = (xs: Position[]) => Math.round(xs.reduce((sum, p) => sum + (p.pnlUsd ?? 0), 0) * 100) / 100
         return {

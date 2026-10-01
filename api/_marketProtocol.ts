@@ -195,6 +195,8 @@ export interface TradeSignal {
 
 /** A signal's quality: live-grade (the top 80% of recent signals: every bot may trade it) or paper only; tier A takes 20% of a bot's capital, B 10%. */
 export interface SignalQuality {
+  /** On the $2 plan: the plan's limit that kept it from live bots ("140 buyers already in", "one wallet bought 25% of the buying"). */
+  limit?: string
   score: number
   grade: 'live' | 'paper'
   tier: 'A' | 'B'

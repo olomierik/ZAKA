@@ -189,7 +189,7 @@ describe('after a restart', () => {
 })
 
 describe('the engine: live bots sit out a losing kind of coin, and watch for a comeback', () => {
-  test('a snipe on a crowded coin still fires (paper measures it), with live bots told why they sit it out', async () => {
+  test('a snipe on a crowded coin still fires (paper measures it), with live bots told why they sit it out; patterns come only from coins they buy', async () => {
     const { bot, trade, signals, sweep } = setup(3)
     seedReplays(bot)
     const t0 = Date.now()
@@ -199,11 +199,13 @@ describe('the engine: live bots sit out a losing kind of coin, and watch for a c
     expect(s).toMatchObject({ strategy: 'snipe', rule: 'snipe' })
     expect(s.features).toMatchObject({ totalBuyers: 140, farmShare: 0, creatorLaunches: 0 })
     expect(s.quality!.liveOk).toBe(false)
-    expect(s.quality!.pattern).toMatch(/^\d+\+ buyers already in$/)
-    // The plan's own limit says why first; the losing pattern is still named.
+    // The plan's own limit (80 buyers) keeps it from live bots, and says so.
     expect(s.quality!.liveWhy).toMatch(/^140 buyers already in \(live bots buy coins with 80 or fewer/)
-    expect(bot.dollarView().patterns!.map(p => p.id)).toContain('crowded')
-    expect(bot.dollarView().watch!.map(w => [w.symbol, w.why])).toEqual([['COIN', expect.stringMatching(/^sat out: \d+\+ buyers already in$/)]])
+    expect(s.quality!.limit).toBe('140 buyers already in')
+    // The seeded crowded rugs are coins the plan keeps out: no pattern is drawn from them.
+    expect(s.quality!.pattern).toBeUndefined()
+    expect(bot.dollarView().patterns!.map(p => p.id)).not.toContain('crowded')
+    expect(bot.dollarView().watch!.map(w => [w.symbol, w.why])).toEqual([['COIN', 'sat out: 140 buyers already in']])
   })
   test('the same snipe on a coin with a small crowd goes to live bots', async () => {
     const { bot, trade, signals, sweep } = setup(3)

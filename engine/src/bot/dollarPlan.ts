@@ -106,9 +106,15 @@ export function dollarParams(s: DollarStrategy, o: { costIn: number; costOut: nu
 }
 
 /** Why live bots don't trade a signal on the plan whatever they learned, or null. A number the signal lacks isn't checked. */
-export function planBlocks(f: SignalFeatures | undefined): { key: 'crowded' | 'top-buyer'; why: string } | null {
-  if (f?.totalBuyers != null && f.totalBuyers > DOLLAR_PLAN.maxBuyers) return { key: 'crowded', why: `${f.totalBuyers} buyers already in (live bots buy coins with ${DOLLAR_PLAN.maxBuyers} or fewer: later, the crowd has bought)` }
-  if (f && f.topBuyerPct > DOLLAR_PLAN.maxTopBuyerPct) return { key: 'top-buyer', why: `one wallet bought ${Math.round(f.topBuyerPct)}% of the buying (live bots buy coins where none is over ${DOLLAR_PLAN.maxTopBuyerPct}%: a big early wallet is who dumps)` }
+export function planBlocks(f: SignalFeatures | undefined): { key: 'crowded' | 'top-buyer'; label: string; why: string } | null {
+  if (f?.totalBuyers != null && f.totalBuyers > DOLLAR_PLAN.maxBuyers) {
+    const label = `${f.totalBuyers} buyers already in`
+    return { key: 'crowded', label, why: `${label} (live bots buy coins with ${DOLLAR_PLAN.maxBuyers} or fewer: later, the crowd has bought)` }
+  }
+  if (f && f.topBuyerPct > DOLLAR_PLAN.maxTopBuyerPct) {
+    const label = `one wallet bought ${Math.round(f.topBuyerPct)}% of the buying`
+    return { key: 'top-buyer', label, why: `${label} (live bots buy coins where none is over ${DOLLAR_PLAN.maxTopBuyerPct}%: a big early wallet is who dumps)` }
+  }
   return null
 }
 
