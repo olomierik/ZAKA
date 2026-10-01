@@ -546,7 +546,7 @@ export interface BotLiveView {
   /** A live trade's size now: the base grown by `growthPct`, what its realized live P&L (`pnlUsd`) has added to its starting capital. */
   sizing?: { tradeUsd: number; growthPct: number; pnlUsd: number }
   /** On the $2 plan: $2 a trade, all of it sold at the take-profit (quick take-profits since 2026-10-01), and the entry filters it learned for live trades per strategy. */
-  plan?: { sizeUsd: number; targetUsd: number; takeProfitPct?: number; maxHoldMin?: number; tuning: Record<'snipe' | 'scalp', StrategyTuning> & { 'second-leg'?: StrategyTuning } }
+  plan?: { sizeUsd: number; targetUsd: number; takeProfitPct?: number; maxHoldMin?: number; walletSharePct?: number; minTradeUsd?: number; maxTradeUsd?: number; neverStops?: boolean; tuning: Record<'snipe' | 'scalp', StrategyTuning> & { 'second-leg'?: StrategyTuning } }
   events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
 }
 
@@ -632,6 +632,12 @@ export interface DollarPlanView {
   netGainPct?: number
   maxBuyers?: number
   maxTopBuyerPct?: number
+  /** A live bot's trade: this share of what its wallet is worth, between the two amounts (since 2026-10-01; `sizeUsd` is then the replays' reference size). */
+  walletSharePct?: number
+  minTradeUsd?: number
+  maxTradeUsd?: number
+  /** Live bots on the plan are never stopped by losses: no daily loss limit, no pause, no switch back to paper. */
+  neverStops?: boolean
   exits: { strategy: 'snipe' | 'scalp' | 'second-leg'; stopLoss: number; maxHoldMin: number; text: string }[]
   kinds: {
     rule: SignalRule

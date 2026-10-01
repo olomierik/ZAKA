@@ -52,7 +52,7 @@ import { QUALITY } from '../signals/quality'
 import { CrowdBook, crowdCap, crowdImpact, laddered } from './crowd'
 import { Tiers, TIERS } from './tiers'
 import { admits, defaultTuning, learn, migrateTuning, relax, toParams, upgradeExits, type Tuning } from './learner'
-import { DOLLAR_PLAN, DOLLAR_TARGET_USD, defaultDollarTuning, dollarParams, isDollarStrategy, isDollarTrade, onThisPlan, planBlocks, PROVE_FIRST, QUICK_LEARN, type DollarStrategy } from './dollarPlan'
+import { DOLLAR_PLAN, defaultDollarTuning, dollarParams, dollarTradeSize, isDollarStrategy, isDollarTrade, onThisPlan, planBlocks, PROVE_FIRST, QUICK_LEARN, type DollarStrategy } from './dollarPlan'
 import type { LiveTrader } from './liveTrader'
 import type { RugAlarm } from './rugGuard'
 import { CAPITAL_SIZING, GRADE_SHARE, liveTradeSize, maxTradeFor, SIZE_LIMITS, sizeForLive, sizeFromCapital, TARGETS, type LiveGrowth } from './sizing'
@@ -490,8 +490,9 @@ export class PaperAccounts {
   private trader(a: PaperAccount): LiveTrader | null {
     if (!this.o.live || !a.live) return null
     const t = this.o.live.trader(a.id, a.live, { positions: () => a.positions, params: s => this.o.params(s), save: p => this.liveSaved(a, p) })
-    // On the dollar plan the day's loss counts from the plan's start: losses under the old exits don't keep it out.
-    if (t && this.liveRouting === 'dollar') t.limits.lossSince = DOLLAR_PLAN.since
+    // On the dollar plan the day's loss counts from the plan's start, and since 2026-10-01 15:00 UTC there's no daily
+    // loss limit at all: live bots on the plan are never stopped by losses (DOLLAR_PLAN.neverStops).
+    if (t && this.liveRouting === 'dollar') { t.limits.lossSince = DOLLAR_PLAN.since; t.limits.noDailyLoss = DOLLAR_PLAN.neverStops }
     return t
   }
 
@@ -751,7 +752,7 @@ export class PaperAccounts {
     if (!isDollarStrategy(st)) { skip('strategy', `not traded live: live bots trade snipes and fast scalps ($${DOLLAR_PLAN.sizeUsd} each, quick take-profits)`); return null }
     if (!access.grades.includes(grade)) { skip('tier', `not traded: ${GRADE_LABEL[grade]} signals are for ${Tiers.tierFor(grade).name} and up`); return null }
     if (!access.live) { skip('tier', `not traded live: live trading is for ${TIER_FOR_LIVE} and up`); return null }
-    if (a.pausedUntil && now < a.pausedUntil) { skip('paused', `paused after ${PROTECT.pauseAfterLosses} losses in a row`); return null }
+    // Never paused after losing trades on the plan (DOLLAR_PLAN.neverStops).
     if (sig.probation) { skip('probation', `not traded: ${sig.probation.why}`); return null }
     // A crowded coin, or one wallet with a big share of the buying: the plan's own limits, whatever the bot learned.
     const blocked = planBlocks(sig.features)
@@ -764,13 +765,16 @@ export class PaperAccounts {
     const t = this.dollarTuningOf(a, st)
     const filtered = admits(t, sig.features, sig.rule)
     if (filtered) { a.filterSkips[st] = (a.filterSkips[st] ?? 0) + 1; skip('filters', `not traded live: ${filtered}`); return null }
-    if (this.balanceOf(a) === null) { skip('live-unavailable', 'its wallet\'s balance couldn\'t be read yet'); return null }
+    const worth = this.balanceOf(a)
+    if (worth === null) { skip('live-unavailable', 'its wallet\'s balance couldn\'t be read yet'); return null }
     if (!this.trader(a)) { skip('live-unavailable', 'live trading is unavailable right now'); return null }
+    // 20% of what the wallet is worth, at least $2: it grows with the capital (the trader reads the balance again first).
+    const want = dollarTradeSize(worth)
     // The sale's cost decides how far the price must go for +7.5% after costs: about +10% at a 2.4% round trip.
-    const params = dollarParams(st, { costIn: 0, costOut: costPerSide(sig.roundTripPct, DOLLAR_PLAN.sizeUsd, sig.liquidityUsd) })
-    const sized = sizeForLive({ sizeUsd: DOLLAR_PLAN.sizeUsd, growthPct: 0, takeProfit: params.tp1Multiple, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd })
+    const params = dollarParams(st, { costIn: 0, costOut: costPerSide(sig.roundTripPct, want, sig.liquidityUsd), sizeUsd: want })
+    const sized = sizeForLive({ sizeUsd: want, growthPct: 0, takeProfit: params.tp1Multiple, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd })
     if (!('sizeUsd' in sized)) { skip(sized.key, sized.why); return null }
-    return { a, strategy: st, t, sizeUsd: sized.sizeUsd, profitUsd: Math.round(DOLLAR_TARGET_USD * (sized.sizeUsd / DOLLAR_PLAN.sizeUsd) * 100) / 100, params: { ...params, sizeUsd: sized.sizeUsd }, priority: access.priority, plan: 'dollar' }
+    return { a, strategy: st, t, sizeUsd: sized.sizeUsd, profitUsd: Math.round(sized.sizeUsd * DOLLAR_PLAN.netGain * 100) / 100, params: { ...params, sizeUsd: sized.sizeUsd }, priority: access.priority, plan: 'dollar' }
   }
 
   /** A bot's settings on the $2 plan for a strategy (learned on the plan's current version). */
@@ -981,7 +985,8 @@ export class PaperAccounts {
     t.tick(now, token => this.o.priceOf(token))
     for (const p of a.positions) if (p.feeDue && p.feeDue > 0 && now - (this.lastFeeTry.get(p.id) ?? 0) > 60_000) void this.sendFee(a, p)
     void this.o.live!.balance(a.id, t).then(bal => {
-      if (bal === null || a.mode !== 'live' || !a.live?.startBalanceUsd) return
+      // Live bots on the plan never go back to paper for losses (DOLLAR_PLAN.neverStops).
+      if (bal === null || a.mode !== 'live' || !a.live?.startBalanceUsd || (this.liveRouting === 'dollar' && DOLLAR_PLAN.neverStops)) return
       let open = 0
       for (const p of a.positions) if (isLive(p) && p.status === 'open') open += p.remaining * (this.o.priceOf(p.token) ?? p.marketEntry)
       if (bal + open < a.live.startBalanceUsd * (1 - USER_LIVE.stopBelowPct / 100)) {
@@ -1023,6 +1028,11 @@ export class PaperAccounts {
     if (typeof a.live.pnlUsd === 'number') return a.live.pnlUsd
     const since = a.live.since ?? 0
     return a.positions.filter(p => isLive(p) && p.status === 'closed' && (p.closedAt ?? 0) >= since).reduce((sum, p) => sum + (p.pnlUsd ?? 0), 0)
+  }
+
+  /** A live trade on the $2 plan now: 20% of what the wallet is worth, at least $2 (the least while it hasn't been read). */
+  private planTrade(a: PaperAccount, worth: number | null = this.balanceOf(a)): number {
+    return worth === null ? DOLLAR_PLAN.wallet.minUsd : dollarTradeSize(worth)
   }
 
   /** A live trade's size now: $2, grown in step with what its live trades made (bot/sizing.ts liveTradeSize). */
@@ -1081,9 +1091,9 @@ export class PaperAccounts {
         wallet: a.live.address, balanceUsd: this.o.live?.cachedBalance(a.id) ?? null,
         pnlUsd: liveStats.totalPnlUsd, closed: liveStats.closed, open: liveStats.open, winRate: liveStats.winRate, feesPaidUsd: a.live.feesPaidUsd ?? 0, startBalanceUsd: a.live.startBalanceUsd ?? null,
         limits: { maxTradeUsd: USER_LIVE.maxTradeUsd, minBalanceUsd: USER_LIVE.minBalanceUsd, reserveUsd: USER_LIVE.reserveUsd, maxOpen: USER_LIVE.maxOpen, dailyLossUsd: trader?.limits.dailyLossUsd ?? USER_LIVE.dailyLossMinUsd, preflight: true, maxRoundTripPct: USER_LIVE.maxRoundTripPct, maxSharePct: Math.round(USER_LIVE.maxShareOfBalance * 100), baseTradeUsd: USER_LIVE.baseTradeUsd },
-        // On the dollar plan: $2 flat, and what it learned for live trades (its entry filters per kind of signal).
-        sizing: this.liveRouting === 'dollar' ? { tradeUsd: DOLLAR_PLAN.sizeUsd, growthPct: 0, pnlUsd: this.livePnl(a) } : (({ sizeUsd, growthPct }) => ({ tradeUsd: sizeUsd, growthPct, pnlUsd: this.livePnl(a) }))(this.liveGrowth(a, worth)),
-        ...(this.liveRouting === 'dollar' ? { plan: { sizeUsd: DOLLAR_PLAN.sizeUsd, targetUsd: DOLLAR_TARGET_USD, takeProfitPct: DOLLAR_PLAN.netGain * 100, maxHoldMin: DOLLAR_PLAN.exits.snipe.maxHoldMin, tuning: Object.fromEntries(DOLLAR_PLAN.strategies.map(st => { const { prev: _prev, ...t } = this.dollarTuningOf(a, st); return [st, t] })) as Record<DollarStrategy, StrategyTuning> } } : {}),
+        // On the $2 plan: 20% of what the wallet is worth now, and what it learned for live trades (its entry filters per kind of signal).
+        sizing: this.liveRouting === 'dollar' ? { tradeUsd: this.planTrade(a, worth), growthPct: a.live.startBalanceUsd && worth !== null ? Math.round((worth / a.live.startBalanceUsd - 1) * 100) : 0, pnlUsd: this.livePnl(a) } : (({ sizeUsd, growthPct }) => ({ tradeUsd: sizeUsd, growthPct, pnlUsd: this.livePnl(a) }))(this.liveGrowth(a, worth)),
+        ...(this.liveRouting === 'dollar' ? { plan: { sizeUsd: this.planTrade(a, worth), targetUsd: Math.round(this.planTrade(a, worth) * DOLLAR_PLAN.netGain * 100) / 100, takeProfitPct: DOLLAR_PLAN.netGain * 100, maxHoldMin: DOLLAR_PLAN.exits.snipe.maxHoldMin, walletSharePct: DOLLAR_PLAN.wallet.sharePct, minTradeUsd: DOLLAR_PLAN.wallet.minUsd, maxTradeUsd: DOLLAR_PLAN.wallet.maxUsd, neverStops: DOLLAR_PLAN.neverStops, tuning: Object.fromEntries(DOLLAR_PLAN.strategies.map(st => { const { prev: _prev, ...t } = this.dollarTuningOf(a, st); return [st, t] })) as Record<DollarStrategy, StrategyTuning> } } : {}),
         events: trader?.events.slice(0, 30) ?? [],
       } : null,
       liveAvailable: this.o.live?.available ?? { ok: false, why: 'live trading isn\'t available on this engine' },
@@ -1263,7 +1273,9 @@ export class PaperAccounts {
     const won = (p.pnlUsd ?? 0) > 0
     this.event(a, { at: now, kind: p.exitReason === 'rug' ? 'rug' : 'sell', token: p.token, symbol: p.symbol, text: `${isLive(p) ? 'LIVE ' : ''}Sold $${p.symbol}: ${won ? '+' : ''}${money(p.pnlUsd ?? 0)}${p.feeUsd ? ` after the ${this.accessOf(a.ownerId).profitFeePct}% fee (${money(p.feeUsd)})` : ''}. ${p.note}` })
     a.lossStreak = won ? 0 : a.lossStreak + 1
-    if (!won && a.lossStreak >= PROTECT.pauseAfterLosses && !(a.pausedUntil && a.pausedUntil > now)) {
+    // Live bots on the plan are never paused (DOLLAR_PLAN.neverStops); their streak is still counted.
+    const neverPaused = isLive(p) && this.liveRouting === 'dollar' && DOLLAR_PLAN.neverStops
+    if (!won && !neverPaused && a.lossStreak >= PROTECT.pauseAfterLosses && !(a.pausedUntil && a.pausedUntil > now)) {
       a.pausedUntil = now + PROTECT.pauseMin * 60_000
       this.event(a, { at: now, kind: 'pause', text: `${a.lossStreak} losses in a row: no new trades for ${PROTECT.pauseMin} minutes while it learns from them` })
     }

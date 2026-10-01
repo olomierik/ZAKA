@@ -426,8 +426,8 @@ const DOLLAR_KIND: Record<string, string> = {
 function DollarPlanCard({ plan }: { plan: DollarPlanView }) {
   const money = (x: number) => `${x < 0 ? '−' : x > 0 ? '+' : ''}$${Math.abs(x).toFixed(2)}`
   return (
-    <Section title={T('Live plan: {s} a trade, quick take-profits', { s: usd(plan.sizeUsd, 0) })}>
-      <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>{T('Live bots take every snipe on a coin with {b} buyers or fewer in and no wallet over {t}% of the buying: {s} each, all of it sold at +{g}% after costs (about +10% on the price), out at −7%, when the creator sells, or after {m} minutes. Momentum bursts and comebacks are replayed and measured first, and traded once their replays make money. Each bot learns its own entry filters from its losing trades and the team\'s, but no lesson may turn away more than half of a kind\'s signals. Most trades are small wins; a rug, which no stop catches at live speed, can cost most of its {s}.', { s: usd(plan.sizeUsd, 0), b: plan.maxBuyers ?? 80, t: plan.maxTopBuyerPct ?? 15, g: plan.netGainPct ?? 7.5, m: plan.exits[0]?.maxHoldMin ?? 3 })}</div>
+    <Section title={T('Live plan: {p}% of the wallet a trade, quick take-profits', { p: plan.walletSharePct ?? 20 })}>
+      <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>{T('Live bots take every snipe on a coin with {b} buyers or fewer in and no wallet over {t}% of the buying. Each trade is {p}% of what the bot\'s wallet is worth (at least {min}, at most {max}), so it grows with the capital: all of it sold at +{g}% after costs (about +10% on the price), out at −7%, when the creator sells, or after {m} minutes. Losses never stop a live bot: no daily loss limit, no pause, no switch back to paper. Momentum bursts and comebacks are replayed and measured first, and traded once their replays make money. Each bot learns its own entry filters from its losing trades and the team\'s, but no lesson may turn away more than half of a kind\'s signals. Most trades are small wins; a rug, which no stop catches at live speed, can cost most of its trade.', { p: plan.walletSharePct ?? 20, min: usd(plan.minTradeUsd ?? 2, 0), max: usd(plan.maxTradeUsd ?? 50, 0), b: plan.maxBuyers ?? 80, t: plan.maxTopBuyerPct ?? 15, g: plan.netGainPct ?? 7.5, m: plan.exits[0]?.maxHoldMin ?? 3 })}</div>
       {plan.exits.map(e => (
         <div key={e.strategy} style={{ fontSize: '0.74rem', margin: '2px 0', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <Pill color={STRATEGY_COLOR[e.strategy]}>{T(STRATEGY[e.strategy])}</Pill>
@@ -920,16 +920,16 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, li
         <Section title={T('Strategies')}>
           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '2px 0 8px' }}>{T('Use one, or several at once.')}</div>
           {board?.routing === 'board' && <div className="at-note" style={{ marginBottom: 8 }}>{T('Live bots trade all three strategies by themselves, switched by the strategy board; your picks are what this bot trades on paper.')}</div>}
-          {board?.routing === 'dollar' && <div className="at-note" style={{ marginBottom: 8 }}>{T('Live bots trade every snipe at {s}, sold at about +10% within {m} minutes; your picks are what this bot trades on paper.', { s: usd(board.dollar?.sizeUsd ?? 2, 0), m: board.dollar?.exits[0]?.maxHoldMin ?? 3 })}</div>}
+          {board?.routing === 'dollar' && <div className="at-note" style={{ marginBottom: 8 }}>{T('Live bots trade every snipe at {p}% of their wallet, sold at about +10% within {m} minutes; your picks are what this bot trades on paper.', { p: board.dollar?.walletSharePct ?? 20, m: board.dollar?.exits[0]?.maxHoldMin ?? 3 })}</div>}
           <StrategyPicker selected={acct.strategies} disabled={busy} team={acct.team} access={me.access} onToggle={s => {
             const next = acct.strategies.includes(s) ? acct.strategies.filter(x => x !== s) : [...acct.strategies, s]
             if (next.length) void act({ action: 'strategies', strategies: next })
             else setError(T('Keep at least one strategy.'))
           }} />
           {isLive && acct.live?.plan ? (<>
-          <div className="at-label">{T('Live: {s} a trade, sold at about +10%', { s: usd(acct.live.plan.sizeUsd, 0) })}</div>
+          <div className="at-label">{T('Live: {s} a trade, sold at about +10%', { s: usd(acct.live.plan.sizeUsd) })}</div>
           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            {T('Every live trade is {s}, whatever the wallet holds, and all of it is sold at +{g}% after costs, or within {m} minutes. What it learned for live trades, from its own and the team\'s:', { s: usd(acct.live.plan.sizeUsd, 0), g: acct.live.plan.takeProfitPct ?? 7.5, m: acct.live.plan.maxHoldMin ?? 3 })}
+            {T('Every live trade is {p}% of what the wallet is worth (now {s}, at least {min}), so it grows with the capital, and all of it is sold at +{g}% after costs, or within {m} minutes. What it learned for live trades, from its own and the team\'s:', { p: acct.live.plan.walletSharePct ?? 20, s: usd(acct.live.plan.sizeUsd), min: usd(acct.live.plan.minTradeUsd ?? 2, 0), g: acct.live.plan.takeProfitPct ?? 7.5, m: acct.live.plan.maxHoldMin ?? 3 })}
           </div>
           {(['snipe', 'scalp', 'second-leg'] as const).map(st => { const t = acct.live!.plan!.tuning[st]; return t ? <DollarTuningLine key={st} s={st} t={t} /> : null })}
           </>) : isLive && acct.live?.limits.baseTradeUsd !== undefined ? (<>
@@ -1349,16 +1349,21 @@ function SettingsTab({ acct, act, busy, onRename }: { acct: PaperAccountView; ac
             <li>🛡 {T('Rug guard: out at once when liquidity is pulled, an early insider or a whale dumps, the price crashes on heavy selling, or the creator sells.')}</li>
             {prot.maxTradeSharePct !== undefined && !(acct.mode === 'live' && live?.limits.baseTradeUsd !== undefined) && <li>⚖ {T('Each trade is {p}% of what the bot is worth on a Prime signal, {c}% on Core, {s}% on Standard (now at most {m}), at least {min}: a small bot trades small.', { p: prot.gradeSharePct?.prime ?? prot.maxTradeSharePct, c: prot.gradeSharePct?.core ?? 15, s: prot.gradeSharePct?.standard ?? 10, m: prot.maxTradeUsd == null ? '—' : usd(prot.maxTradeUsd), min: usd(prot.minTradeUsd ?? 1, 0) })}</li>}
             <li>👥 {T('Shares each signal with the other bots: together they never buy enough to move the price against themselves, and the one that waited longest goes first.')}</li>
+            {!(acct.mode === 'live' && live?.plan?.neverStops) && (<>
             <li>⏸ {T('Pauses new trades for 30 minutes after {n} losses in a row (now {s} in a row).', { n: prot.pauseAfterLosses, s: prot.lossStreak })}</li>
             <li>📉 {T('Daily loss limit {l}: no new trades after it until tomorrow (UTC). Today: {t}.', { l: usd(prot.dailyLossLimitUsd, 0), t: usd(prot.todayPnlUsd) })}</li>
             <li>🛑 {T('Stops if the account falls {p}% below what was deposited.', { p: prot.stopBelowPct })}</li>
+            </>)}
           </ul>
         </Section>
       )}
       {live && (
         <Section title={T('Live wallet')}>
           <ul className="at-protect">
-            {live.limits.baseTradeUsd !== undefined ? (<>
+            {live.plan?.walletSharePct !== undefined ? (<>
+              <li>💵 {T('Each trade is {p}% of what the wallet is worth: {now} now, at least {min}, at most {max}, so it grows with the capital. Keeps {r} for gas. Only this bot uses the wallet.', { p: live.plan.walletSharePct, now: usd(live.plan.sizeUsd), min: usd(live.plan.minTradeUsd ?? 2, 0), max: usd(live.plan.maxTradeUsd ?? 50, 0), r: usd(live.limits.reserveUsd) })}</li>
+              {live.plan.neverStops && <li>♾ {T('Never stopped by losses, rugs included: no daily loss limit, no pause after losing trades, no switch back to paper. It trades as long as the wallet can pay {min} and gas.', { min: usd(live.plan.minTradeUsd ?? 2, 0) })}</li>}
+            </>) : live.limits.baseTradeUsd !== undefined ? (<>
               <li>💵 {T('Each trade is {now} now: {b} to start, grown with what its live trades made ({g} so far), at most {x}. Keeps {r} for gas. Only this bot uses the wallet.', { now: usd(live.sizing?.tradeUsd ?? live.limits.baseTradeUsd), b: usd(live.limits.baseTradeUsd, 0), g: `+${live.sizing?.growthPct ?? 0}%`, x: usd(live.limits.maxTradeUsd, 0), r: usd(live.limits.reserveUsd) })}</li>
               {live.limits.maxSharePct !== undefined && <li>⚖ {T('Above {b}, it never puts more than {p}% of what it is worth into one trade (it reads its balance before every buy).', { b: usd(live.limits.baseTradeUsd, 0), p: live.limits.maxSharePct })}</li>}
             </>) : (<>

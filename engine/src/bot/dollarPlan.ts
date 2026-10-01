@@ -13,9 +13,12 @@
 //             (signals/rules.ts), on coins with no more than 80 buyers in and no wallet over 15% of the buying.
 //             Momentum bursts and comebacks are replayed and measured first, and traded live once their replays prove
 //             them (PROVE_FIRST).
-//   size      $8 a trade, flat, since 2026-10-01 14:30 UTC (owner: "increase the trading size to 8 usd so as to make
-//             profits increase"; $2 before). A live trade is still at most 20% of what its wallet is worth, and never
-//             under $2 (bot/liveTrader.ts): a wallet under $40 trades less than $8.
+//   size      20% of what the bot's wallet is worth, at least $2 and at most $50, since 2026-10-01 15:00 UTC (owner:
+//             "change the cap according to increase on capital"): it grows and shrinks with the capital. $2 flat at
+//             first, then $8 from 14:30 (still capped at 20% of the wallet).
+//   no stops  live bots on the plan are never stopped by losses (owner, same time: "do not allow the bot to be stopped
+//             even if there is a rug"): no daily loss limit, no pause after losing trades, no switch back to paper.
+//             They trade as long as the wallet can pay $2 and gas. A rug still costs most of its trade.
 //   exit      all of it once selling nets +7.5% after costs (about +10% on the price, $0.60 on $8), else out at −7%,
 //             when the creator sells, or after 3 minutes.
 //   learning  every signal is replayed on its coin's real trades at live speed with these exits (Bot.replayDue).
@@ -46,8 +49,15 @@ import { defaultTuning, type LearnOptions, type Tuning } from './learner'
 export const DOLLAR_PLAN = {
   /** Bumped when the plan's exits change: a live bot's learned filters start over on a new version. */
   version: 2,
-  /** A trade's size ($2 until 2026-10-01 14:30 UTC). The live trader still caps it at 20% of the wallet, never under $2. */
+  /**
+   * The reference size: the replays and their dollar figures, and the platform's own bot. Visitors' live bots trade
+   * `wallet` below instead.
+   */
   sizeUsd: 8,
+  /** A live bot's trade: this share of what its wallet is worth (USDC plus open trades at cost), between the two amounts. */
+  wallet: { sharePct: 20, minUsd: 2, maxUsd: 50 },
+  /** Live bots on the plan are never stopped by losses: no daily loss limit, no pause after losses, no switch back to paper. */
+  neverStops: true,
   /** All of it is sold once selling nets this much over what it paid (+7.5%, about +10% on the price). */
   netGain: 0.075,
   /** The strategies live bots trade on the plan. */
@@ -121,13 +131,19 @@ export function planBlocks(f: SignalFeatures | undefined): { key: 'crowded' | 't
   return null
 }
 
+/** A live bot's trade on the plan: 20% of what its wallet is worth, in $0.10 steps, at least $2 and at most $50. */
+export function dollarTradeSize(worthUsd: number): number {
+  const w = DOLLAR_PLAN.wallet
+  return Math.min(w.maxUsd, Math.max(w.minUsd, Math.floor((worthUsd * w.sharePct) / 10 + 1e-9) / 10))
+}
+
 /** A position traded on the plan (live bots' trades, and the replays of every signal). */
 export const isDollarTrade = (p: Pick<Position, 'plan'>) => p.plan === 'dollar'
 
 /** The plan in words, for the site. */
 export function dollarPlanText(s: DollarStrategy): string {
   const e = DOLLAR_PLAN.exits[s]
-  return `$${DOLLAR_PLAN.sizeUsd} a trade, all of it sold at +${Math.round(DOLLAR_PLAN.netGain * 1_000) / 10}% after costs (about +10% on the price); out at −${Math.round((1 - e.stopLoss) * 100)}%, when the creator sells, or after ${e.maxHoldMin} minutes`
+  return `${DOLLAR_PLAN.wallet.sharePct}% of the wallet a trade (at least $${DOLLAR_PLAN.wallet.minUsd}), all of it sold at +${Math.round(DOLLAR_PLAN.netGain * 1_000) / 10}% after costs (about +10% on the price); out at −${Math.round((1 - e.stopLoss) * 100)}%, when the creator sells, or after ${e.maxHoldMin} minutes`
 }
 
 /**

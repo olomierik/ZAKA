@@ -62,6 +62,8 @@ export interface LiveLimits {
   minTradeUsd?: number
   /** The day's loss counts only trades closed from this time (the dollar plan's start: losses under the old exits don't stop it). */
   lossSince?: number
+  /** No daily loss limit at all (visitors' live bots on the $2 plan since 2026-10-01: never stopped by losses). */
+  noDailyLoss?: boolean
 }
 
 /** The smallest live trade: below this, a wallet is too small to trade (gas and rounding eat it). */
@@ -137,7 +139,7 @@ export class LiveTrader {
     if (!pool || !key || !usdcSide(key, token)) { this.event({ kind: 'skip', token, symbol, text: `$${symbol}: live trading can't reach this coin's venue yet (paper only)` }); return }
     if (this.opening.has(token)) return
     const now = Date.now()
-    const allowed = canOpen(this.live(), token, now, { maxOpen: this.o.limits.maxOpen, maxOpenScalp: this.o.limits.maxOpenScalp, cooldownMin: RISK.cooldownMin, cooldownMinScalp: RISK.cooldownMinScalp, dailyLossUsd: this.o.limits.dailyLossUsd, since: this.o.limits.lossSince }, strategy)
+    const allowed = canOpen(this.live(), token, now, { maxOpen: this.o.limits.maxOpen, maxOpenScalp: this.o.limits.maxOpenScalp, cooldownMin: RISK.cooldownMin, cooldownMinScalp: RISK.cooldownMinScalp, dailyLossUsd: this.o.limits.noDailyLoss ? Infinity : this.o.limits.dailyLossUsd, since: this.o.limits.lossSince }, strategy)
     if (!allowed.ok) { this.event({ kind: 'skip', token, symbol, text: `$${symbol}: not bought (${allowed.why})` }); return }
     let size = Math.min(opts.sizeUsd ?? this.o.params(strategy).sizeUsd, this.o.limits.maxTradeUsd)
     let targetUsd = opts.extra?.targetUsd

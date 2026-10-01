@@ -7,7 +7,7 @@ import { describe, expect, test } from 'bun:test'
 import type { Address, Hex } from 'viem'
 import type { LaunchInfo, SignalFeatures } from '../../api/_marketProtocol'
 import { Bot } from '../src/bot/bot'
-import { DOLLAR_PLAN, DOLLAR_TARGET_USD, defaultDollarTuning, dollarParams, dollarTakeProfit, onThisPlan, planBlocks, QUICK_LEARN } from '../src/bot/dollarPlan'
+import { DOLLAR_PLAN, DOLLAR_TARGET_USD, defaultDollarTuning, dollarParams, dollarTakeProfit, dollarTradeSize, onThisPlan, planBlocks, QUICK_LEARN } from '../src/bot/dollarPlan'
 import { admits, defaultTuning, learn } from '../src/bot/learner'
 import { PaperAccounts, type PaperAccount, type PaperSignal } from '../src/bot/paperAccounts'
 import { MemoryBotStore } from '../src/bot/store'
@@ -80,10 +80,10 @@ function stubWallet(o: { balance: number; sellAt: number }) {
   return { calls, exec: exec as unknown as LiveExecutor, o }
 }
 
-/** A live bot on the plan, its wallet holding $100. Its own picks: fast scalps only. */
-async function liveBot(sellAt = 1.12) {
+/** A live bot on the plan, its wallet holding `balance` ($100). Its own picks: fast scalps only. */
+async function liveBot(sellAt = 1.12, balance = 100) {
   const store = new MemoryBotStore()
-  const wallet = stubWallet({ balance: 100, sellAt })
+  const wallet = stubWallet({ balance, sellAt })
   const live = new UserLive({ vault: new WalletVault('11'.repeat(32)), makeExec: () => wallet.exec, pools: token => poolOf(token) })
   const accounts = new PaperAccounts({ speed: null, store, priceOf: () => 1, params: s => STRATEGIES[s], live, liveRouting: 'dollar' })
   const a = (accounts.create(now, { name: 'Dollar', strategies: ['scalp'] }, 'owner') as { account: PaperAccount }).account
@@ -100,19 +100,19 @@ async function liveBot(sellAt = 1.12) {
     const s: PaperSignal = { symbol: 'COIN', launchpad: 'Argus', price: 1, strategy: 'snipe', rule: 'snipe', roundTripPct: 2, liquidityUsd: 10_000, features: features(), ...o }
     accounts.onSignal(s, Date.now(), { signal: { id: s.id, token: s.token, strategy: s.strategy } as never, pool: poolOf(s.token), meta: { token: s.token, symbol: 'COIN', launchpad: 'Argus' } as never })
   }
-  return { accounts, a, wallet, signal }
+  return { accounts, a, wallet, signal, live }
 }
 
 describe('live bots on the plan', () => {
-  test('every snipe, whatever the bot picked: $8, all of it sold at about +10%', async () => {
+  test('every snipe, whatever the bot picked: 20% of the wallet, all of it sold at about +10%', async () => {
     const { accounts, a, wallet, signal } = await liveBot(1.12)
     signal({ id: 'sn1', token: T }) // a snipe: the bot picked fast scalps only, it takes it anyway
     await settle()
     const p = a.positions.find(x => x.mode === 'live' && x.signalId === 'sn1')!
-    expect(p).toMatchObject({ strategy: 'snipe', plan: 'dollar', sizeUsd: 8, rule: 'snipe' })
+    expect(p).toMatchObject({ strategy: 'snipe', plan: 'dollar', sizeUsd: 20, rule: 'snipe' })
     expect(p.exits!.tp1Multiple).toBeCloseTo(1.086, 2) // +7.5% after the sale's ~1% cost
     expect(p.exits).toMatchObject({ tp1SellPct: 1, stopLoss: 0.93, maxHoldMin: 3, exitOnCreatorSell: true })
-    expect(wallet.calls).toEqual(['buy 8'])
+    expect(wallet.calls).toEqual(['buy 20'])
     accounts.onPrice(T, 1.05, Date.now(), false, true) // +5%: held
     await settle()
     expect(p.status).toBe('open')
@@ -120,12 +120,20 @@ describe('live bots on the plan', () => {
     await settle()
     expect(p).toMatchObject({ status: 'closed', exitReason: 'tp1' })
     const gross = (p.pnlUsd ?? 0) + (p.feeUsd ?? 0)
-    expect(gross).toBeGreaterThan(0.6) // $8.96 back on $8, less gas
-    expect(accounts.view(a).live).toMatchObject({ sizing: { tradeUsd: 8, growthPct: 0 }, plan: { sizeUsd: 8, targetUsd: 0.6, takeProfitPct: 7.5, maxHoldMin: 3 } })
+    expect(gross).toBeGreaterThan(2) // $22.40 back on $20, less gas
+    expect(accounts.view(a).live).toMatchObject({ plan: { walletSharePct: 20, minTradeUsd: 2, maxTradeUsd: 50, neverStops: true, takeProfitPct: 7.5, maxHoldMin: 3 } })
+    expect(accounts.view(a).live!.sizing!.tradeUsd).toBeGreaterThanOrEqual(20)
   })
-  test('the $8 is still at most 20% of the wallet, and never under $2', async () => {
+  test('a trade is 20% of what the wallet is worth: it grows with the capital, at least $2, at most $50', async () => {
+    expect([dollarTradeSize(34.4), dollarTradeSize(9), dollarTradeSize(200), dollarTradeSize(1_000)]).toEqual([6.8, 2, 40, 50])
+    for (const [balance, bought] of [[34.4, 'buy 6.8'], [200, 'buy 40'], [1_000, 'buy 50']] as const) {
+      const b = await liveBot(1.12, balance)
+      b.signal({ id: `g${balance}`, token: tok(0xa0) })
+      await settle()
+      expect(b.wallet.calls).toEqual([bought])
+    }
     const small = await liveBot()
-    small.wallet.o.balance = 20 // 20% of $20: a $4 trade
+    small.wallet.o.balance = 20 // read again right before the buy: 20% of $20
     small.signal({ id: 'w1', token: tok(0xa1) })
     await settle()
     expect(small.wallet.calls).toEqual(['buy 4'])
@@ -150,7 +158,7 @@ describe('live bots on the plan', () => {
     // Once the engine says a momentum burst is proven (its replays on the plan made money), it's bought.
     signal({ id: 'mo2', token: tok(0xb5), strategy: 'scalp', rule: 'momentum', quality: { score: 70, grade: 'live', tier: 'A', rank: null, parts: [], liveOk: true, liveWhy: null } as never })
     await settle()
-    expect(wallet.calls).toEqual(['buy 8'])
+    expect(wallet.calls).toEqual(['buy 20'])
   })
   test('a rule on probation is sat out', async () => {
     const { a, signal, wallet } = await liveBot()
@@ -159,28 +167,38 @@ describe('live bots on the plan', () => {
     expect(wallet.calls).toEqual([])
     expect(a.skips[0].text).toMatch(/not traded: Snipes won 3 of their last 20/)
   })
-  test('four losses in a row pause it for 30 minutes, but no lesson stops it trading: the take-profit never moves', async () => {
-    const { accounts, a, wallet, signal } = await liveBot(0.9)
+  test('never stopped by losses: four rugs in a row, far past the old daily limit, and it buys the next snipe', async () => {
+    const { accounts, a, wallet, signal } = await liveBot(0.4)
     for (let k = 0; k < 4; k++) {
       const token = tok(0xc0 + k)
       signal({ id: `l${k}`, token })
       await settle()
-      accounts.onPrice(token, 0.9, Date.now(), false, true) // −10%: the stop, sold at 0.9
+      accounts.onPrice(token, 0.5, Date.now(), false, true) // a dump through the stop, sold at 0.4
       await settle()
     }
     const lost = a.positions.filter(p => p.mode === 'live' && p.plan === 'dollar')
     expect(lost).toHaveLength(4)
     expect(lost.every(p => p.status === 'closed' && (p.pnlUsd ?? 0) < 0)).toBe(true)
+    expect(lost.reduce((sum, p) => sum + (p.pnlUsd ?? 0), 0)).toBeLessThan(-20) // the old limit was $10 a day on $100
+    expect(a.pausedUntil).toBeNull() // no pause after 4 losses in a row
     const t = a.dollarTuning!.snipe!
     expect(t.rules?.snipe?.skip).toBeFalsy() // skipping snipes would turn away every one of them
     expect(t.takeProfit).toBe(1.075)
-    expect(a.pausedUntil).toBeGreaterThan(Date.now())
-    // After the pause, the next snipe is bought.
-    a.pausedUntil = null
     wallet.calls.length = 0
     signal({ id: 'l5', token: tok(0xd0) })
     await settle()
-    expect(wallet.calls).toEqual(['buy 8'])
+    expect(wallet.calls).toHaveLength(1)
+    expect(wallet.calls[0]).toMatch(/^buy /)
+  })
+  test('and never sent back to paper, however far the wallet falls', async () => {
+    const { accounts, a, wallet, live } = await liveBot()
+    expect(a.live!.startBalanceUsd).toBe(100)
+    wallet.o.balance = 30 // down 70%: before, it went back to paper at 50%
+    expect(await live.balance(a.id, live.existing(a.id), true)).toBe(30) // the wallet read as the engine's tick reads it
+    accounts.tick(Date.now())
+    await settle()
+    expect(a.mode).toBe('live')
+    expect(a.events.some(e => e.kind === 'stop')).toBe(false)
   })
   test('it learns from the team\'s replays before risking a cent: rugs in thin pools raise the liquidity it needs', async () => {
     const { accounts, a, signal, wallet } = await liveBot()
@@ -293,9 +311,9 @@ describe('the engine replays every snipe and fast scalp on the plan', () => {
     expect(accounts.dollarTeam('scalp')).toHaveLength(11) // what live bots learn from
     expect(bot.dollarProbation('momentum', now)?.why).toMatch(/Momentum bursts won 0 of their last 11 trades/)
     const v = bot.dollarView(now)
-    expect(v).toMatchObject({ sizeUsd: 8, targetUsd: 0.6, netGainPct: 7.5, maxBuyers: 80, maxTopBuyerPct: 15 })
+    expect(v).toMatchObject({ sizeUsd: 8, targetUsd: 0.6, netGainPct: 7.5, maxBuyers: 80, maxTopBuyerPct: 15, walletSharePct: 20, minTradeUsd: 2, maxTradeUsd: 50, neverStops: true })
     expect(v.kinds.find(k => k.rule === 'momentum')).toMatchObject({ replays: { trades: 11, wins: 0, hits: 0 }, probation: expect.stringMatching(/won 0 of their last 11/) })
-    expect(v.exits.map(e => e.text)).toEqual(Array(3).fill('$8 a trade, all of it sold at +7.5% after costs (about +10% on the price); out at −7%, when the creator sells, or after 3 minutes'))
+    expect(v.exits.map(e => e.text)).toEqual(Array(3).fill('20% of the wallet a trade (at least $2), all of it sold at +7.5% after costs (about +10% on the price); out at −7%, when the creator sells, or after 3 minutes'))
   })
   test('momentum bursts are measured first: not proven until their replays make money', async () => {
     const store = new MemoryBotStore()

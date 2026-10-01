@@ -1121,6 +1121,7 @@ export class Bot implements EngineObserver {
     const live = (this.o.accounts?.dollarLive(now) ?? []).concat(this.positions.filter(p => p.mode === 'live' && isDollarTrade(p)))
     return {
       sizeUsd: DOLLAR_PLAN.sizeUsd, targetUsd: DOLLAR_TARGET_USD, netGainPct: DOLLAR_PLAN.netGain * 100, maxBuyers: DOLLAR_PLAN.maxBuyers, maxTopBuyerPct: DOLLAR_PLAN.maxTopBuyerPct,
+      walletSharePct: DOLLAR_PLAN.wallet.sharePct, minTradeUsd: DOLLAR_PLAN.wallet.minUsd, maxTradeUsd: DOLLAR_PLAN.wallet.maxUsd, neverStops: DOLLAR_PLAN.neverStops,
       exits: DOLLAR_PLAN.strategies.map(s => ({ strategy: s, stopLoss: DOLLAR_PLAN.exits[s].stopLoss, maxHoldMin: DOLLAR_PLAN.exits[s].maxHoldMin, text: dollarPlanText(s) })),
       kinds: kinds.map(([rule, strategy]) => {
         // The signals live bots would buy (the plan's limits), as probation and the proofs count them.
