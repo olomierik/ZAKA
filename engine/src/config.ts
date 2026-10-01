@@ -69,9 +69,9 @@ export interface Config {
   /** When tiers start by themselves (TIERS_ENFORCE_AT, an ISO time; default 3 October 2026, 00:00 UTC; "never" turns it off). */
   tiersEnforceAt: number | null
   /**
-   * Which signals live bots trade (BOT_LIVE_GRADES): `board` (the default since 2026-10-01: the strategy board,
-   * bot/strategyBoard.ts, switches each of the three strategies on or off by its paper record at live speed),
-   * `proven` (Prime and Core unless their record fails, Standard once proven), `all`, or `off` (no new live buys).
+   * Which signals live bots trade (BOT_LIVE_GRADES): `dollar` (the default: every snipe and fast scalp at $2, sold at
+   * +$1, bot/dollarPlan.ts), `board` (the strategy board, bot/strategyBoard.ts), `proven` (Prime and Core unless their
+   * record fails, Standard once proven), or `off` (no new live buys). `all` is retired and means the default.
    */
   liveGrades: 'dollar' | 'board' | 'proven' | 'all' | 'off'
   /** Launchpad coins only (SIGNALS_LAUNCHPAD_ONLY, intel/launchpadGate.ts): `strict` (the default), `origin` or `off`. */
@@ -130,7 +130,10 @@ export function loadConfig(): Config {
     // `board`: the strategy board decides, from the paper bots' records at live speed.
     // `dollar` (the default since 2026-10-01, owner's request): live bots trade every snipe and fast scalp at $2, all of
     // it sold once it makes $1, and learn from their own and the team's trades (bot/dollarPlan.ts).
-    liveGrades: (['all', 'off', 'proven', 'board'] as const).find(v => v === process.env.BOT_LIVE_GRADES) ?? 'dollar',
+    // `all` is retired (2026-10-01): Railway still had BOT_LIVE_GRADES=all when the owner chose the dollar plan, and with it
+    // each live bot traded only the strategy it picked, so neither took a signal (all of that morning's fired as fast
+    // scalps, and one bot follows snipes only). It now falls back to the default, which sends every snipe and fast scalp.
+    liveGrades: (['off', 'proven', 'board'] as const).find(v => v === process.env.BOT_LIVE_GRADES) ?? 'dollar',
     // Only coins a known Arc launchpad launched, with its standard code, become signals (2026-10-01).
     launchpadOnly: (['origin', 'off'] as const).find(v => v === process.env.SIGNALS_LAUNCHPAD_ONLY) ?? 'strict',
     botSizeUsd: process.env.BOT_SIZE_USD ? int('BOT_SIZE_USD', 25, 1, 10_000) : null,
