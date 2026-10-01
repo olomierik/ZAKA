@@ -11,7 +11,7 @@
 // subscription is re-sent, and the engine answers each with a fresh snapshot.
 
 import { useSyncExternalStore } from 'react'
-import { botControlMessage, tierLinkMessage, type AccessView, type GradeRecordView, type TiersResponse, type BotControl, type BotProfit, type BotPosition, type BotStatus, type PaperAccountView, type PaperAction, type ScanRow, type ScanStats, type SearchHit, type Interval, type LaunchInfo, type NewPaperAccount, type BotUserView, type MeResponse, type MarketBot, type MarketBotDetail, type RejectionStats, type SafetyCheck, type ServerMessage, type TokenStats, type TradeSignal, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
+import { botControlMessage, tierLinkMessage, type AccessView, type GradeRecordView, type TiersResponse, type BotControl, type BotProfit, type BotPosition, type BotStatus, type PaperAccountView, type PaperAction, type ScanRow, type ScanStats, type SearchHit, type StrategyBoardResponse, type Interval, type LaunchInfo, type NewPaperAccount, type BotUserView, type MeResponse, type MarketBot, type MarketBotDetail, type RejectionStats, type SafetyCheck, type ServerMessage, type TokenStats, type TradeSignal, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
 
 const WS_URL = (import.meta.env.VITE_ARCDEX_WS_URL as string | undefined) || undefined
 const API_URL = ((import.meta.env.VITE_ARCDEX_API_URL as string | undefined) || (WS_URL ? WS_URL.replace(/^ws/, 'http').replace(/\/ws\/?$/, '') : '')).replace(/\/$/, '')
@@ -259,6 +259,8 @@ export const getMarket = (sort: 'pnl' | 'winrate' | 'new' | 'live' = 'pnl', limi
   botFetch<{ bots: MarketBot[]; total: number; counts?: { live: number; paper: number } }>(`/v1/bots?sort=${sort}&limit=${limit}${mode ? `&mode=${mode}` : ''}`)
 export const getMarketBot = (slug: string) => botFetch<{ bot: MarketBotDetail }>(`/v1/bots/${encodeURIComponent(slug)}`).then(r => r.bot)
 export const getRejections = () => get<RejectionStats>('/v1/bot/rejections')
+/** The strategy board: which of the three strategies live bots trade now, with whose settings (engines since 2026-10-01). */
+export const getStrategyBoard = () => get<StrategyBoardResponse>('/v1/bot/board')
 
 /** The owner's signed switch: paper/live, or sell every live position (engine/src/bot/control.ts). */
 /** The tiers, whether they're enforced, and each signal grade's record (GET /v1/tiers). */

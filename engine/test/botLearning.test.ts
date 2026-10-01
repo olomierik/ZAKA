@@ -260,8 +260,10 @@ describe('a visitor\'s bot, all together', () => {
     const accts = new PaperAccounts({ speed: null, store: new MemoryBotStore(), priceOf: () => 1, params: st => STRATEGIES[st] })
     expect(accts.create(now, { name: 'x', strategies: ['scalp'] })).toEqual({ error: expect.stringMatching(/name your bot/) })
     expect(accts.create(now, { name: 'Ok bot', strategies: [] })).toEqual({ error: 'choose at least one strategy' })
-    const made = accts.create(now, { name: '  Moon   Hunter ', strategies: ['second-leg'] }) as { account: PaperAccount }
-    expect(made.account).toMatchObject({ name: 'Moon Hunter', strategies: ['second-leg'] })
+    expect(accts.create(now, { name: 'Dip bot', strategies: ['second-leg'] })).toEqual({ error: 'choose at least one strategy' }) // not a bot's pick since 2026-10-01
+    const made = accts.create(now, { name: '  Moon   Hunter ', strategies: ['precision', 'second-leg'] }) as { account: PaperAccount }
+    expect(made.account).toMatchObject({ name: 'Moon Hunter', strategies: ['precision'] })
+    expect((accts.create(now, { name: 'All three' }) as { account: PaperAccount }).account.strategies).toEqual(['precision', 'snipe', 'scalp'])
     expect(accts.act(made.account, { action: 'rename', name: '<script>' }, now)).toMatch(/2–24/)
     expect(accts.act(made.account, { action: 'rename', name: 'Night Owl' }, now)).toBeNull()
   })

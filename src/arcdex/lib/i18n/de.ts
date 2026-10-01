@@ -1927,5 +1927,15 @@ const d: Record<string, string> = {
   "Limits: ${m} a trade now (from ${f}, growing with its profit, at most ${a}) · {o} open at once ({s} scalps) · stops for the day after a ${d} loss · keeps ${r} for gas · buys at most {b}% under the quote": "Limits: jetzt ${m} pro Trade (ab ${f}, wächst mit seinem Gewinn, höchstens ${a}) · {o} gleichzeitig offen ({s} Scalps) · Stopp für den Tag nach ${d} Verlust · behält ${r} für Gas · kauft höchstens {b}% unter dem Kurs",
   "above ${f}, no trade over {p}% of the wallet (read before each buy)": "über ${f} kein Trade über {p}% der Wallet (vor jedem Kauf gelesen)",
   "quick: all sold at +6%, stop −7%, out after 3 minutes unless up 2%, 10 minutes at most": "schnell: alles bei +6 % verkauft, Stop −7 %, raus nach 3 Minuten außer bei +2 %, höchstens 10 Minuten",
+  "Strategy board: what live bots trade now": "Strategie-Board: was Live-Bots jetzt handeln",
+  "Paper bots trade every signal at live speed and learn from their losses. For each strategy, live bots use the settings of the paper book doing best on it (its last 20 trades) and switch by themselves: live while it is in profit, paused when it isn't, on trial at $2 until it has 8 trades.": "Papier-Bots handeln jedes Signal bei Live-Geschwindigkeit und lernen aus ihren Verlusten. Für jede Strategie nutzen Live-Bots die Einstellungen des Papierbuchs, das darin am besten abschneidet (seine letzten 20 Trades), und wechseln von selbst: live, solange sie im Gewinn ist, pausiert, wenn nicht, auf Probe mit 2 $, bis sie 8 Trades hat.",
+  "TRIAL": "PROBE",
+  "PAUSED": "PAUSIERT",
+  "Settings from {n}: {t} trades, {w} won, {a} a trade": "Einstellungen von {n}: {t} Trades, {w} gewonnen, {a} pro Trade",
+  "ARCDEX paper book": "ARCDEX-Papierbuch",
+  "Sells {s}% at {tp} · stop {sl} · {m} min at most": "Verkauft {s} % bei {tp} · Stop {sl} · höchstens {m} Min.",
+  "Live bots, last 24h: {t} trades, {w} won, {a} a trade": "Live-Bots, letzte 24 h: {t} Trades, {w} gewonnen, {a} pro Trade",
+  "Live bots trade by themselves now: whichever of the three strategies is in profit on paper at live speed, with the settings of the paper bot doing best on it. A strategy that stops working is paused for live until paper proves it again (the strategy board shows each one).": "Live-Bots handeln jetzt von selbst: diejenige der drei Strategien, die auf Papier bei Live-Geschwindigkeit im Gewinn ist, mit den Einstellungen des Papier-Bots, der darin am besten abschneidet. Eine Strategie, die nicht mehr funktioniert, wird für Live pausiert, bis Papier sie wieder beweist (das Strategie-Board zeigt jede).",
+  "Live bots trade all three strategies by themselves, switched by the strategy board; your picks are what this bot trades on paper.": "Live-Bots handeln alle drei Strategien von selbst, umgeschaltet vom Strategie-Board; deine Auswahl ist, was dieser Bot auf Papier handelt.",
 }
 export default d

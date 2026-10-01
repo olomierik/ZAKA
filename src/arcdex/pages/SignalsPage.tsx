@@ -27,9 +27,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
-import type { AccessView, BotControl, BotFilters, BotPosition, BotStatus, BotStrategy, GradeRecordView, LearnNote, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, SignalGrade, SignalOutcomes, SignalRule, TeamView, TierId, TiersResponse, TradeSignal } from '../../../api/_marketProtocol'
+import type { AccessView, BotControl, BotFilters, BotPosition, BotStatus, BotStrategy, GradeRecordView, LearnNote, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, SignalGrade, SignalOutcomes, SignalRule, StrategyBoardEntry, StrategyBoardResponse, TeamView, TierId, TiersResponse, TradeSignal } from '../../../api/_marketProtocol'
 import { getLaunchpadColor } from '../api/radardex'
-import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botFunders, botWithdraw, botWithdrawCode, botWithdrawPasscode, botLinkWallet, botUnlinkWallet, engineEnabled, getTiers, sendTierGrant, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse, type LiveSpeedRow } from '../api/marketStream'
+import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botFunders, botWithdraw, botWithdrawCode, botWithdrawPasscode, botLinkWallet, botUnlinkWallet, engineEnabled, getTiers, sendTierGrant, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, getStrategyBoard, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse, type LiveSpeedRow } from '../api/marketStream'
 import { AgoText } from '../components/Ago'
 import { openConnectModal } from '../components/ConnectWallet'
 import { PasscodeField, useWithdrawGuard } from '../components/WithdrawGuard'
@@ -58,7 +58,8 @@ const price = (n: number) => n >= 1 ? `$${n.toFixed(4)}` : `$${n.toPrecision(3)}
 const big = (n: number | null) => n === null ? '—' : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(0)}`
 const STRATEGY: Record<BotStrategy, string> = { snipe: 'Snipe', scalp: 'Fast scalp', 'second-leg': 'Dip rebound', precision: 'Precision' }
 const STRATEGY_COLOR: Record<BotStrategy, string> = { snipe: '#3b82f6', scalp: '#f59e0b', 'second-leg': '#a855f7', precision: '#facc15' }
-const ALL_STRATEGIES: BotStrategy[] = ['precision', 'snipe', 'scalp', 'second-leg']
+/** The three strategies bots trade (2026-10-01; dip rebounds are measured on paper by the engine only). */
+const ALL_STRATEGIES: BotStrategy[] = ['precision', 'snipe', 'scalp']
 const STRATEGY_HELP: Record<BotStrategy, string> = {
   precision: 'Prime signals only: an early crowd (10+ buyers in a coin\'s first minute, none over 20% of the buying) or a crowd momentum burst. All of it sold at +10%, −10% stop, 10 minutes at most, out at once if the creator sells.',
   snipe: 'New coins in their first 10 minutes that pass every safety check and show real buying. Half sold at +10%, then the stop moves to break-even and the rest trails 25% under its peak; −10% stop, an hour at most.',
@@ -143,6 +144,7 @@ export default function SignalsPage({ navigate, view: pageView, bot }: { navigat
           {view === 'mine' && <MyBots navigate={navigate} liveSpeed={stats?.routing?.liveSignals === 'all' ? undefined : stats?.liveSpeed} />}
           {view === 'market' && <Marketplace navigate={navigate} slug={bot ?? null} />}
           {view === 'scanner' && <><RejectionsCard /><ScannerPanel scan={scan} navigate={navigate} /></>}
+          {view === 'signals' && <StrategyBoardCard />}
           {view === 'signals' && <GradesCard grades={stats?.grades} />}
           {view === 'signals' && stats?.liveSpeed && <LiveSpeedCard rows={stats.liveSpeed} all={stats.routing?.liveSignals === 'all'} />}
           {view === 'signals' && (
@@ -378,6 +380,51 @@ function TierCard({ me, onAccess }: { me: MeResponse; onAccess: (a: AccessView) 
         </>
       )}
     </div>
+  )
+}
+
+/** The strategy board (GET /v1/bot/board), shared by every part of the page and read every 20 seconds; null on an older engine. */
+let boardCache: StrategyBoardResponse | null = null
+function useBoard(): StrategyBoardResponse | null {
+  const [b, setB] = useState<StrategyBoardResponse | null>(boardCache)
+  useEffect(() => {
+    if (!engineEnabled) return
+    let alive = true
+    const load = () => getStrategyBoard().then(r => { boardCache = r; if (alive) setB(r) }).catch(() => { /* an older engine: no board */ })
+    void load()
+    const id = setInterval(() => { if (!document.hidden) void load() }, 20_000)
+    return () => { alive = false; clearInterval(id) }
+  }, [])
+  return b
+}
+
+const BOARD_STATUS: Record<StrategyBoardEntry['status'], { label: string; color: string }> = {
+  live: { label: 'LIVE', color: '#22c55e' },
+  trial: { label: 'TRIAL', color: '#f59e0b' },
+  paused: { label: 'PAUSED', color: '#94a3b8' },
+}
+
+/** Which of the three strategies live bots trade now, with whose settings: the paper book doing best on each (engine/src/bot/strategyBoard.ts). */
+function StrategyBoardCard() {
+  const board = useBoard()
+  if (!board?.strategies.length) return null
+  const pct = (x: number) => `${x > 0 ? '+' : ''}${x}%`
+  return (
+    <Section title={T('Strategy board: what live bots trade now')}>
+      <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>{T('Paper bots trade every signal at live speed and learn from their losses. For each strategy, live bots use the settings of the paper book doing best on it (its last 20 trades) and switch by themselves: live while it is in profit, paused when it isn\'t, on trial at $2 until it has 8 trades.')}</div>
+      {board.strategies.map(e => (
+        <div key={e.strategy} className="at-grade-row">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Pill color={STRATEGY_COLOR[e.strategy]}>{T(STRATEGY[e.strategy])}</Pill>
+            <span style={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.04em', color: BOARD_STATUS[e.status].color, border: `1px solid ${BOARD_STATUS[e.status].color}`, borderRadius: 6, padding: '1px 6px' }}>{T(BOARD_STATUS[e.status].label)}</span>
+            {e.source && <span style={{ fontFamily: 'var(--mono)', fontSize: '0.74rem' }}>{T('Settings from {n}: {t} trades, {w} won, {a} a trade', { n: e.source.kind === 'house' ? T(e.source.name) : e.source.name, t: e.source.trades, w: e.source.wins, a: pct(e.source.avgPct) })}</span>}
+          </div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{T('Sells {s}% at {tp} · stop {sl} · {m} min at most', { s: e.exits.sellPct, tp: pctMove(e.exits.takeProfit), sl: pctMove(e.exits.stopLoss), m: e.exits.maxHoldMin ?? '—' })}</div>
+          {e.live && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{T('Live bots, last 24h: {t} trades, {w} won, {a} a trade', { t: e.live.trades, w: e.live.wins, a: pct(e.live.avgPct) })}</div>}
+          <div style={{ fontSize: '0.72rem', marginTop: 2, color: e.status === 'paused' ? 'var(--text-muted)' : '#86efac' }}>{T(e.why)}</div>
+        </div>
+      ))}
+    </Section>
   )
 }
 
@@ -632,6 +679,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, li
   const [toPaper, setToPaper] = useState(false)
   const [renaming, setRenaming] = useState<string | null>(null)
   const isLive = acct.mode === 'live'
+  const board = useBoard()
   const live = acct.live ?? null
   const avail = acct.liveAvailable ?? me.liveAvailable
   const cleanRename = renaming?.replace(/\s+/g, ' ').trim() ?? ''
@@ -752,7 +800,9 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, li
       {tab === 'overview' && (
         <>
           {isLive && liveSpeed && <LiveGateNote rows={liveSpeed} strategies={acct.strategies} />}
-          {isLive && <div className="at-note" style={{ marginTop: 12 }}>◆ {T('Live bots trade Prime and Core signals now: Prime with Precision (all of it sold at +10%), Core with the quick exits (all of it sold at +6%, −7% stop, 10 minutes at most). A grade whose record at live speed fails is passed over until it recovers, and Standard joins once it proves a profit (the Signals tab shows each grade\'s record).')}</div>}
+          {isLive && board?.routing === 'board' && <div className="at-note" style={{ marginTop: 12 }}>◆ {T('Live bots trade by themselves now: whichever of the three strategies is in profit on paper at live speed, with the settings of the paper bot doing best on it. A strategy that stops working is paused for live until paper proves it again (the strategy board shows each one).')}</div>}
+          {isLive && board?.routing === 'board' && <StrategyBoardCard />}
+          {isLive && board?.routing !== 'board' && <div className="at-note" style={{ marginTop: 12 }}>◆ {T('Live bots trade Prime and Core signals now: Prime with Precision (all of it sold at +10%), Core with the quick exits (all of it sold at +6%, −7% stop, 10 minutes at most). A grade whose record at live speed fails is passed over until it recovers, and Standard joins once it proves a profit (the Signals tab shows each grade\'s record).')}</div>}
           {!isLive && me.paperSignals === false && <div className="at-note warn" style={{ marginTop: 12 }}>{T('Signals go to live bots only for now (the platform\'s setting): this paper bot isn\'t trading. Switch it to LIVE to trade.')}</div>}
           {acct.team && <TeamCard team={acct.team} acct={acct} onStrategy={() => setTab('strategy')} />}
           <GradeStats acct={acct} />
@@ -777,6 +827,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, li
       {tab === 'strategy' && (
         <Section title={T('Strategies')}>
           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '2px 0 8px' }}>{T('Use one, or several at once.')}</div>
+          {board?.routing === 'board' && <div className="at-note" style={{ marginBottom: 8 }}>{T('Live bots trade all three strategies by themselves, switched by the strategy board; your picks are what this bot trades on paper.')}</div>}
           <StrategyPicker selected={acct.strategies} disabled={busy} team={acct.team} access={me.access} onToggle={s => {
             const next = acct.strategies.includes(s) ? acct.strategies.filter(x => x !== s) : [...acct.strategies, s]
             if (next.length) void act({ action: 'strategies', strategies: next })

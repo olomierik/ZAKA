@@ -53,6 +53,7 @@ import type { PaperAccounts } from './paperAccounts'
 import { probationOf } from './probation'
 import { RugWatch } from './rugGuard'
 import { LIVE_SIZE, liveTradeSize, type LiveGrowth } from './sizing'
+import { boardAdmits, boardParams, platformParams } from './strategyBoard'
 import { failing, ScanFeed, OutcomeTally } from './scanFeed'
 import type { BotStore } from './store'
 import type { Signal } from './types'
@@ -168,8 +169,8 @@ export class Bot implements EngineObserver {
   private speed: typeof LIVE_SPEED | null
   /** Live bots: every signal not on probation (`all`), or only the proven kinds, not the lowest 20% (`proven`). */
   readonly liveSignals: 'all' | 'proven'
-  /** Which grades live bots trade: Prime and grades proven at live speed (`proven`), or every grade (`all`). */
-  readonly liveGrades: 'proven' | 'all' | 'off'
+  /** Which signals live bots trade: the strategy board (`board`, bot/strategyBoard.ts), Prime and grades proven at live speed (`proven`), every grade (`all`), or none (`off`). */
+  readonly liveGrades: 'board' | 'proven' | 'all' | 'off'
   /**
    * The bot wallet's growth since it went live (bot/sizing.ts liveTradeSize): its balance then, and its realized
    * live P&L since, kept in the settings so a restart doesn't reset its trade size. Null until the balance is read.
@@ -179,12 +180,22 @@ export class Bot implements EngineObserver {
   private grown = new Set<string>()
 
   /** `history`: the coins' stored trades (replays); `speed`: the paper book at live speed (the default; null: at once). */
-  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null; history?: Pick<HistoryStore, 'trades'> | null; speed?: typeof LIVE_SPEED | null; liveSignals?: 'all' | 'proven'; liveGrades?: 'proven' | 'all' | 'off' }) {
+  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null; history?: Pick<HistoryStore, 'trades'> | null; speed?: typeof LIVE_SPEED | null; liveSignals?: 'all' | 'proven'; liveGrades?: 'board' | 'proven' | 'all' | 'off' }) {
     this.speed = o.speed === undefined ? LIVE_SPEED : o.speed
     this.liveSignals = o.liveSignals ?? 'proven'
     this.liveGrades = o.liveGrades ?? 'proven'
     this.mode = o.mode === 'live' && !o.live ? 'paper' : o.mode
     o.live?.setPools(token => { const mp = this.o.engine.tokens.get(token)?.mainPool; return mp ? this.o.pools.get(mp) ?? null : null })
+    // Its paper book is one of the strategy board's books, and its live trades count toward live bots' own record there.
+    o.accounts?.setHouse({ paper: () => this.positions.filter(p => p.mode !== 'live'), live: () => this.positions.filter(p => p.mode === 'live') })
+  }
+
+  /** On the strategy board: whether live bots trade a signal of strategy `st` now (paused: its paper books lost, or live bots' own trades did). */
+  private boardLive(st: Strategy, grade: SignalGrade, now: number): { ok: boolean; why: string | null } {
+    const acc = this.o.accounts
+    if (!acc) return liveGrade(this.grades, grade, now)
+    const pick = acc.boardPick(st, now)
+    return pick.status === 'paused' ? { ok: false, why: pick.why } : { ok: true, why: null }
   }
 
   async start() {
@@ -313,7 +324,7 @@ export class Bot implements EngineObserver {
       }
       const lag = this.speed?.exitMs ?? 0
       if (alarm) this.fills(p, closeNow(p, price, now, 'rug', `Rug guard: ${alarm.text}`, lag))
-      else if (creatorSold && this.params(p.strategy).exitOnCreatorSell) this.fills(p, closeNow(p, price, now, 'creator', undefined, lag))
+      else if (creatorSold && (p.exits ?? this.params(p.strategy)).exitOnCreatorSell) this.fills(p, closeNow(p, price, now, 'creator', undefined, lag))
       else if (priced) this.fills(p, onPrice(p, price, now, this.params(p.strategy), lag))
     }
     if (price) this.o.accounts?.onPrice(t.token, price, now, creatorSold, priced, alarm)
@@ -550,7 +561,9 @@ export class Bot implements EngineObserver {
     const ranked = this.liveSignals === 'all' && !probation ? { ...graded, grade: 'live' as const } : graded
     // Live bots trade Prime and grades proven at live speed (signals/grades.ts liveGrade).
     const forLive = this.liveGrades === 'off' ? { ok: false, why: 'live trading is paused by the platform (no new live buys)' }
-      : this.liveGrades === 'all' ? { ok: true, why: null } : liveGrade(this.grades, handed.grade, now)
+      : this.liveGrades === 'all' ? { ok: true, why: null }
+      : this.liveGrades === 'board' ? this.boardLive(handed.grade === 'prime' ? 'precision' : strategy, handed.grade, now)
+      : liveGrade(this.grades, handed.grade, now)
     const quality: SignalQuality = {
       score: scored.score, ...ranked, ...(this.liveSignals === 'proven' && ranked.grade === 'live' && !ls.ok ? { grade: 'paper' as const } : {}), parts: scored.parts,
       liveSpeed: { trades: ls.trades, winRate: ls.winRate, avgPct: ls.avgReturn === null ? null : Math.round(ls.avgReturn * 1_000) / 10, ok: ls.ok },
@@ -590,11 +603,15 @@ export class Bot implements EngineObserver {
         const liveStrategy: Strategy = handed.grade === 'prime' ? 'precision' : strategy
         // $2, grown in step with what the bot wallet's live trades made (bot/sizing.ts liveTradeSize).
         const want = this.liveSize().sizeUsd
-        const exits: StrategyParams = liveStrategy === 'precision' ? { ...this.params('precision'), sizeUsd: want } : { ...QUICK_EXITS, sizeUsd: want }
+        // On the strategy board: the settings of the paper book doing best on the strategy (its exits and learned filters).
+        const pick = this.liveGrades === 'board' ? this.o.accounts?.boardPick(liveStrategy, now) ?? null : null
+        const exits: StrategyParams = pick ? boardParams(pick, want) : liveStrategy === 'precision' ? { ...this.params('precision'), sizeUsd: want } : { ...QUICK_EXITS, sizeUsd: want }
+        const filtered = pick ? boardAdmits(pick, features, rule) : null
         // Visitors' bots were seated first (bot/crowd.ts): the platform's bot takes only what they left under the cap.
         const capUsd = crowdCap({ liquidityUsd: st.liquidityUsd, takeProfit: exits.tp1Multiple, flags: features.flags })
         const left = this.o.accounts ? this.o.accounts.crowd.leftover(signal.id, capUsd) : capUsd
-        if (left < 1) this.o.live.event({ kind: 'skip', token, symbol: meta.symbol, text: `$${meta.symbol}: not bought live, visitors' bots filled its crowd cap ($${capUsd.toFixed(2)})` })
+        if (filtered) this.o.live.event({ kind: 'skip', token, symbol: meta.symbol, text: `$${meta.symbol}: not bought live, ${filtered}` })
+        else if (left < 1) this.o.live.event({ kind: 'skip', token, symbol: meta.symbol, text: `$${meta.symbol}: not bought live, visitors' bots filled its crowd cap ($${capUsd.toFixed(2)})` })
         else {
           const size = Math.min(want, left)
           this.o.accounts?.crowd.take(signal.id, capUsd, size)
@@ -602,18 +619,23 @@ export class Bot implements EngineObserver {
         }
       }
     }
-    const allowed = canOpen(this.positions.filter(p => p.mode !== 'live'), token, now, RISK, strategy)
-    if (!allowed.ok) { this.outcomes.add(signal.id, allowed.key ?? 'max-open', now); log.info('bot: not opening', { token, strategy, why: allowed.why }); return fired }
+    // On the strategy board, the engine's paper book trades each signal with the platform's settings, as live bots do
+    // until a paper bot does better: a Prime signal with Precision, snipes and fast scalps with the quick exits.
+    const board = this.liveGrades === 'board'
+    const house: Strategy = board && handed.grade === 'prime' ? 'precision' : strategy
+    const allowed = canOpen(this.positions.filter(p => p.mode !== 'live'), token, now, RISK, house)
+    if (!allowed.ok) { this.outcomes.add(signal.id, allowed.key ?? 'max-open', now); log.info('bot: not opening', { token, strategy: house, why: allowed.why }); return fired }
     this.outcomes.add(signal.id, 'traded', now)
-    const params = this.params(strategy)
+    const params = board ? platformParams(house, this.params(house).sizeUsd) : this.params(strategy)
     const cost = costPerSide(r.honeypot?.roundTripLossPct ?? null, params.sizeUsd, st.liquidityUsd)
-    if (this.speed) { this.pendingHouse.set(token, { signal, strategy, params, cost, features, rule, due: now + this.speed.entryMs }); return fired }
-    this.openHouse(signal, strategy, params, cost, features, rule, signal.price, now)
+    if (this.speed) { this.pendingHouse.set(token, { signal, strategy: house, params, cost, features, rule, due: now + this.speed.entryMs }); return fired }
+    this.openHouse(signal, house, params, cost, features, rule, signal.price, now)
     return fired
   }
 
   private openHouse(signal: Signal, strategy: Strategy, params: StrategyParams, cost: number, features: SignalFeatures, rule: SignalRule, price: number, now: number) {
-    const p: Position = { ...openPosition({ id: `${signal.id}:paper`, strategy, token: signal.token, symbol: signal.symbol, launchpad: signal.launchpad, signalId: signal.id, price, cost, now, params }), mode: 'paper', features, rule }
+    // Its exits are kept on the position (on the board they're the platform's, not the strategy's defaults).
+    const p: Position = { ...openPosition({ id: `${signal.id}:paper`, strategy, token: signal.token, symbol: signal.symbol, launchpad: signal.launchpad, signalId: signal.id, price, cost, now, params }), mode: 'paper', features, rule, exits: params }
     this.positions.push(p)
     this.fills(p, [])
   }
@@ -683,7 +705,9 @@ export class Bot implements EngineObserver {
     })()
     return GRADES.map(g => {
       const r = this.grades.record(g, now)
-      return { grade: g, trades: r.trades, wins: r.wins, winRate: r.winRate, avgPct: r.avgReturn === null ? null : Math.round(r.avgReturn * 1_000) / 10, review: r.review, exits: exits[g], rules: rules(g), live: this.liveGrades !== 'off' && (this.liveGrades === 'all' || liveGrade(this.grades, g, now).ok) }
+      // On the strategy board a grade doesn't decide what live bots trade (the strategy does): no live line.
+      const live = this.liveGrades === 'board' ? undefined : this.liveGrades !== 'off' && (this.liveGrades === 'all' || liveGrade(this.grades, g, now).ok)
+      return { grade: g, trades: r.trades, wins: r.wins, winRate: r.winRate, avgPct: r.avgReturn === null ? null : Math.round(r.avgReturn * 1_000) / 10, review: r.review, exits: exits[g], rules: rules(g), live }
     })
   }
 

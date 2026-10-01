@@ -1927,5 +1927,15 @@ const d: Record<string, string> = {
   "Limits: ${m} a trade now (from ${f}, growing with its profit, at most ${a}) · {o} open at once ({s} scalps) · stops for the day after a ${d} loss · keeps ${r} for gas · buys at most {b}% under the quote": "限额：当前每笔 ${m}（从 ${f} 起，随利润增长，最多 ${a}） · 同时最多 {o} 个仓位（剥头皮 {s} 个） · 当日亏损达 ${d} 后停止 · 保留 ${r} 作燃料费 · 买入价最多低于报价 {b}%",
   "above ${f}, no trade over {p}% of the wallet (read before each buy)": "超过 ${f} 时，单笔不超过钱包的 {p}%（每次买入前读取）",
   "quick: all sold at +6%, stop −7%, out after 3 minutes unless up 2%, 10 minutes at most": "快速：+6% 全部卖出，止损 −7%，3 分钟内未涨 2% 即退出，最长 10 分钟",
+  "Strategy board: what live bots trade now": "策略看板：实盘机器人现在交易什么",
+  "Paper bots trade every signal at live speed and learn from their losses. For each strategy, live bots use the settings of the paper book doing best on it (its last 20 trades) and switch by themselves: live while it is in profit, paused when it isn't, on trial at $2 until it has 8 trades.": "模拟机器人以实盘速度交易每个信号，并从亏损中学习。对于每个策略，实盘机器人采用在该策略上表现最好的模拟账本的设置（其最近 20 笔交易），并自动切换：盈利时实盘交易，不盈利时暂停，在累计 8 笔交易之前以 $2 试运行。",
+  "TRIAL": "试运行",
+  "PAUSED": "已暂停",
+  "Settings from {n}: {t} trades, {w} won, {a} a trade": "设置来自 {n}：{t} 笔交易，赢 {w} 笔，每笔 {a}",
+  "ARCDEX paper book": "ARCDEX 模拟账本",
+  "Sells {s}% at {tp} · stop {sl} · {m} min at most": "在 {tp} 卖出 {s}% · 止损 {sl} · 最长 {m} 分钟",
+  "Live bots, last 24h: {t} trades, {w} won, {a} a trade": "实盘机器人，最近 24 小时：{t} 笔交易，赢 {w} 笔，每笔 {a}",
+  "Live bots trade by themselves now: whichever of the three strategies is in profit on paper at live speed, with the settings of the paper bot doing best on it. A strategy that stops working is paused for live until paper proves it again (the strategy board shows each one).": "实盘机器人现在自动交易：三个策略中在实盘速度下模拟盈利的那一个，并采用在该策略上表现最好的模拟机器人的设置。不再有效的策略会暂停实盘，直到模拟再次证明它（策略看板显示每一个）。",
+  "Live bots trade all three strategies by themselves, switched by the strategy board; your picks are what this bot trades on paper.": "实盘机器人会自动交易全部三个策略，由策略看板切换；你的选择是此机器人在模拟中交易的内容。",
 }
 export default d

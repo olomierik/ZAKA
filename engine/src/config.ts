@@ -68,8 +68,12 @@ export interface Config {
   tiersEnforced: boolean
   /** When tiers start by themselves (TIERS_ENFORCE_AT, an ISO time; default 3 October 2026, 00:00 UTC; "never" turns it off). */
   tiersEnforceAt: number | null
-  /** Which grades live bots trade (BOT_LIVE_GRADES): `proven` (Prime and Core unless their record fails, Standard once proven; the default), `all` or `off`. */
-  liveGrades: 'proven' | 'all' | 'off'
+  /**
+   * Which signals live bots trade (BOT_LIVE_GRADES): `board` (the default since 2026-10-01: the strategy board,
+   * bot/strategyBoard.ts, switches each of the three strategies on or off by its paper record at live speed),
+   * `proven` (Prime and Core unless their record fails, Standard once proven), `all`, or `off` (no new live buys).
+   */
+  liveGrades: 'board' | 'proven' | 'all' | 'off'
   /** Paper position size in USD for snipes and second legs (default: each strategy's own, $25). */
   botSizeUsd: number | null
   /** Paper position size in USD for scalps, the small fast trades on risky coins (default $5). */
@@ -109,7 +113,8 @@ export function loadConfig(): Config {
     tradeRetentionHours: int('HISTORY_TRADE_RETENTION_HOURS', 72, 1, 24 * 3650),
     logLevel: (process.env.LOG_LEVEL ?? 'info') as Config['logLevel'],
     botMode: process.env.BOT_MODE === 'off' ? 'off' : process.env.BOT_MODE === 'live' ? 'live' : 'paper',
-    botSignals: { live: process.env.BOT_LIVE_SIGNALS === 'proven' ? 'proven' : 'all', paper: process.env.BOT_PAPER_SIGNALS === 'on' },
+    // Paper bots trade signals again (2026-10-01): they're what live bots learn from (bot/strategyBoard.ts). BOT_PAPER_SIGNALS=off stops them.
+    botSignals: { live: process.env.BOT_LIVE_SIGNALS === 'proven' ? 'proven' : 'all', paper: !/^(0|off|false|no)$/i.test(process.env.BOT_PAPER_SIGNALS ?? '') },
     tiersEnforced: process.env.TIERS_ENFORCED === 'true' || process.env.TIERS_ENFORCED === '1',
     tiersEnforceAt: (() => {
       const raw = process.env.TIERS_ENFORCE_AT?.trim()
@@ -120,8 +125,8 @@ export function loadConfig(): Config {
     })(),
     // 2026-10-01: paused for an hour after DEGEN (-94%), then resumed by the owner with live trades at $2, growing with
     // their realized profit (bot/sizing.ts liveTradeSize). `off` pauses every new live buy; open live trades are still managed.
-    // `proven` (the default): Prime and Core signals unless their record at live speed fails, Standard once proven.
-    liveGrades: process.env.BOT_LIVE_GRADES === 'all' ? 'all' : process.env.BOT_LIVE_GRADES === 'off' ? 'off' : 'proven',
+    // `board` (the default since 2026-10-01): the strategy board decides, from the paper bots' records at live speed.
+    liveGrades: (['all', 'off', 'proven'] as const).find(v => v === process.env.BOT_LIVE_GRADES) ?? 'board',
     botSizeUsd: process.env.BOT_SIZE_USD ? int('BOT_SIZE_USD', 25, 1, 10_000) : null,
     botScalpSizeUsd: process.env.BOT_SCALP_SIZE_USD ? int('BOT_SCALP_SIZE_USD', 5, 1, 10_000) : null,
     botOwner: /^0x[0-9a-fA-F]{40}$/.test(process.env.BOT_OWNER_ADDRESS ?? '') ? process.env.BOT_OWNER_ADDRESS!.toLowerCase() : null,

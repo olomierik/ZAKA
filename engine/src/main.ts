@@ -232,7 +232,7 @@ async function main() {
   const readHoldings = () => { for (const w of users?.linkedWallets() ?? []) void tiers.read(w) }
   readHoldings()
   every(10 * 60_000, 'tier holdings', readHoldings)
-  const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => botRef?.priceOf(token) ?? eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s), live: userLive, paperSignals: cfg.botSignals.paper, access: ownerId => tiers.access(users?.get(ownerId) ?? null) })
+  const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => botRef?.priceOf(token) ?? eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s), live: userLive, paperSignals: cfg.botSignals.paper, access: ownerId => tiers.access(users?.get(ownerId) ?? null), liveRouting: cfg.liveGrades === 'board' ? 'board' : 'grades' })
   if (accounts) await accounts.load().catch(e => log.error('paper accounts: load failed', { error: errMsg(e) }))
   const bot = cfg.botMode === 'off' ? null : new Bot({
     rpc, engine: eng, pools, mode: cfg.botMode, sizeUsd: cfg.botSizeUsd ?? undefined, scalpSizeUsd: cfg.botScalpSizeUsd ?? undefined,

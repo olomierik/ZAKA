@@ -1927,5 +1927,15 @@ const d: Record<string, string> = {
   "Limits: ${m} a trade now (from ${f}, growing with its profit, at most ${a}) · {o} open at once ({s} scalps) · stops for the day after a ${d} loss · keeps ${r} for gas · buys at most {b}% under the quote": "Mipaka: ${m} kwa biashara sasa (kuanzia ${f}, ikikua na faida yake, hadi ${a}) · {o} wazi kwa wakati mmoja (scalp {s}) · husimama kwa siku baada ya hasara ya ${d} · huweka ${r} kwa gesi · hununua hadi {b}% chini ya bei",
   "above ${f}, no trade over {p}% of the wallet (read before each buy)": "juu ya ${f}, hakuna biashara inayozidi {p}% ya pochi (husomwa kabla ya kila ununuzi)",
   "quick: all sold at +6%, stop −7%, out after 3 minutes unless up 2%, 10 minutes at most": "haraka: yote huuzwa kwa +6%, stop −7%, hutoka baada ya dakika 3 isipokuwa imepanda 2%, dakika 10 zaidi",
+  "Strategy board: what live bots trade now": "Ubao wa mikakati: kile bot za live zinachofanyia biashara sasa",
+  "Paper bots trade every signal at live speed and learn from their losses. For each strategy, live bots use the settings of the paper book doing best on it (its last 20 trades) and switch by themselves: live while it is in profit, paused when it isn't, on trial at $2 until it has 8 trades.": "Bot za karatasi hufanyia biashara kila ishara kwa kasi ya live na hujifunza kutokana na hasara zao. Kwa kila mkakati, bot za live hutumia mipangilio ya kitabu cha karatasi kinachofanya vizuri zaidi juu yake (biashara zake 20 za mwisho) na hubadilika zenyewe: live ikiwa na faida, imesimamishwa isipokuwa nayo, majaribio kwa $2 hadi iwe na biashara 8.",
+  "TRIAL": "MAJARIBIO",
+  "PAUSED": "IMESIMAMISHWA",
+  "Settings from {n}: {t} trades, {w} won, {a} a trade": "Mipangilio kutoka kwa {n}: biashara {t}, {w} zimeshinda, {a} kwa biashara",
+  "ARCDEX paper book": "kitabu cha karatasi cha ARCDEX",
+  "Sells {s}% at {tp} · stop {sl} · {m} min at most": "Huuza {s}% kwa {tp} · stop {sl} · dakika {m} zaidi",
+  "Live bots, last 24h: {t} trades, {w} won, {a} a trade": "Bot za live, saa 24 zilizopita: biashara {t}, {w} zimeshinda, {a} kwa biashara",
+  "Live bots trade by themselves now: whichever of the three strategies is in profit on paper at live speed, with the settings of the paper bot doing best on it. A strategy that stops working is paused for live until paper proves it again (the strategy board shows each one).": "Bot za live sasa hufanya biashara zenyewe: mkakati kati ya mitatu ulio na faida kwenye karatasi kwa kasi ya live, kwa mipangilio ya bot ya karatasi inayofanya vizuri zaidi juu yake. Mkakati unaoacha kufanya kazi husimamishwa kwa live hadi karatasi iuthibitishe tena (ubao wa mikakati unaonyesha kila mmoja).",
+  "Live bots trade all three strategies by themselves, switched by the strategy board; your picks are what this bot trades on paper.": "Bot za live hufanyia biashara mikakati yote mitatu zenyewe, ikibadilishwa na ubao wa mikakati; chaguo zako ndizo bot hii inazofanyia biashara kwenye karatasi.",
 }
 export default d

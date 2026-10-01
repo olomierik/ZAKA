@@ -586,7 +586,27 @@ export interface AccessView {
 export interface GradeRecordView { grade: SignalGrade; trades: number; wins: number; winRate: number | null; avgPct: number | null; review: string | null; exits: string; rules: string[]; /** Live bots trade it now. */ live?: boolean }
 
 /** GET /v1/tiers. */
-export interface TiersResponse { enforced: boolean; /** When tiers start by themselves (ms), if set. */ enforceAt?: number | null; tiers: TierInfo[]; grades: GradeRecordView[]; crowd: { impactShareOfTp: number; maxPoolShare: number; maxBots: number }; /** Which grades live bots trade: `proven` (Prime and grades proven at live speed) or `all`. */ liveGrades?: 'proven' | 'all' | 'off' }
+export interface TiersResponse { enforced: boolean; /** When tiers start by themselves (ms), if set. */ enforceAt?: number | null; tiers: TierInfo[]; grades: GradeRecordView[]; crowd: { impactShareOfTp: number; maxPoolShare: number; maxBots: number }; /** Which signals live bots trade: `board` (the strategy board), `proven` (Prime and grades proven at live speed), `all` or `off`. */ liveGrades?: 'board' | 'proven' | 'all' | 'off' }
+
+/**
+ * One of the three strategies on the strategy board (engine/src/bot/strategyBoard.ts, 2026-10-01): whether live bots
+ * trade it now (`live`: the best paper book on it is in profit; `trial`: not enough paper trades yet, traded at the $2
+ * base; `paused`: no paper book in profit, or live bots' own last trades on it lost), and whose settings they use.
+ */
+export interface StrategyBoardEntry {
+  strategy: BotStrategy
+  status: 'live' | 'trial' | 'paused'
+  /** The paper book its settings come from (or, paused, the best of those that lost): its last trades at live speed. */
+  source: { kind: 'house' | 'bot'; name: string; slug?: string; trades: number; wins: number; avgPct: number; pnlUsd: number } | null
+  /** Live bots' own last trades on it (24 hours). */
+  live: { trades: number; wins: number; avgPct: number; pnlUsd: number } | null
+  /** The exits live bots trade it with now: take-profit and the share sold there, stop, longest hold. */
+  exits: { takeProfit: number; sellPct: number; stopLoss: number; maxHoldMin: number | null }
+  why: string
+}
+
+/** GET /v1/bot/board. */
+export interface StrategyBoardResponse { at: number; routing: 'board' | 'proven' | 'all' | 'off'; strategies: StrategyBoardEntry[] }
 
 /** The exact text a wallet signs to link to an ARCDEX Autotrade account (its $ARCD counts toward the account's tier). */
 export function tierLinkMessage(email: string, address: string, at: number): string {
