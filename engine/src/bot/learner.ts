@@ -73,7 +73,14 @@ export const TP_BOUNDS: Record<Strategy, [number, number]> = { scalp: [1.06, 1.3
  * when they load (`upgradeExits`).
  */
 export const EXIT_PLAN = { version: 2, sellPct: 0.5, trailFromPeak: 0.25 }
-export const FILTER_CAPS = { minLiquidityUsd: 25_000, minBuyers: 40, minBuySellRatio: 4, maxRunUp: 1.02, minScore: 90, maxTopBuyerPct: 10 }
+export const FILTER_CAPS = { minLiquidityUsd: 25_000, minBuyers: 40, minBuySellRatio: 4, maxRunUp: 1.02, minScore: 90, maxTopBuyerPct: 10, maxTotalBuyers: 25, maxSellUsd: 10, maxOverhang: 0.05, maxFarmShare: 0.2, maxAgeSec: 120 }
+
+/**
+ * Filters on a coin's crowd and creator (2026-10-01, SignalFeatures): missing means open, so tunings from before keep
+ * working. Found in the trade logs (bot/patterns.ts): coins with a big crowd already in, heavy selling before the entry,
+ * a creator holding a big share of the pool, a launcher's own wallets, or an old coin kept losing on the $2 plan.
+ */
+const CROWD_FILTERS = ['maxTotalBuyers', 'maxSellUsd', 'maxOverhang', 'maxFarmShare', 'maxAgeSec'] as const
 
 export const LEARN = {
   /** The trades read: the last 20 of the kind of signal. */
@@ -159,6 +166,13 @@ export function admits(t: StrategyTuning, f: SignalFeatures | undefined, rule?: 
   if (f.topBuyerPct > x.maxTopBuyerPct) return `one buyer is ${Math.round(f.topBuyerPct)}% of buys, it allows ${Math.round(x.maxTopBuyerPct)}%`
   const flag = f.flags.find(g => x.avoidFlags.includes(g))
   if (flag) return `flagged "${flag}", which it learned to skip`
+  // The coin's crowd and creator (missing on older signals: not checked).
+  const share = (v: number) => `${Math.round(v * 100)}%`
+  if (x.maxTotalBuyers != null && f.totalBuyers != null && f.totalBuyers > x.maxTotalBuyers) return `${f.totalBuyers} buyers already in, it skips coins with more than ${x.maxTotalBuyers} (late: the crowd has bought)`
+  if (x.maxSellUsd != null && f.sellUsd != null && f.sellUsd > x.maxSellUsd) return `${money(f.sellUsd)} already sold, it skips coins with more than ${money(x.maxSellUsd)} sold`
+  if (x.maxOverhang != null && f.overhang != null && f.overhang > x.maxOverhang) return `the creator holds coins worth ${share(f.overhang)} of the pool, it allows ${share(x.maxOverhang)}`
+  if (x.maxFarmShare != null && f.farmShare != null && f.farmShare > x.maxFarmShare) return `${share(f.farmShare)} of the buyers also bought the creator's other coins, it allows ${share(x.maxFarmShare)}`
+  if (x.maxAgeSec != null && f.ageSec > x.maxAgeSec) return `${Math.round(f.ageSec / 60)} minutes old, it skips coins older than ${Math.round(x.maxAgeSec / 60)} minutes`
   return null
 }
 
@@ -166,7 +180,9 @@ const won = (p: Position) => (p.pnlUsd ?? 0) > 0
 const RUGGY = new Set(['rug', 'creator', 'safety'])
 
 type NumFilter = Exclude<keyof BotFilters, 'avoidFlags' | 'skip' | 'skippedAt'>
-interface Feature { key: 'liquidityUsd' | 'buyers' | 'buySellRatio' | 'score' | 'runUp' | 'topBuyerPct'; dir: 'min' | 'max'; filter: NumFilter; label: string; fmt: (v: number) => string }
+interface Feature { key: 'liquidityUsd' | 'buyers' | 'buySellRatio' | 'score' | 'runUp' | 'topBuyerPct' | 'totalBuyers' | 'sellUsd' | 'overhang' | 'farmShare' | 'ageSec'; dir: 'min' | 'max'; filter: NumFilter; label: string; fmt: (v: number) => string }
+/** A filter's value, missing ones open. */
+const curOf = (f: BotFilters, k: NumFilter, dir: 'min' | 'max') => f[k] ?? (dir === 'min' ? -Infinity : Infinity)
 const FEATURES: Feature[] = [
   { key: 'liquidityUsd', dir: 'min', filter: 'minLiquidityUsd', label: 'liquidity', fmt: money },
   { key: 'buyers', dir: 'min', filter: 'minBuyers', label: 'buyers', fmt: v => String(Math.round(v)) },
@@ -174,6 +190,11 @@ const FEATURES: Feature[] = [
   { key: 'score', dir: 'min', filter: 'minScore', label: 'safety score', fmt: v => String(Math.round(v)) },
   { key: 'runUp', dir: 'max', filter: 'maxRunUp', label: 'run-up before entry', fmt: gain },
   { key: 'topBuyerPct', dir: 'max', filter: 'maxTopBuyerPct', label: 'largest buyer', fmt: v => `${Math.round(v)}%` },
+  { key: 'totalBuyers', dir: 'max', filter: 'maxTotalBuyers', label: 'buyers already in', fmt: v => String(Math.round(v)) },
+  { key: 'sellUsd', dir: 'max', filter: 'maxSellUsd', label: 'selling before the entry', fmt: money },
+  { key: 'overhang', dir: 'max', filter: 'maxOverhang', label: 'the creator\'s coins (share of the pool)', fmt: v => `${Math.round(v * 100)}%` },
+  { key: 'farmShare', dir: 'max', filter: 'maxFarmShare', label: 'buyers from the creator\'s other coins', fmt: v => `${Math.round(v * 100)}%` },
+  { key: 'ageSec', dir: 'max', filter: 'maxAgeSec', label: 'age', fmt: v => `${Math.round(v / 60)} min` },
 ]
 const valueOf = (p: Position, k: Feature['key']): number | null => {
   const f = p.features
@@ -183,7 +204,7 @@ const valueOf = (p: Position, k: Feature['key']): number | null => {
 }
 const capped = (filter: NumFilter, v: number) => {
   const cap = FILTER_CAPS[filter]
-  return filter === 'maxRunUp' || filter === 'maxTopBuyerPct' ? Math.max(cap, v) : Math.min(cap, v)
+  return filter.startsWith('max') ? Math.max(cap, v) : Math.min(cap, v)
 }
 
 /** The one threshold that would have kept out the most losses for the fewest wins, if it's clearly worth it. */
@@ -203,7 +224,7 @@ function bestThreshold(cur: BotFilters, trades: Position[]): { f: Feature; th: n
       const out = (v: number) => (f.dir === 'min' ? v < th : v > th)
       const lost = rows.filter(r => !r.win && out(r.v)).length, wins = rows.filter(r => r.win && out(r.v)).length
       if (lost < Math.max(2, Math.ceil(0.4 * L)) || wins > 0.2 * W || rows.length - lost - wins < 4) continue
-      const tighter = f.dir === 'min' ? th > cur[f.filter] : th < cur[f.filter]
+      const tighter = f.dir === 'min' ? th > curOf(cur, f.filter, f.dir) : th < curOf(cur, f.filter, f.dir)
       if (!tighter) continue
       const score = lost / L - wins / Math.max(1, W)
       if (!best || score > best.score) best = { f, th, lost, wins, L, W, score }
@@ -275,7 +296,7 @@ function tightenFor(rule: SignalRule, s: Strategy, f: BotFilters, w: Position[],
   const b = bestThreshold(f, w)
   if (b) {
     const th = capped(b.f.filter, b.th)
-    const tighter = b.f.dir === 'min' ? th > f[b.f.filter] : th < f[b.f.filter]
+    const tighter = b.f.dir === 'min' ? th > curOf(f, b.f.filter, b.f.dir) : th < curOf(f, b.f.filter, b.f.dir)
     if (tighter) {
       f[b.f.filter] = th
       say('tighten', `${tag}: ${b.lost} of ${b.L} losses had ${b.f.label} ${b.f.dir === 'min' ? 'under' : 'over'} ${b.f.fmt(th)}, only ${b.wins} of ${b.W} wins did: it now needs ${b.f.label} ${b.f.dir === 'min' ? 'of at least' : 'of at most'} ${b.f.fmt(th)}.`)
@@ -377,11 +398,13 @@ export function relax(t: Tuning, s: Strategy, skipped: number, lastBuyAt: number
   // Filters that skipped everything for hours: partway back toward open.
   const open = OPEN_FILTERS
   const all: BotFilters[] = [next.filters, ...Object.values(next.rules).filter((x): x is BotFilters => !!x)]
-  const tight = all.some(f => (Object.keys(open) as (keyof BotFilters)[]).some(k => k === 'avoidFlags' ? f.avoidFlags.length > 0 : f[k] !== open[k]))
+  const tight = all.some(f => (Object.keys(open) as (keyof BotFilters)[]).some(k => k === 'avoidFlags' ? f.avoidFlags.length > 0 : f[k] !== open[k]) || CROWD_FILTERS.some(k => f[k] != null))
   if (tight && skipped >= LEARN.relaxAfterSkips && now - Math.max(lastBuyAt ?? 0, t.changedAt ?? 0) >= LEARN.relaxAfterMs) {
     for (const f of all) {
-      const back = (k: NumFilter, digits: number) => { const v = f[k] + (open[k] - f[k]) * 0.4; f[k] = Math.round(v * 10 ** digits) / 10 ** digits }
+      const back = (k: Exclude<NumFilter, (typeof CROWD_FILTERS)[number]>, digits: number) => { const v = f[k] + (open[k] - f[k]) * 0.4; f[k] = Math.round(v * 10 ** digits) / 10 ** digits }
       back('minLiquidityUsd', -2); back('minBuyers', 0); back('minBuySellRatio', 2); back('maxRunUp', 2); back('minScore', 0); back('maxTopBuyerPct', 0)
+      // The crowd filters have no "open" value to come back to: each allows half as much again.
+      for (const k of CROWD_FILTERS) { const v = f[k]; if (v != null) f[k] = k === 'maxOverhang' || k === 'maxFarmShare' ? Math.round(v * 1.5 * 100) / 100 : Math.round(v * 1.5) }
       f.avoidFlags = f.avoidFlags.slice(0, -1)
     }
     const hours = Math.round((now - Math.max(lastBuyAt ?? 0, t.changedAt ?? 0)) / 3_600_000)

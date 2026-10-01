@@ -118,7 +118,7 @@ describe('live bots on the dollar plan', () => {
     await settle()
     expect(a.positions.find(x => x.signalId === 'mo1')).toMatchObject({ mode: 'live', strategy: 'scalp', plan: 'dollar', exits: { stopLoss: 0.93, maxHoldMin: 20 } })
     expect(a.positions.some(x => x.signalId === 'dr1')).toBe(false)
-    expect(a.skips.find(s => s.text.includes('Dip'))?.text ?? a.skips[0].text).toMatch(/live bots trade snipes and fast scalps/)
+    expect(a.skips.find(s => s.text.includes('Dip'))?.text ?? a.skips[0].text).toMatch(/comebacks are watched and measured first/)
     expect(accounts.view(a).live).toMatchObject({ sizing: { tradeUsd: 2, growthPct: 0 }, plan: { sizeUsd: 2, targetUsd: 1 } })
   })
   test('a rule on probation is sat out', async () => {
@@ -226,7 +226,7 @@ describe('the engine replays every snipe and fast scalp on the plan', () => {
     expect(bot.dollarProbation('momentum', now)?.why).toMatch(/Momentum bursts won 0 of their last 11 trades/)
     const v = bot.dollarView(now)
     expect(v.kinds.find(k => k.rule === 'momentum')).toMatchObject({ replays: { trades: 11, wins: 0, hits: 0 }, probation: expect.stringMatching(/won 0 of their last 11/) })
-    expect(v.exits.map(e => e.text)).toEqual(['$2 a trade, all of it sold once it makes $1; out at −10%, when the creator sells, or after 10 minutes', '$2 a trade, all of it sold once it makes $1; out at −7%, when the creator sells, or after 20 minutes'])
+    expect(v.exits.map(e => e.text)).toEqual(['$2 a trade, all of it sold once it makes $1; out at −10%, when the creator sells, or after 10 minutes', '$2 a trade, all of it sold once it makes $1; out at −7%, when the creator sells, or after 20 minutes', '$2 a trade, all of it sold once it makes $1; out at −10%, when the creator sells, or after 20 minutes'])
   })
   test('a replay on the plan: +$1 when the price gets there within the hold; the creator\'s sale closes it', () => {
     const c = 0.01

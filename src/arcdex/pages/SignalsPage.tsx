@@ -414,6 +414,7 @@ const DOLLAR_KIND: Record<string, string> = {
   'snipe/snipe': N_('Snipes'),
   'snipe/scalp': N_('Fast scalps: snipes on risky coins'),
   'momentum/scalp': N_('Fast scalps: momentum bursts'),
+  'second-leg/second-leg': N_('Comebacks: dip rebounds'),
 }
 
 /**
@@ -445,7 +446,49 @@ function DollarPlanCard({ plan }: { plan: DollarPlanView }) {
           {k.probation && <div className="at-note warn" style={{ marginTop: 4 }}>{T(k.probation)}</div>}
         </div>
       ))}
+      {plan.patterns && <LossPatterns patterns={plan.patterns} />}
+      {plan.watch && <ComebackWatch watch={plan.watch} />}
     </Section>
+  )
+}
+
+/** The kinds of coin that keep losing on the plan (engine/src/bot/patterns.ts): live bots sit them out, paper keeps measuring them. */
+function LossPatterns({ patterns }: { patterns: NonNullable<DollarPlanView['patterns']> }) {
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div className="at-label">{T('Why trades lose: kinds of coin live bots sit out')}</div>
+      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '2px 0 6px', lineHeight: 1.5 }}>{T('Found every minute in the last 7 days of replays and live trades. A kind of coin that loses money, 3%+ a trade and 8+ points worse than the rest, is sat out by live bots until it stops losing; paper bots and the replays keep trading it, so it is lifted by itself.')}</div>
+      {patterns.length === 0 ? <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>{T('No losing kind of coin in the last 7 days.')}</div> : patterns.map(p => (
+        <div key={p.id} className="at-grade-row">
+          <div style={{ fontSize: '0.76rem', fontWeight: 700 }}>{p.label}</div>
+          <div style={{ fontFamily: 'var(--mono)', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{T('{n} trades · {w} won · {a}% a trade · {p} · other coins {r}%', { n: p.trades, w: p.wins, a: p.avgPct, p: `${p.pnlUsd < 0 ? '−' : ''}$${Math.abs(p.pnlUsd).toFixed(2)}`, r: `${p.restAvgPct > 0 ? '+' : ''}${p.restAvgPct}` })}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** Coins watched for a comeback after a live trade lost on them or live bots sat them out (the last 6 hours). */
+function ComebackWatch({ watch }: { watch: NonNullable<DollarPlanView['watch']> }) {
+  if (!watch.length) return null
+  const move = (a: number | null, b: number | null) => (a && b ? `${b >= a ? '+' : '−'}${Math.abs(Math.round((b / a - 1) * 100))}%` : '—')
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div className="at-label">{T('Comeback watch')}</div>
+      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '2px 0 6px', lineHeight: 1.5 }}>{T('Coins a live trade lost on, or that live bots sat out, stay on the scanner for 48 hours. A comeback is the dip-rebound rule firing on one: it ran, pulled back and is being bought again. Comebacks are measured first and traded live only once their replays prove them.')}</div>
+      {watch.map(w => (
+        <div key={w.token} className="at-grade-row">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <b style={{ fontSize: '0.78rem' }}>${w.symbol}</b>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}><AgoText ts={w.since} /></span>
+            <span style={{ fontFamily: 'var(--mono)', fontSize: '0.72rem' }}>{T('since then {m}', { m: move(w.priceThen, w.priceNow) })}</span>
+            {w.comeback && <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#22c55e', border: '1px solid #22c55e', borderRadius: 6, padding: '1px 6px' }}>{T('COMEBACK')}</span>}
+          </div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{w.why}</div>
+          <div style={{ fontSize: '0.72rem', marginTop: 2 }}>{w.status}</div>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -887,7 +930,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, li
           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
             {T('Every live trade is {s}, whatever the wallet holds, and all of it is sold once it makes {t}. What it learned for live trades, from its own and the team\'s:', { s: usd(acct.live.plan.sizeUsd, 0), t: usd(acct.live.plan.targetUsd, 0) })}
           </div>
-          {(['snipe', 'scalp'] as const).map(st => <DollarTuningLine key={st} s={st} t={acct.live!.plan!.tuning[st]} />)}
+          {(['snipe', 'scalp', 'second-leg'] as const).map(st => { const t = acct.live!.plan!.tuning[st]; return t ? <DollarTuningLine key={st} s={st} t={t} /> : null })}
           </>) : isLive && acct.live?.limits.baseTradeUsd !== undefined ? (<>
           <div className="at-label">{T('Live trade size: from {b}, growing with profit', { b: usd(acct.live.limits.baseTradeUsd, 0) })}</div>
           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
@@ -1357,6 +1400,11 @@ function filterWords(f: BotFilters): string[] {
     f.minScore > 0 && T('safety score ≥ {v}', { v: f.minScore }),
     f.maxTopBuyerPct < 100 && T('largest buyer ≤ {v}%', { v: Math.round(f.maxTopBuyerPct) }),
     f.avoidFlags.length > 0 && T('skips {v}', { v: f.avoidFlags.map(x => `“${x}”`).join(', ') }),
+    f.maxTotalBuyers != null && T('≤ {v} buyers already in', { v: f.maxTotalBuyers }),
+    f.maxSellUsd != null && T('≤ {v} sold before the entry', { v: big(f.maxSellUsd) }),
+    f.maxOverhang != null && T('the creator\'s coins ≤ {v} of the pool', { v: `${Math.round(f.maxOverhang * 100)}%` }),
+    f.maxFarmShare != null && T('≤ {v} of buyers from the creator\'s other coins', { v: `${Math.round(f.maxFarmShare * 100)}%` }),
+    f.maxAgeSec != null && T('younger than {v} min', { v: Math.round(f.maxAgeSec / 60) }),
   ].filter((x): x is string => !!x)
 }
 
@@ -1386,7 +1434,7 @@ function TuningLine({ s, t }: { s: Strategy; t: PaperAccountView['tuning'][Strat
 }
 
 /** What a live bot learned on the dollar plan for one strategy: its entry filters per kind of signal (the exits are the plan's). */
-function DollarTuningLine({ s, t }: { s: 'snipe' | 'scalp'; t: StrategyTuning }) {
+function DollarTuningLine({ s, t }: { s: 'snipe' | 'scalp' | 'second-leg'; t: StrategyTuning }) {
   const learned = (Object.entries(t.rules ?? {}) as [SignalRule, BotFilters][]).map(([r, f]) => { const w = filterWords(f); return w.length ? `${T(RULE_NAME[r])}: ${w.join(', ')}` : '' }).filter(Boolean)
   return (
     <div className="at-tune">

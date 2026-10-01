@@ -211,6 +211,8 @@ export interface SignalQuality {
   /** Whether live bots trade it: its grade is Prime (not under review) or proven at live speed; `liveWhy` says why not (engine/src/signals/grades.ts liveGrade). */
   liveOk?: boolean
   liveWhy?: string | null
+  /** The kind of coin that keeps losing it matched (engine/src/bot/patterns.ts): live bots sit it out. */
+  pattern?: string | null
 }
 
 /** Which rule fired a signal. Momentum bursts count buyers over two minutes, snipes since launch: they're learned apart. */
@@ -244,6 +246,18 @@ export interface SignalFeatures {
   /** A momentum signal: the largest buyer's share of all the market's buying since launch, %, and whether the coin had an early crowd (engine/src/signals/grades.ts). */
   launchTopBuyerPct?: number | null
   earlyCrowd?: boolean
+  /**
+   * The coin's crowd and its creator, at the signal (2026-10-01, engine/src/bot/patterns.ts): distinct buyers since launch
+   * (the creator's and the launch blocks' left out), sold since launch by everyone but the creator ($), the creator's
+   * unsold coins at today's price as a share of the pool's liquidity, the share of its buyers who also bought the same
+   * creator's other coins in the last 24 hours (a launcher's own wallets), and the creator's other launches that day.
+   * Missing on signals from before.
+   */
+  totalBuyers?: number
+  sellUsd?: number
+  overhang?: number
+  farmShare?: number
+  creatorLaunches?: number
 }
 
 /** The entry filters a visitor's bot has learned, per strategy (engine/src/bot/learner.ts). */
@@ -260,6 +274,12 @@ export interface BotFilters {
   /** It learned to skip this kind of signal altogether (it kept losing on it); tried again later. */
   skip?: boolean
   skippedAt?: number
+  /** Learned from the coins' crowds and creators (SignalFeatures, 2026-10-01); missing means open. */
+  maxTotalBuyers?: number
+  maxSellUsd?: number
+  maxOverhang?: number
+  maxFarmShare?: number
+  maxAgeSec?: number
 }
 
 /** A visitor's bot's settings for one strategy: exits, the profit each trade is sized for, and its filters. */
@@ -522,7 +542,7 @@ export interface BotLiveView {
   /** A live trade's size now: the base grown by `growthPct`, what its realized live P&L (`pnlUsd`) has added to its starting capital. */
   sizing?: { tradeUsd: number; growthPct: number; pnlUsd: number }
   /** On the dollar plan: $2 a trade, all of it sold once it makes $1, and the entry filters it learned for live trades per strategy. */
-  plan?: { sizeUsd: number; targetUsd: number; tuning: Record<'snipe' | 'scalp', StrategyTuning> }
+  plan?: { sizeUsd: number; targetUsd: number; tuning: Record<'snipe' | 'scalp', StrategyTuning> & { 'second-leg'?: StrategyTuning } }
   events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
 }
 
@@ -603,15 +623,25 @@ export type LiveRouting = 'dollar' | 'board' | 'proven' | 'all' | 'off'
 export interface DollarPlanView {
   sizeUsd: number
   targetUsd: number
-  exits: { strategy: 'snipe' | 'scalp'; stopLoss: number; maxHoldMin: number; text: string }[]
+  exits: { strategy: 'snipe' | 'scalp' | 'second-leg'; stopLoss: number; maxHoldMin: number; text: string }[]
   kinds: {
     rule: SignalRule
-    strategy: 'snipe' | 'scalp'
+    strategy: 'snipe' | 'scalp' | 'second-leg'
     replays: { trades: number; wins: number; hits: number; avgPct: number | null; pnlUsd: number }
     live: { trades: number; wins: number; hits: number; pnlUsd: number }
     probation: string | null
   }[]
+  /** The kinds of coin that keep losing on the plan, found in every signal's replay and live bots' trades (engine/src/bot/patterns.ts): live bots sit them out. */
+  patterns?: LossPatternView[]
+  /** Coins watched for a comeback after they lost or were sat out (engine/src/bot/bot.ts). */
+  watch?: WatchView[]
 }
+
+/** A kind of coin that keeps losing: its trades, wins, average and P&L at $2 a trade, and the rest's average. */
+export interface LossPatternView { id: string; label: string; trades: number; wins: number; avgPct: number; pnlUsd: number; restAvgPct: number }
+
+/** A coin watched for a comeback: why, since when, its price then and now, and whether a comeback signal fired. */
+export interface WatchView { token: string; symbol: string; why: string; since: number; priceThen: number | null; priceNow: number | null; comeback: number | null; status: string }
 
 /**
  * One of the three strategies on the strategy board (engine/src/bot/strategyBoard.ts, 2026-10-01): whether live bots

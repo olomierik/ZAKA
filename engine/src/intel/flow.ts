@@ -131,6 +131,38 @@ export function computeFlow(tape: TapeTrade[], o: { launchBlock: number; creator
   }
 }
 
+/**
+ * A coin's crowd and its creator at `at` (2026-10-01; engine/src/bot/patterns.ts reads these, and each bot's learner):
+ *   totalBuyers      distinct buyers since launch, the creator and the launch blocks left out
+ *   sellUsd          sold since launch by everyone but the creator
+ *   overhang         the creator's unsold coins at `priceUsd`, as a share of the pool's liquidity (what it could dump)
+ *   farmShare        the share of the buyers who also bought the creator's other coins (`otherBuyers`): a launcher's
+ *                    own wallets (null when the creator is unknown)
+ *   creatorLaunches  the creator's other launches that day
+ * In the trade logs, coins with 80+ buyers already in, heavy selling before the entry, or a launcher's recycled wallets
+ * behind a momentum burst kept losing on the $2 plan.
+ */
+export function crowdFeatures(tape: TapeTrade[], o: { launchBlock: number; creator: string | null; at: number; liquidityUsd: number | null; priceUsd: number | null; otherBuyers: Set<string> | null; creatorLaunches: number }) {
+  const creator = o.creator?.toLowerCase() ?? null
+  const buyers = new Set<string>()
+  let sellUsd = 0, devTokens = 0
+  for (const t of tape) {
+    if (t.ts > o.at) continue
+    if (creator && t.wallet === creator) { devTokens += t.side === 'BUY' ? t.tokens : t.side === 'SELL' ? -t.tokens : 0; continue }
+    if (t.side === 'SELL') sellUsd += t.usd
+    else if (t.side === 'BUY' && t.wallet && t.block > o.launchBlock + 2) buyers.add(t.wallet)
+  }
+  const overhang = o.liquidityUsd && o.liquidityUsd > 0 && o.priceUsd ? (Math.max(0, devTokens) * o.priceUsd) / o.liquidityUsd : null
+  const farmShare = !o.otherBuyers ? null : buyers.size ? [...buyers].filter(w => o.otherBuyers!.has(w)).length / buyers.size : 0
+  return {
+    totalBuyers: buyers.size,
+    sellUsd: Math.round(sellUsd * 100) / 100,
+    ...(overhang !== null ? { overhang: Math.round(overhang * 1_000) / 1_000 } : {}),
+    ...(farmShare !== null ? { farmShare: Math.round(farmShare * 1_000) / 1_000 } : {}),
+    creatorLaunches: o.creatorLaunches,
+  }
+}
+
 /** Each coin's tape since launch, capped (the engine feeds it every trade). */
 export class Tapes {
   private tapes = new Map<string, TapeTrade[]>()
@@ -142,6 +174,11 @@ export class Tapes {
     this.tapes.set(token, list)
   }
   get(token: string): TapeTrade[] { return this.tapes.get(token) ?? [] }
+  /** Older trades in front (a tape filled from the stored trades after a restart), keeping the start within the cap. */
+  prepend(token: string, older: TapeTrade[]) {
+    if (!older.length) return
+    this.tapes.set(token, [...older, ...(this.tapes.get(token) ?? [])].slice(0, this.cap))
+  }
   has(token: string) { return this.tapes.has(token) }
   drop(token: string) { this.tapes.delete(token) }
   get size() { return this.tapes.size }

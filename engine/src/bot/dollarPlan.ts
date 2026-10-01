@@ -43,18 +43,29 @@ import { defaultTuning, type Tuning } from './learner'
 export const DOLLAR_PLAN = {
   sizeUsd: 2,
   targetUsd: 1,
-  /** The strategies live bots trade on the plan. */
-  strategies: ['snipe', 'scalp'] as const,
+  /**
+   * The strategies live bots trade on the plan. A comeback (the dip-rebound rule, `second-leg`: a coin that ran, pulled
+   * back and is being bought again) only once its own replays prove it (COMEBACK).
+   */
+  strategies: ['snipe', 'scalp', 'second-leg'] as const,
   exits: {
     snipe: { stopLoss: 0.9, maxHoldMin: 10 },
     scalp: { stopLoss: 0.93, maxHoldMin: 20 },
+    'second-leg': { stopLoss: 0.9, maxHoldMin: 20 },
   },
   /** When the plan started (its trades and replays are judged from then). */
   since: Date.UTC(2026, 9, 1, 6, 0),
 }
 
 export type DollarStrategy = (typeof DOLLAR_PLAN.strategies)[number]
-export const isDollarStrategy = (s: Strategy | string): s is DollarStrategy => s === 'snipe' || s === 'scalp'
+export const isDollarStrategy = (s: Strategy | string): s is DollarStrategy => s === 'snipe' || s === 'scalp' || s === 'second-leg'
+
+/**
+ * Comebacks are watched and measured from the start, and traded live only once proven (2026-10-01): re-entering a coin
+ * after it dumped lost in every version tried on two days of trades. Live bots take a comeback once its last replays on
+ * the plan number 10+, won half or more, and made money.
+ */
+export const COMEBACK = { minReplays: 10, minWinRate: 0.5 }
 
 /**
  * The price, as a multiple of the entry the exits compare against, at which

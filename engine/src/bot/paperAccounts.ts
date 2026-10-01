@@ -732,11 +732,15 @@ export class PaperAccounts {
    */
   private dollarClaim(a: PaperAccount, sig: PaperSignal, grade: SignalGrade, access: AccessView, now: number, skip: (key: string, why: string) => void): LiveClaim | null {
     const st = sig.strategy
-    if (!isDollarStrategy(st)) { skip('strategy', `not traded live: live bots trade snipes and fast scalps ($${DOLLAR_PLAN.sizeUsd} each, sold once it makes $${DOLLAR_PLAN.targetUsd})`); return null }
+    if (!isDollarStrategy(st)) { skip('strategy', `not traded live: live bots trade snipes, fast scalps and proven comebacks ($${DOLLAR_PLAN.sizeUsd} each, sold once it makes $${DOLLAR_PLAN.targetUsd})`); return null }
     if (!access.grades.includes(grade)) { skip('tier', `not traded: ${GRADE_LABEL[grade]} signals are for ${Tiers.tierFor(grade).name} and up`); return null }
     if (!access.live) { skip('tier', `not traded live: live trading is for ${TIER_FOR_LIVE} and up`); return null }
     if (a.pausedUntil && now < a.pausedUntil) { skip('paused', `paused after ${PROTECT.pauseAfterLosses} losses in a row`); return null }
     if (sig.probation) { skip('probation', `not traded: ${sig.probation.why}`); return null }
+    // A kind of coin that keeps losing (bot/patterns.ts), or a comeback not yet proven: the engine says why.
+    if (sig.quality?.liveOk === false) { skip(sig.quality.pattern ? 'pattern' : st === 'second-leg' ? 'comeback' : 'grade-live', `not traded live: ${sig.quality.liveWhy ?? 'the engine sits it out'}`); return null }
+    // A comeback only once the engine has said its replays prove it (COMEBACK), never by default.
+    if (st === 'second-leg' && sig.quality?.liveOk !== true) { skip('comeback', 'not traded live: comebacks are watched and measured first, and traded once their replays prove them'); return null }
     const t = this.dollarTuningOf(a, st)
     const filtered = admits(t, sig.features, sig.rule)
     if (filtered) { a.filterSkips[st] = (a.filterSkips[st] ?? 0) + 1; skip('filters', `not traded live: ${filtered}`); return null }
