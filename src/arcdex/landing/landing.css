@@ -269,3 +269,16 @@ html { scroll-behavior: smooth; color-scheme: dark; }
 @keyframes ld-toast-fade { 0% { opacity: 0; } 8% { opacity: 1; } 82% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .ld-toast { animation-name: ld-toast-fade; } }
 @media (max-width: 560px) { .ld-toasts { left: 12px; right: 12px; display: flex; justify-content: center; } .ld-toast { max-width: 100%; } }
+
+/* Traffic counter (TrafficCard.tsx): online now, visitors today and in all. */
+.ld-traffic {
+  display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-top: 16px; padding: 7px 12px;
+  background: var(--ld-card); border: 1px solid var(--ld-border); border-radius: 10px; font-size: 0.78rem; color: var(--ld-muted);
+}
+.ld-traffic-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.ld-traffic-item b { color: var(--ld-text); font-weight: 700; font-variant-numeric: tabular-nums; }
+.ld-traffic-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ld-green); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); animation: ld-traffic-pulse 2s ease-out infinite; }
+.ld-traffic-sep { width: 1px; height: 12px; background: var(--ld-border-hi); }
+@keyframes ld-traffic-pulse { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); } 70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
+@media (prefers-reduced-motion: reduce) { .ld-traffic-dot { animation: none; } }
+@media (max-width: 560px) { .ld-traffic-sep { display: none; } }

@@ -47,6 +47,7 @@ import type { NewPaperAccount, PaperAction, ScanRow } from '../../../api/_market
 import type { MarketEngine, Publisher } from '../market/engine'
 import type { HistoryStore } from '../store/history'
 import type { HotStore } from '../store/hot'
+import type { Traffic } from '../traffic'
 
 interface Conn { id: number; ip: string; subs: Set<string>; allowance: number; last: number }
 
@@ -63,6 +64,8 @@ export class DataApi {
   accounts: PaperAccounts | null = null
   users: Users | null = null
   tiers: Tiers | null = null
+  /** The site's traffic counter (traffic.ts). */
+  traffic: Traffic | null = null
   attachBot(b: Bot, control: ControlVerifier | null = null, accounts: PaperAccounts | null = null, users: Users | null = null, tiers: Tiers | null = null) { this.bot = b; this.control = control; this.accounts = accounts; this.users = users; this.tiers = tiers }
 
   async tokenSnapshot(token: string, limit = 50): Promise<{ stats: TokenStats | null; trades: WireTrade[] }> {
@@ -219,6 +222,22 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         return ok ? undefined : new Response('websocket upgrade expected', { status: 400 })
       }
       if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors(req), 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Content-Type, X-Paper-Key, Authorization', 'Access-Control-Max-Age': '600' } })
+      // The site's traffic counter (traffic.ts): each open page's heartbeat, and the counts.
+      if (url.pathname === '/v1/traffic' || url.pathname === '/v1/traffic/beat') {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        const traffic = api.traffic
+        if (!traffic) return json(req, 503, { error: 'not counting visitors here' })
+        if (req.method === 'POST' && url.pathname === '/v1/traffic/beat') {
+          if (Number(req.headers.get('content-length') ?? 0) > 512) return json(req, 413, { error: 'too large' })
+          // Sent as text/plain (no preflight); only the site's own pages count.
+          const origin = req.headers.get('origin')
+          const body = await req.text().then(t => JSON.parse(t) as { id?: unknown }, () => null).catch(() => null)
+          if (!origin || cfg.allowedOrigins.includes(origin)) traffic.beat(typeof body?.id === 'string' ? body.id : '', ip)
+          return json(req, 200, await traffic.counts(), 'no-store')
+        }
+        if (req.method === 'GET') return json(req, 200, await traffic.counts(), 'public, max-age=5')
+        return json(req, 405, { error: 'method not allowed' })
+      }
       // Accounts, owners' bots and the marketplace (ws/botApi.ts).
       if (url.pathname.startsWith('/v1/auth/') || url.pathname === '/v1/me' || url.pathname.startsWith('/v1/me/') || url.pathname === '/v1/bots' || url.pathname.startsWith('/v1/bots/') || url.pathname === '/v1/tiers') {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }

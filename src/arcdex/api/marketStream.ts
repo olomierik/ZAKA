@@ -17,6 +17,8 @@ const WS_URL = (import.meta.env.VITE_ARCDEX_WS_URL as string | undefined) || und
 const API_URL = ((import.meta.env.VITE_ARCDEX_API_URL as string | undefined) || (WS_URL ? WS_URL.replace(/^ws/, 'http').replace(/\/ws\/?$/, '') : '')).replace(/\/$/, '')
 
 export const engineEnabled = Boolean(WS_URL)
+/** The engine's REST base ('' without an engine). */
+export const engineApiUrl = API_URL
 
 type Sub = { channel: 'token' | 'candles' | 'new_tokens' | 'market' | 'signals' | 'scan'; token?: string; interval?: Interval }
 export type EngineStatus = 'off' | 'connecting' | 'open' | 'closed'

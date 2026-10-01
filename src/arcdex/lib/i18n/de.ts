@@ -1971,5 +1971,9 @@ const d: Record<string, string> = {
   "≤ {v} of buyers from the creator's other coins": "≤ {v} der Käufer aus anderen Coins des Erstellers",
   "younger than {v} min": "jünger als {v} Min.",
   "profit on {coin}": "Gewinn auf {coin}",
+  "online now": "jetzt online",
+  "visitors today": "Besucher heute",
+  "visitors in all": "Besucher insgesamt",
+  "Site traffic": "Website-Traffic",
 }
 export default d

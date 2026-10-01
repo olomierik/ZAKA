@@ -1971,5 +1971,9 @@ const d: Record<string, string> = {
   "≤ {v} of buyers from the creator's other coins": "来自创建者其他币的买家 ≤ {v}",
   "younger than {v} min": "不到 {v} 分钟",
   "profit on {coin}": "{coin} 盈利",
+  "online now": "人在线",
+  "visitors today": "今日访客",
+  "visitors in all": "累计访客",
+  "Site traffic": "网站流量",
 }
 export default d

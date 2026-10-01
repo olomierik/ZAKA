@@ -39,6 +39,8 @@ import { OPEN_TRADING_WALLET } from './lib/tradingWalletSheet'
 import { useEmbeddedAddress } from './lib/identity'
 import { useFundingScan } from './lib/funding'
 import ProfitAlerts from './components/ProfitAlerts'
+import { engineApiUrl } from './api/marketStream'
+import { startTraffic } from './lib/traffic'
 
 // Remember ?ref= or /r/<name> before anything renders (first-touch attribution).
 captureReferral()
@@ -78,6 +80,8 @@ const MOBILE_NAV: [Page, string, string][] = [
 export default function App() {
   const [page, setPage]       = useState<Page>(fromUrl)
   const [navOpen, setNavOpen] = useState(false)
+  // This page counts as a visitor online (the landing's traffic counter, lib/traffic.ts).
+  useEffect(() => { startTraffic(engineApiUrl) }, [])
 
   // Every page has a shareable URL; Back/Forward work. `depth` counts the
   // steps taken inside the app, so a back arrow knows whether "back" stays here.

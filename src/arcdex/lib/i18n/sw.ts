@@ -1971,5 +1971,9 @@ const d: Record<string, string> = {
   "≤ {v} of buyers from the creator's other coins": "≤ {v} ya wanunuzi kutoka coin nyingine za muundaji",
   "younger than {v} min": "chini ya dakika {v}",
   "profit on {coin}": "faida kwenye {coin}",
+  "online now": "mtandaoni sasa",
+  "visitors today": "wageni leo",
+  "visitors in all": "wageni wote",
+  "Site traffic": "Trafiki ya tovuti",
 }
 export default d

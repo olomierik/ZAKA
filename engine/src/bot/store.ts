@@ -6,10 +6,11 @@ import { SQL } from 'bun'
 import { log, errMsg } from '../log'
 import type { Position } from '../trading/paper'
 import type { PaperAccount, PaperAccountStore } from './paperAccounts'
+import type { VisitorStore } from '../traffic'
 import type { Signal } from './types'
 import type { User, UserStore } from './users'
 
-export interface BotStore extends PaperAccountStore, UserStore {
+export interface BotStore extends PaperAccountStore, UserStore, VisitorStore {
   readonly kind: 'memory' | 'postgres'
   saveSignal(s: Signal): void
   savePosition(p: Position): void
@@ -46,6 +47,9 @@ export class MemoryBotStore implements BotStore {
   private userRows = new Map<string, User>()
   async users() { return [...this.userRows.values()].map(u => structuredClone(u)) }
   saveUser(u: User) { this.userRows.set(u.id, structuredClone(u)) }
+  private visitors = new Map<string, { first: number; last: number }>()
+  visitorSeen(id: string, at: number) { const v = this.visitors.get(id); this.visitors.set(id, { first: v?.first ?? at, last: at }) }
+  async visitorCounts(dayStart: number) { return { total: this.visitors.size, today: [...this.visitors.values()].filter(v => v.last >= dayStart).length } }
   async paperTrades(accountId: string, limit: number, before?: number) {
     return [...(this.trades.get(accountId)?.values() ?? [])].filter(p => before === undefined || (p.closedAt ?? 0) < before)
       .sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)).slice(0, limit).map(p => structuredClone(p))
@@ -67,6 +71,8 @@ create table if not exists arcdex_paper_accounts (id text primary key, data json
 create table if not exists arcdex_paper_trades (id text primary key, account text not null, closed_at timestamptz not null, data jsonb not null);
 create index if not exists arcdex_paper_trades_account on arcdex_paper_trades (account, closed_at desc);
 create table if not exists arcdex_bot_users (id text primary key, email text not null unique, data jsonb not null, updated_at timestamptz not null default now());
+create table if not exists arcdex_visitors (id text primary key, first_seen timestamptz not null, last_seen timestamptz not null);
+create index if not exists arcdex_visitors_last on arcdex_visitors (last_seen);
 `
 
 export class PostgresBotStore implements BotStore {
@@ -128,6 +134,16 @@ export class PostgresBotStore implements BotStore {
   saveUser(u: User) {
     this.write('user', () => this.sql`insert into arcdex_bot_users (id, email, data, updated_at) values (${u.id}, ${u.email}, ${JSON.stringify(u)}::jsonb, now())
       on conflict (id) do update set email = excluded.email, data = excluded.data, updated_at = excluded.updated_at`)
+  }
+  visitorSeen(id: string, at: number) {
+    this.write('visitor', () => this.sql`insert into arcdex_visitors (id, first_seen, last_seen) values (${id}, ${new Date(at)}, ${new Date(at)})
+      on conflict (id) do update set last_seen = excluded.last_seen`)
+  }
+  async visitorCounts(dayStart: number) {
+    await this.ready
+    const rows = await this.sql`select count(*)::int as total, (count(*) filter (where last_seen >= ${new Date(dayStart)}))::int as today from arcdex_visitors`
+    const r = rows[0] as { total: number; today: number } | undefined
+    return { total: Number(r?.total ?? 0), today: Number(r?.today ?? 0) }
   }
   async paperTrades(accountId: string, limit: number, before?: number) {
     await this.ready

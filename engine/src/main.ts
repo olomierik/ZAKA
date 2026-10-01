@@ -13,6 +13,7 @@
 //
 //   bun engine/src/main.ts          (see engine/README.md)
 
+import { Traffic } from './traffic'
 import { DOLLAR_PLAN } from './bot/dollarPlan'
 import { every, keepAliveOnUnhandled, startWithRetry } from './lifecycle'
 import { randomBytes } from 'node:crypto'
@@ -208,6 +209,8 @@ async function main() {
     }
   }
   const botStore = cfg.databaseUrl ? new PostgresBotStore(cfg.databaseUrl) : new MemoryBotStore()
+  // The site's traffic counter (traffic.ts): online now, visitors today and ever, kept with the bots' data.
+  if (dataApi) dataApi.traffic = new Traffic(botStore)
   // Visitors' bots live on: accounts (email + passcode, Resend for email), and
   // live trading from each bot's own wallet once BOT_WALLET_SECRET is set.
   // Secrets are read here only and never logged.

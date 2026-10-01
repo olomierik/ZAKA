@@ -8,6 +8,7 @@ import {
 import { ARCD_TIERS, arcdAmount, TIERS_ENFORCED, TIERS_START } from '../lib/tiers'
 import LiveBots from './LiveBots'
 import ProfitToasts from './ProfitToasts'
+import TrafficCard from './TrafficCard'
 import { PHASES, phaseStatus } from './roadmap'
 import './landing.css'
 
@@ -162,6 +163,7 @@ export default function Landing() {
             <a className="ld-btn ld-btn-ghost" href="/app">{t('Launch app')}</a>
           </div>
           <div className="ld-trust">{t('Paper first')} · {t('Rug guard')} · {t('Auto trade size')} · {t('Shareable P&L')}</div>
+          <TrafficCard engine={ENGINE} />
         </div>
         <LiveBots engine={ENGINE} rows={5} />
       </section>
