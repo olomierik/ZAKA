@@ -74,6 +74,8 @@ export interface Config {
    * `proven` (Prime and Core unless their record fails, Standard once proven), `all`, or `off` (no new live buys).
    */
   liveGrades: 'board' | 'proven' | 'all' | 'off'
+  /** Launchpad coins only (SIGNALS_LAUNCHPAD_ONLY, intel/launchpadGate.ts): `strict` (the default), `origin` or `off`. */
+  launchpadOnly: 'strict' | 'origin' | 'off'
   /** Paper position size in USD for snipes and second legs (default: each strategy's own, $25). */
   botSizeUsd: number | null
   /** Paper position size in USD for scalps, the small fast trades on risky coins (default $5). */
@@ -127,6 +129,8 @@ export function loadConfig(): Config {
     // their realized profit (bot/sizing.ts liveTradeSize). `off` pauses every new live buy; open live trades are still managed.
     // `board` (the default since 2026-10-01): the strategy board decides, from the paper bots' records at live speed.
     liveGrades: (['all', 'off', 'proven'] as const).find(v => v === process.env.BOT_LIVE_GRADES) ?? 'board',
+    // Only coins a known Arc launchpad launched, with its standard code, become signals (2026-10-01).
+    launchpadOnly: (['origin', 'off'] as const).find(v => v === process.env.SIGNALS_LAUNCHPAD_ONLY) ?? 'strict',
     botSizeUsd: process.env.BOT_SIZE_USD ? int('BOT_SIZE_USD', 25, 1, 10_000) : null,
     botScalpSizeUsd: process.env.BOT_SCALP_SIZE_USD ? int('BOT_SCALP_SIZE_USD', 5, 1, 10_000) : null,
     botOwner: /^0x[0-9a-fA-F]{40}$/.test(process.env.BOT_OWNER_ADDRESS ?? '') ? process.env.BOT_OWNER_ADDRESS!.toLowerCase() : null,

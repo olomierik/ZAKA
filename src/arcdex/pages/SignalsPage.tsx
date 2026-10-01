@@ -143,6 +143,11 @@ export default function SignalsPage({ navigate, view: pageView, bot }: { navigat
           </div>
           {view === 'mine' && <MyBots navigate={navigate} liveSpeed={stats?.routing?.liveSignals === 'all' ? undefined : stats?.liveSpeed} />}
           {view === 'market' && <Marketplace navigate={navigate} slug={bot ?? null} />}
+          {view === 'scanner' && stats?.routing?.launchpadOnly && stats.routing.launchpadOnly !== 'off' && (
+            <div className="at-note" style={{ marginTop: 12 }}>🛡 {T(stats.routing.launchpadOnly === 'strict'
+              ? 'Launchpad coins only: a coin can become a signal only if a known Arc launchpad launched it (Argus, ARCDEX, Mercuri, SolonPad, Peach, Faze, Aka.fun, o1, Minara, Long.supply) and it runs that launchpad\'s standard code. Coins from anywhere else are listed, never traded.'
+              : 'Launchpad coins only: a coin can become a signal only if a known Arc launchpad launched it (Argus, ARCDEX, Mercuri, SolonPad, Peach, Faze, Aka.fun, o1, Minara, Long.supply). Coins from anywhere else are listed, never traded.')}</div>
+          )}
           {view === 'scanner' && <><RejectionsCard /><ScannerPanel scan={scan} navigate={navigate} /></>}
           {view === 'signals' && <StrategyBoardCard />}
           {view === 'signals' && <GradesCard grades={stats?.grades} />}

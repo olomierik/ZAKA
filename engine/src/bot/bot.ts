@@ -36,6 +36,7 @@ import { computeFlow, RecentTapes, tapeTrade, Tapes, windowOf, type Flow, type W
 import { probeHoneypot, type HoneypotResult } from '../intel/honeypot'
 import { holdersOf, type Holders } from '../intel/holders'
 import { assess, staticFacts, type SafetyReport, type ScanInput, type StaticFacts } from '../intel/scanner'
+import { knownLaunchpad, launchpadGate, type LaunchpadOnly } from '../intel/launchpadGate'
 import { log, errMsg } from '../log'
 import type { EngineObserver, MarketEngine } from '../market/engine'
 import { metrics } from '../metrics'
@@ -176,14 +177,17 @@ export class Bot implements EngineObserver {
    * live P&L since, kept in the settings so a restart doesn't reset its trade size. Null until the balance is read.
    */
   private growth: { at: number; startUsd: number; pnlUsd: number } | null = null
+  /** Launchpad coins only (intel/launchpadGate.ts): `strict` (origin and code), `origin`, or `off`. */
+  readonly launchpadOnly: LaunchpadOnly
   /** Closed live positions already in `growth.pnlUsd`. */
   private grown = new Set<string>()
 
   /** `history`: the coins' stored trades (replays); `speed`: the paper book at live speed (the default; null: at once). */
-  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null; history?: Pick<HistoryStore, 'trades'> | null; speed?: typeof LIVE_SPEED | null; liveSignals?: 'all' | 'proven'; liveGrades?: 'board' | 'proven' | 'all' | 'off' }) {
+  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null; history?: Pick<HistoryStore, 'trades'> | null; speed?: typeof LIVE_SPEED | null; liveSignals?: 'all' | 'proven'; liveGrades?: 'board' | 'proven' | 'all' | 'off'; launchpadOnly?: LaunchpadOnly }) {
     this.speed = o.speed === undefined ? LIVE_SPEED : o.speed
     this.liveSignals = o.liveSignals ?? 'proven'
     this.liveGrades = o.liveGrades ?? 'proven'
+    this.launchpadOnly = o.launchpadOnly ?? 'off'
     this.mode = o.mode === 'live' && !o.live ? 'paper' : o.mode
     o.live?.setPools(token => { const mp = this.o.engine.tokens.get(token)?.mainPool; return mp ? this.o.pools.get(mp) ?? null : null })
     // Its paper book is one of the strategy board's books, and its live trades count toward live bots' own record there.
@@ -400,8 +404,9 @@ export class Bot implements EngineObserver {
     if ((openHere.length || this.o.accounts?.holds(token)) && now - (this.lastRecheck.get(token) ?? 0) >= RECHECK_OPEN_MS) {
       this.lastRecheck.set(token, now)
       const r = await this.report(token, true)
-      if (r?.verdict === 'fail') {
-        const failed = r.checks.filter(c => c.ok === false)
+      // Not being a launchpad coin is a reason not to buy, not to sell one already held (opened before the rule).
+      const failed = r?.verdict === 'fail' ? r.checks.filter(c => c.ok === false && c.id !== 'launchpad') : []
+      if (failed.length) {
         log.info('bot: closing on a safety failure', { token, failed: failed.map(c => c.id) })
         for (const p of openHere) {
           if (p.mode === 'live') this.o.live?.closeNow(p, 'safety')
@@ -412,6 +417,11 @@ export class Bot implements EngineObserver {
     }
     const ageSec = (now - meta.timestamp) / 1000
     const base = { token, symbol: meta.symbol, launchpad: meta.launchpad, launchedAt: meta.timestamp, priceUsd: st.priceUsd, marketCapUsd: st.stats(now).marketCapUsd, liquidityUsd: st.liquidityUsd }
+    // Launchpad coins only: a coin no known Arc launchpad launched is never a signal (no rules, no safety scan).
+    if (this.launchpadOnly !== 'off' && !knownLaunchpad(meta)) {
+      this.scan.record(base, { status: 'rejected', stage: 'safety', reasons: [`✗ launchpad: ${launchpadGate(this.launchpadOnly, meta)}`], keys: ['safety:launchpad'] })
+      return
+    }
     // Snipe: once per coin, in its first minutes.
     let snipeWaiting: string[] | null = null
     /** What stops the coin, for counting (GET /v1/bot/rejections). */
@@ -480,6 +490,13 @@ export class Bot implements EngineObserver {
     const stage = rule === 'momentum' ? 'scalp' as const : rule
     const alarm = this.rug.recentAlarm(token)
     if (alarm) return { status: 'rejected', stage: 'safety', reasons: [`✗ rug guard ${Math.max(1, Math.round((Date.now() - alarm.at) / 60_000))} min ago: ${alarm.text}`], keys: ['safety:rug-guard'] }
+    // Its code, before the deep scan: a custom contract from a launchpad whose standard code is known isn't one of its coins.
+    if (this.launchpadOnly === 'strict') {
+      const meta = this.o.engine.metas.get(token)
+      const sf = meta ? await this.staticsOf(token).catch(() => null) : null
+      const why = meta && sf ? launchpadGate('strict', meta, sf.template) : null
+      if (why) return { status: 'rejected', stage: 'safety', reasons: [`✗ launchpad: ${why}`], keys: ['safety:launchpad'] }
+    }
     const r = await this.report(token, true)
     // A risk that isn't known yet (holders not read, funding not traced in the
     // scan's time) made a snipe a scalp, or a rebound rejected, on missing data
@@ -790,7 +807,7 @@ export class Bot implements EngineObserver {
     const onCurve = !pool && CURVES.has(meta.launchpad)
     const s = await this.staticsOf(token)
     const flow = computeFlow(this.tapes.get(token), { launchBlock: meta.blockNumber, creator: meta.creator, supply: st.supply })
-    const input: ScanInput = { meta, pool, liquidityUsd: st.liquidityUsd, onCurve, flow, biggerSameTicker: this.bigger(meta), creatorLaunches24h: this.creatorLaunches(meta) }
+    const input: ScanInput = { meta, pool, liquidityUsd: st.liquidityUsd, onCurve, flow, biggerSameTicker: this.bigger(meta), creatorLaunches24h: this.creatorLaunches(meta), launchpadOnly: this.launchpadOnly }
     if (deep) {
       const d = await this.deep(token, meta, st.supply, pool, onCurve)
       input.honeypot = d.honeypot
@@ -911,7 +928,7 @@ export class Bot implements EngineObserver {
     const byRule = Object.fromEntries((['momentum', 'snipe', 'second-leg'] as const).map(k => [k, stats(paper.filter(p => (p.rule ?? ruleOf.get(p.signalId)) === k))]))
     const probation = Object.fromEntries((['momentum', 'snipe', 'second-leg'] as const).map(k => [k, this.probation(k)?.why ?? null]))
     const liveSpeed = this.liveSpeed.keys().map(k => this.liveSpeed.record(k))
-    const routing = { liveSignals: this.liveSignals, paperSignals: this.o.accounts?.paperSignals ?? true }
+    const routing = { liveSignals: this.liveSignals, paperSignals: this.o.accounts?.paperSignals ?? true, launchpadOnly: this.launchpadOnly }
     return { mode: this.mode, ...of(paper), byRule, probation, liveSpeed, routing, grades: this.gradeRecords(), live: of(this.positions.filter(p => p.mode === 'live')), params: { snipe: this.params('snipe'), 'second-leg': this.params('second-leg'), scalp: this.params('scalp') }, risk: RISK, rules: RULES, watching: this.paths.size }
   }
 

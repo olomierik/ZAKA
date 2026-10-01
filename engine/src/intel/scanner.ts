@@ -5,6 +5,9 @@
 // is "risky", and the bot trades it small and out fast (a scalp; owner's
 // decision, 2026-09-30).
 //
+//   launchpad (once)  launched by a known Arc launchpad, with its standard
+//                     code where that's been learned (intel/launchpadGate.ts;
+//                     SIGNALS_LAUNCHPAD_ONLY, on by default since 2026-10-01)
 //   contract (once)   the launchpad's own code (a template), or else: can
 //                     anyone still mint, freeze, pause, switch trading off,
 //                     change fees or limits, upgrade it or drain it; is it a
@@ -27,6 +30,7 @@ import type { LaunchInfo } from '../../../api/_marketProtocol'
 import type { Rpc } from '../chain/http'
 import type { PoolInfo } from '../dex/pools'
 import { analyzeCode, EIP1967_BEACON, EIP1967_IMPLEMENTATION, NOBODY, type CodeFacts, type Power } from './bytecode'
+import { launchpadGate, type LaunchpadOnly } from './launchpadGate'
 import type { Clusters } from './clusters'
 import type { Flow } from './flow'
 import type { HoneypotResult } from './honeypot'
@@ -98,6 +102,8 @@ export interface ScanInput {
   biggerSameTicker: string[]
   /** The creator's other launches in the last 24h. */
   creatorLaunches24h: number
+  /** Launchpad coins only (intel/launchpadGate.ts): a hard check when set and not `off`. */
+  launchpadOnly?: LaunchpadOnly
 }
 
 export const LIMITS = {
@@ -154,6 +160,11 @@ export function assess(s: StaticFacts, i: ScanInput): SafetyReport {
   const trusted = s.template !== null
   const launchpadOwned = s.owner !== null && (s.owner === i.meta.entry?.toLowerCase() || s.owner === (i.meta.pool ?? '').toLowerCase())
 
+  // Launchpad coins only: launched by a known Arc launchpad, with its standard code where that's been learned.
+  if (i.launchpadOnly && i.launchpadOnly !== 'off') {
+    const why = launchpadGate(i.launchpadOnly, i.meta, s.template)
+    add('launchpad', why === null, true, why ?? `launched by ${i.meta.launchpad}${s.template ? ` (${s.template})` : ''}`)
+  }
   // Contract
   if (trusted) add('contract', true, true, `${s.template}: the launchpad's standard code`)
   else {

@@ -140,7 +140,7 @@ export interface BotStatsResponse extends BotStatsSet {
   /** Each kind of signal (`rule/strategy`) replayed on real trades at live speed; live bots trade only those `ok` (engine/src/signals/liveSpeed.ts). */
   liveSpeed?: LiveSpeedRow[]
   /** Where signals go (the platform's setting): live bots every signal not on probation (`all`) or only the proven kinds; paper bots or not. */
-  routing?: { liveSignals: 'all' | 'proven'; paperSignals: boolean }
+  routing?: { liveSignals: 'all' | 'proven'; paperSignals: boolean; /** Launchpad coins only (engines since 2026-10-01): `strict`, `origin` or `off`. */ launchpadOnly?: 'strict' | 'origin' | 'off' }
   /** Each signal grade's record at live speed (engines since the grades, 2026-09-30). */
   grades?: GradeRecordView[]
 }

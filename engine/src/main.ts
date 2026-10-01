@@ -238,7 +238,7 @@ async function main() {
     rpc, engine: eng, pools, mode: cfg.botMode, sizeUsd: cfg.botSizeUsd ?? undefined, scalpSizeUsd: cfg.botScalpSizeUsd ?? undefined,
     store: botStore, accounts,
     publish: (topics, msg) => publisher.publish(topics, msg),
-    live, owner: cfg.botOwner, history: history.enabled ? history : null, liveSignals: cfg.botSignals.live, liveGrades: cfg.liveGrades,
+    live, owner: cfg.botOwner, history: history.enabled ? history : null, liveSignals: cfg.botSignals.live, liveGrades: cfg.liveGrades, launchpadOnly: cfg.launchpadOnly,
   })
   botRef = bot
   if (bot) {

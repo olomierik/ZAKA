@@ -27,7 +27,7 @@ export const REASON_LABELS: Record<string, string> = {
   'safety:selfdestruct': 'safety: can self-destruct', 'safety:rug-guard': 'rug guard alarm (30-minute quarantine)', 'safety:risky-for-rebound': 'dip rebound needs a clean coin',
   'pending:honeypot': 'checking: honeypot probe', 'pending:clusters': 'checking: funding trace', 'pending:liquidity': 'checking: liquidity',
   'pending:holders': 'checking: holders',
-  'safety:unavailable': 'safety scan unavailable', 'safety:costly': 'costs too much to buy and sell back (scalps: over 5%)',
+  'safety:launchpad': 'not a launchpad coin, or not its standard code', 'safety:unavailable': 'safety scan unavailable', 'safety:costly': 'costs too much to buy and sell back (scalps: over 5%)',
 }
 
 const DAY = 86_400_000

@@ -1937,5 +1937,8 @@ const d: Record<string, string> = {
   "Live bots, last 24h: {t} trades, {w} won, {a} a trade": "实盘机器人，最近 24 小时：{t} 笔交易，赢 {w} 笔，每笔 {a}",
   "Live bots trade by themselves now: whichever of the three strategies is in profit on paper at live speed, with the settings of the paper bot doing best on it. A strategy that stops working is paused for live until paper proves it again (the strategy board shows each one).": "实盘机器人现在自动交易：三个策略中在实盘速度下模拟盈利的那一个，并采用在该策略上表现最好的模拟机器人的设置。不再有效的策略会暂停实盘，直到模拟再次证明它（策略看板显示每一个）。",
   "Live bots trade all three strategies by themselves, switched by the strategy board; your picks are what this bot trades on paper.": "实盘机器人会自动交易全部三个策略，由策略看板切换；你的选择是此机器人在模拟中交易的内容。",
+  "Launchpad coins only: a coin can become a signal only if a known Arc launchpad launched it (Argus, ARCDEX, Mercuri, SolonPad, Peach, Faze, Aka.fun, o1, Minara, Long.supply) and it runs that launchpad's standard code. Coins from anywhere else are listed, never traded.": "仅限启动平台代币：只有由已知 Arc 启动平台（Argus, ARCDEX, Mercuri, SolonPad, Peach, Faze, Aka.fun, o1, Minara, Long.supply）发行、且使用该平台标准代码的代币才能成为信号。其他来源的代币只列出，从不交易。",
+  "Launchpad coins only: a coin can become a signal only if a known Arc launchpad launched it (Argus, ARCDEX, Mercuri, SolonPad, Peach, Faze, Aka.fun, o1, Minara, Long.supply). Coins from anywhere else are listed, never traded.": "仅限启动平台代币：只有由已知 Arc 启动平台（Argus, ARCDEX, Mercuri, SolonPad, Peach, Faze, Aka.fun, o1, Minara, Long.supply）发行的代币才能成为信号。其他来源的代币只列出，从不交易。",
+  "not a launchpad coin, or not its standard code": "不是启动平台代币，或不是其标准代码",
 }
 export default d
