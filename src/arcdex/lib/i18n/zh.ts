@@ -1970,5 +1970,6 @@ const d: Record<string, string> = {
   "the creator's coins ≤ {v} of the pool": "创建者持币 ≤ 池子的 {v}",
   "≤ {v} of buyers from the creator's other coins": "来自创建者其他币的买家 ≤ {v}",
   "younger than {v} min": "不到 {v} 分钟",
+  "profit on {coin}": "{coin} 盈利",
 }
 export default d

@@ -429,6 +429,27 @@ export class PaperAccounts {
     return out.sort((x, y) => y.closedAt - x.closedAt).slice(0, 50)
   }
 
+  /**
+   * Winning trades any bot closed after `since` (at most the last hour), newest first: the landing page's profit pop-ups
+   * (owner's request, 2026-10-01). Public, like the marketplace: the bot's name and page, never its owner. Worked out at
+   * most every 5 seconds, however many visitors ask.
+   */
+  recentProfits(since: number, now = Date.now()): BotProfit[] {
+    if (!this.profitCache || now - this.profitCache.at >= 5_000) {
+      const from = now - 3_600_000
+      const out: BotProfit[] = []
+      for (const a of this.accounts.values()) {
+        for (const p of a.positions) {
+          if (p.status !== 'closed' || !p.closedAt || p.closedAt <= from || !((p.pnlUsd ?? 0) > 0)) continue
+          out.push({ id: p.id, bot: a.name, slug: a.slug, symbol: p.symbol, token: p.token, strategy: p.strategy, mode: isLive(p) ? 'live' : 'paper', pnlUsd: p.pnlUsd!, pnlPct: p.sizeUsd > 0 ? (p.pnlUsd! / p.sizeUsd) * 100 : null, feeUsd: p.feeUsd ?? null, closedAt: p.closedAt })
+        }
+      }
+      this.profitCache = { at: now, value: out.sort((x, y) => y.closedAt - x.closedAt).slice(0, 50) }
+    }
+    return this.profitCache.value.filter(p => p.closedAt > since).slice(0, 20)
+  }
+  private profitCache: { at: number; value: BotProfit[] } | null = null
+
   /** Whether any bot has a position open in `token` (its safety is re-checked, its rugs watched). */
   holds(token: string) { return (this.byToken.get(token)?.size ?? 0) > 0 || (this.pending.get(token)?.length ?? 0) > 0 }
 

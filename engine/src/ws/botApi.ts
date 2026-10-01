@@ -22,6 +22,8 @@
 //                                                 passcode, and only to a wallet that funded the bot
 //   GET  /v1/me/bots/:slug/funders                the wallets that funded its live wallet
 //   GET  /v1/bots?sort=pnl|winrate|new|live       the marketplace
+//   GET  /v1/bots/profits?since=ms                winning trades any bot closed since then (at most an hour back):
+//                                                 the landing page's profit pop-ups; public, no owners
 //   GET  /v1/bots/:slug                           one bot, public: positions, trades, what it learned
 //   GET  /v1/tiers                                the tiers, whether they're enforced, and each signal grade's record
 //   POST /v1/me/wallets {address, at, signature}  links a wallet (its $ARCD counts toward the tier)
@@ -82,6 +84,10 @@ export async function botApi(req: Request, url: URL, ip: string, d: BotApiDeps, 
     const limit = Math.max(1, Math.min(500, Number(url.searchParams.get('limit')) || 100))
     const mode = url.searchParams.get('mode')
     return json(200, accounts.market(sort === 'winrate' || sort === 'new' || sort === 'live' ? sort : 'pnl', limit, now, mode === 'live' || mode === 'paper' ? mode : undefined), 'public, max-age=5')
+  }
+  if (req.method === 'GET' && p === '/v1/bots/profits') {
+    const since = Math.max(now - 3_600_000, Number(url.searchParams.get('since')) || now - 600_000)
+    return json(200, { profits: accounts.recentProfits(since, now), now }, 'public, max-age=5')
   }
   const pub = /^\/v1\/bots\/([^/]+)$/.exec(p)
   if (req.method === 'GET' && pub) {

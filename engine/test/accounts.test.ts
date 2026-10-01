@@ -437,6 +437,19 @@ describe('the HTTP routes', () => {
     const market = await call('GET', '/v1/bots')
     expect((market.body.bots as { slug: string }[]).map(b => b.slug)).toEqual(['route-bot'])
     expect(JSON.stringify(market.body)).not.toContain('f@x.io')
+    // The landing page's profit pop-ups: any bot's winning trades of the last hour, public, without the owner.
+    const t0 = Date.now()
+    const win = openPosition({ id: 'w1', strategy: 'scalp', token: '0x' + '0a'.repeat(20), symbol: 'WIN', launchpad: 'Argus', signalId: 'w', price: 1, cost: 0.01, now: t0 - 120_000 })
+    win.mode = 'paper'
+    recordSell(win, win.qty, win.qty * 1.2, t0 - 60_000, 'tp1')
+    const loss = openPosition({ id: 'l1', strategy: 'scalp', token: '0x' + '0b'.repeat(20), symbol: 'LOSS', launchpad: 'Argus', signalId: 'l', price: 1, cost: 0.01, now: t0 - 90_000 })
+    loss.mode = 'paper'
+    recordSell(loss, loss.qty, loss.qty * 0.9, t0 - 30_000, 'stop')
+    accounts.bySlugOf('route-bot')!.positions.push(win, loss)
+    const feed = await call('GET', '/v1/bots/profits')
+    expect((feed.body.profits as { bot: string; slug: string; symbol: string; mode: string; pnlUsd: number }[]).map(x => [x.bot, x.slug, x.symbol, x.mode, x.pnlUsd > 0])).toEqual([['Route Bot', 'route-bot', 'WIN', 'paper', true]])
+    expect(JSON.stringify(feed.body)).not.toContain('f@x.io')
+    expect((await call('GET', `/v1/bots/profits?since=${t0}`)).body.profits).toEqual([]) // only what closed after `since`
     expect((await call('POST', '/v1/me/bots/route-bot/withdraw/code', { to: '0x' + 'cd'.repeat(20), amountUsd: 5 }, token)).body.error).toMatch(/verify your email/)
     const other = (await call('POST', '/v1/auth/signup', { email: 'g@x.io', passcode: 'Ok43' })).body.token as string
     expect((await call('POST', '/v1/me/bots/route-bot', { action: 'stop' }, other)).status).toBe(404) // not theirs

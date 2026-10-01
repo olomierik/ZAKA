@@ -1970,5 +1970,6 @@ const d: Record<string, string> = {
   "the creator's coins ≤ {v} of the pool": "coin za muundaji ≤ {v} ya pool",
   "≤ {v} of buyers from the creator's other coins": "≤ {v} ya wanunuzi kutoka coin nyingine za muundaji",
   "younger than {v} min": "chini ya dakika {v}",
+  "profit on {coin}": "faida kwenye {coin}",
 }
 export default d

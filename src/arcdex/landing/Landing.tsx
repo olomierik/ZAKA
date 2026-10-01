@@ -7,6 +7,7 @@ import {
 } from '../lib/arcd'
 import { ARCD_TIERS, arcdAmount, TIERS_ENFORCED, TIERS_START } from '../lib/tiers'
 import LiveBots from './LiveBots'
+import ProfitToasts from './ProfitToasts'
 import { PHASES, phaseStatus } from './roadmap'
 import './landing.css'
 
@@ -295,6 +296,7 @@ export default function Landing() {
         <p className="ld-disclaimer">{t('Paper bots trade virtual USDC; live bots trade real USDC and can lose it. Results shown are real, not promises. Nothing here is financial advice. $ARCD has no promise of value.')}</p>
         <p className="ld-muted">© 2026 ARCDEX</p>
       </footer>
+      <ProfitToasts engine={ENGINE} />
     </div>
   )
 }

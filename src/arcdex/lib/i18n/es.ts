@@ -1970,5 +1970,6 @@ const d: Record<string, string> = {
   "the creator's coins ≤ {v} of the pool": "monedas del creador ≤ {v} del pool",
   "≤ {v} of buyers from the creator's other coins": "≤ {v} de los compradores de otras monedas del creador",
   "younger than {v} min": "menos de {v} min",
+  "profit on {coin}": "de ganancia en {coin}",
 }
 export default d

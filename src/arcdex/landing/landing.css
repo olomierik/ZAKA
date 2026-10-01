@@ -245,3 +245,27 @@ html { scroll-behavior: smooth; color-scheme: dark; }
   .ld-bots-sum { margin-left: 0; width: 100%; }
   .ld-road .ld-link { margin-left: 0; }
 }
+
+/* Profit pop-ups (ProfitToasts.tsx): small, one at a time, gone in 4 seconds. Rendered into <body>. */
+.ld-toasts { position: fixed; left: 16px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 60; pointer-events: none; font-family: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+.ld-toast {
+  pointer-events: auto; display: flex; align-items: center; gap: 10px; max-width: 290px; padding: 8px 12px 8px 10px;
+  background: rgba(11, 21, 37, 0.92); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  color: var(--ld-text); text-decoration: none; font-size: 12px; line-height: 1.35;
+  animation: ld-toast 4s ease both;
+}
+.ld-toast:hover { border-color: rgba(34, 197, 94, 0.55); }
+.ld-toast-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ld-green); box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18); }
+.ld-toast-body { display: flex; flex-direction: column; min-width: 0; }
+.ld-toast-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ld-toast-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.ld-toast-mode { flex: none; font-size: 9px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 1px 5px; border-radius: 5px; }
+.ld-toast-mode.live { color: var(--ld-green); border: 1px solid rgba(34, 197, 94, 0.5); }
+.ld-toast-mode.paper { color: var(--ld-muted); border: 1px solid var(--ld-border-hi); }
+.ld-toast-text { color: var(--ld-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ld-toast-pnl { color: var(--ld-green); font-weight: 700; font-variant-numeric: tabular-nums; }
+@keyframes ld-toast { 0% { opacity: 0; transform: translateY(8px); } 8% { opacity: 1; transform: none; } 82% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes ld-toast-fade { 0% { opacity: 0; } 8% { opacity: 1; } 82% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ld-toast { animation-name: ld-toast-fade; } }
+@media (max-width: 560px) { .ld-toasts { left: 12px; right: 12px; display: flex; justify-content: center; } .ld-toast { max-width: 100%; } }
