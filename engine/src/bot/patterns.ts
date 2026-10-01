@@ -31,8 +31,9 @@
 // as a comeback (the dip-rebound rule), never traded live until it proves out.
 
 import type { LossPatternView, SignalFeatures, SignalRule } from '../../../api/_marketProtocol'
+import { DOLLAR_PLAN } from './dollarPlan'
 
-export const PATTERNS = { days: 7, minTrades: 12, maxAvg: -0.03, minGap: 0.08, everyMs: 60_000, sizeUsd: 2 }
+export const PATTERNS = { days: 7, minTrades: 12, maxAvg: -0.03, minGap: 0.08, everyMs: 60_000, sizeUsd: DOLLAR_PLAN.sizeUsd }
 
 /** A candidate kind of coin: null when the signal doesn't carry the number (older signals): not counted either way. */
 interface Candidate { id: string; th: number; label: string; test: (f: SignalFeatures, rule: SignalRule | null) => boolean | null }
@@ -105,4 +106,4 @@ const view = ({ test: _test, ...p }: Active): LossPatternView => p
 
 /** Why a signal is sat out, in words. */
 export const patternWhy = (p: LossPatternView) =>
-  `${p.label[0].toUpperCase()}${p.label.slice(1)}: coins like this won ${p.wins} of their last ${p.trades} on the $2 plan (${p.avgPct}% a trade, ${p.pnlUsd < 0 ? '−' : ''}$${Math.abs(p.pnlUsd).toFixed(2)}; other coins ${p.restAvgPct > 0 ? '+' : ''}${p.restAvgPct}%)`
+  `${p.label[0].toUpperCase()}${p.label.slice(1)}: coins like this won ${p.wins} of their last ${p.trades} on the $${PATTERNS.sizeUsd} plan (${p.avgPct}% a trade, ${p.pnlUsd < 0 ? '−' : ''}$${Math.abs(p.pnlUsd).toFixed(2)}; other coins ${p.restAvgPct > 0 ? '+' : ''}${p.restAvgPct}%)`

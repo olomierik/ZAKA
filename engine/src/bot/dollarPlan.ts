@@ -13,8 +13,10 @@
 //             (signals/rules.ts), on coins with no more than 80 buyers in and no wallet over 15% of the buying.
 //             Momentum bursts and comebacks are replayed and measured first, and traded live once their replays prove
 //             them (PROVE_FIRST).
-//   size      $2 a trade, flat.
-//   exit      all of it once selling nets +7.5% after costs (about +10% on the price, $0.15 on $2), else out at −7%,
+//   size      $8 a trade, flat, since 2026-10-01 14:30 UTC (owner: "increase the trading size to 8 usd so as to make
+//             profits increase"; $2 before). A live trade is still at most 20% of what its wallet is worth, and never
+//             under $2 (bot/liveTrader.ts): a wallet under $40 trades less than $8.
+//   exit      all of it once selling nets +7.5% after costs (about +10% on the price, $0.60 on $8), else out at −7%,
 //             when the creator sells, or after 3 minutes.
 //   learning  every signal is replayed on its coin's real trades at live speed with these exits (Bot.replayDue).
 //             Each live bot learns its own entry filters per kind of signal from its own live trades and the team's,
@@ -44,7 +46,8 @@ import { defaultTuning, type LearnOptions, type Tuning } from './learner'
 export const DOLLAR_PLAN = {
   /** Bumped when the plan's exits change: a live bot's learned filters start over on a new version. */
   version: 2,
-  sizeUsd: 2,
+  /** A trade's size ($2 until 2026-10-01 14:30 UTC). The live trader still caps it at 20% of the wallet, never under $2. */
+  sizeUsd: 8,
   /** All of it is sold once selling nets this much over what it paid (+7.5%, about +10% on the price). */
   netGain: 0.075,
   /** The strategies live bots trade on the plan. */

@@ -27,22 +27,22 @@ const T = tok(0xb1)
 const poolOf = (token: string): PoolInfo => ({ pool: '0xpool', dex: 'uniswap-v4', currency0: USDC20, currency1: token as Address, fee: 10_000, tickSpacing: 200, hooks: null, base: token as Address, quote: USDC20, baseIs0: false, baseDecimals: 18, quoteDecimals: 6 })
 const features = (o: Partial<SignalFeatures> = {}): SignalFeatures => ({ ageSec: 40, liquidityUsd: 10_000, marketCapUsd: 30_000, buyers: 12, buySellRatio: 3, runUp: 1.2, topBuyerPct: 15, score: 85, flags: [], roundTripPct: 2, ...o })
 
-describe('the take-profit: +7.5% after costs on $2', () => {
+describe('the take-profit: +7.5% after costs on $8', () => {
   test('live: the price over what it paid, less the sale\'s cost; paper: both costs', () => {
     expect(dollarTakeProfit({ costIn: 0, costOut: 0.01 })).toBeCloseTo(1.075 / 0.99, 4)
     expect(dollarTakeProfit({ costIn: 0.012, costOut: 0.012 })).toBeCloseTo(1.1012, 3) // about +10% on the price
-    // A $2 paper trade with 1% costs, sold in full there, makes $0.15.
+    // An $8 paper trade with 1% costs, sold in full there, makes $0.60.
     const params = dollarParams('snipe', { costIn: 0.01, costOut: 0.01 })
     const p = openPosition({ id: 'p', strategy: 'snipe', token: T, symbol: 'C', launchpad: 'A', signalId: 's', price: 1, cost: 0.01, now, params })
     p.exits = params
     onPrice(p, params.tp1Multiple, now + 30_000, params)
-    expect(p).toMatchObject({ status: 'closed', exitReason: 'tp1', sizeUsd: 2 })
-    expect(p.pnlUsd).toBeCloseTo(0.15, 2)
-    expect(DOLLAR_TARGET_USD).toBe(0.15)
+    expect(p).toMatchObject({ status: 'closed', exitReason: 'tp1', sizeUsd: 8 })
+    expect(p.pnlUsd).toBeCloseTo(0.6, 2)
+    expect(DOLLAR_TARGET_USD).toBe(0.6)
   })
   test('all of it at the take-profit; −7% stop; out when the creator sells; 3 minutes at most, with no earlier time stop', () => {
     const snipe = dollarParams('snipe', { costIn: 0, costOut: 0.01 })
-    expect(snipe).toMatchObject({ sizeUsd: 2, tp1SellPct: 1, stopLoss: 0.93, maxHoldMin: 3, timeStopMin: 3, exitOnCreatorSell: true })
+    expect(snipe).toMatchObject({ sizeUsd: 8, tp1SellPct: 1, stopLoss: 0.93, maxHoldMin: 3, timeStopMin: 3, exitOnCreatorSell: true })
     expect(dollarParams('scalp', { costIn: 0, costOut: 0.01 })).toMatchObject({ stopLoss: 0.93, maxHoldMin: 3 })
     const p = openPosition({ id: 'p', strategy: 'snipe', token: T, symbol: 'C', launchpad: 'A', signalId: 's', price: 1, cost: 0, now, params: snipe })
     p.exits = snipe
@@ -51,7 +51,7 @@ describe('the take-profit: +7.5% after costs on $2', () => {
     expect(exitsAt(p, 1.09, now + 60_000)[0].reason).toBe('tp1')
     expect(exitsAt(p, 1.01, now + 3 * 60_000)[0].reason).toBe('time')
     expect(exitsAt(p, 0.92, now + 60_000)[0].reason).toBe('stop')
-    expect(DOLLAR_PLAN).toMatchObject({ version: 2, sizeUsd: 2, netGain: 0.075, maxBuyers: 80 })
+    expect(DOLLAR_PLAN).toMatchObject({ version: 2, sizeUsd: 8, netGain: 0.075, maxBuyers: 80 })
   })
   test('80 buyers or fewer already in, and no wallet over 15% of the buying; a count the signal lacks isn\'t checked', () => {
     expect(planBlocks(features({ totalBuyers: 80 }))).toBeNull()
@@ -104,15 +104,15 @@ async function liveBot(sellAt = 1.12) {
 }
 
 describe('live bots on the plan', () => {
-  test('every snipe, whatever the bot picked: $2, all of it sold at about +10%', async () => {
+  test('every snipe, whatever the bot picked: $8, all of it sold at about +10%', async () => {
     const { accounts, a, wallet, signal } = await liveBot(1.12)
     signal({ id: 'sn1', token: T }) // a snipe: the bot picked fast scalps only, it takes it anyway
     await settle()
     const p = a.positions.find(x => x.mode === 'live' && x.signalId === 'sn1')!
-    expect(p).toMatchObject({ strategy: 'snipe', plan: 'dollar', sizeUsd: 2, rule: 'snipe' })
+    expect(p).toMatchObject({ strategy: 'snipe', plan: 'dollar', sizeUsd: 8, rule: 'snipe' })
     expect(p.exits!.tp1Multiple).toBeCloseTo(1.086, 2) // +7.5% after the sale's ~1% cost
     expect(p.exits).toMatchObject({ tp1SellPct: 1, stopLoss: 0.93, maxHoldMin: 3, exitOnCreatorSell: true })
-    expect(wallet.calls).toEqual(['buy 2'])
+    expect(wallet.calls).toEqual(['buy 8'])
     accounts.onPrice(T, 1.05, Date.now(), false, true) // +5%: held
     await settle()
     expect(p.status).toBe('open')
@@ -120,8 +120,20 @@ describe('live bots on the plan', () => {
     await settle()
     expect(p).toMatchObject({ status: 'closed', exitReason: 'tp1' })
     const gross = (p.pnlUsd ?? 0) + (p.feeUsd ?? 0)
-    expect(gross).toBeGreaterThan(0.15) // $2.24 back on $2, less gas
-    expect(accounts.view(a).live).toMatchObject({ sizing: { tradeUsd: 2, growthPct: 0 }, plan: { sizeUsd: 2, targetUsd: 0.15, takeProfitPct: 7.5, maxHoldMin: 3 } })
+    expect(gross).toBeGreaterThan(0.6) // $8.96 back on $8, less gas
+    expect(accounts.view(a).live).toMatchObject({ sizing: { tradeUsd: 8, growthPct: 0 }, plan: { sizeUsd: 8, targetUsd: 0.6, takeProfitPct: 7.5, maxHoldMin: 3 } })
+  })
+  test('the $8 is still at most 20% of the wallet, and never under $2', async () => {
+    const small = await liveBot()
+    small.wallet.o.balance = 20 // 20% of $20: a $4 trade
+    small.signal({ id: 'w1', token: tok(0xa1) })
+    await settle()
+    expect(small.wallet.calls).toEqual(['buy 4'])
+    const tiny = await liveBot()
+    tiny.wallet.o.balance = 9 // 20% of $9 is $1.80: the $2 floor
+    tiny.signal({ id: 'w2', token: tok(0xa2) })
+    await settle()
+    expect(tiny.wallet.calls).toEqual(['buy 2'])
   })
   test('passed over: a crowded coin, a momentum burst and a comeback not yet proven', async () => {
     const { a, wallet, signal } = await liveBot()
@@ -138,7 +150,7 @@ describe('live bots on the plan', () => {
     // Once the engine says a momentum burst is proven (its replays on the plan made money), it's bought.
     signal({ id: 'mo2', token: tok(0xb5), strategy: 'scalp', rule: 'momentum', quality: { score: 70, grade: 'live', tier: 'A', rank: null, parts: [], liveOk: true, liveWhy: null } as never })
     await settle()
-    expect(wallet.calls).toEqual(['buy 2'])
+    expect(wallet.calls).toEqual(['buy 8'])
   })
   test('a rule on probation is sat out', async () => {
     const { a, signal, wallet } = await liveBot()
@@ -168,7 +180,7 @@ describe('live bots on the plan', () => {
     wallet.calls.length = 0
     signal({ id: 'l5', token: tok(0xd0) })
     await settle()
-    expect(wallet.calls).toEqual(['buy 2'])
+    expect(wallet.calls).toEqual(['buy 8'])
   })
   test('it learns from the team\'s replays before risking a cent: rugs in thin pools raise the liquidity it needs', async () => {
     const { accounts, a, signal, wallet } = await liveBot()
@@ -177,14 +189,14 @@ describe('live bots on the plan', () => {
       const thin = i < 3
       const p = openPosition({ id: `r${i}`, strategy: 'snipe', token: tok(0x10 + i), symbol: 'R', launchpad: 'A', signalId: `rs${i}`, price: 1, cost: 0, now: now - 3_600_000 + i * 60_000, params: dollarParams('snipe', { costIn: 0.01, costOut: 0.01 }) })
       Object.assign(p, { plan: 'dollar', mode: 'paper', rule: 'snipe', features: features({ liquidityUsd: thin ? 3_000 : 20_000 }) })
-      recordSell(p, p.qty, thin ? 0.2 : 2.2, p.openedAt + 90_000, (thin ? 'rug' : 'tp1') as ExitReason)
+      recordSell(p, p.qty, p.sizeUsd * (thin ? 0.1 : 1.1), p.openedAt + 90_000, (thin ? 'rug' : 'tp1') as ExitReason)
       accounts.observeDollar(p)
     }
     accounts.tick(Date.now() + 11 * 60_000) // the team sync, every 10 minutes
     const t = a.dollarTuning!.snipe!
     expect(t.rules?.snipe?.minLiquidityUsd).toBeGreaterThan(3_000)
     expect(t.takeProfit).toBe(1.075)
-    expect(a.learnLog[0].text).toMatch(/^Live \(\$2, quick take-profits\): snipes: .*\(read from its 0 trades and 10 of the team's\)/)
+    expect(a.learnLog[0].text).toMatch(/^Live \(\$8, quick take-profits\): snipes: .*\(read from its 0 trades and 10 of the team's\)/)
     signal({ id: 'th1', token: T, liquidityUsd: 3_000, features: features({ liquidityUsd: 3_000 }) })
     await settle()
     expect(wallet.calls).toEqual([])
@@ -201,12 +213,12 @@ describe('live bots on the plan', () => {
 })
 
 describe('learning on the plan', () => {
-  /** A closed $2 trade on the plan in a pool with `liquidityUsd`. */
+  /** A closed trade on the plan in a pool with `liquidityUsd`. */
   const trade = (i: number, liquidityUsd: number, won: boolean): Position => {
     const params = dollarParams('snipe', { costIn: 0, costOut: 0.01 })
     const p = openPosition({ id: `q${i}`, strategy: 'snipe', token: tok(0x50 + i), symbol: 'Q', launchpad: 'A', signalId: `q${i}`, price: 1, cost: 0, now: now + i * 60_000, params })
     Object.assign(p, { exits: params, plan: 'dollar', mode: 'paper', rule: 'snipe', features: features({ liquidityUsd }) })
-    recordSell(p, p.qty, won ? 2.2 : 1, p.openedAt + 90_000, won ? 'tp1' : 'rug')
+    recordSell(p, p.qty, p.sizeUsd * (won ? 1.1 : 0.5), p.openedAt + 90_000, won ? 'tp1' : 'rug')
     return p
   }
   test('a lesson that would turn away more than half of the kind\'s recent signals isn\'t taken', () => {
@@ -225,7 +237,7 @@ describe('learning on the plan', () => {
       const params = dollarParams('scalp', { costIn: 0, costOut: 0.01 })
       const p = openPosition({ id: `n${i}`, strategy: 'scalp', token: tok(0x30 + i), symbol: 'N', launchpad: 'A', signalId: `n${i}`, price: 1, cost: 0, now: now + i * 60_000, params })
       Object.assign(p, { exits: params, plan: 'dollar', mode: 'live', rule: 'snipe', features: features(), tuningVersion: 1, peak: 1.07 })
-      recordSell(p, p.qty, i < 6 ? 1.9 : 2.2, p.openedAt + 180_000, i < 6 ? 'time' : 'tp1')
+      recordSell(p, p.qty, p.sizeUsd * (i < 6 ? 0.95 : 1.1), p.openedAt + 180_000, i < 6 ? 'time' : 'tp1')
       return p
     })
     expect(learn(t, 'scalp', near, now + 3_600_000)?.tuning.takeProfit ?? t.takeProfit).toBeLessThan(1.075) // paper learning would move it
@@ -248,7 +260,7 @@ describe('learning on the plan', () => {
     const b = second.bySlugOf(a.slug)!
     expect(b.dollarTuning!.snipe).toMatchObject({ takeProfit: 1.075, livePlan: 2, version: 1 })
     expect(b.dollarTuning!.snipe!.rules?.snipe).toBeUndefined()
-    expect(b.learnLog[0].text).toMatch(/^Live \(\$2, quick take-profits\): the live plan changed to quick take-profits/)
+    expect(b.learnLog[0].text).toMatch(/^Live \(\$8, quick take-profits\): the live plan changed to quick take-profits/)
   })
 })
 
@@ -281,9 +293,9 @@ describe('the engine replays every snipe and fast scalp on the plan', () => {
     expect(accounts.dollarTeam('scalp')).toHaveLength(11) // what live bots learn from
     expect(bot.dollarProbation('momentum', now)?.why).toMatch(/Momentum bursts won 0 of their last 11 trades/)
     const v = bot.dollarView(now)
-    expect(v).toMatchObject({ sizeUsd: 2, targetUsd: 0.15, netGainPct: 7.5, maxBuyers: 80, maxTopBuyerPct: 15 })
+    expect(v).toMatchObject({ sizeUsd: 8, targetUsd: 0.6, netGainPct: 7.5, maxBuyers: 80, maxTopBuyerPct: 15 })
     expect(v.kinds.find(k => k.rule === 'momentum')).toMatchObject({ replays: { trades: 11, wins: 0, hits: 0 }, probation: expect.stringMatching(/won 0 of their last 11/) })
-    expect(v.exits.map(e => e.text)).toEqual(Array(3).fill('$2 a trade, all of it sold at +7.5% after costs (about +10% on the price); out at −7%, when the creator sells, or after 3 minutes'))
+    expect(v.exits.map(e => e.text)).toEqual(Array(3).fill('$8 a trade, all of it sold at +7.5% after costs (about +10% on the price); out at −7%, when the creator sells, or after 3 minutes'))
   })
   test('momentum bursts are measured first: not proven until their replays make money', async () => {
     const store = new MemoryBotStore()
@@ -292,13 +304,13 @@ describe('the engine replays every snipe and fast scalp on the plan', () => {
     const add = (i: number, won: boolean) => {
       const p = openPosition({ id: `w${i}`, strategy: 'scalp', token: tok(0x60 + i), symbol: 'W', launchpad: 'A', signalId: `w${i}`, price: 1, cost: 0, now: now - 3_600_000 + i * 60_000, params: dollarParams('scalp', { costIn: 0.01, costOut: 0.01 }) })
       Object.assign(p, { plan: 'dollar', mode: 'paper', rule: 'momentum', features: features() })
-      recordSell(p, p.qty, won ? 2.15 : 1.86, p.openedAt + 60_000, won ? 'tp1' : 'stop')
+      recordSell(p, p.qty, p.sizeUsd * (won ? 1.075 : 0.93), p.openedAt + 60_000, won ? 'tp1' : 'stop')
       bot.dollar.set(p.signalId, p)
     }
     for (let i = 0; i < 9; i++) add(i, i % 3 !== 0)
     const view = () => bot.dollarView(now).kinds.find(k => k.rule === 'momentum')!.probation
     expect(view()).toMatch(/momentum bursts are replayed and measured first: 9 of the 10 replays needed so far/)
-    add(9, true) // 10 replays, 7 won, +$0.21 in all
+    add(9, true) // 10 replays, 7 won, +$2.52 in all
     expect(view()).toBeNull()
   })
   test('a replay on the plan: the take-profit when the price gets there within 3 minutes; the creator\'s sale closes it', () => {
@@ -307,7 +319,7 @@ describe('the engine replays every snipe and fast scalp on the plan', () => {
     const up = [{ ts: now + 3_000, price: 1 }, { ts: now + 60_000, price: 1.05 }, { ts: now + 90_000, price: 1.12 }, { ts: now + 93_000, price: 1.13 }]
     const r = replayAtLiveSpeed(up, { at: now, price: 1, roundTripPct: 2, exits, now: now + 3_600_000 })
     expect(r).toMatchObject({ reason: 'tp1', final: true })
-    expect(r.ret! * 2).toBeGreaterThan(0.15)
+    expect(r.ret! * 8).toBeGreaterThan(0.6)
     const flat = [{ ts: now + 3_000, price: 1 }, { ts: now + 100_000, price: 1.02 }, { ts: now + 185_000, price: 1.01 }, { ts: now + 190_000, price: 1.01 }]
     expect(replayAtLiveSpeed(flat, { at: now, price: 1, roundTripPct: 2, exits, now: now + 3_600_000 })).toMatchObject({ reason: 'time', final: true })
     const dumped = [{ ts: now + 3_000, price: 1 }, { ts: now + 30_000, price: 1.05, creatorSold: true }, { ts: now + 33_000, price: 0.7 }]

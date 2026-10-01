@@ -1043,7 +1043,7 @@ export class Bot implements EngineObserver {
     const wins = list.filter(p => (p.pnlUsd ?? 0) > 0).length, pnl = list.reduce((sum, p) => sum + (p.pnlUsd ?? 0), 0)
     const ok = list.length >= PROVE_FIRST.minReplays && wins / list.length >= PROVE_FIRST.minWinRate && pnl > 0
     const kind = rule === 'second-leg' ? 'comebacks' : 'momentum bursts'
-    return ok ? { ok, why: '' } : { ok, why: `${kind} are replayed and measured first: ${list.length < PROVE_FIRST.minReplays ? `${list.length} of the ${PROVE_FIRST.minReplays} replays needed so far` : `they won ${wins} of their last ${list.length} on the $2 plan (${pnl < 0 ? '−' : ''}$${Math.abs(pnl).toFixed(2)})`}` }
+    return ok ? { ok, why: '' } : { ok, why: `${kind} are replayed and measured first: ${list.length < PROVE_FIRST.minReplays ? `${list.length} of the ${PROVE_FIRST.minReplays} replays needed so far` : `they won ${wins} of their last ${list.length} on the $${DOLLAR_PLAN.sizeUsd} plan (${pnl < 0 ? '−' : ''}$${Math.abs(pnl).toFixed(2)})`}` }
   }
 
   /**

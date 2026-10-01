@@ -51,9 +51,9 @@ describe('the losing patterns', () => {
   test('crowded coins that keep losing are found, at the threshold that lost the most', () => {
     const rows = outcomes(40, i => i % 2 === 0)
     const p = findPatterns(rows, now).find(x => x.id === 'crowded')!
-    expect(p).toMatchObject({ trades: 20, wins: 0, avgPct: -60, restAvgPct: 30, pnlUsd: -24 })
+    expect(p).toMatchObject({ trades: 20, wins: 0, avgPct: -60, restAvgPct: 30, pnlUsd: -96 }) // at $8 a trade
     expect(p.label).toMatch(/^(60|80|100|120)\+ buyers already in$/)
-    expect(patternWhy(p)).toMatch(/buyers already in: coins like this won 0 of their last 20 on the \$2 plan \(-60% a trade, −\$24\.00; other coins \+30%\)/)
+    expect(patternWhy(p)).toMatch(/buyers already in: coins like this won 0 of their last 20 on the \$8 plan \(-60% a trade, −\$96\.00; other coins \+30%\)/)
   })
   test('none from too few trades, from a kind that makes money, or from signals that don\'t carry the number', () => {
     expect(findPatterns(outcomes(20, i => i < PATTERNS.minTrades - 1), now).some(x => x.id === 'crowded')).toBe(false) // 11 crowded trades
@@ -87,12 +87,12 @@ describe('the losing patterns', () => {
 })
 
 describe('each bot learns the same numbers from its own and the team\'s trades', () => {
-  /** A closed $2 trade on the plan (a replay or a live trade) on a coin with `buyers` already in. */
+  /** A closed trade on the plan (a replay or a live trade) on a coin with `buyers` already in. */
   const trade = (i: number, buyers: number, won: boolean): Position => {
     const params = dollarParams('snipe', { costIn: 0.01, costOut: 0.01 })
     const p = openPosition({ id: `t${i}`, strategy: 'snipe', token: A(500 + i), symbol: 'C', launchpad: 'A', signalId: `x${i}`, price: 1, cost: 0.01, now: now - 3_600_000 + i * 60_000, params })
     Object.assign(p, { plan: 'dollar', mode: 'paper', rule: 'snipe', exits: params, features: f({ totalBuyers: buyers, liquidityUsd: 12_000 }) })
-    recordSell(p, p.qty, won ? 3 : 1.2, p.openedAt + 240_000, won ? 'tp1' : 'time')
+    recordSell(p, p.qty, p.sizeUsd * (won ? 1.5 : 0.6), p.openedAt + 240_000, won ? 'tp1' : 'time')
     return p
   }
   test('crowded coins kept losing: it learns to skip them, and says why', () => {
@@ -157,7 +157,7 @@ function seedReplays(bot: Bot) {
     const crowded = i % 2 === 0
     const p = openPosition({ id: `r${i}`, strategy: 'snipe', token: A(700 + i), symbol: 'R', launchpad: 'A', signalId: `rs${i}`, price: 1, cost: 0, now: Date.now() - 3_600_000 + i * 60_000, params: dollarParams('snipe', { costIn: 0.01, costOut: 0.01 }) })
     Object.assign(p, { plan: 'dollar', mode: 'paper', rule: 'snipe', features: f({ totalBuyers: crowded ? 140 : 30 }) })
-    recordSell(p, p.qty, crowded ? 0.6 : 3, p.openedAt + 120_000, crowded ? 'rug' : 'tp1')
+    recordSell(p, p.qty, p.sizeUsd * (crowded ? 0.3 : 1.5), p.openedAt + 120_000, crowded ? 'rug' : 'tp1')
     bot.dollar.set(p.signalId, p)
   }
 }
@@ -229,13 +229,13 @@ describe('the engine: live bots sit out a losing kind of coin, and watch for a c
     const { bot } = setup(30)
     const lost = openPosition({ id: 'l1', strategy: 'scalp', token: T, symbol: 'COIN', launchpad: 'ARGUS', signalId: 'l1', price: 1, cost: 0, now: Date.now() - 20 * 60_000, params: dollarParams('scalp', { costIn: 0, costOut: 0.01 }) })
     Object.assign(lost, { mode: 'live', plan: 'dollar', rule: 'snipe' })
-    recordSell(lost, lost.qty, 0.5, Date.now() - 19 * 60_000, 'rug')
+    recordSell(lost, lost.qty, lost.sizeUsd * 0.25, Date.now() - 19 * 60_000, 'rug')
     bot.positions.push(lost)
     const back = { id: 'c1', token: T, symbol: 'COIN', strategy: 'second-leg', rule: 'second-leg', at: Date.now() - 5 * 60_000, price: 0.8, quality: { liveOk: false, liveWhy: 'comebacks are watched and measured first: 0 of the 10 replays needed so far' } }
     ;(bot as unknown as { recentSignals: unknown[] }).recentSignals.push(back)
     const w = bot.watchView()
     expect(w).toHaveLength(1)
-    expect(w[0]).toMatchObject({ symbol: 'COIN', why: 'a live trade lost $1.50 (rug)', comeback: back.at, priceNow: 1 })
+    expect(w[0]).toMatchObject({ symbol: 'COIN', why: 'a live trade lost $6.00 (rug)', comeback: back.at, priceNow: 1 })
     expect(w[0].status).toMatch(/^comeback signal \(comebacks are watched and measured first/)
   })
 })
