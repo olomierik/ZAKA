@@ -5,7 +5,9 @@
 //
 // Limits (all hard): a size cap per trade, and a share of what the wallet is
 // worth that no trade goes over (20%: the wallet's USDC is read again right
-// before every buy, open trades counted at cost; owner's request, 2026-10-01),
+// before every buy, open trades counted at cost; owner's request, 2026-10-01;
+// a trade at the $2 base is taken whatever that share comes to, as long as the
+// wallet can pay it and keep its reserve),
 // positions open at once (scalps separately), a daily realized loss after
 // which no new position opens, a USDC reserve the wallet never trades below,
 // and slippage caps. A coin whose
@@ -56,12 +58,14 @@ export interface LiveLimits {
   maxRoundTripPct: number
   /** No trade over this share of what the wallet is worth (its USDC, read before the buy, plus open trades at cost). Missing: 20%. */
   maxShareOfBalance?: number
+  /** Every trade is at least this, whatever that share comes to, while the wallet can pay it and keep its reserve (the $2 base, 2026-10-01). */
+  minTradeUsd?: number
 }
 
 /** The smallest live trade: below this, a wallet is too small to trade (gas and rounding eat it). */
 export const MIN_LIVE_TRADE_USD = 1
 
-export const DEFAULT_LIMITS: LiveLimits = { maxTradeUsd: 25, dailyLossUsd: 50, maxOpen: 3, maxOpenScalp: 2, slippageBps: 1_000, exitSlippageBps: [1_500, 3_500, 6_000], reserveUsd: 2, preflight: true, maxRoundTripPct: 20, maxShareOfBalance: 0.2 }
+export const DEFAULT_LIMITS: LiveLimits = { minTradeUsd: 2, maxTradeUsd: 25, dailyLossUsd: 50, maxOpen: 3, maxOpenScalp: 2, slippageBps: 1_000, exitSlippageBps: [1_500, 3_500, 6_000], reserveUsd: 2, preflight: true, maxRoundTripPct: 20, maxShareOfBalance: 0.2 }
 
 /**
  * Whether a simulated round trip leaves the trade worth taking; why not, or
@@ -149,7 +153,7 @@ export class LiveTrader {
       const bal = this.balance!.usd
       const share = this.o.limits.maxShareOfBalance ?? 0.2
       const worth = bal + this.live().filter(p => p.status === 'open').reduce((sum, p) => sum + p.sizeUsd * (p.remaining / (p.qty || 1)), 0)
-      const cap = Math.floor(worth * share * 10 + 1e-9) / 10
+      const cap = Math.max(Math.min(size, this.o.limits.minTradeUsd ?? 0), Math.floor(worth * share * 10 + 1e-9) / 10)
       if (size > cap) {
         if (cap < MIN_LIVE_TRADE_USD) { this.event({ kind: 'skip', token, symbol, text: `$${symbol}: not bought (the wallet is worth $${worth.toFixed(2)}; a trade is at most ${Math.round(share * 100)}% of it, under the $${MIN_LIVE_TRADE_USD} minimum)` }); return }
         // A smaller trade makes proportionally less at the same take-profit.

@@ -362,7 +362,9 @@ export interface BotStatus {
     wallet: string | null
     balanceUsd: number | null
     /** `preflight`: every buy is simulated with its sale first, as the bot wallet (engines from before 2026-09-30 don't say). */
-    limits: { maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; exitSlippageBps: number[]; reserveUsd: number; preflight?: boolean; maxRoundTripPct?: number; maxShareOfBalance?: number } | null
+    limits: { maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; exitSlippageBps: number[]; reserveUsd: number; preflight?: boolean; maxRoundTripPct?: number; maxShareOfBalance?: number; minTradeUsd?: number } | null
+    /** A live trade's size now: `minTradeUsd` grown by what the bot wallet's live trades made since it went live (from 2026-10-01). */
+    sizing?: { tradeUsd: number; growthPct: number; pnlUsd: number; startUsd: number | null }
     todayPnlUsd: number
     open: number
     events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
@@ -513,7 +515,10 @@ export interface BotLiveView {
   feesPaidUsd: number
   /** What the wallet held when it went live (its P&L % is measured against it). */
   startBalanceUsd?: number | null
-  limits: { maxTradeUsd: number; minBalanceUsd: number; reserveUsd: number; maxOpen: number; dailyLossUsd: number; preflight?: boolean; maxRoundTripPct?: number; maxSharePct?: number }
+  /** `baseTradeUsd`: every live trade starts here; `maxTradeUsd` is the most a grown trade may be (engines from before 2026-10-01: the cap, no base). */
+  limits: { maxTradeUsd: number; minBalanceUsd: number; reserveUsd: number; maxOpen: number; dailyLossUsd: number; preflight?: boolean; maxRoundTripPct?: number; maxSharePct?: number; baseTradeUsd?: number }
+  /** A live trade's size now: the base grown by `growthPct`, what its realized live P&L (`pnlUsd`) has added to its starting capital. */
+  sizing?: { tradeUsd: number; growthPct: number; pnlUsd: number }
   events: { at: number; kind: string; text: string; token?: string; symbol?: string; hash?: string }[]
 }
 

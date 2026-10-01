@@ -752,7 +752,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, li
       {tab === 'overview' && (
         <>
           {isLive && liveSpeed && <LiveGateNote rows={liveSpeed} strategies={acct.strategies} />}
-          {isLive && <div className="at-note" style={{ marginTop: 12 }}>◆ {T('Live bots trade Prime signals now: early crowds and crowd momentum bursts, all of it sold at +10%, fast. Other grades join by themselves once they prove a profit at live speed (the Signals tab shows each grade\'s record).')}</div>}
+          {isLive && <div className="at-note" style={{ marginTop: 12 }}>◆ {T('Live bots trade Prime and Core signals now: Prime with Precision (all of it sold at +10%), Core with the quick exits (all of it sold at +6%, −7% stop, 10 minutes at most). A grade whose record at live speed fails is passed over until it recovers, and Standard joins once it proves a profit (the Signals tab shows each grade\'s record).')}</div>}
           {!isLive && me.paperSignals === false && <div className="at-note warn" style={{ marginTop: 12 }}>{T('Signals go to live bots only for now (the platform\'s setting): this paper bot isn\'t trading. Switch it to LIVE to trade.')}</div>}
           {acct.team && <TeamCard team={acct.team} acct={acct} onStrategy={() => setTab('strategy')} />}
           <GradeStats acct={acct} />
@@ -782,10 +782,17 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, li
             if (next.length) void act({ action: 'strategies', strategies: next })
             else setError(T('Keep at least one strategy.'))
           }} />
+          {isLive && acct.live?.limits.baseTradeUsd !== undefined ? (<>
+          <div className="at-label">{T('Live trade size: from {b}, growing with profit', { b: usd(acct.live.limits.baseTradeUsd, 0) })}</div>
+          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            {T('Each live trade starts at {b} and grows in step with what its live trades make: once they have added 50% to what the wallet went live with, trades are 50% bigger. Losses never take it under {b}, and deposits and withdrawals don\'t count. Above {b}, never more than {p}% of what the wallet holds, and at most {x}. Now: {now} a trade ({g} grown).', { b: usd(acct.live.limits.baseTradeUsd, 0), p: acct.live.limits.maxSharePct ?? 20, x: usd(acct.live.limits.maxTradeUsd, 0), now: usd(acct.live.sizing?.tradeUsd ?? acct.live.limits.baseTradeUsd), g: `${acct.live.sizing?.growthPct ?? 0}%` })}
+          </div>
+          </>) : (<>
           <div className="at-label">{T('Trade size: from the bot\'s capital')}</div>
           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
             {T('Each trade is a share of what the bot is worth now (at the start, its capital), by the signal\'s grade: {p}% on Prime, {c}% on Core, {s}% on Standard, at least {m}. A $10 bot trades $2 or $1. Never more than 1.5% of the coin\'s pool, and never a trade whose costs eat the take-profit. When many bots take the same signal, they share it under a cap, and each later bot\'s take-profit is a notch higher so they don\'t all sell at once.', { p: acct.protections?.gradeSharePct?.prime ?? 20, c: acct.protections?.gradeSharePct?.core ?? 15, s: acct.protections?.gradeSharePct?.standard ?? 10, m: usd(acct.protections?.minTradeUsd ?? 1, 0) })}
           </div>
+          </>)}
           {acct.tuning && acct.strategies.map(s => <TuningLine key={s} s={s} t={acct.tuning[s]} />)}
         </Section>
       )}
@@ -1190,7 +1197,7 @@ function SettingsTab({ acct, act, busy, onRename }: { acct: PaperAccountView; ac
         <Section title={T('Protection')}>
           <ul className="at-protect">
             <li>🛡 {T('Rug guard: out at once when liquidity is pulled, an early insider or a whale dumps, the price crashes on heavy selling, or the creator sells.')}</li>
-            {prot.maxTradeSharePct !== undefined && <li>⚖ {T('Each trade is {p}% of what the bot is worth on a Prime signal, {c}% on Core, {s}% on Standard (now at most {m}), at least {min}: a small bot trades small.', { p: prot.gradeSharePct?.prime ?? prot.maxTradeSharePct, c: prot.gradeSharePct?.core ?? 15, s: prot.gradeSharePct?.standard ?? 10, m: prot.maxTradeUsd == null ? '—' : usd(prot.maxTradeUsd), min: usd(prot.minTradeUsd ?? 1, 0) })}</li>}
+            {prot.maxTradeSharePct !== undefined && !(acct.mode === 'live' && live?.limits.baseTradeUsd !== undefined) && <li>⚖ {T('Each trade is {p}% of what the bot is worth on a Prime signal, {c}% on Core, {s}% on Standard (now at most {m}), at least {min}: a small bot trades small.', { p: prot.gradeSharePct?.prime ?? prot.maxTradeSharePct, c: prot.gradeSharePct?.core ?? 15, s: prot.gradeSharePct?.standard ?? 10, m: prot.maxTradeUsd == null ? '—' : usd(prot.maxTradeUsd), min: usd(prot.minTradeUsd ?? 1, 0) })}</li>}
             <li>👥 {T('Shares each signal with the other bots: together they never buy enough to move the price against themselves, and the one that waited longest goes first.')}</li>
             <li>⏸ {T('Pauses new trades for 30 minutes after {n} losses in a row (now {s} in a row).', { n: prot.pauseAfterLosses, s: prot.lossStreak })}</li>
             <li>📉 {T('Daily loss limit {l}: no new trades after it until tomorrow (UTC). Today: {t}.', { l: usd(prot.dailyLossLimitUsd, 0), t: usd(prot.todayPnlUsd) })}</li>
@@ -1201,8 +1208,13 @@ function SettingsTab({ acct, act, busy, onRename }: { acct: PaperAccountView; ac
       {live && (
         <Section title={T('Live wallet')}>
           <ul className="at-protect">
-            <li>💵 {T('Trades up to {x} a trade and keeps {r} for gas. Only this bot uses the wallet.', { x: usd(live.limits.maxTradeUsd, 0), r: usd(live.limits.reserveUsd, 0) })}</li>
-            {live.limits.maxSharePct !== undefined && <li>⚖ {T('It reads its balance before every buy and never puts more than {p}% of what it is worth into one trade.', { p: live.limits.maxSharePct })}</li>}
+            {live.limits.baseTradeUsd !== undefined ? (<>
+              <li>💵 {T('Each trade is {now} now: {b} to start, grown with what its live trades made ({g} so far), at most {x}. Keeps {r} for gas. Only this bot uses the wallet.', { now: usd(live.sizing?.tradeUsd ?? live.limits.baseTradeUsd), b: usd(live.limits.baseTradeUsd, 0), g: `+${live.sizing?.growthPct ?? 0}%`, x: usd(live.limits.maxTradeUsd, 0), r: usd(live.limits.reserveUsd) })}</li>
+              {live.limits.maxSharePct !== undefined && <li>⚖ {T('Above {b}, it never puts more than {p}% of what it is worth into one trade (it reads its balance before every buy).', { b: usd(live.limits.baseTradeUsd, 0), p: live.limits.maxSharePct })}</li>}
+            </>) : (<>
+              <li>💵 {T('Trades up to {x} a trade and keeps {r} for gas. Only this bot uses the wallet.', { x: usd(live.limits.maxTradeUsd, 0), r: usd(live.limits.reserveUsd, 0) })}</li>
+              {live.limits.maxSharePct !== undefined && <li>⚖ {T('It reads its balance before every buy and never puts more than {p}% of what it is worth into one trade.', { p: live.limits.maxSharePct })}</li>}
+            </>)}
             {live.limits.preflight && <li>✓ {T('Every buy is checked first: the bot\'s wallet simulates the buy and selling it all straight back. A coin it couldn\'t sell, or a round trip costing over {p}%, is never bought.', { p: live.limits.maxRoundTripPct ?? 20 })}</li>}
             <li>✍ {T('The bot\'s own wallet signs every trade: no approvals to click. Buys pay USDC directly; each coin is approved once, by the bot, so it can always sell.')}</li>
           </ul>
@@ -1744,7 +1756,7 @@ function BotPanel({ status, onStatus }: { status: BotStatus; onStatus: (s: BotSt
         <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.4)', fontSize: '0.76rem', lineHeight: 1.5 }}>
           <b>{T('Switch to live trading?')}</b>{' '}
           {T('From now on the bot buys and sells every signal it can reach with the bot wallet\'s USDC. Trades can lose money, and most new coins go to zero.')}
-          {l.limits && <div style={{ marginTop: 4, color: 'var(--text-muted)' }}>{limitsText(l.limits)}</div>}
+          {l.limits && <div style={{ marginTop: 4, color: 'var(--text-muted)' }}>{limitsText(l.limits, l.sizing)}</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button className="btn-ghost" disabled={busy} onClick={() => setConfirm(null)}>{T('Cancel')}</button>
             <button disabled={busy} onClick={() => void run(confirm)} style={{ background: LIVE_RED, color: '#fff', border: 'none', borderRadius: 8, padding: '6px 12px', fontWeight: 800, cursor: 'pointer' }}>{busy ? T('Waiting for your signature…') : T('Sign and go live')}</button>
@@ -1761,7 +1773,7 @@ function BotPanel({ status, onStatus }: { status: BotStatus; onStatus: (s: BotSt
             <Stat label={T('Live P&L today')} value={usd(l.todayPnlUsd)} small color={l.todayPnlUsd >= 0 ? 'var(--green)' : '#fca5a5'} />
             <Stat label={T('Live positions open')} value={String(l.open)} small />
           </div>
-          {l.limits && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 6 }}>{limitsText(l.limits)}</div>}
+          {l.limits && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 6 }}>{limitsText(l.limits, l.sizing)}</div>}
           {sign && l.open > 0 && (
             confirm?.action === 'close-live'
               ? <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.76rem' }}>
@@ -1826,9 +1838,14 @@ function TierGrant({ sign }: { sign: (message: string) => Promise<`0x${string}`>
   )
 }
 
-function limitsText(x: NonNullable<BotStatus['live']['limits']>): string {
-  const base = T('Limits: up to ${a} a trade · {o} open at once ({s} scalps) · stops for the day after a ${d} loss · keeps ${r} for gas · buys at most {b}% under the quote', { a: x.maxTradeUsd, o: x.maxOpen, s: x.maxOpenScalp, d: x.dailyLossUsd, r: x.reserveUsd, b: x.slippageBps / 100 })
-  const text = x.maxShareOfBalance ? `${base} · ${T('no trade over {p}% of the wallet (read before each buy)', { p: Math.round(x.maxShareOfBalance * 100) })}` : base
+function limitsText(x: NonNullable<BotStatus['live']['limits']>, sizing?: BotStatus['live']['sizing']): string {
+  const base = x.minTradeUsd !== undefined
+    ? T('Limits: ${m} a trade now (from ${f}, growing with its profit, at most ${a}) · {o} open at once ({s} scalps) · stops for the day after a ${d} loss · keeps ${r} for gas · buys at most {b}% under the quote', { m: sizing?.tradeUsd ?? x.minTradeUsd, f: x.minTradeUsd, a: x.maxTradeUsd, o: x.maxOpen, s: x.maxOpenScalp, d: x.dailyLossUsd, r: x.reserveUsd, b: x.slippageBps / 100 })
+    : T('Limits: up to ${a} a trade · {o} open at once ({s} scalps) · stops for the day after a ${d} loss · keeps ${r} for gas · buys at most {b}% under the quote', { a: x.maxTradeUsd, o: x.maxOpen, s: x.maxOpenScalp, d: x.dailyLossUsd, r: x.reserveUsd, b: x.slippageBps / 100 })
+  const share = x.minTradeUsd !== undefined
+    ? T('above ${f}, no trade over {p}% of the wallet (read before each buy)', { f: x.minTradeUsd, p: Math.round((x.maxShareOfBalance ?? 0) * 100) })
+    : T('no trade over {p}% of the wallet (read before each buy)', { p: Math.round((x.maxShareOfBalance ?? 0) * 100) })
+  const text = x.maxShareOfBalance ? `${base} · ${share}` : base
   return x.preflight ? `${text} · ${T('each buy simulated with its sale first (round trip at most {p}%)', { p: x.maxRoundTripPct ?? 20 })}` : text
 }
 

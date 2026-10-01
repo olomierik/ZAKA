@@ -70,6 +70,20 @@ export const STRATEGIES: Record<Strategy, StrategyParams> = {
   precision: { sizeUsd: 10, stopLoss: 0.9, tp1Multiple: 1.1, tp1SellPct: 1, trailFromPeak: 0.25, timeStopMin: 3, timeStopMinGain: 1.0333, maxHoldMin: 10, exitOnCreatorSell: true },
 }
 
+/**
+ * Quick exits (2026-10-01, owner: "live bots take positions with small gains,
+ * but regular trades every day"): how live bots trade a signal that isn't
+ * Prime (Prime signals are traded with Precision). All of it sold at +6%, −7%
+ * stop, out after 3 minutes unless up 2%, 10 minutes at most, and out when the
+ * creator sells: Precision's first settings, which won 10 of 11 Prime signals
+ * at live speed. On that day's replays the other signals, sold in full at +6%,
+ * won 8 of 12 (−3.6% a trade); with their strategy's exits (half at +10%, then
+ * a trail for up to an hour), 3 of 12 (−13%). A grade traded this way keeps
+ * its own record at live speed with these exits (signals/grades.ts), and live
+ * bots stop taking it when that record fails.
+ */
+export const QUICK_EXITS: Omit<StrategyParams, 'sizeUsd'> = { stopLoss: 0.93, tp1Multiple: 1.06, tp1SellPct: 1, trailFromPeak: 0.25, timeStopMin: 3, timeStopMinGain: 1.02, maxHoldMin: 10, exitOnCreatorSell: true }
+
 export const RISK = {
   maxOpen: 5,
   /** Scalps open at once, within `maxOpen`. */

@@ -165,3 +165,43 @@ export function sizeFromCapital(o: { capitalUsd: number; tier?: 'A' | 'B'; grade
   if (net <= 0) return { key: 'costly', why: `buying and selling back costs more than its +${pct} take-profit` }
   return { sizeUsd: size, profitUsd: Math.round(net * 100) / 100, costPct: Math.round(costPerSide(o.roundTripPct, size, o.liquidityUsd) * 10_000) / 100, share }
 }
+
+// ── Live trades (owner's request, 2026-10-01: "live trades at $2 each; as the
+// capital increases, the trade size increases based on the PnL gained"). Every
+// live trade starts at $2, whatever the wallet holds. As the bot's realized
+// live profit (after gas and the platform's fee) grows its capital, the trade
+// grows in step: a bot that went live with $10 and has made $5 has grown 50%,
+// so it trades $3; once it has made $10 (doubled), $4. Losses never take it
+// under $2, and deposits and withdrawals don't count: only what the trades
+// made. Above $2, no trade is more than 20% of what the wallet is worth, and
+// none is over the cap ($50 for visitors' bots).
+
+export const LIVE_SIZE = { baseUsd: 2, maxUsd: 50, maxShareAboveBase: 0.2 }
+
+export interface LiveGrowth { sizeUsd: number; growthPct: number }
+
+/** A live trade's size: $2, grown by the share its realized profit has added to the capital it went live with. */
+export function liveTradeSize(o: { startUsd: number | null | undefined; pnlUsd: number; worthUsd?: number | null; baseUsd?: number; maxUsd?: number }): LiveGrowth {
+  const base = o.baseUsd ?? LIVE_SIZE.baseUsd
+  const max = Math.max(base, o.maxUsd ?? LIVE_SIZE.maxUsd)
+  const growth = o.startUsd && o.startUsd > 0 ? Math.max(0, o.pnlUsd) / o.startUsd : 0
+  const floor10 = (x: number) => Math.floor(x * 10 + 1e-9) / 10
+  let size = Math.min(max, floor10(base * (1 + growth)))
+  // Above the base, a share of what the wallet is worth now (a bot that withdrew its profit trades $2 again).
+  if (o.worthUsd != null) size = Math.min(size, Math.max(base, floor10(o.worthUsd * LIVE_SIZE.maxShareAboveBase)))
+  return { sizeUsd: Math.max(base, size), growthPct: Math.round(growth * 1_000) / 10 }
+}
+
+/** A live trade's size with the pool's and the costs' checks (as `sizeFromCapital`), or why there's none. */
+export function sizeForLive(o: LiveGrowth & { takeProfit: number; roundTripPct: number | null; liquidityUsd: number | null }): CapitalSized | NoCapitalSize {
+  const c = CAPITAL_SIZING
+  let size = o.sizeUsd
+  if (o.liquidityUsd !== null && o.liquidityUsd > 0) {
+    const poolCap = Math.floor(o.liquidityUsd * c.maxPoolShare * 10 + 1e-9) / 10
+    if (poolCap < c.minUsd) return { key: 'too-thin', why: `the pool ($${Math.round(o.liquidityUsd).toLocaleString('en-US')}) is too thin for even a $${c.minUsd} trade` }
+    size = Math.min(size, poolCap)
+  }
+  const net = netAtTakeProfit(size, o.takeProfit, o.roundTripPct, o.liquidityUsd)
+  if (net <= 0) return { key: 'costly', why: `buying and selling back costs more than its +${Math.round((o.takeProfit - 1) * 100)}% take-profit` }
+  return { sizeUsd: size, profitUsd: Math.round(net * 100) / 100, costPct: Math.round(costPerSide(o.roundTripPct, size, o.liquidityUsd) * 10_000) / 100, share: 0 }
+}

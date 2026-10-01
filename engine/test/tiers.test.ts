@@ -325,4 +325,13 @@ describe('which grades live bots trade', () => {
     for (let i = 0; i < 10; i++) book.add(`p${i}`, 'prime', now - i * 60_000, -0.05)
     expect(liveGrade(book, 'prime', now).ok).toBe(false) // under review
   })
+  test('Core too since 2026-10-01 (regular trades), with no record yet; under review it is handed out as Standard and live bots stop', async () => {
+    const { liveGrade } = await import('../src/signals/grades')
+    const book = new GradeBook()
+    expect(liveGrade(book, 'core', now)).toEqual({ ok: true, why: null })
+    for (let i = 0; i < 10; i++) book.add(`c${i}`, 'core', now - i * 60_000, i < 4 ? 0.04 : -0.07)
+    expect(book.effective('core', now).grade).toBe('standard') // 4 of 10 won: under review
+    expect(liveGrade(book, 'core', now).ok).toBe(false)
+    expect(liveGrade(book, 'standard', now).why).toMatch(/live bots trade Prime and Core signals, and Standard once proven/)
+  })
 })

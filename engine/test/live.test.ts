@@ -150,7 +150,7 @@ describe('the live trader (stand-in wallet)', () => {
     lt.setPools(() => pool)
     const meta = { token: T, symbol: 'C', launchpad: 'ARGUS' } as never
     const signal = (id: string) => ({ id, token: T, strategy: 'scalp' } as never)
-    return { lt, calls, positions, meta, signal }
+    return { lt, calls, positions, meta, signal, exec }
   }
   const settle = () => new Promise(r => setTimeout(r, 10))
 
@@ -173,8 +173,19 @@ describe('the live trader (stand-in wallet)', () => {
     await lt.open(signal('s1'), 'scalp', pool, meta, { sizeUsd: 12 })
     expect(calls).toEqual(['buy 10', 'approve']) // 20% of $30 + $20 open
   })
-  test('a wallet too small for a $1 trade waits (a $10 wallet trades)', async () => {
-    const { lt, calls, positions, meta, signal } = setup({ balance: 4 })
+  test('the $2 base is traded whatever 20% of the wallet comes to, while the wallet can pay it and keep its reserve', async () => {
+    const small = setup({ balance: 4 }) // 20% of $4 is $0.80
+    await small.lt.open(small.signal('s1'), 'scalp', pool, small.meta, { sizeUsd: 5 })
+    expect(small.calls[0]).toBe('buy 2')
+    const tiny = setup({ balance: 3.5 }) // $2 and the $2 reserve don't fit
+    await tiny.lt.open(tiny.signal('s1'), 'scalp', pool, tiny.meta, { sizeUsd: 5 })
+    expect(tiny.calls).toEqual([])
+    expect(tiny.lt.events[0].text).toMatch(/wallet has \$3\.50; a \$2 trade keeps \$2 back/)
+  })
+  test('without a base, a wallet too small for a $1 trade waits', async () => {
+    const { calls, positions, meta, signal, exec } = setup({ balance: 4 })
+    const lt = new LiveTrader({ exec, limits: { ...DEFAULT_LIMITS, minTradeUsd: undefined }, positions: () => positions, params: s => STRATEGIES[s], save: () => {} })
+    lt.setPools(() => pool)
     await lt.open(signal('s1'), 'scalp', pool, meta, { sizeUsd: 5 })
     expect(calls).toEqual([])
     expect(positions).toEqual([])

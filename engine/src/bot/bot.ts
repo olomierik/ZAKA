@@ -45,18 +45,28 @@ import { GRADE_RULES, GRADES, GradeBook, gradeOf, isEarlyCrowd, liveGrade, PRIME
 import { crowdCap } from './crowd'
 import { QUALITY, QualityRank, qualityScore, type RuleRecord } from '../signals/quality'
 import { LIVE_GATE, liveKey, LiveSpeedBook, replayAtLiveSpeed, type LiveSpeedRecord } from '../signals/liveSpeed'
-import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, RISK, STRATEGIES, stats, type Position, type Strategy, type StrategyParams } from '../trading/paper'
+import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, QUICK_EXITS, RISK, STRATEGIES, stats, type Position, type Strategy, type StrategyParams } from '../trading/paper'
 import type { HistoryStore } from '../store/history'
 import { defaultTuning, toParams } from './learner'
 import type { LiveTrader } from './liveTrader'
 import type { PaperAccounts } from './paperAccounts'
 import { probationOf } from './probation'
 import { RugWatch } from './rugGuard'
+import { LIVE_SIZE, liveTradeSize, type LiveGrowth } from './sizing'
 import { failing, ScanFeed, OutcomeTally } from './scanFeed'
 import type { BotStore } from './store'
 import type { Signal } from './types'
 
 const WATCH_MS = 48 * 3_600_000
+
+/** The bot wallet's growth as saved in the settings ('live-growth'), or null. */
+function parseGrowth(raw: string | null): { at: number; startUsd: number; pnlUsd: number } | null {
+  if (!raw) return null
+  try {
+    const g = JSON.parse(raw) as { at?: unknown; startUsd?: unknown; pnlUsd?: unknown }
+    return typeof g.at === 'number' && typeof g.startUsd === 'number' && typeof g.pnlUsd === 'number' ? { at: g.at, startUsd: g.startUsd, pnlUsd: g.pnlUsd } : null
+  } catch { return null }
+}
 const EVAL_EVERY_MS = 2_000
 const DEEP_TTL_MS = 120_000
 /** A coin over 30 minutes old changes slowly: its deep scan is kept 10 minutes. */
@@ -160,6 +170,13 @@ export class Bot implements EngineObserver {
   readonly liveSignals: 'all' | 'proven'
   /** Which grades live bots trade: Prime and grades proven at live speed (`proven`), or every grade (`all`). */
   readonly liveGrades: 'proven' | 'all' | 'off'
+  /**
+   * The bot wallet's growth since it went live (bot/sizing.ts liveTradeSize): its balance then, and its realized
+   * live P&L since, kept in the settings so a restart doesn't reset its trade size. Null until the balance is read.
+   */
+  private growth: { at: number; startUsd: number; pnlUsd: number } | null = null
+  /** Closed live positions already in `growth.pnlUsd`. */
+  private grown = new Set<string>()
 
   /** `history`: the coins' stored trades (replays); `speed`: the paper book at live speed (the default; null: at once). */
   constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null; history?: Pick<HistoryStore, 'trades'> | null; speed?: typeof LIVE_SPEED | null; liveSignals?: 'all' | 'proven'; liveGrades?: 'proven' | 'all' | 'off' }) {
@@ -188,7 +205,9 @@ export class Bot implements EngineObserver {
     // The owner's last choice survives a restart (live only while a bot wallet is configured).
     const saved = await this.o.store.getSetting('mode').catch(() => null)
     if (this.mode !== 'off' && (saved === 'paper' || (saved === 'live' && this.o.live))) this.mode = saved
-    if (this.o.live) void this.o.live.refreshBalance().catch(e => log.warn('live: balance read failed', { error: errMsg(e) }))
+    this.growth = parseGrowth(await this.o.store.getSetting('live-growth').catch(() => null))
+    for (const p of this.positions) if (p.mode === 'live' && p.status === 'closed') this.grown.add(p.id)
+    if (this.o.live) void this.o.live.refreshBalance().then(() => this.startGrowth(false)).catch(e => log.warn('live: balance read failed', { error: errMsg(e) }))
     log.info('bot started', { mode: this.mode, open: this.positions.filter(p => p.status === 'open').length, store: this.o.store.kind, wallet: this.o.live?.address ?? null })
   }
 
@@ -198,6 +217,8 @@ export class Bot implements EngineObserver {
     if (mode === 'live' && !this.o.live) return { ok: false, error: 'no bot wallet is configured (BOT_PRIVATE_KEY)' }
     this.mode = mode
     await this.o.store.setSetting('mode', mode)
+    // Going live starts the trade size over at its base, grown from here by what the live trades make.
+    if (mode === 'live') await this.o.live!.refreshBalance().then(() => this.startGrowth(true)).catch(e => log.warn('live: balance read failed', { error: errMsg(e) }))
     this.o.live?.event({ kind: 'mode', text: mode === 'live' ? 'Switched to LIVE: new signals are traded with the bot wallet' : 'Switched to paper: no new live trades (open ones are still managed)' })
     log.info('bot: mode switched', { mode })
     return { ok: true }
@@ -514,9 +535,10 @@ export class Bot implements EngineObserver {
     const graded2 = gradeOf(features, rule)
     const handed = this.grades.effective(graded2.grade, now)
     // A rule whose paper record is losing: still fired and measured here, but no bot trades it (bot/probation.ts).
-    // A Prime signal is past it: its own grade's record at live speed is what decides (the momentum rule's losers
-    // were the bursts crowd momentum leaves out).
-    const probation = handed.grade === 'prime' ? null : this.probation(rule, now)
+    // A Prime or Core signal is past it: its own grade's record at live speed, with the exits live bots trade it with,
+    // is what decides (the momentum rule's losers were the bursts crowd momentum leaves out; the rule's paper record
+    // is kept with other exits). A grade under review is handed out as Standard, and probation applies again.
+    const probation = handed.grade === 'standard' ? this.probation(rule, now) : null
     if (probation) { reasons = [...reasons, `⚠ on probation: ${probation.why}`]; metrics.inc(`bot_${rule}_probation`) }
     // What this kind of signal makes at live speed (replayed on real trades): live bots trade it only while that's a profit.
     const ls = this.liveSpeed.record(liveKey(rule, strategy), now)
@@ -563,17 +585,20 @@ export class Bot implements EngineObserver {
       else if (quality.grade === 'paper') this.o.live.event({ kind: 'skip', text: `$${meta.symbol}: not bought live, ${ls.ok ? `quality ${quality.score} is in the lowest ${Math.round((1 - QUALITY.liveShare) * 100)}% of recent signals` : liveWhy(ls)}` })
       else if (!forLive.ok) this.o.live.event({ kind: 'skip', token, symbol: meta.symbol, text: `$${meta.symbol}: not bought live, ${forLive.why}` })
       else {
-        // A Prime signal is traded with Precision (all of it at +6%), as visitors' live bots do.
+        // As visitors' live bots trade it: a Prime signal with Precision (all of it at +10%), any other with the quick
+        // exits (all of it at +6%; trading/paper.ts QUICK_EXITS).
         const liveStrategy: Strategy = handed.grade === 'prime' ? 'precision' : strategy
+        // $2, grown in step with what the bot wallet's live trades made (bot/sizing.ts liveTradeSize).
+        const want = this.liveSize().sizeUsd
+        const exits: StrategyParams = liveStrategy === 'precision' ? { ...this.params('precision'), sizeUsd: want } : { ...QUICK_EXITS, sizeUsd: want }
         // Visitors' bots were seated first (bot/crowd.ts): the platform's bot takes only what they left under the cap.
-        const want = this.params(liveStrategy).sizeUsd
-        const capUsd = crowdCap({ liquidityUsd: st.liquidityUsd, takeProfit: this.params(liveStrategy).tp1Multiple, flags: features.flags })
+        const capUsd = crowdCap({ liquidityUsd: st.liquidityUsd, takeProfit: exits.tp1Multiple, flags: features.flags })
         const left = this.o.accounts ? this.o.accounts.crowd.leftover(signal.id, capUsd) : capUsd
         if (left < 1) this.o.live.event({ kind: 'skip', token, symbol: meta.symbol, text: `$${meta.symbol}: not bought live, visitors' bots filled its crowd cap ($${capUsd.toFixed(2)})` })
         else {
           const size = Math.min(want, left)
           this.o.accounts?.crowd.take(signal.id, capUsd, size)
-          void this.o.live.open(signal, liveStrategy, pool, meta, { sizeUsd: size, priceNow: () => this.priceOf(token) })
+          void this.o.live.open(signal, liveStrategy, pool, meta, { sizeUsd: size, priceNow: () => this.priceOf(token), extra: { exits: { ...exits, sizeUsd: size }, features, rule, grade: handed.grade } })
         }
       }
     }
@@ -615,10 +640,11 @@ export class Bot implements EngineObserver {
       const due = this.recentSignals.filter(sg => (!this.liveSpeed.has(sg.id) || !this.grades.has(sg.id)) && now - sg.at >= 60_000 && now - sg.at <= LIVE_GATE.days * 86_400_000).slice(0, batch)
       for (const sg of due) {
         if (!(sg.strategy in STRATEGIES)) { this.liveSpeed.skip(sg.id); continue }
-        // The exits a new bot trades with (what live bots trade with before they learn); a Prime signal's grade record with Precision's.
+        // The exits a new bot trades with (the rule's live-speed record); a grade's record with the exits live bots trade
+        // it with: Prime with Precision's, the others with the quick exits (all of it at +6%).
         const exits = toParams(defaultTuning(sg.strategy), 100, sg.strategy)
         const grade: SignalGrade = gradeOf(sg.features, sg.rule).grade
-        const gradeExits = grade === 'prime' ? toParams(defaultTuning('precision'), 100, 'precision') : exits
+        const gradeExits: StrategyParams = grade === 'prime' ? toParams(defaultTuning('precision'), 100, 'precision') : { ...QUICK_EXITS, sizeUsd: 100 }
         const hold = Math.max(exits.maxHoldMin ?? 60, gradeExits.maxHoldMin ?? 60)
         const until = Math.min(now, sg.at + (hold + 2) * 60_000)
         const rows = await this.tradesBetween(sg.token, sg.at - 5_000, until).catch(() => null)
@@ -628,8 +654,9 @@ export class Bot implements EngineObserver {
           if (r.ret === null) this.liveSpeed.skip(sg.id)
           else this.liveSpeed.add({ signalId: sg.id, key: liveKey(sg.rule, sg.strategy), at: sg.at, ret: r.ret })
         }
-        // Probation signals aren't handed out: they don't count toward a grade's record.
-        if (!this.grades.has(sg.id) && !sg.probation) {
+        // Probation signals aren't handed out: they don't count toward a grade's record (a Core signal stored before
+        // 2026-10-01 may carry its rule's probation: it counts, since Core is past it now).
+        if (!this.grades.has(sg.id) && (!sg.probation || grade !== 'standard')) {
           const g = gradeExits === exits ? r : replayAtLiveSpeed(rows, { at: sg.at, price: sg.price, roundTripPct: sg.features?.roundTripPct ?? null, exits: gradeExits, now })
           if (g.final && g.ret !== null) this.grades.add(sg.id, grade, sg.at, g.ret)
           else if (g.final) this.grades.skip(sg.id)
@@ -642,12 +669,12 @@ export class Bot implements EngineObserver {
   gradeRecords(now = Date.now()): GradeRecordView[] {
     const exits: Record<SignalGrade, string> = {
       prime: 'Precision: all sold at +10%, stop −10%, 10 minutes at most',
-      core: 'its strategy\'s exits: half at +10%, then a break-even stop and a 25% trail',
-      standard: 'its strategy\'s exits: half at +10%, then a break-even stop and a 25% trail',
+      core: 'quick: all sold at +6%, stop −7%, out after 3 minutes unless up 2%, 10 minutes at most',
+      standard: 'quick: all sold at +6%, stop −7%, out after 3 minutes unless up 2%, 10 minutes at most',
     }
     const e = PRIME_RULES.early, m = PRIME_RULES.momentum
     const rules = (g: SignalGrade): string[] => g === 'standard' ? ['every other signal bots may trade (not on probation)'] : g === 'prime' ? [
-      `early or late crowd: within ${e.lateMaxAgeSec / 60} minutes of launch, ${e.minBuyers}+ buyers, none over ${e.maxTopBuyerPct}% of the buying, buys ${e.minBuySellRatio}× sells, up no more than ${Math.round((e.maxRunUp - 1) * 100)}%`,
+      `early crowd: 20-${e.maxAgeSec}s after launch (the late crowd was taken out after DEGEN), ${e.minBuyers}+ buyers, none over ${e.maxTopBuyerPct}% of the buying, buys ${e.minBuySellRatio}× sells, up no more than ${Math.round((e.maxRunUp - 1) * 100)}%`,
       `crowd momentum: ${m.minBuyers}+ buyers in 2 minutes, buys ${m.minBuySellRatio}× sells, up ${Math.round((m.minMove - 1) * 100)}-${Math.round((m.maxMove - 1) * 100)}%, no wallet over ${m.maxLaunchTopBuyerPct}% of the buying since launch, not an early-crowd coin`,
       `liquidity $${e.minLiquidityUsd.toLocaleString('en-US')}+, round trip ≤ ${e.maxRoundTripPct}%`,
     ] : (() => {
@@ -688,7 +715,35 @@ export class Bot implements EngineObserver {
   }
 
   /** Saves a position and tells the site (the live trader calls it after each trade). */
-  persist(p: Position) { this.fills(p, [null]) }
+  persist(p: Position) {
+    // A closed live trade adds what it made to the bot wallet's growth (what sizes its next trades).
+    if (p.mode === 'live' && p.status === 'closed' && !this.grown.has(p.id)) {
+      this.grown.add(p.id)
+      if (this.growth && (p.closedAt ?? 0) >= this.growth.at) {
+        this.growth.pnlUsd += p.pnlUsd ?? 0
+        void this.o.store.setSetting('live-growth', JSON.stringify(this.growth)).catch(e => log.warn('bot: growth not saved', { error: errMsg(e) }))
+      }
+    }
+    this.fills(p, [null])
+  }
+
+  /** Records the bot wallet's balance as where its growth starts: on going live, or once if it's live with none recorded. */
+  private startGrowth(reset: boolean, now = Date.now()) {
+    const bal = this.o.live?.balance?.usd
+    if (this.mode !== 'live' || bal === undefined || (this.growth && !reset)) return
+    this.growth = { at: now, startUsd: bal, pnlUsd: 0 }
+    void this.o.store.setSetting('live-growth', JSON.stringify(this.growth)).catch(e => log.warn('bot: growth not saved', { error: errMsg(e) }))
+  }
+
+  /** The bot wallet's next live trade: its base ($2), grown in step with what its live trades made since it went live. */
+  liveSize(): LiveGrowth & { pnlUsd: number; startUsd: number | null } {
+    const l = this.o.live
+    if (this.mode === 'live' && !this.growth) this.startGrowth(false)
+    const open = l ? l.live().filter(p => p.status === 'open').reduce((sum, p) => sum + p.sizeUsd * (p.remaining / (p.qty || 1)), 0) : 0
+    const worth = l?.balance ? l.balance.usd + open : null
+    const g = liveTradeSize({ startUsd: this.growth?.startUsd, pnlUsd: this.growth?.pnlUsd ?? 0, worthUsd: worth, baseUsd: l?.limits.minTradeUsd ?? LIVE_SIZE.baseUsd, maxUsd: l?.limits.maxTradeUsd })
+    return { ...g, pnlUsd: this.growth?.pnlUsd ?? 0, startUsd: this.growth?.startUsd ?? null }
+  }
 
   private fills(p: Position, fills: unknown[]) {
     if (fills.length === 0 && p.fills.length > 1) return
@@ -843,6 +898,7 @@ export class Bot implements EngineObserver {
       owner: this.o.owner ?? null,
       live: l ? {
         available: true, why: null, wallet: l.address, balanceUsd: l.balance?.usd ?? null, limits: l.limits,
+        sizing: (({ sizeUsd, growthPct, pnlUsd, startUsd }) => ({ tradeUsd: sizeUsd, growthPct, pnlUsd, startUsd }))(this.liveSize()),
         todayPnlUsd: l.todayPnlUsd(), open: l.live().filter(p => p.status === 'open').length, events: l.events.slice(0, 40),
       } : { available: false, why: 'No bot wallet is configured on the engine (BOT_PRIVATE_KEY).', wallet: null, balanceUsd: null, limits: null, todayPnlUsd: 0, open: 0, events: [] },
     }
