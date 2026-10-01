@@ -143,7 +143,7 @@ export interface Position {
   targetUsd?: number
   tuningVersion?: number
   /** The rule that fired the signal (momentum burst, snipe, dip rebound); on the engine's own positions since 2026-10-01. */
-  rule?: 'snipe' | 'second-leg' | 'momentum'
+  rule?: 'snipe' | 'second-leg' | 'momentum' | 'volume'
   /** What the coin looked like at entry (the learner reads these on losing trades). */
   features?: SignalFeatures
   /** The lowest market price while open (with `peak`: how far it went each way). */

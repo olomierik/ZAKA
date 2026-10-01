@@ -218,7 +218,7 @@ export interface SignalQuality {
 }
 
 /** Which rule fired a signal. Momentum bursts count buyers over two minutes, snipes since launch: they're learned apart. */
-export type SignalRule = 'snipe' | 'second-leg' | 'momentum'
+export type SignalRule = 'snipe' | 'second-leg' | 'momentum' | 'volume'
 
 /** What a bot can follow: the signals' own strategies, and Precision (Prime signals only, all sold at a small gain; engine/src/signals/grades.ts). */
 export type BotStrategy = 'snipe' | 'second-leg' | 'scalp' | 'precision'
@@ -638,7 +638,8 @@ export interface DollarPlanView {
   maxTradeUsd?: number
   /** Live bots on the plan are never stopped by losses: no daily loss limit, no pause, no switch back to paper. */
   neverStops?: boolean
-  exits: { strategy: 'snipe' | 'scalp' | 'second-leg'; stopLoss: number; maxHoldMin: number; text: string }[]
+  /** Each strategy's exits; a kind of signal with its own (a volume spike: `rule`, and its take-profit after costs) is listed apart. */
+  exits: { strategy: 'snipe' | 'scalp' | 'second-leg'; rule?: SignalRule; netGainPct?: number; stopLoss: number; maxHoldMin: number; text: string }[]
   kinds: {
     rule: SignalRule
     strategy: 'snipe' | 'scalp' | 'second-leg'

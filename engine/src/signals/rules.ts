@@ -91,6 +91,38 @@ export const RULES = {
     /** The same coin scalped again only after this long. */
     repeatMin: 30,
   },
+  /**
+   * A volume spike, a fast scalp (owner, 2026-10-01: "provide a signal after detecting a spike in trading volume; no
+   * coins with fewer than 30 holders; market cap above $6,000; liquidity above $5,000 USDC; take profit at 25%").
+   * The coin's last minute of trading against its usual rate over the 10 minutes before it.
+   *
+   * Searched on 3.5 days of real trades (183 coins, at live speed: buys 2.5s after the signal, sales 2s after their
+   * trigger, 1.2% a side): 28 trades (about 8 a day), 61% won, +7.0% a trade, +7.0% and +6.9% in the two halves of the
+   * period, the worst −26%. Its 10-minute floor matters: a "spike" in a coin's first minutes is its launch wave (a
+   * launcher's own wallets buying ~$7,500 at minute 2), which took +23% four times in five and rugged −75% to −91% the
+   * fifth, about break-even, and lost on the day's fresh coins. Sold at +25% (bot/dollarPlan.ts VOLUME_EXITS): +10% and
+   * +15% made less on the same signals.
+   */
+  volume: {
+    /** Old enough that its usual rate means something (the launch wave isn't a spike). */
+    minAgeSec: 600,
+    /** The last minute… */
+    windowSec: 60,
+    /** …against the 10 minutes before it. */
+    baselineMin: 10,
+    /** At least this many times its usual volume a minute, and at least this much. */
+    minSpike: 3,
+    minUsd: 200,
+    /** Mostly buying, and the price not lower than at the start of the minute. */
+    minBuyShare: 0.7,
+    minMove: 1,
+    /** The owner's floors. */
+    minHolders: 30,
+    minMarketCapUsd: 6_000,
+    minLiquidityUsd: 5_000,
+    /** The same coin again only after this long. */
+    repeatMin: 30,
+  },
   /** A dip rebound: a coin that ran, pulled back and is being bought again. */
   secondLeg: {
     maxAgeHours: 48,
@@ -172,6 +204,50 @@ export function scalpReady(w: Window, ageSec: number, liquidityUsd: number | nul
       last.buyUsd < last.sellUsd ? `sold more than bought in the last ${r.confirmSec}s: the burst is over` : `${last.buyers} buyer${last.buyers === 1 ? '' : 's'} in the last ${r.confirmSec}s (need ${r.minRecentBuyers})`),
   ].every(Boolean)
   return { ok, reasons, failed }
+}
+
+/** What the volume-spike rule reads about a coin now. */
+export interface VolumeInput {
+  ageSec: number
+  /** The last minute's trades (windowOf the last `windowSec`). */
+  last: Window
+  /** Its usual trading volume a minute: the 10 minutes before the last one. */
+  baselinePerMin: number
+  holders: number
+  marketCapUsd: number | null
+  liquidityUsd: number | null
+}
+
+/** A volume spike: the last minute's trading 3× its usual, mostly buying, on a coin with 30+ holders, $6k+ cap, $5k+ liquidity. */
+export function volumeReady(o: VolumeInput, r = RULES.volume): RuleResult & { spike: number } {
+  const reasons: string[] = []
+  const failed: string[] = []
+  const need = (id: string, cond: boolean, pass: string, fail: string) => { reasons.push(cond ? pass : `✗ ${fail}`); if (!cond) failed.push(id); return cond }
+  const vol = o.last.buyUsd + o.last.sellUsd
+  const spike = vol / Math.max(o.baselinePerMin, 1e-9)
+  const buyShare = vol > 0 ? o.last.buyUsd / vol : 0
+  const move = o.last.firstPrice && o.last.lastPrice ? o.last.lastPrice / o.last.firstPrice : null
+  const usd = (x: number) => `$${Math.round(x).toLocaleString('en-US')}`
+  const times = (x: number) => (x >= 100 ? '100×+' : `${x.toFixed(1)}×`)
+  const ok = [
+    need('age', o.ageSec >= r.minAgeSec, `${Math.round(o.ageSec / 60)} min old`, `${Math.round(o.ageSec / 60)} min old (spikes from ${r.minAgeSec / 60} min: earlier is the launch wave)`),
+    need('volume', vol >= r.minUsd, `${usd(vol)} traded in the last minute`, `${usd(vol)} traded in the last minute (need ${usd(r.minUsd)})`),
+    need('spike', spike >= r.minSpike, `${times(spike)} its usual ${usd(o.baselinePerMin)} a minute`, `${times(spike)} its usual ${usd(o.baselinePerMin)} a minute (need ${r.minSpike}×)`),
+    need('buys', buyShare >= r.minBuyShare, `${Math.round(buyShare * 100)}% of it buying`, `only ${Math.round(buyShare * 100)}% of it buying (need ${Math.round(r.minBuyShare * 100)}%)`),
+    need('move', move !== null && move >= r.minMove, move !== null ? `price ${move >= 1 ? '+' : ''}${((move - 1) * 100).toFixed(1)}% in the minute` : '', move === null ? 'no price this minute' : `price ${((move - 1) * 100).toFixed(1)}% in the minute: sold into`),
+    need('holders', o.holders >= r.minHolders, `${o.holders} holders`, `${o.holders} holders (need ${r.minHolders})`),
+    need('mcap', o.marketCapUsd !== null && o.marketCapUsd >= r.minMarketCapUsd, `market cap ${usd(o.marketCapUsd ?? 0)}`, `market cap ${usd(o.marketCapUsd ?? 0)} (need ${usd(r.minMarketCapUsd)})`),
+    need('liquidity', o.liquidityUsd !== null && o.liquidityUsd >= r.minLiquidityUsd, `${usd(o.liquidityUsd ?? 0)} liquidity`, `liquidity ${usd(o.liquidityUsd ?? 0)} (need ${usd(r.minLiquidityUsd)})`),
+  ].every(Boolean)
+  return { ok, reasons, failed, spike }
+}
+
+/** A coin's usual trading volume a minute: the `minutes` complete minutes before the last two (the spike's own minute and the one it reaches into). */
+export function baselinePerMin(p: PricePath, now: number, minutes = RULES.volume.baselineMin): number {
+  const nowMin = Math.floor(now / 60_000)
+  let usd = 0
+  for (const x of p.minutes) if (x.m >= nowMin - 1 - minutes && x.m < nowMin - 1) usd += x.bv + x.sv
+  return usd / minutes
 }
 
 /** One minute of a coin's trading. */

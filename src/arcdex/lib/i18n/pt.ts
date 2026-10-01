@@ -1975,5 +1975,10 @@ const d: Record<string, string> = {
   "visitors today": "visitantes hoje",
   "visitors in all": "visitantes no total",
   "Site traffic": "Tráfego do site",
+  "Volume spikes": "Picos de volume",
+  "Fast scalps: volume spikes": "Scalps rápidos: picos de volume",
+  "Volume spike": "Pico de volume",
+  "All of it at +{p}% on the price (+{g}% after costs); out at {sl}, when the creator sells, or after {m} minutes": "Tudo a +{p}% no preço (+{g}% após custos); saída a {sl}, quando o criador vende ou após {m} minutos",
+  "Volume spikes too: a coin 10+ minutes old whose last minute traded 3× its usual, mostly buying, with {h}+ holders, a market cap over {mc} and liquidity over {liq}. Sold at +25%, out at −10% or after 20 minutes.": "Também picos de volume: uma moeda com mais de 10 minutos cujo último minuto negociou 3× o habitual, sobretudo compras, com {h}+ holders, market cap acima de {mc} e liquidez acima de {liq}. Vendido a +25%, saída a −10% ou após 20 minutos.",
 }
 export default d

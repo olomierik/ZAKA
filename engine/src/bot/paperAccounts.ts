@@ -52,7 +52,7 @@ import { QUALITY } from '../signals/quality'
 import { CrowdBook, crowdCap, crowdImpact, laddered } from './crowd'
 import { Tiers, TIERS } from './tiers'
 import { admits, defaultTuning, learn, migrateTuning, relax, toParams, upgradeExits, type Tuning } from './learner'
-import { DOLLAR_PLAN, defaultDollarTuning, dollarParams, dollarTradeSize, isDollarStrategy, isDollarTrade, onThisPlan, planBlocks, PROVE_FIRST, QUICK_LEARN, type DollarStrategy } from './dollarPlan'
+import { DOLLAR_PLAN, defaultDollarTuning, dollarParams, dollarTradeSize, VOLUME_EXITS, volumeParams, isDollarStrategy, isDollarTrade, onThisPlan, planBlocks, PROVE_FIRST, QUICK_LEARN, type DollarStrategy } from './dollarPlan'
 import type { LiveTrader } from './liveTrader'
 import type { RugAlarm } from './rugGuard'
 import { CAPITAL_SIZING, GRADE_SHARE, liveTradeSize, maxTradeFor, SIZE_LIMITS, sizeForLive, sizeFromCapital, TARGETS, type LiveGrowth } from './sizing'
@@ -716,7 +716,9 @@ export class PaperAccounts {
       const t: Tuning = learned ?? (a.mode === 'live' ? defaultTuning(st) : a.tuning[st])
       // Live: Prime with Precision (all at +10%), anything else with the quick exits (all at +6%; trading/paper.ts QUICK_EXITS).
       const quick = a.mode === 'live' && st !== 'precision'
-      const takeProfit = pick ? boardParams(pick, 1).tp1Multiple : quick ? QUICK_EXITS.tp1Multiple : t.takeProfit
+      // A volume spike is traded with its own exits (all of it at +25%; bot/dollarPlan.ts VOLUME_EXITS), paper and live.
+      const volume = sig.rule === 'volume' && !pick
+      const takeProfit = pick ? boardParams(pick, 1).tp1Multiple : volume ? 1 + VOLUME_EXITS.netGain : quick ? QUICK_EXITS.tp1Multiple : t.takeProfit
       if (sig.probation) { skip('probation', `not traded: ${sig.probation.why}`); continue }
       // The bottom 20% of signals by quality go to paper bots only (signals/quality.ts): still measured, no real money.
       if (a.mode === 'live' && sig.quality?.grade === 'paper') { skip('paper-grade', `not traded live: in the lowest ${Math.round((1 - QUALITY.liveShare) * 100)}% of recent signals by quality (score ${sig.quality.score}); paper bots take it`); continue }
@@ -728,9 +730,10 @@ export class PaperAccounts {
       if (balanceUsd === null) { skip('live-unavailable', 'its wallet\'s balance couldn\'t be read yet'); continue }
       const sized = a.mode === 'live'
         ? sizeForLive({ ...this.liveGrowth(a, balanceUsd), takeProfit, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd })
-        : sizeFromCapital({ capitalUsd: balanceUsd, grade, takeProfit: t.takeProfit, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd })
+        : sizeFromCapital({ capitalUsd: balanceUsd, grade, takeProfit: volume ? takeProfit : t.takeProfit, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd })
       if (!('sizeUsd' in sized)) { skip(sized.key, sized.why); continue }
-      const params: StrategyParams = pick ? boardParams(pick, sized.sizeUsd) : quick ? { ...QUICK_EXITS, sizeUsd: sized.sizeUsd } : toParams(t, sized.sizeUsd, st)
+      const vc = costPerSide(sig.roundTripPct, sized.sizeUsd, sig.liquidityUsd)
+      const params: StrategyParams = pick ? boardParams(pick, sized.sizeUsd) : volume ? volumeParams({ costIn: a.mode === 'live' ? 0 : vc, costOut: vc, sizeUsd: sized.sizeUsd }) : quick ? { ...QUICK_EXITS, sizeUsd: sized.sizeUsd } : toParams(t, sized.sizeUsd, st)
       if (a.mode === 'live') {
         if (!this.trader(a) || !ctx) { skip('live-unavailable', 'live trading is unavailable right now'); continue }
         // Seated with the rest of the live crowd below.
@@ -742,7 +745,7 @@ export class PaperAccounts {
       const waiting = this.pendingOf(a.id).map(e => ({ status: 'open', token: e.sig.token, strategy: e.strategy, openedAt: e.at, mode: 'paper' }) as Position)
       const allowed = canOpen([...a.positions.filter(p => !isLive(p)), ...waiting], sig.token, now, { ...riskFor(a), ...(this.neverStops(false) ? { dailyLossUsd: Infinity } : {}) }, st)
       if (!allowed.ok) { skip(allowed.key ?? 'max-open', allowed.why); continue }
-      const entry: PendingEntry = { accountId: a.id, sig, strategy: st, grade, sizeUsd: sized.sizeUsd, profitUsd: sized.profitUsd, share: sized.share, params, tuningVersion: t.version, takeProfit: t.takeProfit, stopLoss: t.stopLoss, balanceUsd, at: now, due: now + (this.speed?.entryMs ?? 0) }
+      const entry: PendingEntry = { accountId: a.id, sig, strategy: st, grade, sizeUsd: sized.sizeUsd, profitUsd: sized.profitUsd, share: sized.share, params, tuningVersion: t.version, takeProfit: volume ? params.tp1Multiple : t.takeProfit, stopLoss: volume ? params.stopLoss : t.stopLoss, balanceUsd, at: now, due: now + (this.speed?.entryMs ?? 0) }
       a.cash -= sized.sizeUsd
       a.lastBuyAt[st] = now
       a.filterSkips[st] = 0
@@ -793,7 +796,7 @@ export class PaperAccounts {
     // Never paused after losing trades on the plan (DOLLAR_PLAN.neverStops).
     if (sig.probation) { skip('probation', `not traded: ${sig.probation.why}`); return null }
     // A crowded coin, or one wallet with a big share of the buying: the plan's own limits, whatever the bot learned.
-    const blocked = planBlocks(sig.features)
+    const blocked = planBlocks(sig.features, sig.rule)
     if (blocked) { skip(blocked.key, `not traded live: ${blocked.why}`); return null }
     // A kind of coin that keeps losing (bot/patterns.ts), or a kind not yet proven: the engine says why.
     const proveFirst = !!sig.rule && PROVE_FIRST.rules.includes(sig.rule)
@@ -809,7 +812,7 @@ export class PaperAccounts {
     // 20% of what the wallet is worth, at least $2: it grows with the capital (the trader reads the balance again first).
     const want = dollarTradeSize(worth)
     // The sale's cost decides how far the price must go for +7.5% after costs: about +10% at a 2.4% round trip.
-    const params = dollarParams(st, { costIn: 0, costOut: costPerSide(sig.roundTripPct, want, sig.liquidityUsd), sizeUsd: want })
+    const params = dollarParams(st, { costIn: 0, costOut: costPerSide(sig.roundTripPct, want, sig.liquidityUsd), sizeUsd: want }, sig.rule)
     const sized = sizeForLive({ sizeUsd: want, growthPct: 0, takeProfit: params.tp1Multiple, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd })
     if (!('sizeUsd' in sized)) { skip(sized.key, sized.why); return null }
     return { a, strategy: st, t, sizeUsd: sized.sizeUsd, profitUsd: Math.round(sized.sizeUsd * DOLLAR_PLAN.netGain * 100) / 100, params: { ...params, sizeUsd: sized.sizeUsd }, priority: access.priority, plan: 'dollar' }

@@ -52,8 +52,8 @@ export type Tuning = StrategyTuning & { prev?: StrategyTuning | null }
 export const OPEN_FILTERS: BotFilters = { minLiquidityUsd: 1_000, minBuyers: 0, minBuySellRatio: 0, maxRunUp: 100, minScore: 0, maxTopBuyerPct: 100, avoidFlags: [] }
 
 /** The kinds of signal each strategy trades. */
-export const RULES_OF: Record<Strategy, SignalRule[]> = { scalp: ['momentum', 'snipe'], snipe: ['snipe'], 'second-leg': ['second-leg'], precision: ['snipe', 'momentum'] }
-export const RULE_LABEL: Record<SignalRule, string> = { momentum: 'momentum bursts', snipe: 'snipes', 'second-leg': 'dip rebounds' }
+export const RULES_OF: Record<Strategy, SignalRule[]> = { scalp: ['momentum', 'snipe', 'volume'], snipe: ['snipe'], 'second-leg': ['second-leg'], precision: ['snipe', 'momentum'] }
+export const RULE_LABEL: Record<SignalRule, string> = { momentum: 'momentum bursts', snipe: 'snipes', 'second-leg': 'dip rebounds', volume: 'volume spikes' }
 
 const EXITS: Record<Strategy, Pick<StrategyTuning, 'takeProfit' | 'stopLoss' | 'timeStopMin' | 'maxHoldMin'>> = {
   scalp: { takeProfit: 1.1, stopLoss: 0.9, timeStopMin: 3, maxHoldMin: 60 },

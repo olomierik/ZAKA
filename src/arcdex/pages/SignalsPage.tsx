@@ -413,6 +413,7 @@ const BOARD_STATUS: Record<StrategyBoardEntry['status'], { label: string; color:
 const DOLLAR_KIND: Record<string, string> = {
   'snipe/snipe': N_('Snipes'),
   'snipe/scalp': N_('Fast scalps: snipes on risky coins'),
+  'volume/scalp': N_('Fast scalps: volume spikes'),
   'momentum/scalp': N_('Fast scalps: momentum bursts'),
   'second-leg/second-leg': N_('Comebacks: dip rebounds'),
 }
@@ -428,10 +429,14 @@ function DollarPlanCard({ plan }: { plan: DollarPlanView }) {
   return (
     <Section title={T('Live plan: {p}% of the wallet a trade, quick take-profits', { p: plan.walletSharePct ?? 20 })}>
       <div className="at-step-sub" style={{ margin: '2px 0 8px' }}>{T('Live bots take every snipe on a coin with {b} buyers or fewer in and no wallet over {t}% of the buying. Each trade is {p}% of what the bot\'s wallet is worth (at least {min}, at most {max}), so it grows with the capital: all of it sold at +{g}% after costs (about +10% on the price), out at −7%, when the creator sells, or after {m} minutes. Losses never stop a live bot: no daily loss limit, no pause, no switch back to paper. Momentum bursts and comebacks are replayed and measured first, and traded once their replays make money. Each bot learns its own entry filters from its losing trades and the team\'s, but no lesson may turn away more than half of a kind\'s signals. Most trades are small wins; a rug, which no stop catches at live speed, can cost most of its trade.', { p: plan.walletSharePct ?? 20, min: usd(plan.minTradeUsd ?? 2, 0), max: usd(plan.maxTradeUsd ?? 50, 0), b: plan.maxBuyers ?? 80, t: plan.maxTopBuyerPct ?? 15, g: plan.netGainPct ?? 7.5, m: plan.exits[0]?.maxHoldMin ?? 3 })}</div>
+      {/* Volume spikes (engine/src/signals/rules.ts RULES.volume): 30+ holders, $6,000+ market cap, $5,000+ liquidity. */}
+      {plan.exits.some(e => e.rule === 'volume') && <div className="at-step-sub" style={{ margin: '0 0 8px' }}>{T('Volume spikes too: a coin 10+ minutes old whose last minute traded 3× its usual, mostly buying, with {h}+ holders, a market cap over {mc} and liquidity over {liq}. Sold at +25%, out at −10% or after 20 minutes.', { h: 30, mc: '$6,000', liq: '$5,000' })}</div>}
       {plan.exits.map(e => (
-        <div key={e.strategy} style={{ fontSize: '0.74rem', margin: '2px 0', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Pill color={STRATEGY_COLOR[e.strategy]}>{T(STRATEGY[e.strategy])}</Pill>
-          <span style={{ color: 'var(--text-muted)' }}>{T('All of it at +{g}% after costs; out at {sl}, when the creator sells, or after {m} minutes', { g: plan.netGainPct ?? 7.5, sl: pctMove(e.stopLoss), m: e.maxHoldMin })}</span>
+        <div key={`${e.strategy}/${e.rule ?? ''}`} style={{ fontSize: '0.74rem', margin: '2px 0', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Pill color={STRATEGY_COLOR[e.strategy]}>{T(e.rule ? DOLLAR_KIND[`${e.rule}/${e.strategy}`] ?? STRATEGY[e.strategy] : STRATEGY[e.strategy])}</Pill>
+          <span style={{ color: 'var(--text-muted)' }}>{e.rule === 'volume'
+            ? T('All of it at +{p}% on the price (+{g}% after costs); out at {sl}, when the creator sells, or after {m} minutes', { p: 25, g: e.netGainPct ?? 22.5, sl: pctMove(e.stopLoss), m: e.maxHoldMin })
+            : T('All of it at +{g}% after costs; out at {sl}, when the creator sells, or after {m} minutes', { g: plan.netGainPct ?? 7.5, sl: pctMove(e.stopLoss), m: e.maxHoldMin })}</span>
         </div>
       ))}
       {plan.kinds.map(k => (
@@ -1005,7 +1010,7 @@ function TeamCard({ team, acct, onStrategy }: { team: TeamView; acct: PaperAccou
   )
 }
 
-const KIND_NAME: Record<string, string> = { 'snipe/snipe': N_('Clean-coin snipes'), 'snipe/scalp': N_('Snipes on risky coins'), 'momentum/scalp': N_('Momentum bursts'), 'second-leg/second-leg': N_('Dip rebounds') }
+const KIND_NAME: Record<string, string> = { 'snipe/snipe': N_('Clean-coin snipes'), 'snipe/scalp': N_('Snipes on risky coins'), 'volume/scalp': N_('Volume spikes'), 'momentum/scalp': N_('Momentum bursts'), 'second-leg/second-leg': N_('Dip rebounds') }
 const kindName = (k: string) => T(KIND_NAME[k] ?? k)
 
 /**
@@ -1394,7 +1399,7 @@ const pctMove = (m: number) => `${m >= 1 ? '+' : '−'}${Math.abs(Math.round((m 
 
 /** One strategy's settings: its size now, exits, target, what it learned to filter, and its record. */
 /** The kinds of signal a bot learns filters for apart (since 2026-09-30). */
-const RULE_NAME: Record<SignalRule, string> = { momentum: N_('Momentum bursts'), snipe: N_('Snipes'), 'second-leg': N_('Dip rebounds') }
+const RULE_NAME: Record<SignalRule, string> = { momentum: N_('Momentum bursts'), snipe: N_('Snipes'), 'second-leg': N_('Dip rebounds'), volume: N_('Volume spikes') }
 
 /** A set of learned entry filters, in words. */
 function filterWords(f: BotFilters): string[] {
@@ -1749,8 +1754,9 @@ function BotResults({ stats, positions, status, onStatus, navigate }: { stats: B
       {book === 'paper' && stats?.byRule && (
         <div className="at-byrule">
           <span className="at-byrule-h">{T('By signal rule')}</span>
-          {([['momentum', T('Momentum burst')], ['snipe', T('Snipe')], ['second-leg', T('Dip rebound')]] as const).map(([k, l]) => {
+          {([['momentum', T('Momentum burst')], ['snipe', T('Snipe')], ['volume', T('Volume spike')], ['second-leg', T('Dip rebound')]] as const).map(([k, l]) => {
             const r = stats.byRule![k]
+            if (!r) return null // an engine from before volume spikes
             return (
               <span key={k}>
                 <b>{l}</b> {r.closed ? `${T('{n} closed', { n: r.closed })} · ${r.winRate === null ? '—' : `${Math.round(r.winRate * 100)}%`} ${T('won')} · ` : `${T('none closed yet')} `}

@@ -101,8 +101,24 @@ export function dollarTakeProfit(o: { netGain?: number; costIn: number; costOut:
   return Math.round((1 + net) * ((1 + o.costIn) / (1 - Math.min(0.5, o.costOut))) * 10_000) / 10_000
 }
 
-/** A trade's exits on the plan: all of it at +7.5% after costs, −7%, out when the creator sells, 3 minutes at most. */
-export function dollarParams(s: DollarStrategy, o: { costIn: number; costOut: number; sizeUsd?: number }): StrategyParams {
+/**
+ * A volume spike's exits (owner, 2026-10-01: "take 25% of profit"): all of it at +25% on the price (+22.5% after costs),
+ * out at −10%, when the creator sells, or after 20 minutes. Its own, whatever kind of trade carries it (signals/rules.ts
+ * RULES.volume: +25% made more than +10% or +15% on the same signals).
+ */
+export const VOLUME_EXITS = { netGain: 0.225, stopLoss: 0.9, maxHoldMin: 20 }
+
+/** A volume spike's trade: all of it at +25% on the price, −10%, out when the creator sells, 20 minutes at most. */
+export function volumeParams(o: { costIn: number; costOut: number; sizeUsd: number }): StrategyParams {
+  return {
+    sizeUsd: o.sizeUsd, stopLoss: VOLUME_EXITS.stopLoss, tp1Multiple: dollarTakeProfit({ netGain: VOLUME_EXITS.netGain, costIn: o.costIn, costOut: o.costOut }), tp1SellPct: 1, trailFromPeak: 0.25,
+    timeStopMin: VOLUME_EXITS.maxHoldMin, timeStopMinGain: 0, maxHoldMin: VOLUME_EXITS.maxHoldMin, exitOnCreatorSell: true,
+  }
+}
+
+/** A trade's exits on the plan: all of it at +7.5% after costs, −7%, out when the creator sells, 3 minutes at most (a volume spike: its own). */
+export function dollarParams(s: DollarStrategy, o: { costIn: number; costOut: number; sizeUsd?: number }, rule?: SignalRule | null): StrategyParams {
+  if (rule === 'volume') return volumeParams({ ...o, sizeUsd: o.sizeUsd ?? DOLLAR_PLAN.sizeUsd })
   const e = DOLLAR_PLAN.exits[s]
   return {
     sizeUsd: o.sizeUsd ?? DOLLAR_PLAN.sizeUsd,
@@ -118,8 +134,13 @@ export function dollarParams(s: DollarStrategy, o: { costIn: number; costOut: nu
   }
 }
 
-/** Why live bots don't trade a signal on the plan whatever they learned, or null. A number the signal lacks isn't checked. */
-export function planBlocks(f: SignalFeatures | undefined): { key: 'crowded' | 'top-buyer'; label: string; why: string } | null {
+/**
+ * Why live bots don't trade a signal on the plan whatever they learned, or null. A number the signal lacks isn't checked.
+ * A volume spike has its own floors (signals/rules.ts RULES.volume: 30+ holders, $6k+ cap, $5k+ liquidity) and is
+ * mostly on coins with a big crowd already, so the snipes' limits don't apply to it.
+ */
+export function planBlocks(f: SignalFeatures | undefined, rule?: SignalRule | null): { key: 'crowded' | 'top-buyer'; label: string; why: string } | null {
+  if (rule === 'volume') return null
   if (f?.totalBuyers != null && f.totalBuyers > DOLLAR_PLAN.maxBuyers) {
     const label = `${f.totalBuyers} buyers already in`
     return { key: 'crowded', label, why: `${label} (live bots buy coins with ${DOLLAR_PLAN.maxBuyers} or fewer: later, the crowd has bought)` }

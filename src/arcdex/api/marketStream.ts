@@ -138,7 +138,7 @@ export interface BotStatsSet { all: BotStats; snipe: BotStats; secondLeg: BotSta
 export interface BotStatsResponse extends BotStatsSet {
   mode: 'paper' | 'live' | 'off'; live?: BotStatsSet; watching: number
   /** The engine's paper results by the rule that fired each signal (engines since 2026-10-01). */
-  byRule?: { momentum: BotStats; snipe: BotStats; 'second-leg': BotStats }
+  byRule?: { momentum: BotStats; snipe: BotStats; 'second-leg': BotStats; volume?: BotStats }
   /** Each kind of signal (`rule/strategy`) replayed on real trades at live speed; live bots trade only those `ok` (engine/src/signals/liveSpeed.ts). */
   liveSpeed?: LiveSpeedRow[]
   /** Where signals go (the platform's setting): live bots every signal not on probation (`all`) or only the proven kinds; paper bots or not. */

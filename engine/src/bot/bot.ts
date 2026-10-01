@@ -32,7 +32,7 @@ import type { LaunchInfo, ServerMessage, Trade } from '../../../api/_marketProto
 import type { Rpc } from '../chain/http'
 import type { PoolInfo, PoolRegistry } from '../dex/pools'
 import { clustersOf, type Clusters } from '../intel/clusters'
-import { computeFlow, crowdFeatures, RecentTapes, tapeTrade, Tapes, windowOf, type Flow, type TapeTrade, type Window } from '../intel/flow'
+import { computeFlow, crowdFeatures, RecentTapes, tapeHolders, tapeTrade, Tapes, windowOf, type Flow, type TapeTrade, type Window } from '../intel/flow'
 import { probeHoneypot, type HoneypotResult } from '../intel/honeypot'
 import { holdersOf, type Holders } from '../intel/holders'
 import { assess, staticFacts, type SafetyReport, type ScanInput, type StaticFacts } from '../intel/scanner'
@@ -40,14 +40,14 @@ import { knownLaunchpad, launchpadGate, type LaunchpadOnly } from '../intel/laun
 import { log, errMsg } from '../log'
 import type { EngineObserver, MarketEngine } from '../market/engine'
 import { metrics } from '../metrics'
-import { PricePath, RULES, scalpReady, secondLegReady, snipeReady, tooCostly } from '../signals/rules'
+import { baselinePerMin, PricePath, RULES, scalpReady, secondLegReady, snipeReady, tooCostly, volumeReady } from '../signals/rules'
 import type { BotStatus, DollarPlanView, GradeRecordView, LiveRouting, ScanRow, SignalFeatures, SignalGrade, SignalQuality, SignalRule, WatchView } from '../../../api/_marketProtocol'
 import { GRADE_RULES, GRADES, GradeBook, gradeOf, isEarlyCrowd, liveGrade, PRIME_RULES } from '../signals/grades'
 import { crowdCap } from './crowd'
 import { QUALITY, QualityRank, qualityScore, type RuleRecord } from '../signals/quality'
 import { LIVE_GATE, liveKey, LiveSpeedBook, replayAtLiveSpeed, type LiveSpeedRecord, type Replay } from '../signals/liveSpeed'
 import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, QUICK_EXITS, RISK, STRATEGIES, stats, type ExitReason, type Position, type Strategy, type StrategyParams } from '../trading/paper'
-import { DOLLAR_PLAN, DOLLAR_TARGET_USD, dollarParams, dollarPlanText, isDollarStrategy, isDollarTrade, planBlocks, PROVE_FIRST, type DollarStrategy } from './dollarPlan'
+import { DOLLAR_PLAN, DOLLAR_TARGET_USD, dollarParams, dollarPlanText, isDollarStrategy, isDollarTrade, planBlocks, PROVE_FIRST, VOLUME_EXITS, volumeParams, type DollarStrategy } from './dollarPlan'
 import { PatternBook, patternWhy, type Outcome } from './patterns'
 import type { HistoryStore } from '../store/history'
 import { defaultTuning, toParams } from './learner'
@@ -236,7 +236,7 @@ export class Bot implements EngineObserver {
     const ruleOf = new Map(this.recentSignals.map(s => [s.id, s.rule]))
     for (const p of this.positions) if (p.mode !== 'live') { p.rule ??= ruleOf.get(p.signalId); this.o.accounts?.observe(p) }
     // A scalp from a snipe on a risky coin counts as that coin's snipe; a momentum scalp as its scalp.
-    for (const s of this.recentSignals) this.fired.set(`${s.rule === 'momentum' ? 'scalp' : s.strategy === 'scalp' ? 'snipe' : s.strategy}:${s.token}`, s.at)
+    for (const s of this.recentSignals) this.fired.set(`${s.rule === 'momentum' ? 'scalp' : s.rule === 'volume' ? 'volume' : s.strategy === 'scalp' ? 'snipe' : s.strategy}:${s.token}`, s.at)
     // The owner's last choice survives a restart (live only while a bot wallet is configured).
     const saved = await this.o.store.getSetting('mode').catch(() => null)
     if (this.mode !== 'off' && (saved === 'paper' || (saved === 'live' && this.o.live))) this.mode = saved
@@ -488,6 +488,22 @@ export class Bot implements EngineObserver {
         legOutcome = out
       } else { legWaiting = failing(rule.reasons); legKeys = rule.failed.map(f => `leg:${f}`) }
     }
+    // Volume spike, a fast scalp (owner, 2026-10-01): the last minute's trading 3× the coin's usual, mostly buying, on a
+    // coin 10+ minutes old with 30+ holders, $6,000+ market cap and $5,000+ liquidity. Checked before the momentum rule,
+    // which live bots don't trade until it proves itself; again after 30 minutes, not right after another signal here.
+    let volumeWaiting: string[] = []
+    const lastVolume = Math.max(this.fired.get(`volume:${token}`) ?? 0, this.fired.get(`scalp:${token}`) ?? 0, this.fired.get(`snipe:${token}`) ?? 0, lastLeg)
+    if (!snipeWaiting && ageSec >= RULES.volume.minAgeSec && now - lastVolume >= RULES.volume.repeatMin * 60_000) {
+      const last = windowOf(this.recent.window(token, now, RULES.volume.windowSec * 1_000))
+      const rule = volumeReady({ ageSec, last, baselinePerMin: path ? baselinePerMin(path, now) : 0, holders: tapeHolders(this.tapes.get(token)), marketCapUsd: base.marketCapUsd, liquidityUsd: st.liquidityUsd })
+      if (rule.ok) {
+        const flow = computeFlow(this.tapes.get(token), { launchBlock: meta.blockNumber, creator: meta.creator, supply: st.supply })
+        this.scan.record(base, await this.tryFire('volume', token, rule.reasons, ageSec, { ...windowFeatures(last), launchTopBuyerPct: flow.organic.topBuyerPct }))
+        return
+      }
+      volumeWaiting = failing(rule.reasons).slice(0, 2).map(r => r.replace(/^✗ /, '✗ volume: '))
+      keys.push(...rule.failed.map(f => `volume:${f}`))
+    }
     // Fast scalp: a burst of buying in the last 2 minutes, on any coin; again after 30 minutes, not right after its snipe or rebound.
     let scalpWaiting: string[] = []
     const lastScalp = Math.max(this.fired.get(`scalp:${token}`) ?? 0, this.fired.get(`snipe:${token}`) ?? 0, lastLeg)
@@ -506,12 +522,12 @@ export class Bot implements EngineObserver {
     if (snipeWaiting) { this.scan.record(base, { status: 'watching', stage: 'snipe', reasons: [...snipeWaiting, ...scalpWaiting], keys }); return }
     if (legOutcome) this.scan.record(base, legOutcome)
     else if (legChecked) this.scan.record(base, { status: 'watching', stage: 'second-leg', reasons: ['waiting for a momentum scalp or a dip rebound', ...scalpWaiting, ...legWaiting], keys: [...keys, ...legKeys] })
-    else if (scalpWaiting.length) this.scan.record(base, { status: 'watching', stage: 'scalp', reasons: scalpWaiting, keys })
+    else if (scalpWaiting.length || volumeWaiting.length) this.scan.record(base, { status: 'watching', stage: 'scalp', reasons: [...scalpWaiting, ...volumeWaiting], keys })
   }
 
   /** A coin that met a rule: the rug guard and its safety scan decide. Returns what the scanner shows. */
-  private async tryFire(rule: 'snipe' | 'second-leg' | 'momentum', token: string, reasons: string[], ageSec: number, feats: RuleFeatures): Promise<Pick<ScanRow, 'status' | 'stage' | 'reasons' | 'strategy' | 'keys'>> {
-    const stage = rule === 'momentum' ? 'scalp' as const : rule
+  private async tryFire(rule: 'snipe' | 'second-leg' | 'momentum' | 'volume', token: string, reasons: string[], ageSec: number, feats: RuleFeatures): Promise<Pick<ScanRow, 'status' | 'stage' | 'reasons' | 'strategy' | 'keys'>> {
+    const stage = rule === 'momentum' || rule === 'volume' ? 'scalp' as const : rule
     const alarm = this.rug.recentAlarm(token)
     if (alarm) return { status: 'rejected', stage: 'safety', reasons: [`✗ rug guard ${Math.max(1, Math.round((Date.now() - alarm.at) / 60_000))} min ago: ${alarm.text}`], keys: ['safety:rug-guard'] }
     // Its code, before the deep scan: a custom contract from a launchpad whose standard code is known isn't one of its coins.
@@ -530,7 +546,7 @@ export class Bot implements EngineObserver {
     // already make it Prime (2026-10-01): it's traded with Precision either way, and its take-profit
     // came 10-48s after the signal, so waiting for the scan only costs the move.
     const primeNow = gradeOf({ ageSec, liquidityUsd: this.o.engine.tokens.get(token)?.liquidityUsd ?? null, marketCapUsd: null, buyers: feats.buyers, buySellRatio: feats.buySellRatio, runUp: feats.runUp, topBuyerPct: feats.topBuyerPct, score: r?.score ?? 0, flags: [], roundTripPct: r?.honeypot?.roundTripLossPct ?? null }).grade === 'prime'
-    if (r?.verdict === 'risky' && rule !== 'momentum' && !primeNow) {
+    if (r?.verdict === 'risky' && rule !== 'momentum' && rule !== 'volume' && !primeNow) {
       const unknown = r.checks.filter(c => c.risk && c.ok === null)
       if (unknown.length && !r.checks.some(c => c.risk && c.ok === false)) {
         const key = `${rule}:${token}`, now = Date.now()
@@ -545,7 +561,7 @@ export class Bot implements EngineObserver {
       }
     }
     // A snipe on a coin that failed only a risk check is a scalp: small, sold fast. A momentum burst is a scalp either way.
-    const strategy: Strategy | null = r?.verdict === 'pass' ? (rule === 'momentum' ? 'scalp' : rule) : r?.verdict === 'risky' && rule !== 'second-leg' ? 'scalp' : null
+    const strategy: Strategy | null = r?.verdict === 'pass' ? (rule === 'momentum' || rule === 'volume' ? 'scalp' : rule) : r?.verdict === 'risky' && rule !== 'second-leg' ? 'scalp' : null
     if (!r || !strategy) {
       const outcome = (): Pick<ScanRow, 'status' | 'stage' | 'reasons' | 'keys'> => {
         if (!r) return { status: 'checking', stage: 'safety', reasons: ['safety scan unavailable right now'], keys: ['safety:unavailable'] }
@@ -597,11 +613,13 @@ export class Bot implements EngineObserver {
     const probation = dollarMode ? this.dollarProbation(rule, now) : handed.grade === 'standard' ? this.probation(rule, now) : null
     // On the dollar plan: a kind of coin that keeps losing is sat out by live bots (bot/patterns.ts).
     if (dollarMode) this.patterns.refresh(() => this.planOutcomes(now), now)
-    const lossPattern = dollarMode && !probation ? this.patterns.match(features, rule) : null
+    // A volume spike is judged on its own record (probation): the patterns are drawn from snipes and momentum bursts, and
+    // one of them ("older than 5 minutes") would keep out every spike, which is 10+ minutes old by design.
+    const lossPattern = dollarMode && !probation && rule !== 'volume' ? this.patterns.match(features, rule) : null
     if (lossPattern) { reasons = [...reasons, `⚠ live bots sit it out: ${patternWhy(lossPattern)}`]; metrics.inc(`bot_pattern_${lossPattern.id}`) }
     // On the $2 plan: a coin with 80+ buyers already in, or one wallet over 15% of the buying, isn't one live bots buy,
     // and momentum bursts and comebacks are measured first, traded once their replays prove them (bot/dollarPlan.ts).
-    const crowded = dollarMode ? planBlocks(features) : null
+    const crowded = dollarMode ? planBlocks(features, rule) : null
     const proving = dollarMode && (PROVE_FIRST.rules.includes(rule) || strategy === 'second-leg') ? this.provenRecord(strategy === 'second-leg' ? 'second-leg' : rule, now) : null
     if (probation) { reasons = [...reasons, `⚠ on probation: ${probation.why}`]; metrics.inc(`bot_${rule}_probation`) }
     // What this kind of signal makes at live speed (replayed on real trades): live bots trade it only while that's a profit.
@@ -668,7 +686,7 @@ export class Bot implements EngineObserver {
         const want = dollar ? DOLLAR_PLAN.sizeUsd : this.liveSize().sizeUsd
         // On the strategy board: the settings of the paper book doing best on the strategy (its exits and learned filters).
         const pick = this.liveGrades === 'board' ? this.o.accounts?.boardPick(liveStrategy, now) ?? null : null
-        const exits: StrategyParams = dollar ? dollarParams(strategy as DollarStrategy, { costIn: 0, costOut: costPerSide(r.honeypot?.roundTripLossPct ?? null, want, st.liquidityUsd), sizeUsd: want })
+        const exits: StrategyParams = dollar ? dollarParams(strategy as DollarStrategy, { costIn: 0, costOut: costPerSide(r.honeypot?.roundTripLossPct ?? null, want, st.liquidityUsd), sizeUsd: want }, rule)
           : pick ? boardParams(pick, want) : liveStrategy === 'precision' ? { ...this.params('precision'), sizeUsd: want } : { ...QUICK_EXITS, sizeUsd: want }
         const filtered = pick ? boardAdmits(pick, features, rule) : null
         // Visitors' bots were seated first (bot/crowd.ts): the platform's bot takes only what they left under the cap.
@@ -690,8 +708,10 @@ export class Bot implements EngineObserver {
     const allowed = canOpen(this.positions.filter(p => p.mode !== 'live'), token, now, RISK, house)
     if (!allowed.ok) { this.outcomes.add(signal.id, allowed.key ?? 'max-open', now); log.info('bot: not opening', { token, strategy: house, why: allowed.why }); return fired }
     this.outcomes.add(signal.id, 'traded', now)
-    const params = board ? platformParams(house, this.params(house).sizeUsd) : this.params(strategy)
-    const cost = costPerSide(r.honeypot?.roundTripLossPct ?? null, params.sizeUsd, st.liquidityUsd)
+    // A volume spike is traded with its own exits (all of it at +25%), as live bots trade it.
+    const houseSize = this.params(house).sizeUsd
+    const cost = costPerSide(r.honeypot?.roundTripLossPct ?? null, houseSize, st.liquidityUsd)
+    const params = rule === 'volume' ? volumeParams({ costIn: cost, costOut: cost, sizeUsd: houseSize }) : board ? platformParams(house, houseSize) : this.params(strategy)
     if (this.speed) { this.pendingHouse.set(token, { signal, strategy: house, params, cost, features, rule, due: now + this.speed.entryMs }); return fired }
     this.openHouse(signal, house, params, cost, features, rule, signal.price, now)
     return fired
@@ -738,7 +758,7 @@ export class Bot implements EngineObserver {
         // The $2 plan, as live bots trade it now: all of it sold at about +10%, out at −7% or after 3 minutes (bot/dollarPlan.ts).
         if (this.dollarDue(sg)) {
           const c = (sg.features?.roundTripPct ?? 4) / 200
-          const d = replayAtLiveSpeed(rows, { at: sg.at, price: sg.price, roundTripPct: sg.features?.roundTripPct ?? null, exits: dollarParams(sg.strategy as DollarStrategy, { costIn: c, costOut: c }), now })
+          const d = replayAtLiveSpeed(rows, { at: sg.at, price: sg.price, roundTripPct: sg.features?.roundTripPct ?? null, exits: dollarParams(sg.strategy as DollarStrategy, { costIn: c, costOut: c }, sg.rule), now })
           // A signal stored before the crowd features: read them from the coin's stored trades, so the patterns see it.
           if (d.final && sg.features && sg.features.totalBuyers === undefined) {
             const meta = this.o.engine.metas.get(sg.token)
@@ -1027,7 +1047,7 @@ export class Bot implements EngineObserver {
     const seen = new Set<string>(), out: Outcome[] = []
     const live = [...(this.o.accounts?.dollarLive(now) ?? []), ...this.positions.filter(p => p.mode === 'live' && isDollarTrade(p) && p.status === 'closed' && p.openedAt >= DOLLAR_PLAN.since)]
     for (const p of [...live, ...this.dollar.values()]) {
-      if (seen.has(p.signalId) || !p.sizeUsd || planBlocks(p.features)) continue
+      if (seen.has(p.signalId) || !p.sizeUsd || planBlocks(p.features, p.rule) || p.rule === 'volume') continue
       seen.add(p.signalId)
       out.push({ signalId: p.signalId, at: p.openedAt, rule: p.rule ?? null, features: p.features, ret: (p.pnlUsd ?? 0) / p.sizeUsd })
     }
@@ -1099,7 +1119,7 @@ export class Bot implements EngineObserver {
   private dollarTrades(rule: SignalRule, now: number): Position[] {
     const live = this.o.accounts?.dollarLive(now) ?? []
     return [...live, ...this.positions.filter(p => p.mode === 'live' && isDollarTrade(p) && p.openedAt >= DOLLAR_PLAN.since), ...this.dollar.values()]
-      .filter(p => p.status === 'closed' && p.rule === rule && now - (p.closedAt ?? 0) <= PROBATION.maxAgeMs && !planBlocks(p.features))
+      .filter(p => p.status === 'closed' && p.rule === rule && now - (p.closedAt ?? 0) <= PROBATION.maxAgeMs && !planBlocks(p.features, p.rule))
   }
 
   /**
@@ -1117,15 +1137,18 @@ export class Bot implements EngineObserver {
   /** The dollar plan as the site shows it (GET /v1/bot/board): the exits, and each kind's record (replays and live trades). */
   dollarView(now = Date.now()): DollarPlanView {
     const week = 7 * 86_400_000
-    const kinds = [['snipe', 'snipe'], ['snipe', 'scalp'], ['momentum', 'scalp'], ['second-leg', 'second-leg']] as const
+    const kinds = [['snipe', 'snipe'], ['snipe', 'scalp'], ['volume', 'scalp'], ['momentum', 'scalp'], ['second-leg', 'second-leg']] as const
     const live = (this.o.accounts?.dollarLive(now) ?? []).concat(this.positions.filter(p => p.mode === 'live' && isDollarTrade(p)))
     return {
       sizeUsd: DOLLAR_PLAN.sizeUsd, targetUsd: DOLLAR_TARGET_USD, netGainPct: DOLLAR_PLAN.netGain * 100, maxBuyers: DOLLAR_PLAN.maxBuyers, maxTopBuyerPct: DOLLAR_PLAN.maxTopBuyerPct,
       walletSharePct: DOLLAR_PLAN.wallet.sharePct, minTradeUsd: DOLLAR_PLAN.wallet.minUsd, maxTradeUsd: DOLLAR_PLAN.wallet.maxUsd, neverStops: DOLLAR_PLAN.neverStops,
-      exits: DOLLAR_PLAN.strategies.map(s => ({ strategy: s, stopLoss: DOLLAR_PLAN.exits[s].stopLoss, maxHoldMin: DOLLAR_PLAN.exits[s].maxHoldMin, text: dollarPlanText(s) })),
+      exits: [
+        ...DOLLAR_PLAN.strategies.map(s => ({ strategy: s, stopLoss: DOLLAR_PLAN.exits[s].stopLoss, maxHoldMin: DOLLAR_PLAN.exits[s].maxHoldMin, text: dollarPlanText(s) })),
+        { strategy: 'scalp' as const, rule: 'volume' as const, netGainPct: VOLUME_EXITS.netGain * 100, stopLoss: VOLUME_EXITS.stopLoss, maxHoldMin: VOLUME_EXITS.maxHoldMin, text: `volume spikes: all of it sold at +25% on the price (+${VOLUME_EXITS.netGain * 100}% after costs); out at −${Math.round((1 - VOLUME_EXITS.stopLoss) * 100)}%, when the creator sells, or after ${VOLUME_EXITS.maxHoldMin} minutes` },
+      ],
       kinds: kinds.map(([rule, strategy]) => {
         // The signals live bots would buy (the plan's limits), as probation and the proofs count them.
-        const rep = [...this.dollar.values()].filter(p => p.rule === rule && p.strategy === strategy && now - (p.closedAt ?? 0) <= week && !planBlocks(p.features)).sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0)).slice(-PROBATION.window)
+        const rep = [...this.dollar.values()].filter(p => p.rule === rule && p.strategy === strategy && now - (p.closedAt ?? 0) <= week && !planBlocks(p.features, p.rule)).sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0)).slice(-PROBATION.window)
         const mine = live.filter(p => p.status === 'closed' && p.rule === rule && p.strategy === strategy && (p.closedAt ?? 0) >= DOLLAR_PLAN.since)
         const pnl = (xs: Position[]) => Math.round(xs.reduce((sum, p) => sum + (p.pnlUsd ?? 0), 0) * 100) / 100
         return {
@@ -1156,8 +1179,8 @@ export class Bot implements EngineObserver {
     // By the rule that fired it: a fast scalp from a momentum burst and one from a snipe on a risky coin read differently.
     const paper = this.positions.filter(p => p.mode !== 'live')
     const ruleOf = new Map(this.recentSignals.map(s => [s.id, s.rule]))
-    const byRule = Object.fromEntries((['momentum', 'snipe', 'second-leg'] as const).map(k => [k, stats(paper.filter(p => (p.rule ?? ruleOf.get(p.signalId)) === k))]))
-    const probation = Object.fromEntries((['momentum', 'snipe', 'second-leg'] as const).map(k => [k, this.probation(k)?.why ?? null]))
+    const byRule = Object.fromEntries((['momentum', 'snipe', 'second-leg', 'volume'] as const).map(k => [k, stats(paper.filter(p => (p.rule ?? ruleOf.get(p.signalId)) === k))]))
+    const probation = Object.fromEntries((['momentum', 'snipe', 'second-leg', 'volume'] as const).map(k => [k, this.probation(k)?.why ?? null]))
     const liveSpeed = this.liveSpeed.keys().map(k => this.liveSpeed.record(k))
     const routing = { liveSignals: this.liveSignals, paperSignals: this.o.accounts?.paperSignals ?? true, launchpadOnly: this.launchpadOnly }
     return { mode: this.mode, ...of(paper), byRule, probation, liveSpeed, routing, grades: this.gradeRecords(), live: of(this.positions.filter(p => p.mode === 'live')), params: { snipe: this.params('snipe'), 'second-leg': this.params('second-leg'), scalp: this.params('scalp') }, risk: RISK, rules: RULES, watching: this.paths.size }

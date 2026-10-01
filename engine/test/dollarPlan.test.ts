@@ -313,7 +313,9 @@ describe('the engine replays every snipe and fast scalp on the plan', () => {
     const v = bot.dollarView(now)
     expect(v).toMatchObject({ sizeUsd: 8, targetUsd: 0.6, netGainPct: 7.5, maxBuyers: 80, maxTopBuyerPct: 15, walletSharePct: 20, minTradeUsd: 2, maxTradeUsd: 50, neverStops: true })
     expect(v.kinds.find(k => k.rule === 'momentum')).toMatchObject({ replays: { trades: 11, wins: 0, hits: 0 }, probation: expect.stringMatching(/won 0 of their last 11/) })
-    expect(v.exits.map(e => e.text)).toEqual(Array(3).fill('20% of the wallet a trade (at least $2), all of it sold at +7.5% after costs (about +10% on the price); out at −7%, when the creator sells, or after 3 minutes'))
+    expect(v.exits.slice(0, 3).map(e => e.text)).toEqual(Array(3).fill('20% of the wallet a trade (at least $2), all of it sold at +7.5% after costs (about +10% on the price); out at −7%, when the creator sells, or after 3 minutes'))
+    expect(v.exits[3]).toMatchObject({ strategy: 'scalp', rule: 'volume', netGainPct: 22.5, stopLoss: 0.9, maxHoldMin: 20 })
+    expect(v.kinds.map(k => `${k.rule}/${k.strategy}`)).toContain('volume/scalp')
   })
   test('momentum bursts are measured first: not proven until their replays make money', async () => {
     const store = new MemoryBotStore()

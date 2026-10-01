@@ -1975,5 +1975,10 @@ const d: Record<string, string> = {
   "visitors today": "wageni leo",
   "visitors in all": "wageni wote",
   "Site traffic": "Trafiki ya tovuti",
+  "Volume spikes": "Milipuko ya kiasi",
+  "Fast scalps: volume spikes": "Scalp za haraka: milipuko ya kiasi",
+  "Volume spike": "Mlipuko wa kiasi",
+  "All of it at +{p}% on the price (+{g}% after costs); out at {sl}, when the creator sells, or after {m} minutes": "Yote kwa +{p}% kwenye bei (+{g}% baada ya gharama); hutoka kwa {sl}, muundaji anapouza, au baada ya dakika {m}",
+  "Volume spikes too: a coin 10+ minutes old whose last minute traded 3× its usual, mostly buying, with {h}+ holders, a market cap over {mc} and liquidity over {liq}. Sold at +25%, out at −10% or after 20 minutes.": "Pia milipuko ya kiasi: coin yenye zaidi ya dakika 10 ambayo dakika yake ya mwisho ilifanya biashara mara 3 ya kawaida, hasa ununuzi, yenye wamiliki {h}+, thamani ya soko zaidi ya {mc} na ukwasi zaidi ya {liq}. Inauzwa kwa +25%, hutoka kwa −10% au baada ya dakika 20.",
 }
 export default d

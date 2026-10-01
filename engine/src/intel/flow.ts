@@ -24,6 +24,19 @@ export interface TapeTrade {
   price: number | null
 }
 
+/** Wallets still holding what they bought (bought more tokens than they sold), from a coin's tape. */
+export function tapeHolders(tape: TapeTrade[]): number {
+  const net = new Map<string, number>()
+  for (const t of tape) {
+    if (!t.wallet || !(t.tokens > 0)) continue
+    if (t.side === 'BUY') net.set(t.wallet, (net.get(t.wallet) ?? 0) + t.tokens)
+    else if (t.side === 'SELL') net.set(t.wallet, (net.get(t.wallet) ?? 0) - t.tokens)
+  }
+  let n = 0
+  for (const v of net.values()) if (v > 0) n++
+  return n
+}
+
 export const tapeTrade = (t: Trade): TapeTrade => ({
   block: t.blockNumber, ts: t.timestamp, wallet: t.wallet?.toLowerCase() ?? null, side: t.side,
   usd: t.usdValue ?? 0, tokens: t.tokenAmount, price: t.priceUsd,

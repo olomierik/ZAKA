@@ -1975,5 +1975,10 @@ const d: Record<string, string> = {
   "visitors today": "今日访客",
   "visitors in all": "累计访客",
   "Site traffic": "网站流量",
+  "Volume spikes": "成交量激增",
+  "Fast scalps: volume spikes": "快速剥头皮：成交量激增",
+  "Volume spike": "成交量激增信号",
+  "All of it at +{p}% on the price (+{g}% after costs); out at {sl}, when the creator sells, or after {m} minutes": "价格 +{p}%（扣除成本后 +{g}%）即全部卖出；跌到 {sl}、创建者卖出或 {m} 分钟后离场",
+  "Volume spikes too: a coin 10+ minutes old whose last minute traded 3× its usual, mostly buying, with {h}+ holders, a market cap over {mc} and liquidity over {liq}. Sold at +25%, out at −10% or after 20 minutes.": "也包括成交量激增：上线超过 10 分钟、最近一分钟成交额为平时 3 倍且以买入为主的币，持有人 {h}+、市值高于 {mc}、流动性高于 {liq}。+25% 卖出，跌到 −10% 或 20 分钟后离场。",
 }
 export default d

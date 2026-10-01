@@ -15,7 +15,7 @@ export const PROBATION = { window: 20, minTrades: 10, maxAgeMs: 7 * 86_400_000 }
 /** When a rule's thresholds last changed (signals/rules.ts). */
 export const RULE_REVISED: Partial<Record<SignalRule, number>> = { momentum: Date.UTC(2026, 9, 1, 6), snipe: Date.UTC(2026, 9, 1, 6) }
 
-const LABEL: Record<SignalRule, string> = { momentum: 'Momentum bursts', snipe: 'Snipes', 'second-leg': 'Dip rebounds' }
+const LABEL: Record<SignalRule, string> = { momentum: 'Momentum bursts', snipe: 'Snipes', 'second-leg': 'Dip rebounds', volume: 'Volume spikes' }
 const money = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(n).toFixed(2)}`
 
 /** Why `rule` is on probation, or null. `positions`: the engine's paper book; `ruleOf` names each position's rule. */
