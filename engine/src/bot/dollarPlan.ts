@@ -63,8 +63,14 @@ import { CREATOR_MEMORY, launcherRate } from './creatorMemory'
 import { defaultTuning, type LearnOptions, type RelaxOptions, type Tuning } from './learner'
 
 export const DOLLAR_PLAN = {
-  /** Bumped when the plan's exits change: a live bot's learned filters start over on a new version. */
-  version: 3,
+  /**
+   * Bumped when the plan's exits change, or what its live bots learned no longer holds: their learned filters start
+   * over. 4 (2026-10-02 17:50 UTC): filters learned that afternoon from replays full of the launchers' early dumps
+   * (now kept out by the launcher memory) — at most 46 buyers in, buys 4× sells, under 2 minutes old, a safety score of
+   * 25 — left the live bots idle; replayed with the current rule none of them separated winners, not even run-up
+   * (+2.62% a trade up to +16%, +2.83% above it). They relearn under the 80% guard (QUICK_LEARN).
+   */
+  version: 4,
   /**
    * The reference size: the replays and their dollar figures, and the platform's own bot. Visitors' live bots trade
    * `wallet` below instead.

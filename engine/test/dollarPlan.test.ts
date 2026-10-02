@@ -52,7 +52,7 @@ describe('the take-profit: +7.5% after costs on $8', () => {
     expect(exitsAt(p, 1.09, now + 60_000)[0].reason).toBe('tp1')
     expect(exitsAt(p, 1.01, now + 3 * 60_000)[0].reason).toBe('time')
     expect(exitsAt(p, 0.92, now + 60_000)[0].reason).toBe('stop')
-    expect(DOLLAR_PLAN).toMatchObject({ version: 3, sizeUsd: 8, netGain: 0.075, maxBuyers: 80 })
+    expect(DOLLAR_PLAN).toMatchObject({ version: 4, sizeUsd: 8, netGain: 0.075, maxBuyers: 80 })
   })
   test('a snipe (version 3), clean or risky: all of it at +3% after costs (about +4%), −7%, out when the creator sells, 30 seconds at most', () => {
     expect(SNIPE_EXITS).toEqual({ netGain: 0.03, stopLoss: 0.93, maxHoldMin: 0.5 })
@@ -308,9 +308,9 @@ describe('learning on the plan', () => {
     const second = new PaperAccounts({ speed: null, store, priceOf: () => 1, params: s => STRATEGIES[s], liveRouting: 'dollar' })
     await second.load()
     const b = second.bySlugOf(a.slug)!
-    expect(b.dollarTuning!.snipe).toMatchObject({ takeProfit: 1.075, livePlan: 3, version: 1 })
+    expect(b.dollarTuning!.snipe).toMatchObject({ takeProfit: 1.075, livePlan: 4, version: 1 })
     expect(b.dollarTuning!.snipe!.rules?.snipe).toBeUndefined()
-    expect(b.learnLog[0].text).toMatch(/^Live \(\$8, quick take-profits\): the live plan changed to quick take-profits/)
+    expect(b.learnLog[0].text).toMatch(/^Live \(\$8, quick take-profits\): the live plan changed \(version 4\), so what it learned for live trades on the earlier version starts over/)
   })
 })
 

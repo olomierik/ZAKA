@@ -232,7 +232,7 @@ function normalize(a: PaperAccount): PaperAccount {
     else if (st !== 'second-leg') dollarTuning[st] = defaultDollarTuning(st)
   }
   if (a.mode === 'live' && a.dollarTuning && !onThisPlan(a.dollarTuning.snipe)) {
-    notes.push({ at: Date.now(), strategy: 'snipe', version: dollarTuning.snipe!.version, kind: 'loosen', text: `${livePlanTag()}: the live plan changed to quick take-profits (all of it sold at about +10%, out at −7% or after 3 minutes), so what it learned for live trades on the +$1 plan starts over. It learns again from its own trades and the team's, and no lesson may turn away more than half of a kind's signals.` })
+    notes.push({ at: Date.now(), strategy: 'snipe', version: dollarTuning.snipe!.version, kind: 'loosen', text: `${livePlanTag()}: the live plan changed (version ${DOLLAR_PLAN.version}), so what it learned for live trades on the earlier version starts over. It learns again from its own trades and the team's, and its filters together must still take 80% of a kind's signals.` })
   }
   const name = cleanName(a.name) ?? `Bot ${a.id.slice(0, 4).toUpperCase()}`
   // Bots trade three strategies since 2026-10-01: a dip rebound pick is dropped.
