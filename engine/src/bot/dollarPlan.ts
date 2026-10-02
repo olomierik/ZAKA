@@ -41,6 +41,21 @@
 // Then checked on the signals that fired on 1 October after that sample (06:00–12:48 UTC): with no wallet over 15%,
 // 6 trades, 5 won, +$0.50; over 15%, 7 trades and −$4.71, among them all three of the day's rugs (NOAH 24.9%, UBI 17.2%,
 // 四 20.9%: −76% to −86% each, which no stop catches at live speed). Small samples: nothing here guarantees a profit.
+//
+// Version 3, out before the launcher dumps (2026-10-02, owner: "improve the engine trade size and profitability and
+// also signal firing rate"). Live bots' snipe-scalps had won 34 of 44 on version 2 and lost $48.38: every win was
+// +$0.12 to +$1.09, every loss a serial launcher selling its $2,500 launch bag 50-150 seconds after launch (−75%, the
+// rug guard selling after it). Those launchers' coins rise about 0.2% a second until then; version 2 bought about 44s
+// after launch and held for +10%, which took another ~45s, into the dump.
+//   signals   snipes fire earlier (signals/rules.ts: 10 market buyers, $60 bought, no wallet over 15%; median 32s).
+//   exit      a snipe (clean or risky) is sold once selling nets +3% after costs (about +4% on the price), or after 30
+//             seconds, at −7%, or when the creator sells (SNIPE_EXITS). Other kinds keep their exits.
+//   size      20% of what the wallet is worth, at least $2, as before; no longer capped at $50 but at 0.5% of the
+//             coin's liquidity (a bigger buy moves the price more than the take-profit is worth) and $500, so it keeps
+//             growing with the capital.
+// Replayed on 11 hours of production's trades (652 coins; the signal 2.4s after the rule is met, the buy 2.5s later,
+// 1% a side): version 2's rule and exits, 95 trades, −2.7% a trade, 10 rugs; version 3, 170 trades, 90% won, +1.8% a
+// trade (+0.9% and +2.7% in the halves), 3 rugs. Most trades are small wins and a rug still costs most of its trade.
 
 import type { SignalFeatures, SignalRule } from '../../../api/_marketProtocol'
 import type { Position, Strategy, StrategyParams } from '../trading/paper'
@@ -48,14 +63,17 @@ import { defaultTuning, type LearnOptions, type Tuning } from './learner'
 
 export const DOLLAR_PLAN = {
   /** Bumped when the plan's exits change: a live bot's learned filters start over on a new version. */
-  version: 2,
+  version: 3,
   /**
    * The reference size: the replays and their dollar figures, and the platform's own bot. Visitors' live bots trade
    * `wallet` below instead.
    */
   sizeUsd: 8,
-  /** A live bot's trade: this share of what its wallet is worth (USDC plus open trades at cost), between the two amounts. */
-  wallet: { sharePct: 20, minUsd: 2, maxUsd: 50 },
+  /**
+   * A live bot's trade: this share of what its wallet is worth (USDC plus open trades at cost), at least `minUsd`, at
+   * most `maxUsd` and at most `maxLiquidityPct` of the coin's liquidity (version 3: the cap follows the pool, not $50).
+   */
+  wallet: { sharePct: 20, minUsd: 2, maxUsd: 500, maxLiquidityPct: 0.5 },
   /** Live bots on the plan are never stopped by losses: no daily loss limit, no pause after losses, no switch back to paper. */
   neverStops: true,
   /** All of it is sold once selling nets this much over what it paid (+7.5%, about +10% on the price). */
@@ -72,8 +90,16 @@ export const DOLLAR_PLAN = {
   /** No coin where one wallet bought more than this share of the market's own buying, in percent (who dumps first). */
   maxTopBuyerPct: 15,
   /** When this version started (its trades and the day's loss are counted from then). */
-  since: Date.UTC(2026, 9, 1, 12, 45),
+  since: Date.UTC(2026, 9, 2, 13),
 }
+
+/**
+ * A snipe's exits on the plan (version 3), whatever kind of trade carries it (a clean coin's snipe, a risky coin's fast
+ * scalp): all of it once selling nets +3% after costs (about +4% on the price), out at −7%, when the creator sells, or
+ * after 30 seconds. +4% within 30s, +5% within 30s and +4% within 20s did about as well; +8.7% within 3 minutes (version
+ * 2) lost 2.7% a trade.
+ */
+export const SNIPE_EXITS = { netGain: 0.03, stopLoss: 0.93, maxHoldMin: 0.5 }
 
 /** What one winning trade makes at the take-profit, before the platform's 15% fee. */
 export const DOLLAR_TARGET_USD = Math.round(DOLLAR_PLAN.sizeUsd * DOLLAR_PLAN.netGain * 100) / 100
@@ -116,17 +142,20 @@ export function volumeParams(o: { costIn: number; costOut: number; sizeUsd: numb
   }
 }
 
-/** A trade's exits on the plan: all of it at +7.5% after costs, −7%, out when the creator sells, 3 minutes at most (a volume spike: its own). */
+/**
+ * A trade's exits on the plan: all of it at +7.5% after costs, −7%, out when the creator sells, 3 minutes at most (a
+ * snipe: +3% and 30 seconds, SNIPE_EXITS; a volume spike: its own).
+ */
 export function dollarParams(s: DollarStrategy, o: { costIn: number; costOut: number; sizeUsd?: number }, rule?: SignalRule | null): StrategyParams {
   if (rule === 'volume') return volumeParams({ ...o, sizeUsd: o.sizeUsd ?? DOLLAR_PLAN.sizeUsd })
-  const e = DOLLAR_PLAN.exits[s]
+  const e = rule === 'snipe' ? SNIPE_EXITS : { ...DOLLAR_PLAN.exits[s], netGain: DOLLAR_PLAN.netGain }
   return {
     sizeUsd: o.sizeUsd ?? DOLLAR_PLAN.sizeUsd,
     stopLoss: e.stopLoss,
-    tp1Multiple: dollarTakeProfit({ costIn: o.costIn, costOut: o.costOut }),
+    tp1Multiple: dollarTakeProfit({ netGain: e.netGain, costIn: o.costIn, costOut: o.costOut }),
     tp1SellPct: 1,
     trailFromPeak: 0.25,
-    // No earlier time stop: the whole trade is 3 minutes.
+    // No earlier time stop: the whole trade is 3 minutes (a snipe's 30 seconds).
     timeStopMin: e.maxHoldMin,
     timeStopMinGain: 0,
     maxHoldMin: e.maxHoldMin,
@@ -152,10 +181,14 @@ export function planBlocks(f: SignalFeatures | undefined, rule?: SignalRule | nu
   return null
 }
 
-/** A live bot's trade on the plan: 20% of what its wallet is worth, in $0.10 steps, at least $2 and at most $50. */
-export function dollarTradeSize(worthUsd: number): number {
+/**
+ * A live bot's trade on the plan: 20% of what its wallet is worth, in $0.10 steps, at least $2, at most $500 and at
+ * most 0.5% of the coin's liquidity when that's known (never under $2: the trader still checks what the wallet can pay).
+ */
+export function dollarTradeSize(worthUsd: number, liquidityUsd?: number | null): number {
   const w = DOLLAR_PLAN.wallet
-  return Math.min(w.maxUsd, Math.max(w.minUsd, Math.floor((worthUsd * w.sharePct) / 10 + 1e-9) / 10))
+  const pool = liquidityUsd && liquidityUsd > 0 ? Math.floor((liquidityUsd * w.maxLiquidityPct) / 10 + 1e-9) / 10 : Infinity
+  return Math.max(w.minUsd, Math.min(w.maxUsd, pool, Math.floor((worthUsd * w.sharePct) / 10 + 1e-9) / 10))
 }
 
 /** A position traded on the plan (live bots' trades, and the replays of every signal). */
@@ -166,6 +199,10 @@ export function dollarPlanText(s: DollarStrategy): string {
   const e = DOLLAR_PLAN.exits[s]
   return `${DOLLAR_PLAN.wallet.sharePct}% of the wallet a trade (at least $${DOLLAR_PLAN.wallet.minUsd}), all of it sold at +${Math.round(DOLLAR_PLAN.netGain * 1_000) / 10}% after costs (about +10% on the price); out at −${Math.round((1 - e.stopLoss) * 100)}%, when the creator sells, or after ${e.maxHoldMin} minutes`
 }
+
+/** A snipe's exits in words (version 3). */
+export const snipePlanText = () =>
+  `snipes: ${DOLLAR_PLAN.wallet.sharePct}% of the wallet a trade (at least $${DOLLAR_PLAN.wallet.minUsd}, at most ${DOLLAR_PLAN.wallet.maxLiquidityPct}% of the coin's liquidity), all of it sold at +${Math.round(SNIPE_EXITS.netGain * 1_000) / 10}% after costs (about +4% on the price); out at −${Math.round((1 - SNIPE_EXITS.stopLoss) * 100)}%, when the creator sells, or after ${Math.round(SNIPE_EXITS.maxHoldMin * 60)} seconds`
 
 /**
  * A live bot's settings on the plan, per strategy: the plan's exits (fixed) and the entry filters it learns per kind of

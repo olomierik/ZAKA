@@ -45,10 +45,12 @@ export const READY = { minTrades: 20, minWinRate: 0.55, minProfitFactor: 1.2 }
 export const USER_LIVE = {
   /**
    * Every live trade starts at $2 (owner, 2026-10-01: it was capped at $2 after DEGEN, then "$2 each trade, growing
-   * with the PnL gained"); `maxTradeUsd` is the most a grown trade may be (bot/sizing.ts liveTradeSize).
+   * with the PnL gained"); `maxTradeUsd` is the most a grown trade may be (bot/sizing.ts liveTradeSize). $500 since
+   * 2026-10-02 (owner: "let the trading size increase according to capital increase"; it was $50): on the $2 plan a
+   * trade is 20% of the wallet, held to 0.5% of the coin's liquidity (bot/dollarPlan.ts), so the pool sets the limit.
    */
   baseTradeUsd: 2,
-  maxTradeUsd: 50,
+  maxTradeUsd: 500,
   /** A bot goes live with at least this in its wallet. */
   minBalanceUsd: 10,
   /** Never traded: gas for the exits and the fee (a swap on Arc costs about $0.005; was $1 until 2026-09-30, a tenth of a $10 bot). */

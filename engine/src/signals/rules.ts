@@ -47,17 +47,27 @@ import type { Flow, Window } from '../intel/flow'
 // and held up in both halves of the period; momentum bursts were about
 // break-even either way, and probation keeps them off live bots while their
 // replays lose.
+//
+// 2026-10-02 (owner: "improve the engine trade size and profitability and also signal firing rate"): snipes fire
+// earlier, at 10 market buyers and $60 bought with no wallet over 15% of the buying (were 6, $200 and 25%). Most
+// snipes are a serial launcher's coin: it buys $2,500 at launch, 20-odd small wallets lift the price about 0.2% a
+// second, and in about one coin in four the launcher sells its whole bag 50-150 seconds after launch (a −75% gap no
+// stop catches). The old thresholds fired about 41 seconds in, so a trade still open after ~45s met the dump. Replayed
+// on 11 hours of production's own trades (652 coins) at production's delay (the signal 2.4s after the rule is met, the
+// buy 2.5s later, 1% a side): the old rule and exits, 95 trades, −2.7% a trade, 10 rugs; these thresholds with the
+// plan's quick exits (bot/dollarPlan.ts version 3), 170 trades, 90% won, +1.8% a trade (+0.9% and +2.7% in the two
+// halves), 3 rugs. It fires about 9 seconds earlier (median 32s) and on about 1.8 times as many tradeable coins.
 export const RULES = {
   snipe: {
     /** Let the first blocks' bundlers show before judging. */
     minAgeSec: 20,
     maxAgeSec: 600,
-    minBuyers: 6,
-    minBuyUsd: 200,
+    minBuyers: 10,
+    minBuyUsd: 60,
     /** Buy volume at least this many times sell volume. */
     minBuySellRatio: 1.3,
-    /** No single buyer above this share of buy volume. */
-    maxTopBuyerPct: 25,
+    /** No single buyer above this share of buy volume (the plan's own limit too: a big early wallet is who dumps). */
+    maxTopBuyerPct: 15,
     /** Not late: the price hasn't already run this far from its first trade. */
     maxRunUp: 5,
     /** Not already falling: within this share of its peak. */

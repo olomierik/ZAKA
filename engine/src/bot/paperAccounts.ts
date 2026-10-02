@@ -52,7 +52,7 @@ import { QUALITY } from '../signals/quality'
 import { CrowdBook, crowdCap, crowdImpact, laddered } from './crowd'
 import { Tiers, TIERS } from './tiers'
 import { admits, defaultTuning, learn, migrateTuning, relax, toParams, upgradeExits, type Tuning } from './learner'
-import { DOLLAR_PLAN, defaultDollarTuning, dollarParams, dollarTradeSize, VOLUME_EXITS, volumeParams, isDollarStrategy, isDollarTrade, onThisPlan, planBlocks, PROVE_FIRST, QUICK_LEARN, type DollarStrategy } from './dollarPlan'
+import { DOLLAR_PLAN, SNIPE_EXITS, defaultDollarTuning, dollarParams, dollarTradeSize, VOLUME_EXITS, volumeParams, isDollarStrategy, isDollarTrade, onThisPlan, planBlocks, PROVE_FIRST, QUICK_LEARN, type DollarStrategy } from './dollarPlan'
 import type { LiveTrader } from './liveTrader'
 import type { RugAlarm } from './rugGuard'
 import { CAPITAL_SIZING, GRADE_SHARE, liveTradeSize, maxTradeFor, SIZE_LIMITS, sizeForLive, sizeFromCapital, TARGETS, type LiveGrowth } from './sizing'
@@ -809,13 +809,14 @@ export class PaperAccounts {
     const worth = this.balanceOf(a)
     if (worth === null) { skip('live-unavailable', 'its wallet\'s balance couldn\'t be read yet'); return null }
     if (!this.trader(a)) { skip('live-unavailable', 'live trading is unavailable right now'); return null }
-    // 20% of what the wallet is worth, at least $2: it grows with the capital (the trader reads the balance again first).
-    const want = dollarTradeSize(worth)
-    // The sale's cost decides how far the price must go for +7.5% after costs: about +10% at a 2.4% round trip.
+    // 20% of what the wallet is worth, at least $2, at most 0.5% of the coin's liquidity: it grows with the capital (the
+    // trader reads the balance again first).
+    const want = dollarTradeSize(worth, sig.liquidityUsd)
+    // The sale's cost decides how far the price must go for the take-profit after costs (a snipe: +3%, about +4%).
     const params = dollarParams(st, { costIn: 0, costOut: costPerSide(sig.roundTripPct, want, sig.liquidityUsd), sizeUsd: want }, sig.rule)
     const sized = sizeForLive({ sizeUsd: want, growthPct: 0, takeProfit: params.tp1Multiple, roundTripPct: sig.roundTripPct, liquidityUsd: sig.liquidityUsd })
     if (!('sizeUsd' in sized)) { skip(sized.key, sized.why); return null }
-    return { a, strategy: st, t, sizeUsd: sized.sizeUsd, profitUsd: Math.round(sized.sizeUsd * DOLLAR_PLAN.netGain * 100) / 100, params: { ...params, sizeUsd: sized.sizeUsd }, priority: access.priority, plan: 'dollar' }
+    return { a, strategy: st, t, sizeUsd: sized.sizeUsd, profitUsd: Math.round(sized.sizeUsd * (sig.rule === 'snipe' ? SNIPE_EXITS.netGain : DOLLAR_PLAN.netGain) * 100) / 100, params: { ...params, sizeUsd: sized.sizeUsd }, priority: access.priority, plan: 'dollar' }
   }
 
   /** A bot's settings on the $2 plan for a strategy (learned on the plan's current version). */
@@ -1134,7 +1135,7 @@ export class PaperAccounts {
         limits: { maxTradeUsd: USER_LIVE.maxTradeUsd, minBalanceUsd: USER_LIVE.minBalanceUsd, reserveUsd: USER_LIVE.reserveUsd, maxOpen: USER_LIVE.maxOpen, dailyLossUsd: trader?.limits.dailyLossUsd ?? USER_LIVE.dailyLossMinUsd, preflight: true, maxRoundTripPct: USER_LIVE.maxRoundTripPct, maxSharePct: Math.round(USER_LIVE.maxShareOfBalance * 100), baseTradeUsd: USER_LIVE.baseTradeUsd },
         // On the $2 plan: 20% of what the wallet is worth now, and what it learned for live trades (its entry filters per kind of signal).
         sizing: this.liveRouting === 'dollar' ? { tradeUsd: this.planTrade(a, worth), growthPct: a.live.startBalanceUsd && worth !== null ? Math.round((worth / a.live.startBalanceUsd - 1) * 100) : 0, pnlUsd: this.livePnl(a) } : (({ sizeUsd, growthPct }) => ({ tradeUsd: sizeUsd, growthPct, pnlUsd: this.livePnl(a) }))(this.liveGrowth(a, worth)),
-        ...(this.liveRouting === 'dollar' ? { plan: { sizeUsd: this.planTrade(a, worth), targetUsd: Math.round(this.planTrade(a, worth) * DOLLAR_PLAN.netGain * 100) / 100, takeProfitPct: DOLLAR_PLAN.netGain * 100, maxHoldMin: DOLLAR_PLAN.exits.snipe.maxHoldMin, walletSharePct: DOLLAR_PLAN.wallet.sharePct, minTradeUsd: DOLLAR_PLAN.wallet.minUsd, maxTradeUsd: DOLLAR_PLAN.wallet.maxUsd, neverStops: DOLLAR_PLAN.neverStops, tuning: Object.fromEntries(DOLLAR_PLAN.strategies.map(st => { const { prev: _prev, ...t } = this.dollarTuningOf(a, st); return [st, t] })) as Record<DollarStrategy, StrategyTuning> } } : {}),
+        ...(this.liveRouting === 'dollar' ? { plan: { sizeUsd: this.planTrade(a, worth), targetUsd: Math.round(this.planTrade(a, worth) * DOLLAR_PLAN.netGain * 100) / 100, takeProfitPct: SNIPE_EXITS.netGain * 100, maxHoldMin: SNIPE_EXITS.maxHoldMin, walletSharePct: DOLLAR_PLAN.wallet.sharePct, minTradeUsd: DOLLAR_PLAN.wallet.minUsd, maxTradeUsd: DOLLAR_PLAN.wallet.maxUsd, neverStops: DOLLAR_PLAN.neverStops, tuning: Object.fromEntries(DOLLAR_PLAN.strategies.map(st => { const { prev: _prev, ...t } = this.dollarTuningOf(a, st); return [st, t] })) as Record<DollarStrategy, StrategyTuning> } } : {}),
         events: trader?.events.slice(0, 30) ?? [],
       } : null,
       liveAvailable: this.o.live?.available ?? { ok: false, why: 'live trading isn\'t available on this engine' },

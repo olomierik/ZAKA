@@ -47,7 +47,7 @@ import { crowdCap } from './crowd'
 import { QUALITY, QualityRank, qualityScore, type RuleRecord } from '../signals/quality'
 import { LIVE_GATE, liveKey, LiveSpeedBook, replayAtLiveSpeed, type LiveSpeedRecord, type Replay } from '../signals/liveSpeed'
 import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, QUICK_EXITS, RISK, STRATEGIES, stats, type ExitReason, type Position, type Strategy, type StrategyParams } from '../trading/paper'
-import { DOLLAR_PLAN, DOLLAR_TARGET_USD, dollarParams, dollarPlanText, isDollarStrategy, isDollarTrade, planBlocks, PROVE_FIRST, VOLUME_EXITS, volumeParams, type DollarStrategy } from './dollarPlan'
+import { DOLLAR_PLAN, DOLLAR_TARGET_USD, dollarParams, dollarPlanText, dollarTradeSize, isDollarStrategy, isDollarTrade, planBlocks, PROVE_FIRST, SNIPE_EXITS, snipePlanText, VOLUME_EXITS, volumeParams, type DollarStrategy } from './dollarPlan'
 import { PatternBook, patternWhy, type Outcome } from './patterns'
 import type { HistoryStore } from '../store/history'
 import { defaultTuning, toParams } from './learner'
@@ -689,8 +689,10 @@ export class Bot implements EngineObserver {
         // The $2 plan: the signal's own strategy, $2, all of it sold at about +10%, 3 minutes at most (bot/dollarPlan.ts).
         const dollar = dollarMode && isDollarStrategy(strategy)
         const liveStrategy: Strategy = dollar ? strategy : handed.grade === 'prime' ? 'precision' : strategy
-        // $2, grown in step with what the bot wallet's live trades made (bot/sizing.ts liveTradeSize); $2 flat on the $2 plan.
-        const want = dollar ? DOLLAR_PLAN.sizeUsd : this.liveSize().sizeUsd
+        // $2, grown in step with what the bot wallet's live trades made (bot/sizing.ts liveTradeSize); on the $2 plan, 20%
+        // of what the wallet is worth (at least $2, at most 0.5% of the coin's liquidity), as visitors' live bots trade.
+        const worthNow = this.liveWorth()
+        const want = dollar ? (worthNow === null ? DOLLAR_PLAN.wallet.minUsd : dollarTradeSize(worthNow, st.liquidityUsd)) : this.liveSize().sizeUsd
         // On the strategy board: the settings of the paper book doing best on the strategy (its exits and learned filters).
         const pick = this.liveGrades === 'board' ? this.o.accounts?.boardPick(liveStrategy, now) ?? null : null
         const exits: StrategyParams = dollar ? dollarParams(strategy as DollarStrategy, { costIn: 0, costOut: costPerSide(r.honeypot?.roundTripLossPct ?? null, want, st.liquidityUsd), sizeUsd: want }, rule)
@@ -866,12 +868,18 @@ export class Bot implements EngineObserver {
     void this.o.store.setSetting('live-growth', JSON.stringify(this.growth)).catch(e => log.warn('bot: growth not saved', { error: errMsg(e) }))
   }
 
+  /** What the bot wallet is worth: its USDC (the last read) plus its open live trades at cost; null before the first read. */
+  private liveWorth(): number | null {
+    const l = this.o.live
+    const open = l ? l.live().filter(p => p.status === 'open').reduce((sum, p) => sum + p.sizeUsd * (p.remaining / (p.qty || 1)), 0) : 0
+    return l?.balance ? l.balance.usd + open : null
+  }
+
   /** The bot wallet's next live trade: its base ($2), grown in step with what its live trades made since it went live. */
   liveSize(): LiveGrowth & { pnlUsd: number; startUsd: number | null } {
     const l = this.o.live
     if (this.mode === 'live' && !this.growth) this.startGrowth(false)
-    const open = l ? l.live().filter(p => p.status === 'open').reduce((sum, p) => sum + p.sizeUsd * (p.remaining / (p.qty || 1)), 0) : 0
-    const worth = l?.balance ? l.balance.usd + open : null
+    const worth = this.liveWorth()
     const g = liveTradeSize({ startUsd: this.growth?.startUsd, pnlUsd: this.growth?.pnlUsd ?? 0, worthUsd: worth, baseUsd: l?.limits.minTradeUsd ?? LIVE_SIZE.baseUsd, maxUsd: l?.limits.maxTradeUsd })
     return { ...g, pnlUsd: this.growth?.pnlUsd ?? 0, startUsd: this.growth?.startUsd ?? null }
   }
@@ -1156,7 +1164,10 @@ export class Bot implements EngineObserver {
       sizeUsd: DOLLAR_PLAN.sizeUsd, targetUsd: DOLLAR_TARGET_USD, netGainPct: DOLLAR_PLAN.netGain * 100, maxBuyers: DOLLAR_PLAN.maxBuyers, maxTopBuyerPct: DOLLAR_PLAN.maxTopBuyerPct,
       walletSharePct: DOLLAR_PLAN.wallet.sharePct, minTradeUsd: DOLLAR_PLAN.wallet.minUsd, maxTradeUsd: DOLLAR_PLAN.wallet.maxUsd, neverStops: DOLLAR_PLAN.neverStops,
       exits: [
-        ...DOLLAR_PLAN.strategies.map(s => ({ strategy: s, stopLoss: DOLLAR_PLAN.exits[s].stopLoss, maxHoldMin: DOLLAR_PLAN.exits[s].maxHoldMin, text: dollarPlanText(s) })),
+        // Snipes first (version 3): their own exits, whatever kind of trade carries them.
+        ...(['snipe', 'scalp'] as const).map(s => ({ strategy: s, rule: 'snipe' as const, netGainPct: SNIPE_EXITS.netGain * 100, stopLoss: SNIPE_EXITS.stopLoss, maxHoldMin: SNIPE_EXITS.maxHoldMin, text: snipePlanText() })),
+        // Other kinds (momentum bursts and comebacks, once proven): the plan's general exits. A clean snipe is always a snipe.
+        ...DOLLAR_PLAN.strategies.filter(s => s !== 'snipe').map(s => ({ strategy: s, stopLoss: DOLLAR_PLAN.exits[s].stopLoss, maxHoldMin: DOLLAR_PLAN.exits[s].maxHoldMin, text: dollarPlanText(s) })),
         { strategy: 'scalp' as const, rule: 'volume' as const, netGainPct: VOLUME_EXITS.netGain * 100, stopLoss: VOLUME_EXITS.stopLoss, maxHoldMin: VOLUME_EXITS.maxHoldMin, text: `volume spikes: all of it sold at +25% on the price (+${VOLUME_EXITS.netGain * 100}% after costs); out at −${Math.round((1 - VOLUME_EXITS.stopLoss) * 100)}%, when the creator sells, or after ${VOLUME_EXITS.maxHoldMin} minutes` },
       ],
       kinds: kinds.map(([rule, strategy]) => {

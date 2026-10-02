@@ -1,4 +1,5 @@
-// The $2 plan, version 2: quick take-profits (owner, 2026-10-01: "Nothing happened, no trades, I hate waiting for hours
+// The $2 plan, version 2 then 3 (2026-10-02: snipes sold at +3% after costs within 30 seconds, sizes capped by the
+// pool, not $50): quick take-profits (owner, 2026-10-01: "Nothing happened, no trades, I hate waiting for hours
 // in meme coin trading, I prefer quick take profits and leave"). The take-profit (+7.5% after costs, about +10% on the
 // price), the exits (−7%, 3 minutes), live bots taking every snipe at $2 and passing over crowded coins and momentum
 // bursts not yet proven, learning their entry filters from their own losses and the team's replays without ever
@@ -7,7 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import type { Address, Hex } from 'viem'
 import type { LaunchInfo, SignalFeatures } from '../../api/_marketProtocol'
 import { Bot } from '../src/bot/bot'
-import { DOLLAR_PLAN, DOLLAR_TARGET_USD, defaultDollarTuning, dollarParams, dollarTakeProfit, dollarTradeSize, onThisPlan, planBlocks, QUICK_LEARN } from '../src/bot/dollarPlan'
+import { DOLLAR_PLAN, DOLLAR_TARGET_USD, defaultDollarTuning, dollarParams, dollarTakeProfit, dollarTradeSize, onThisPlan, planBlocks, QUICK_LEARN, SNIPE_EXITS } from '../src/bot/dollarPlan'
 import { admits, defaultTuning, learn } from '../src/bot/learner'
 import { PaperAccounts, type PaperAccount, type PaperSignal } from '../src/bot/paperAccounts'
 import { MemoryBotStore } from '../src/bot/store'
@@ -51,7 +52,24 @@ describe('the take-profit: +7.5% after costs on $8', () => {
     expect(exitsAt(p, 1.09, now + 60_000)[0].reason).toBe('tp1')
     expect(exitsAt(p, 1.01, now + 3 * 60_000)[0].reason).toBe('time')
     expect(exitsAt(p, 0.92, now + 60_000)[0].reason).toBe('stop')
-    expect(DOLLAR_PLAN).toMatchObject({ version: 2, sizeUsd: 8, netGain: 0.075, maxBuyers: 80 })
+    expect(DOLLAR_PLAN).toMatchObject({ version: 3, sizeUsd: 8, netGain: 0.075, maxBuyers: 80 })
+  })
+  test('a snipe (version 3), clean or risky: all of it at +3% after costs (about +4%), −7%, out when the creator sells, 30 seconds at most', () => {
+    expect(SNIPE_EXITS).toEqual({ netGain: 0.03, stopLoss: 0.93, maxHoldMin: 0.5 })
+    for (const s of ['snipe', 'scalp'] as const) {
+      const e = dollarParams(s, { costIn: 0, costOut: 0.01 }, 'snipe')
+      expect(e.tp1Multiple).toBeCloseTo(1.03 / 0.99, 4)
+      expect(e).toMatchObject({ sizeUsd: 8, tp1SellPct: 1, stopLoss: 0.93, maxHoldMin: 0.5, timeStopMin: 0.5, exitOnCreatorSell: true })
+    }
+    // A momentum burst keeps the plan's general exits.
+    expect(dollarParams('scalp', { costIn: 0, costOut: 0.01 }, 'momentum')).toMatchObject({ maxHoldMin: 3 })
+    const e = dollarParams('scalp', { costIn: 0, costOut: 0.01 }, 'snipe')
+    const p = openPosition({ id: 'p', strategy: 'scalp', token: T, symbol: 'C', launchpad: 'A', signalId: 's', price: 1, cost: 0, now, params: e })
+    p.exits = e
+    expect(exitsAt(p, 1.03, now + 20_000)).toEqual([]) // +3% after 20s: held
+    expect(exitsAt(p, 1.045, now + 10_000)[0].reason).toBe('tp1')
+    expect(exitsAt(p, 1.02, now + 30_000)[0].reason).toBe('time') // 30 seconds: out
+    expect(exitsAt(p, 0.92, now + 5_000)[0].reason).toBe('stop')
   })
   test('80 buyers or fewer already in, and no wallet over 15% of the buying; a count the signal lacks isn\'t checked', () => {
     expect(planBlocks(features({ totalBuyers: 80 }))).toBeNull()
@@ -104,16 +122,16 @@ async function liveBot(sellAt = 1.12, balance = 100) {
 }
 
 describe('live bots on the plan', () => {
-  test('every snipe, whatever the bot picked: 20% of the wallet, all of it sold at about +10%', async () => {
+  test('every snipe, whatever the bot picked: 20% of the wallet, all of it sold at about +4%', async () => {
     const { accounts, a, wallet, signal } = await liveBot(1.12)
     signal({ id: 'sn1', token: T }) // a snipe: the bot picked fast scalps only, it takes it anyway
     await settle()
     const p = a.positions.find(x => x.mode === 'live' && x.signalId === 'sn1')!
     expect(p).toMatchObject({ strategy: 'snipe', plan: 'dollar', sizeUsd: 20, rule: 'snipe' })
-    expect(p.exits!.tp1Multiple).toBeCloseTo(1.086, 2) // +7.5% after the sale's ~1% cost
-    expect(p.exits).toMatchObject({ tp1SellPct: 1, stopLoss: 0.93, maxHoldMin: 3, exitOnCreatorSell: true })
+    expect(p.exits!.tp1Multiple).toBeCloseTo(1.0446, 3) // +3% after the sale's ~1.4% cost (1% plus $20 against $10,000)
+    expect(p.exits).toMatchObject({ tp1SellPct: 1, stopLoss: 0.93, maxHoldMin: 0.5, exitOnCreatorSell: true })
     expect(wallet.calls).toEqual(['buy 20'])
-    accounts.onPrice(T, 1.05, Date.now(), false, true) // +5%: held
+    accounts.onPrice(T, 1.03, Date.now(), false, true) // +3%: held
     await settle()
     expect(p.status).toBe('open')
     accounts.onPrice(T, 1.12, Date.now(), false, true) // past the take-profit: all of it sold
@@ -121,14 +139,16 @@ describe('live bots on the plan', () => {
     expect(p).toMatchObject({ status: 'closed', exitReason: 'tp1' })
     const gross = (p.pnlUsd ?? 0) + (p.feeUsd ?? 0)
     expect(gross).toBeGreaterThan(2) // $22.40 back on $20, less gas
-    expect(accounts.view(a).live).toMatchObject({ plan: { walletSharePct: 20, minTradeUsd: 2, maxTradeUsd: 50, neverStops: true, takeProfitPct: 7.5, maxHoldMin: 3 } })
+    expect(accounts.view(a).live).toMatchObject({ plan: { walletSharePct: 20, minTradeUsd: 2, maxTradeUsd: 500, neverStops: true, takeProfitPct: 3, maxHoldMin: 0.5 } })
     expect(accounts.view(a).live!.sizing!.tradeUsd).toBeGreaterThanOrEqual(20)
   })
-  test('a trade is 20% of what the wallet is worth: it grows with the capital, at least $2, at most $50', async () => {
-    expect([dollarTradeSize(34.4), dollarTradeSize(9), dollarTradeSize(200), dollarTradeSize(1_000)]).toEqual([6.8, 2, 40, 50])
-    for (const [balance, bought] of [[34.4, 'buy 6.8'], [200, 'buy 40'], [1_000, 'buy 50']] as const) {
+  test('a trade is 20% of what the wallet is worth: it grows with the capital, at least $2, at most 0.5% of the coin liquidity and $500', async () => {
+    expect([dollarTradeSize(34.4), dollarTradeSize(9), dollarTradeSize(200), dollarTradeSize(1_000), dollarTradeSize(10_000)]).toEqual([6.8, 2, 40, 200, 500])
+    // The pool's cap: 0.5% of its liquidity ($50 in a $10,000 pool), never under $2.
+    expect([dollarTradeSize(1_000, 10_000), dollarTradeSize(1_000, 40_000), dollarTradeSize(100, 200), dollarTradeSize(10_000, 1_000_000)]).toEqual([50, 200, 2, 500])
+    for (const [balance, liquidityUsd, bought] of [[34.4, 10_000, 'buy 6.8'], [200, 10_000, 'buy 40'], [1_000, 10_000, 'buy 50'], [1_000, 40_000, 'buy 200']] as const) {
       const b = await liveBot(1.12, balance)
-      b.signal({ id: `g${balance}`, token: tok(0xa0) })
+      b.signal({ id: `g${balance}:${liquidityUsd}`, token: tok(0xa0), liquidityUsd, features: features({ liquidityUsd }) })
       await settle()
       expect(b.wallet.calls).toEqual([bought])
     }
@@ -276,7 +296,7 @@ describe('learning on the plan', () => {
     const second = new PaperAccounts({ speed: null, store, priceOf: () => 1, params: s => STRATEGIES[s], liveRouting: 'dollar' })
     await second.load()
     const b = second.bySlugOf(a.slug)!
-    expect(b.dollarTuning!.snipe).toMatchObject({ takeProfit: 1.075, livePlan: 2, version: 1 })
+    expect(b.dollarTuning!.snipe).toMatchObject({ takeProfit: 1.075, livePlan: 3, version: 1 })
     expect(b.dollarTuning!.snipe!.rules?.snipe).toBeUndefined()
     expect(b.learnLog[0].text).toMatch(/^Live \(\$8, quick take-profits\): the live plan changed to quick take-profits/)
   })
@@ -311,10 +331,13 @@ describe('the engine replays every snipe and fast scalp on the plan', () => {
     expect(accounts.dollarTeam('scalp')).toHaveLength(11) // what live bots learn from
     expect(bot.dollarProbation('momentum', now)?.why).toMatch(/Momentum bursts won 0 of their last 11 trades/)
     const v = bot.dollarView(now)
-    expect(v).toMatchObject({ sizeUsd: 8, targetUsd: 0.6, netGainPct: 7.5, maxBuyers: 80, maxTopBuyerPct: 15, walletSharePct: 20, minTradeUsd: 2, maxTradeUsd: 50, neverStops: true })
+    expect(v).toMatchObject({ sizeUsd: 8, targetUsd: 0.6, netGainPct: 7.5, maxBuyers: 80, maxTopBuyerPct: 15, walletSharePct: 20, minTradeUsd: 2, maxTradeUsd: 500, neverStops: true })
     expect(v.kinds.find(k => k.rule === 'momentum')).toMatchObject({ replays: { trades: 11, wins: 0, hits: 0 }, probation: expect.stringMatching(/won 0 of their last 11/) })
-    expect(v.exits.slice(0, 3).map(e => e.text)).toEqual(Array(3).fill('20% of the wallet a trade (at least $2), all of it sold at +7.5% after costs (about +10% on the price); out at −7%, when the creator sells, or after 3 minutes'))
-    expect(v.exits[3]).toMatchObject({ strategy: 'scalp', rule: 'volume', netGainPct: 22.5, stopLoss: 0.9, maxHoldMin: 20 })
+    // Snipes first, clean or risky (version 3), then the general exits of the other kinds.
+    expect(v.exits.slice(0, 2).map(e => [e.strategy, e.rule, e.maxHoldMin])).toEqual([['snipe', 'snipe', 0.5], ['scalp', 'snipe', 0.5]])
+    expect(v.exits[0].text).toBe("snipes: 20% of the wallet a trade (at least $2, at most 0.5% of the coin's liquidity), all of it sold at +3% after costs (about +4% on the price); out at −7%, when the creator sells, or after 30 seconds")
+    expect(v.exits.slice(2, 4).map(e => e.text)).toEqual(Array(2).fill('20% of the wallet a trade (at least $2), all of it sold at +7.5% after costs (about +10% on the price); out at −7%, when the creator sells, or after 3 minutes'))
+    expect(v.exits[4]).toMatchObject({ strategy: 'scalp', rule: 'volume', netGainPct: 22.5, stopLoss: 0.9, maxHoldMin: 20 })
     expect(v.kinds.map(k => `${k.rule}/${k.strategy}`)).toContain('volume/scalp')
   })
   test('momentum bursts are measured first: not proven until their replays make money', async () => {
