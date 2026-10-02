@@ -57,10 +57,15 @@ import type { Flow, Window } from '../intel/flow'
 // buy 2.5s later, 1% a side): the old rule and exits, 95 trades, −2.7% a trade, 10 rugs; these thresholds with the
 // plan's quick exits (bot/dollarPlan.ts version 3), 170 trades, 90% won, +1.8% a trade (+0.9% and +2.7% in the two
 // halves), 3 rugs. It fires about 9 seconds earlier (median 32s) and on about 1.8 times as many tradeable coins.
+// The same afternoon, from 25s (was 20s), with the launcher memory (bot/creatorMemory.ts): launchers that dump do it
+// from ~27s, and a signal at 20–22s bought just before. Replayed with the memory, at production's delay: the 11 hours
+// before, +1.75% a trade (+1.72% / +1.77% in the halves) from 20s and +2.5% (+1.91% / +3.09%) from 25s; the first
+// four hours of the new rule (53 coins), −4.2% (+0.6% / −8.9%, 1 rug) from 20s and +0.4% (+0.6% / +0.2%, no rug) from
+// 25s, on the same 16 trades. From 30s did worse on the 11 hours.
 export const RULES = {
   snipe: {
-    /** Let the first blocks' bundlers show before judging. */
-    minAgeSec: 20,
+    /** Let the first blocks' bundlers show before judging (and the fastest launcher dumps, from ~27s). */
+    minAgeSec: 25,
     maxAgeSec: 600,
     minBuyers: 10,
     minBuyUsd: 60,

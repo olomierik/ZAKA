@@ -48,13 +48,13 @@ describe('the snipe rule reads the market\'s own buying', () => {
     expect(f.organic).toMatchObject({ buyers: 12, buyUsd: 720, sellUsd: 600, firstPrice: 0.02 })
     expect(snipeReady(f, 120).failed).toContain('ratio') // $720 bought vs $600 sold: under 1.3x
   })
-  test('2026-10-02: it fires at 10 market buyers and $60 bought, no wallet over 15% of the buying, from 20s', () => {
+  test('2026-10-02: it fires at 10 market buyers and $60 bought, no wallet over 15% of the buying, from 25s', () => {
     const small = (n: number, usd = 6) => Array.from({ length: n }, (_, i) => tape({ wallet: A(i + 1), block: 110 + i, usd, price: 0.02 + i * 0.0002 }))
     const at = (trades: TapeTrade[], age = 25) => snipeReady(computeFlow([devBuy, ...trades], { launchBlock: 100, creator: DEV, supply: 1e9 }), age)
     expect(at(small(10)).ok).toBe(true) // 10 buyers, $60
     expect(at(small(9, 7)).failed).toEqual(['buyers'])
     expect(at(small(10, 5.9)).failed).toEqual(['bought'])
-    expect(at(small(10), 19).failed).toEqual(['age'])
+    expect(at(small(10), 24).failed).toEqual(['age'])
     // One wallet with 16% of the buying: not yet (a big early wallet is who dumps).
     expect(at([...small(10), tape({ wallet: A(99), block: 125, usd: 11.5, price: 0.0225 })]).failed).toEqual(['topbuyer'])
   })
