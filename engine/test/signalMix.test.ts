@@ -74,7 +74,7 @@ class TestBot extends Bot {
   }
 }
 
-function setup(ageMin: number) {
+function setup(ageMin: number, liveGrades?: 'dollar') {
   const launched = Date.now() - ageMin * 60_000
   const meta: LaunchInfo = { token: T, name: 'Coin', symbol: 'COIN', decimals: 18, creator: DEV, txHash: '0x', blockNumber: 1, timestamp: launched, pool: null, quote: null, launchpad: 'ARGUS', chain: 'ARC', status: 'LIVE' }
   const st = new TokenState(T)
@@ -82,7 +82,7 @@ function setup(ageMin: number) {
   const engine = { metas: new Map([[T, meta]]), tokens: new Map([[T, st]]) } as unknown as MarketEngine
   const rpc = { call: async () => { throw new Error('no chain here') }, batch: async () => [] } as unknown as Rpc
   const sent: ServerMessage[] = []
-  const bot = new TestBot({ rpc, engine, pools: { get: () => null } as unknown as PoolRegistry, store: new MemoryBotStore(), publish: (_t, m) => sent.push(m), mode: 'paper', speed: null })
+  const bot = new TestBot({ rpc, engine, pools: { get: () => null } as unknown as PoolRegistry, store: new MemoryBotStore(), publish: (_t, m) => sent.push(m), mode: 'paper', speed: null, liveGrades })
   let i = 0
   const trade = (o: { side?: 'BUY' | 'SELL'; price: number; usd?: number; at: number; wallet?: string }) => {
     i++
@@ -171,6 +171,22 @@ describe('Core signals go to live bots, past their rule\'s probation (2026-10-01
     expect(s.quality?.level).toBe('core')
     expect(s.probation).toBeNull()
     expect(s.quality?.liveOk).toBe(true)
+  })
+  test('2026-10-02: the bot learns a launcher\'s early dump from its trades, and live bots skip its next snipe', async () => {
+    const first = setup(2)
+    const now = Date.now()
+    // The launch buy, then the creator sells all of it 30s later: an early dump, remembered against the launcher.
+    first.trade({ price: 1, usd: 2_500, at: now - 120_000, wallet: DEV })
+    first.trade({ side: 'SELL', price: 0.3, usd: 2_480, at: now - 90_000, wallet: DEV })
+    expect(first.bot.launchers.record(DEV, now)).toEqual({ coins: 1, dumps: 1 })
+    // The launcher's next coin (its memory as the settings keep it across a restart), on the live plan.
+    const { bot, trade, signals, sweep } = setup(2, 'dollar')
+    bot.launchers.load(JSON.stringify(first.bot.launchers))
+    buyers(trade, 16)
+    await sweep()
+    const [s] = signals()
+    expect(s.features).toMatchObject({ launcherCoins: 1, launcherDumps: 1 })
+    expect(s.quality).toMatchObject({ liveOk: false, liveWhy: expect.stringMatching(/^its launcher dumped 1 of its last 1 coin within 5 minutes/), limit: 'its launcher dumped 1 of its last 1 coin within 5 minutes' })
   })
   test('a Standard signal still carries it, and live bots pass it over', async () => {
     const { bot, trade, signals, sweep } = setup(2)

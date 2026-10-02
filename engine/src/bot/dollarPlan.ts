@@ -59,6 +59,7 @@
 
 import type { SignalFeatures, SignalRule } from '../../../api/_marketProtocol'
 import type { Position, Strategy, StrategyParams } from '../trading/paper'
+import { CREATOR_MEMORY, launcherRate } from './creatorMemory'
 import { defaultTuning, type LearnOptions, type Tuning } from './learner'
 
 export const DOLLAR_PLAN = {
@@ -168,8 +169,13 @@ export function dollarParams(s: DollarStrategy, o: { costIn: number; costOut: nu
  * A volume spike has its own floors (signals/rules.ts RULES.volume: 30+ holders, $6k+ cap, $5k+ liquidity) and is
  * mostly on coins with a big crowd already, so the snipes' limits don't apply to it.
  */
-export function planBlocks(f: SignalFeatures | undefined, rule?: SignalRule | null): { key: 'crowded' | 'top-buyer'; label: string; why: string } | null {
+export function planBlocks(f: SignalFeatures | undefined, rule?: SignalRule | null): { key: 'crowded' | 'top-buyer' | 'dumper'; label: string; why: string } | null {
   if (rule === 'volume') return null
+  // A snipe on a launcher that dumped its recent coins early (bot/creatorMemory.ts), whatever else it shows.
+  if (rule === 'snipe' && f?.launcherCoins != null && launcherRate(f.launcherDumps ?? 0, f.launcherCoins) > CREATOR_MEMORY.maxRate) {
+    const label = `its launcher dumped ${f.launcherDumps} of its last ${f.launcherCoins} coin${f.launcherCoins === 1 ? '' : 's'} within 5 minutes`
+    return { key: 'dumper', label, why: `${label} (live bots skip a launcher that sells its whole launch buy early, until three clean coins)` }
+  }
   if (f?.totalBuyers != null && f.totalBuyers > DOLLAR_PLAN.maxBuyers) {
     const label = `${f.totalBuyers} buyers already in`
     return { key: 'crowded', label, why: `${label} (live bots buy coins with ${DOLLAR_PLAN.maxBuyers} or fewer: later, the crowd has bought)` }

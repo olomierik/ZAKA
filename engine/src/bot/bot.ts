@@ -47,6 +47,7 @@ import { crowdCap } from './crowd'
 import { QUALITY, QualityRank, qualityScore, type RuleRecord } from '../signals/quality'
 import { LIVE_GATE, liveKey, LiveSpeedBook, replayAtLiveSpeed, type LiveSpeedRecord, type Replay } from '../signals/liveSpeed'
 import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, QUICK_EXITS, RISK, STRATEGIES, stats, type ExitReason, type Position, type Strategy, type StrategyParams } from '../trading/paper'
+import { CreatorMemory } from './creatorMemory'
 import { DOLLAR_PLAN, DOLLAR_TARGET_USD, dollarParams, dollarPlanText, dollarTradeSize, isDollarStrategy, isDollarTrade, planBlocks, PROVE_FIRST, SNIPE_EXITS, snipePlanText, VOLUME_EXITS, volumeParams, type DollarStrategy } from './dollarPlan'
 import { PatternBook, patternWhy, type Outcome } from './patterns'
 import type { HistoryStore } from '../store/history'
@@ -128,6 +129,9 @@ function liveWhy(ls: LiveSpeedRecord): string {
 
 export class Bot implements EngineObserver {
   readonly tapes = new Tapes()
+  /** What each launcher did with its last coins: live bots skip one that dumps early (bot/creatorMemory.ts). */
+  readonly launchers = new CreatorMemory()
+  private launchersSavedAt = 0
   /** Every watched coin's last 3 minutes, and the rug guard reading them. */
   readonly recent = new RecentTapes()
   readonly rug = new RugWatch(this.recent)
@@ -241,6 +245,7 @@ export class Bot implements EngineObserver {
     const saved = await this.o.store.getSetting('mode').catch(() => null)
     if (this.mode !== 'off' && (saved === 'paper' || (saved === 'live' && this.o.live))) this.mode = saved
     this.growth = parseGrowth(await this.o.store.getSetting('live-growth').catch(() => null))
+    this.launchers.load(await this.o.store.getSetting('creator-memory').catch(() => null))
     for (const p of this.positions) if (p.mode === 'live' && p.status === 'closed') this.grown.add(p.id)
     if (this.o.live) void this.o.live.refreshBalance().then(() => this.startGrowth(false)).catch(e => log.warn('live: balance read failed', { error: errMsg(e) }))
     log.info('bot started', { mode: this.mode, open: this.positions.filter(p => p.status === 'open').length, store: this.o.store.kind, wallet: this.o.live?.address ?? null })
@@ -329,6 +334,14 @@ export class Bot implements EngineObserver {
     const priced = !mainPool || t.pool === mainPool
     const tape = { ...tapeTrade(t), price: priced ? t.priceUsd : null }
     this.tapes.add(t.token, tape)
+    // The creator's first sale: an early dump of its launch buy is remembered against the launcher (replays too).
+    if (t.side === 'SELL' && meta.creator && t.wallet?.toLowerCase() === meta.creator.toLowerCase()) {
+      const creator = meta.creator.toLowerCase()
+      const buy = this.tapes.get(t.token).find(x => x.side === 'BUY' && x.wallet?.toLowerCase() === creator)
+      if (this.launchers.noteSale({ creator, token: t.token, launchedAt: meta.timestamp, at: t.timestamp, saleUsd: t.usdValue ?? 0, buyUsd: buy?.usd ?? null })) {
+        log.info('bot: launcher dumped early', { token: t.token, symbol: meta.symbol, creator, saleUsd: Math.round(t.usdValue ?? 0), ageSec: Math.round((t.timestamp - meta.timestamp) / 1000) })
+      }
+    }
     this.recent.add(t.token, tape, ctx.replay ? t.timestamp : Math.max(t.timestamp, Date.now()))
     // Replays rebuild the guard's view too; only a live alarm closes anything.
     const alarm = this.rug.onTrade(t.token, tape, priced ? t.liquidity : null, priced, t.timestamp)
@@ -407,6 +420,7 @@ export class Bot implements EngineObserver {
     for (const token of [...this.pendingHouse.keys()]) this.fillHouse(token, this.priceOf(token), now)
     this.o.live?.tick(now, token => this.priceOf(token))
     this.o.accounts?.tick(now)
+    this.settleLaunchers(now)
     for (const [token, path] of this.paths) {
       if (now - path.launchedAt > WATCH_MS && !this.positions.some(p => p.status === 'open' && p.token === token)) {
         this.paths.delete(token); this.tapes.drop(token); this.deeps.delete(token); this.reports.delete(token); this.statics.delete(token); this.lastEval.delete(token)
@@ -607,6 +621,7 @@ export class Bot implements EngineObserver {
       ...(feats.earlyCrowd !== undefined ? { earlyCrowd: feats.earlyCrowd } : {}),
       // Its crowd and its creator (bot/patterns.ts): what the losing patterns and each bot's learner read.
       ...(await this.crowdOf(token, meta, now, st.liquidityUsd, st.priceUsd).catch(() => ({}))),
+      ...this.launcherFeatures(meta, now),
     }
     // Its grade (signals/grades.ts): Prime, Core or Standard, handed out one lower while its own grade's record is under review.
     const graded2 = gradeOf(features, rule)
@@ -992,6 +1007,34 @@ export class Bot implements EngineObserver {
       const s = this.o.engine.tokens.get(t)?.stats()
       return !!other && other.timestamp < meta.timestamp && !!s && (s.vol24 > (mine?.vol24 ?? 0) || (s.marketCapUsd ?? 0) > (mine?.marketCapUsd ?? 0))
     })
+  }
+
+  /** Coins 5–30 minutes old with no early dump count as their launcher's clean coins; the memory is saved every 5 minutes. */
+  private settleLaunchers(now: number) {
+    for (const [token, path] of this.paths) {
+      const age = now - path.launchedAt
+      if (age < 300_000 || age > 1_800_000) continue
+      const meta = this.o.engine.metas.get(token)
+      if (!meta?.creator) continue
+      const creator = meta.creator.toLowerCase()
+      const tape = this.tapes.get(token)
+      // A tape seeded after a restart may miss the launch: the creator's buy isn't seen, and the coin isn't counted.
+      const creatorBought = tape.some(x => x.side === 'BUY' && x.wallet?.toLowerCase() === creator)
+      this.launchers.settle({ creator, token, launchedAt: meta.timestamp, now, trades: tape.length, creatorBought })
+    }
+    if (this.launchers.dirty && now - this.launchersSavedAt >= 300_000) {
+      this.launchers.prune(now)
+      this.launchers.dirty = false
+      this.launchersSavedAt = now
+      void this.o.store.setSetting('creator-memory', JSON.stringify(this.launchers)).catch(e => log.warn('bot: launcher memory not saved', { error: errMsg(e) }))
+    }
+  }
+
+  /** Its launcher's last coins and early dumps, for the signal's features (bot/creatorMemory.ts). */
+  private launcherFeatures(meta: LaunchInfo, now: number): Pick<SignalFeatures, 'launcherCoins' | 'launcherDumps'> {
+    if (!meta.creator) return {}
+    const r = this.launchers.record(meta.creator, now)
+    return { launcherCoins: r.coins, launcherDumps: r.dumps }
   }
 
   private creatorLaunches(meta: LaunchInfo): number {

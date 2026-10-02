@@ -41,7 +41,7 @@ export const SKIP_LABELS: Record<string, string> = {
   filters: 'the bot\'s learned filters', 'too-thin': 'pool too thin or too costly to net $1', cash: 'not enough cash in the bot', 'small-balance': 'bot too small: a trade is at most 20% of it',
   'max-open': 'too many trades already open', cooldown: 'traded that coin recently', 'daily-loss': 'daily loss limit reached',
   probation: 'the rule is on probation (its paper record is losing)', 'live-only': 'paper bots: signals go to live bots only for now', 'paper-grade': 'live bots: in the lowest 20% of signals by quality', costly: 'the round trip eats the take-profit', 'live-unavailable': 'live wallet unavailable', 'live-cap': 'over the live size cap', 'live-order': 'sent to a live wallet',
-  pattern: 'live bots: a kind of coin that keeps losing (bot/patterns.ts)', comeback: 'live bots: comebacks not proven yet', 'prove-first': 'live bots: momentum bursts and comebacks not proven yet', crowded: 'live bots: 80+ buyers already in (a live plan limit)', 'top-buyer': 'live bots: one wallet over 15% of the buying (a live plan limit)', 'grade-live': 'live bots: the engine sits it out',
+  pattern: 'live bots: a kind of coin that keeps losing (bot/patterns.ts)', comeback: 'live bots: comebacks not proven yet', 'prove-first': 'live bots: momentum bursts and comebacks not proven yet', crowded: 'live bots: 80+ buyers already in (a live plan limit)', 'top-buyer': 'live bots: one wallet over 15% of the buying (a live plan limit)', dumper: 'live bots: a launcher that dumps its coins early (a live plan limit)', 'grade-live': 'live bots: the engine sits it out',
 }
 
 /**

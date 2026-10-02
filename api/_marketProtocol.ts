@@ -260,6 +260,12 @@ export interface SignalFeatures {
   overhang?: number
   farmShare?: number
   creatorLaunches?: number
+  /**
+   * Its launcher's last coins (up to 10, each decided once 5 minutes old or dumped) and how many of them it sold its whole
+   * launch buy in within 5 minutes (2026-10-02, engine/src/bot/creatorMemory.ts). Missing on signals from before.
+   */
+  launcherCoins?: number
+  launcherDumps?: number
 }
 
 /** The entry filters a visitor's bot has learned, per strategy (engine/src/bot/learner.ts). */
