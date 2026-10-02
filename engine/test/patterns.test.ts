@@ -97,7 +97,10 @@ describe('each bot learns the same numbers from its own and the team\'s trades',
   }
   test('crowded coins kept losing: it learns to skip them, and says why', () => {
     const team = Array.from({ length: 20 }, (_, i) => (i % 2 ? trade(i, 30 + i, true) : trade(i, 120 + i, false)))
-    const r = learn(defaultTuning('snipe'), 'snipe', [], now, team, true, QUICK_LEARN)!
+    // Half the team's trades are crowded losers: the live plan's guard (filters must keep 80% of the signals) refuses
+    // it, and the engine's losing patterns (bot/patterns.ts) are what keep such coins out; with a guard of half, it learns.
+    expect(learn(defaultTuning('snipe'), 'snipe', [], now, team, true, QUICK_LEARN)?.tuning.rules?.snipe?.maxTotalBuyers).toBeUndefined()
+    const r = learn(defaultTuning('snipe'), 'snipe', [], now, team, true, { ...QUICK_LEARN, minAdmitShare: 0.5 })!
     const learned = r.tuning.rules!.snipe!
     expect(learned.maxTotalBuyers).toBeLessThanOrEqual(118)
     expect(learned.maxTotalBuyers).toBeGreaterThanOrEqual(49)

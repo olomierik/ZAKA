@@ -335,6 +335,13 @@ function tightenFor(rule: SignalRule, s: Strategy, f: BotFilters, w: Position[],
 export interface LearnOptions { pinTakeProfit?: boolean; skipAnyKind?: boolean; minAdmitShare?: number }
 
 /**
+ * When filters that keep a bot from trading loosen (by default: 15 signals skipped, 2 hours without a buy or a lesson).
+ * `sinceBuyOnly`: counted from the last buy alone; a bot that learns from the team every 10 minutes would otherwise
+ * never reach the 2 hours (the $2 plan, bot/dollarPlan.ts QUICK_RELAX).
+ */
+export interface RelaxOptions { afterMs?: number; afterSkips?: number; sinceBuyOnly?: boolean }
+
+/**
  * Reads a strategy's closed trades (oldest first) and returns the bot's next
  * tuning with notes, or null if there's nothing to change yet. `shared`:
  * the team's closed trades of the strategy (one per signal). `force`: learn
@@ -410,7 +417,7 @@ export function learn(t: Tuning, s: Strategy, trades: Position[], now: number, s
  * Filters that kept the bot from trading at all come partway back toward
  * open; a kind of signal it skipped is tried again after 12 hours.
  */
-export function relax(t: Tuning, s: Strategy, skipped: number, lastBuyAt: number | null, now: number): { tuning: Tuning; notes: LearnNote[] } | null {
+export function relax(t: Tuning, s: Strategy, skipped: number, lastBuyAt: number | null, now: number, o: RelaxOptions = {}): { tuning: Tuning; notes: LearnNote[] } | null {
   const notes: LearnNote[] = []
   const next: Tuning = { ...structuredClone(strip(t)), prev: strip(t) }
   next.rules = { ...(next.rules ?? {}) }
@@ -427,7 +434,9 @@ export function relax(t: Tuning, s: Strategy, skipped: number, lastBuyAt: number
   const open = OPEN_FILTERS
   const all: BotFilters[] = [next.filters, ...Object.values(next.rules).filter((x): x is BotFilters => !!x)]
   const tight = all.some(f => (Object.keys(open) as (keyof BotFilters)[]).some(k => k === 'avoidFlags' ? f.avoidFlags.length > 0 : f[k] !== open[k]) || CROWD_FILTERS.some(k => f[k] != null))
-  if (tight && skipped >= LEARN.relaxAfterSkips && now - Math.max(lastBuyAt ?? 0, t.changedAt ?? 0) >= LEARN.relaxAfterMs) {
+  // Idle since its last buy, or since its last lesson (by default: a lesson just learned gets its 2 hours).
+  const since = o.sinceBuyOnly ? (lastBuyAt ?? 0) : Math.max(lastBuyAt ?? 0, t.changedAt ?? 0)
+  if (tight && skipped >= (o.afterSkips ?? LEARN.relaxAfterSkips) && now - since >= (o.afterMs ?? LEARN.relaxAfterMs)) {
     for (const f of all) {
       const back = (k: Exclude<NumFilter, (typeof CROWD_FILTERS)[number]>, digits: number) => { const v = f[k] + (open[k] - f[k]) * 0.4; f[k] = Math.round(v * 10 ** digits) / 10 ** digits }
       back('minLiquidityUsd', -2); back('minBuyers', 0); back('minBuySellRatio', 2); back('maxRunUp', 2); back('minScore', 0); back('maxTopBuyerPct', 0)
@@ -435,8 +444,9 @@ export function relax(t: Tuning, s: Strategy, skipped: number, lastBuyAt: number
       for (const k of CROWD_FILTERS) { const v = f[k]; if (v != null) f[k] = k === 'maxOverhang' || k === 'maxFarmShare' ? Math.round(v * 1.5 * 100) / 100 : Math.round(v * 1.5) }
       f.avoidFlags = f.avoidFlags.slice(0, -1)
     }
-    const hours = Math.round((now - Math.max(lastBuyAt ?? 0, t.changedAt ?? 0)) / 3_600_000)
-    notes.push({ at: now, strategy: s, version, kind: 'loosen', text: `Its filters skipped ${skipped} signals in ${hours}h without a trade: loosened them partway back.` })
+    const idle = now - since
+    const span = idle >= 2 * 3_600_000 ? `${Math.round(idle / 3_600_000)}h` : `${Math.round(idle / 60_000)} minutes`
+    notes.push({ at: now, strategy: s, version, kind: 'loosen', text: `Its filters skipped ${skipped} signals in ${span} without a trade: loosened them partway back.` })
   }
   if (!notes.length) return null
   Object.assign(next, { version, changedAt: now, basis: t.basis })

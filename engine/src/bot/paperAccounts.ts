@@ -52,7 +52,7 @@ import { QUALITY } from '../signals/quality'
 import { CrowdBook, crowdCap, crowdImpact, laddered } from './crowd'
 import { Tiers, TIERS } from './tiers'
 import { admits, defaultTuning, learn, migrateTuning, relax, toParams, upgradeExits, type Tuning } from './learner'
-import { DOLLAR_PLAN, SNIPE_EXITS, defaultDollarTuning, dollarParams, dollarTradeSize, VOLUME_EXITS, volumeParams, isDollarStrategy, isDollarTrade, onThisPlan, planBlocks, PROVE_FIRST, QUICK_LEARN, type DollarStrategy } from './dollarPlan'
+import { DOLLAR_PLAN, SNIPE_EXITS, defaultDollarTuning, dollarParams, dollarTradeSize, VOLUME_EXITS, volumeParams, isDollarStrategy, isDollarTrade, onThisPlan, planBlocks, PROVE_FIRST, QUICK_LEARN, QUICK_RELAX, type DollarStrategy } from './dollarPlan'
 import type { LiveTrader } from './liveTrader'
 import type { RugAlarm } from './rugGuard'
 import { CAPITAL_SIZING, GRADE_SHARE, liveTradeSize, maxTradeFor, SIZE_LIMITS, sizeForLive, sizeFromCapital, TARGETS, type LiveGrowth } from './sizing'
@@ -874,7 +874,7 @@ export class PaperAccounts {
     // Filters that kept it from trading for hours come partway back; a kind it skipped is tried again after 12 hours.
     for (const st of DOLLAR_PLAN.strategies) {
       const skipped = a.filterSkips[st] ?? 0
-      const r = relax(this.dollarTuningOf(a, st), st, skipped, a.lastBuyAt[st] ?? a.startedAt, now)
+      const r = relax(this.dollarTuningOf(a, st), st, skipped, a.lastBuyAt[st] ?? a.startedAt, now, QUICK_RELAX)
       if (r) { a.filterSkips[st] = 0; this.dollarLearned(a, st, r, now) }
     }
   }

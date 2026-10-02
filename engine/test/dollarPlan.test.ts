@@ -8,8 +8,8 @@ import { describe, expect, test } from 'bun:test'
 import type { Address, Hex } from 'viem'
 import type { LaunchInfo, SignalFeatures } from '../../api/_marketProtocol'
 import { Bot } from '../src/bot/bot'
-import { DOLLAR_PLAN, DOLLAR_TARGET_USD, defaultDollarTuning, dollarParams, dollarTakeProfit, dollarTradeSize, onThisPlan, planBlocks, QUICK_LEARN, SNIPE_EXITS } from '../src/bot/dollarPlan'
-import { admits, defaultTuning, learn } from '../src/bot/learner'
+import { DOLLAR_PLAN, DOLLAR_TARGET_USD, defaultDollarTuning, dollarParams, dollarTakeProfit, dollarTradeSize, onThisPlan, planBlocks, QUICK_LEARN, QUICK_RELAX, SNIPE_EXITS } from '../src/bot/dollarPlan'
+import { admits, defaultTuning, learn, relax } from '../src/bot/learner'
 import { PaperAccounts, type PaperAccount, type PaperSignal } from '../src/bot/paperAccounts'
 import { MemoryBotStore } from '../src/bot/store'
 import type { Signal } from '../src/bot/types'
@@ -222,8 +222,9 @@ describe('live bots on the plan', () => {
   })
   test('it learns from the team\'s replays before risking a cent: rugs in thin pools raise the liquidity it needs', async () => {
     const { accounts, a, signal, wallet } = await liveBot()
-    // Ten replays of snipes on the plan: the three in thin pools were rugged, the seven in deep pools took their profit.
-    for (let i = 0; i < 10; i++) {
+    // Fifteen replays of snipes on the plan: the three in thin pools were rugged, the twelve in deep pools took their
+    // profit (a lesson that skips the thin pools still takes 80% of them, the plan's guard).
+    for (let i = 0; i < 15; i++) {
       const thin = i < 3
       const p = openPosition({ id: `r${i}`, strategy: 'snipe', token: tok(0x10 + i), symbol: 'R', launchpad: 'A', signalId: `rs${i}`, price: 1, cost: 0, now: now - 3_600_000 + i * 60_000, params: dollarParams('snipe', { costIn: 0.01, costOut: 0.01 }) })
       Object.assign(p, { plan: 'dollar', mode: 'paper', rule: 'snipe', features: features({ liquidityUsd: thin ? 3_000 : 20_000 }) })
@@ -234,7 +235,7 @@ describe('live bots on the plan', () => {
     const t = a.dollarTuning!.snipe!
     expect(t.rules?.snipe?.minLiquidityUsd).toBeGreaterThan(3_000)
     expect(t.takeProfit).toBe(1.075)
-    expect(a.learnLog[0].text).toMatch(/^Live \(\$8, quick take-profits\): snipes: .*\(read from its 0 trades and 10 of the team's\)/)
+    expect(a.learnLog[0].text).toMatch(/^Live \(\$8, quick take-profits\): snipes: .*\(read from its 0 trades and 15 of the team's\)/)
     signal({ id: 'th1', token: T, liquidityUsd: 3_000, features: features({ liquidityUsd: 3_000 }) })
     await settle()
     expect(wallet.calls).toEqual([])
@@ -259,15 +260,26 @@ describe('learning on the plan', () => {
     recordSell(p, p.qty, p.sizeUsd * (won ? 1.1 : 0.5), p.openedAt + 90_000, won ? 'tp1' : 'rug')
     return p
   }
-  test('a lesson that would turn away more than half of the kind\'s recent signals isn\'t taken', () => {
-    // Six thin pools rugged, four deep ones won: "liquidity of at least $20,000" would skip six of ten.
-    const team = Array.from({ length: 10 }, (_, i) => trade(i, i < 6 ? 3_000 : 20_000, i >= 6))
+  test('filters that would turn away more than a fifth of the kind\'s recent signals aren\'t taken (half until 2026-10-02)', () => {
+    // Three thin pools rugged, seven deep ones won: "liquidity of at least $20,000" would skip three of ten.
+    const team = Array.from({ length: 10 }, (_, i) => trade(i, i < 3 ? 3_000 : 20_000, i >= 3))
     const free = learn(defaultTuning('snipe'), 'snipe', [], now + 3_600_000, team, true, { pinTakeProfit: true })!
     expect(free.tuning.rules!.snipe!.minLiquidityUsd).toBe(20_000) // without the guard
     const guarded = learn(defaultDollarTuning('snipe'), 'snipe', [], now + 3_600_000, team, true, QUICK_LEARN)
     const f = guarded?.tuning.rules?.snipe
     expect(f?.minLiquidityUsd ?? 0).toBeLessThanOrEqual(3_000)
     expect(admits(guarded?.tuning ?? defaultDollarTuning('snipe'), features({ liquidityUsd: 3_000 }), 'snipe')).toBeNull()
+  })
+  test('filters that skipped 3+ signals for 45 minutes since its last buy loosen, even if it just learned (2026-10-02)', () => {
+    const t = { ...defaultDollarTuning('scalp'), changedAt: now - 5 * 60_000, rules: { snipe: { ...defaultDollarTuning('scalp').filters, maxTotalBuyers: 46, minBuySellRatio: 4 } } }
+    const lastBuy = now - 50 * 60_000
+    // By default a lesson learned 5 minutes ago resets the 2 hours: a bot learning from the team every 10 minutes never loosened.
+    expect(relax(t, 'scalp', 3, lastBuy, now)).toBeNull()
+    const r = relax(t, 'scalp', 3, lastBuy, now, QUICK_RELAX)!
+    expect(r.notes[0].text).toBe('Its filters skipped 3 signals in 50 minutes without a trade: loosened them partway back.')
+    expect(r.tuning.rules!.snipe!.maxTotalBuyers).toBe(69)
+    expect(relax(t, 'scalp', 2, lastBuy, now, QUICK_RELAX)).toBeNull() // fewer than 3 skipped
+    expect(relax(t, 'scalp', 3, now - 40 * 60_000, now, QUICK_RELAX)).toBeNull() // under 45 minutes
   })
   test('the take-profit stays where near misses would have pulled it in', () => {
     const t = defaultDollarTuning('scalp')

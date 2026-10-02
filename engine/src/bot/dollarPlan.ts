@@ -60,7 +60,7 @@
 import type { SignalFeatures, SignalRule } from '../../../api/_marketProtocol'
 import type { Position, Strategy, StrategyParams } from '../trading/paper'
 import { CREATOR_MEMORY, launcherRate } from './creatorMemory'
-import { defaultTuning, type LearnOptions, type Tuning } from './learner'
+import { defaultTuning, type LearnOptions, type RelaxOptions, type Tuning } from './learner'
 
 export const DOLLAR_PLAN = {
   /** Bumped when the plan's exits change: a live bot's learned filters start over on a new version. */
@@ -115,8 +115,16 @@ export const isDollarStrategy = (s: Strategy | string): s is DollarStrategy => s
  */
 export const PROVE_FIRST: { rules: readonly SignalRule[]; minReplays: number; minWinRate: number } = { rules: ['momentum', 'second-leg'], minReplays: 10, minWinRate: 0.5 }
 
-/** How a live bot learns on the plan: the take-profit never moves, and no lesson may turn away over half the signals. */
-export const QUICK_LEARN: LearnOptions = { pinTakeProfit: true, minAdmitShare: 0.5 }
+/**
+ * How a live bot learns on the plan: the take-profit never moves, and its filters together must still take 80% of the
+ * kind's recent signals (was half until 2026-10-02: stacked lessons, "at most 46 buyers in", "buys 4× sells", "under 2
+ * minutes old", each keeping half, left arcdex-agent nothing to buy for over an hour while three snipes fired; none of
+ * the three separated winners in the replays).
+ */
+export const QUICK_LEARN: LearnOptions = { pinTakeProfit: true, minAdmitShare: 0.8 }
+
+/** A live bot on the plan whose filters skipped 3+ signals in 45 minutes without a buy loosens them partway (from its last buy). */
+export const QUICK_RELAX: RelaxOptions = { afterMs: 45 * 60_000, afterSkips: 3, sinceBuyOnly: true }
 
 /**
  * The price, as a multiple of the entry the exits compare against, at which selling all of it nets `netGain`.
