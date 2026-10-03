@@ -42,7 +42,7 @@
 import { SQL } from 'bun'
 import { setGtFetch, type FetchLike } from '../../../api/_geckoterminal'
 import { adminReady, setKvStore, type KvStore } from '../../../api/_supabaseAdmin'
-import { holdersHandler, type HolderStore, type ScanRow } from '../../../api/holders'
+import { holdersHandler, supabaseHolders, type HolderStore, type ScanRow } from '../../../api/holders'
 import argus from '../../../api/argus'
 import dex from '../../../api/dex'
 import gecko from '../../../api/gecko'
@@ -230,7 +230,7 @@ export interface SiteApi { handle(req: Request, url: URL): Promise<Response>; na
 /** Functions that write (or act): their requests pass through as they came, and their answers are never cached. */
 const WRITES = new Set(['session', 'social', 'upload', 'index-trades'])
 
-export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number; handlers?: Record<string, Handler>; holders?: HolderStore; indexUrl?: string | null; indexEveryMs?: number; warm?: boolean }): SiteApi {
+export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number; handlers?: Record<string, Handler>; holders?: HolderStore; indexUrl?: string | null; indexEveryMs?: number; warm?: boolean; hotTokens?: () => { token: string; createdSec?: number }[]; holdersEveryMs?: number }): SiteApi {
   let sql: SQL | null = null
   let ready: Promise<void> = Promise.resolve()
   if (o.databaseUrl) {
@@ -239,7 +239,10 @@ export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number
   }
   setKvStore(new SiteKv(sql, ready))
   setGtFetch(meteredFetch(o.gtPerMin ?? 25))
-  const holders = o.holders ?? (sql ? pgHolders(sql, ready) : memoryHolders())
+  // The holder index lives where the site reads it: Supabase, whenever the engine has its secret key (2026-10-03; the
+  // Terminal and coin pages read arcdex_holder_scans and arcdex_holder_balances from there directly). Without the key,
+  // the engine's own Postgres.
+  const holders = o.holders ?? (adminReady ? supabaseHolders : sql ? pgHolders(sql, ready) : memoryHolders())
   const handlers: Record<string, Handler> = o.handlers ?? {
     argus: (r, c) => argus(r, c), gecko: (r, c) => gecko(r, c), launchpad: (r, c) => launchpad(r, c),
     radar: r => radar(r), dex: r => dex(r), holders: holdersHandler(holders),
@@ -261,6 +264,26 @@ export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number
       } catch (e) { metrics.inc('site_index_errors'); log.debug('site api: trade indexer', { error: errMsg(e) }) }
     }
     setInterval(() => void run(), every)
+  }
+
+  // Holder counts for what's trading now (2026-10-03): the 30 most active coins are brought up to date every minute, so
+  // their counts are right in the Terminal before anyone opens their page. One coin at a time; a round still running
+  // when the next is due is left to finish.
+  if (o.hotTokens && o.holdersEveryMs !== 0) {
+    let busy = false
+    const refresh = async () => {
+      if (busy) return
+      busy = true
+      try {
+        for (const { token, createdSec } of o.hotTokens!().slice(0, 30)) {
+          const q = new URLSearchParams({ token })
+          if (createdSec) q.set('created', String(createdSec))
+          try { await handlers.holders(new Request(`http://engine/api/holders?${q}`), ctx); metrics.inc('site_holders_refreshed') }
+          catch (e) { metrics.inc('site_holders_refresh_errors'); log.debug('site api: holder refresh', { token, error: errMsg(e) }) }
+        }
+      } finally { busy = false }
+    }
+    setInterval(() => void refresh(), o.holdersEveryMs ?? 60_000)
   }
 
   // Indexes that build in slices (the launchpad's, the curves'): kept going from the start, so the first visitors after a

@@ -97,6 +97,19 @@ export class TokenState {
     this.rolledTo = Math.max(this.rolledTo, oldestKept - 1)
   }
 
+  /** Trades and volume over the last `minutes`, this minute included (from the same one-minute ring). */
+  activity(minutes: number, now = Date.now()): { trades: number; buys: number; sells: number; vol: number } {
+    this.roll(now)
+    const nowMin = Math.floor(now / MIN_MS)
+    let buys = 0, sells = 0, vol = 0
+    for (let m = nowMin - Math.min(minutes, SLOTS) + 1; m <= nowMin; m++) {
+      const base = (((m % SLOTS) + SLOTS) % SLOTS) * W
+      if (this.ring[base + F_MIN] !== m) continue
+      buys += this.ring[base + F_BUYS]; sells += this.ring[base + F_SELLS]; vol += this.ring[base + F_VOL]
+    }
+    return { trades: buys + sells, buys, sells, vol }
+  }
+
   /** Close price at (or before) `minutesAgo`, within the window. */
   private priceAgo(minutesAgo: number, now: number): number | null {
     const target = Math.floor(now / MIN_MS) - minutesAgo

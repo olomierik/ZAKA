@@ -2123,5 +2123,8 @@ const d: Record<string, string> = {
   "Estimates assume a 0.5% maintenance margin. Final parameters are announced at launch.": "估算基于 0.5% 的维持保证金。最终参数将在上线时公布。",
   "Testnet first": "先上测试网",
   "Futures open on Arc testnet first, then on mainnet after an independent audit.": "合约先在 Arc 测试网开放，独立审计后再上主网。",
+  // Most active first (2026-10-03)
+  "Sort: most active": "排序：最活跃",
+  "{n} trades in the last 15 minutes": "过去 15 分钟内 {n} 笔交易",
 }
 export default d

@@ -3,7 +3,7 @@
 // in-memory and incremental; nothing on the trade path waits on a network
 // call (Redis and the database are written in the background).
 
-import { toWire, type Interval, type LaunchInfo, type ServerMessage, type TokenStats, type Trade, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
+import { toWire, type ActiveToken, type Interval, type LaunchInfo, type ServerMessage, type TokenStats, type Trade, type WireCandle, type WireTrade } from '../../../api/_marketProtocol'
 import { INTERVAL_LIST } from '../../../api/_marketProtocol'
 import type { Rpc } from '../chain/http'
 import { log, errMsg } from '../log'
@@ -175,6 +175,26 @@ export class MarketEngine {
     return c ? toWireCandle(c) : null
   }
   recentCandles(token: string, interval: Interval): WireCandle[] { return this.candles.recent(token, interval).map(toWireCandle) }
+
+  /**
+   * What's trading now (2026-10-03, owner: "rank tokens to the top based on their activity"): coins with a trade in the
+   * last hour, by 2 × trades in the last 15 minutes + trades in the last hour + one point per $100 of the hour's volume.
+   */
+  active(limit: number, now = Date.now()): ActiveToken[] {
+    const rows: ActiveToken[] = []
+    for (const st of this.tokens.values()) {
+      if (st.priceUsd === null) continue
+      const h1 = st.activity(60, now)
+      if (h1.trades === 0) continue
+      const m15 = st.activity(15, now)
+      rows.push({
+        token: st.token, score: Math.round((2 * m15.trades + h1.trades + h1.vol / 100) * 100) / 100,
+        trades15m: m15.trades, trades1h: h1.trades, buys1h: h1.buys, sells1h: h1.sells, vol1h: Math.round(h1.vol * 100) / 100,
+        stats: st.stats(now), meta: this.metas.get(st.token) ?? null,
+      })
+    }
+    return rows.sort((a, b) => b.score - a.score).slice(0, limit)
+  }
 
   /** Most active tokens, for the market endpoint. */
   market(limit: number) {

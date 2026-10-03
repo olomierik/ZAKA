@@ -2123,5 +2123,8 @@ const d: Record<string, string> = {
   "Estimates assume a 0.5% maintenance margin. Final parameters are announced at launch.": "Schätzungen mit 0,5 % Erhaltungsmarge. Die endgültigen Parameter werden zum Start bekanntgegeben.",
   "Testnet first": "Zuerst Testnet",
   "Futures open on Arc testnet first, then on mainnet after an independent audit.": "Futures starten zuerst im Arc-Testnet, dann im Mainnet nach einem unabhängigen Audit.",
+  // Most active first (2026-10-03)
+  "Sort: most active": "Sortieren: am aktivsten",
+  "{n} trades in the last 15 minutes": "{n} Trades in den letzten 15 Minuten",
 }
 export default d

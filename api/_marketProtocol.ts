@@ -136,6 +136,18 @@ export interface TokenStats {
   latestTs: number
 }
 
+/**
+ * A coin trading now (GET /v1/tokens/active, 2026-10-03): ranked by `score` = 2 × its trades in the last 15 minutes
+ * + its trades in the last hour + one point per $100 of the hour's volume. `meta` when the engine saw its launch.
+ */
+export interface ActiveToken {
+  token: string
+  score: number
+  trades15m: number; trades1h: number; buys1h: number; sells1h: number; vol1h: number
+  stats: TokenStats
+  meta: LaunchInfo | null
+}
+
 export interface LaunchInfo {
   token: string
   name: string

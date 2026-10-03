@@ -270,6 +270,8 @@ async function main() {
     dataApi.site = createSiteApi({
       databaseUrl: cfg.databaseUrl, gtPerMin: n(process.env.SITE_GT_PER_MIN, 25),
       indexUrl: process.env.SITE_INDEX_URL === 'off' ? null : process.env.SITE_INDEX_URL || undefined, indexEveryMs: n(process.env.SITE_INDEX_EVERY_MS, 60_000),
+      // Holder counts kept fresh for what's trading now (MarketEngine.active).
+      hotTokens: () => eng.active(30).map(r => ({ token: r.token, createdSec: r.meta ? Math.floor(r.meta.timestamp / 1000) : undefined })),
     })
     log.info('site api: serving', { functions: dataApi.site.names })
   }

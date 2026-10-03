@@ -1224,6 +1224,14 @@ Owner: "hide the autotrade marketplace and let the users see only COMING SOON; h
 - **$SENSE on the landing (owner, 2026-10-03):** the contract address `0x91402b32C4Ab7915132b8B24e0d084E0428667ED` (on-chain: ARCSENSE / SENSE, 1B supply, an Argus launch; pool `0x8793…e047`) in the hero with a Copy button (full address on wide screens, shortened under 560px) and "Buy $SENSE" to its coin page.
 - **Positioning:** "The first spot and futures trading platform on Arc" (landing, page titles, link previews, the app manifest, the wallet-connect description). DefiLlama listed no perpetual-futures venue on Arc on 2026-10-03; spot trading on Arc exists elsewhere, so "first" rests on the combination and on futures.
 
+## The Terminal: most active first, live holders (2026-10-03)
+
+Owner: "the coins on the spot market seem not active, holder numbers aren't correct, the terminal doesn't blink; rank tokens to the top by their activity".
+- **Why it looked dead:** the Terminal sorted by 24h volume, so yesterday's pump-and-dumps (down ~50%, $2.5K caps) held the top rows while the coins trading now sat below the fold. Trades were arriving (the badge counted 200+ a minute) and flashing rows, but rarely the visible ones.
+- **Most active first:** `GET /v1/tokens/active?limit=` (`MarketEngine.active`, `TokenState.activity` over the one-minute ring) ranks coins with a trade in the last hour by 2 × trades in 15 minutes + trades in the hour + one point per $100 of the hour's volume (`ActiveToken`). The Terminal polls it every 15s, its default sort is "Sort: most active", each live trade adds 2 until the next poll, and the order is re-taken every 5 seconds (not on every flash, which made rows unreadable). Coins trading now that the list lacks are added from their launch. Rows and phone cards show 🔥 with the count when a coin has 5+ trades in 15 minutes.
+- **Holders:** the browser reads the holder index from Supabase (`arcdex_holder_scans`, `arcdex_holder_balances`), but the engine had been writing it to its own Postgres since the site's functions moved there: counts froze on 2026-10-02 and newer coins showed "—". With `SUPABASE_SECRET_KEY` set, the engine writes the index to Supabase again (`siteApi.ts`: `supabaseHolders` when `adminReady`), and every minute brings the 30 most active coins' counts up to date (`hotTokens`), so they're right in the Terminal before anyone opens a coin.
+- Tests: `engine/test/activeTokens.test.ts`.
+
 ## ARCSENSE on Netlify (2026-10-03)
 
 The owner's new site, www.arcsense.site, is hosted on Netlify and serves only the app's files (`netlify.toml`): no function runs there.

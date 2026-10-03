@@ -2123,5 +2123,8 @@ const d: Record<string, string> = {
   "Estimates assume a 0.5% maintenance margin. Final parameters are announced at launch.": "Makadirio yanachukulia dhamana ya matengenezo ya 0.5%. Vigezo vya mwisho vitatangazwa wakati wa uzinduzi.",
   "Testnet first": "Testnet kwanza",
   "Futures open on Arc testnet first, then on mainnet after an independent audit.": "Futures zinafunguliwa kwanza kwenye testnet ya Arc, kisha kwenye mainnet baada ya ukaguzi huru.",
+  // Most active first (2026-10-03)
+  "Sort: most active": "Panga: zinazofanya biashara zaidi",
+  "{n} trades in the last 15 minutes": "Biashara {n} katika dakika 15 zilizopita",
 }
 export default d

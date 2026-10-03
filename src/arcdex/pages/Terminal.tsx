@@ -8,8 +8,8 @@ import { subscribeMarketPulse } from '../api/marketPulse'
 import { getArgusTokens } from '../api/argus'
 import { cachedArgusMarket, getArgusMarket, argusPoolToArcToken } from '../api/argusMarket'
 import { curveRowToArcToken, getCurveMarket } from '../api/curveMarket'
-import { engineEnabled, getNewTokens, marketStream, useEngineStatus } from '../api/marketStream'
-import type { LaunchInfo } from '../../../api/_marketProtocol'
+import { engineApiUrl, engineEnabled, getNewTokens, marketStream, useEngineStatus } from '../api/marketStream'
+import type { ActiveToken, LaunchInfo } from '../../../api/_marketProtocol'
 import { curateTokens, type CuratedGroup } from '../lib/curate'
 import { getHolderScans } from '../api/social'
 import { headBlock } from '../../../api/_arcLogs'
@@ -71,6 +71,21 @@ function launchToArcToken(l: LaunchInfo): ArcToken {
   }
 }
 
+/** A coin trading now (GET /v1/tokens/active) that the list doesn't carry yet, as a row: its launch, with its live stats. */
+function activeToArcToken(a: ActiveToken): ArcToken | null {
+  if (!a.meta) return null
+  const s = a.stats
+  return {
+    ...launchToArcToken(a.meta),
+    price: s.priceUsd ?? 0, priceChange5m: s.chg.m5 ?? 0, priceChange1h: s.chg.h1 ?? 0, priceChange24h: s.chg.h24 ?? 0,
+    volume24h: s.vol24, marketCap: s.marketCapUsd ?? 0, liquidity: s.liquidityUsd ?? 0,
+    txCount24h: s.trades24, buys24h: s.buys24, sells24h: s.sells24,
+  }
+}
+
+/** Trades in the last 15 minutes from which a coin wears the 🔥 (most active right now). */
+const HOT_TRADES = 5
+
 function fmtAge(ms: number): string {
   const s = ms / 1000
   if (s < 60)    return `${Math.floor(s)}s`
@@ -93,7 +108,7 @@ function fmtPct(n: number) {
 const VIEW_TABS = [N_('All'), N_('New pair'), N_('New <15m'), N_('Trending'), N_('Top volume')]
 
 // ── sort columns ─────────────────────────────────────────────────────
-type SortCol = 'mcap' | 'volume' | 'txns' | 'score' | 'age' | 'liq' | 'holders' | 'change' | 'risk'
+type SortCol = 'active' | 'mcap' | 'volume' | 'txns' | 'score' | 'age' | 'liq' | 'holders' | 'change' | 'risk'
 
 const PAGE_SIZE = 50
 
@@ -153,8 +168,13 @@ interface RowProps {
   isDuplicateRow?: boolean
   risk: Risk
   flash?: Flash
+  /** Trades in the last 15 minutes, when it's one of the most active coins right now. */
+  hot?: number
 }
-function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onToggleExpand, isDuplicateRow = false, risk, flash }: RowProps) {
+function HotBadge({ n }: { n: number }) {
+  return <span className="hot-badge" title={T('{n} trades in the last 15 minutes', { n })}>🔥 {n}</span>
+}
+function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onToggleExpand, isDuplicateRow = false, risk, flash, hot }: RowProps) {
   const lp      = token.launchpad
   const lpColor = getLaunchpadColor(lp)
   const ch24    = token.priceChange24h
@@ -183,6 +203,7 @@ function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onTogg
               <span style={{ fontWeight: 700, fontSize: '0.82rem', color: isDuplicateRow ? 'var(--text-muted)' : 'var(--text)' }}>
                 {token.symbol}
               </span>
+              {hot ? <HotBadge n={hot} /> : null}
               {token.verified && (
                 <span style={{ fontSize: '0.55rem', background: '#1d4ed822', color: '#60a5fa', border: '1px solid #1d4ed844', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>{T("✓ VERIFIED")}</span>
               )}
@@ -268,8 +289,8 @@ function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onTogg
   )
 }
 
-interface CardProps { token: ArcToken; dupCount?: number; onClick: () => void; risk: Risk; flash?: Flash }
-function TokenCard({ token, dupCount = 0, onClick, risk, flash }: CardProps) {
+interface CardProps { token: ArcToken; dupCount?: number; onClick: () => void; risk: Risk; flash?: Flash; hot?: number }
+function TokenCard({ token, dupCount = 0, onClick, risk, flash, hot }: CardProps) {
   const lp = token.launchpad
   const lpColor = getLaunchpadColor(lp)
   const ch24 = token.priceChange24h
@@ -279,7 +300,7 @@ function TokenCard({ token, dupCount = 0, onClick, risk, flash }: CardProps) {
         <TokenLogo src={token.logoUrl} symbol={token.symbol} size={36} />
         <div className="token-card-name">
           <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {token.symbol}
+            {token.symbol}{hot ? <> <HotBadge n={hot} /></> : null}
           </div>
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {token.name} · {fmtAge(token.ageMs)}
@@ -318,7 +339,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   const [loading,  setLoading]  = useState(true)
   const [source,   setSource]   = useState('All sources')
   const [viewTab,  setViewTab]  = useState('Trending')
-  const [sortCol,  setSortCol]  = useState<SortCol>('volume')
+  // Most active first (2026-10-03, owner: rank coins by their activity, so the busiest are on top and flashing).
+  const [sortCol,  setSortCol]  = useState<SortCol>('active')
   const [sortAsc,  setSortAsc]  = useState(false)
   const [search,   setSearch]   = useState('')
   const [page,     setPage]     = useState(1)
@@ -342,6 +364,22 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   // From the market engine (when connected): launches it detected, and its
   // once-a-second price/volume ticks, laid over the rows above.
   const launchesRef = useRef(new Map<string, LaunchInfo>())
+  // What's trading now (GET /v1/tokens/active, every 15s): each coin's activity score and its trades in 15 minutes.
+  const activeRef = useRef(new Map<string, ActiveToken>())
+  // Trades seen live since the last poll: each one lifts its coin, so the ranking follows the market between polls.
+  const liveTradesRef = useRef(new Map<string, number>())
+  // The ranking is re-taken every 5 seconds (and after each poll), not on every trade: rows jumping on each flash
+  // couldn't be read.
+  const rankRef = useRef(new Map<string, number>())
+  const [, setRankTick] = useState(0)
+  const takeRank = useCallback(() => {
+    const m = new Map<string, number>()
+    for (const [k, a] of activeRef.current) m.set(k, a.score)
+    for (const [k, n] of liveTradesRef.current) m.set(k, (m.get(k) ?? 0) + 2 * n)
+    rankRef.current = m
+    setRankTick(x => x + 1)
+  }, [])
+  useEffect(() => { const id = setInterval(() => { if (!document.hidden) takeRank() }, 5_000); return () => clearInterval(id) }, [takeRank])
   const ticksRef = useRef(new Map<string, [number | null, number | null, number, number | null, number]>())
   const engineStatus = useEngineStatus()
   const withTick = (t: ArcToken): ArcToken => {
@@ -370,7 +408,9 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     const curves = curvesRef.current.filter(t => !listed.has(t.address))
     for (const t of curves) listed.add(t.address)
     const launched = [...launchesRef.current.values()].filter(l => !listed.has(l.token)).map(launchToArcToken)
-    const data = [...oursRef.current, ...[...seen.values()].map(v => v.t), ...curves, ...launched].map(withTick)
+    for (const t of launched) listed.add(t.address.toLowerCase())
+    const busy = [...activeRef.current.values()].filter(a => !listed.has(a.token)).map(activeToArcToken).filter((t): t is ArcToken => t !== null)
+    const data = [...oursRef.current, ...[...seen.values()].map(v => v.t), ...curves, ...launched, ...busy].map(withTick)
     setTokens(data)
     // Keep the loading state until there's something to show — the first
     // source to land may be an empty one.
@@ -432,6 +472,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   const pulse = useCallback((p: { token: string; side: 'buy' | 'sell' }) => {
     const now = Date.now()
     lastPulse.current.set(p.token, now)
+    liveTradesRef.current.set(p.token, (liveTradesRef.current.get(p.token) ?? 0) + 1)
     pulseTimes.current.push(now)
     pulseBuf.current.push(p)
     if (flushTimer.current) return
@@ -500,6 +541,22 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     })
     return () => { offNew(); offTicks() }
   }, [publish, pulse])
+
+  useEffect(() => {
+    if (!engineEnabled || !engineApiUrl) return
+    let alive = true
+    const load = () => void fetch(`${engineApiUrl}/v1/tokens/active?limit=150`, { signal: AbortSignal.timeout(10_000) })
+      .then(r => (r.ok ? r.json() : null)).then((j: { tokens?: ActiveToken[] } | null) => {
+        if (!alive || !j?.tokens) return
+        activeRef.current = new Map(j.tokens.map(a => [a.token.toLowerCase(), a]))
+        liveTradesRef.current = new Map()
+        takeRank()
+        publish([])
+      }).catch(() => {})
+    load()
+    const id = setInterval(() => { if (!document.hidden) load() }, 15_000)
+    return () => { alive = false; clearInterval(id) }
+  }, [publish, takeRank])
 
   // reset page on filter change
   useEffect(() => { setPage(1); setShown(PAGE_SIZE) }, [source, viewTab, search, sortCol, sortAsc, minMcap, maxMcap, minVol])
@@ -591,8 +648,17 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   const shownAddresses = useMemo(() => new Set(filtered.map(t => t.address.toLowerCase())), [filtered])
 
   // ── sort ──────────────────────────────────────────────────────────
+  // A coin's activity: the engine's score (2 × trades in 15 minutes + trades in the hour + $100 of the hour's volume
+  // a point) plus 2 for every trade seen live since its last poll, as of the last re-take (every 5 seconds).
+  const activityOf = (t: ArcToken) => rankRef.current.get(t.address.toLowerCase()) ?? 0
+  const hotOf = (t: ArcToken) => {
+    const k = t.address.toLowerCase()
+    const n = (activeRef.current.get(k)?.trades15m ?? 0) + (liveTradesRef.current.get(k) ?? 0)
+    return n >= HOT_TRADES ? n : undefined
+  }
   const sorted = [...filtered].sort((a, b) => {
     let diff = 0
+    if (sortCol === 'active')   diff = activityOf(b) - activityOf(a) || (b.volume24h ?? 0) - (a.volume24h ?? 0)
     if (sortCol === 'mcap')     diff = (b.marketCap ?? 0)    - (a.marketCap ?? 0)
     if (sortCol === 'volume')   diff = (b.volume24h ?? 0)    - (a.volume24h ?? 0)
     if (sortCol === 'liq')      diff = (b.liquidity ?? 0)    - (a.liquidity ?? 0)
@@ -662,6 +728,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
       {/* ── sort dropdown + view tabs ── */}
       <div className="view-bar">
         <select className="sort-select" value={sortCol} onChange={e => setSortCol(e.target.value as SortCol)}>
+          <option value="active">{T("Sort: most active")}</option>
           <option value="volume">{T("Sort: volume")}</option>
           <option value="mcap">{T("Sort: market cap")}</option>
           <option value="txns">{T("Sort: transactions")}</option>
@@ -745,6 +812,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
                       rank={(page - 1) * PAGE_SIZE + i + 1}
                       risk={riskOfRow(token)}
                       flash={flash.get(token.address.toLowerCase())}
+                      hot={hotOf(token)}
                       onClick={() => goTo(token)}
                       dupCount={dupCount}
                       expanded={isExpanded}
@@ -783,6 +851,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
                   token={token}
                   risk={riskOfRow(token)}
                   flash={flash.get(token.address.toLowerCase())}
+                  hot={hotOf(token)}
                   dupCount={group?.duplicates.length ?? 0}
                   onClick={() => navigate(openPage(token))}
                 />

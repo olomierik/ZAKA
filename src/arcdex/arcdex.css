@@ -1529,3 +1529,6 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .fx-hint-bad { color: var(--red); font-size: 0.74rem; margin-top: -6px; }
 @media (max-width: 1100px) { .fx-main { grid-template-columns: 1fr; } .fx-chart { height: 360px; } }
 @media (max-width: 767px) { .fx-page { padding: 10px 12px 30px; } .fx-chart { height: 300px; } .fx-last { font-size: 1.15rem !important; } }
+
+/* ── most active right now (2026-10-03) ── */
+.hot-badge { font-size: 0.58rem; font-weight: 800; padding: 1px 5px; border-radius: 3px; background: rgba(249,115,22,0.14); color: #fb923c; border: 1px solid rgba(249,115,22,0.4); white-space: nowrap; font-family: var(--mono); }

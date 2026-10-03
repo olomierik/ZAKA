@@ -8,6 +8,7 @@
 //
 // REST (history + snapshots, CORS-limited to the allowed origins):
 //   GET /v1/tokens/new?limit=50
+//   GET /v1/tokens/active?limit=100              what's trading now, by recent trades and volume (MarketEngine.active)
 //   GET /v1/tokens/:token
 //   GET /v1/tokens/:token/trades?limit=100&before=<ms>
 //   GET /v1/tokens/:token/candles?interval=1m&limit=500&before=<ms>
@@ -34,7 +35,7 @@
 import type { Server, ServerWebSocket } from 'bun'
 import {
   INTERVALS, isInterval, parseClientMessage, searchScore, toWire, topicOf,
-  type Interval, type LaunchInfo, type SearchHit, type ServerMessage, type TokenStats, type WireCandle, type WireTrade,
+  type ActiveToken, type Interval, type LaunchInfo, type SearchHit, type ServerMessage, type TokenStats, type WireCandle, type WireTrade,
 } from '../../../api/_marketProtocol'
 import type { Config } from '../config'
 import { log, errMsg } from '../log'
@@ -115,6 +116,9 @@ export class DataApi {
     for (const c of live) byT.set(c[0], c)
     return [...byT.values()].sort((a, b) => a[0] - b[0]).slice(-limit)
   }
+
+  /** What's trading now, ranked (MarketEngine.active); empty before the engine starts. */
+  active(limit: number): ActiveToken[] { return this.engine?.active(limit) ?? [] }
 
   async launches(limit: number): Promise<LaunchInfo[]> {
     const hot = await this.hot.getLaunches(limit)
@@ -342,6 +346,7 @@ export function startServer({ cfg, api, health }: ServerDeps) {
       const before = Number(url.searchParams.get('before')) || undefined
       try {
         if (url.pathname === '/v1/tokens/new') return json(req, 200, { launches: await api.launches(limit(50, 500)) }, 'public, max-age=1')
+        if (url.pathname === '/v1/tokens/active') return json(req, 200, { at: Date.now(), tokens: api.active(limit(100, 300)) }, 'public, max-age=5')
         if (url.pathname === '/v1/market') return json(req, 200, { tokens: await api.market(limit(100, 1_000)) }, 'public, max-age=2')
         if (url.pathname === '/v1/search') return json(req, 200, { tokens: await api.search(url.searchParams.get('q') ?? '', limit(20, 50)) }, 'public, max-age=10')
         if (url.pathname.startsWith('/v1/signals') || url.pathname.startsWith('/v1/safety/') || url.pathname.startsWith('/v1/bot/')) {
