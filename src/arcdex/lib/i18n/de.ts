@@ -2090,5 +2090,7 @@ const d: Record<string, string> = {
   "Current settings": "Aktuelle Einstellungen",
   "Every weight, threshold, exit and limit the engine uses (version {v}).": "Jedes Gewicht, jede Schwelle, jeder Ausstieg und jedes Limit der Engine (Version {v}).",
   "Signal engine": "Signal-Engine",
+  "Autotrade is paused": "Autotrade pausiert",
+  "Bots don't open new trades for now. Trades already open are still closed as usual, and you can withdraw your USDC at any time.": "Bots eröffnen vorerst keine neuen Trades. Bereits offene Trades werden wie gewohnt geschlossen, und du kannst deine USDC jederzeit abheben.",
 }
 export default d

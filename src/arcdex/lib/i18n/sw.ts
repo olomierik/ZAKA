@@ -2090,5 +2090,7 @@ const d: Record<string, string> = {
   "Current settings": "Mipangilio ya sasa",
   "Every weight, threshold, exit and limit the engine uses (version {v}).": "Kila uzito, kiwango, njia ya kutoka na kikomo injini inachotumia (toleo {v}).",
   "Signal engine": "Injini ya ishara",
+  "Autotrade is paused": "Autotrade imesitishwa",
+  "Bots don't open new trades for now. Trades already open are still closed as usual, and you can withdraw your USDC at any time.": "Kwa sasa boti hazifungui biashara mpya. Biashara zilizo wazi bado zinafungwa kama kawaida, na unaweza kutoa USDC zako wakati wowote.",
 }
 export default d

@@ -2090,5 +2090,7 @@ const d: Record<string, string> = {
   "Current settings": "当前设置",
   "Every weight, threshold, exit and limit the engine uses (version {v}).": "引擎使用的每个权重、阈值、离场规则和限制（版本 {v}）。",
   "Signal engine": "信号引擎",
+  "Autotrade is paused": "自动交易已暂停",
+  "Bots don't open new trades for now. Trades already open are still closed as usual, and you can withdraw your USDC at any time.": "机器人暂时不会开新仓。已开的仓位仍会照常平仓，你可以随时提取你的 USDC。",
 }
 export default d

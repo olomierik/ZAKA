@@ -72,6 +72,13 @@ export interface Config {
    */
   tiersEnforceAt: number | null
   /**
+   * Autotrade paused (AUTOTRADE_PAUSED; on by default since 2026-10-03, owner: the platform moves to spot and futures
+   * trading, "the auto trade functionality will have to be paused for now"). Bots open no new trades, paper or live;
+   * open trades are still managed and sold, withdrawals work, and signals, the scanner and the engine's own paper book
+   * keep running. AUTOTRADE_PAUSED=off resumes it.
+   */
+  autotradePaused: boolean
+  /**
    * Which signals live bots trade (BOT_LIVE_GRADES): `dollar` (the default: every snipe and fast scalp at $2, sold at
    * +$1, bot/dollarPlan.ts), `board` (the strategy board, bot/strategyBoard.ts), `proven` (Prime and Core unless their
    * record fails, Standard once proven), or `off` (no new live buys). `all` is retired and means the default.
@@ -121,6 +128,7 @@ export function loadConfig(): Config {
     // Paper bots trade signals again (2026-10-01): they're what live bots learn from (bot/strategyBoard.ts). BOT_PAPER_SIGNALS=off stops them.
     botSignals: { live: process.env.BOT_LIVE_SIGNALS === 'proven' ? 'proven' : 'all', paper: !/^(0|off|false|no)$/i.test(process.env.BOT_PAPER_SIGNALS ?? '') },
     tiersEnforced: process.env.TIERS_ENFORCED === 'true' || process.env.TIERS_ENFORCED === '1',
+    autotradePaused: !/^(0|off|false|no)$/i.test(process.env.AUTOTRADE_PAUSED?.trim() ?? ''),
     tiersEnforceAt: (() => {
       const raw = process.env.TIERS_ENFORCE_AT?.trim()
       if (!raw || raw === 'never') return null

@@ -139,6 +139,12 @@ export default function SignalsPage({ navigate, view: pageView, bot }: { navigat
         <>
           <ScanStrip stats={scan?.stats ?? null} />
           <LivePromo />
+          {stats?.routing?.autotradePaused && (
+            <div className="at-promo">
+              <span className="at-promo-badge">⏸ {T('Autotrade is paused')}</span>
+              <span>{T("Bots don't open new trades for now. Trades already open are still closed as usual, and you can withdraw your USDC at any time.")}</span>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 4, marginTop: 14, borderBottom: '1px solid var(--adx-card-border)', overflowX: 'auto' }}>
             {VIEWS.map(([k, l]) => (
               <button key={k} onClick={() => setView(k)} style={{ padding: '9px 14px', background: 'none', border: 'none', borderBottom: `2px solid ${view === k ? 'var(--adx-accent)' : 'transparent'}`, color: view === k ? 'var(--text)' : 'var(--text-muted)', fontWeight: 800, fontSize: '0.84rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>

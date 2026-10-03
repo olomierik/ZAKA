@@ -1198,6 +1198,15 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
   - **Search:** includes fresh launches.
 - **Tests:** `bun run engine:test` — 53 tests (+2 Postgres ones that need `PG_TEST_URL`; `engine/test/curves.test.ts` covers Mercuri and SolonPad), including catch-up backpressure, live batching, replays of recorded mainnet data (`engine/test/fixtures/mainnet.json`) and a RESP3 Redis round-trip against Bun's client. Live latency: `bun engine/scripts/latency-check.ts <ws-url> 60`.
 
+## Autotrade paused (2026-10-03)
+
+Owner: the platform becomes ARCSENSE (spot and futures trading), and "the auto trade functionality will have to be paused for now".
+- **The switch:** `AUTOTRADE_PAUSED` (`engine/src/config.ts` `autotradePaused`), on by default; `AUTOTRADE_PAUSED=off` on Railway resumes Autotrade.
+- **Paused:** no bot opens a new trade, paper or live: visitors' bots (`PaperAccounts.onSignal`, skip key `autotrade-paused`, "not traded: Autotrade is paused for now") and the owner's bot wallet (`Bot` `forLive`).
+- **Still running:** trades already open are managed and sold as before, withdrawals work, and signals, the scanner and the engine's own paper book keep running.
+- **Site:** `GET /v1/bot/stats` `routing.autotradePaused`; the Autotrade page shows "⏸ Autotrade is paused" (all seven languages).
+- Tests: `engine/test/autotradePause.test.ts`.
+
 ## The signal engine — `engine/src/quant` (2026-10-02)
 
 A 100-point meme-coin signal engine built into the market engine, beside the existing bot (which it doesn't change). Full design, formulas, strategies, risk controls, measurements, environment and the steps before live: **`engine/SIGNAL_ENGINE.md`**.

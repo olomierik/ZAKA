@@ -238,18 +238,19 @@ async function main() {
   botsHealth = () => ({ email: mailer.enabled, userLive: !!vault, ownerWallet: !!live, mode: botRef?.mode ?? null, bots: accounts?.count ?? 0, running: accounts?.running ?? 0 })
   // Tiers (bot/tiers.ts): what each account gets; everything, for everyone, until TIERS_ENFORCED.
   const tiers = new Tiers({ enforced: cfg.tiersEnforced, rpc, enforceAt: cfg.tiersEnforceAt })
+  if (cfg.autotradePaused) log.info('autotrade paused: bots open no new trades (AUTOTRADE_PAUSED=off resumes it)')
   log.info('autotrade tiers', { enforced: tiers.enforced, enforceAt: tiers.enforceAt === null ? null : new Date(tiers.enforceAt).toISOString() })
   // Linked wallets' $ARCD, read at start and every 10 minutes (and again whenever an account's tier is asked with a stale balance).
   const readHoldings = () => { for (const w of users?.linkedWallets() ?? []) void tiers.read(w) }
   readHoldings()
   every(10 * 60_000, 'tier holdings', readHoldings)
-  const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => botRef?.priceOf(token) ?? eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s), live: userLive, paperSignals: cfg.botSignals.paper, access: ownerId => tiers.access(users?.get(ownerId) ?? null), liveRouting: cfg.liveGrades === 'board' ? 'board' : cfg.liveGrades === 'dollar' ? 'dollar' : 'grades' })
+  const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => botRef?.priceOf(token) ?? eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s), live: userLive, paperSignals: cfg.botSignals.paper, access: ownerId => tiers.access(users?.get(ownerId) ?? null), liveRouting: cfg.liveGrades === 'board' ? 'board' : cfg.liveGrades === 'dollar' ? 'dollar' : 'grades', paused: cfg.autotradePaused })
   if (accounts) await accounts.load().catch(e => log.error('paper accounts: load failed', { error: errMsg(e) }))
   const bot = cfg.botMode === 'off' ? null : new Bot({
     rpc, engine: eng, pools, mode: cfg.botMode, sizeUsd: cfg.botSizeUsd ?? undefined, scalpSizeUsd: cfg.botScalpSizeUsd ?? undefined,
     store: botStore, accounts,
     publish: (topics, msg) => publisher.publish(topics, msg),
-    live, owner: cfg.botOwner, history: history.enabled ? history : null, liveSignals: cfg.botSignals.live, liveGrades: cfg.liveGrades, launchpadOnly: cfg.launchpadOnly,
+    live, owner: cfg.botOwner, history: history.enabled ? history : null, liveSignals: cfg.botSignals.live, liveGrades: cfg.liveGrades, launchpadOnly: cfg.launchpadOnly, paused: cfg.autotradePaused,
   })
   botRef = bot
   const control = new ControlVerifier(cfg.botOwner as `0x${string}` | null, cfg.httpUrls)

@@ -207,7 +207,7 @@ export class Bot implements EngineObserver {
   private grown = new Set<string>()
 
   /** `history`: the coins' stored trades (replays); `speed`: the paper book at live speed (the default; null: at once). */
-  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null; history?: Pick<HistoryStore, 'trades'> | null; speed?: typeof LIVE_SPEED | null; liveSignals?: 'all' | 'proven'; liveGrades?: LiveRouting; launchpadOnly?: LaunchpadOnly }) {
+  constructor(private o: { rpc: Rpc; engine: MarketEngine; pools: PoolRegistry; store: BotStore; publish: (topics: string[], msg: ServerMessage) => void; mode: BotMode; sizeUsd?: number; scalpSizeUsd?: number; live?: LiveTrader | null; owner?: string | null; accounts?: PaperAccounts | null; history?: Pick<HistoryStore, 'trades'> | null; speed?: typeof LIVE_SPEED | null; liveSignals?: 'all' | 'proven'; liveGrades?: LiveRouting; launchpadOnly?: LaunchpadOnly; paused?: boolean }) {
     this.speed = o.speed === undefined ? LIVE_SPEED : o.speed
     this.liveSignals = o.liveSignals ?? 'proven'
     this.liveGrades = o.liveGrades ?? 'proven'
@@ -653,7 +653,8 @@ export class Bot implements EngineObserver {
     // `all` (the owner's setting): every signal not on probation goes to live bots; the rank still sets the tier (the size).
     const ranked = this.liveSignals === 'all' && !probation ? { ...graded, grade: 'live' as const } : graded
     // Live bots trade Prime and grades proven at live speed (signals/grades.ts liveGrade).
-    const forLive = this.liveGrades === 'off' ? { ok: false, why: 'live trading is paused by the platform (no new live buys)' }
+    const forLive = this.o.paused ? { ok: false, why: 'Autotrade is paused for now (no new live buys)' }
+      : this.liveGrades === 'off' ? { ok: false, why: 'live trading is paused by the platform (no new live buys)' }
       : dollarMode ? (!isDollarStrategy(strategy) ? { ok: false, why: 'live bots trade snipes and fast scalps only' }
         : probation ? { ok: false, why: probation.why }
         : crowded ? { ok: false, why: crowded.why }
@@ -1249,7 +1250,7 @@ export class Bot implements EngineObserver {
     const byRule = Object.fromEntries((['momentum', 'snipe', 'second-leg', 'volume'] as const).map(k => [k, stats(paper.filter(p => (p.rule ?? ruleOf.get(p.signalId)) === k))]))
     const probation = Object.fromEntries((['momentum', 'snipe', 'second-leg', 'volume'] as const).map(k => [k, this.probation(k)?.why ?? null]))
     const liveSpeed = this.liveSpeed.keys().map(k => this.liveSpeed.record(k))
-    const routing = { liveSignals: this.liveSignals, paperSignals: this.o.accounts?.paperSignals ?? true, launchpadOnly: this.launchpadOnly }
+    const routing = { liveSignals: this.liveSignals, paperSignals: this.o.accounts?.paperSignals ?? true, launchpadOnly: this.launchpadOnly, autotradePaused: this.o.paused ?? false }
     return { mode: this.mode, ...of(paper), byRule, probation, liveSpeed, routing, grades: this.gradeRecords(), live: of(this.positions.filter(p => p.mode === 'live')), params: { snipe: this.params('snipe'), 'second-leg': this.params('second-leg'), scalp: this.params('scalp') }, risk: RISK, rules: RULES, watching: this.paths.size }
   }
 

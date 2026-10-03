@@ -281,6 +281,8 @@ export class PaperAccounts {
    * (the signal's grade).
    */
   readonly liveRouting: 'dollar' | 'board' | 'grades'
+  /** Autotrade paused (config `autotradePaused`): no bot opens a new trade; open ones are still managed and sold. */
+  readonly paused: boolean
   /** On the dollar plan: the team's trades on it, per strategy (live bots' and every signal's replay, one per signal), and when each bot last read them. */
   private sharedDollar = new Map<Strategy, Position[]>()
   private dollarSyncAt = new Map<string, number>()
@@ -294,10 +296,11 @@ export class PaperAccounts {
    * `speed`: paper fills at live speed (the default); null fills at once (tests of other things).
    * `access`: what an owner's tier gets (bot/tiers.ts); everything, for everyone, without it.
    */
-  constructor(private o: { store: PaperAccountStore; priceOf: (token: string) => number | null; params: (s: Strategy) => StrategyParams; live?: UserLive | null; speed?: typeof LIVE_SPEED | null; paperSignals?: boolean; access?: (ownerId: string | null) => AccessView; liveRouting?: 'dollar' | 'board' | 'grades' }) {
+  constructor(private o: { store: PaperAccountStore; priceOf: (token: string) => number | null; params: (s: Strategy) => StrategyParams; live?: UserLive | null; speed?: typeof LIVE_SPEED | null; paperSignals?: boolean; access?: (ownerId: string | null) => AccessView; liveRouting?: 'dollar' | 'board' | 'grades'; paused?: boolean }) {
     this.speed = o.speed === undefined ? LIVE_SPEED : o.speed
     this.paperSignals = o.paperSignals ?? true
     this.liveRouting = o.liveRouting ?? 'grades'
+    this.paused = o.paused ?? false
   }
 
   /** The engine's own paper book and its live trades (set by the Bot). */
@@ -673,6 +676,7 @@ export class PaperAccounts {
       const skip = (key: string, why: string) => this.passOver(a, sig, key, why, now)
       // A stopped bot that was never funded is someone's abandoned try: left out.
       if (!a.running) { if (a.mode === 'live' || a.cash >= SIZE_LIMITS.minUsd) skip('not-running', 'not traded: the bot is stopped (press Start)'); continue }
+      if (this.paused) { skip('autotrade-paused', 'not traded: Autotrade is paused for now (open trades are still managed, and withdrawals work)'); continue }
       const access = this.accessOf(a.ownerId)
       // The dollar plan (bot/dollarPlan.ts): every snipe and fast scalp, $2, all of it sold once it makes $1.
       if (a.mode === 'live' && this.liveRouting === 'dollar') {
