@@ -24,11 +24,11 @@ export const ARCD_TIERS: ArcdTier[] = [
 export const TIERS_ENFORCED = false
 
 /**
- * Live trading for every account without $ARCD until then; tiers start by
- * themselves at that moment (owner's decision, 2026-09-30: 3 October 2026,
- * 00:00 UTC). The engine's `enforceAt` wins; this is the fallback.
+ * When tiers start by themselves; null: not scheduled. Off until further notice
+ * (owner's decision, 2026-10-03; it was 3 October 2026, 00:00 UTC). The
+ * engine's `enforceAt` wins; this is the fallback.
  */
-export const TIERS_START = Date.parse('2026-10-03T00:00:00Z')
+export const TIERS_START: number | null = null
 
 /** "2d 4h 12m" until `at` (null once it's passed). */
 export function countdown(at: number, now = Date.now()): string | null {

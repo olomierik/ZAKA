@@ -309,6 +309,25 @@ describe('free live trading until the deadline, then tiers (owner, 2026-09-30)',
     expect(tiers.access(null, at)).toMatchObject({ enforced: true, live: false, grades: ['standard'], maxBots: 1 })
     expect(new Tiers({ enforced: true, rpc: null, enforceAt: at }).enforceAt).toBeNull() // already on
   })
+  test('off until further notice since 2026-10-03: no deadline by default; TIERS_ENFORCE_AT or TIERS_ENFORCED still start them', async () => {
+    const { loadConfig } = await import('../src/config')
+    const saved = { at: process.env.TIERS_ENFORCE_AT, on: process.env.TIERS_ENFORCED }
+    try {
+      delete process.env.TIERS_ENFORCE_AT; delete process.env.TIERS_ENFORCED
+      const c = loadConfig()
+      expect(c.tiersEnforceAt).toBeNull()
+      expect(c.tiersEnforced).toBe(false)
+      const tiers = new Tiers({ enforced: c.tiersEnforced, rpc: null, enforceAt: c.tiersEnforceAt })
+      expect(tiers.access(null, at + 365 * 86_400_000)).toMatchObject({ enforced: false, enforceAt: null, live: true, grades: ['prime', 'core', 'standard'], maxBots: 5 })
+      process.env.TIERS_ENFORCE_AT = '2026-12-01T00:00:00Z'
+      expect(loadConfig().tiersEnforceAt).toBe(Date.parse('2026-12-01T00:00:00Z'))
+      process.env.TIERS_ENFORCE_AT = 'never'
+      expect(loadConfig().tiersEnforceAt).toBeNull()
+    } finally {
+      if (saved.at === undefined) delete process.env.TIERS_ENFORCE_AT; else process.env.TIERS_ENFORCE_AT = saved.at
+      if (saved.on === undefined) delete process.env.TIERS_ENFORCED; else process.env.TIERS_ENFORCED = saved.on
+    }
+  })
 })
 
 describe('which grades live bots trade', () => {

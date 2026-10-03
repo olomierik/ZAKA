@@ -196,7 +196,7 @@ export default function Landing() {
             </div>
           ))}
         </div>
-        {!TIERS_ENFORCED && Date.now() < TIERS_START && <p className="ld-note ld-promo">{t('🎉 Free live trading: every account trades live without $ARCD until {d}. Then tiers start.', { d: new Date(TIERS_START).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) })}</p>}
+        {!TIERS_ENFORCED && TIERS_START != null && Date.now() < TIERS_START && <p className="ld-note ld-promo">{t('🎉 Free live trading: every account trades live without $ARCD until {d}. Then tiers start.', { d: new Date(TIERS_START ?? 0).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) })}</p>}
         {!TIERS_ENFORCED && <p className="ld-note">{t('Free for now: every tier\'s signals and strategies are open to everyone, so you can see what each one does. Link a wallet in Autotrade to see your tier.')}</p>}
         <div className="ld-cta ld-center"><a className="ld-btn ld-btn-ghost" href={ARCD_APP_PATH}>{t('Buy $ARCD')}</a></div>
       </section>

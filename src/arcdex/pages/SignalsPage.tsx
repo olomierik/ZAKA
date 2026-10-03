@@ -298,8 +298,8 @@ function useTiers(): TiersResponse | null {
 }
 
 /**
- * Live trading for every account until tiers start (3 October 2026, 00:00 UTC;
- * the engine's `enforceAt`), with a countdown; after that, what it takes.
+ * Live trading for every account until tiers start (the engine's `enforceAt`), with a countdown; nothing while no
+ * start is scheduled (off until further notice since 2026-10-03).
  */
 function LivePromo() {
   const tiers = useTiers()
@@ -332,6 +332,7 @@ function TierCard({ me, onAccess }: { me: MeResponse; onAccess: (a: AccessView) 
   const tiers = useTiers()
   const access = me.access ?? null
   const enforced = tiers?.enforced ?? access?.enforced ?? TIERS_ENFORCED
+  const start = tiers ? tiers.enforceAt : TIERS_START
   const list = tiers?.tiers?.length ? tiers.tiers : ARCD_TIERS
   const embedded = useEmbeddedAddress()
   const { address } = useAccount()
@@ -360,7 +361,7 @@ function TierCard({ me, onAccess }: { me: MeResponse; onAccess: (a: AccessView) 
         <span className="at-tiers-tag">{enforced ? T('Active') : T('Free for now')}</span>
         <span style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}>{open ? '▴' : '▾'}</span>
       </button>
-      {!enforced && <div className="at-tiers-foot">{T('Everything is open while tiers are free: your bots get every grade of signal, Prime included, and every strategy. Watch what each grade does before tiers start.')}{tiers?.enforceAt !== null ? ` ${T('Tiers start {d}.', { d: new Date(tiers?.enforceAt ?? TIERS_START).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) })}` : ''}</div>}
+      {!enforced && <div className="at-tiers-foot">{T('Everything is open while tiers are free: your bots get every grade of signal, Prime included, and every strategy. Watch what each grade does before tiers start.')}{start != null ? ` ${T('Tiers start {d}.', { d: new Date(start).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) })}` : ''}</div>}
       {open && (
         <>
           <div className="at-tiers-grid">

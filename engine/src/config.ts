@@ -66,7 +66,10 @@ export interface Config {
   botSignals: { live: 'all' | 'proven'; paper: boolean }
   /** Autotrade tiers (bot/tiers.ts): enforced only once TIERS_ENFORCED=true; until then every account gets every tier's signals. */
   tiersEnforced: boolean
-  /** When tiers start by themselves (TIERS_ENFORCE_AT, an ISO time; default 3 October 2026, 00:00 UTC; "never" turns it off). */
+  /**
+   * When tiers start by themselves (TIERS_ENFORCE_AT, an ISO time, or "never"). Default "never" since 2026-10-03 (owner:
+   * "remove the tiers limit and let bots trade until further notice"); it was 3 October 2026, 00:00 UTC.
+   */
   tiersEnforceAt: number | null
   /**
    * Which signals live bots trade (BOT_LIVE_GRADES): `dollar` (the default: every snipe and fast scalp at $2, sold at
@@ -120,8 +123,8 @@ export function loadConfig(): Config {
     tiersEnforced: process.env.TIERS_ENFORCED === 'true' || process.env.TIERS_ENFORCED === '1',
     tiersEnforceAt: (() => {
       const raw = process.env.TIERS_ENFORCE_AT?.trim()
-      if (raw === 'never') return null
-      const t = Date.parse(raw || '2026-10-03T00:00:00Z')
+      if (!raw || raw === 'never') return null
+      const t = Date.parse(raw)
       if (!Number.isFinite(t)) throw new Error(`TIERS_ENFORCE_AT must be an ISO time or "never" (got ${raw})`)
       return t
     })(),

@@ -20,9 +20,9 @@
 // bots and live trading, at the standard fee, and no one is ahead of anyone in
 // a crowd: the tier each account would have is shown, so everyone sees what
 // each tier's signals do before anything is charged. They start by
-// themselves at TIERS_ENFORCE_AT (owner's decision, 2026-09-30: live trading
-// for every account without $ARCD until 3 October 2026, 00:00 UTC, then
-// tiers), or at once with TIERS_ENFORCED=true.
+// themselves at TIERS_ENFORCE_AT, or at once with TIERS_ENFORCED=true. Off
+// until further notice (owner's decision, 2026-10-03: "remove the tiers limit
+// and let bots trade"); from 2026-09-30 they were due on 3 October, 00:00 UTC.
 
 import type { AccessView, BotStrategy, SignalGrade, TierId, TierInfo } from '../../../api/_marketProtocol'
 import type { Rpc } from '../chain/http'
