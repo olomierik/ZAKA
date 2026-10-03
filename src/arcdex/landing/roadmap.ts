@@ -1,5 +1,5 @@
-// The ARCDEX roadmap: what's live, then a new phase every week. One source
-// for the landing page (#roadmap, translated), the whitepaper (/whitepaper)
+// The ARCSENSE roadmap: what's live, then a new phase every week. One source
+// for the landing page (#roadmap, translated)
 // and the images made from it for X (scripts/whitepaper-assets.mjs).
 // To move the plan, change ROADMAP_START: every phase is PHASE_DAYS long.
 
@@ -17,14 +17,13 @@ export interface Phase { n: number; title: string; items: RoadmapItem[] }
 export const ROADMAP_START = '2026-09-28'
 export const PHASE_DAYS = 7
 
-/** Phase 0: already on arcdex.online. */
+/** Phase 0: already on arcsense.site. */
 export const LIVE_NOW: string[] = [
   N_('Terminal for every Arc coin, with live trade flashes and risk scores'),
   N_('Fair-launch launchpad with anti-snipe limits; creators earn 60% of their tax'),
   N_('One-tap trading wallet with passkey, portfolio and safe withdrawals'),
   N_('Feed, follows, leaderboards, clans and 15% on-chain referral rewards'),
   N_('USDC deposits, Circle CCTP bridge, card and Apple Pay; 7 languages'),
-  N_('$ARCD buyback and burn from platform fees'),
 ]
 
 export const PHASES: Phase[] = [
@@ -54,9 +53,9 @@ export const PHASES: Phase[] = [
     { text: N_('Live chat on every coin') },
     { text: N_('Seasons: points become fee discounts and cashback boosts; clan wars') },
   ] },
-  { n: 6, title: N_('Launchpad v2 and ARCDEX Verified'), items: [
+  { n: 6, title: N_('Launchpad v2 and ARCSENSE Verified'), items: [
     { text: N_('Creators choose where fees go: to themselves, traders or holders'), dep: true },
-    { text: N_('ARCDEX Verified: bundle and linked-wallet screening before a coin is listed') },
+    { text: N_('ARCSENSE Verified: bundle and linked-wallet screening before a coin is listed') },
     { text: N_('Public safety-score API') },
   ] },
   { n: 7, title: N_('Access and more markets'), items: [

@@ -95,7 +95,7 @@ export function ClanEditor({ mode, clan, onClose, onDone }: { mode: 'create' | '
       <div className="modal-card" onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}><b>{mode === 'create' ? T("Create a clan") : T("Edit clan")}</b><button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>✕</button></div>
         <div><span style={label}>{T("Name")}</span><input className="field" value={name} maxLength={40} onChange={e => { setName(e.target.value); if (mode === 'create' && !slug) setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32)) }} /></div>
-        {mode === 'create' && <div><span style={label}>{T("Link: arcdex.online/clans/")}<b>{slug || '…'}</b></span><input className="field" value={slug} maxLength={32} onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} /></div>}
+        {mode === 'create' && <div><span style={label}>{T("Link: arcsense.site/clans/")}<b>{slug || '…'}</b></span><input className="field" value={slug} maxLength={32} onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} /></div>}
         <div><span style={label}>{T("Motto")}</span><input className="field" value={motto} maxLength={120} onChange={e => setMotto(e.target.value)} placeholder={T("Get your money up")} /></div>
         <div><span style={label}>{T("Logo image URL (https://…)")}</span><input className="field" value={avatar} onChange={e => setAvatar(e.target.value.trim())} /></div>
         <div><span style={label}>{T("Banner image URL (https://…)")}</span><input className="field" value={banner} onChange={e => setBanner(e.target.value.trim())} /></div>

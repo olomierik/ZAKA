@@ -23,7 +23,7 @@ export function WalletPromptHost() {
 }
 
 /** A slim bar when the connected wallet is on another network — every
- * ARCDEX transaction is on Arc. Hidden while the trading wallet is in use
+ * ARCSENSE transaction is on Arc. Hidden while the trading wallet is in use
  * (it's always on Arc) and on pages that switch networks on purpose. */
 export function NetworkGuard({ hidden }: { hidden?: boolean }) {
   const { isConnected, chainId } = useAccount()
@@ -33,7 +33,7 @@ export function NetworkGuard({ hidden }: { hidden?: boolean }) {
   if (hidden || !isConnected || embedded || chainId === arc.id) return null
   return (
     <div className="net-guard" role="alert">
-      <span style={{ flex: 1, minWidth: 0 }}>⚠ {T('Your wallet is on another network. ARCDEX trades on Arc.')}{err ? ` ${err}` : ''}</span>
+      <span style={{ flex: 1, minWidth: 0 }}>⚠ {T('Your wallet is on another network. ARCSENSE trades on Arc.')}{err ? ` ${err}` : ''}</span>
       <button disabled={busy} onClick={() => { setBusy(true); setErr(''); ensureArc().catch(e => setErr(txErrorText(e))).finally(() => setBusy(false)) }}>
         {busy ? T('Check your wallet…') : T('Switch to Arc')}
       </button>

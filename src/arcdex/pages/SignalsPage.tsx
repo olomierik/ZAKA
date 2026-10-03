@@ -2,7 +2,7 @@
 // bot, for everyone (engine/src/bot).
 //
 //   My bots       sign up with an email and a 4-character passcode, then
-//                 create bots (each name unique on ARCDEX), deposit virtual
+//                 create bots (each name unique on ARCSENSE), deposit virtual
 //                 USDC, pick strategies, Start: they trade on the engine 24/7
 //                 with every device off. Once a bot's paper record is good
 //                 enough, its owner switches the same bot to LIVE: its own
@@ -33,7 +33,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
 import type { AccessView, BotControl, BotFilters, BotPosition, BotStatus, BotStrategy, DollarPlanView, GradeRecordView, LearnNote, StrategyTuning, MarketBot, MarketBotDetail, MeResponse, NewPaperAccount, PaperAccountView, PaperAction, RejectionStats, SafetyCheck, ScanRow, ScanStats, SignalGrade, SignalOutcomes, SignalRule, StrategyBoardEntry, StrategyBoardResponse, TeamView, TierId, TiersResponse, TradeSignal } from '../../../api/_marketProtocol'
 import { getLaunchpadColor } from '../api/radardex'
-import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botFunders, botWithdraw, botWithdrawCode, botWithdrawPasscode, botLinkWallet, botUnlinkWallet, engineEnabled, getTiers, sendTierGrant, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, getStrategyBoard, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse, type LiveSpeedRow } from '../api/marketStream'
+import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botFunders, botWithdraw, botWithdrawCode, botWithdrawPasscode, engineEnabled, getTiers, sendTierGrant, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, getStrategyBoard, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse, type LiveSpeedRow } from '../api/marketStream'
 import { AgoText } from '../components/Ago'
 import { openConnectModal } from '../components/ConnectWallet'
 import { PasscodeField, useWithdrawGuard } from '../components/WithdrawGuard'
@@ -44,7 +44,7 @@ import { useCash, useSendUsdc } from '../lib/usdc'
 import { cardFromAccount, cardFromMarket, ShareBotButton } from '../components/BotShare'
 import SignalEnginePanel from '../components/SignalEngine'
 import { profitNotifyOn, setProfitNotify } from '../components/ProfitAlerts'
-import { ARCD_TIERS, arcdAmount, countdown, GRADE_COLOR, GRADE_NAME, GRADE_TIER, STRATEGY_TIER, TIERS_ENFORCED, TIERS_START, tierName } from '../lib/tiers'
+import { ARCD_TIERS, GRADE_COLOR, GRADE_NAME, GRADE_TIER, STRATEGY_TIER, tierName } from '../lib/tiers'
 import type { Page } from '../App'
 import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
 import { N_, t as T } from '../lib/i18n'
@@ -138,7 +138,6 @@ export default function SignalsPage({ navigate, view: pageView, bot }: { navigat
       ) : (
         <>
           <ScanStrip stats={scan?.stats ?? null} />
-          <LivePromo />
           {stats?.routing?.autotradePaused && (
             <div className="at-promo">
               <span className="at-promo-badge">⏸ {T('Autotrade is paused')}</span>
@@ -156,8 +155,8 @@ export default function SignalsPage({ navigate, view: pageView, bot }: { navigat
           {view === 'market' && <Marketplace navigate={navigate} slug={bot ?? null} />}
           {view === 'scanner' && stats?.routing?.launchpadOnly && stats.routing.launchpadOnly !== 'off' && (
             <div className="at-note" style={{ marginTop: 12 }}>🛡 {T(stats.routing.launchpadOnly === 'strict'
-              ? 'Launchpad coins only: a coin can become a signal only if a known Arc launchpad launched it (Argus, ARCDEX, Mercuri, SolonPad, Peach, Faze, Aka.fun, o1, Minara, Long.supply) and it runs that launchpad\'s standard code. Coins from anywhere else are listed, never traded.'
-              : 'Launchpad coins only: a coin can become a signal only if a known Arc launchpad launched it (Argus, ARCDEX, Mercuri, SolonPad, Peach, Faze, Aka.fun, o1, Minara, Long.supply). Coins from anywhere else are listed, never traded.')}</div>
+              ? 'Launchpad coins only: a coin can become a signal only if a known Arc launchpad launched it (Argus, ARCSENSE, Mercuri, SolonPad, Peach, Faze, Aka.fun, o1, Minara, Long.supply) and it runs that launchpad\'s standard code. Coins from anywhere else are listed, never traded.'
+              : 'Launchpad coins only: a coin can become a signal only if a known Arc launchpad launched it (Argus, ARCSENSE, Mercuri, SolonPad, Peach, Faze, Aka.fun, o1, Minara, Long.supply). Coins from anywhere else are listed, never traded.')}</div>
           )}
           {view === 'scanner' && <><RejectionsCard /><ScannerPanel scan={scan} navigate={navigate} /></>}
           {view === 'engine' && <SignalEnginePanel navigate={navigate} />}
@@ -255,7 +254,7 @@ function CreateBot({ busy, loading, error, onCreate, onCancel, team, access }: {
       {name && !valid && <div style={{ fontSize: '0.72rem', color: '#fca5a5', marginTop: 4 }}>{T('2–24 letters, digits or spaces.')}</div>}
       <div className="at-label">{T('Strategies')} <span style={{ fontWeight: 500, color: 'var(--text-muted)' }}>· {T('use one, or several at once')}</span></div>
       <StrategyPicker selected={strategies} disabled={busy} onToggle={toggle} team={team} access={access} />
-      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('Its name is its unique id on ARCDEX: the marketplace shows it at /bots/<name>.')}</div>
+      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{T('Its name is its unique id on ARCSENSE: the marketplace shows it at /bots/<name>.')}</div>
       <button className="at-big" disabled={busy || loading || !valid || !strategies.length} onClick={() => onCreate({ name: clean, strategies })}>{busy || loading ? T('Loading…') : `🤖 ${T('Create my bot')}`}</button>
       {onCancel && <button className="link-btn" onClick={onCancel}>{T('Cancel')}</button>}
       {error && <div className="at-error">⚠ {error}</div>}
@@ -303,102 +302,9 @@ function useTiers(): TiersResponse | null {
   return t
 }
 
-/**
- * Live trading for every account until tiers start (the engine's `enforceAt`), with a countdown; nothing while no
- * start is scheduled (off until further notice since 2026-10-03).
- */
-function LivePromo() {
-  const tiers = useTiers()
-  const at = tiers ? tiers.enforceAt ?? null : TIERS_START
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(id) }, [])
-  if (at === null || tiers?.enforced) return null
-  const left = countdown(at, now)
-  if (!left) return null
-  return (
-    <div className="at-promo">
-      <span className="at-promo-badge">🎉 {T('Free live trading')}</span>
-      <span>{T('Every account trades live without $ARCD until {d}. Then tiers start: live trading needs Tier 1 (5M $ARCD).', { d: new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) })}</span>
-      <b className="at-promo-left">{T('{t} left', { t: left })}</b>
-    </div>
-  )
-}
-
 /** A signal's grade, and the lowest tier that gets it. */
 function GradeBadge({ g, title, tiers }: { g: SignalGrade; title?: string; tiers?: TiersResponse | null }) {
   return <span className={`at-grade ${g}`} title={title} style={{ borderColor: GRADE_COLOR[g] + '88', color: GRADE_COLOR[g] }}>{g === 'prime' ? '◆ ' : ''}{T(GRADE_NAME[g])}{g !== 'standard' ? ` · ${T(tierName(GRADE_TIER[g], tiers?.tiers))}` : ''}</span>
-}
-
-/**
- * The account's tier: what its linked wallets' $ARCD (or the owner's grant)
- * earns, the tiers, and linking a wallet by signing with it. Free for now:
- * until the engine enforces tiers, every account gets every tier's signals.
- */
-function TierCard({ me, onAccess }: { me: MeResponse; onAccess: (a: AccessView) => void }) {
-  const tiers = useTiers()
-  const access = me.access ?? null
-  const enforced = tiers?.enforced ?? access?.enforced ?? TIERS_ENFORCED
-  const start = tiers ? tiers.enforceAt : TIERS_START
-  const list = tiers?.tiers?.length ? tiers.tiers : ARCD_TIERS
-  const embedded = useEmbeddedAddress()
-  const { address } = useAccount()
-  const { signMessageAsync } = useSignMessage()
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [open, setOpen] = useState(false)
-  const linked = new Set((access?.wallets ?? []).map(w => w.toLowerCase()))
-  const candidates = [
-    ...(embedded ? [{ address: embedded, label: T('trading wallet'), sign: (m: string) => getEmbeddedWalletClient().signMessage({ message: m }) }] : []),
-    ...(address && address.toLowerCase() !== embedded?.toLowerCase() ? [{ address, label: T('connected wallet'), sign: (m: string) => signMessageAsync({ message: m }) }] : []),
-  ].filter(c => !linked.has(c.address.toLowerCase()))
-  const link = async (c: (typeof candidates)[number]) => {
-    setBusy(true); setError(null)
-    try { onAccess(await botLinkWallet(me.user.email, c.address, c.sign)) } catch (e) { setError((e as Error).message?.split('\n')[0] ?? String(e)) } finally { setBusy(false) }
-  }
-  const unlink = async (w: string) => {
-    setBusy(true); setError(null)
-    try { onAccess(await botUnlinkWallet(w)) } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
-  }
-  const entitled = access?.entitled ?? 'free'
-  return (
-    <div className="at-tiers">
-      <button className="at-tiers-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
-        <span>🔑 {T('Your tier: {t}', { t: T(tierName(entitled, list)) })}{access?.arcdHeld != null && access.wallets.length ? ` · ${arcdAmount(Math.floor(access.arcdHeld))} $ARCD` : ''}{access?.via === 'grant' && access.grant ? ` · ${T('granted until {d}', { d: new Date(access.grant.until).toLocaleDateString() })}` : ''}</span>
-        <span className="at-tiers-tag">{enforced ? T('Active') : T('Free for now')}</span>
-        <span style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}>{open ? '▴' : '▾'}</span>
-      </button>
-      {!enforced && <div className="at-tiers-foot">{T('Everything is open while tiers are free: your bots get every grade of signal, Prime included, and every strategy. Watch what each grade does before tiers start.')}{start != null ? ` ${T('Tiers start {d}.', { d: new Date(start).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) })}` : ''}</div>}
-      {open && (
-        <>
-          <div className="at-tiers-grid">
-            {list.map(t => (
-              <div key={t.id} className={`at-tier${t.id === 'free' ? '' : ' paid'}${t.id === entitled ? ' mine' : ''}`}>
-                <b>{T(t.name)}{t.id === entitled ? ` · ${T('you')}` : ''}</b>
-                <span className="at-tier-min">{t.minArcd ? `${arcdAmount(t.minArcd)} $ARCD` : T('No $ARCD needed')}</span>
-                <ul>{t.perks.map(x => <li key={x}>{T(x)}</li>)}</ul>
-              </div>
-            ))}
-          </div>
-          <div className="at-tiers-body">
-          <div className="at-label">{T('Your wallets')}</div>
-          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{T('The $ARCD in the wallets you link counts toward your tier. Linking asks the wallet to sign a message: it moves nothing and costs nothing.')}</div>
-          {(access?.wallets ?? []).map(w => (
-            <div key={w} className="at-wallet-row">
-              <a href={`${EXPLORER}/address/${w}`} target="_blank" rel="noreferrer">{shortAddr(w)}</a>
-              <button className="link-btn" disabled={busy} onClick={() => void unlink(w)}>{T('Unlink')}</button>
-            </div>
-          ))}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
-            {candidates.map(c => <button key={c.address} className="btn-ghost" disabled={busy} onClick={() => void link(c)}>{busy ? T('Waiting for your signature…') : T('Link {w} ({a})', { w: c.label, a: shortAddr(c.address) })}</button>)}
-            {!candidates.length && !embedded && !address && <button className="btn-ghost" onClick={() => openConnectModal()}>{T('Connect a wallet to link it')}</button>}
-          </div>
-          {access?.next && access.wallets.length > 0 && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>{T('{n} more $ARCD for {t}.', { n: arcdAmount(Math.ceil(access.next.needArcd)), t: T(tierName(access.next.tier, list)) })}</div>}
-          {error && <div className="at-error">⚠ {error}</div>}
-          </div>
-        </>
-      )}
-    </div>
-  )
 }
 
 /** The strategy board (GET /v1/bot/board), shared by every part of the page and read every 20 seconds; null on an older engine. */
@@ -586,7 +492,7 @@ function GradeStats({ acct }: { acct: PaperAccountView }) {
   )
 }
 
-/** A system notification for every profit its bots take (a toast shows either way while ARCDEX is open). */
+/** A system notification for every profit its bots take (a toast shows either way while ARCSENSE is open). */
 function ProfitNotifySwitch() {
   const [on, setOn] = useState(() => profitNotifyOn())
   const [denied, setDenied] = useState(false)
@@ -661,7 +567,6 @@ function MyBots({ navigate, liveSpeed }: { navigate: (p: Page) => void; liveSpee
       {creating || !acct
         ? <CreateBot busy={busy} loading={false} error={error} onCreate={b => void create(b)} onCancel={bots.length ? () => setCreating(false) : undefined} team={me.team} access={me.access} />
         : <BotDashboard key={acct.slug} acct={acct} act={act} busy={busy} error={error} setError={setError} me={me} onMe={() => void reload()} navigate={navigate} liveSpeed={liveSpeed} />}
-      <TierCard me={me} onAccess={access => setMe(m => m && { ...m, access })} />
     </>
   )
 }
@@ -688,7 +593,7 @@ function AuthPanel() {
     <div className="at-card at-hero">
       <div className="at-hero-title">{T('Your Autotrade bots, on any device')}</div>
       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-        {T('Sign up with your email and a 4-character passcode. Your bots run on ARCDEX around the clock, with your phone and computer off; sign in from anywhere to see every trade.')}
+        {T('Sign up with your email and a 4-character passcode. Your bots run on ARCSENSE around the clock, with your phone and computer off; sign in from anywhere to see every trade.')}
       </div>
       {paperKey() && <div className="at-note warn">🤖 {T('This browser already has a bot: it joins your account when you sign up or sign in.')}</div>}
       <div style={{ display: 'flex', gap: 6 }}>
@@ -989,7 +894,7 @@ function BotDashboard({ acct, act, busy, error, setError, me, onMe, navigate, li
 }
 
 /**
- * The team this bot works with: every bot on ARCDEX reads the others' trades
+ * The team this bot works with: every bot on ARCSENSE reads the others' trades
  * (paper and live) and learns from signals it didn't take. The team's record
  * this week per strategy, and a nudge when a winning one isn't followed.
  */
@@ -1098,7 +1003,7 @@ function GoLive({ acct, me, act, busy, onFund, onClose }: { acct: PaperAccountVi
     return (
       <div className="at-golive">
         <div className="at-golive-h">{T('Live trading')}<button className="link-btn" onClick={onClose}>✕</button></div>
-        <div className="at-note warn" style={{ marginTop: 0 }}>{T('Live trading for bots isn\'t switched on yet on ARCDEX.')} {avail.why ? <span style={{ opacity: 0.8 }}>({avail.why})</span> : null}</div>
+        <div className="at-note warn" style={{ marginTop: 0 }}>{T('Live trading for bots isn\'t switched on yet on ARCSENSE.')} {avail.why ? <span style={{ opacity: 0.8 }}>({avail.why})</span> : null}</div>
       </div>
     )
   }
@@ -1176,7 +1081,7 @@ function FundPaper({ busy, onFund, onClose }: { busy: boolean; onFund: (v: numbe
   )
 }
 
-/** Real USDC into the bot's live wallet: from the ARCDEX wallet in one tap, or from anywhere to its address. */
+/** Real USDC into the bot's live wallet: from the ARCSENSE wallet in one tap, or from anywhere to its address. */
 function FundLive({ wallet, minUsd, onDone, onClose }: { wallet: string; minUsd: number; onDone: () => void; onClose: () => void }) {
   const trader = useTrader()
   const { cash, refresh } = useCash(trader.address)
@@ -1203,7 +1108,7 @@ function FundLive({ wallet, minUsd, onDone, onClose }: { wallet: string; minUsd:
       <div className="at-golive-h">{T('Fund the live wallet')}<button className="link-btn" onClick={onClose} aria-label={T('Close')}>✕</button></div>
       <div className="at-fund-grid">
         <div className="at-fund-opt">
-          <b>{T('From my ARCDEX wallet')}</b>
+          <b>{T('From my ARCSENSE wallet')}</b>
           {!trader.address ? (
             <>
               <div className="at-step-sub">{T('Unlock your trading wallet or connect a wallet to send in one tap.')}</div>
@@ -1542,8 +1447,8 @@ function tradesCsv(list: BotPosition[]): string {
   return [head.join(','), ...rows].join('\n')
 }
 
-/** Every bot on ARCDEX, best first: P&L, win rate, open positions. */
-/** Every bot on ARCDEX, live and paper apart (owner's request, 2026-09-30), best first: P&L, win rate, open positions. */
+/** Every bot on ARCSENSE, best first: P&L, win rate, open positions. */
+/** Every bot on ARCSENSE, live and paper apart (owner's request, 2026-09-30), best first: P&L, win rate, open positions. */
 function Marketplace({ navigate, slug }: { navigate: (p: Page) => void; slug: string | null }) {
   const [sort, setSort] = useState<'pnl' | 'winrate' | 'new'>('pnl')
   const [mode, setMode] = useState<'live' | 'paper'>('live')
@@ -1618,7 +1523,7 @@ function MarketBotPage({ slug, navigate }: { slug: string; navigate: (p: Page) =
   const back = <button className="link-btn" onClick={() => navigate({ name: 'signals', view: 'market' })}>← {T('All bots')}</button>
   if (error) return <Section title={slug}>{back}<Empty>⚠ {error}</Empty></Section>
   if (!bot) return <Empty>{T('Loading…')}</Empty>
-  const link = `https://arcdex.online/bots/${encodeURIComponent(bot.slug)}`
+  const link = `https://arcsense.site/bots/${encodeURIComponent(bot.slug)}`
   return (
     <>
       <div className="at-card" style={{ marginTop: 14 }}>

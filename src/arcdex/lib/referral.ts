@@ -1,4 +1,4 @@
-// Referral links: arcdex.online/?ref=<username or 0xaddress>
+// Referral links: arcsense.site/?ref=<username or 0xaddress>
 //
 // The first referral a visitor arrives with is remembered in this browser
 // (first-touch; a later link doesn't overwrite it) and passed to the swap
@@ -16,7 +16,7 @@ const ZERO = '0x0000000000000000000000000000000000000000'
 export function captureReferral(): void {
   try {
     const url = new URL(window.location.href)
-    // Short links arcdex.online/r/<name> as well as ?ref=<name>.
+    // Short links arcsense.site/r/<name> as well as ?ref=<name>.
     const short = url.pathname.match(/^\/r\/([^/?#]+)/)
     const ref = (short ? decodeURIComponent(short[1]) : url.searchParams.get('ref'))?.trim()
     if (!ref) return
@@ -54,5 +54,5 @@ export async function referrerFor(self: string): Promise<`0x${string}`> {
 }
 
 export function referralLink(address: string, profile?: Profile | null): string {
-  return `https://arcdex.online/r/${profile?.username ?? address.toLowerCase()}`
+  return `https://arcsense.site/r/${profile?.username ?? address.toLowerCase()}`
 }

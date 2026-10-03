@@ -5,7 +5,7 @@ import { t } from '../lib/i18n'
 // The landing page's live bot board (owner's request, 2026-10-01: "put the
 // real movement of the bots' P&L on the landing page, with true numbers in
 // real time"). The marketplace's own numbers (GET /v1/bots, the same list as
-// arcdex.online/bots), polled every 5 seconds while the page is visible:
+// arcsense.site/bots), polled every 5 seconds while the page is visible:
 // each P&L counts to its new value, a row flashes green or red when it
 // changes, and a bot that moves up or down slides to its new rank.
 

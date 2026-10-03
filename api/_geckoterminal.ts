@@ -1,4 +1,4 @@
-// Shared upstream for /api/gecko, /api/argus and /api/arcd. (The leading
+// Shared upstream for /api/gecko and /api/argus. (The leading
 // underscore keeps Vercel from deploying this file as its own function.)
 //
 // Default: GeckoTerminal's free public API (~30 calls/min, shared by IP —

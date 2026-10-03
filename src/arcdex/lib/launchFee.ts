@@ -2,7 +2,7 @@
 //
 // Paid in USDC to the platform fee wallet as its own transfer, just before
 // the launch transaction. ArcLaunchpad itself has no creation fee and is
-// immutable, so the app collects it: every launch made through ARCDEX pays
+// immutable, so the app collects it: every launch made through ARCSENSE pays
 // it; a direct contract call doesn't (enforcing it on-chain needs a new
 // launchpad contract).
 //
@@ -11,7 +11,7 @@
 // the next launch uses it instead of charging again.
 
 import type { Address, Hex } from 'viem'
-import { FEE_WALLET } from './arcd'
+import { FEE_WALLET } from './platform'
 
 export const LAUNCH_FEE_USD = 3
 export const LAUNCH_FEE_USDC = 3_000_000n // 6 decimals

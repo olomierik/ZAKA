@@ -80,7 +80,7 @@ export default function CardDeposit({ trader, onSettled }: { trader: Trader; onS
           color: stage === 'error' ? '#fca5a5' : '#86efac', background: stage === 'error' ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)' }}>{msg}</div>
       )}
       <div ref={box} style={{ width: '100%', height: showWidget ? 620 : 0, borderRadius: 10, overflow: 'hidden', background: showWidget ? '#fff' : undefined }} />
-      <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', textAlign: 'center' }}>{T("Powered by Circle. Card processing and identity checks are handled by Circle's payment partner, not ARCDEX.")}</div>
+      <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', textAlign: 'center' }}>{T("Powered by Circle. Card processing and identity checks are handled by Circle's payment partner, not ARCSENSE.")}</div>
     </div>
   )
 }

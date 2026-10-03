@@ -119,7 +119,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
     }
   }), [trades, me])
 
-  // Holders from ARCDEX's own index, moving live as wallets buy in and sell out.
+  // Holders from ARCSENSE's own index, moving live as wallets buy in and sell out.
   const chainHolders = useChainHolders(address, token ? new Date(token.curve.launchedAt * 1000).toISOString() : null)
   const liveHolders = useLiveHolderCount(address, !!chainHolders?.complete, trades[0]?.txHash)
   const holdersLabel = chainHolders?.complete ? (liveHolders ?? chainHolders.holders).toLocaleString()
@@ -171,7 +171,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 700, fontSize: '1.05rem', color: '#3b82f6' }}>${fmt(token.priceUsd)}</span>
-              <span style={{ background: '#7c3aed22', color: '#a78bfa', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: '1px solid #7c3aed44' }}>{T("ARCDEX Launchpad")}</span>
+              <span style={{ background: '#7c3aed22', color: '#a78bfa', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: '1px solid #7c3aed44' }}>{T("ARCSENSE Launchpad")}</span>
               {risk && <RiskBadge risk={risk} />}
               {token.curve.graduated && (
                 <span style={{ background: '#22c55e22', color: '#22c55e', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: '1px solid #22c55e44' }}>{T("✓ Graduated")}</span>

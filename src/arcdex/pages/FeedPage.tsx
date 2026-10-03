@@ -12,7 +12,7 @@ export default function FeedPage({ navigate }: { navigate: (p: Page) => void }) 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <div>
           <h2 className="page-h">{T("Feed")}</h2>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>{T("Trades, theses, wins and new coins — live from ARCDEX.")}</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>{T("Trades, theses, wins and new coins — live from ARCSENSE.")}</div>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           {(['all', 'following'] as const).map(s => (

@@ -5,14 +5,14 @@
 // the token out, and back. Once a curve graduates the coin trades in its
 // Uniswap v4 pool, and the usual routes (argusMarket.buildSwapRoute) take over.
 //
-// ARCDEX's fee on a curve trade comes from ArcDexCurveRouter
+// ARCSENSE's fee on a curve trade comes from ArcDexCurveRouter
 // (contracts/ArcDexCurveRouter.sol, deployed at api/_curves.ts CURVE_ROUTER):
 // the trade goes through it and it takes the fee (2%, 15% of it to the
 // trader's referrer) in the same transaction. VITE_ARCDEX_CURVE_ROUTER_ADDRESS
 // can name another router, or `off`: trades then go to the curve directly
-// and ARCDEX adds no fee.
+// and ARCSENSE adds no fee.
 // Mercuri shares 0.20% of each trade (out of its own 1% fee) with the
-// referrer a trader names on its first Mercuri trade: ARCDEX's fee wallet,
+// referrer a trader names on its first Mercuri trade: ARCSENSE's fee wallet,
 // both for a wallet trading directly and for the router (Mercuri's trader
 // then), claimable from Mercuri's FeeManager.
 //
@@ -28,7 +28,7 @@ import { MERCURI_FACTORY as M_FACTORY, MERCURI_FEE_MANAGER as M_FEES, SOLONPAD_F
 export { MERCURI_BUY, MERCURI_SELL, SOLON_BUY, SOLON_SELL, curveTradeFilter, decodeCurveTrade, type CurveTrade, type CurveVenue } from '../../../api/_curves'
 import type { CurveVenue } from '../../../api/_curves'
 export const MERCURI_FACTORY = M_FACTORY as Address
-/** Where Mercuri referrers (ARCDEX's fee wallet) claim their share: `claim(to)`. */
+/** Where Mercuri referrers (ARCSENSE's fee wallet) claim their share: `claim(to)`. */
 export const MERCURI_FEE_MANAGER = M_FEES as Address
 export const SOLONPAD_FACTORY = S_FACTORY as Address
 const ZERO = '0x0000000000000000000000000000000000000000'
@@ -222,11 +222,11 @@ export function curveSellCall(c: CurveInfo, tokensIn: bigint, minOut: bigint, me
     : { address: c.curve, abi: SOLONPAD_CURVE_ABI, functionName: 'sell', args: [tokensIn, minOut, me] }
 }
 
-// ── ARCDEX's curve router ────────────────────────────────────────────
+// ── ARCSENSE's curve router ────────────────────────────────────────────
 
 /** ArcDexCurveRouter: the deployed one, unless VITE_ARCDEX_CURVE_ROUTER_ADDRESS
  * names another. `off` leaves it '': curve trades then go to the curve
- * directly and ARCDEX takes no fee on them. */
+ * directly and ARCSENSE takes no fee on them. */
 export const CURVE_ROUTER_ADDRESS = curveRouterFrom(import.meta.env.VITE_ARCDEX_CURVE_ROUTER_ADDRESS as string | undefined) as Address
 export const curveRouterConfigured = /^0x[0-9a-f]{40}$/.test(CURVE_ROUTER_ADDRESS)
 
@@ -241,7 +241,7 @@ export const CURVE_ROUTER_ABI = parseAbi([
 
 export interface CurveRouter {
   address: Address
-  /** ARCDEX's fee on a curve trade, on the USDC side (at most 2%). */
+  /** ARCSENSE's fee on a curve trade, on the USDC side (at most 2%). */
   feeBps: number
   /** The trader's referrer's share of that fee. */
   referralShareBps: number
@@ -270,7 +270,7 @@ export const curveSpender = (c: CurveInfo): Address => curveRouterConfigured ? C
 export const routerSpend = (r: CurveRouter, value: bigint) => value - (value * BigInt(r.feeBps)) / 10_000n
 
 /** A buy of `value` native USDC through the router: the curve's quote for
- * what's left after ARCDEX's fee, the tokens going to `me` as the router
+ * what's left after ARCSENSE's fee, the tokens going to `me` as the router
  * delivers them (SolonPad's snipe tax is `me`'s either way). */
 export function quoteRouterBuy(c: CurveInfo, r: CurveRouter, value: bigint, me: Address): Promise<CurveBuyQuote> {
   return quoteCurveBuy(c, routerSpend(r, value), me)

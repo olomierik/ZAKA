@@ -11,7 +11,7 @@ import { useMarket, type TokenMeta } from '../lib/tokenMeta'
 import type { Page } from '../App'
 import { t as T, N_ } from '../lib/i18n'
 
-// Everything happening on ARCDEX, fomo-style: trades, theses, closed
+// Everything happening on ARCSENSE, fomo-style: trades, theses, closed
 // positions, several traders piling into one coin, new listings, price
 // spikes, profit milestones and new traders — each filterable — under a
 // pinned daily recap.
@@ -93,7 +93,7 @@ export default function FeedList({ navigate, compact = false, scope = 'all' }: {
     return () => { alive = false; clearInterval(id); clearInterval(t) }
   }, [scope, me, market])
 
-  // Daily recap: the day on ARCDEX / Arc in one pinned card.
+  // Daily recap: the day on ARCSENSE / Arc in one pinned card.
   const recap = useMemo(() => {
     if (market.length === 0) return null
     const gainer = [...market].sort((a, b) => b.change24h - a.change24h)[0]
@@ -138,8 +138,8 @@ export default function FeedList({ navigate, compact = false, scope = 'all' }: {
 
       {recap && scope === 'all' && (
         <div style={{ margin: compact ? '0 12px 8px' : '0 16px 10px', padding: '10px 12px', borderRadius: 10, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', fontSize: compact ? '0.74rem' : '0.8rem', lineHeight: 1.5 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '0.68rem', marginBottom: 4 }}><span>{T("📌 Recap ·")}{' '}{new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}</span><span>{T("ARCDEX")}</span></div>{T("• Top gainer:")}{' '}{coin(recap.gainer.address, recap.gainer.symbol)} <span style={{ color: 'var(--green)' }}>+{recap.gainer.change24h.toFixed(1)}%</span><br />{T("• Most traded:")}{' '}{coin(recap.volume.address, recap.volume.symbol)}{' '}{T("with")}{' '}{money(recap.volume.volume24h)}{' '}{T("volume")}<br />
-          • {money(recap.total)}{' '}{T("traded across Argus coins in 24h")}{recap.trades24 ? ' · ' + T('{n} trades on ARCDEX', { n: recap.trades24 }) : ''}
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '0.68rem', marginBottom: 4 }}><span>{T("📌 Recap ·")}{' '}{new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}</span><span>{T("ARCSENSE")}</span></div>{T("• Top gainer:")}{' '}{coin(recap.gainer.address, recap.gainer.symbol)} <span style={{ color: 'var(--green)' }}>+{recap.gainer.change24h.toFixed(1)}%</span><br />{T("• Most traded:")}{' '}{coin(recap.volume.address, recap.volume.symbol)}{' '}{T("with")}{' '}{money(recap.volume.volume24h)}{' '}{T("volume")}<br />
+          • {money(recap.total)}{' '}{T("traded across Argus coins in 24h")}{recap.trades24 ? ' · ' + T('{n} trades on ARCSENSE', { n: recap.trades24 }) : ''}
         </div>
       )}
 
@@ -166,7 +166,7 @@ export default function FeedList({ navigate, compact = false, scope = 'all' }: {
             <div style={{ display: 'flex', marginTop: 4 }}>{i.t.traders.slice(0, 6).map(a => <span key={a} style={{ marginRight: -6 }}><Avatar address={a} url={profiles.get(a)?.avatar_url} size={18} /></span>)}</div>)
           case 'listing': return row(null, <><Tag c="#86efac">{T("NEW")}</Tag>{coin(i.t.address, i.t.symbol)}{T("listed")}{i.t.marketCapUsd ? <span style={{ color: 'var(--text-muted)' }}>{T("at")}{' '}{money(i.t.marketCapUsd)}{' '}{T("MC")}</span> : null}</>)
           case 'spike': return row(null, <><Tag c="#f472b6">{T("⚡ SPIKE")}</Tag>{coin(i.t.address, i.t.symbol)}<b style={{ color: 'var(--green)' }}>+{i.t.change1h.toFixed(0)}%</b><span style={{ color: 'var(--text-muted)' }}>{T("in 1h")}</span></>)
-          case 'newtrader': return row(i.t.address, <>{who(i.t.address)}<span style={{ color: 'var(--text-muted)' }}>{T("joined ARCDEX")}</span><Tag c="#c4b5fd">{T("NEW TRADER")}</Tag></>)
+          case 'newtrader': return row(i.t.address, <>{who(i.t.address)}<span style={{ color: 'var(--text-muted)' }}>{T("joined ARCSENSE")}</span><Tag c="#c4b5fd">{T("NEW TRADER")}</Tag></>)
         }
       })}
     </div>

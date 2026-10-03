@@ -18,7 +18,6 @@ const RewardsPage     = lazy(() => import('./pages/RewardsPage'))
 const ClansPage       = lazy(() => import('./pages/ClansPage'))
 const ClanPage        = lazy(() => import('./pages/ClanPage'))
 const TransfersPage   = lazy(() => import('./pages/TransfersPage'))
-const BurnPage        = lazy(() => import('./pages/BurnPage'))
 const AlertsPage      = lazy(() => import('./pages/AlertsPage'))
 const DeployCurveRouter = lazy(() => import('./pages/DeployCurveRouter'))
 const SignalsPage     = lazy(() => import('./pages/SignalsPage'))
@@ -59,7 +58,6 @@ export type Page =
   | { name: 'alerts' }
   | { name: 'rewards' }
   | { name: 'transfers' }
-  | { name: 'burn' }
   | { name: 'portfolio' }
   | { name: 'launchpad' }
   | { name: 'swap' }
@@ -74,7 +72,6 @@ const MOBILE_NAV: [Page, string, string][] = [
   [{ name: 'clans' }, '⚑', N_('Clans')], [{ name: 'rewards' }, '✦', N_('Rewards')], [{ name: 'launchpad' }, '◆', N_('Launchpad')],
   [{ name: 'swap' }, '⇄', N_('Swap')], [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'portfolio' }, '▤', N_('Portfolio')],
   [{ name: 'signals' }, '⚡', N_('Autotrade')], [{ name: 'alerts' }, '🔔', N_('Alerts')], [{ name: 'transfers' }, '⇅', N_('Transfers')],
-  [{ name: 'burn' }, '🔥', N_('$ARCD burn')],
 ]
 
 export default function App() {
@@ -163,7 +160,6 @@ export default function App() {
           {page.name === 'alerts'      && <AlertsPage navigate={navigate} />}
           {page.name === 'rewards'     && <RewardsPage navigate={navigate} />}
           {page.name === 'transfers'   && <TransfersPage navigate={navigate} />}
-          {page.name === 'burn'        && <BurnPage navigate={navigate} />}
           {page.name === 'deploy-curve-router' && <DeployCurveRouter />}
           {page.name === 'signals'     && <SignalsPage navigate={navigate} view={page.view} bot={page.bot} />}
           </Suspense>

@@ -156,7 +156,7 @@ function quoteAdapter() {
 export interface BridgeQuote {
   /** Circle's fees (forwarding the mint, fast transfer), in USDC. */
   circleUsdc: number
-  /** ARCDEX's fee, in USDC — on top of the amount. */
+  /** ARCSENSE's fee, in USDC — on top of the amount. */
   platformUsdc: number
   /** What leaves the wallet: amount + platform fee. */
   debitUsdc: number

@@ -1,4 +1,4 @@
-// True holder counts from ARCDEX's own on-chain index (/api/holders).
+// True holder counts from ARCSENSE's own on-chain index (/api/holders).
 // A token's first count is built in slices of a few seconds, so while it's
 // incomplete this polls quickly (each call advances it); once complete it
 // refreshes every 30s — each refresh only scans the blocks since the last.

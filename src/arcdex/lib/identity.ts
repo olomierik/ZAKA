@@ -1,4 +1,4 @@
-// Who "you" are on ARCDEX: the wallet you trade from.
+// Who "you" are on ARCSENSE: the wallet you trade from.
 //
 // If the in-browser trading wallet is unlocked, that's you — it trades and
 // signs with no pop-ups (the one-tap flow). Otherwise it's the connected

@@ -57,7 +57,7 @@ export default function Swap({ navigate }: Props) {
   return (
     <div className="form-page">
       <h1 className="page-title">{T("Swap")}</h1>
-      <p className="page-sub">{T("Trade any Arc token against USDC through ARCDEX's swap router — launchpad coins trade on their bonding curve. Approvals are for the exact amount only.")}</p>
+      <p className="page-sub">{T("Trade any Arc token against USDC through ARCSENSE's swap router — launchpad coins trade on their bonding curve. Approvals are for the exact amount only.")}</p>
 
       {!picked ? (
         <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 10 }}>

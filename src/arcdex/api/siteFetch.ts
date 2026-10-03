@@ -1,7 +1,7 @@
-// The site's read functions (/api/argus, /api/gecko, /api/arcd, /api/holders,
+// The site's read functions (/api/argus, /api/gecko, /api/holders,
 // /api/launchpad, /api/radar, /api/dex) are served by the market engine
 // (engine/src/site/siteApi.ts) since 2026-10-02, when Vercel paused
-// arcdex.online for the CPU these used there. This calls the engine first and
+// arcsense.site for the CPU these used there. This calls the engine first and
 // the same path on the site (Vercel) only when the engine can't be reached
 // (down, or an engine without these routes yet): the engine's answers,
 // errors included, are final, so a throttled upstream never sends every

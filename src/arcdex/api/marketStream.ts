@@ -1,8 +1,8 @@
-// Client for the ARCDEX market engine (engine/): one shared WebSocket for
+// Client for the ARCSENSE market engine (engine/): one shared WebSocket for
 // the whole app, plus the engine's REST history endpoints.
 //
 // Enabled when VITE_ARCDEX_WS_URL is set at build time (e.g.
-// wss://api.arcdex.online/ws). Without it — or while the engine is
+// wss://api.arcsense.site/ws). Without it — or while the engine is
 // unreachable — pages use their direct-from-chain path (api/poolSwaps.ts)
 // instead, so nothing depends on the engine being up.
 //
@@ -268,7 +268,7 @@ export const getStrategyBoard = () => get<StrategyBoardResponse>('/v1/bot/board'
 /** The tiers, whether they're enforced, and each signal grade's record (GET /v1/tiers). */
 export const getTiers = () => get<TiersResponse>('/v1/tiers')
 
-/** Links a wallet to the signed-in account: the wallet signs, and its $ARCD counts toward the account's tier. */
+/** Links a wallet to the signed-in account: the wallet signs, and it counts toward the account's tier. */
 export async function botLinkWallet(email: string, address: string, sign: (message: string) => Promise<`0x${string}`>): Promise<AccessView> {
   const at = Date.now()
   const signature = await sign(tierLinkMessage(email, address, at))

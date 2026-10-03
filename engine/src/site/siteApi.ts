@@ -7,7 +7,6 @@
 //
 //   /api/argus      the market list (GeckoTerminal, every Arc launchpad)
 //   /api/gecko      the GeckoTerminal proxy (coin pages, the Terminal)
-//   /api/arcd       $ARCD for the landing page and the burn dashboard
 //   /api/holders    exact holder counts from Transfer logs
 //   /api/launchpad  the ARCDEX launchpad's index (and ?of=curves: Mercuri and SolonPad)
 //   /api/radar      the RadarDex proxy
@@ -43,7 +42,6 @@ import { SQL } from 'bun'
 import { setGtFetch, type FetchLike } from '../../../api/_geckoterminal'
 import { adminReady, setKvStore, type KvStore } from '../../../api/_supabaseAdmin'
 import { holdersHandler, type HolderStore, type ScanRow } from '../../../api/holders'
-import arcd from '../../../api/arcd'
 import argus from '../../../api/argus'
 import dex from '../../../api/dex'
 import gecko from '../../../api/gecko'
@@ -242,7 +240,7 @@ export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number
   setGtFetch(meteredFetch(o.gtPerMin ?? 25))
   const holders = o.holders ?? (sql ? pgHolders(sql, ready) : memoryHolders())
   const handlers: Record<string, Handler> = o.handlers ?? {
-    argus: (r, c) => argus(r, c), gecko: (r, c) => gecko(r, c), arcd: () => arcd(), launchpad: (r, c) => launchpad(r, c),
+    argus: (r, c) => argus(r, c), gecko: (r, c) => gecko(r, c), launchpad: (r, c) => launchpad(r, c),
     radar: r => radar(r), dex: r => dex(r), holders: holdersHandler(holders),
     session: r => session(r), social: r => social(r), upload: r => upload(r), 'index-trades': () => indexTrades(),
   }

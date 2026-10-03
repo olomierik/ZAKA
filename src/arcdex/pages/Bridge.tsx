@@ -140,7 +140,7 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
     } finally {
       kit.off('*' as never, onStep as never)
       if (prompted) hideWalletPrompt()
-      // Bringing USDC in switched the wallet away from Arc: switch it back for the rest of ARCDEX.
+      // Bringing USDC in switched the wallet away from Arc: switch it back for the rest of ARCSENSE.
       if (provider && from !== 'Arc') void ensureWalletChain(provider, 'Arc').catch(() => {})
     }
   }
@@ -232,7 +232,7 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
             {quote ? (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}><span>{T("Circle's fees (fast transfer + relayer)")}</span><span>{usd(quote.circleUsdc)}</span></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}><span>{T("ARCDEX fee ({pct}%, min $0.05)", { pct: (BRIDGE_FEE_BPS / 100).toFixed(2) })}</span><span>{usd(quote.platformUsdc)}</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}><span>{T("ARCSENSE fee ({pct}%, min $0.05)", { pct: (BRIDGE_FEE_BPS / 100).toFixed(2) })}</span><span>{usd(quote.platformUsdc)}</span></div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>{T("Leaves your wallet on {chain}", { chain: from === 'Arc' ? 'Arc' : otherDef.label })}</span><b>{usd(quote.debitUsdc)}</b></div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--green)' }}><span>{T("Arrives on {chain}", { chain: to === 'Arc' ? 'Arc' : otherDef.label })}</span><b>≈ {usd(quote.receiveUsdc)}</b></div>
               </>

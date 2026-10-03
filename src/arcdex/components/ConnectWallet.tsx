@@ -85,7 +85,7 @@ export function ConnectModalHost() {
     } finally { setPending(null) }
   }
 
-  const here = typeof window !== 'undefined' ? window.location.host + window.location.pathname : 'arcdex.online/app'
+  const here = typeof window !== 'undefined' ? window.location.host + window.location.pathname : 'arcsense.site/app'
   return (
     <div className="modal-back" onClick={() => setOpen(false)}>
       <div className="modal-card" style={{ width: 'min(380px, 100%)' }} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={T("Connect a wallet")}>
@@ -128,7 +128,7 @@ export function ConnectModalHost() {
         {err && <div style={{ fontSize: '0.76rem', color: '#fca5a5', wordBreak: 'break-word' }}>{err}</div>}
         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
           {noBrowserWallet && !isMobile() ? T("No browser wallet found — install MetaMask or Rabby, or scan with WalletConnect.") + ' ' : ''}
-          {T("No wallet? The ARCDEX trading wallet lives in your browser — one-tap trades, no pop-ups.")}
+          {T("No wallet? The ARCSENSE trading wallet lives in your browser — one-tap trades, no pop-ups.")}
         </div>
       </div>
     </div>

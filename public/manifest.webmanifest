@@ -1,6 +1,6 @@
 {
-  "name": "ARCDEX — trade Arc coins",
-  "short_name": "ARCDEX",
+  "name": "ARCSENSE — trade Arc coins",
+  "short_name": "ARCSENSE",
   "description": "The social trading app for Arc: live coins and charts, one-tap trades, launchpad and bridge.",
   "id": "/app",
   "start_url": "/app",

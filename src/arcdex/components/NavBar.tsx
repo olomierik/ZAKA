@@ -1,30 +1,10 @@
 import { useState, useEffect } from 'react'
 import AccountMenu from './AccountMenu'
 import SearchBox from './SearchBox'
-import { compact, loadArcd, type ArcdStats } from '../lib/arcd'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 
 interface Props { page: Page; navigate: (p: Page) => void; onMenuClick: () => void; onBack?: () => void }
-
-// 🔥 $ARCD burned — links to the buyback-and-burn dashboard.
-function BurnTicker({ navigate }: { navigate: (p: Page) => void }) {
-  const [stats, setStats] = useState<ArcdStats | null>(null)
-  useEffect(() => {
-    const load = () => void loadArcd().then(setStats).catch(() => {})
-    load()
-    const iv = setInterval(() => { if (!document.hidden) load() }, 60_000)
-    return () => clearInterval(iv)
-  }, [])
-  const pct = stats?.burnedPct ?? 0
-  return (
-    <button className="navbar-burn-ticker" onClick={() => navigate({ name: 'burn' })} title={T('$ARCD buyback & burn')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-      <span>🔥</span>
-      <span className="burn-label" style={{ color: 'var(--amber)', fontWeight: 700 }}>$ARCD {stats ? compact(stats.burned) : '…'}{' '}{T("burned")}</span>
-      {pct >= 0.01 && <span className="burn-label" style={{ color: 'var(--text-muted)' }}>({pct.toFixed(2)}%)</span>}
-    </button>
-  )
-}
 
 export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
   const [searchOpen, setSearchOpen] = useState(false)
@@ -54,9 +34,8 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
 
       {/* Logo */}
       <button className="navbar-logo" onClick={() => navigate({ name: 'terminal' })} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <img src="/arcdex-logo.svg" alt="" width={24} height={24} style={{ borderRadius: 6, flexShrink: 0 }} />{T("ARCDEX")}</button>
+        <img src="/arcdex-logo.svg" alt="" width={24} height={24} style={{ borderRadius: 6, flexShrink: 0 }} />{T("ARCSENSE")}</button>
       <span className="navbar-badge">{T("MAINNET")}</span>
-      <BurnTicker navigate={navigate} />
 
       {/* Nav links */}
       <nav className="navbar-links">

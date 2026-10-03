@@ -1,5 +1,5 @@
-// Autotrade tiers by $ARCD held (owner's decisions: Tier 1 at 5M, Tier 2 at
-// 20M, Tier 3 at 50M $ARCD, 2026-10-01; tiered by signal quality, 2026-09-30).
+// Autotrade tiers (off until further notice since 2026-10-03; owner's decisions: Tier 1, Tier 2 and
+// Tier 3, 2026-10-01; tiered by signal quality, 2026-09-30).
 // The engine's table (engine/src/bot/tiers.ts, GET /v1/tiers) is the one that
 // counts; this copy is what the landing page and the Autotrade page show when
 // the engine can't be reached, so keep the two in step.

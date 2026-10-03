@@ -25,7 +25,6 @@ const MORE: { icon: string; label: string; to: Page }[] = [
   { icon: '✦', label: N_('Rewards'), to: { name: 'rewards' } },
   { icon: '🔔', label: N_('Alerts'), to: { name: 'alerts' } },
   { icon: '⇅', label: N_('Transfers'), to: { name: 'transfers' } },
-  { icon: '🔥', label: N_('$ARCD burn'), to: { name: 'burn' } },
 ]
 
 interface Props { page: Page; navigate: (p: Page) => void; onOpenLists: () => void }

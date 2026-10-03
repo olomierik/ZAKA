@@ -24,11 +24,6 @@
   force = true
 
 [[redirects]]
-  from = "/whitepaper"
-  to = "/whitepaper.html"
-  status = 200
-
-[[redirects]]
   from = "/arcdex"
   to = "/arcdex.html"
   status = 200

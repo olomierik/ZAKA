@@ -89,7 +89,7 @@ export default function ClanPage({ slug, navigate }: { slug: string; navigate: (
             <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 4 }}>👥 {members.length}{' '}{T("member")}{members.length === 1 ? '' : T("s")} · {members.reduce((s, m) => s + (m.volume_usdc > 0 ? 1 : 0), 0)}{' '}{T("active")}</div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button className="btn-ghost" onClick={() => { void navigator.clipboard?.writeText(`https://arcdex.online/clans/${clan.slug}`); setCopied(true) }}>{copied ? T("Link copied ✓") : T("⤴ Share")}</button>
+            <button className="btn-ghost" onClick={() => { void navigator.clipboard?.writeText(`https://arcsense.site/clans/${clan.slug}`); setCopied(true) }}>{copied ? T("Link copied ✓") : T("⤴ Share")}</button>
             {isOwner && <button className="btn-ghost" onClick={() => setEditing(true)}>{T("Edit")}</button>}
             {me && (inThis
               ? <button className="btn-ghost" disabled={busy} onClick={() => void act('clan.leave')}>{T("Leave clan")}</button>
@@ -119,7 +119,7 @@ export default function ClanPage({ slug, navigate }: { slug: string; navigate: (
 
           <div style={{ ...card, marginTop: 16, overflow: 'hidden' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', fontWeight: 700, fontSize: '0.86rem' }}>{T("Clan holdings")}{' '}<span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{priced.length}</span></div>
-            {priced.length === 0 ? <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>{T("No open positions traded through ARCDEX yet.")}</div> : (
+            {priced.length === 0 ? <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>{T("No open positions traded through ARCSENSE yet.")}</div> : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', minWidth: 520 }}>
                   <thead><tr>{[T('Token'), T('Members'), T('Combined position'), T('Combined PnL')].map((h, i) => <th key={h} style={{ padding: '8px 16px', textAlign: i >= 2 ? 'right' : 'left', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{h}</th>)}</tr></thead>

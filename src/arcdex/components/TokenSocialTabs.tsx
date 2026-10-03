@@ -10,8 +10,8 @@ import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 
 // Under the chart on a coin page (fomo parity): Holders (every on-chain
-// holder from ARCDEX's own index, with PnL and average entry market cap for
-// those who trade on ARCDEX — or just the ARCDEX traders), Swaps (every trade,
+// holder from ARCSENSE's own index, with PnL and average entry market cap for
+// those who trade on ARCSENSE — or just the ARCSENSE traders), Swaps (every trade,
 // with the market cap at that moment), Thesis (holders' notes with their
 // live position), and Top traders (recent flow).
 
@@ -205,7 +205,7 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
         {tab === 'holders' && !!chainTop?.length && (
           <span style={{ display: 'inline-flex', border: '1px solid var(--adx-card-border)', borderRadius: 6, overflow: 'hidden', marginRight: 10, flexShrink: 0 }}>
             {(['all', 'arcdex'] as const).map(v => (
-              <button key={v} onClick={() => setHolderView(v)} style={{ padding: '3px 9px', fontSize: '0.7rem', fontWeight: 700, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', background: holderView === v ? 'rgba(59,130,246,0.15)' : 'transparent', color: holderView === v ? 'var(--adx-accent)' : 'var(--text-muted)' }}>{v === 'all' ? T("All holders") : T("On ARCDEX")}</button>
+              <button key={v} onClick={() => setHolderView(v)} style={{ padding: '3px 9px', fontSize: '0.7rem', fontWeight: 700, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', background: holderView === v ? 'rgba(59,130,246,0.15)' : 'transparent', color: holderView === v ? 'var(--adx-accent)' : 'var(--text-muted)' }}>{v === 'all' ? T("All holders") : T("On ARCSENSE")}</button>
             ))}
           </span>
         )}
@@ -242,13 +242,13 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
           </table>
           <div style={{ padding: '8px 16px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
             {chainHolders!.complete
-              ? T("Top {n} of {total} holders, live from the chain. PnL is shown for wallets that trade on ARCDEX.", { n: String(chainRows.length), total: holderCount.toLocaleString() })
+              ? T("Top {n} of {total} holders, live from the chain. PnL is shown for wallets that trade on ARCSENSE.", { n: String(chainRows.length), total: holderCount.toLocaleString() })
               : T("Counting every holder on-chain… {pct}% done.", { pct: String(Math.floor(chainHolders!.progress * 100)) })}
           </div>
         </div>
       ))}
 
-      {tab === 'holders' && !showAll && (holders === null ? <Empty>{T("Loading holders…")}</Empty> : holderRows.length === 0 ? <Empty>{thesisOnly ? T("No holder has posted a thesis yet.") : T("No ARCDEX traders hold ${symbol} yet — buy some and you'll be first here.", { symbol })}</Empty> : (
+      {tab === 'holders' && !showAll && (holders === null ? <Empty>{T("Loading holders…")}</Empty> : holderRows.length === 0 ? <Empty>{thesisOnly ? T("No holder has posted a thesis yet.") : T("No ARCSENSE traders hold ${symbol} yet — buy some and you'll be first here.", { symbol })}</Empty> : (
         <div style={{ overflow: 'auto', maxHeight: 480 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', minWidth: 640 }}>
             <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>{[T('Trader'), T('Position'), T('PnL'), T('Avg. entry'), T('Thesis')].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>

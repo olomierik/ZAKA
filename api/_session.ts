@@ -65,7 +65,7 @@ export function bearer(req: Request): string | null {
  * on both sides (src/arcdex/api/social.ts builds the same text). */
 export function signInMessage(address: string, issuedAt: string, nonce: string): string {
   return [
-    'Sign in to ARCDEX (arcdex.online)',
+    'Sign in to ARCSENSE (arcsense.site)',
     '',
     'This only proves you own this wallet. It is not a transaction and costs nothing.',
     '',

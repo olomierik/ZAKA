@@ -10,7 +10,6 @@ export default defineConfig({
       input: {
         main:   path.resolve(__dirname, 'index.html'),
         arcdex: path.resolve(__dirname, 'arcdex.html'),
-        whitepaper: path.resolve(__dirname, 'whitepaper.html'),
       },
     },
   },

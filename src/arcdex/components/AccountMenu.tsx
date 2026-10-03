@@ -187,7 +187,7 @@ export function SettingsModal({ onClose, initial = 'trading', onSupport }: { onC
                 <b style={{ color: hasPasskey() ? 'var(--green)' : 'var(--text-muted)', fontSize: '0.78rem' }}>{hasPasskey() ? t('On') : t('Off')}</b>
               </div>
               <div className="reward-row" style={{ padding: '10px 0', borderBottom: 'none' }}>
-                <span>{t('Sign out of all devices')}<div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('Ends every ARCDEX sign-in for this wallet, everywhere. Your funds are not affected.')}</div></span>
+                <span>{t('Sign out of all devices')}<div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('Ends every ARCSENSE sign-in for this wallet, everywhere. Your funds are not affected.')}</div></span>
                 <button className="btn-ghost" disabled={!trader.address || signOut === 'busy'} onClick={() => void doSignOutEverywhere()}>{signOut === 'busy' ? '…' : signOut === 'done' ? t('Done ✓') : t('Sign out')}</button>
               </div>
               {signOut && signOut !== 'busy' && signOut !== 'done' && <div style={{ fontSize: '0.72rem', color: '#fca5a5' }}>{signOut}</div>}
@@ -199,7 +199,7 @@ export function SettingsModal({ onClose, initial = 'trading', onSupport }: { onC
         {tab === 'notifications' && (
           <>
             {toggleRow(t('Alert sound'), t('Beep when a trader you follow moves'), prefs.alertSound, v => setPrefs({ alertSound: v }))}
-            {toggleRow(t('Desktop notifications'), t('Get alerts while ARCDEX is in a background tab'), prefs.alertNotify, async v => {
+            {toggleRow(t('Desktop notifications'), t('Get alerts while ARCSENSE is in a background tab'), prefs.alertNotify, async v => {
               if (!v) { setPrefs({ alertNotify: false }); return }
               if (await enableAlertNotifications()) setPrefs({ alertNotify: true })
               else alert(t('Notifications are blocked for this site. Allow them in your browser settings, then try again.'))

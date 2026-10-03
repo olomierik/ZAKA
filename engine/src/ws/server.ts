@@ -27,7 +27,7 @@
 //   GET /v1/bot/board                           the strategy board: which of the three strategies live bots trade, with whose settings
 //   /v1/auth/*, /v1/me…, /v1/bots…               accounts, owners' bots, the marketplace (ws/botApi.ts)
 //   /v1/quant/*                                 the signal engine: signals, radar, positions, wallets, validation, controls (quant/api.ts)
-//   /api/argus|gecko|arcd|holders|launchpad|radar|dex   the site's read functions, moved off Vercel (site/siteApi.ts)
+//   /api/argus|gecko|holders|launchpad|radar|dex|session|social|upload   the site's functions, moved off Vercel (site/siteApi.ts)
 //   GET /health           summary (200 ok/degraded, 503 down)
 //   GET /metrics          full metrics (Bearer METRICS_TOKEN when set)
 
@@ -246,7 +246,7 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         if (req.method === 'GET') return json(req, 200, await traffic.counts(), 'public, max-age=5')
         return json(req, 405, { error: 'method not allowed' })
       }
-      // The site's read functions (site/siteApi.ts): /api/argus, /api/gecko, /api/arcd, /api/holders, /api/launchpad, …
+      // The site's read functions (site/siteApi.ts): /api/argus, /api/gecko, /api/holders, /api/launchpad, …
       if (url.pathname.startsWith('/api/')) {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
         if (!api.site) return new Response(JSON.stringify({ error: 'not served here' }), { status: 404, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })

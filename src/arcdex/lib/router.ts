@@ -18,7 +18,6 @@ export function pageToPath(p: Page): string {
     case 'alerts':      return '/alerts'
     case 'rewards':     return '/rewards'
     case 'transfers':   return '/transfers'
-    case 'burn':        return '/burn'
     case 'portfolio':   return '/portfolio'
     case 'launchpad':   return '/launchpad'
     case 'swap':        return '/swap'
@@ -51,7 +50,6 @@ export function pathToPage(pathname: string, search: string): Page | null {
     case 'rewards':
     case 'earn':        return { name: 'rewards' }
     case 'transfers':   return { name: 'transfers' }
-    case 'burn':        return { name: 'burn' }
     case 'portfolio':   return { name: 'portfolio' }
     case 'launchpad':   return { name: 'launchpad' }
     case 'swap':        return { name: 'swap' }

@@ -9,7 +9,7 @@ import ShareCardModal from './ShareCardModal'
 // Download, Copy link). The owner's dashboard and every bot's public page
 // have one; a profit notification opens it too.
 
-const linkOf = (slug: string) => `https://arcdex.online/bots/${encodeURIComponent(slug)}`
+const linkOf = (slug: string) => `https://arcsense.site/bots/${encodeURIComponent(slug)}`
 
 /** The card for a bot as the marketplace shows it (its public page). */
 export function cardFromMarket(b: MarketBot | MarketBotDetail): BotCardData {

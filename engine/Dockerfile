@@ -16,7 +16,7 @@ RUN ln -s /app/engine/node_modules /app/node_modules
 # engine/test/image.test.ts fails if the engine imports one that isn't listed here.
 COPY api/_arcLogs.ts api/_arcSwaps.ts api/_curves.ts api/_marketProtocol.ts api/_quantProtocol.ts api/_supabaseAdmin.ts ./api/
 # The site's read functions it serves instead of Vercel (engine/src/site/siteApi.ts, 2026-10-02).
-COPY api/_argusBonded.ts api/_argusCore.ts api/_curveIndex.ts api/_curvesRoute.ts api/_geckoterminal.ts api/_holdersCore.ts api/_launchpadCore.ts api/_launchpads.ts api/arcd.ts api/argus.ts api/dex.ts api/gecko.ts api/holders.ts api/index-trades.ts api/launchpad.ts api/radar.ts ./api/
+COPY api/_argusBonded.ts api/_argusCore.ts api/_curveIndex.ts api/_curvesRoute.ts api/_geckoterminal.ts api/_holdersCore.ts api/_launchpadCore.ts api/_launchpads.ts api/argus.ts api/dex.ts api/gecko.ts api/holders.ts api/index-trades.ts api/launchpad.ts api/radar.ts ./api/
 # Its write functions too (2026-10-03, the site on Netlify serves only its files).
 COPY api/_session.ts api/session.ts api/social.ts api/upload.ts ./api/
 COPY engine/src ./engine/src

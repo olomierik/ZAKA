@@ -11,7 +11,7 @@
 // the current tab session and is cleared on lock/reload. This module has
 // no network calls of its own.
 //
-// This is infrastructure for ARCDEX's own end users to self-custody a
+// This is infrastructure for ARCSENSE's own end users to self-custody a
 // hot wallet for fast trading — not a place to store meaningful funds
 // long-term. The UI must say so.
 //
@@ -286,8 +286,8 @@ export async function enablePasskey(passcode: string): Promise<void> {
   try {
     cred = (await navigator.credentials.create({
       publicKey: {
-        rp: { name: 'ARCDEX' },
-        user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'ARCDEX trading wallet ' + address.slice(0, 6) + '…' + address.slice(-4), displayName: 'ARCDEX trading wallet' },
+        rp: { name: 'ARCSENSE' },
+        user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'ARCSENSE trading wallet ' + address.slice(0, 6) + '…' + address.slice(-4), displayName: 'ARCSENSE trading wallet' },
         challenge: crypto.getRandomValues(new Uint8Array(32)),
         pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
         authenticatorSelection: { userVerification: 'required', residentKey: 'preferred' },

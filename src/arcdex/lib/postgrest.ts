@@ -1,4 +1,4 @@
-// A tiny read-only PostgREST client for ARCDEX's public arcdex_* tables:
+// A tiny read-only PostgREST client for ARCSENSE's public arcdex_* tables:
 // the handful of supabase-js calls the app makes, with the same chaining
 // shape — `await c.from(t).select(…).eq(…).limit(n)` → { data, error, count }
 // — without shipping supabase-js (~270 KB: auth, realtime, storage) to

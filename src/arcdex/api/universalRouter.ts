@@ -1,7 +1,7 @@
 // Native-USDC Uniswap v4 pools — Minara, SolonPad's instant launches and
 // other launchpads open their pools against Arc's native USDC (currency
 // 0x0). ArcDexSwapRouter only takes ERC-20 USDC pools, so these trade
-// through Uniswap's own Universal Router, with the same ARCDEX fee (and the
+// through Uniswap's own Universal Router, with the same ARCSENSE fee (and the
 // referrer's share of it) taken off the USDC side in the same transaction:
 //   buy:  TRANSFER each fee share out of msg.value, then V4_SWAP native → token
 //         (SWAP_EXACT_IN_SINGLE, SETTLE_ALL native, TAKE_ALL token ≥ min out),
@@ -65,7 +65,7 @@ export const PERMIT2_ABI = parseAbi([
   'function approve(address token, address spender, uint160 amount, uint48 expiration)',
 ])
 
-/** A pool the Universal Router can trade for ARCDEX: native USDC against the token. */
+/** A pool the Universal Router can trade for ARCSENSE: native USDC against the token. */
 export function isNativePool(key: NativeKey, token: string): boolean {
   return key.currency0.toLowerCase() === NATIVE && key.currency1.toLowerCase() === token.toLowerCase()
 }

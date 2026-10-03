@@ -32,7 +32,7 @@ export const SWAP_ROUTER02 = '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45' as con
 export const V3_FACTORY    = '0xf0db7b58379503491d857db50ac9ece64c653918' as const
 export const MULTICALL3    = '0xcA11bde05977b3631167028862bE2a173976CA11' as const
 
-const APP_ICON = 'https://arcdex.online/arcdex-logo.png'
+const APP_ICON = 'https://arcsense.site/arcdex-logo.png'
 
 /** The chains the bridge moves USDC to and from (lib/bridgeKit.ts). Arc is
  * where everything trades; these are listed so a WalletConnect session
@@ -68,11 +68,11 @@ export const wagmiConfig = createConfig({
     lazyWalletConnect({
       projectId: (import.meta.env.VITE_WC_PROJECT_ID as string | undefined) ?? 'e5f3a751de0ba10999179b7f1e2d557b',
       showQrModal: true,
-      // Above ARCDEX's own sheets (1100) and modals (1200): connecting from
+      // Above ARCSENSE's own sheets (1100) and modals (1200): connecting from
       // the Buy sheet on a phone used to open the wallet list behind it.
       qrModalOptions: { themeVariables: { '--wcm-z-index': '1300' } },
-      metadata: { name: 'ARCDEX', description: 'The social trading terminal for Arc', url: 'https://arcdex.online', icons: [APP_ICON] },
+      metadata: { name: 'ARCSENSE', description: 'The social trading terminal for Arc', url: 'https://arcsense.site', icons: [APP_ICON] },
     }),
-    coinbaseWallet({ appName: 'ARCDEX', appLogoUrl: APP_ICON }),
+    coinbaseWallet({ appName: 'ARCSENSE', appLogoUrl: APP_ICON }),
   ],
 })

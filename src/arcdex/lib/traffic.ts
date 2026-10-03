@@ -1,5 +1,5 @@
 // The site's traffic counter (engine/src/traffic.ts): every open page of
-// arcdex.online, the landing and the app, beats every 30 seconds while it's
+// arcsense.site, the landing and the app, beats every 30 seconds while it's
 // visible, with a random id this browser keeps (localStorage; no cookie, and
 // nothing else about the visitor is sent). Each beat answers with the counts:
 // online now, visitors today and ever.

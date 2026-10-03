@@ -30,9 +30,9 @@ interface Props {
 const ARC_EXPLORER = 'https://explorer.arc.io'
 
 // Every launchpad's coin with a pool (Argus, Minara, Tolly, …) opens the
-// full coin page; ARCDEX's own curve coins keep theirs.
+// full coin page; ARCSENSE's own curve coins keep theirs.
 function openPage(t: ArcToken): Page {
-  return t.launchpad !== 'ARCDEX' && t.poolAddress
+  return t.launchpad !== 'ARCSENSE' && t.poolAddress
     ? { name: 'argus', address: t.address, pool: t.poolAddress }
     : { name: 'token', address: t.address, symbol: t.symbol }
 }
@@ -332,7 +332,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const tickerRef = useRef<HTMLDivElement>(null)
 
-  // ARCDEX's own launches, Argus (every Portal) and every other Arc
+  // ARCSENSE's own launches, Argus (every Portal) and every other Arc
   // launchpad GeckoTerminal lists (api/_launchpads.ts), each with its badge.
   const argusSeen = useRef(new Map<string, { t: ArcToken; seen: number }>())
   const oursRef = useRef<ArcToken[]>([])
@@ -460,7 +460,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     const pools = new Map<string, { token: string; quote: string }>()
     const curve = new Set<string>()
     for (const t of tokens) {
-      if (t.launchpad === 'ARCDEX') curve.add(t.address.toLowerCase())
+      if (t.launchpad === 'ARCSENSE') curve.add(t.address.toLowerCase())
       const quote = t.quoteAddress || QUOTE_BY_SYMBOL[t.quoteSymbol]
       if (t.poolAddress && quote) pools.set(t.poolAddress.toLowerCase(), { token: t.address.toLowerCase(), quote: quote.toLowerCase() })
     }
@@ -504,7 +504,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   // reset page on filter change
   useEffect(() => { setPage(1); setShown(PAGE_SIZE) }, [source, viewTab, search, sortCol, sortAsc, minMcap, maxMcap, minVol])
 
-  // Holder counts from ARCDEX's own on-chain index, for the coins it has
+  // Holder counts from ARCSENSE's own on-chain index, for the coins it has
   // counted within the last day (every coin page keeps its coin's count
   // current) — the market list itself carries none.
   const tokensRef = useRef(tokens)

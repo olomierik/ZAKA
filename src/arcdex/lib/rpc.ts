@@ -50,7 +50,7 @@ export const ARC_RPC = 'https://rpc.mainnet.arc.io'
 // A dedicated Arc endpoint (QuickNode, 2026-09-29), when the build has one:
 // tried first for reads, receipts and the live feeds, with the public RPC
 // behind it. Its URL carries its token and ships in the page, so QuickNode
-// only answers pages from arcdex.online and localhost (referrer whitelist).
+// only answers pages from arcsense.site and localhost (referrer whitelist).
 // Unset, everything uses the public endpoints as before.
 const env = (v: string | undefined) => (typeof v === 'string' && /^(https|wss):\/\//.test(v.trim()) ? v.trim() : null)
 export const FAST_RPC = env(import.meta.env.VITE_ARC_RPC_URL as string | undefined)

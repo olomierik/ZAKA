@@ -32,7 +32,7 @@ import { launchpadLabel, launchpadNamed } from '../../../api/_launchpads'
 // Full page for one Argus launch. What moves is read straight from the
 // chain: every swap in the pool (history from the logs, then each new one
 // over Arc's WebSocket the moment its block lands) drives the price, the
-// candles and the trades list, and holders come from ARCDEX's own index of
+// candles and the trades list, and holders come from ARCSENSE's own index of
 // the token's transfers. GeckoTerminal supplies the rest (24h stats,
 // liquidity, older candles, socials) and stands in if the chain can't be
 // read. Arc RPC also gives what GeckoTerminal doesn't carry (creator
@@ -162,7 +162,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
 
   // Mercuri's or SolonPad's own bonding curve, if the coin launched on one
   // (api/curves.ts). While it's live the curve is the coin's market: its
-  // trades are the chart and the list, and ARCDEX trades on it directly.
+  // trades are the chart and the list, and ARCSENSE trades on it directly.
   // Re-read while live (price, progress, phase), and shortly after each
   // live trade; a coin with no curve is checked once.
   const [curve, setCurve] = useState<CurveInfo | null | undefined>(undefined)
@@ -422,7 +422,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   const priceUsd = (liveCurve?.venue === 'SolonPad' ? curveSpot : null) ?? livePrice ?? curveSpot ?? active?.priceUsd ?? 0
   const copy = symbol === '…' ? null : copycatOf(symbol, address)
   // Where the coin launched (its pool's GeckoTerminal dex), for the badge,
-  // the notes and — when ARCDEX can't route it — a link to trade it there.
+  // the notes and — when ARCSENSE can't route it — a link to trade it there.
   const listed = useMemo(() => cachedArgusMarket()?.find(p => p.token.address === address.toLowerCase()) ?? null, [address])
   const lpName = chain?.portal ? 'Argus' : curveHere ? curveHere.venue : active ? (active.launchpad ?? launchpadLabel(active.dex)) : listed?.launchpad ?? null
   const lpColor = getLaunchpadColor(lpName ?? '')
@@ -440,7 +440,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     lastPrice.current = priceUsd
   }, [priceUsd])
 
-  // True holders from ARCDEX's own index (GeckoTerminal's is hours old).
+  // True holders from ARCSENSE's own index (GeckoTerminal's is hours old).
   const chainHolders = useChainHolders(address, active?.createdAt)
   // …moving live: +1 when a new wallet buys in, −1 when a holder sells out.
   const liveHolders = useLiveHolderCount(address, !!chainHolders?.complete, rows[0]?.txHash)
@@ -476,14 +476,14 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     if (symbol !== '…') pushRecent({ address, symbol, image, pool: activePool || null })
   }, [address, symbol, image, activePool])
 
-  // Tab title like fomo: "$1.2M | SYMBOL | ARCDEX".
+  // Tab title like fomo: "$1.2M | SYMBOL | ARCSENSE".
   useEffect(() => {
     const prev = document.title
-    if (symbol !== '…') document.title = `${mcap ? fmt(mcap, '$') + ' | ' : ''}${symbol} | ARCDEX`
+    if (symbol !== '…') document.title = `${mcap ? fmt(mcap, '$') + ' | ' : ''}${symbol} | ARCSENSE`
     return () => { document.title = prev }
   }, [symbol, mcap])
 
-  // ARCDEX's own chart, the only one (owner's choice): history from
+  // ARCSENSE's own chart, the only one (owner's choice): history from
   // GeckoTerminal's API or the market engine, every swap live on top, trade
   // labels, theses and indicators. A live curve charts the curve's trades.
   const chartCard = (
