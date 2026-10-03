@@ -1206,7 +1206,7 @@ Vercel paused arcdex.online (402) for the CPU its functions used. The read funct
 
 The owner's new site, www.arcsense.site, is hosted on Netlify and serves only the app's files (`netlify.toml`): no function runs there.
 - **Data and writes come from the engine:** besides the read functions above, `/api/session`, `/api/social`, `/api/upload` and `/api/index-trades` run on the engine too (`siteApi.ts` `WRITES`: the request passes through with its headers and body, never cached). They need on Railway what they needed on Vercel: `ARCDEX_SESSION_SECRET` (sign-in), and Supabase's secret key for social writes and uploads. Without them they answer 503 and the site shows its empty states. Card deposits (`/api/onramp`) aren't served there yet: the Deposit modal says they're being switched on.
-- **The engine allows ARCSENSE's domains in code** (`ARCSENSE_ORIGINS` in `engine/src/config.ts`: arcsense.site, www.arcsense.site, arcsense.netlify.app), whatever `WS_ALLOWED_ORIGINS` lists on Railway.
+- **The engine allows ARCSENSE's domains in code** (`ARCSENSE_ORIGINS` in `engine/src/config.ts`: arcsense.site, www.arcsense.site, arcsense-app.netlify.app), whatever `WS_ALLOWED_ORIGINS` lists on Railway.
 - **Build settings** live in `netlify.toml` (Bun, `dist`, the public `VITE_*` values). `VITE_WC_PROJECT_ID` (WalletConnect) is still missing, from cloud.reown.com; without it, phone wallets by QR code aren't offered. `/api/*` is a plain 404 on Netlify, so the site's fallback fails fast.
 - arcdex.online stays as it is (owner: no redirect).
 

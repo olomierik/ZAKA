@@ -97,7 +97,7 @@ export interface Config {
 }
 
 /** ARCSENSE's own site (www.arcsense.site on Netlify, 2026-10-03): allowed by the engine without a Railway setting. */
-export const ARCSENSE_ORIGINS = ['https://arcsense.site', 'https://www.arcsense.site', 'https://arcsense.netlify.app']
+export const ARCSENSE_ORIGINS = ['https://arcsense.site', 'https://www.arcsense.site', 'https://arcsense-app.netlify.app']
 
 export function loadConfig(): Config {
   const role = (process.env.ENGINE_ROLE ?? 'all') as Role
