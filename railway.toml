@@ -4,7 +4,7 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "engine/Dockerfile"
-watchPatterns = ["engine/**", "api/_arcLogs.ts", "api/_arcSwaps.ts", "api/_curves.ts", "api/_marketProtocol.ts", "api/_quantProtocol.ts", "api/_supabaseAdmin.ts", "api/_argusBonded.ts", "api/_argusCore.ts", "api/_curveIndex.ts", "api/_curvesRoute.ts", "api/_geckoterminal.ts", "api/_holdersCore.ts", "api/_launchpadCore.ts", "api/_launchpads.ts", "api/arcd.ts", "api/argus.ts", "api/dex.ts", "api/gecko.ts", "api/holders.ts", "api/index-trades.ts", "api/launchpad.ts", "api/radar.ts", "railway.toml"]
+watchPatterns = ["engine/**", "api/_arcLogs.ts", "api/_arcSwaps.ts", "api/_curves.ts", "api/_marketProtocol.ts", "api/_quantProtocol.ts", "api/_supabaseAdmin.ts", "api/_argusBonded.ts", "api/_argusCore.ts", "api/_curveIndex.ts", "api/_curvesRoute.ts", "api/_geckoterminal.ts", "api/_holdersCore.ts", "api/_launchpadCore.ts", "api/_launchpads.ts", "api/arcd.ts", "api/argus.ts", "api/dex.ts", "api/gecko.ts", "api/holders.ts", "api/index-trades.ts", "api/launchpad.ts", "api/radar.ts", "api/_session.ts", "api/session.ts", "api/social.ts", "api/upload.ts", "railway.toml"]
 
 [deploy]
 healthcheckPath = "/health"

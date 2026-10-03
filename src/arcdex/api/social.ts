@@ -9,6 +9,7 @@
 import { createPostgrest, type PostgrestClient } from '../lib/postgrest'
 import type { Trader } from '../lib/identity'
 import { engineEnabled } from './marketStream'
+import { siteFetch } from './siteFetch'
 
 const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -257,7 +258,7 @@ export function triggerIndex(force = false) {
   if (!force && engineEnabled) return
   if (!force && Date.now() - lastIndexCall < 30_000) return
   lastIndexCall = Date.now()
-  void fetch('/api/index-trades').catch(() => {})
+  void siteFetch('/api/index-trades').catch(() => {})
 }
 
 // ── sign-in + writes ──────────────────────────────────────────────────
@@ -297,7 +298,7 @@ export async function signIn(trader: Trader): Promise<string> {
   const nonce = Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(36).padStart(2, '0')).join('').replace(/[^A-Za-z0-9]/g, '').slice(0, 16).padEnd(8, '0')
   const issuedAt = new Date().toISOString()
   const signature = await trader.signMessage(signInMessage(trader.address, issuedAt, nonce))
-  const res = await fetch('/api/session', {
+  const res = await siteFetch('/api/session', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ address: trader.address, issuedAt, nonce, signature }),
   })
@@ -307,7 +308,7 @@ export async function signIn(trader: Trader): Promise<string> {
   return j.token
 }
 
-/** POSTs JSON to one of ARCDEX's signed-in endpoints as `trader`. */
+/** POSTs JSON to one of ARCDEX's signed-in endpoints as `trader` (served by the market engine since 2026-10-03; siteFetch). */
 function authedPost<T>(trader: Trader, url: string, body: Record<string, unknown>): Promise<T> {
   return authedRequest<T>(trader, url, JSON.stringify(body), 'application/json')
 }
@@ -318,7 +319,7 @@ export async function authedRequest<T>(trader: Trader, url: string, body: BodyIn
   if (!trader.address) throw new Error('Connect or unlock a wallet first')
   let token = storedSession(trader.address) ?? (await signIn(trader))
   for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await fetch(url, {
+    const res = await siteFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': contentType, Authorization: `Bearer ${token}` },
       body,
@@ -360,7 +361,7 @@ export async function sendSupport(trader: Trader, t: { category: SupportCategory
 // ── card deposits (Circle Onramp) ─────────────────────────────────────
 
 export async function onrampStatus(): Promise<{ enabled: boolean; sandbox: boolean }> {
-  const r = await fetch('/api/onramp').catch(() => null)
+  const r = await siteFetch('/api/onramp').catch(() => null)
   if (!r?.ok) return { enabled: false, sandbox: false }
   return r.json() as Promise<{ enabled: boolean; sandbox: boolean }>
 }

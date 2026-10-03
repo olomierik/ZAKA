@@ -27,6 +27,14 @@
 //                  call answers 429 and the functions fall back to their last
 //                  good copies, the browser to GeckoTerminal from its own IP
 //
+// The write functions too (2026-10-03, when the site moved to Netlify, which serves only its files):
+//   /api/session    sign in with a wallet (ARCDEX_SESSION_SECRET)
+//   /api/social     profiles, follows, theses, likes, clans, transfer notes (Supabase's secret key)
+//   /api/upload     coin logos into Supabase Storage (Supabase's secret key)
+//   /api/index-trades  the router trade indexer, after a visitor's own trade
+// POSTs pass straight through with their headers and body, never cached. Without their keys on Railway they answer
+// 503, as they did on Vercel without them, and the site shows its empty states.
+//
 // The trade indexer (api/index-trades.ts) writes to Supabase: it runs here when
 // the engine has the Supabase secret key, else the engine asks the site's copy
 // once a minute (SITE_INDEX_URL), instead of every open page every 30 seconds.
@@ -42,6 +50,9 @@ import gecko from '../../../api/gecko'
 import indexTrades from '../../../api/index-trades'
 import launchpad from '../../../api/launchpad'
 import radar from '../../../api/radar'
+import session from '../../../api/session'
+import social from '../../../api/social'
+import upload from '../../../api/upload'
 import { log, errMsg } from '../log'
 import { metrics } from '../metrics'
 
@@ -217,6 +228,9 @@ export class ResponseCache {
 
 export interface SiteApi { handle(req: Request, url: URL): Promise<Response>; names: string[] }
 
+/** Functions that write (or act): their requests pass through as they came, and their answers are never cached. */
+const WRITES = new Set(['session', 'social', 'upload', 'index-trades'])
+
 export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number; handlers?: Record<string, Handler>; holders?: HolderStore; indexUrl?: string | null; indexEveryMs?: number; warm?: boolean }): SiteApi {
   let sql: SQL | null = null
   let ready: Promise<void> = Promise.resolve()
@@ -230,6 +244,7 @@ export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number
   const handlers: Record<string, Handler> = o.handlers ?? {
     argus: (r, c) => argus(r, c), gecko: (r, c) => gecko(r, c), arcd: () => arcd(), launchpad: (r, c) => launchpad(r, c),
     radar: r => radar(r), dex: r => dex(r), holders: holdersHandler(holders),
+    session: r => session(r), social: r => social(r), upload: r => upload(r), 'index-trades': () => indexTrades(),
   }
   const cache = new ResponseCache()
   const pending = new Set<Promise<unknown>>()
@@ -275,6 +290,22 @@ export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number
       const name = url.pathname.slice('/api/'.length)
       const h = handlers[name]
       if (!h) return new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } })
+      // Writes: the request as it came (headers, body), never cached.
+      if (WRITES.has(name)) {
+        try {
+          const res = await h(req, ctx)
+          metrics.inc(`site_${name}_write`)
+          const headers = new Headers(res.headers)
+          headers.set('Access-Control-Allow-Origin', '*')
+          headers.set('X-Arcdex-Served-By', 'engine')
+          headers.set('Access-Control-Expose-Headers', 'X-Arcdex-Served-By')
+          return new Response(res.body, { status: res.status, headers })
+        } catch (e) {
+          metrics.inc(`site_${name}_errors`)
+          log.warn('site api error', { name, error: errMsg(e) })
+          return new Response(JSON.stringify({ error: 'internal error' }), { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'X-Arcdex-Served-By': 'engine' } })
+        }
+      }
       if (req.method !== 'GET') return new Response(JSON.stringify({ error: 'method not allowed' }), { status: 405, headers: { 'Content-Type': 'application/json' } })
       const params = new URLSearchParams(url.search); params.sort()
       const key = `${name}?${params}`

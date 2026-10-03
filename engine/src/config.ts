@@ -96,6 +96,9 @@ export interface Config {
   live: { minTradeUsd: number; maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; reserveUsd: number; preflight: boolean; maxRoundTripPct: number; maxShareOfBalance: number; sendUrl: string }
 }
 
+/** ARCSENSE's own site (www.arcsense.site on Netlify, 2026-10-03): allowed by the engine without a Railway setting. */
+export const ARCSENSE_ORIGINS = ['https://arcsense.site', 'https://www.arcsense.site', 'https://arcsense.netlify.app']
+
 export function loadConfig(): Config {
   const role = (process.env.ENGINE_ROLE ?? 'all') as Role
   if (!['all', 'ingest', 'gateway'].includes(role)) throw new Error('ENGINE_ROLE must be all, ingest or gateway')
@@ -112,7 +115,8 @@ export function loadConfig(): Config {
     redisPubSub: process.env.REDIS_PUBSUB === '1' || role !== 'all',
     databaseUrl: process.env.DATABASE_URL || null,
     historyEnabled: process.env.HISTORY_ENABLED === '0' ? false : Boolean(process.env.DATABASE_URL) || supabase,
-    allowedOrigins: list(process.env.WS_ALLOWED_ORIGINS, ['https://arcdex.online', 'https://www.arcdex.online']),
+    // ARCSENSE's site (2026-10-03, on Netlify) is always allowed, whatever WS_ALLOWED_ORIGINS lists on Railway.
+    allowedOrigins: [...new Set([...list(process.env.WS_ALLOWED_ORIGINS, ['https://arcdex.online', 'https://www.arcdex.online']), ...ARCSENSE_ORIGINS])],
     metricsToken: process.env.METRICS_TOKEN || null,
     backfillOnStartBlocks: int('BACKFILL_ON_START_BLOCKS', 170_000, 0, 2_000_000),
     backfillMaxBlocks: int('BACKFILL_MAX_BLOCKS', 600_000, 0, 5_000_000),

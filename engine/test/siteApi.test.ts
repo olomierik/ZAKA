@@ -96,4 +96,19 @@ describe('the routes', () => {
     await api.handle(new Request('http://e/api/gecko?b=2&a=1'), new URL('http://e/api/gecko?b=2&a=1'))
     expect(calls).toBe(1)
   })
+  test('writes (2026-10-03): a POST reaches its function as it came, never cached, marked as served by the engine', async () => {
+    const seen: { method: string; auth: string | null; body: string }[] = []
+    const api = createSiteApi({ databaseUrl: null, indexEveryMs: 0, warm: false, handlers: {
+      social: async req => { seen.push({ method: req.method, auth: req.headers.get('Authorization'), body: await req.text() }); return new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, s-maxage=60' } }) },
+    } })
+    const post = (body: string) => new Request('http://e/api/social', { method: 'POST', headers: { Authorization: 'Bearer t1', 'Content-Type': 'application/json' }, body })
+    const r1 = await api.handle(post('{"action":"follow"}'), new URL('http://e/api/social'))
+    const r2 = await api.handle(post('{"action":"unfollow"}'), new URL('http://e/api/social'))
+    expect([r1.status, r2.status]).toEqual([200, 200])
+    expect(seen).toEqual([{ method: 'POST', auth: 'Bearer t1', body: '{"action":"follow"}' }, { method: 'POST', auth: 'Bearer t1', body: '{"action":"unfollow"}' }]) // both reached it
+    expect(r1.headers.get('X-Arcdex-Served-By')).toBe('engine')
+    expect(r1.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    // The real write functions are wired by default.
+    expect(createSiteApi({ databaseUrl: null, indexEveryMs: 0, warm: false }).names).toEqual(expect.arrayContaining(['session', 'social', 'upload', 'index-trades']))
+  })
 })

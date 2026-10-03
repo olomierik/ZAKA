@@ -1,0 +1,44 @@
+# ARCSENSE on Netlify (2026-10-03): www.arcsense.site serves the app's files only. Its data and its write
+# functions (sign-in, social, uploads) come from the market engine on Railway (engine/src/site/siteApi.ts), so
+# nothing runs here per request.
+
+[build]
+  command = "bun run build"
+  publish = "dist"
+
+# Public by design: every value here ships inside the page itself.
+[build.environment]
+  BUN_VERSION = "1.3.14"
+  VITE_ARCDEX_WS_URL = "wss://arcdex-engine-production.up.railway.app/ws"
+  VITE_SUPABASE_URL = "https://jpcaachzumrpccdtajks.supabase.co"
+  VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwY2FhY2h6dW1ycGNjZHRhamtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5NjE0MzksImV4cCI6MjEwNTUzNzQzOX0.91KuOFaBZp5ChuRgNUTSjhUng291a31fneD7bhFG4Us"
+  VITE_ARC_LAUNCHPAD_ADDRESS = "0xEf6a8fdaF0181E19CC2C7575ada4b9c279809a67"
+  VITE_ARCDEX_SWAP_ROUTER_ADDRESS = "0xD07583f7DB671521AAcFdA2b4612AD187aA2924e"
+
+# The site's functions live on the engine: here they're a plain 404, so the site's fallback fails fast instead of
+# reading the app's HTML as data.
+[[redirects]]
+  from = "/api/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/whitepaper"
+  to = "/whitepaper.html"
+  status = 200
+
+[[redirects]]
+  from = "/arcdex"
+  to = "/arcdex.html"
+  status = 200
+
+[[redirects]]
+  from = "/arcdex/*"
+  to = "/arcdex.html"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

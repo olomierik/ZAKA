@@ -1202,6 +1202,14 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
 
 Vercel paused arcdex.online (402) for the CPU its functions used. The read functions (`/api/argus`, `/api/gecko`, `/api/holders`, `/api/launchpad`, `/api/radar`, `/api/dex`) are served by the market engine (`engine/src/site/siteApi.ts`, `/api/*` in `ws/server.ts`), with their stored copies and the holder index in the engine's own Postgres (`setKvStore`, `HolderStore`), GeckoTerminal calls metered from its one IP (`setGtFetch`), a response cache, the trade indexer once a minute, and the launchpad indexes warmed at start. The site calls the engine first (`src/arcdex/api/siteFetch.ts`) and its own `/api/…` only when the engine can't be reached. `SITE_API=off` stops them on the engine. The Dockerfile copies the `api/` files they import (`engine/test/image.test.ts` checks it), and Railway's Watch Paths need them too. Tests: `engine/test/siteApi.test.ts`.
 
+## ARCSENSE on Netlify (2026-10-03)
+
+The owner's new site, www.arcsense.site, is hosted on Netlify and serves only the app's files (`netlify.toml`): no function runs there.
+- **Data and writes come from the engine:** besides the read functions above, `/api/session`, `/api/social`, `/api/upload` and `/api/index-trades` run on the engine too (`siteApi.ts` `WRITES`: the request passes through with its headers and body, never cached). They need on Railway what they needed on Vercel: `ARCDEX_SESSION_SECRET` (sign-in), and Supabase's secret key for social writes and uploads. Without them they answer 503 and the site shows its empty states. Card deposits (`/api/onramp`) aren't served there yet: the Deposit modal says they're being switched on.
+- **The engine allows ARCSENSE's domains in code** (`ARCSENSE_ORIGINS` in `engine/src/config.ts`: arcsense.site, www.arcsense.site, arcsense.netlify.app), whatever `WS_ALLOWED_ORIGINS` lists on Railway.
+- **Build settings** live in `netlify.toml` (Bun, `dist`, the public `VITE_*` values). `VITE_WC_PROJECT_ID` (WalletConnect) is still missing, from cloud.reown.com; without it, phone wallets by QR code aren't offered. `/api/*` is a plain 404 on Netlify, so the site's fallback fails fast.
+- arcdex.online stays as it is (owner: no redirect).
+
 ## Autotrade paused (2026-10-03)
 
 Owner: the platform becomes ARCSENSE (spot and futures trading), and "the auto trade functionality will have to be paused for now".
