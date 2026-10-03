@@ -30,7 +30,8 @@
 //   /api/session    sign in with a wallet (ARCDEX_SESSION_SECRET)
 //   /api/social     profiles, follows, theses, likes, clans, transfer notes (Supabase's secret key)
 //   /api/upload     coin logos into Supabase Storage (Supabase's secret key)
-//   /api/index-trades  the router trade indexer, after a visitor's own trade
+//   /api/index-trades  the router trade indexer, after a visitor's own trade (every router: v1, the swap router in
+//                      force and the curve router, whose addresses are built in, not read from the site's settings)
 // POSTs pass straight through with their headers and body, never cached. Without their keys on Railway they answer
 // 503, as they did on Vercel without them, and the site shows its empty states.
 //

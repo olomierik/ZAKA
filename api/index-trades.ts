@@ -26,6 +26,9 @@ const BUDGET_MS = 18_000
 const THROTTLE_MS = 5_000
 
 const V1 = { address: '0xc519b929981f5375d67ab3930ffb100f0a606088', start: 22_548_761 }
+/** The swap router in force (v2): its address is public, so the market engine on Railway, which runs this without the
+ * site's VITE_ settings, indexes it too (2026-10-03: only v1 and the curve router were indexed there). */
+const SWAP_ROUTER = '0xd07583f7db671521aacfda2b4612ad187aa2924e'
 
 const topic = (sig: string) => keccak256(stringToBytes(sig))
 const T_SWAPPED = topic('Swapped(address,address,address,uint256,uint256,address,uint256)')
@@ -105,7 +108,7 @@ export default async function handler(): Promise<Response> {
   const routers = [V1.address]
   // The swap router, the curve router in force, and the deployed curve
   // router even when routing is off: its trades stay indexed.
-  for (const a of [process.env.VITE_ARCDEX_SWAP_ROUTER_ADDRESS, curveRouterFrom(process.env.VITE_ARCDEX_CURVE_ROUTER_ADDRESS), CURVE_ROUTER]) {
+  for (const a of [process.env.VITE_ARCDEX_SWAP_ROUTER_ADDRESS || SWAP_ROUTER, curveRouterFrom(process.env.VITE_ARCDEX_CURVE_ROUTER_ADDRESS), CURVE_ROUTER]) {
     const address = (a ?? '').trim().toLowerCase()
     if (/^0x[0-9a-f]{40}$/.test(address) && !routers.includes(address)) routers.push(address)
   }
