@@ -32,7 +32,7 @@ export const SWAP_ROUTER02 = '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45' as con
 export const V3_FACTORY    = '0xf0db7b58379503491d857db50ac9ece64c653918' as const
 export const MULTICALL3    = '0xcA11bde05977b3631167028862bE2a173976CA11' as const
 
-const APP_ICON = 'https://arcsense.site/arcdex-logo.png'
+const APP_ICON = 'https://arcsense.site/icon-512.png'
 
 /** The chains the bridge moves USDC to and from (lib/bridgeKit.ts). Arc is
  * where everything trades; these are listed so a WalletConnect session

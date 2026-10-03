@@ -221,7 +221,7 @@ function beep() {
 function notify(title: string, body: string, onClick: () => void) {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return
-    const n = new Notification(title, { body, icon: '/arcdex-logo.png', tag: title + body })
+    const n = new Notification(title, { body, icon: '/icon-192.png', tag: title + body })
     n.onclick = () => { window.focus(); onClick(); n.close() }
   } catch { /* unsupported */ }
 }

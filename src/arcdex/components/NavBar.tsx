@@ -34,7 +34,7 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
 
       {/* Logo */}
       <button className="navbar-logo" onClick={() => navigate({ name: 'terminal' })} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <img src="/arcdex-logo.svg" alt="" width={24} height={24} style={{ borderRadius: 6, flexShrink: 0 }} />{T("ARCSENSE")}</button>
+        <img src="/arcsense-mark.png" alt="" width={26} height={26} style={{ flexShrink: 0 }} /><span className="brand-word">Arc<span>sense</span></span></button>
       <span className="navbar-badge">{T("MAINNET")}</span>
 
       {/* Nav links */}

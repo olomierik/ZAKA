@@ -87,7 +87,7 @@ export default function Landing() {
 
       {/* ── nav ─────────────────────────────────────────── */}
       <header className="ld-nav" ref={navRef}>
-        <a href="/" className="ld-brand"><img src="/arcdex-logo.svg" alt="" width={26} height={26} />ARCSENSE</a>
+        <a href="/" className="ld-brand"><img src="/arcsense-mark.png" alt="" width={30} height={30} /><span className="ld-word">Arc<span>sense</span></span></a>
         <nav className={`ld-links${menu ? ' open' : ''}`} onClick={() => setMenu(false)}>
           <a href="#platform">{t('Features')}</a>
           <a href="#futures">{t('Futures')}</a>
@@ -187,7 +187,7 @@ export default function Landing() {
 
       <footer className="ld-footer">
         <div className="ld-foot-top">
-          <a href="/" className="ld-brand"><img src="/arcdex-logo.svg" alt="" width={22} height={22} />ARCSENSE</a>
+          <a href="/" className="ld-brand"><img src="/arcsense-mark.png" alt="" width={24} height={24} /><span className="ld-word">Arc<span>sense</span></span></a>
           <nav>
             <a href="/app">{t('App')}</a>
             <a href="/swap">{t('Swap')}</a>

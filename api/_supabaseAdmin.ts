@@ -10,7 +10,9 @@
 
 declare const process: { env: Record<string, string | undefined> }
 
-const URL = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL
+// The project's address is public (it ships in the site itself), so the market engine on Railway needs only the
+// secret key (2026-10-03).
+const URL = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? 'https://jpcaachzumrpccdtajks.supabase.co'
 const KEY = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY
 
 export const adminReady = Boolean(URL && KEY)

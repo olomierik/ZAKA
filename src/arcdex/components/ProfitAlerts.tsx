@@ -42,7 +42,7 @@ function system(p: BotProfit, onClick: () => void) {
     if (!profitNotifyOn()) return
     const n = new Notification(T('{bot} took a profit: {usd}', { bot: p.bot, usd: money(p.pnlUsd) }), {
       body: `$${p.symbol}${p.pnlPct !== null ? ` · +${p.pnlPct.toFixed(1)}%` : ''} · ${T(STRAT[p.strategy])}${p.mode === 'live' ? ` · ${T('LIVE')}` : ` · ${T('paper')}`}`,
-      icon: '/arcdex-logo.png', tag: p.id,
+      icon: '/icon-192.png', tag: p.id,
     })
     n.onclick = () => { window.focus(); onClick(); n.close() }
   } catch { /* unsupported */ }

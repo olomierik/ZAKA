@@ -38,7 +38,8 @@ html { scroll-behavior: smooth; color-scheme: dark; }
   backdrop-filter: blur(14px); border-bottom: 1px solid var(--ld-border);
 }
 .ld-brand { display: flex; align-items: center; gap: 9px; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1.02rem; }
-.ld-brand img { border-radius: 7px; }
+.ld-word { font-weight: 800; letter-spacing: -0.01em; }
+.ld-word span { background: linear-gradient(90deg, #3b82f6, #5b5cf6 55%, #8b5cf6); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .ld-links { display: flex; gap: 20px; font-size: 0.85rem; color: var(--ld-muted); }
 .ld-links a { white-space: nowrap; }
 .ld-links a:hover { color: var(--ld-text); }
