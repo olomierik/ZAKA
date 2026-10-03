@@ -579,8 +579,11 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
       } catch { /* no index: the column stays as it was */ }
     }
     void load()
-    const id = setInterval(() => { if (!document.hidden) void load() }, 60_000)
-    return () => { alive = false; clearInterval(id) }
+    // Again once the engine's most active coins have joined the list (its first poll lands within seconds), then every
+    // 30s: the engine keeps those coins' counts current every minute (2026-10-03).
+    const soon = setTimeout(() => void load(), 10_000)
+    const id = setInterval(() => { if (!document.hidden) void load() }, 30_000)
+    return () => { alive = false; clearTimeout(soon); clearInterval(id) }
   }, [haveTokens])
   const withHolders = useMemo(() => indexedHolders.size
     ? tokens.map(t => { const h = indexedHolders.get(t.address.toLowerCase()); return h ? { ...t, holderCount: h } : t })
