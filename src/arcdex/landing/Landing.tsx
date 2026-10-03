@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { LANGS, setLang, t, useLang, type Lang } from '../lib/i18n'
 import TrafficCard from './TrafficCard'
+import SenseProgram from './SenseProgram'
 import { PHASES, phaseStatus } from './roadmap'
 import './landing.css'
 
@@ -83,13 +84,13 @@ export default function Landing() {
   const FUTURES: [string, string][] = [
     [t('USDC in, USDC out'), t('Margin, profits and fees are all in USDC, the currency Arc runs on.')],
     [t('Signed oracle prices'), t('Positions are priced by RedStone’s signed oracle prices, checked on-chain, not by thin pools anyone can push.')],
-    [t('Fees fund the pool'), t('Fees from $SENSE trading are added as liquidity for futures trading.')],
+    [t('Fees fund liquidity'), t('70% of ARCSENSE’s fees go to liquidity pools, and 30% buy back $SENSE and burn it.')],
   ]
 
   const FAQ: [string, string][] = [
     [t('What is ARCSENSE?'), t('The first platform on Arc for spot and perpetual futures trading: a live terminal for every coin, one-tap swaps, a USDC bridge and BTC, ETH and SOL perpetuals, now on Arc testnet.')],
     [t('When do futures launch?'), t('They’re on Arc testnet now: try them with free test USDC, without risk. Mainnet follows an independent security audit; the date will be announced.')],
-    [t('What is $SENSE?'), t('The ARCSENSE coin, launched on Argus. Fees from $SENSE trading are added as liquidity for futures trading.')],
+    [t('What is $SENSE?'), t('The ARCSENSE coin, launched on Argus. 30% of ARCSENSE’s fees buy back $SENSE and burn it, and 70% go to liquidity pools. Every buyback and burn is on-chain and shown on this page.')],
     [t('Is my money at risk?'), t('Yes. Coins on Arc are very volatile, and futures with leverage can lose money quickly. Trade only what you can afford to lose. Nothing here is financial advice.')],
   ]
 
@@ -105,6 +106,7 @@ export default function Landing() {
         <nav className={`ld-links${menu ? ' open' : ''}`} onClick={() => setMenu(false)}>
           <a href="#platform">{t('Features')}</a>
           <a href="#futures">{t('Futures')}</a>
+          <a href="#sense">$SENSE</a>
           <a href="#roadmap">{t('Roadmap')}</a>
           <a href="#faq">{t('Questions')}</a>
           <div className="ld-menu-lang" onClick={e => e.stopPropagation()}>
@@ -174,6 +176,9 @@ export default function Landing() {
           ))}
         </div>
       </section>
+
+      {/* ── where the fees go: 30% $SENSE buyback & burn, 70% liquidity ── */}
+      <SenseProgram engine={ENGINE} />
 
       {/* ── roadmap, in one line ────────────────────────── */}
       <section className="ld-section" id="roadmap">

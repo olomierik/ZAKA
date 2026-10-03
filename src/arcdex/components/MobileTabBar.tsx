@@ -22,6 +22,7 @@ const MORE: { icon: string; label: string; to: Page }[] = [
   { icon: '♛', label: N_('Leaderboard'), to: { name: 'leaderboard' } },
   { icon: '⚑', label: N_('Clans'), to: { name: 'clans' } },
   { icon: '✦', label: N_('Rewards'), to: { name: 'rewards' } },
+  { icon: '🔥', label: N_('$SENSE burn'), to: { name: 'sense' } },
   { icon: '🔔', label: N_('Alerts'), to: { name: 'alerts' } },
   { icon: '⇅', label: N_('Transfers'), to: { name: 'transfers' } },
   { icon: '⚡', label: N_('Autotrade'), to: { name: 'signals' } },

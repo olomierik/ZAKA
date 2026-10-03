@@ -9,6 +9,7 @@ const TokenPage       = lazy(() => import('./pages/TokenPage'))
 const CoinPage        = lazy(() => import('./pages/CoinPage'))
 const Portfolio       = lazy(() => import('./pages/Portfolio'))
 const FuturesPage     = lazy(() => import('./pages/FuturesPage'))
+const SensePage       = lazy(() => import('./pages/SensePage'))
 const AutotradeSoon   = lazy(() => import('./pages/AutotradeSoon'))
 const Swap            = lazy(() => import('./pages/Swap'))
 const Bridge          = lazy(() => import('./pages/Bridge'))
@@ -66,6 +67,7 @@ export type Page =
   | { name: 'deploy-curve-router' }
   | { name: 'signals'; view?: 'market' | 'manage'; bot?: string }
   | { name: 'futures' }
+  | { name: 'sense' }
 
 const fromUrl = (): Page => pathToPage(window.location.pathname, window.location.search) ?? { name: 'terminal' }
 
@@ -74,6 +76,7 @@ const MOBILE_NAV: [Page, string, string][] = [
   [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'portfolio' }, '▤', N_('Portfolio')], [{ name: 'feed' }, '◉', N_('Feed')],
   [{ name: 'leaderboard' }, '♛', N_('Leaderboard')], [{ name: 'clans' }, '⚑', N_('Clans')], [{ name: 'rewards' }, '✦', N_('Rewards')],
   [{ name: 'signals' }, '⚡', N_('Autotrade')], [{ name: 'alerts' }, '🔔', N_('Alerts')], [{ name: 'transfers' }, '⇅', N_('Transfers')],
+  [{ name: 'sense' }, '🔥', N_('$SENSE burn')],
 ]
 
 export default function App() {
@@ -154,6 +157,7 @@ export default function App() {
           {/* The launchpad is hidden (owner, 2026-10-03): its address shows the spot terminal. */}
           {page.name === 'launchpad'   && <Terminal navigate={navigate} registerFeedTokens={registerFeedTokens} />}
           {page.name === 'futures'     && <FuturesPage navigate={navigate} />}
+          {page.name === 'sense'       && <SensePage navigate={navigate} />}
           {page.name === 'swap'        && <Swap navigate={navigate} />}
           {page.name === 'bridge'      && <Bridge key={page.dir ?? 'out'} initialDir={page.dir ?? 'out'} />}
           {page.name === 'trader'      && <TraderPage key={page.address} address={page.address} navigate={navigate} />}

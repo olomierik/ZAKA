@@ -1210,7 +1210,7 @@ Owner: ARCDEX becomes **ARCSENSE**, spot and futures trading on Arc, at www.arcs
 - **Logo (owner's, 2026-10-03):** the "A" with a rising arrow, cut from the owner's image: `public/arcsense-mark.png` (transparent, header and landing), `favicon-64.png`, app icons on white (`icon-192.png`, `icon-512.png`, `apple-touch-icon.png`, maskable-safe) and the full logo for link previews (`arcsense-logo.png`). The name shows as in the logo: "Arc" in the text colour, "sense" in the mark's blue-to-violet (`.brand-word`, `.ld-word`).
 - **Supabase on the engine:** `api/_supabaseAdmin.ts` falls back to the project's public address, so Railway needs only `SUPABASE_SECRET_KEY`; wallet sign-in needs `ARCDEX_SESSION_SECRET` of at least 32 characters.
 - **The whitepaper is offline** (the page, `whitepaper.html`, its PDF and X images): it described $ARCD's fee model. An ARCSENSE whitepaper is still to be written.
-- **The landing page** (`landing/Landing.tsx`): "Spot and futures trading on Arc.", a perpetual-futures card (BTC, ETH, SOL; up to 10×; testnet first, then mainnet after an independent audit), the app's features, the futures plan ("fees from $SENSE trading are added as liquidity for futures trading", the owner's wording), the roadmap and four questions. The bots' board and profit pop-ups are off while Autotrade is paused (`LiveBots.tsx`, `ProfitToasts.tsx` are kept).
+- **The landing page** (`landing/Landing.tsx`): "Spot and futures trading on Arc.", a perpetual-futures card (BTC, ETH, SOL; up to 10×; testnet first, then mainnet after an independent audit), the app's features, where the fees go (since 2026-10-03: 30% buy back and burn $SENSE, 70% to liquidity pools; see "$SENSE buyback and liquidity" below), the roadmap and four questions. The bots' board and profit pop-ups are off while Autotrade is paused (`LiveBots.tsx`, `ProfitToasts.tsx` are kept).
 
 ## ARCSENSE: spot and futures first (2026-10-03)
 
@@ -1222,6 +1222,34 @@ Owner: "hide the autotrade marketplace and let the users see only COMING SOON; h
 - **Launchpad hidden:** out of every menu and the landing page; `/launchpad` shows the spot terminal; Rewards' "Creator rewards" tab is hidden (creators' share is still paid on-chain on every trade).
 - **$SENSE on the landing (owner, 2026-10-03):** the contract address `0x91402b32C4Ab7915132b8B24e0d084E0428667ED` (on-chain: ARCSENSE / SENSE, 1B supply, an Argus launch; pool `0x8793…e047`) in the hero with a Copy button (full address on wide screens, shortened under 560px) and "Buy $SENSE" to its coin page.
 - **Positioning:** "The first spot and futures trading platform on Arc" (landing, page titles, link previews, the app manifest, the wallet-connect description). DefiLlama listed no perpetual-futures venue on Arc on 2026-10-03; spot trading on Arc exists elsewhere, so "first" rests on the combination and on futures.
+
+## $SENSE buyback and liquidity (2026-10-03)
+
+Owner: of ARCSENSE's fees, 30% buy back $SENSE and burn it, 70% go to liquidity pools, and people can see it on the landing page. All platform fees count (my recommendation; fees from $SENSE trades alone are near zero). Fee collection is unchanged: every fee still goes to the fee wallet `0x2742…86Bb`.
+
+- **The ledger (`engine/src/sense/program.ts`, `GET /v1/sense/program`, `SENSE_PROGRAM=off` stops it):** the fee wallet's activity on Arc, read every 30 s (9k-block slices, both USDC log sources, $SENSE), kept in the settings (`sense-program`).
+  - **Fees:** USDC paid to the fee wallet by ARCSENSE's trading contracts, in someone else's transaction (`FEE_SOURCES`):
+    - swap routers v1 and v2;
+    - the curve router;
+    - ArcLaunchpad;
+    - Universal Router 2.1.2 and 2.1.1.
+
+    `SENSE_FEE_SOURCES` adds more (the futures contract on mainnet). A person's transfer isn't a fee: on 2026-10-03, $11.95 arrived as a plain transfer from `0x90a9…7799`. Nor are fees on the fee wallet's own trades through the router (the router pays them back to itself).
+  - **Buyback:** a transaction the fee wallet sent that brought $SENSE in; its value is what went out, other tokens at the engine's price.
+  - **Burn:** $SENSE the fee wallet sent to `0x…dEaD`.
+  - **Liquidity:** a transaction the fee wallet sent that added liquidity (v4 `ModifyLiquidity` or v3 `Mint`) and brought no token back, so a swap through a hook isn't counted; or USDC sent to a `SENSE_LIQUIDITY_TARGETS` address. Liquidity taken back out counts against it.
+  - **Owed:** 30% and 70% of fees; pending = owed − done.
+  - **Start:** 2026-10-04 00:00 UTC, the first block at or after it, found once the chain gets there. The fee wallet launched $SENSE on Argus with a $20 buy, then bought $3 and $1.34 more. Those are creator buys, not buybacks of fees, and the start leaves them out.
+- **Checked against the real fee wallet (2026-10-03):**
+  - Fees since 1 October: $0. The router "fees" in `arcdex_trades` over those days were the fee wallet's own trades.
+  - The three creator buys were read as buys, and nothing was misread as liquidity.
+  - Tests: `engine/test/senseProgram.test.ts`.
+- **Site:**
+  - **Landing (`landing/SenseProgram.tsx`):** "Where the fees go": 30% buyback & burn (bought back, burned, still to buy), 70% liquidity (added, still to add, fees collected), the latest actions with explorer links, and the full ledger.
+  - **`/sense` (`pages/SensePage.tsx`, also `/burn`; "$SENSE" in the nav, "$SENSE burn" in the drawer and More):** the full ledger.
+  - **Fee wallet connected:** steps to buy $SENSE (its coin page), burn everything the wallet holds (with a confirmation), and add liquidity.
+  - The FAQ and the futures notes say the same 30/70.
+- **Buybacks, burns and liquidity are done by the owner from the fee wallet.** The ledger counts them by itself and shows anything still owed.
 
 ## ARCSENSE futures on Arc testnet (2026-10-03)
 

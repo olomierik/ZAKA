@@ -21,6 +21,7 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
     { label: T('Leaderboard'), page: { name: 'leaderboard' }, secondary: true },
     { label: T('Clans'),       page: { name: 'clans' }, secondary: true },
     { label: T('Rewards'),     page: { name: 'rewards' }, secondary: true },
+    { label: T('$SENSE'),      page: { name: 'sense' }, secondary: true },
   ]
 
   return (

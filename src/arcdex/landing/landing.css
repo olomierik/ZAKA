@@ -298,3 +298,18 @@ html { scroll-behavior: smooth; color-scheme: dark; }
 .ld-sense-buy:hover { color: #bfdbfe; }
 .ld-ca-short { display: none; }
 @media (max-width: 560px) { .ld-ca-full { display: none; } .ld-ca-short { display: inline; } }
+
+/* Where the fees go: 30% $SENSE buyback & burn, 70% liquidity (SenseProgram.tsx). */
+.ld-split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.ld-split-card { position: relative; text-align: left; padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+.ld-split-card h3 { margin: 0 0 4px; font-size: 1rem; }
+.ld-split-pct { position: absolute; right: 16px; top: 8px; font-family: 'Space Grotesk', sans-serif; font-size: 2.4rem; font-weight: 700; opacity: 0.16; }
+.ld-split-row { display: flex; justify-content: space-between; gap: 12px; font-size: 0.88rem; }
+.ld-split-row span { color: var(--ld-muted, #94a3b8); }
+.ld-split-row b { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+.ld-split-list { margin-top: 12px; padding: 8px 16px; display: flex; flex-direction: column; text-align: left; }
+.ld-split-list a { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; padding: 6px 0; font-size: 0.84rem; color: inherit; text-decoration: none; border-bottom: 1px solid var(--ld-border); }
+.ld-split-list a:last-child { border-bottom: none; }
+.ld-split-foot { margin-top: 10px; font-size: 0.82rem; }
+.ld-split-foot a { color: #93c5fd; }
+@media (max-width: 640px) { .ld-split { grid-template-columns: 1fr; } }

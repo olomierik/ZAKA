@@ -390,7 +390,7 @@ export default function FuturesPage({ navigate }: { navigate: (p: Page) => void 
         {([
           [T('USDC in, USDC out'), T('Margin, profits and fees are all in USDC, the currency Arc runs on.')],
           [T('Testnet first'), T('Futures run on Arc testnet first, then on mainnet after an independent audit.')],
-          [T('Fees fund the pool'), T('Fees from $SENSE trading are added as liquidity for futures trading.')],
+          [T('Fees fund liquidity'), T('70% of ARCSENSE’s fees go to liquidity pools, and 30% buy back $SENSE and burn it.')],
         ] as [string, string][]).map(([title, body]) => <div key={title} className="soon-point"><b>{title}</b><span>{body}</span></div>)}
       </div>
       <div className="soon-cta"><button className="btn-ghost" onClick={() => navigate({ name: 'terminal' })}>{T('Trade spot now')} →</button></div>
