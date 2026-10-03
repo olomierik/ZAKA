@@ -1297,6 +1297,7 @@ Owner: "yes do it all" to the plan: a USDC pool as every trader's counterparty, 
     - `PERPS_RPC`.
 - **The site (`pages/FuturesPage.tsx`, `lib/perps.ts`):**
   - **Prices and chart:** the oracle's prices and the chart for all 8 pairs, with BTC/ETH/SOL tradable.
+    - **Same chart as spot (owner's request, 2026-10-03):** `PriceChart` with a candle source (`ChartSource`: the engine's oracle candles, reloaded every 10 s; timeframes 1m–1D; no volume, so no volume bars or VWAP). Each new signed price is a live tick, so the line's end glides and pulses as on coin pages. Line/Candles, the legend, indicators, %/log/auto, screenshot and fullscreen all work as on spot.
   - **Orders:** market and limit orders, 1–10×, optional TP/SL, max price move 0.5/1/2%.
   - **Tabs:** positions (live P&L, liquidation price, TP/SL editing, close), orders (cancel), history, the liquidity pool (deposit, withdraw; 15-minute cooldown).
   - **Live feed:** the latest trades by everyone.

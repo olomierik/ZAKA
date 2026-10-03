@@ -2269,5 +2269,7 @@ const d: Record<string, string> = {
   "since {date}": "自 {date} 起",
   "The program starts {date}. From then on, every fee counts.": "计划于 {date} 开始。从那时起，每一笔手续费都计入。",
   "How it’s counted: fees are the USDC ARCSENSE’s trading contracts pay the fee wallet (the swap routers, the curve router, the launchpad and the Universal Router). A buyback is a fee-wallet transaction that brought $SENSE in; a burn is $SENSE it sent to 0x…dEaD; liquidity is value it put into a pool. Burning reduces supply; it doesn’t promise any price.": "计算方式：手续费是 ARCSENSE 的交易合约（兑换路由、曲线路由、发射台和 Universal Router）支付给手续费钱包的 USDC。回购是手续费钱包发起并换入 $SENSE 的交易；销毁是它发送到 0x…dEaD 的 $SENSE；流动性是它投入池中的价值。销毁会减少供应量，但不承诺任何价格。",
+  // Futures chart (2026-10-03)
+  "Oracle prices, signed every 10 seconds": "预言机价格，每 10 秒签名一次",
 }
 export default d

@@ -17,6 +17,7 @@ function loadIndicators(): Set<IndicatorId> {
 }
 
 type Resolution = '1s' | '5s' | '15s' | '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
+export type ChartResolution = Resolution
 const RESOLUTIONS: { label: string; value: Resolution }[] = [
   { label: '1s', value: '1s' }, { label: '5s', value: '5s' }, { label: '15s', value: '15s' },
   { label: '1m', value: '1m' }, { label: '5m', value: '5m' },
@@ -62,8 +63,24 @@ export interface ChartTrade {
 // `ticks` are the pool's on-chain swaps (null while loading): they draw the
 // recent candles and move the last one on every new swap; GeckoTerminal's
 // candles fill in the history before them.
+/** Candles from somewhere other than a pool: the futures oracle's (pages/FuturesPage.tsx).
+ * `id` names the series (a new one starts fitted); `load` gives a timeframe's candles (times in
+ * seconds), reloaded every `refreshMs`; `resolutions` are the timeframes it has; `volume: false`
+ * when its candles carry none (no volume bars, no VWAP). */
+export interface ChartSource {
+  id: string
+  load: (res: Resolution) => Promise<Candle[]>
+  refreshMs?: number
+  resolutions?: Resolution[]
+  volume?: boolean
+}
+
 interface Props {
   poolAddress: string | null
+  /** Candles from a loader instead of a pool (futures). With it, `ticks` move the last candle. */
+  source?: ChartSource
+  /** The LIVE badge's tooltip (default: swaps arriving as their blocks land). */
+  liveTitle?: string
   ticks?: Tick[] | null
   /** Swaps are streaming in live right now. */
   live?: boolean
@@ -107,10 +124,13 @@ const SCALE_MODES = { normal: PriceScaleMode.Normal, log: PriceScaleMode.Logarit
 // Price axis: 2 decimals for $1+ coins, 4 significant digits for micro-caps.
 const fmtPrice = (v: number) => v >= 1000 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v === 0 ? '0' : v.toPrecision(4)
 
-export default function PriceChart({ poolAddress, ticks, live, engineToken, trades, thesisMarks, friends, supply, symbol, onTraderClick }: Props) {
+export default function PriceChart({ poolAddress, source, liveTitle, ticks, live, engineToken, trades, thesisMarks, friends, supply, symbol, onTraderClick }: Props) {
   const mobile = useIsMobile()
   const engineStatus = useEngineStatus()
-  const engineMode = engineEnabled && !!engineToken && engineStatus === 'open'
+  const engineMode = engineEnabled && !!engineToken && engineStatus === 'open' && !source
+  /** What the chart shows: a pool, or a candle source. */
+  const seriesId = source?.id ?? poolAddress
+  const hasVolume = source?.volume !== false
   const hasTicks = ticks !== undefined || engineMode
   const [res, setRes] = useState<Resolution>(DEFAULT_RES)
   const [history, setHistory] = useState<Candle[]>([])
@@ -149,6 +169,9 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
     return n
   })
   const withRsi = ind.has('rsi')
+  // Without volume (oracle candles), no volume bars and no VWAP.
+  const offered = INDICATORS.filter(i => hasVolume || (i.id !== 'volume' && i.id !== 'vwap'))
+  const shownInd = [...ind].filter(id => offered.some(o => o.id === id))
   const needsFit = useRef(true)
   // Set when someone drags, pinches or wheel-zooms the chart: their view is
   // kept (no re-fitting) until the timeframe changes or they double-click.
@@ -164,6 +187,15 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
     needsFit.current = true
     setHistory([]); setHistoryLoaded(false); setEngineHistory(false)
     let cancelled = false
+    if (source) {
+      const load = () => source.load(res)
+        .then(c => { if (!cancelled) setHistory(c) })
+        .catch(() => {})
+        .finally(() => { if (!cancelled) setHistoryLoaded(true) })
+      void load()
+      const id = setInterval(() => { if (!document.hidden) void load() }, source.refreshMs ?? 15_000)
+      return () => { cancelled = true; clearInterval(id) }
+    }
     const fromGecko = () => {
       if (!poolAddress || onChainOnly(res)) { setHistoryLoaded(true); return null }
       const load = () => getPoolOhlcv(poolAddress, res as Exclude<Resolution, '1s' | '5s' | '15s'>, 300)
@@ -185,7 +217,7 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
         .catch(() => { if (!cancelled) id = fromGecko() })
     } else id = fromGecko()
     return () => { cancelled = true; if (id) clearInterval(id) }
-  }, [poolAddress, res, hasTicks, engineMode, engineToken])
+  }, [poolAddress, res, hasTicks, engineMode, engineToken, source])
 
   // Engine live candles: each CANDLE_UPDATE replaces its bucket.
   useEffect(() => {
@@ -209,7 +241,9 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
   // A new coin, timeframe, Price/MCap view or chart style starts fitted:
   // every candle in the window and the price axis on auto. Changing the
   // timeframe is all anyone needs to do.
-  useEffect(() => { needsFit.current = true; userMoved.current = false; setAutoScale(true) }, [poolAddress, res, mode, style])
+  useEffect(() => { needsFit.current = true; userMoved.current = false; setAutoScale(true) }, [seriesId, res, mode, style])
+  // A source has only some timeframes.
+  useEffect(() => { if (source?.resolutions && !source.resolutions.includes(res)) setRes(source.resolutions.includes(DEFAULT_RES) ? DEFAULT_RES : source.resolutions[0]) }, [source, res])
   // Without on-chain swaps there are no sub-minute candles.
   useEffect(() => { if (!hasTicks && onChainOnly(res)) setRes(DEFAULT_RES) }, [hasTicks, res])
   // 5s candles exist only in the engine.
@@ -511,7 +545,7 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
     const data: CandlestickData[] = candles.map(c => ({
       time: c.time as never, open: c.open * scale, high: c.high * scale, low: c.low * scale, close: c.close * scale,
     }))
-    const key = `${poolAddress}|${res}|${scale}|${style}`
+    const key = `${seriesId}|${res}|${scale}|${style}`
     const prev = applied.current
     const n = prev.data.length
     const same = (a: CandlestickData | undefined, b: CandlestickData | undefined) => !!a && !!b && a.time === b.time && a.open === b.open && a.high === b.high && a.low === b.low && a.close === b.close
@@ -553,7 +587,7 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
     writeLegendRef.current()
     recolorRef.current()
     layoutRef.current()
-  }, [candles, scale, res, poolAddress, style])
+  }, [candles, scale, res, seriesId, style])
 
   // Indicators: rebuilt when a bar is added, or the Price/MCap scale or
   // the selection changes — not on every tick (the draw effect keeps the
@@ -579,7 +613,7 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
       return x
     }
     const color = (id: IndicatorId) => INDICATORS.find(i => i.id === id)!.color
-    if (ind.has('volume')) {
+    if (ind.has('volume') && hasVolume) {
       const v = chart.addSeries(HistogramSeries, { priceScaleId: 'vol', priceFormat: { type: 'volume' }, priceLineVisible: false, lastValueVisible: false })
       chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } })
       v.setData(candles.map(c => ({ time: c.time as never, value: c.volume, color: c.close >= c.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)' })))
@@ -594,7 +628,7 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
       const b = bollinger(closes, 20, 2)
       line(b.upper, color('bb'), 0, { lineStyle: 2 }); line(b.mid, color('bb')); line(b.lower, color('bb'), 0, { lineStyle: 2 })
     }
-    if (ind.has('vwap')) line(vwap(candles.map(c => ({ ...c, high: c.high * scale, low: c.low * scale, close: c.close * scale }))), color('vwap'), 0, { lineWidth: 2 })
+    if (ind.has('vwap') && hasVolume) line(vwap(candles.map(c => ({ ...c, high: c.high * scale, low: c.low * scale, close: c.close * scale }))), color('vwap'), 0, { lineWidth: 2 })
     if (ind.has('rsi')) {
       const r = line(rsi(closes, 14), color('rsi'), 1, { lastValueVisible: true, priceFormat: { type: 'price', precision: 1, minMove: 0.1 } })
       r.createPriceLine({ price: 70, color: 'rgba(239,68,68,0.5)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '' })
@@ -604,7 +638,7 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
     layoutRef.current()
     // layout via ref: new trades arrive every few seconds and must not rebuild the indicators
     // (style: a swapped price series is added last; re-adding keeps the indicator lines above it)
-  }, [barsKey, scale, ind, res, style])
+  }, [barsKey, scale, ind, res, style, hasVolume])
 
   // % / log / auto, like fomo's (and TradingView's) price-axis buttons.
   useEffect(() => {
@@ -683,10 +717,10 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
   return (
     <div ref={wrapRef} className="price-chart" style={{ background: isFull ? '#0b1628' : undefined, display: 'flex', flexDirection: 'column', height: isFull ? '100%' : undefined, padding: isFull ? 16 : 0 }}>
     <div className="chart-controls" style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-      {RESOLUTIONS.filter(r => (hasTicks || !onChainOnly(r.value)) && (r.value !== '5s' || engineMode)).map(r => (
+      {RESOLUTIONS.filter(r => (source?.resolutions ? source.resolutions.includes(r.value) : (hasTicks || !onChainOnly(r.value)) && (r.value !== '5s' || engineMode))).map(r => (
         <button key={r.value} onClick={() => setRes(r.value)} style={pill(res === r.value)}>{r.label}</button>
       ))}
-      {live && <span title={T("Every swap appears the moment its block lands")} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 6, fontSize: '0.68rem', fontWeight: 800, color: 'var(--green)', letterSpacing: '0.05em' }}><span className="pulse-dot" />{T("LIVE")}</span>}
+      {live && <span title={liveTitle ?? T("Every swap appears the moment its block lands")} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 6, fontSize: '0.68rem', fontWeight: 800, color: 'var(--green)', letterSpacing: '0.05em' }}><span className="pulse-dot" />{T("LIVE")}</span>}
       <span style={{ flex: 1 }} />
       <span title={T("Chart style")} style={{ display: 'inline-flex', border: '1px solid var(--adx-card-border)', borderRadius: 6, overflow: 'hidden' }}>
         {(['line', 'candles'] as const).map(s => <button key={s} onClick={() => setChartStyle(s)} style={{ ...pill(style === s), border: 'none', borderRadius: 0 }}>{s === 'line' ? T("Line") : T("Candles")}</button>)}
@@ -697,10 +731,10 @@ export default function PriceChart({ poolAddress, ticks, live, engineToken, trad
         </span>
       ) : null}
       <span style={{ position: 'relative' }}>
-        <button onClick={() => setIndOpen(o => !o)} style={pill(ind.size > 0)} title={T("Indicators")}>ƒx {T("Indicators")}{ind.size ? ` (${ind.size})` : ''}</button>
+        <button onClick={() => setIndOpen(o => !o)} style={pill(shownInd.length > 0)} title={T("Indicators")}>ƒx {T("Indicators")}{shownInd.length ? ` (${shownInd.length})` : ''}</button>
         {indOpen && (
           <div className="menu-pop" style={{ top: 30, right: 0, minWidth: 220, zIndex: 20 }} onMouseLeave={() => setIndOpen(false)}>
-            {INDICATORS.map(i => (
+            {offered.map(i => (
               <label key={i.id} className="menu-item" style={{ cursor: 'pointer' }}>
                 <input type="checkbox" checked={ind.has(i.id)} onChange={() => toggleInd(i.id)} />
                 <span style={{ width: 10, height: 3, borderRadius: 2, background: i.color, display: 'inline-block' }} />

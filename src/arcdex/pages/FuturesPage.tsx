@@ -10,7 +10,8 @@
 // signed after it (usually 15 to 30 seconds), so nobody trades on a price they already saw.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { createChart, CandlestickSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts'
+import PriceChart, { type ChartResolution, type ChartSource } from '../components/PriceChart'
+import type { Tick } from '../lib/candles'
 import type { Address } from 'viem'
 import { sendSupport } from '../api/social'
 import { useTrader, shortAddr } from '../lib/identity'
@@ -39,7 +40,6 @@ const PAIRS: Pair[] = [
   { sym: 'LINK', name: 'Chainlink' },
   { sym: 'DOGE', name: 'Dogecoin' },
 ]
-const TIMEFRAMES: PerpsTf[] = ['1m', '5m', '15m', '1h', '4h', '1d']
 const EXPLORER = 'https://testnet.arcscan.app'
 
 const fmt = (n: number | null | undefined, dp: number) => n == null || !Number.isFinite(n) ? '—' : n.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })
@@ -64,70 +64,31 @@ function onChainMarket(m: PerpsMarketView): MarketOnChain {
 
 // ─── the chart ───────────────────────────────────────────────────────────────
 
-/** The oracle's candles for one pair, refreshed every 10 seconds, the last one following each new price. */
-function OracleChart({ sym, tf, live }: { sym: string; tf: PerpsTf; live: PerpsFeedPrice | undefined }) {
-  const box = useRef<HTMLDivElement>(null)
-  const chart = useRef<IChartApi | null>(null)
-  const series = useRef<ISeriesApi<'Candlestick'> | null>(null)
-  const [empty, setEmpty] = useState(false)
+const ORACLE_RESOLUTIONS: ChartResolution[] = ['1m', '5m', '15m', '1h', '4h', '1d']
 
+/** The spot chart (components/PriceChart.tsx: line or candles, the live end of the line, legend,
+ * indicators, %/log/auto, fullscreen) on the oracle's candles, its last point following each new
+ * signed price. */
+function OracleChart({ sym, live }: { sym: string; live: PerpsFeedPrice | undefined }) {
+  const source = useMemo<ChartSource>(() => ({
+    id: `perps:${sym}`,
+    load: res => fetchCandles(sym, res as PerpsTf).then(bars => bars.map(b => ({ time: Math.floor(b[0] / 1000), open: b[1], high: b[2], low: b[3], close: b[4], volume: 0 }))),
+    refreshMs: 10_000,
+    resolutions: ORACLE_RESOLUTIONS,
+    volume: false,
+  }), [sym])
+  // Every signed price since the page opened, as the chart's live ticks.
+  const [ticks, setTicks] = useState<Tick[]>([])
+  useEffect(() => { setTicks([]) }, [sym])
   useEffect(() => {
-    if (!box.current) return
-    const c = createChart(box.current, {
-      autoSize: true,
-      layout: { background: { color: 'transparent' }, textColor: '#8ca3c0', fontSize: 11 },
-      grid: { vertLines: { color: 'rgba(255,255,255,0.04)' }, horzLines: { color: 'rgba(255,255,255,0.04)' } },
-      rightPriceScale: { borderColor: 'rgba(255,255,255,0.08)' },
-      timeScale: { borderColor: 'rgba(255,255,255,0.08)', timeVisible: true, secondsVisible: false },
-      crosshair: { mode: 0 },
-    })
-    series.current = c.addSeries(CandlestickSeries, { upColor: '#22c55e', downColor: '#ef4444', borderVisible: false, wickUpColor: '#22c55e', wickDownColor: '#ef4444' })
-    chart.current = c
-    return () => { c.remove(); chart.current = null; series.current = null }
-  }, [])
-
-  useEffect(() => {
-    const s = series.current
-    if (!s) return
-    let alive = true
-    let first = true
-    s.setData([])
-    const load = async () => {
-      const bars = await fetchCandles(sym, tf)
-      if (!alive || !series.current) return
-      setEmpty(bars.length === 0)
-      if (!bars.length) return
-      const dp = dpOf(bars[bars.length - 1][4])
-      s.applyOptions({ priceFormat: { type: 'price', precision: dp, minMove: 10 ** -dp } })
-      s.setData(bars.map(b => ({ time: Math.floor(b[0] / 1000) as UTCTimestamp, open: b[1], high: b[2], low: b[3], close: b[4] })))
-      if (first) { chart.current?.timeScale().fitContent(); first = false }
-    }
-    void load()
-    const id = setInterval(() => { if (!document.hidden) void load() }, 10_000)
-    return () => { alive = false; clearInterval(id) }
-  }, [sym, tf])
-
-  // Each new signed price moves the last candle at once.
-  const lastTs = useRef(0)
-  useEffect(() => {
-    const s = series.current
-    if (!s || !live || live.ts <= lastTs.current) return
-    lastTs.current = live.ts
-    const tfMs = { '1m': 60_000, '5m': 300_000, '15m': 900_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 }[tf]
-    const t = Math.floor((live.ts - (live.ts % tfMs)) / 1000) as UTCTimestamp
-    const data = s.data()
-    const last = data[data.length - 1] as { time: number; open: number; high: number; low: number; close: number } | undefined
-    try {
-      if (last && last.time === t) s.update({ time: t, open: last.open, high: Math.max(last.high, live.price), low: Math.min(last.low, live.price), close: live.price })
-      else if (!last || t > last.time) s.update({ time: t, open: last?.close ?? live.price, high: Math.max(live.price, last?.close ?? live.price), low: Math.min(live.price, last?.close ?? live.price), close: live.price })
-    } catch { /* an older bar */ }
-  }, [live, tf])
-
+    if (!live) return
+    setTicks(prev => (prev.length && prev[prev.length - 1].time >= live.ts ? prev : [...prev, { time: live.ts, priceUsd: live.price, usd: 0 }].slice(-600)))
+  }, [live])
   return (
-    <div style={{ position: 'relative' }}>
-      <div ref={box} className="fx-chart" />
-      {empty && <div className="fx-chart-empty">{T('The chart fills in as oracle prices are recorded.')}</div>}
-    </div>
+    <PriceChart
+      poolAddress={null} source={source} ticks={ticks} live={Boolean(live)}
+      liveTitle={T('Oracle prices, signed every 10 seconds')} symbol={`${sym}-USDC`}
+    />
   )
 }
 
@@ -197,7 +158,6 @@ export default function FuturesPage({ navigate }: { navigate: (p: Page) => void 
   const allTrades = usePerpsTrades(null)
 
   const [sym, setSym] = useState('BTC')
-  const [tf, setTf] = useState<PerpsTf>('15m')
   const [tab, setTab] = useState<Tab>('positions')
   const [listing, setListing] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
@@ -286,10 +246,7 @@ export default function FuturesPage({ navigate }: { navigate: (p: Page) => void 
 
       <div className="fx-main">
         <div className="fx-chart-card">
-          <div className="fx-tf">
-            {TIMEFRAMES.map(x => <button key={x} className={x === tf ? 'active' : ''} onClick={() => setTf(x)}>{x === '1d' ? '1D' : x}</button>)}
-          </div>
-          <OracleChart sym={sym} tf={tf} live={feed} />
+          <OracleChart sym={sym} live={feed} />
           <div className="fx-source">
             {prices?.ts ? T('Oracle prices from RedStone, signed every 10 seconds: the prices positions open, close and liquidate at.') : T('Oracle prices are loading…')}
           </div>

@@ -2269,5 +2269,7 @@ const d: Record<string, string> = {
   "since {date}": "seit {date}",
   "The program starts {date}. From then on, every fee counts.": "Das Programm startet am {date}. Ab dann zählt jede Gebühr.",
   "How it’s counted: fees are the USDC ARCSENSE’s trading contracts pay the fee wallet (the swap routers, the curve router, the launchpad and the Universal Router). A buyback is a fee-wallet transaction that brought $SENSE in; a burn is $SENSE it sent to 0x…dEaD; liquidity is value it put into a pool. Burning reduces supply; it doesn’t promise any price.": "So wird gezählt: Gebühren sind die USDC, die die Trading-Verträge von ARCSENSE an die Gebühren-Wallet zahlen (die Swap-Router, der Curve-Router, das Launchpad und der Universal Router). Ein Rückkauf ist eine Transaktion der Gebühren-Wallet, die $SENSE hereinbrachte; ein Burn sind $SENSE, die sie an 0x…dEaD schickte; Liquidität ist der Wert, den sie in einen Pool einbrachte. Verbrennen verringert das Angebot; es verspricht keinen Preis.",
+  // Futures chart (2026-10-03)
+  "Oracle prices, signed every 10 seconds": "Oracle-Preise, alle 10 Sekunden signiert",
 }
 export default d

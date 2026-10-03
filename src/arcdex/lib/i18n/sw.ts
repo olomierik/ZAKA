@@ -2269,5 +2269,7 @@ const d: Record<string, string> = {
   "since {date}": "tangu {date}",
   "The program starts {date}. From then on, every fee counts.": "Mpango unaanza {date}. Kuanzia hapo, kila ada inahesabiwa.",
   "How it’s counted: fees are the USDC ARCSENSE’s trading contracts pay the fee wallet (the swap routers, the curve router, the launchpad and the Universal Router). A buyback is a fee-wallet transaction that brought $SENSE in; a burn is $SENSE it sent to 0x…dEaD; liquidity is value it put into a pool. Burning reduces supply; it doesn’t promise any price.": "Jinsi inavyohesabiwa: ada ni USDC ambayo mikataba ya biashara ya ARCSENSE inalipa pochi ya ada (router za swap, router ya curve, launchpad na Universal Router). Kununua tena ni muamala wa pochi ya ada ulioleta $SENSE; kuteketeza ni $SENSE iliyotumwa kwa 0x…dEaD; ukwasi ni thamani iliyowekwa kwenye pool. Kuteketeza kunapunguza ugavi; hakuahidi bei yoyote.",
+  // Futures chart (2026-10-03)
+  "Oracle prices, signed every 10 seconds": "Bei za oracle, zilizosainiwa kila sekunde 10",
 }
 export default d
