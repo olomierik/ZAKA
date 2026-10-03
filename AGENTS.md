@@ -1212,6 +1212,15 @@ Owner: ARCDEX becomes **ARCSENSE**, spot and futures trading on Arc, at www.arcs
 - **The whitepaper is offline** (the page, `whitepaper.html`, its PDF and X images): it described $ARCD's fee model. An ARCSENSE whitepaper is still to be written.
 - **The landing page** (`landing/Landing.tsx`): "Spot and futures trading on Arc.", a perpetual-futures card (BTC, ETH, SOL; up to 10×; testnet first, then mainnet after an independent audit), the app's features, the futures plan ("fees from $SENSE trading are added as liquidity for futures trading", the owner's wording), the roadmap and four questions. The bots' board and profit pop-ups are off while Autotrade is paused (`LiveBots.tsx`, `ProfitToasts.tsx` are kept).
 
+## ARCSENSE: spot and futures first (2026-10-03)
+
+Owner: "hide the autotrade marketplace and let the users see only COMING SOON; hide the launchpad; put futures and spot trading as our main features; rebrand the app to be the first on Arc".
+- **Navigation:** the top bar is Spot (the terminal) · Futures (SOON) · Swap · Bridge · Portfolio, then Feed, Leaderboard, Clans, Rewards; phones have Spot · Futures · Swap · Portfolio · More. Autotrade is in the drawer and More, marked by its own page.
+- **Futures (`pages/FuturesPage.tsx`, `/futures`):** coming soon; BTC, ETH and SOL with live index prices read from Chainlink's Arc mainnet feeds (BTC/USD `0xa109…03De`, ETH/USD `0x50FC…D364`, SOL/USD `0x2d04…f90C`, 8 decimals) and when each last updated. Those feeds update on a 0.5% move or every 24 hours: fine for a preview, too coarse to price leveraged positions, which the futures design must address (a fresher source, such as Chainlink Data Streams).
+- **Autotrade (`pages/AutotradeSoon.tsx`, `/autotrade`, `/bots`):** "coming soon" only. A signed-in owner with bots gets "Manage and withdraw" to `/autotrade/manage`: the Autotrade page in an owners-only mode (`SignalsPage` `manage`: My bots, no marketplace, scanner or signals), so money in bot wallets is never out of reach.
+- **Launchpad hidden:** out of every menu and the landing page; `/launchpad` shows the spot terminal; Rewards' "Creator rewards" tab is hidden (creators' share is still paid on-chain on every trade).
+- **Positioning:** "The first spot and futures trading platform on Arc" (landing, page titles, link previews, the app manifest, the wallet-connect description). DefiLlama listed no perpetual-futures venue on Arc on 2026-10-03; spot trading on Arc exists elsewhere, so "first" rests on the combination and on futures.
+
 ## ARCSENSE on Netlify (2026-10-03)
 
 The owner's new site, www.arcsense.site, is hosted on Netlify and serves only the app's files (`netlify.toml`): no function runs there.

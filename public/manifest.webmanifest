@@ -1,7 +1,7 @@
 {
-  "name": "ARCSENSE — trade Arc coins",
+  "name": "ARCSENSE — spot & futures on Arc",
   "short_name": "ARCSENSE",
-  "description": "The social trading app for Arc: live coins and charts, one-tap trades, launchpad and bridge.",
+  "description": "The first spot and futures trading platform on Arc: live coins and charts, one-tap trades and a USDC bridge.",
   "id": "/app",
   "start_url": "/app",
   "scope": "/",

@@ -2074,5 +2074,21 @@ const d: Record<string, string> = {
   "Start trading on Arc.": "Anza biashara kwenye Arc.",
   "Create a trading wallet in seconds. No sign-up.": "Unda pochi ya biashara kwa sekunde chache. Bila kujisajili.",
   "Trading crypto is risky, and leveraged futures more so. Nothing here is financial advice.": "Biashara ya crypto ina hatari, na futures zenye leverage zaidi. Hakuna kitu hapa ni ushauri wa kifedha.",
+  // ARCSENSE: spot and futures first, Autotrade coming soon (2026-10-03)
+  "Spot": "Spot",
+  "Soon": "Hivi karibuni",
+  "Live prices from Chainlink on Arc, the feeds futures will use.": "Bei hai kutoka Chainlink kwenye Arc, data ambazo futures zitatumia.",
+  "updated {t} ago": "imesasishwa {t} iliyopita",
+  "Trade spot now": "Fanya biashara ya spot sasa",
+  "Bots that trade spot and futures for you, with the safety checks ARCSENSE runs on every coin.": "Boti zinazokufanyia biashara ya spot na futures, kwa ukaguzi wa usalama ambao ARCSENSE hufanya kwa kila sarafu.",
+  "You have {n} Autotrade bot(s). They open no new trades; you can manage them and withdraw your USDC at any time.": "Una boti {n} za Autotrade. Hazifungui biashara mpya; unaweza kuzisimamia na kutoa USDC zako wakati wowote.",
+  "Manage and withdraw": "Simamia na toa",
+  "Your Autotrade bots": "Boti zako za Autotrade",
+  "Autotrade is coming soon. Your bots open no new trades; manage them and withdraw your USDC here.": "Autotrade inakuja hivi karibuni. Boti zako hazifungui biashara mpya; zisimamie na utoe USDC zako hapa.",
+  "BTC, ETH and SOL · up to 10×": "BTC, ETH na SOL · hadi 10×",
+  "The first spot and futures trading platform on Arc.": "Jukwaa la kwanza la biashara ya spot na futures kwenye Arc.",
+  "Trade every coin on Arc in one tap, and soon go long or short on BTC, ETH and SOL with up to 10× leverage. All in USDC.": "Fanya biashara ya kila sarafu kwenye Arc kwa mguso mmoja, na hivi karibuni chukua nafasi ya long au short kwenye BTC, ETH na SOL kwa leverage hadi 10×. Yote kwa USDC.",
+  "Every coin you hold, valued live.": "Kila sarafu uliyonayo, ikithaminiwa moja kwa moja.",
+  "The first platform on Arc for spot and perpetual futures trading: a live terminal for every coin, one-tap swaps, a USDC bridge and, soon, BTC, ETH and SOL perpetuals.": "Jukwaa la kwanza kwenye Arc kwa biashara ya spot na perpetual futures: terminal hai kwa kila sarafu, kubadilishana kwa mguso mmoja, daraja la USDC na, hivi karibuni, perpetual za BTC, ETH na SOL.",
 }
 export default d

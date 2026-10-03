@@ -71,7 +71,7 @@ export const wagmiConfig = createConfig({
       // Above ARCSENSE's own sheets (1100) and modals (1200): connecting from
       // the Buy sheet on a phone used to open the wallet list behind it.
       qrModalOptions: { themeVariables: { '--wcm-z-index': '1300' } },
-      metadata: { name: 'ARCSENSE', description: 'The social trading terminal for Arc', url: 'https://arcsense.site', icons: [APP_ICON] },
+      metadata: { name: 'ARCSENSE', description: 'The first spot and futures trading platform on Arc', url: 'https://arcsense.site', icons: [APP_ICON] },
     }),
     coinbaseWallet({ appName: 'ARCSENSE', appLogoUrl: APP_ICON }),
   ],

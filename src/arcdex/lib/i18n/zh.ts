@@ -2074,5 +2074,21 @@ const d: Record<string, string> = {
   "Start trading on Arc.": "开始在 Arc 上交易。",
   "Create a trading wallet in seconds. No sign-up.": "几秒钟创建交易钱包，无需注册。",
   "Trading crypto is risky, and leveraged futures more so. Nothing here is financial advice.": "加密货币交易有风险，带杠杆的合约风险更高。这里的内容都不构成投资建议。",
+  // ARCSENSE: spot and futures first, Autotrade coming soon (2026-10-03)
+  "Spot": "现货",
+  "Soon": "即将推出",
+  "Live prices from Chainlink on Arc, the feeds futures will use.": "来自 Arc 上 Chainlink 的实时价格，即合约将使用的喂价。",
+  "updated {t} ago": "{t} 前更新",
+  "Trade spot now": "立即交易现货",
+  "Bots that trade spot and futures for you, with the safety checks ARCSENSE runs on every coin.": "替你交易现货和合约的机器人，并使用 ARCSENSE 对每个币执行的安全检查。",
+  "You have {n} Autotrade bot(s). They open no new trades; you can manage them and withdraw your USDC at any time.": "你有 {n} 个 Autotrade 机器人。它们不再开新仓；你可以随时管理它们并提取你的 USDC。",
+  "Manage and withdraw": "管理与提现",
+  "Your Autotrade bots": "你的 Autotrade 机器人",
+  "Autotrade is coming soon. Your bots open no new trades; manage them and withdraw your USDC here.": "Autotrade 即将推出。你的机器人不再开新仓；在这里管理它们并提取你的 USDC。",
+  "BTC, ETH and SOL · up to 10×": "BTC、ETH 和 SOL · 最高 10×",
+  "The first spot and futures trading platform on Arc.": "Arc 上首个现货与合约交易平台。",
+  "Trade every coin on Arc in one tap, and soon go long or short on BTC, ETH and SOL with up to 10× leverage. All in USDC.": "一键交易 Arc 上的每个币，很快还能以最高 10× 杠杆做多或做空 BTC、ETH 和 SOL。全部使用 USDC。",
+  "Every coin you hold, valued live.": "你持有的每个币，实时估值。",
+  "The first platform on Arc for spot and perpetual futures trading: a live terminal for every coin, one-tap swaps, a USDC bridge and, soon, BTC, ETH and SOL perpetuals.": "Arc 上首个现货与永续合约交易平台：每个币的实时终端、一键兑换、USDC 跨链桥，以及即将推出的 BTC、ETH 和 SOL 永续合约。",
 }
 export default d

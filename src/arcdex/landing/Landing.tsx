@@ -5,14 +5,14 @@ import TrafficCard from './TrafficCard'
 import { PHASES, phaseStatus } from './roadmap'
 import './landing.css'
 
-// arcsense.site/ — the landing page. ARCSENSE (2026-10-03, owner): spot and
-// futures trading on Arc. The hero is the slogan and the futures to come; then
+// arcsense.site/ — the landing page. ARCSENSE (2026-10-03, owner): the first
+// spot and futures trading platform on Arc. The hero is the slogan and the futures to come; then
 // the app's features, the futures plan, the roadmap in one line and a few
 // questions. A separate small bundle (no wallet libraries); "Launch app" goes
 // to /app.
 
 export function mountLanding(root: HTMLElement) {
-  document.title = 'ARCSENSE · Spot and futures trading on Arc'
+  document.title = 'ARCSENSE · The first spot and futures trading platform on Arc'
   createRoot(root).render(<StrictMode><Landing /></StrictMode>)
 }
 
@@ -61,7 +61,7 @@ export default function Landing() {
     ['📈', t('Terminal'), t('Every coin on Arc, live.')],
     ['⚡', t('One-tap trading'), t('Buy and sell with no pop-ups.')],
     ['🛡', t('Safety checks'), t('Honeypots and rugs flagged first.')],
-    ['🚀', t('Launchpad'), t('Launch a coin on a fair curve.')],
+    ['▤', t('Portfolio'), t('Every coin you hold, valued live.')],
     ['🌉', t('Bridge'), t('USDC from Ethereum and Base.')],
     ['📊', t('Futures'), t('BTC, ETH and SOL perpetuals, coming soon.')],
   ]
@@ -73,7 +73,7 @@ export default function Landing() {
   ]
 
   const FAQ: [string, string][] = [
-    [t('What is ARCSENSE?'), t('A trading app for Arc: a live terminal for every coin, one-tap swaps, a launchpad, a USDC bridge and, soon, perpetual futures.')],
+    [t('What is ARCSENSE?'), t('The first platform on Arc for spot and perpetual futures trading: a live terminal for every coin, one-tap swaps, a USDC bridge and, soon, BTC, ETH and SOL perpetuals.')],
     [t('When do futures launch?'), t('On Arc testnet first, so traders can try them without risk. Mainnet follows an independent security audit; the date will be announced.')],
     [t('What is $SENSE?'), t('The ARCSENSE coin, launching on Argus. Fees from $SENSE trading are added as liquidity for futures trading.')],
     [t('Is my money at risk?'), t('Yes. Coins on Arc are very volatile, and futures with leverage can lose money quickly. Trade only what you can afford to lose. Nothing here is financial advice.')],
@@ -112,11 +112,11 @@ export default function Landing() {
       <section className="ld-hero">
         <div className="ld-hero-text">
           <span className="ld-pill"><span className="ld-dot" />{t('Live on Arc mainnet')}</span>
-          <h1>{t('Spot and futures trading on Arc.')}</h1>
-          <p className="ld-lead">{t('Trade every coin on Arc in one tap, launch your own, and soon go long or short on BTC, ETH and SOL. All in USDC.')}</p>
+          <h1>{t('The first spot and futures trading platform on Arc.')}</h1>
+          <p className="ld-lead">{t('Trade every coin on Arc in one tap, and soon go long or short on BTC, ETH and SOL with up to 10× leverage. All in USDC.')}</p>
           <div className="ld-cta">
             <a className="ld-btn ld-btn-primary" href="/app">{t('Launch app')} →</a>
-            <a className="ld-btn ld-btn-ghost" href="/launchpad">{t('Launchpad')}</a>
+            <a className="ld-btn ld-btn-ghost" href="/futures">{t('Futures')}</a>
           </div>
           <div className="ld-trust">{t('One-tap trading')} · {t('Safety checks')} · {t('USDC in and out')} · {t('7 languages')}</div>
           <TrafficCard engine={ENGINE} />
@@ -191,7 +191,7 @@ export default function Landing() {
           <nav>
             <a href="/app">{t('App')}</a>
             <a href="/swap">{t('Swap')}</a>
-            <a href="/launchpad">{t('Launchpad')}</a>
+            <a href="/futures">{t('Futures')}</a>
             <a href="/bridge">{t('Bridge')}</a>
             <a href="/portfolio">{t('Portfolio')}</a>
           </nav>

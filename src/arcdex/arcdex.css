@@ -1452,3 +1452,30 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .brand-word { font-weight: 800; letter-spacing: -0.01em; color: var(--text); -webkit-text-fill-color: var(--text); }
 .brand-word span { background: linear-gradient(90deg, #3b82f6, #5b5cf6 55%, #8b5cf6); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
 @media (max-width: 1024px) and (min-width: 901px) { .navbar-logo .brand-word { display: none; } }
+
+/* ── Futures and Autotrade, coming soon (ARCSENSE, 2026-10-03) ── */
+.navbar-link.navbar-autotrade { color: #93c5fd; border-color: rgba(59,130,246,0.5); background: rgba(59,130,246,0.1); display: inline-flex; align-items: center; gap: 6px; }
+.navbar-link.navbar-autotrade.active, .navbar-link.navbar-autotrade:hover { background: rgba(59,130,246,0.2); color: #bfdbfe; }
+.navbar-soon { font-size: 0.56rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; background: linear-gradient(90deg, #3b82f6, #8b5cf6); color: #fff; -webkit-text-fill-color: #fff; }
+.soon-page { padding-top: 18px; padding-bottom: 40px; }
+.soon-hero { text-align: center; margin: 18px auto 22px; max-width: 640px; }
+.soon-hero .page-h { margin: 12px 0 8px; font-size: 1.6rem; }
+.soon-badge { display: inline-block; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 12px; border-radius: 999px; color: #fff; background: linear-gradient(90deg, #3b82f6, #8b5cf6); }
+.soon-lead { color: var(--text-muted); font-size: 0.92rem; line-height: 1.55; margin: 0; }
+.soon-markets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.soon-market { background: var(--adx-card-bg); border: 1px solid var(--adx-card-border); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.soon-market-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.soon-market-head b { font-size: 1rem; }
+.soon-market-head span, .soon-market-foot { color: var(--text-muted); font-size: 0.74rem; }
+.soon-market-price { font-family: var(--mono); font-size: 1.35rem; font-weight: 700; }
+.soon-market-foot { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.soon-note { color: var(--text-muted); font-size: 0.74rem; text-align: center; margin: 10px 0 20px; }
+.soon-points { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.soon-point { background: var(--adx-card-bg); border: 1px solid var(--adx-card-border); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+.soon-point span { color: var(--text-muted); font-size: 0.82rem; line-height: 1.5; }
+.soon-owner { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; background: var(--adx-card-bg); border: 1px solid var(--adx-card-border); border-radius: 14px; padding: 14px 16px; margin: 0 auto 16px; max-width: 640px; font-size: 0.85rem; }
+.soon-cta { display: flex; justify-content: center; margin-top: 22px; }
+@media (max-width: 767px) {
+  .soon-markets, .soon-points { grid-template-columns: 1fr; }
+  .soon-hero .page-h { font-size: 1.35rem; }
+}

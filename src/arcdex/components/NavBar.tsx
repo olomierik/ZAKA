@@ -12,11 +12,10 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
   // Secondary links drop out on narrower desktops (they're also in the
   // left panel and the account menu); trading links always show.
   const navLinks: { label: string; page: Page; secondary?: boolean; accent?: boolean }[] = [
-    { label: T('Terminal'),    page: { name: 'terminal' } },
-    { label: '⚡ AUTOTRADE',   page: { name: 'signals' }, accent: true },
+    { label: T('Spot'),        page: { name: 'terminal' } },
+    { label: T('Futures'),     page: { name: 'futures' }, accent: true },
     { label: T('Swap'),        page: { name: 'swap' } },
     { label: T('Bridge'),      page: { name: 'bridge' } },
-    { label: T('Launchpad'),   page: { name: 'launchpad' } },
     { label: T('Portfolio'),   page: { name: 'portfolio' } },
     { label: T('Feed'),        page: { name: 'feed' }, secondary: true },
     { label: T('Leaderboard'), page: { name: 'leaderboard' }, secondary: true },
@@ -45,7 +44,7 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
             className={`navbar-link${page.name === p.name ? ' active' : ''}${secondary ? ' nav-secondary' : ''}${accent ? ' navbar-autotrade' : ''}`}
             onClick={() => navigate(p)}
           >
-            {label}
+            {label}{accent && <span className="navbar-soon">{T('Soon')}</span>}
           </button>
         ))}
       </nav>

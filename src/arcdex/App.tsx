@@ -8,7 +8,8 @@ const TokenPage       = lazy(() => import('./pages/TokenPage'))
 // Argus/Uniswap coins and launchpad (bonding-curve) coins share /token/0x… links.
 const CoinPage        = lazy(() => import('./pages/CoinPage'))
 const Portfolio       = lazy(() => import('./pages/Portfolio'))
-const Launchpad       = lazy(() => import('./pages/Launchpad'))
+const FuturesPage     = lazy(() => import('./pages/FuturesPage'))
+const AutotradeSoon   = lazy(() => import('./pages/AutotradeSoon'))
 const Swap            = lazy(() => import('./pages/Swap'))
 const Bridge          = lazy(() => import('./pages/Bridge'))
 const TraderPage      = lazy(() => import('./pages/TraderPage'))
@@ -63,14 +64,15 @@ export type Page =
   | { name: 'swap' }
   | { name: 'bridge'; dir?: 'in' | 'out' }
   | { name: 'deploy-curve-router' }
-  | { name: 'signals'; view?: 'market'; bot?: string }
+  | { name: 'signals'; view?: 'market' | 'manage'; bot?: string }
+  | { name: 'futures' }
 
 const fromUrl = (): Page => pathToPage(window.location.pathname, window.location.search) ?? { name: 'terminal' }
 
 const MOBILE_NAV: [Page, string, string][] = [
-  [{ name: 'terminal' }, '◈', N_('Terminal')], [{ name: 'feed' }, '◉', N_('Feed')], [{ name: 'leaderboard' }, '♛', N_('Leaderboard')],
-  [{ name: 'clans' }, '⚑', N_('Clans')], [{ name: 'rewards' }, '✦', N_('Rewards')], [{ name: 'launchpad' }, '◆', N_('Launchpad')],
-  [{ name: 'swap' }, '⇄', N_('Swap')], [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'portfolio' }, '▤', N_('Portfolio')],
+  [{ name: 'terminal' }, '◈', N_('Spot')], [{ name: 'futures' }, '📊', N_('Futures')], [{ name: 'swap' }, '⇄', N_('Swap')],
+  [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'portfolio' }, '▤', N_('Portfolio')], [{ name: 'feed' }, '◉', N_('Feed')],
+  [{ name: 'leaderboard' }, '♛', N_('Leaderboard')], [{ name: 'clans' }, '⚑', N_('Clans')], [{ name: 'rewards' }, '✦', N_('Rewards')],
   [{ name: 'signals' }, '⚡', N_('Autotrade')], [{ name: 'alerts' }, '🔔', N_('Alerts')], [{ name: 'transfers' }, '⇅', N_('Transfers')],
 ]
 
@@ -149,7 +151,9 @@ export default function App() {
           {page.name === 'token'       && <TokenPage address={page.address} navigate={navigate} />}
           {page.name === 'argus'       && <CoinPage key={page.address} address={page.address} pool={page.pool} navigate={navigate} />}
           {page.name === 'portfolio'   && <Portfolio navigate={navigate} />}
-          {page.name === 'launchpad'   && <Launchpad navigate={navigate} />}
+          {/* The launchpad is hidden (owner, 2026-10-03): its address shows the spot terminal. */}
+          {page.name === 'launchpad'   && <Terminal navigate={navigate} registerFeedTokens={registerFeedTokens} />}
+          {page.name === 'futures'     && <FuturesPage navigate={navigate} />}
           {page.name === 'swap'        && <Swap navigate={navigate} />}
           {page.name === 'bridge'      && <Bridge key={page.dir ?? 'out'} initialDir={page.dir ?? 'out'} />}
           {page.name === 'trader'      && <TraderPage key={page.address} address={page.address} navigate={navigate} />}
@@ -161,7 +165,8 @@ export default function App() {
           {page.name === 'rewards'     && <RewardsPage navigate={navigate} />}
           {page.name === 'transfers'   && <TransfersPage navigate={navigate} />}
           {page.name === 'deploy-curve-router' && <DeployCurveRouter />}
-          {page.name === 'signals'     && <SignalsPage navigate={navigate} view={page.view} bot={page.bot} />}
+          {/* Autotrade is coming soon; owners still reach their bots to manage and withdraw (/autotrade/manage). */}
+          {page.name === 'signals'     && (page.view === 'manage' ? <SignalsPage navigate={navigate} manage /> : <AutotradeSoon navigate={navigate} />)}
           </Suspense>
         </main>
 

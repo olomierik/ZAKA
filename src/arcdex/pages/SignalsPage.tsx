@@ -79,14 +79,14 @@ const SCAN_STATUS: Record<ScanRow['status'], [string, string]> = {
   new: ['New', '#64748b'], watching: ['Watching', '#3b82f6'], checking: ['Checking', '#f59e0b'], rejected: ['Rejected', '#ef4444'], signal: ['Signal', '#22c55e'],
 }
 
-export default function SignalsPage({ navigate, view: pageView, bot }: { navigate: (p: Page) => void; view?: 'market'; bot?: string }) {
+export default function SignalsPage({ navigate, view: pageView, bot, manage = false }: { navigate: (p: Page) => void; view?: 'market'; bot?: string; manage?: boolean }) {
   const [stats, setStats] = useState<BotStatsResponse | null>(null)
   const [signals, setSignals] = useState<TradeSignal[]>([])
   const [positions, setPositions] = useState<BotPosition[]>([])
   const [scan, setScan] = useState<{ rows: ScanRow[]; stats: ScanStats } | null>(null)
   const [status, setStatus] = useState<BotStatus | null>(null)
   const [down, setDown] = useState(false)
-  const [view, setViewState] = useState<View>(() => { if (pageView === 'market') return 'market'; try { return (localStorage.getItem(VIEW_KEY) as View) || 'mine' } catch { return 'mine' } })
+  const [view, setViewState] = useState<View>(() => { if (manage) return 'mine'; if (pageView === 'market') return 'market'; try { return (localStorage.getItem(VIEW_KEY) as View) || 'mine' } catch { return 'mine' } })
   const setView = (v: View) => {
     setViewState(v)
     try { localStorage.setItem(VIEW_KEY, v) } catch { /* storage blocked */ }
@@ -127,30 +127,30 @@ export default function SignalsPage({ navigate, view: pageView, bot }: { navigat
   return (
     <div className="token-page content-page">
       <h2 className="page-h" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        ⚡ {T('Autotrade')}
+        ⚡ {manage ? T('Your Autotrade bots') : T('Autotrade')}
       </h2>
       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.5 }}>
-        {T('Autotrade scans every new coin on every Arc launchpad, rejects the unsafe ones and trades the rest with the strategies you choose. Start with virtual USDC: paper trading, no money moves.')}
+        {manage ? T('Autotrade is coming soon. Your bots open no new trades; manage them and withdraw your USDC here.') : T('Autotrade scans every new coin on every Arc launchpad, rejects the unsafe ones and trades the rest with the strategies you choose. Start with virtual USDC: paper trading, no money moves.')}
       </div>
 
       {!engineEnabled || down ? (
         <Empty>{T("The signal engine isn't reachable right now. Signals and results appear here when it's back.")}</Empty>
       ) : (
         <>
-          <ScanStrip stats={scan?.stats ?? null} />
+          {!manage && <ScanStrip stats={scan?.stats ?? null} />}
           {stats?.routing?.autotradePaused && (
             <div className="at-promo">
               <span className="at-promo-badge">⏸ {T('Autotrade is paused')}</span>
               <span>{T("Bots don't open new trades for now. Trades already open are still closed as usual, and you can withdraw your USDC at any time.")}</span>
             </div>
           )}
-          <div style={{ display: 'flex', gap: 4, marginTop: 14, borderBottom: '1px solid var(--adx-card-border)', overflowX: 'auto' }}>
+          {!manage && <div style={{ display: 'flex', gap: 4, marginTop: 14, borderBottom: '1px solid var(--adx-card-border)', overflowX: 'auto' }}>
             {VIEWS.map(([k, l]) => (
               <button key={k} onClick={() => setView(k)} style={{ padding: '9px 14px', background: 'none', border: 'none', borderBottom: `2px solid ${view === k ? 'var(--adx-accent)' : 'transparent'}`, color: view === k ? 'var(--text)' : 'var(--text-muted)', fontWeight: 800, fontSize: '0.84rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 {l}{k === 'scanner' && scan ? ` · ${scan.stats.watching}` : k === 'signals' && signals.length ? ` · ${signals.length}` : ''}
               </button>
             ))}
-          </div>
+          </div>}
           {view === 'mine' && <MyBots navigate={navigate} liveSpeed={stats?.routing?.liveSignals === 'all' ? undefined : stats?.liveSpeed} />}
           {view === 'market' && <Marketplace navigate={navigate} slug={bot ?? null} />}
           {view === 'scanner' && stats?.routing?.launchpadOnly && stats.routing.launchpadOnly !== 'off' && (

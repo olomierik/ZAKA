@@ -112,7 +112,8 @@ export default function RewardsPage({ navigate }: { navigate: (p: Page) => void 
           </div>
 
           <div style={{ display: 'flex', gap: 4, marginTop: 18, borderBottom: '1px solid var(--adx-card-border)' }}>
-            {([['points', '★ ' + T('Points')], ['referrals', T('Referrals') + ' · ' + sharePct], ['creator', T('Creator rewards')], ['history', T('History')]] as [Tab, string][]).map(([k, l]) => (
+            {/* Creator rewards are hidden with the launchpad (2026-10-03); creators' 60% is still paid on-chain on every trade. */}
+            {([['points', '★ ' + T('Points')], ['referrals', T('Referrals') + ' · ' + sharePct], ['history', T('History')]] as [Tab, string][]).map(([k, l]) => (
               <button key={k} onClick={() => setTab(k)} style={{ padding: '8px 14px', background: 'none', border: 'none', borderBottom: `2px solid ${tab === k ? 'var(--adx-accent)' : 'transparent'}`, color: tab === k ? 'var(--text)' : 'var(--text-muted)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>{l}</button>
             ))}
           </div>

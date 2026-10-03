@@ -1,4 +1,4 @@
-// Phones: a native-style bottom tab bar (Home · Autotrade · Swap · Portfolio ·
+// Phones: a native-style bottom tab bar (Spot · Futures · Swap · Portfolio ·
 // More) instead of a hamburger drawer. "More" opens a sheet with every other
 // page, plus the lists panel (watchlist, trending, most held…).
 // Hidden on coin pages, which have their own sticky Buy/Sell bar.
@@ -10,14 +10,13 @@ import type { Page } from '../App'
 import { t as T, N_ } from '../lib/i18n'
 
 const TABS: { page: Page['name']; icon: string; label: string; to: Page }[] = [
-  { page: 'terminal', icon: '◈', label: N_('Home'), to: { name: 'terminal' } },
-  { page: 'signals', icon: '⚡', label: N_('Autotrade'), to: { name: 'signals' } },
+  { page: 'terminal', icon: '◈', label: N_('Spot'), to: { name: 'terminal' } },
+  { page: 'futures', icon: '📊', label: N_('Futures'), to: { name: 'futures' } },
   { page: 'swap', icon: '⇄', label: N_('Swap'), to: { name: 'swap' } },
   { page: 'portfolio', icon: '▤', label: N_('Portfolio'), to: { name: 'portfolio' } },
 ]
 
 const MORE: { icon: string; label: string; to: Page }[] = [
-  { icon: '◆', label: N_('Launchpad'), to: { name: 'launchpad' } },
   { icon: '◉', label: N_('Feed'), to: { name: 'feed' } },
   { icon: '◎', label: N_('Bridge'), to: { name: 'bridge' } },
   { icon: '♛', label: N_('Leaderboard'), to: { name: 'leaderboard' } },
@@ -25,6 +24,7 @@ const MORE: { icon: string; label: string; to: Page }[] = [
   { icon: '✦', label: N_('Rewards'), to: { name: 'rewards' } },
   { icon: '🔔', label: N_('Alerts'), to: { name: 'alerts' } },
   { icon: '⇅', label: N_('Transfers'), to: { name: 'transfers' } },
+  { icon: '⚡', label: N_('Autotrade'), to: { name: 'signals' } },
 ]
 
 interface Props { page: Page; navigate: (p: Page) => void; onOpenLists: () => void }

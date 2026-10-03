@@ -2074,5 +2074,21 @@ const d: Record<string, string> = {
   "Start trading on Arc.": "Starte den Handel auf Arc.",
   "Create a trading wallet in seconds. No sign-up.": "Erstelle in Sekunden ein Trading-Wallet. Ohne Anmeldung.",
   "Trading crypto is risky, and leveraged futures more so. Nothing here is financial advice.": "Krypto-Handel ist riskant, gehebelte Futures noch mehr. Nichts hier ist eine Finanzberatung.",
+  // ARCSENSE: spot and futures first, Autotrade coming soon (2026-10-03)
+  "Spot": "Spot",
+  "Soon": "Bald",
+  "Live prices from Chainlink on Arc, the feeds futures will use.": "Live-Preise von Chainlink auf Arc, den Feeds, die die Futures nutzen werden.",
+  "updated {t} ago": "vor {t} aktualisiert",
+  "Trade spot now": "Jetzt spot handeln",
+  "Bots that trade spot and futures for you, with the safety checks ARCSENSE runs on every coin.": "Bots, die Spot und Futures für dich handeln, mit den Sicherheitsprüfungen, die ARCSENSE bei jedem Coin durchführt.",
+  "You have {n} Autotrade bot(s). They open no new trades; you can manage them and withdraw your USDC at any time.": "Du hast {n} Autotrade-Bot(s). Sie eröffnen keine neuen Trades; du kannst sie verwalten und deine USDC jederzeit abheben.",
+  "Manage and withdraw": "Verwalten und abheben",
+  "Your Autotrade bots": "Deine Autotrade-Bots",
+  "Autotrade is coming soon. Your bots open no new trades; manage them and withdraw your USDC here.": "Autotrade kommt bald. Deine Bots eröffnen keine neuen Trades; verwalte sie und hebe deine USDC hier ab.",
+  "BTC, ETH and SOL · up to 10×": "BTC, ETH und SOL · bis zu 10×",
+  "The first spot and futures trading platform on Arc.": "Die erste Plattform für Spot- und Futures-Handel auf Arc.",
+  "Trade every coin on Arc in one tap, and soon go long or short on BTC, ETH and SOL with up to 10× leverage. All in USDC.": "Handle jeden Coin auf Arc mit einem Tipp und geh bald long oder short auf BTC, ETH und SOL mit bis zu 10× Hebel. Alles in USDC.",
+  "Every coin you hold, valued live.": "Jeder Coin, den du hältst, live bewertet.",
+  "The first platform on Arc for spot and perpetual futures trading: a live terminal for every coin, one-tap swaps, a USDC bridge and, soon, BTC, ETH and SOL perpetuals.": "Die erste Plattform auf Arc für Spot- und Perpetual-Futures-Handel: ein Live-Terminal für jeden Coin, Swaps mit einem Tipp, eine USDC-Bridge und bald Perpetuals auf BTC, ETH und SOL.",
 }
 export default d
