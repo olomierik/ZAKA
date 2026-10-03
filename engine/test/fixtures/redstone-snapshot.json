@@ -1,0 +1,482 @@
+{
+ "BTC": [
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "r15PLhpQXPg0XmiyrNXfUzzC8LXlYinnf91BWcV0HGgaFcKW8c71R1fNr9oEMotZNVHpxyww/3zQXfke4XJDrBw=",
+   "signerAddress": "0xDD682daEC5A90dD295d14DA4b0bec9281017b5bE",
+   "dataPoints": [
+    {
+     "dataFeedId": "BTC",
+     "value": 84679.90298849
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "wtSkuqQEtLwpFkysGr0EfYvVJooPehm4GDQouIR8wxgqGkUxjVKxsqCx/k2LYT2B4E6YllBPAagrQ7cNv2FQYhs=",
+   "signerAddress": "0xdEB22f54738d54976C4c0fe5ce6d408E40d88499",
+   "dataPoints": [
+    {
+     "dataFeedId": "BTC",
+     "value": 84679.60701255
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "3bsCws16BmS5JgVgNYe9cM2f497IZGq7poqhur37wpEapD0LsE/zp2AHAscupUW3f6Qinvlw88MljX9WevS3+Bw=",
+   "signerAddress": "0x9c5AE89C4Af6aA32cE58588DBaF90d18a855B6de",
+   "dataPoints": [
+    {
+     "dataFeedId": "BTC",
+     "value": 84679.60701255
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "Ak45UKZKlq2GwjlGItZRES/J6/sxz3D16S5QpF8ucmoOvEhSQpaIAZZ/utmiwvtbeJIoc0o8QsYXZx0LnYwrEhs=",
+   "signerAddress": "0x51Ce04Be4b3E32572C4Ec9135221d0691Ba7d202",
+   "dataPoints": [
+    {
+     "dataFeedId": "BTC",
+     "value": 84679.60701255
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "KOkc2ky5kV6YT7iSRcEQCLFUWwtOQIsgN2gCBrehgy5vJX6MjuvtP/7A3D/Jy2LC5UxYEpUB0YM8oV7E27xGgRs=",
+   "signerAddress": "0x8BB8F32Df04c8b654987DAaeD53D6B6091e3B774",
+   "dataPoints": [
+    {
+     "dataFeedId": "BTC",
+     "value": 84679.59701325
+    }
+   ]
+  }
+ ],
+ "ETH": [
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "l52Czdq/fxIc58vSXA8S+YqktakbGaYIyy2ls0e9EXQ/1uL4GrJ7IxyF3OvZ90kUc/Mvywhhk4hqiyNx1dIOSBw=",
+   "signerAddress": "0xDD682daEC5A90dD295d14DA4b0bec9281017b5bE",
+   "dataPoints": [
+    {
+     "dataFeedId": "ETH",
+     "value": 2683.453202
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "kHTylsjeVo/UPULQe8EHnumEqVjoIPvSGcEBWZ8jZtJfIeGF1UOxgpn1VvvS/naEZuR4sQUfvKDjJKlg2ESFFBw=",
+   "signerAddress": "0xdEB22f54738d54976C4c0fe5ce6d408E40d88499",
+   "dataPoints": [
+    {
+     "dataFeedId": "ETH",
+     "value": 2683.453202
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "mjr8OU+S+DWDRDmplFZF985trRcEwUmKeVnRNcwwjWtbEyGxPWQXcSJkjBD6TSmI7SdbXkdO7iHYuBfU2MlQ0Rw=",
+   "signerAddress": "0x9c5AE89C4Af6aA32cE58588DBaF90d18a855B6de",
+   "dataPoints": [
+    {
+     "dataFeedId": "ETH",
+     "value": 2683.453202
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "vHaSvkJHGEGwF5zOYcaYXkkbAae5hgEeMVywZg/WrP8kNm5qs/zM5iCfh/UXHH+BvvTZ7Xlv0+N6TqUKbvcVpxw=",
+   "signerAddress": "0x51Ce04Be4b3E32572C4Ec9135221d0691Ba7d202",
+   "dataPoints": [
+    {
+     "dataFeedId": "ETH",
+     "value": 2683.453202
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "uUj69psAbLS46g1lrQFT/TVQSi3uiwxr/TX/WRdililpae2gH0G910MCKT/tIgrv0NArFHwQwvE3xN8PX6OBMxs=",
+   "signerAddress": "0x8BB8F32Df04c8b654987DAaeD53D6B6091e3B774",
+   "dataPoints": [
+    {
+     "dataFeedId": "ETH",
+     "value": 2683.453202
+    }
+   ]
+  }
+ ],
+ "SOL": [
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "55gahxp+znL4rXgEePupEOrCjTILgeKZsTBJq3PRe6BdOViO7nrxWWO270bVP5d0fVSkFT9fRbqBgk85I6ONTBw=",
+   "signerAddress": "0xDD682daEC5A90dD295d14DA4b0bec9281017b5bE",
+   "dataPoints": [
+    {
+     "dataFeedId": "SOL",
+     "value": 119.42
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "Vlgdl+X/GMlKH132E3NEow/dFYZR+hLmVLPEekUusmtvtNBrOxuxfnh2/JHbCPDgv11RrR8d11xY1st/t2Eaihw=",
+   "signerAddress": "0xdEB22f54738d54976C4c0fe5ce6d408E40d88499",
+   "dataPoints": [
+    {
+     "dataFeedId": "SOL",
+     "value": 119.42
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "ZFOtm88cKjTYUEGhpO4kae0qZHtEACgZDo+1/2LkY5pB6JhU1KRm88G9oFZ/MxjFOuWDdr9bEp5Fjcr9O6i+FBw=",
+   "signerAddress": "0x9c5AE89C4Af6aA32cE58588DBaF90d18a855B6de",
+   "dataPoints": [
+    {
+     "dataFeedId": "SOL",
+     "value": 119.4216399
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "WQki94QjFe/a6yizaNPfPhwc9ZhqcJRwfkovpR9RT8okDNOUI69Lth/j8v0OfTRVfKvTSsUIVN4AGMNb+yePxRs=",
+   "signerAddress": "0x51Ce04Be4b3E32572C4Ec9135221d0691Ba7d202",
+   "dataPoints": [
+    {
+     "dataFeedId": "SOL",
+     "value": 119.42
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "g0juFERg/TubcR6CBv5MFco9dx9d8EHgvBiwptvBAKMscyToUfEI1mzvEH0vmnGXcc5Fs0X3ulecH9y9PO1CRhw=",
+   "signerAddress": "0x8BB8F32Df04c8b654987DAaeD53D6B6091e3B774",
+   "dataPoints": [
+    {
+     "dataFeedId": "SOL",
+     "value": 119.42
+    }
+   ]
+  }
+ ],
+ "BNB": [
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "5wSbpNwUNAoE+2OVDOa30Em37+qqEfQjYehje9rQy6FCgSs27Y5t81J1ABVvILYUOGtD8hqFUmxYNK7iOd3F3hw=",
+   "signerAddress": "0xDD682daEC5A90dD295d14DA4b0bec9281017b5bE",
+   "dataPoints": [
+    {
+     "dataFeedId": "BNB",
+     "value": 770.57846118
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "GG55UNvMnLYh020EMPyiPtuywT5LvpMSeta5O1657RdeCiNBEyruUqdh6l5/R7oxuF0Om9B7SUyTszYWYfp1ZBw=",
+   "signerAddress": "0xdEB22f54738d54976C4c0fe5ce6d408E40d88499",
+   "dataPoints": [
+    {
+     "dataFeedId": "BNB",
+     "value": 770.61421193
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "4QLZiLI9YxbqovbooFkCeZYZoClwm54mYpKZ9odAYx5OzoCJHQCz4FX3oZQDwpPOLrhjp++HhNdaVdHXKcJdqBs=",
+   "signerAddress": "0x9c5AE89C4Af6aA32cE58588DBaF90d18a855B6de",
+   "dataPoints": [
+    {
+     "dataFeedId": "BNB",
+     "value": 770.61421193
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "jf9F1UnyGJ3cdlcfu64mZbGtaOz8Vmpyg0l2uTliVMxuUtF2XkMdyYWLxP9+7jk/CxrD/cW7enm7VmHfnNW3bxw=",
+   "signerAddress": "0x51Ce04Be4b3E32572C4Ec9135221d0691Ba7d202",
+   "dataPoints": [
+    {
+     "dataFeedId": "BNB",
+     "value": 770.61421193
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "J76qVLVUbFQk3tlY3/aHozw0mTwpem1IfNzF+orbAKphvXoE5pMNp2QsvX0WPsHKjTiQOcU8Tl/bTcSWU5sWsBs=",
+   "signerAddress": "0x8BB8F32Df04c8b654987DAaeD53D6B6091e3B774",
+   "dataPoints": [
+    {
+     "dataFeedId": "BNB",
+     "value": 770.61416643
+    }
+   ]
+  }
+ ],
+ "XRP": [
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "/UvYS7VxV6DlU3I6qKF2G3cvAEAw5HB37BNNfE9NR4Z6f0HmOY4gEv/O1BtH/5nngK6sGAGJF6x2kBsIdwI5fhs=",
+   "signerAddress": "0x9c5AE89C4Af6aA32cE58588DBaF90d18a855B6de",
+   "dataPoints": [
+    {
+     "dataFeedId": "XRP",
+     "value": 1.48790236
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "D+NG4IxNUXDBp2/avJPlViBwkri6ohT8pCO7Jf8AsL8D9Qn/nX/iUZLgBYdAkCDYC4TDy6jb9Tt/moNdtUYGSxs=",
+   "signerAddress": "0x51Ce04Be4b3E32572C4Ec9135221d0691Ba7d202",
+   "dataPoints": [
+    {
+     "dataFeedId": "XRP",
+     "value": 1.48790118
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "+d31Ppu3NRVKbUlg3Rtj5eMWVE8Qs58p0yvV3vrfPg0JqutaONPelt0J6cysv9ak3sTFVvAXRhQfEniyAiiOLBw=",
+   "signerAddress": "0xDD682daEC5A90dD295d14DA4b0bec9281017b5bE",
+   "dataPoints": [
+    {
+     "dataFeedId": "XRP",
+     "value": 1.48790236
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "Pyi9Ennxh8VG3VXbiZ9XZClvRQsm1zQne09oTZV3cukZc68ganoRPxEQcknW6POmYQOGx6ZY9Cyczpl0zcci0hw=",
+   "signerAddress": "0xdEB22f54738d54976C4c0fe5ce6d408E40d88499",
+   "dataPoints": [
+    {
+     "dataFeedId": "XRP",
+     "value": 1.48790236
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "VZ7UVxsTijOz6qL1kJeAOpRrYHN2+Hj/pCxBnA/QXG0pc5m0Ia8Lk0PsKkfv1WJdyoEyFUxtsMssPeRFJd1sohs=",
+   "signerAddress": "0x8BB8F32Df04c8b654987DAaeD53D6B6091e3B774",
+   "dataPoints": [
+    {
+     "dataFeedId": "XRP",
+     "value": 1.48790236
+    }
+   ]
+  }
+ ],
+ "AVAX": [
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "jYAUVl8jdFHWGS9eSzIbFGGSQ99+S6BImBbobKLUgu1ZLSoL8/YTBeakcsIEsQ/Frt2EY5pB+OlFSMJp5wZHqBw=",
+   "signerAddress": "0xdEB22f54738d54976C4c0fe5ce6d408E40d88499",
+   "dataPoints": [
+    {
+     "dataFeedId": "AVAX",
+     "value": 11.1302735
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "qJN8fVuiIaKP0hAHR4SqEaQf8RP6H6WBbHv0sV+brbFHIUZh6uGbBfDPlKMBPeaf3NPPP8DJ33k2VO+9svtu6Bs=",
+   "signerAddress": "0xDD682daEC5A90dD295d14DA4b0bec9281017b5bE",
+   "dataPoints": [
+    {
+     "dataFeedId": "AVAX",
+     "value": 11.1302735
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "ZWe1wYhQUWoBT+7hOKHfBo4S45jVUgAeS3i9MNk+aw9zMlzqAOKlV5cuL1Mcf0Gg6gwNFeoqArXzazRad58oghw=",
+   "signerAddress": "0x51Ce04Be4b3E32572C4Ec9135221d0691Ba7d202",
+   "dataPoints": [
+    {
+     "dataFeedId": "AVAX",
+     "value": 11.1302735
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "JSoTgPAdsnq5BS4s7DzGQrAkfalbQiXILM3A1qgPeSl46IsyS3sz7ferSG+638ABORNU0nhJDsEN4/9cYUCUMBs=",
+   "signerAddress": "0x8BB8F32Df04c8b654987DAaeD53D6B6091e3B774",
+   "dataPoints": [
+    {
+     "dataFeedId": "AVAX",
+     "value": 11.1302735
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "tKmdggJVMKWFVFdEf5Py7vB3F78Xn4Iq8ThM7GGx045PX32loK6KDDkcAjCZ8GPLULPs8u7FUjWbD/nzReeSyhw=",
+   "signerAddress": "0x9c5AE89C4Af6aA32cE58588DBaF90d18a855B6de",
+   "dataPoints": [
+    {
+     "dataFeedId": "AVAX",
+     "value": 11.1302735
+    }
+   ]
+  }
+ ],
+ "LINK": [
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "aTT3bhlKu1d46aGK1+H4Git96sroNgFjIe3EV+EDY7gh/x+SS28nlBN/2+yv2LbMjh+AU9LdCkqC/nbkTuL0kRw=",
+   "signerAddress": "0xdEB22f54738d54976C4c0fe5ce6d408E40d88499",
+   "dataPoints": [
+    {
+     "dataFeedId": "LINK",
+     "value": 13.92586465
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "IKZYtp7YoZ9EcaZJpwApzQ5/J+gct0DgCwsozHTJy61jaoRIHAtPfuIMAJ51Eg3jThovQlfVO7vd8ZiuwEqwExs=",
+   "signerAddress": "0xDD682daEC5A90dD295d14DA4b0bec9281017b5bE",
+   "dataPoints": [
+    {
+     "dataFeedId": "LINK",
+     "value": 13.92586465
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "Iw+4kozYaKeVjYwIABb3QBRXxqkjM5Ke490+dIx1kCUwTmiMyAOCJpUDkfdPe8ewrMIjk20QlGZvBXJPiBkLChs=",
+   "signerAddress": "0x51Ce04Be4b3E32572C4Ec9135221d0691Ba7d202",
+   "dataPoints": [
+    {
+     "dataFeedId": "LINK",
+     "value": 13.92586465
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "WlOyQtg+I6k9OLv6cTpPHF1z21U3KR2LbDLEc7SAgLd5lR3vyeDfsEehEhanpZgznUYseO67zYgrCXyFJpbz1Rs=",
+   "signerAddress": "0x8BB8F32Df04c8b654987DAaeD53D6B6091e3B774",
+   "dataPoints": [
+    {
+     "dataFeedId": "LINK",
+     "value": 13.92586465
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "H10I2Mu8EMpx8sXBsRYIlcQi/7NaybvYwXyBIMSSORg6XvVAFEtUJ947XcFDYyXQki/+dQnZjUhY0onxyAzqCBs=",
+   "signerAddress": "0x9c5AE89C4Af6aA32cE58588DBaF90d18a855B6de",
+   "dataPoints": [
+    {
+     "dataFeedId": "LINK",
+     "value": 13.92586465
+    }
+   ]
+  }
+ ],
+ "DOGE": [
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "ECs9f+dSpqNnS006SlmSpyyM3tvFiYlb4+y848Ocsnpa6h9wRwyYUGPSSCXIxgAZVxiA5EDW+5g34cNxWUGE6Rs=",
+   "signerAddress": "0xdEB22f54738d54976C4c0fe5ce6d408E40d88499",
+   "dataPoints": [
+    {
+     "dataFeedId": "DOGE",
+     "value": 0.09290288
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "eV53wG7QwZxAsDzmhoPf79cgqt/OMsMdFRh+cvs9L3g1QjJ12RHQSd/AtMyEMA/N3kDBaG9CZOhIWi2EZuyvExw=",
+   "signerAddress": "0xDD682daEC5A90dD295d14DA4b0bec9281017b5bE",
+   "dataPoints": [
+    {
+     "dataFeedId": "DOGE",
+     "value": 0.09290288
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "Y1bu2QRfmNjzMdK+e/QFz/DANJsVj2dfkxlUZn3DmRdj6fh9i5T8n5tGzYn+qn2xF1BVBTiwQwGk0QUbgyDeiBw=",
+   "signerAddress": "0x51Ce04Be4b3E32572C4Ec9135221d0691Ba7d202",
+   "dataPoints": [
+    {
+     "dataFeedId": "DOGE",
+     "value": 0.09290288
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "DtJadJWhCUNAwvYy0bq6nekydjwyNi60hPHHgWfJEXFmfcXCnevx6lgnphQ7RpunwgMd1vB7N0oLDFyH3Sw7vBs=",
+   "signerAddress": "0x8BB8F32Df04c8b654987DAaeD53D6B6091e3B774",
+   "dataPoints": [
+    {
+     "dataFeedId": "DOGE",
+     "value": 0.09290288
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "4BaNSVuqTOc1FJojFPas8o8gNEU+lrGI5/Wc6ILKwAMYQGePqWma/5OmFuP6kH22lty+ROy92vkvkSjWGlHzuRw=",
+   "signerAddress": "0x9c5AE89C4Af6aA32cE58588DBaF90d18a855B6de",
+   "dataPoints": [
+    {
+     "dataFeedId": "DOGE",
+     "value": 0.09290288
+    }
+   ]
+  }
+ ],
+ "EUR_FX": [
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "LyEi7m1luEhPAjeSbf+NHgLaFxo6r8bgp+mO2VJ2RJU42fycx24mhlB2oyCPlbrZuOk0lvQ1ZO+ohI/WB6y+0Bs=",
+   "signerAddress": "0xdEB22f54738d54976C4c0fe5ce6d408E40d88499",
+   "dataPoints": [
+    {
+     "dataFeedId": "EUR_FX",
+     "value": 1.125275
+    }
+   ]
+  },
+  {
+   "timestampMilliseconds": 1791029540000,
+   "signature": "zUI3c1g+fZHh3wn5/ACBj4tthPMyqTQ7vfhAnujLQm83+vYHsgsl9eZX5zCD3w77RKMpUW30Grs8I5FVyrmkEBw=",
+   "signerAddress": "0xDD682daEC5A90dD295d14DA4b0bec9281017b5bE",
+   "dataPoints": [
+    {
+     "dataFeedId": "EUR_FX",
+     "value": 1.125275
+    }
+   ]
+  }
+ ]
+}

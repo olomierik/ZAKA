@@ -44,7 +44,7 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
             className={`navbar-link${page.name === p.name ? ' active' : ''}${secondary ? ' nav-secondary' : ''}${accent ? ' navbar-autotrade' : ''}`}
             onClick={() => navigate(p)}
           >
-            {label}{accent && <span className="navbar-soon">{T('Soon')}</span>}
+            {label}{accent && <span className="navbar-soon">{T('Testnet')}</span>}
           </button>
         ))}
       </nav>

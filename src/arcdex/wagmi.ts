@@ -3,6 +3,7 @@ import { coinbaseWallet, injected, walletConnect } from 'wagmi/connectors'
 import { defineChain } from 'viem'
 import { arbitrum, avalanche, base, linea, mainnet, optimism, polygon, sonic, unichain, worldchain } from 'viem/chains'
 import { arcTransport } from './lib/rpc'
+import { ARC_TESTNET } from '../../engine/src/perps/shared'
 
 // Arc mainnet — not in wagmi/chains yet, defined inline
 export const arc = defineChain({
@@ -26,6 +27,9 @@ export const arc = defineChain({
   // Concurrent reads are batched into one Multicall3 call (api/launchpad.ts).
   contracts: { multicall3: { address: '0xcA11bde05977b3631167028862bE2a173976CA11' } },
 })
+
+/** Arc testnet, where futures run first (engine/src/perps/shared.ts). */
+export const arcTestnet = defineChain(ARC_TESTNET)
 
 export const USDC_ADDRESS  = '0x3600000000000000000000000000000000000000' as const
 export const SWAP_ROUTER02 = '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45' as const
@@ -56,10 +60,11 @@ function lazyWalletConnect(params: Parameters<typeof walletConnect>[0]) {
 // are added automatically. The WalletConnect and Coinbase SDKs load only
 // when someone picks them — see ConnectWallet.tsx and lib/reconnect.ts.
 export const wagmiConfig = createConfig({
-  chains: [arc, ...BRIDGE_EVM_CHAINS],
+  chains: [arc, arcTestnet, ...BRIDGE_EVM_CHAINS],
   transports: {
     // Lag-tolerant: Arc's RPC nodes can trail by a block (lib/rpc.ts).
     [arc.id]: arcTransport(),
+    [arcTestnet.id]: http(ARC_TESTNET.rpcUrls.default.http[0]),
     ...Object.fromEntries(BRIDGE_EVM_CHAINS.map(c => [c.id, http()])),
   } as Record<number, ReturnType<typeof http>>,
   connectors: [

@@ -10,7 +10,7 @@ const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigi
 
 /** The top of the phone home: only what matters. Your cash with Deposit
  * and Withdraw (or, with no wallet yet, one tap to get one), and perpetual
- * futures, coming soon. The coin list follows. */
+ * futures, on Arc testnet. The coin list follows. */
 export default function MobileHome({ navigate }: { navigate: (p: Page) => void }) {
   const trader = useTrader()
   const { cash } = useCash(trader.address)
@@ -50,7 +50,7 @@ export default function MobileHome({ navigate }: { navigate: (p: Page) => void }
           <b>{T('Perpetual futures')}</b>
           <span>{T('BTC, ETH and SOL · up to 10×')}</span>
         </span>
-        <span className="m-home-live">{T('Soon')}</span>
+        <span className="m-home-live">{T('Testnet')}</span>
         <span className="m-autotrade-go" aria-hidden>›</span>
       </button>
 

@@ -1216,13 +1216,72 @@ Owner: ARCDEX becomes **ARCSENSE**, spot and futures trading on Arc, at www.arcs
 
 Owner: "hide the autotrade marketplace and let the users see only COMING SOON; hide the launchpad; put futures and spot trading as our main features; rebrand the app to be the first on Arc".
 - **Navigation:** the top bar is Spot (the terminal) · Futures (SOON) · Swap · Bridge · Portfolio, then Feed, Leaderboard, Clans, Rewards; phones have Spot · Futures · Swap · Portfolio · More. Autotrade is in the drawer and More, marked by its own page.
-- **Futures (`pages/FuturesPage.tsx`, `/futures`, owner: "trading parameters showing live prices, all pairs against USDC, real price movements and a chart; a button that says futures trading will be enabled soon; a coin listing button"):** a full futures screen before trading opens: eight USDC pairs (BTC, ETH, SOL, BNB, XRP, AVAX, LINK, DOGE), the 24h stats, a candle chart with volume (1m to 1D, `lightweight-charts`), and an order panel (long/short, market/limit, margin, 1–10× leverage, entry, position size, an estimated liquidation price assuming a 0.5% maintenance margin) whose button is disabled: "Futures trading will be enabled soon".
-  - **Prices:** Binance's public market data for each USDC pair (`data-api.binance.vision` REST, `data-stream.binance.vision` WebSocket: keyless, CORS open, reconnecting). Pyth's public Hermes and Benchmarks endpoints now answer 401 / 404 without an API key. Chainlink's Arc feeds (BTC/USD `0xa109…03De`, ETH/USD `0x50FC…D364`, SOL/USD `0x2d04…f90C`) update only on a 0.5% move or every 24 hours: too slow for a chart, and for pricing leveraged positions, which the futures design must solve (e.g. Chainlink Data Streams).
+- **Futures (`pages/FuturesPage.tsx`, `/futures`):** live on Arc testnet since 2026-10-03; see "ARCSENSE futures on Arc testnet" below. Before that (same day), a preview screen priced from Binance's public data, replaced because Binance's data terms (CC BY-NC-SA) don't allow commercial use.
   - **List your coin:** a form (project, token address, website or X, contact, notes) sent from the signed-in wallet as a support ticket (`arcdex_support_tickets`, category `other`, message starting "Coin listing request").
 - **Autotrade (`pages/AutotradeSoon.tsx`, `/autotrade`, `/bots`):** "coming soon" only. A signed-in owner with bots gets "Manage and withdraw" to `/autotrade/manage`: the Autotrade page in an owners-only mode (`SignalsPage` `manage`: My bots, no marketplace, scanner or signals), so money in bot wallets is never out of reach.
 - **Launchpad hidden:** out of every menu and the landing page; `/launchpad` shows the spot terminal; Rewards' "Creator rewards" tab is hidden (creators' share is still paid on-chain on every trade).
 - **$SENSE on the landing (owner, 2026-10-03):** the contract address `0x91402b32C4Ab7915132b8B24e0d084E0428667ED` (on-chain: ARCSENSE / SENSE, 1B supply, an Argus launch; pool `0x8793…e047`) in the hero with a Copy button (full address on wide screens, shortened under 560px) and "Buy $SENSE" to its coin page.
 - **Positioning:** "The first spot and futures trading platform on Arc" (landing, page titles, link previews, the app manifest, the wallet-connect description). DefiLlama listed no perpetual-futures venue on Arc on 2026-10-03; spot trading on Arc exists elsewhere, so "first" rests on the combination and on futures.
+
+## ARCSENSE futures on Arc testnet (2026-10-03)
+
+Owner: "yes do it all" to the plan: a USDC pool as every trader's counterparty, BTC/ETH/SOL at up to 10×, Arc testnet first, an independent audit before mainnet. Audit scope, trust assumptions and open questions: **`contracts/AUDIT-SensePerps.md`**.
+
+- **Oracle: RedStone's signed prices (`redstone-primary-prod`), checked on-chain by our own `SenseOracle`.**
+  - Each price is signed by 5 nodes every 10 seconds; the contract takes 3 distinct authorised signers with one timestamp and their median.
+  - Why not the others (checked 2026-10-03):
+    - Chainlink Data Streams is on Arc mainnet, but needs paid credentials.
+    - Arc's Chainlink push feeds move only on 0.5% or daily.
+    - Pyth's Hermes now answers 401 without a key, and Pyth lists Arc testnet only.
+  - RedStone's own on-chain connector is BUSL-1.1 (production use needs their licence), so ARCSENSE checks RedStone's public data-package format with its own code. Verified against real gateway packages: `testRealRedstonePackages`, and `engine/test/fixtures/redstone-snapshot.json`.
+- **Contracts (`contracts/SensePerps.sol`, Foundry, 45 tests; 20 of 20 planted bugs caught):**
+  - `SensePerps` (the pool as sLP shares, positions, requests, liquidations, TP/SL, fees).
+  - `SenseOracle` (signers behind a 2-day timelock).
+  - `SenseTestUSDC` (testnet only: 1,000 a day from `faucet()`).
+  - Markets 0–2: BTC, ETH, SOL at 10×. Fees: 0.08% to open and to close, liquidation below 1% of size, 0.0025% an hour to borrow, 250,000 open interest per side.
+  - Trading fees go 100% to the fee wallet `0x2742…86Bb` (`platformFeeShareBps`; the owner can give the pool a share). LPs earn borrow fees and traders' losses.
+  - The owner is the deploy wallet `0x414B…c3dA`.
+  - Every order is two steps: the request goes on-chain, then the keeper fills it with the first price signed after it, usually 15–30 s later.
+  - After `forge build`, regenerate the ABI and bytecode the engine and site use: `node scripts/gen-perps-build.mjs` (`--check` to verify) writes `engine/src/perps/abi.ts` and `build.ts`.
+- **The engine (`engine/src/perps`, `PERPS=off` stops it):**
+  - **Prices (`redstone.ts`):** RedStone's gateway polled every 4 s; every signature checked as the contract checks it.
+  - **Chart (`candles.ts`, `store.ts`):** candles from those prices, kept in Postgres (`arcsense_perps_candles`: 1m for 30 days, 1h for good). RedStone keeps no history, so the chart starts when the engine first recorded a pair.
+  - **Keeper (`keeper.ts`):**
+    - Executes each request with the first fresh package signed after it.
+    - Liquidates with the contract's own math (`positionAt` in `shared.ts`, which the site uses too).
+    - Executes take-profits and stop-losses.
+    - Backs off 20 s after a failure.
+  - **Trades (`events.ts`):** the contract's events.
+  - **Routes:** `GET /v1/perps/status|prices|candles|state|trades`.
+- **Deployment, by the engine itself (`deploy.ts`):**
+  - **The keeper wallet:** made on the engine, its key encrypted under `BOT_WALLET_SECRET` (setting `perps-keeper`).
+  - **Gas:** once that wallet holds 0.3+ testnet USDC (from Circle's faucet), the engine deploys:
+    - tUSDC;
+    - the oracle with RedStone's 5 signers;
+    - the futures contract (owner `0x414B…c3dA`, fee wallet `0x2742…86Bb`, keeper itself);
+    - and it deposits 1,000,000 tUSDC as the pool's first liquidity.
+  - **Records:** each step is saved (setting `perps-testnet`). `/v1/perps/status` shows the addresses, or what's missing (`waiting`).
+  - **Testnet only:** it refuses any other chain.
+  - **Overrides:**
+    - `PERPS_AUTODEPLOY=off`;
+    - `PERPS_ADDRESS` (+ `PERPS_ORACLE`, `PERPS_USDC`, `PERPS_BLOCK`) to use contracts deployed elsewhere;
+    - `PERPS_OWNER`;
+    - `PERPS_RPC`.
+- **The site (`pages/FuturesPage.tsx`, `lib/perps.ts`):**
+  - **Prices and chart:** the oracle's prices and the chart for all 8 pairs, with BTC/ETH/SOL tradable.
+  - **Orders:** market and limit orders, 1–10×, optional TP/SL, max price move 0.5/1/2%.
+  - **Tabs:** positions (live P&L, liquidation price, TP/SL editing, close), orders (cancel), history, the liquidity pool (deposit, withdraw; 15-minute cooldown).
+  - **Live feed:** the latest trades by everyone.
+  - **Wallets:** the trading wallet signs on testnet with no pop-ups. A connected wallet is switched to Arc testnet (`arcTestnet` in `wagmi.ts`).
+  - **Order button:** walks the trader through what's missing: connect, gas from Circle's faucet, then "Get 1,000 test USDC".
+  - **Approvals are exact:** an open approves its margin and two keeper fees (its own and its close's).
+- **Owner step:** send testnet USDC from faucet.circle.com (Arc Testnet) to the keeper address in `GET /v1/perps/status`. Everything else is automatic. Top it up when `waiting` says it's low.
+- **Checked:**
+  - `forge test --match-contract SensePerpsTest`.
+  - `bun test engine/test/perps.test.ts`.
+  - `bun test engine/test/perpsE2e.test.ts` (anvil).
+  - In a browser, against a local chain standing in for Arc testnet, with the real keeper and real RedStone prices (`engine/scripts/perps-standin.ts` explains the setup): the engine deployed and seeded by itself; then faucet, a market long filled in ~15 s, a take-profit, a short closed by hand, a pool deposit, and a limit order cancelled. Also a 375px phone with no sideways scroll.
+- **Before mainnet:** the audit (`contracts/AUDIT-SensePerps.md`), RedStone's terms for production use, and real USDC (deploy without `SenseTestUSDC`).
 
 ## The Terminal: most active first, live holders (2026-10-03)
 

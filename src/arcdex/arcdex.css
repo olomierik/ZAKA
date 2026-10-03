@@ -1524,11 +1524,58 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .fx-summary span { color: var(--text-muted); }
 .fx-summary b { font-family: var(--mono); text-align: right; }
 .fx-summary small { color: var(--text-muted); font-weight: 500; }
-.fx-go { width: 100%; padding: 12px; border-radius: 10px; border: 1px dashed rgba(139,92,246,0.6); background: linear-gradient(90deg, rgba(59,130,246,0.18), rgba(139,92,246,0.18)); color: #c4b5fd; font-weight: 800; font-size: 0.84rem; cursor: not-allowed; }
+.fx-go { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid rgba(139,92,246,0.6); background: linear-gradient(90deg, rgba(59,130,246,0.22), rgba(139,92,246,0.22)); color: #e0e7ff; font-weight: 800; font-size: 0.84rem; cursor: pointer; text-align: center; }
+.fx-go:disabled { cursor: not-allowed; opacity: 0.7; border-style: dashed; color: #c4b5fd; }
+.fx-go.long { background: #16a34a; border-color: #16a34a; color: #fff; }
+.fx-go.short { background: #dc2626; border-color: #dc2626; color: #fff; }
+.fx-go-link { display: block; text-decoration: none; box-sizing: border-box; }
+/* Futures on Arc testnet (2026-10-03): banner, order panel extras, positions, orders, pool, live trades. */
+.fx-net { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 10px; border-radius: 999px; color: #fbbf24; border: 1px solid rgba(251,191,36,0.5); background: rgba(251,191,36,0.1); }
+.fx-banner { font-size: 0.8rem; line-height: 1.5; padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(251,191,36,0.35); background: rgba(251,191,36,0.07); color: var(--text); }
+.fx-soon { color: var(--text-muted); font-weight: 600; font-size: 0.62rem; }
+.fx-chart-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 20px; color: var(--text-muted); font-size: 0.8rem; pointer-events: none; }
+.fx-bal { color: var(--text-muted); font-weight: 500; }
+.fx-tpsl-toggle { align-self: flex-start; font-size: 0.76rem; }
+.fx-tpsl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fx-tpsl .fx-hint-bad { grid-column: 1 / -1; margin-top: 0; }
+.fx-slip { display: flex; align-items: center; gap: 6px; font-size: 0.74rem; color: var(--text-muted); }
+.fx-slip button { padding: 2px 8px; border-radius: 6px; border: 1px solid var(--adx-card-border); background: none; color: var(--text-muted); font-size: 0.72rem; cursor: pointer; }
+.fx-slip button.active { color: var(--text); border-color: #3b82f6; }
+.fx-note { font-size: 0.82rem; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--adx-card-border); background: var(--adx-card-bg); }
+.fx-note.ok { border-color: rgba(34,197,94,0.5); }
+.fx-note.bad { border-color: rgba(239,68,68,0.5); color: var(--red); }
+.fx-panel { background: var(--adx-card-bg); border: 1px solid var(--adx-card-border); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+.fx-tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--adx-card-border); margin-bottom: 8px; }
+.fx-tabs button { flex: 0 0 auto; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); font-weight: 700; font-size: 0.8rem; padding: 6px 10px; cursor: pointer; }
+.fx-tabs button.active { color: var(--text); border-bottom-color: #3b82f6; }
+.fx-empty { color: var(--text-muted); font-size: 0.82rem; padding: 18px 4px; text-align: center; }
+.fx-table-wrap { overflow-x: auto; }
+.fx-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.fx-table th { text-align: left; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; padding: 6px 8px; white-space: nowrap; }
+.fx-table td { padding: 8px; border-top: 1px solid var(--adx-card-border); white-space: nowrap; font-family: var(--mono); }
+.fx-table td small { color: var(--text-muted); }
+.fx-table .btn-ghost { padding: 4px 10px; font-size: 0.74rem; }
+.fx-tpsl-edit { display: inline-flex; gap: 4px; align-items: center; }
+.fx-tpsl-edit .field { width: 84px; padding: 4px 6px; font-size: 0.74rem; }
+.fx-pool { display: flex; flex-direction: column; gap: 10px; }
+.fx-pool-stats { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+.fx-pool-stats > div { display: flex; flex-direction: column; gap: 2px; }
+.fx-pool-stats span { color: var(--text-muted); font-size: 0.7rem; }
+.fx-pool-stats b { font-family: var(--mono); font-size: 0.86rem; }
+.fx-pool-forms { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.fx-pool-forms > div { display: flex; flex-direction: column; gap: 8px; }
+.fx-live { background: var(--adx-card-bg); border: 1px solid var(--adx-card-border); border-radius: 12px; padding: 10px 12px; }
+.fx-live-h { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 0.82rem; margin-bottom: 6px; }
+.fx-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 rgba(34,197,94,0.6); animation: fx-pulse 1.6s infinite; }
+@keyframes fx-pulse { 0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.6); } 70% { box-shadow: 0 0 0 8px rgba(34,197,94,0); } 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); } }
+@media (prefers-reduced-motion: reduce) { .fx-dot { animation: none; } }
+.fx-live-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px 16px; }
+.fx-live-row { display: grid; grid-template-columns: 90px 1fr auto; gap: 8px; font-family: var(--mono); font-size: 0.74rem; padding: 3px 0; }
+.fx-live-row span:first-child { color: var(--text-muted); }
 .fx-fine { color: var(--text-muted); font-size: 0.68rem; line-height: 1.45; }
 .fx-hint-bad { color: var(--red); font-size: 0.74rem; margin-top: -6px; }
 @media (max-width: 1100px) { .fx-main { grid-template-columns: 1fr; } .fx-chart { height: 360px; } }
-@media (max-width: 767px) { .fx-page { padding: 10px 12px 30px; } .fx-chart { height: 300px; } .fx-last { font-size: 1.15rem !important; } }
+@media (max-width: 767px) { .fx-page { padding: 10px 12px 30px; } .fx-chart { height: 300px; } .fx-last { font-size: 1.15rem !important; } .fx-pool-forms { grid-template-columns: 1fr; } .fx-live-row { grid-template-columns: 80px 1fr auto; } }
 
 /* ── most active right now (2026-10-03) ── */
 .hot-badge { font-size: 0.58rem; font-weight: 800; padding: 1px 5px; border-radius: 3px; background: rgba(249,115,22,0.14); color: #fb923c; border: 1px solid rgba(249,115,22,0.4); white-space: nowrap; font-family: var(--mono); }

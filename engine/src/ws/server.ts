@@ -27,6 +27,7 @@
 //   GET /v1/bot/rejections                      why watched coins aren't signals, by main reason
 //   GET /v1/bot/board                           the strategy board: which of the three strategies live bots trade, with whose settings
 //   /v1/auth/*, /v1/me…, /v1/bots…               accounts, owners' bots, the marketplace (ws/botApi.ts)
+//   GET /v1/perps/status|prices|candles|state   futures: deployment, keeper, signed prices, chart, contract state (perps/service.ts)
 //   /v1/quant/*                                 the signal engine: signals, radar, positions, wallets, validation, controls (quant/api.ts)
 //   /api/argus|gecko|holders|launchpad|radar|dex|session|social|upload   the site's functions, moved off Vercel (site/siteApi.ts)
 //   GET /health           summary (200 ok/degraded, 503 down)
@@ -53,6 +54,7 @@ import type { HotStore } from '../store/hot'
 import type { Traffic } from '../traffic'
 import { quantApi, type QuantApiDeps } from '../quant/api'
 import type { SiteApi } from '../site/siteApi'
+import type { PerpsService } from '../perps/service'
 
 interface Conn { id: number; ip: string; subs: Set<string>; allowance: number; last: number }
 
@@ -75,6 +77,8 @@ export class DataApi {
   quant: QuantApiDeps | null = null
   /** The site's read functions (engine/src/site/siteApi.ts), served here instead of on Vercel. */
   site: SiteApi | null = null
+  /** ARCSENSE futures: prices, chart, the testnet deployment and keeper (engine/src/perps). */
+  perps: PerpsService | null = null
   attachBot(b: Bot, control: ControlVerifier | null = null, accounts: PaperAccounts | null = null, users: Users | null = null, tiers: Tiers | null = null) { this.bot = b; this.control = control; this.accounts = accounts; this.users = users; this.tiers = tiers }
 
   async tokenSnapshot(token: string, limit = 50): Promise<{ stats: TokenStats | null; trades: WireTrade[] }> {
@@ -264,6 +268,12 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         if (!api.quant) return json(req, 503, { error: 'the signal engine is not running in this process' })
         try { return await quantApi(req, url, api.quant, (status, body, cache) => json(req, status, body, cache)) }
         catch (e) { log.warn('quant api error', { path: url.pathname, error: errMsg(e) }); return json(req, 500, { error: 'internal error' }) }
+      }
+      // Futures (perps/service.ts): status, prices, candles, the contract's state.
+      if (url.pathname.startsWith('/v1/perps/')) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        if (!api.perps) return json(req, 503, { error: 'futures are not running in this process' })
+        return api.perps.handle(url, (status, body, cache) => json(req, status, body, cache)) ?? json(req, 404, { error: 'not found' })
       }
       // Accounts, owners' bots and the marketplace (ws/botApi.ts).
       if (url.pathname.startsWith('/v1/auth/') || url.pathname === '/v1/me' || url.pathname.startsWith('/v1/me/') || url.pathname === '/v1/bots' || url.pathname.startsWith('/v1/bots/') || url.pathname === '/v1/tiers') {

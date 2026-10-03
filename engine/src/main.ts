@@ -50,6 +50,9 @@ import { UserLive, WalletVault } from './bot/userLive'
 import { Users } from './bot/users'
 import { Tiers } from './bot/tiers'
 import { MemoryBotStore, PostgresBotStore } from './bot/store'
+import { PerpsService } from './perps/service'
+import { PostgresCandleStore } from './perps/store'
+import { MemoryCandleStore } from './perps/candles'
 import { LiveExecutor } from './trading/live'
 import { DataApi, startServer } from './ws/server'
 import { startSignalEngine, type QuantBoot } from './quant/boot'
@@ -236,6 +239,13 @@ async function main() {
     pools: token => { const mp = eng.tokens.get(token)?.mainPool; return mp ? pools.get(mp) ?? null : null },
   })
   log.info('visitors\' bots', { email: mailer.enabled, live: !!vault })
+  // ARCSENSE futures (perps/service.ts): RedStone's signed prices, the chart, and on Arc testnet
+  // the contracts' deployment and keeper. PERPS=off stops it.
+  if (dataApi && !/^(0|off|false|no)$/i.test(process.env.PERPS?.trim() ?? '')) {
+    const perps = new PerpsService({ settings: botStore, candleStore: cfg.databaseUrl ? new PostgresCandleStore(cfg.databaseUrl) : new MemoryCandleStore(), vault })
+    dataApi.perps = perps
+    void perps.start().catch(e => log.error('perps: did not start', { error: errMsg(e) }))
+  }
   botsHealth = () => ({ email: mailer.enabled, userLive: !!vault, ownerWallet: !!live, mode: botRef?.mode ?? null, bots: accounts?.count ?? 0, running: accounts?.running ?? 0 })
   // Tiers (bot/tiers.ts): what each account gets; everything, for everyone, until TIERS_ENFORCED.
   const tiers = new Tiers({ enforced: cfg.tiersEnforced, rpc, enforceAt: cfg.tiersEnforceAt })

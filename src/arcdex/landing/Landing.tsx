@@ -6,7 +6,7 @@ import { PHASES, phaseStatus } from './roadmap'
 import './landing.css'
 
 // arcsense.site/ — the landing page. ARCSENSE (2026-10-03, owner): the first
-// spot and futures trading platform on Arc. The hero is the slogan and the futures to come; then
+// spot and futures trading platform on Arc. The hero is the slogan and futures (on Arc testnet); then
 // the app's features, the futures plan, the roadmap in one line and a few
 // questions. A separate small bundle (no wallet libraries); "Launch app" goes
 // to /app.
@@ -20,7 +20,7 @@ export function mountLanding(root: HTMLElement) {
 const ENGINE = ((import.meta.env.VITE_ARCDEX_API_URL as string | undefined) || ((import.meta.env.VITE_ARCDEX_WS_URL as string | undefined) ?? '').replace(/^ws/, 'http').replace(/\/ws\/?$/, '')).replace(/\/$/, '')
 interface ScanNumbers { watching: number; evalsPerMin: number; signals24h: number; rejected24h: number }
 
-/** The futures markets planned first (Chainlink Data Feeds on Arc). */
+/** The futures markets (contracts/SensePerps.sol), priced by RedStone's signed oracle prices. */
 const PERPS = ['BTC', 'ETH', 'SOL']
 
 /** $SENSE, ARCSENSE's coin: an Argus launch (name ARCSENSE, symbol SENSE, 1B supply), and its ARGUS-quoted v4 pool. */
@@ -77,18 +77,18 @@ export default function Landing() {
     ['🛡', t('Safety checks'), t('Honeypots and rugs flagged first.')],
     ['▤', t('Portfolio'), t('Every coin you hold, valued live.')],
     ['🌉', t('Bridge'), t('USDC from Ethereum and Base.')],
-    ['📊', t('Futures'), t('BTC, ETH and SOL perpetuals, coming soon.')],
+    ['📊', t('Futures'), t('BTC, ETH and SOL perpetuals, on Arc testnet.')],
   ]
 
   const FUTURES: [string, string][] = [
     [t('USDC in, USDC out'), t('Margin, profits and fees are all in USDC, the currency Arc runs on.')],
-    [t('Chainlink prices'), t('Positions are priced by Chainlink feeds on Arc, not by thin pools anyone can push.')],
+    [t('Signed oracle prices'), t('Positions are priced by RedStone’s signed oracle prices, checked on-chain, not by thin pools anyone can push.')],
     [t('Fees fund the pool'), t('Fees from $SENSE trading are added as liquidity for futures trading.')],
   ]
 
   const FAQ: [string, string][] = [
-    [t('What is ARCSENSE?'), t('The first platform on Arc for spot and perpetual futures trading: a live terminal for every coin, one-tap swaps, a USDC bridge and, soon, BTC, ETH and SOL perpetuals.')],
-    [t('When do futures launch?'), t('On Arc testnet first, so traders can try them without risk. Mainnet follows an independent security audit; the date will be announced.')],
+    [t('What is ARCSENSE?'), t('The first platform on Arc for spot and perpetual futures trading: a live terminal for every coin, one-tap swaps, a USDC bridge and BTC, ETH and SOL perpetuals, now on Arc testnet.')],
+    [t('When do futures launch?'), t('They’re on Arc testnet now: try them with free test USDC, without risk. Mainnet follows an independent security audit; the date will be announced.')],
     [t('What is $SENSE?'), t('The ARCSENSE coin, launched on Argus. Fees from $SENSE trading are added as liquidity for futures trading.')],
     [t('Is my money at risk?'), t('Yes. Coins on Arc are very volatile, and futures with leverage can lose money quickly. Trade only what you can afford to lose. Nothing here is financial advice.')],
   ]
@@ -122,12 +122,12 @@ export default function Landing() {
         </div>
       </header>
 
-      {/* ── hero: the slogan, and the futures to come ───── */}
+      {/* ── hero: the slogan, and futures ───── */}
       <section className="ld-hero">
         <div className="ld-hero-text">
           <span className="ld-pill"><span className="ld-dot" />{t('Live on Arc mainnet')}</span>
           <h1>{t('The first spot and futures trading platform on Arc.')}</h1>
-          <p className="ld-lead">{t('Trade every coin on Arc in one tap, and soon go long or short on BTC, ETH and SOL with up to 10× leverage. All in USDC.')}</p>
+          <p className="ld-lead">{t('Trade every coin on Arc in one tap, and go long or short on BTC, ETH and SOL with up to 10× leverage, now on Arc testnet. All in USDC.')}</p>
           <div className="ld-cta">
             <a className="ld-btn ld-btn-primary" href="/app">{t('Launch app')} →</a>
             <a className="ld-btn ld-btn-ghost" href="/futures">{t('Futures')}</a>
@@ -142,11 +142,11 @@ export default function Landing() {
           <TrafficCard engine={ENGINE} />
         </div>
         <div className="ld-card ld-perps">
-          <div className="ld-perps-head"><b>{t('Perpetual futures')}</b><span className="ld-pill">{t('Coming soon')}</span></div>
+          <div className="ld-perps-head"><b>{t('Perpetual futures')}</b><span className="ld-pill">{t('On testnet')}</span></div>
           {PERPS.map(c => (
             <div key={c} className="ld-perps-row"><b>{c}-PERP</b><span className="ld-muted">{t('Long or short')} · {t('Up to 10× leverage')}</span></div>
           ))}
-          <p className="ld-muted">{t('Testnet first, then mainnet after an independent audit.')}</p>
+          <p className="ld-muted">{t('Try them on Arc testnet with free test USDC. Mainnet after an independent audit.')}</p>
         </div>
       </section>
 
@@ -166,8 +166,8 @@ export default function Landing() {
 
       {/* ── futures ─────────────────────────────────────── */}
       <section className="ld-section" id="futures">
-        <h2>{t('Perpetual futures, coming to Arc')}</h2>
-        <p className="ld-sub">{t('Long or short BTC, ETH and SOL with up to 10× leverage, settled in USDC and priced by Chainlink. Testnet first, then mainnet after an independent audit.')}</p>
+        <h2>{t('Perpetual futures on Arc')}</h2>
+        <p className="ld-sub">{t('Long or short BTC, ETH and SOL with up to 10× leverage, settled in USDC at RedStone’s signed oracle prices. On Arc testnet now; mainnet after an independent audit.')}</p>
         <div className="ld-steps">
           {FUTURES.map(([title, body], i) => (
             <div key={title} className="ld-card ld-step"><span className="ld-step-n">{i + 1}</span><h3>{title}</h3><p>{body}</p></div>

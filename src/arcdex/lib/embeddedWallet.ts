@@ -22,7 +22,7 @@
 // storage alone, can't decrypt the wallet.
 
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts'
-import { createWalletClient, parseTransaction, type Hex, type NonceManager, type Transport } from 'viem'
+import { createWalletClient, parseTransaction, type Chain, type Hex, type NonceManager, type Transport } from 'viem'
 import { getTransactionCount } from 'viem/actions'
 import { arc } from '../wagmi'
 import { arcTransport } from './rpc'
@@ -327,6 +327,12 @@ export async function disablePasskey(passcode: string): Promise<void> {
 export function deleteWallet(): void {
   localStorage.removeItem(STORAGE_KEY)
   lock()
+}
+
+/** The unlocked embedded account on another chain (futures on Arc testnet). Throws if locked. */
+export function getEmbeddedWalletClientOn(chain: Chain, transport: Transport) {
+  if (!unlockedAccount || !unlockedPrivateKey) throw new Error('Wallet is locked')
+  return createWalletClient({ account: unlockedAccount, chain, transport })
 }
 
 /** A viem wallet client for the unlocked embedded account — signs and sends
