@@ -2059,7 +2059,7 @@ const d: Record<string, string> = {
   "When do futures launch?": "Quando os futuros serão lançados?",
   "On Arc testnet first, so traders can try them without risk. Mainnet follows an independent security audit; the date will be announced.": "Primeiro na testnet da Arc, para que os traders os experimentem sem risco. A mainnet vem depois de uma auditoria de segurança independente; a data será anunciada.",
   "What is $SENSE?": "O que é $SENSE?",
-  "The ARCSENSE coin, launching on Argus. Fees from $SENSE trading are added as liquidity for futures trading.": "A moeda da ARCSENSE, a ser lançada na Argus. As taxas das negociações de $SENSE são adicionadas como liquidez para a negociação de futuros.",
+  "The ARCSENSE coin, launched on Argus. Fees from $SENSE trading are added as liquidity for futures trading.": "A moeda da ARCSENSE, lançada na Argus. As taxas das negociações de $SENSE são adicionadas como liquidez para a negociação de futuros.",
   "Yes. Coins on Arc are very volatile, and futures with leverage can lose money quickly. Trade only what you can afford to lose. Nothing here is financial advice.": "Sim. As moedas na Arc são muito voláteis, e futuros com alavancagem podem fazer perder dinheiro rapidamente. Negocie apenas o que você pode perder. Nada aqui é aconselhamento financeiro.",
   "Futures": "Futuros",
   "Spot and futures trading on Arc.": "Trading à vista e de futuros na Arc.",
@@ -2090,5 +2090,6 @@ const d: Record<string, string> = {
   "Trade every coin on Arc in one tap, and soon go long or short on BTC, ETH and SOL with up to 10× leverage. All in USDC.": "Negocie qualquer moeda da Arc com um toque e, em breve, abra posições compradas ou vendidas em BTC, ETH e SOL com alavancagem de até 10×. Tudo em USDC.",
   "Every coin you hold, valued live.": "Cada moeda que você tem, avaliada ao vivo.",
   "The first platform on Arc for spot and perpetual futures trading: a live terminal for every coin, one-tap swaps, a USDC bridge and, soon, BTC, ETH and SOL perpetuals.": "A primeira plataforma na Arc para trading à vista e de futuros perpétuos: um terminal ao vivo para cada moeda, swaps com um toque, uma ponte de USDC e, em breve, perpétuos de BTC, ETH e SOL.",
+  "Buy $SENSE": "Comprar $SENSE",
 }
 export default d

@@ -289,3 +289,12 @@ html { scroll-behavior: smooth; color-scheme: dark; }
 .ld-perps-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; font-family: 'Space Grotesk', sans-serif; font-size: 1.05rem; }
 .ld-perps-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 0; border-top: 1px solid var(--ld-border); font-family: 'Space Grotesk', sans-serif; flex-wrap: wrap; }
 .ld-perps p { margin: 10px 0 0; }
+
+/* ── $SENSE's contract address in the hero (2026-10-03) ── */
+.ld-sense { max-width: 560px; flex-wrap: wrap; }
+.ld-sense code { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.78rem; overflow-wrap: anywhere; min-width: 0; }
+.ld-sense-tag { font-family: 'Space Grotesk', sans-serif; font-size: 0.82rem; background: linear-gradient(90deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ld-sense-buy { font-size: 0.8rem; font-weight: 700; color: #93c5fd; white-space: nowrap; }
+.ld-sense-buy:hover { color: #bfdbfe; }
+.ld-ca-short { display: none; }
+@media (max-width: 560px) { .ld-ca-full { display: none; } .ld-ca-short { display: inline; } }

@@ -2059,7 +2059,7 @@ const d: Record<string, string> = {
   "When do futures launch?": "Wann starten die Futures?",
   "On Arc testnet first, so traders can try them without risk. Mainnet follows an independent security audit; the date will be announced.": "Zuerst im Arc-Testnet, damit Trader sie ohne Risiko ausprobieren können. Das Mainnet folgt nach einem unabhängigen Sicherheitsaudit; das Datum wird angekündigt.",
   "What is $SENSE?": "Was ist $SENSE?",
-  "The ARCSENSE coin, launching on Argus. Fees from $SENSE trading are added as liquidity for futures trading.": "Der Coin von ARCSENSE, der auf Argus startet. Gebühren aus dem $SENSE-Handel werden als Liquidität für den Futures-Handel hinzugefügt.",
+  "The ARCSENSE coin, launched on Argus. Fees from $SENSE trading are added as liquidity for futures trading.": "Der Coin von ARCSENSE, gestartet auf Argus. Gebühren aus dem $SENSE-Handel werden als Liquidität für den Futures-Handel hinzugefügt.",
   "Yes. Coins on Arc are very volatile, and futures with leverage can lose money quickly. Trade only what you can afford to lose. Nothing here is financial advice.": "Ja. Coins auf Arc schwanken stark, und Futures mit Hebel können schnell Geld verlieren. Handle nur mit Geld, dessen Verlust du dir leisten kannst. Nichts hier ist eine Finanzberatung.",
   "Futures": "Futures",
   "Spot and futures trading on Arc.": "Spot- und Futures-Handel auf Arc.",
@@ -2090,5 +2090,6 @@ const d: Record<string, string> = {
   "Trade every coin on Arc in one tap, and soon go long or short on BTC, ETH and SOL with up to 10× leverage. All in USDC.": "Handle jeden Coin auf Arc mit einem Tipp und geh bald long oder short auf BTC, ETH und SOL mit bis zu 10× Hebel. Alles in USDC.",
   "Every coin you hold, valued live.": "Jeder Coin, den du hältst, live bewertet.",
   "The first platform on Arc for spot and perpetual futures trading: a live terminal for every coin, one-tap swaps, a USDC bridge and, soon, BTC, ETH and SOL perpetuals.": "Die erste Plattform auf Arc für Spot- und Perpetual-Futures-Handel: ein Live-Terminal für jeden Coin, Swaps mit einem Tipp, eine USDC-Bridge und bald Perpetuals auf BTC, ETH und SOL.",
+  "Buy $SENSE": "$SENSE kaufen",
 }
 export default d

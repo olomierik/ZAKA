@@ -2059,7 +2059,7 @@ const d: Record<string, string> = {
   "When do futures launch?": "Futures zitazinduliwa lini?",
   "On Arc testnet first, so traders can try them without risk. Mainnet follows an independent security audit; the date will be announced.": "Kwanza kwenye testnet ya Arc, ili wafanyabiashara wazijaribu bila hatari. Mainnet itafuata baada ya ukaguzi huru wa usalama; tarehe itatangazwa.",
   "What is $SENSE?": "$SENSE ni nini?",
-  "The ARCSENSE coin, launching on Argus. Fees from $SENSE trading are added as liquidity for futures trading.": "Sarafu ya ARCSENSE, itakayozinduliwa kwenye Argus. Ada kutoka biashara ya $SENSE zinaongezwa kama ukwasi kwa biashara ya futures.",
+  "The ARCSENSE coin, launched on Argus. Fees from $SENSE trading are added as liquidity for futures trading.": "Sarafu ya ARCSENSE, iliyozinduliwa kwenye Argus. Ada kutoka biashara ya $SENSE zinaongezwa kama ukwasi kwa biashara ya futures.",
   "Yes. Coins on Arc are very volatile, and futures with leverage can lose money quickly. Trade only what you can afford to lose. Nothing here is financial advice.": "Ndiyo. Sarafu kwenye Arc hubadilika bei sana, na futures zenye leverage zinaweza kupoteza pesa haraka. Fanya biashara kwa kiasi unachoweza kumudu kupoteza tu. Hakuna kitu hapa ni ushauri wa kifedha.",
   "Futures": "Futures",
   "Spot and futures trading on Arc.": "Biashara ya spot na futures kwenye Arc.",
@@ -2090,5 +2090,6 @@ const d: Record<string, string> = {
   "Trade every coin on Arc in one tap, and soon go long or short on BTC, ETH and SOL with up to 10× leverage. All in USDC.": "Fanya biashara ya kila sarafu kwenye Arc kwa mguso mmoja, na hivi karibuni chukua nafasi ya long au short kwenye BTC, ETH na SOL kwa leverage hadi 10×. Yote kwa USDC.",
   "Every coin you hold, valued live.": "Kila sarafu uliyonayo, ikithaminiwa moja kwa moja.",
   "The first platform on Arc for spot and perpetual futures trading: a live terminal for every coin, one-tap swaps, a USDC bridge and, soon, BTC, ETH and SOL perpetuals.": "Jukwaa la kwanza kwenye Arc kwa biashara ya spot na perpetual futures: terminal hai kwa kila sarafu, kubadilishana kwa mguso mmoja, daraja la USDC na, hivi karibuni, perpetual za BTC, ETH na SOL.",
+  "Buy $SENSE": "Nunua $SENSE",
 }
 export default d

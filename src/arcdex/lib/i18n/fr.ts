@@ -2059,7 +2059,7 @@ const d: Record<string, string> = {
   "When do futures launch?": "Quand les futures seront-ils lancés ?",
   "On Arc testnet first, so traders can try them without risk. Mainnet follows an independent security audit; the date will be announced.": "D’abord sur le testnet d’Arc, pour que les traders les essaient sans risque. Le mainnet suivra un audit de sécurité indépendant ; la date sera annoncée.",
   "What is $SENSE?": "Qu’est-ce que $SENSE ?",
-  "The ARCSENSE coin, launching on Argus. Fees from $SENSE trading are added as liquidity for futures trading.": "Le coin d’ARCSENSE, bientôt lancé sur Argus. Les frais du trading de $SENSE sont ajoutés comme liquidité pour le trading de futures.",
+  "The ARCSENSE coin, launched on Argus. Fees from $SENSE trading are added as liquidity for futures trading.": "Le coin d’ARCSENSE, lancé sur Argus. Les frais du trading de $SENSE sont ajoutés comme liquidité pour le trading de futures.",
   "Yes. Coins on Arc are very volatile, and futures with leverage can lose money quickly. Trade only what you can afford to lose. Nothing here is financial advice.": "Oui. Les coins sur Arc sont très volatils, et les futures avec effet de levier peuvent faire perdre de l’argent rapidement. Ne tradez que ce que vous pouvez vous permettre de perdre. Rien ici n’est un conseil financier.",
   "Futures": "Futures",
   "Spot and futures trading on Arc.": "Trading spot et futures sur Arc.",
@@ -2090,5 +2090,6 @@ const d: Record<string, string> = {
   "Trade every coin on Arc in one tap, and soon go long or short on BTC, ETH and SOL with up to 10× leverage. All in USDC.": "Tradez chaque coin sur Arc en un clic et, bientôt, prenez des positions longues ou courtes sur BTC, ETH et SOL avec un effet de levier jusqu’à 10×. Tout en USDC.",
   "Every coin you hold, valued live.": "Chaque coin que vous détenez, évalué en direct.",
   "The first platform on Arc for spot and perpetual futures trading: a live terminal for every coin, one-tap swaps, a USDC bridge and, soon, BTC, ETH and SOL perpetuals.": "La première plateforme sur Arc pour le trading spot et de futures perpétuels : un terminal en direct pour chaque coin, des swaps en un clic, un pont USDC et, bientôt, des perpétuels BTC, ETH et SOL.",
+  "Buy $SENSE": "Acheter $SENSE",
 }
 export default d

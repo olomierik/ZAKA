@@ -2059,7 +2059,7 @@ const d: Record<string, string> = {
   "When do futures launch?": "合约什么时候上线？",
   "On Arc testnet first, so traders can try them without risk. Mainnet follows an independent security audit; the date will be announced.": "先在 Arc 测试网上线，让交易者无风险试用。主网将在独立安全审计之后上线，日期将另行公布。",
   "What is $SENSE?": "什么是 $SENSE？",
-  "The ARCSENSE coin, launching on Argus. Fees from $SENSE trading are added as liquidity for futures trading.": "ARCSENSE 的币，将在 Argus 上发行。$SENSE 交易产生的手续费将作为流动性加入合约交易。",
+  "The ARCSENSE coin, launched on Argus. Fees from $SENSE trading are added as liquidity for futures trading.": "ARCSENSE 的币，已在 Argus 上发行。$SENSE 交易产生的手续费将作为流动性加入合约交易。",
   "Yes. Coins on Arc are very volatile, and futures with leverage can lose money quickly. Trade only what you can afford to lose. Nothing here is financial advice.": "是的。Arc 上的币波动极大，带杠杆的合约可能很快亏损。只用你能承受损失的资金交易。这里的内容都不构成投资建议。",
   "Futures": "合约",
   "Spot and futures trading on Arc.": "Arc 上的现货与合约交易。",
@@ -2090,5 +2090,6 @@ const d: Record<string, string> = {
   "Trade every coin on Arc in one tap, and soon go long or short on BTC, ETH and SOL with up to 10× leverage. All in USDC.": "一键交易 Arc 上的每个币，很快还能以最高 10× 杠杆做多或做空 BTC、ETH 和 SOL。全部使用 USDC。",
   "Every coin you hold, valued live.": "你持有的每个币，实时估值。",
   "The first platform on Arc for spot and perpetual futures trading: a live terminal for every coin, one-tap swaps, a USDC bridge and, soon, BTC, ETH and SOL perpetuals.": "Arc 上首个现货与永续合约交易平台：每个币的实时终端、一键兑换、USDC 跨链桥，以及即将推出的 BTC、ETH 和 SOL 永续合约。",
+  "Buy $SENSE": "购买 $SENSE",
 }
 export default d

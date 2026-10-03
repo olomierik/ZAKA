@@ -23,6 +23,20 @@ interface ScanNumbers { watching: number; evalsPerMin: number; signals24h: numbe
 /** The futures markets planned first (Chainlink Data Feeds on Arc). */
 const PERPS = ['BTC', 'ETH', 'SOL']
 
+/** $SENSE, ARCSENSE's coin: an Argus launch (name ARCSENSE, symbol SENSE, 1B supply), and its ARGUS-quoted v4 pool. */
+const SENSE = '0x91402b32C4Ab7915132b8B24e0d084E0428667ED'
+const SENSE_POOL = '0x879394cd067942b06d9e15aa58420729b30944901bf107b5f7779a8c5c9de047'
+const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
+
+function Copy({ text }: { text: string }) {
+  const [done, setDone] = useState(false)
+  return (
+    <button className="ld-copy" onClick={() => { void navigator.clipboard?.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500) }}>
+      {done ? t('Copied ✓') : t('Copy')}
+    </button>
+  )
+}
+
 export default function Landing() {
   const lang = useLang()
   const [scan, setScan] = useState<ScanNumbers | null>(null)
@@ -75,7 +89,7 @@ export default function Landing() {
   const FAQ: [string, string][] = [
     [t('What is ARCSENSE?'), t('The first platform on Arc for spot and perpetual futures trading: a live terminal for every coin, one-tap swaps, a USDC bridge and, soon, BTC, ETH and SOL perpetuals.')],
     [t('When do futures launch?'), t('On Arc testnet first, so traders can try them without risk. Mainnet follows an independent security audit; the date will be announced.')],
-    [t('What is $SENSE?'), t('The ARCSENSE coin, launching on Argus. Fees from $SENSE trading are added as liquidity for futures trading.')],
+    [t('What is $SENSE?'), t('The ARCSENSE coin, launched on Argus. Fees from $SENSE trading are added as liquidity for futures trading.')],
     [t('Is my money at risk?'), t('Yes. Coins on Arc are very volatile, and futures with leverage can lose money quickly. Trade only what you can afford to lose. Nothing here is financial advice.')],
   ]
 
@@ -117,6 +131,12 @@ export default function Landing() {
           <div className="ld-cta">
             <a className="ld-btn ld-btn-primary" href="/app">{t('Launch app')} →</a>
             <a className="ld-btn ld-btn-ghost" href="/futures">{t('Futures')}</a>
+          </div>
+          <div className="ld-ca ld-sense">
+            <b className="ld-sense-tag">$SENSE</b>
+            <code title={SENSE}><span className="ld-ca-full">{SENSE}</span><span className="ld-ca-short">{short(SENSE)}</span></code>
+            <Copy text={SENSE} />
+            <a className="ld-sense-buy" href={`/token/${SENSE}?pool=${SENSE_POOL}`}>{t('Buy $SENSE')} →</a>
           </div>
           <div className="ld-trust">{t('One-tap trading')} · {t('Safety checks')} · {t('USDC in and out')} · {t('7 languages')}</div>
           <TrafficCard engine={ENGINE} />
