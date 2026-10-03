@@ -7,6 +7,10 @@ WORKDIR /app
 # Only the engine's own dependency (viem) — not the frontend's.
 COPY engine/package.json engine/bun.lock ./engine/
 RUN cd engine && bun install --frozen-lockfile --production
+# The api/ files sit in /app/api, outside engine/: without node_modules above them Bun auto-installs their packages
+# on start and fails (2026-10-03: "ENOENT while resolving package '@noble/hashes/crypto'", every deploy since the
+# site's functions moved here failed its health check). They resolve the engine's own packages through this link.
+RUN ln -s /app/engine/node_modules /app/node_modules
 
 # The engine plus the shared modules it imports from api/.
 # engine/test/image.test.ts fails if the engine imports one that isn't listed here.

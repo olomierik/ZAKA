@@ -49,4 +49,9 @@ describe('engine image', () => {
   test('railway.toml redeploys the engine when one of them changes', () => {
     expect(shared.filter(f => !watched.some(p => covers(p, f)))).toEqual([])
   })
+  test('the api/ files it copies find the engine packages (2026-10-03: viem from /app/api crashed the engine on start)', () => {
+    const bare = shared.filter(f => /from\s+'[^.'][^']*'/.test(read(f).replace(/^import type .*$/gm, '')))
+    expect(bare.length).toBeGreaterThan(0) // session.ts, social.ts… import viem
+    expect(read('engine/Dockerfile')).toMatch(/^RUN ln -s \/app\/engine\/node_modules \/app\/node_modules$/m)
+  })
 })
