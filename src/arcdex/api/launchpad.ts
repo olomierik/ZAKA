@@ -9,6 +9,7 @@ import { arc } from '../wagmi'
 import { arcReadTransport } from '../lib/rpc'
 import { headBlock, scanLogs, type RawLog } from '../../../api/_arcLogs'
 import { CURVE_TRADE, DEPLOY_BLOCKS, TOKEN_LAUNCHED, decodeLaunch, decodeTrade, priceAfter, resolveMeta, statsOf, type Launch, type LaunchStats, type TradeRow } from '../../../api/_launchpadCore'
+import { siteFetch } from './siteFetch'
 
 export const LAUNCHPAD_ADDRESS = (import.meta.env.VITE_ARC_LAUNCHPAD_ADDRESS ?? '') as Address
 
@@ -127,7 +128,7 @@ export function launchpadIndex(token?: string): Promise<LaunchpadIndex> {
   if (hit && Date.now() - hit.at < INDEX_MAX_AGE_MS) return hit.p
   const p = (async (): Promise<LaunchpadIndex> => {
     try {
-      const r = await fetch(`/api/launchpad${key ? `?token=${key}` : ''}`)
+      const r = await siteFetch(`/api/launchpad${key ? `?token=${key}` : ''}`)
       const j = r.ok ? (await r.json()) as LaunchpadIndex & { complete?: boolean } : null
       if (j?.launches && (j.complete || j.launches.length)) return j
     } catch { /* use the chain */ }

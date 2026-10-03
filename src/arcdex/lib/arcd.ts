@@ -6,6 +6,8 @@
 // No wallet or viem imports here — the landing page uses this and stays
 // a small bundle.
 
+import { siteFetch } from '../api/siteFetch'
+
 export const ARCD = '0x4b93446882d29e094181b2fae14b126577a2676c'
 export const ARCD_POOL = '0x87b65f8831a8f3ba17da44003fae5294476b9a5c7ac5da53485a44dd12af9897'
 export const FEE_WALLET = '0x274262a0321a0701b0a46a3576e07ae881c286bb'
@@ -32,7 +34,7 @@ let inflight: Promise<ArcdStats> | null = null
 /** Cached for 30s in the page; the endpoint itself is CDN-cached for 60s. */
 export function loadArcd(force = false): Promise<ArcdStats> {
   if (!force && cache && Date.now() - cache.at < 30_000) return Promise.resolve(cache.data)
-  inflight ??= fetch('/api/arcd')
+  inflight ??= siteFetch('/api/arcd')
     .then(r => { if (!r.ok) throw new Error('arcd ' + r.status); return r.json() as Promise<ArcdStats> })
     .then(d => { cache = { at: Date.now(), data: d }; return d })
     .finally(() => { inflight = null })

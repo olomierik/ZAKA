@@ -11,7 +11,7 @@
 // CDN-cached. (The leading underscore keeps Vercel from deploying this file
 // as its own function.)
 
-import { adminReady, json, kvGet, kvSet } from './_supabaseAdmin'
+import { json, kvGet, kvReady, kvSet } from './_supabaseAdmin'
 import { ARCHIVE_RPCS, RECENT_RPC, headBlock, rpcBatch, scanLogs, type RawLog } from './_arcLogs'
 import { gtFetch } from './_geckoterminal'
 import { coinImage, emptyState, listRows, updateIndex, type CurveMarketRow, type GtTokens, type IndexIO, type IndexState, type RpcCallSpec } from './_curveIndex'
@@ -100,7 +100,7 @@ function respond(s: Snapshot): Response {
 /** Claims the one build at a time (Supabase's lock across instances, a flag within one). */
 async function takeLock(): Promise<boolean> {
   if (building) return false
-  const lock = adminReady ? await kvGet<number>(LOCK) : null
+  const lock = kvReady() ? await kvGet<number>(LOCK) : null
   if (lock && lock.value && Date.now() - lock.value < 30_000) return false
   building = true
   await kvSet(LOCK, Date.now())

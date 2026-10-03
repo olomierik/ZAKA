@@ -7,6 +7,8 @@
 // opens the launchpad coin page instead. The list is small (/api/launchpad,
 // CDN-cached) and fetched once, early.
 
+import { siteFetch } from '../api/siteFetch'
+
 /** Still on its curve and at least this far (%) to graduating: a
  * "Graduating" coin, as Argus defines it. */
 export const GRADUATING_PCT = 50
@@ -16,7 +18,7 @@ let loading: Promise<Set<string>> | null = null
 
 export function loadLaunchpadCoins(): Promise<Set<string>> {
   if (known) return Promise.resolve(known)
-  loading ??= fetch('/api/launchpad')
+  loading ??= siteFetch('/api/launchpad')
     .then(r => (r.ok ? r.json() : Promise.reject(new Error(`launchpad index ${r.status}`))))
     .then((j: { launches?: { token: string }[] }) => (known = new Set((j.launches ?? []).map(l => l.token.toLowerCase()))))
     .catch(e => { loading = null; throw e })

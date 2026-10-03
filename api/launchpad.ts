@@ -11,7 +11,7 @@
 // (`arcdex_kv`), scans only the blocks since the last request, resolves each
 // coin's metadata once, and is CDN-cached.
 
-import { adminReady, json, kvGet, kvSet } from './_supabaseAdmin'
+import { json, kvGet, kvReady, kvSet } from './_supabaseAdmin'
 import { headBlock, scanLogs, type RawLog } from './_arcLogs'
 import { creationBlock } from './_holdersCore'
 import { ARC_LAUNCHPAD, CURVE_TRADE, DEPLOY_BLOCKS, TOKEN_LAUNCHED, decodeLaunch, decodeTrade, resolveMeta, statsOf, type Launch, type TradeRow } from './_launchpadCore'
@@ -36,7 +36,7 @@ let mem: State | null = null
 
 async function load(head: number): Promise<State | null> {
   if (mem) return mem
-  const stored = adminReady ? await kvGet<State>(KEY) : null
+  const stored = kvReady() ? await kvGet<State>(KEY) : null
   if (stored?.value?.launches) return stored.value
   const from = DEPLOY_BLOCKS[LAUNCHPAD] ?? await creationBlock(LAUNCHPAD, head, null)
   return from === null ? null : { fromBlock: from, scannedTo: from - 1, launches: [], trades: [] }
@@ -84,7 +84,7 @@ export default async function handler(req: Request, ctx?: Ctx): Promise<Response
     }
 
     mem = state
-    if (changed && adminReady) {
+    if (changed && kvReady()) {
       const save = kvSet(KEY, state)
       if (ctx?.waitUntil) ctx.waitUntil(save); else await save
     }

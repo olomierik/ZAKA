@@ -53,6 +53,7 @@ import { MemoryBotStore, PostgresBotStore } from './bot/store'
 import { LiveExecutor } from './trading/live'
 import { DataApi, startServer } from './ws/server'
 import { startSignalEngine, type QuantBoot } from './quant/boot'
+import { createSiteApi } from './site/siteApi'
 
 const cfg = loadConfig()
 setLogLevel(cfg.logLevel)
@@ -263,6 +264,15 @@ async function main() {
   // behind its live gate (SIG_LIVE_ALLOWED, the owner's switch, walk-forward and paper records).
   quant = await startSignalEngine({ eng, pools, bot, exec, databaseUrl: cfg.databaseUrl, control: cfg.botOwner ? control : null, metricsToken: cfg.metricsToken })
   if (quant && dataApi) dataApi.quant = quant.api
+  // The site's read functions, moved off Vercel (2026-10-02: Vercel paused arcdex.online for CPU use): SITE_API=off stops them.
+  if (dataApi && !/^(0|off|false|no)$/i.test(process.env.SITE_API ?? '')) {
+    const n = (v: string | undefined, d: number) => (v && Number.isFinite(Number(v)) ? Number(v) : d)
+    dataApi.site = createSiteApi({
+      databaseUrl: cfg.databaseUrl, gtPerMin: n(process.env.SITE_GT_PER_MIN, 25),
+      indexUrl: process.env.SITE_INDEX_URL === 'off' ? null : process.env.SITE_INDEX_URL || undefined, indexEveryMs: n(process.env.SITE_INDEX_EVERY_MS, 60_000),
+    })
+    log.info('site api: serving', { functions: dataApi.site.names })
+  }
   await eng.warmStart()
   // The scanner lists every launch of the last 48h at once, not only coins that trade after a restart.
   bot?.seed()

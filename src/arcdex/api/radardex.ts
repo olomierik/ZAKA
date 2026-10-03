@@ -1,6 +1,7 @@
 // ARCDEX — RadarDex API aggregator, all requests proxied via /api/radar
 
 import { launchpadNamed, launchpadOf } from '../../../api/_launchpads'
+import { siteFetch } from './siteFetch'
 
 export interface ArcToken {
   address:         string
@@ -220,7 +221,7 @@ export async function getTokens(forceRefresh = false): Promise<ArcToken[]> {
 
 async function fetchBatch(offset: number, limit: number): Promise<ArcToken[]> {
   const url = `${PROXY}?path=/tokens&chain=arc&limit=${limit}&offset=${offset}`
-  const res  = await fetch(url, { signal: AbortSignal.timeout(12000) })
+  const res  = await siteFetch(url, { signal: AbortSignal.timeout(12000) })
   if (!res.ok) return []
   const data = await res.json() as { tokens?: RadarToken[] }
   return (data.tokens ?? []).map(mapRadarToken)
@@ -251,7 +252,7 @@ async function fetchRemainingInBackground(startOffset: number, generation: numbe
 export async function getToken(address: string): Promise<ArcToken | null> {
   try {
     const url = `${PROXY}?path=/tokens&chain=arc&address=${address}`
-    const res  = await fetch(url, { signal: AbortSignal.timeout(6000) })
+    const res  = await siteFetch(url, { signal: AbortSignal.timeout(6000) })
     if (res.ok) {
       const data = await res.json() as { tokens?: RadarToken[] }
       if (data.tokens?.[0]) return mapRadarToken(data.tokens[0])
@@ -279,7 +280,7 @@ interface RadarTrade {
 export async function getTrades(tokenAddress: string, limit = 50): Promise<Trade[]> {
   try {
     const url  = `${PROXY}?path=/v1/trades&chain=arc&token=${tokenAddress}&limit=${limit}`
-    const res  = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    const res  = await siteFetch(url, { signal: AbortSignal.timeout(8000) })
     if (!res.ok) throw new Error('trades')
     const data = await res.json() as { trades?: RadarTrade[] }
     return (data.trades ?? []).map(t => ({
@@ -301,7 +302,7 @@ export async function getPlatformStats(): Promise<{
 }> {
   try {
     const url = `${PROXY}?path=/stats&chain=arc`
-    const res = await fetch(url, { signal: AbortSignal.timeout(6000) })
+    const res = await siteFetch(url, { signal: AbortSignal.timeout(6000) })
     if (!res.ok) throw new Error('stats')
     const d = await res.json() as {
       tokenCount?: number; volume24h?: number; marketCap?: number; liquidity?: number

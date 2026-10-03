@@ -8,9 +8,11 @@ WORKDIR /app
 COPY engine/package.json engine/bun.lock ./engine/
 RUN cd engine && bun install --frozen-lockfile --production
 
-# The engine plus the shared modules it imports from api/ (no Vercel functions run here).
+# The engine plus the shared modules it imports from api/.
 # engine/test/image.test.ts fails if the engine imports one that isn't listed here.
 COPY api/_arcLogs.ts api/_arcSwaps.ts api/_curves.ts api/_marketProtocol.ts api/_quantProtocol.ts api/_supabaseAdmin.ts ./api/
+# The site's read functions it serves instead of Vercel (engine/src/site/siteApi.ts, 2026-10-02).
+COPY api/_argusBonded.ts api/_argusCore.ts api/_curveIndex.ts api/_curvesRoute.ts api/_geckoterminal.ts api/_holdersCore.ts api/_launchpadCore.ts api/_launchpads.ts api/arcd.ts api/argus.ts api/dex.ts api/gecko.ts api/holders.ts api/index-trades.ts api/launchpad.ts api/radar.ts ./api/
 COPY engine/src ./engine/src
 
 ENV NODE_ENV=production PORT=8080

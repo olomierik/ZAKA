@@ -1198,6 +1198,10 @@ A long-running Bun service (not on Vercel) that ingests Arc directly and pushes 
   - **Search:** includes fresh launches.
 - **Tests:** `bun run engine:test` — 53 tests (+2 Postgres ones that need `PG_TEST_URL`; `engine/test/curves.test.ts` covers Mercuri and SolonPad), including catch-up backpressure, live batching, replays of recorded mainnet data (`engine/test/fixtures/mainnet.json`) and a RESP3 Redis round-trip against Bun's client. Live latency: `bun engine/scripts/latency-check.ts <ws-url> 60`.
 
+## The site's read functions run on the engine (2026-10-02, shipped 2026-10-03)
+
+Vercel paused arcdex.online (402) for the CPU its functions used. The read functions (`/api/argus`, `/api/gecko`, `/api/holders`, `/api/launchpad`, `/api/radar`, `/api/dex`) are served by the market engine (`engine/src/site/siteApi.ts`, `/api/*` in `ws/server.ts`), with their stored copies and the holder index in the engine's own Postgres (`setKvStore`, `HolderStore`), GeckoTerminal calls metered from its one IP (`setGtFetch`), a response cache, the trade indexer once a minute, and the launchpad indexes warmed at start. The site calls the engine first (`src/arcdex/api/siteFetch.ts`) and its own `/api/…` only when the engine can't be reached. `SITE_API=off` stops them on the engine. The Dockerfile copies the `api/` files they import (`engine/test/image.test.ts` checks it), and Railway's Watch Paths need them too. Tests: `engine/test/siteApi.test.ts`.
+
 ## Autotrade paused (2026-10-03)
 
 Owner: the platform becomes ARCSENSE (spot and futures trading), and "the auto trade functionality will have to be paused for now".

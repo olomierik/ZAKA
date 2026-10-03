@@ -10,6 +10,10 @@
 // keeps them in Supabase (v4 migration) — so each request only scans the
 // blocks since the previous one. A token's first scan runs in slices of a
 // few seconds across requests; the coin page polls until `complete`.
+//
+// The market engine serves this too (engine/src/site, 2026-10-02), with the
+// same tables in its own Postgres: `holdersHandler(store)` takes where the
+// index lives; the default export is Supabase's.
 
 import { adminReady, db, DbError, json } from './_supabaseAdmin'
 import { ARCHIVE_RPCS, RECENT_RPC, RpcError, headBlock, rpcBatch, rpcCall, scanLogs } from './_arcLogs'
@@ -20,11 +24,28 @@ export const config = { runtime: 'edge' }
 const BUDGET_MS = 14_000
 const TOP = 50
 
-interface ScanRow { token: string; from_block: number; scanned_to: number; holders: number }
+export interface ScanRow { token: string; from_block: number; scanned_to: number; holders: number }
 
-async function readScan(token: string): Promise<ScanRow | null> {
-  const r = await db<ScanRow[]>(`arcdex_holder_scans?token=eq.${token}&select=token,from_block,scanned_to,holders`)
-  return r[0] ?? null
+/** Where the holder index lives (arcdex_holder_scans, arcdex_holder_balances, arcdex_apply_holder_deltas). */
+export interface HolderStore {
+  ready: () => boolean
+  readScan(token: string): Promise<ScanRow | null>
+  /** Applies the net balance changes of blocks (expected, to]; −1 if another request moved the scan first. */
+  applyDeltas(token: string, fromBlock: number, expected: number, to: number, deltas: Record<string, string>): Promise<number>
+  top(token: string, limit: number): Promise<{ holder: string; balance: string }[]>
+}
+
+/** Supabase's (v4 migration), through its REST API. */
+export const supabaseHolders: HolderStore = {
+  ready: () => adminReady,
+  async readScan(token) {
+    const r = await db<ScanRow[]>(`arcdex_holder_scans?token=eq.${token}&select=token,from_block,scanned_to,holders`)
+    return r[0] ?? null
+  },
+  applyDeltas: (token, fromBlock, expected, to, deltas) => db<number>('rpc/arcdex_apply_holder_deltas', {
+    method: 'POST', body: { p_token: token, p_from_block: fromBlock, p_expected: expected, p_to: to, p_deltas: deltas },
+  }),
+  top: (token, limit) => db<{ holder: string; balance: string }[]>(`arcdex_holder_balances?token=eq.${token}&select=holder,balance::text&order=balance.desc&limit=${limit}`),
 }
 
 async function tokenMeta(token: string): Promise<{ decimals: number; supply: bigint }> {
@@ -37,11 +58,14 @@ async function tokenMeta(token: string): Promise<{ decimals: number; supply: big
   return { decimals: d && d !== '0x' ? Number(BigInt(d)) : 18, supply: s && s !== '0x' ? BigInt(s) : 0n }
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default function handler(req: Request): Promise<Response> { return holdersHandler(supabaseHolders)(req) }
+
+export const holdersHandler = (store: HolderStore) => async (req: Request): Promise<Response> => {
   const url = new URL(req.url)
   const token = (url.searchParams.get('token') ?? '').toLowerCase()
   if (!/^0x[0-9a-f]{40}$/.test(token)) return json(400, { error: 'bad token' })
-  if (!adminReady) return json(503, { error: 'Holder index not configured' })
+  if (!store.ready()) return json(503, { error: 'Holder index not configured' })
+  const readScan = (t: string) => store.readScan(t)
   const deadline = Date.now() + BUDGET_MS
 
   try {
@@ -60,17 +84,14 @@ export default async function handler(req: Request): Promise<Response> {
         head, deadline, reduce: deltasOf, concurrency: 5,
       })
       if (res.scannedTo > row.scanned_to) {
-        await db<number>('rpc/arcdex_apply_holder_deltas', {
-          method: 'POST',
-          body: { p_token: token, p_from_block: row.from_block, p_expected: row.scanned_to, p_to: res.scannedTo, p_deltas: mergeDeltas(res.parts) },
-        })
+        await store.applyDeltas(token, row.from_block, row.scanned_to, res.scannedTo, mergeDeltas(res.parts))
         // -1 (another request applied this range first) is fine: re-read.
       }
       row = (await readScan(token)) ?? row
     }
 
     const [top, meta] = await Promise.all([
-      db<{ holder: string; balance: string }[]>(`arcdex_holder_balances?token=eq.${token}&select=holder,balance::text&order=balance.desc&limit=${TOP}`),
+      store.top(token, TOP),
       tokenMeta(token),
     ])
     const pct = (b: string) => meta.supply > 0n ? Number((BigInt(b) * 1_000_000n) / meta.supply) / 10_000 : null

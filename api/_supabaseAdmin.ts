@@ -59,9 +59,20 @@ export function json(status: number, body: unknown, cache = 'no-store'): Respons
   })
 }
 
+/** Where the last good copies are kept when not in Supabase: the market engine, which serves these functions too
+ * (engine/src/site), plugs in its own Postgres here (2026-10-02, when Vercel paused the site for CPU use). */
+export interface KvStore { get(key: string): Promise<{ value: unknown; updatedAt: number } | null>; set(key: string, value: unknown): Promise<void> }
+let kvStore: KvStore | null = null
+export function setKvStore(s: KvStore | null) { kvStore = s }
+/** Whether last good copies can be kept at all (a plugged-in store, or Supabase's arcdex_kv). */
+export const kvReady = () => kvStore !== null || adminReady
+
 /** Last good copy of an upstream response (v4 `arcdex_kv`). Null when
  * missing — or when the table doesn't exist yet, so callers just skip it. */
 export async function kvGet<T>(key: string): Promise<{ value: T; age: number } | null> {
+  if (kvStore) {
+    try { const r = await kvStore.get(key); return r ? { value: r.value as T, age: Date.now() - r.updatedAt } : null } catch { return null }
+  }
   if (!adminReady) return null
   try {
     const r = await db<{ value: T; updated_at: string }[]>(`arcdex_kv?key=eq.${encodeURIComponent(key)}&select=value,updated_at`)
@@ -72,6 +83,7 @@ export async function kvGet<T>(key: string): Promise<{ value: T; age: number } |
 }
 
 export async function kvSet(key: string, value: unknown): Promise<void> {
+  if (kvStore) { try { await kvStore.set(key, value) } catch { /* cache only */ } return }
   if (!adminReady) return
   try {
     await db('arcdex_kv?on_conflict=key', { method: 'POST', body: [{ key, value, updated_at: new Date().toISOString() }], prefer: 'resolution=merge-duplicates,return=minimal' })

@@ -2,6 +2,8 @@
 // Proxied through /api/dex to avoid CORS.
 // DexScreener updates Arc pairs every ~5s; we poll every 6s.
 
+import { siteFetch } from './siteFetch'
+
 const BASE = '/api/dex'
 
 export interface DexPair {
@@ -56,7 +58,7 @@ export function getLaunchpad(pair: DexPair) { return dexLabel(pair.dexId) }
 
 // ── search / list Arc pairs ───────────────────────────────────────────
 async function fetchPairs(path: string): Promise<DexPair[]> {
-  const res = await fetch(`${BASE}?path=${encodeURIComponent(path)}`)
+  const res = await siteFetch(`${BASE}?path=${encodeURIComponent(path)}`)
   if (!res.ok) return []
   const d: { pairs?: DexPair[] } = await res.json() as { pairs?: DexPair[] }
   return (d.pairs ?? []).filter(p => p.chainId === 'arc')
@@ -64,7 +66,7 @@ async function fetchPairs(path: string): Promise<DexPair[]> {
 
 export async function getTrendingPairs(): Promise<DexPair[]> {
   // DexScreener search for trending Arc tokens by volume
-  const res = await fetch(`${BASE}?path=${encodeURIComponent('/latest/dex/search?q=USDC&chainId=arc')}`)
+  const res = await siteFetch(`${BASE}?path=${encodeURIComponent('/latest/dex/search?q=USDC&chainId=arc')}`)
   if (!res.ok) return []
   const d: { pairs?: DexPair[] } = await res.json() as { pairs?: DexPair[] }
   const pairs = (d.pairs ?? []).filter(p => p.chainId === 'arc')
@@ -94,7 +96,7 @@ export async function getPairsBatch(addresses: string[]): Promise<DexPair[]> {
 
 // Top pools from GeckoTerminal (for New / Graduated tabs — GT has lifecycle data)
 export async function getNewPools(): Promise<DexPair[]> {
-  const res = await fetch(`/api/gecko?path=${encodeURIComponent('/networks/arc/new_pools')}&include=base_token,dex&page=1`)
+  const res = await siteFetch(`/api/gecko?path=${encodeURIComponent('/networks/arc/new_pools')}&include=base_token,dex&page=1`)
   if (!res.ok) return []
   type GeckoResp = { data: GeckoPool[]; included: GeckoIncluded[] }
   const d: GeckoResp = await res.json() as GeckoResp
@@ -103,7 +105,7 @@ export async function getNewPools(): Promise<DexPair[]> {
 
 export async function getGraduatedPools(): Promise<DexPair[]> {
   // GeckoTerminal "trending" with high volume = graduated tokens
-  const res = await fetch(`/api/gecko?path=${encodeURIComponent('/networks/arc/trending_pools')}&include=base_token,dex&page=1`)
+  const res = await siteFetch(`/api/gecko?path=${encodeURIComponent('/networks/arc/trending_pools')}&include=base_token,dex&page=1`)
   if (!res.ok) return []
   type GeckoResp = { data: GeckoPool[]; included: GeckoIncluded[] }
   const d: GeckoResp = await res.json() as GeckoResp

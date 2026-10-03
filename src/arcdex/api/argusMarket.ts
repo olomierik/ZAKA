@@ -15,6 +15,7 @@ import { headBlock, hex, rpcCall, scanLogs, RECENT_RPC } from '../../../api/_arc
 import { POOL_MANAGER, signedWord, topicAddress, word } from '../../../api/_arcSwaps'
 import { NATIVE, isNativePool } from './universalRouter'
 import type { CurveInfo } from './curves'
+import { siteFetch } from './siteFetch'
 
 export const USDC_ADDRESS = '0x3600000000000000000000000000000000000000' as Address
 export const ARGUS_TOKEN = '0xeCe5cA8bf9220718E5727754026757512212cb3c' as Address
@@ -41,7 +42,7 @@ let serverLaunchpads: GtDex[] | null = null
 
 async function fetchServerMarket(): Promise<ServerMarket | null> {
   try {
-    const res = await fetch('/api/argus')
+    const res = await siteFetch('/api/argus')
     if (!res.ok) return null
     const d = (await res.json()) as { pools?: ArgusPool[]; partial?: boolean; launchpads?: GtDex[] }
     if (Array.isArray(d.launchpads) && d.launchpads.length) serverLaunchpads = d.launchpads

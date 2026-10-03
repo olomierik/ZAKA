@@ -7,6 +7,7 @@
 
 import type { CurveMarketRow } from '../../../api/_curveIndex'
 import type { ArcToken } from './radardex'
+import { siteFetch } from './siteFetch'
 
 export type { CurveMarketRow }
 
@@ -54,7 +55,7 @@ let last: { at: number; rows: Promise<CurveMarketRow[]> } | null = null
 /** The coins, as the server last indexed them (one request per 15s, however many ask). */
 export function getCurveMarket(): Promise<CurveMarketRow[]> {
   if (!last || Date.now() - last.at > 15_000) {
-    const rows = fetch('/api/launchpad?of=curves', { signal: AbortSignal.timeout(15_000) })
+    const rows = siteFetch('/api/launchpad?of=curves', { signal: AbortSignal.timeout(15_000) })
       .then(res => (res.ok ? res.json() as Promise<{ coins?: unknown }> : Promise.reject(new Error(`curve index → ${res.status}`))))
       .then(d => (Array.isArray(d.coins) ? d.coins : []).map(rowOf).filter((r): r is CurveMarketRow => r !== null))
     last = { at: Date.now(), rows }

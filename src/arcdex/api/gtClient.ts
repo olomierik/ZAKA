@@ -5,6 +5,7 @@
 // per-IP quota.
 
 import type { GtList } from '../../../api/_argusCore'
+import { siteFetch } from './siteFetch'
 
 const DIRECT = 'https://api.geckoterminal.com/api/v2'
 const HEADERS = { Accept: 'application/json;version=20230302' }
@@ -54,7 +55,7 @@ async function direct<T>(pathWithQuery: string): Promise<T> {
  * back to the visitor's own free-tier quota, which the rest of the page needs. */
 export async function gtGet<T>(path: string, params: Record<string, string> = {}, opts: { proxyOnly?: boolean } = {}): Promise<T> {
   try {
-    const res = await fetch(`/api/gecko?${new URLSearchParams({ path, ...params })}`)
+    const res = await siteFetch(`/api/gecko?${new URLSearchParams({ path, ...params })}`)
     if (res.ok) return await (res.json() as Promise<T>)
     if (opts.proxyOnly) throw new Error(`gecko proxy ${res.status}`)
   } catch (e) { if (opts.proxyOnly) throw e /* else fall through to direct */ }

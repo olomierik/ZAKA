@@ -74,6 +74,12 @@ export function createUpstream(rawKey: string | undefined, fetchImpl: typeof fet
   }
 }
 
-const gt = createUpstream(process.env.COINGECKO_API_KEY)
+// The market engine serves these functions too (engine/src/site): every visitor's calls then leave from its one IP,
+// so it meters them (GeckoTerminal's free API allows ~30 a minute per IP) by plugging its own fetch in here.
+export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+let impl: FetchLike = (input, init) => fetch(input, init)
+export function setGtFetch(f: FetchLike | null) { impl = f ?? ((input, init) => fetch(input, init)) }
+
+const gt = createUpstream(process.env.COINGECKO_API_KEY, ((input: RequestInfo | URL, init?: RequestInit) => impl(input, init)) as typeof fetch)
 export const gtFetch = gt.fetch
 export const gtUpstream = gt.upstream

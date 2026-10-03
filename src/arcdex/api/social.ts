@@ -8,6 +8,7 @@
 
 import { createPostgrest, type PostgrestClient } from '../lib/postgrest'
 import type { Trader } from '../lib/identity'
+import { engineEnabled } from './marketStream'
 
 const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -248,8 +249,12 @@ export async function getReferredUsers(referrer: string, limit = 200): Promise<R
 
 let lastIndexCall = 0
 /** Nudge the server to pull the latest router events into Supabase. Cheap
- * and idempotent; throttled here and on the server. */
+ * and idempotent; throttled here and on the server. With the market engine,
+ * the engine runs the indexer once a minute (engine/src/site/siteApi.ts) and
+ * pages only ask after their own trade (`force`): every open page asking every
+ * 30s was CPU Vercel's Hobby plan didn't allow (2026-10-02). */
 export function triggerIndex(force = false) {
+  if (!force && engineEnabled) return
   if (!force && Date.now() - lastIndexCall < 30_000) return
   lastIndexCall = Date.now()
   void fetch('/api/index-trades').catch(() => {})

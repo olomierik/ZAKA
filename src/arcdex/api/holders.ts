@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react'
 import { RECENT_RPC, hex, rpcCall, type RawLog } from '../../../api/_arcLogs'
 import { TRANSFER, deltasOf } from '../../../api/_holdersCore'
 import { getHolderScans, getIndexedBalances, type HolderScan } from './social'
+import { siteFetch } from './siteFetch'
 
 export interface ChainHolder {
   address: string
@@ -41,7 +42,7 @@ export function useChainHolders(token: string, createdAt: string | null | undefi
         const q = new URLSearchParams({ token: token.toLowerCase() })
         const created = hint.current ? Math.floor(Date.parse(hint.current) / 1000) : NaN
         if (Number.isFinite(created)) q.set('created', String(created))
-        const res = await fetch(`/api/holders?${q}`)
+        const res = await siteFetch(`/api/holders?${q}`)
         // 503: index not set up · 422: token not indexed — fall back to
         // GeckoTerminal's numbers for the rest of this visit.
         if (res.status === 503 || res.status === 422 || res.status === 400) return
