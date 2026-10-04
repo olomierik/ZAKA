@@ -2,7 +2,7 @@
 // where each trade's pop flies, and the live end of the line.
 // Run: bun scripts/test-chart-motion.ts
 
-const { flightOf, followAfterRedraw, RIGHT_OFFSET_BARS } = await import('../src/arcdex/lib/chartMotion')
+const { flightOf, followAfterRedraw, fitWindow, MIN_FIT_SPACING, RIGHT_OFFSET_BARS } = await import('../src/arcdex/lib/chartMotion')
 const ok = (c: unknown, m: string) => { if (!c) throw new Error('FAIL: ' + m); console.log('  ✓', m) }
 
 console.log('pop flights')
@@ -24,4 +24,9 @@ ok(followAfterRedraw(300, 300) === 'follow' && followAfterRedraw(300, 301) === '
 ok(followAfterRedraw(12, 300) === 'fit', 'a backfill (the chain’s first bars, then the whole history) fits every bar again')
 ok(followAfterRedraw(300, 120) === 'fit', 'far fewer bars (a reload) fits again')
 ok(followAfterRedraw(0, 50) === 'fit' && followAfterRedraw(1, 2) === 'fit', 'nothing (or one bar) before: fit')
+ok(fitWindow(160, 742) === null, '160 bars in 742px (4.4px each, as fomo’s 4.7): every bar fits')
+const wide = fitWindow(1_000, 742)!
+ok(wide && wide.to === 1_000 - 1 + RIGHT_OFFSET_BARS && Math.abs(742 / (wide.to - wide.from) - MIN_FIT_SPACING) < 1e-9, 'hours of 15s bars (1,000 in 742px): the latest ones at 3px each, 10 bars of room kept')
+ok(Math.round(wide.to - wide.from - RIGHT_OFFSET_BARS) === 237, `so about ${Math.round(wide.to - wide.from - RIGHT_OFFSET_BARS)} bars show (~${Math.round((wide.to - wide.from - RIGHT_OFFSET_BARS) * 15 / 60)} minutes of 15s bars)`)
+ok(fitWindow(1, 742) === null && fitWindow(500, 0) === null, 'one bar, or no width yet: fitContent')
 console.log('ALL CHART MOTION CHECKS PASSED')

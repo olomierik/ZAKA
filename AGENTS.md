@@ -188,6 +188,10 @@ Why buys, swaps and bridges failed for people, and the fixes:
     - After a history refresh the chart keeps its bar spacing and the latest bar (`scrollToRealTime`). It re-fits only when the bar count jumped by more than 2, a backfill or a reload (`followAfterRedraw`).
     - Someone who drags, pinches or zooms keeps their view; a double-click fits again.
   - **The last point still pulses,** with its dotted price line (`chartStyle.ts`), and swaps still pop.
+  - **Coins open on 15s, as fomo's do (owner, 2026-10-04: "on the Arc chart you did nothing").** The Arc chart had the new motion, but Arc coin pages opened on 15m, where a bar comes every 15 minutes and nothing seems to move.
+    - Every coin page now opens on 15s (`OPEN_RES`) wherever its swaps come in live: Arc coins, curve coins, and Robinhood coins once their chain feed is running. Charts without live swaps (Futures, other tokens) open on 15m.
+    - A timeframe someone picks holds while the coin is open (`picked`).
+  - **Fits keep bars at least 3px wide (`MIN_FIT_SPACING`, `fitWindow`):** with more bars than fit at 3px (an hour or more of 15s bars), a fit shows the latest ones that do, about an hour in 742px. Fitting every bar would draw hours of 15s bars under a pixel each, hiding both the bends and the steps left. Older history is a drag away. The owner's round-4 "every candle fits" still holds up to that width.
   - **15s on Robinhood coins:** their pages now offer 15s whenever the pool's swaps come from the chain (`rhChartSource(…, fromChain)`), drawn from those swaps alone (GeckoTerminal has nothing under a minute), as Arc coins already did.
   - **Checked:**
     - lightweight-charts with these options, in the browser: a fit of 160 bars plus 10 of room; trades in the last bar moving its point at once; each new bar moving the visible range one bar while the latest point stays at the same x.

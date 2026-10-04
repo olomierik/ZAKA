@@ -34,3 +34,18 @@ export const RIGHT_OFFSET_BARS = 10
 export function followAfterRedraw(prevBars: number, bars: number): 'fit' | 'follow' {
   return prevBars < 2 || Math.abs(bars - prevBars) > 2 ? 'fit' : 'follow'
 }
+
+/** The narrowest bars a fit draws, px: with more bars than fit at this
+ * (hours of 15s bars), a fit shows the latest ones that do, so each bar's bend
+ * and each step left still show (fomo's 15s chart drew them 4.7px wide). */
+export const MIN_FIT_SPACING = 3
+
+/** The visible logical range for a fit of `bars` bars in `width` px: null when
+ * every bar fits at MIN_FIT_SPACING or wider (fitContent then), else the
+ * latest bars that do, with RIGHT_OFFSET_BARS of room on the right. */
+export function fitWindow(bars: number, width: number): { from: number; to: number } | null {
+  if (!(width > 0) || bars < 2) return null
+  const to = bars - 1 + RIGHT_OFFSET_BARS
+  const from = to - width / MIN_FIT_SPACING
+  return from > 0 ? { from, to } : null
+}

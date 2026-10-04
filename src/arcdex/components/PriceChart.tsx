@@ -8,7 +8,7 @@ import { engineEnabled, getEngineCandles, marketStream, useEngineStatus } from '
 import type { WireCandle } from '../../../api/_marketProtocol'
 import { INDICATORS, bollinger, ema, rsi, sma, vwap, type IndicatorId } from '../lib/indicators'
 import { t as T } from '../lib/i18n'
-import { RIGHT_OFFSET_BARS, flightOf, followAfterRedraw } from '../lib/chartMotion'
+import { RIGHT_OFFSET_BARS, fitWindow, flightOf, followAfterRedraw } from '../lib/chartMotion'
 
 const IND_KEY = 'arcdex:chart-indicators'
 const RSI_PANE = 110
@@ -27,9 +27,10 @@ const RESOLUTIONS: { label: string; value: Resolution }[] = [
 const RES_SECONDS: Record<Resolution, number> = { '1s': 1, '5s': 5, '15s': 15, '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14_400, '1d': 86_400 }
 /** Sub-minute candles exist only on-chain (GeckoTerminal's finest is 1m). */
 const onChainOnly = (r: Resolution) => RES_SECONDS[r] < 60
-/** Every coin opens on 15m candles, drawn as a line of its price (owner's
- * choice). A switch holds while the coin is open; the next coin opens on
- * these again. */
+/** Every coin opens on 15s, drawn as a line of its price, wherever its swaps
+ * come in live (as fomo does: owner, 2026-10-04), else on 15m. A switch holds
+ * while the coin is open; the next coin opens the same way again. */
+const OPEN_RES: Resolution = '15s'
 const DEFAULT_RES: Resolution = '15m'
 const DEFAULT_MODE = 'price' as const
 const fromWireCandle = (c: WireCandle): Candle => ({ time: c[0], open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5] })
@@ -129,7 +130,9 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
   const seriesId = source?.id ?? poolAddress
   const hasVolume = source?.volume !== false
   const hasTicks = ticks !== undefined || engineMode
-  const [res, setRes] = useState<Resolution>(DEFAULT_RES)
+  const [res, setRes] = useState<Resolution>(OPEN_RES)
+  // Whether someone picked this coin's timeframe (the next coin opens on 15s again).
+  const picked = useRef(false)
   const [history, setHistory] = useState<Candle[]>([])
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const [engineHistory, setEngineHistory] = useState(false)
@@ -243,6 +246,11 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
   useEffect(() => { if (source?.resolutions && !source.resolutions.includes(res)) setRes(source.resolutions.includes(DEFAULT_RES) ? DEFAULT_RES : source.resolutions[0]) }, [source, res])
   // Without on-chain swaps there are no sub-minute candles.
   useEffect(() => { if (!hasTicks && onChainOnly(res)) setRes(DEFAULT_RES) }, [hasTicks, res])
+  // A new coin opens on 15s once its live swaps make 15s possible (a Robinhood
+  // coin's chain feed starts a moment after its page), unless someone picked.
+  useEffect(() => { picked.current = false }, [seriesId])
+  const liveRes = hasTicks && (!source?.resolutions || source.resolutions.includes(OPEN_RES))
+  useEffect(() => { if (!picked.current && liveRes && res !== OPEN_RES) setRes(OPEN_RES) }, [liveRes, res, seriesId])
   // 5s candles exist only in the engine.
   useEffect(() => { if (!engineMode && res === '5s') setRes('15s') }, [engineMode, res])
   // Wheel zoom only in fullscreen, where there's no page to scroll.
@@ -442,8 +450,18 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
   recolorRef.current = recolor
 
   // Every bar in the window (a new timeframe, coin or view, a big backfill,
-  // a double-click), the latest RIGHT_OFFSET_BARS bars short of the axis.
-  const fitAll = () => { chartRef.current?.timeScale().fitContent() }
+  // a double-click), the latest RIGHT_OFFSET_BARS bars short of the axis; or,
+  // with more bars than fit at MIN_FIT_SPACING px (hours of 15s bars), the
+  // latest ones that do, so each bar's bend and each step left still show.
+  const fitAll = () => {
+    const ts = chartRef.current?.timeScale()
+    if (!ts) return
+    const range = fitWindow(applied.current.data.length, ts.width())
+    if (range) ts.setVisibleLogicalRange(range)
+    else ts.fitContent()
+  }
+  const fitAllRef = useRef(fitAll)
+  fitAllRef.current = fitAll
 
   // Pan/zoom/resize → re-place bubbles, re-colour the line.
   useEffect(() => {
@@ -581,7 +599,7 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
     const up = () => { x0 = null }
     const wheel = () => { if (document.fullscreenElement) userMoved.current = true }
     const pinch = (e: TouchEvent) => { if (e.touches.length > 1) userMoved.current = true }
-    const refit = () => { userMoved.current = false; chartRef.current?.timeScale().fitContent(); setAutoScale(true) }
+    const refit = () => { userMoved.current = false; fitAllRef.current(); setAutoScale(true) }
     el.addEventListener('pointerdown', down)
     el.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
@@ -636,7 +654,7 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
     <div ref={wrapRef} className="price-chart" style={{ background: isFull ? '#181a20' : undefined, display: 'flex', flexDirection: 'column', height: isFull ? '100%' : undefined, padding: isFull ? 16 : 0 }}>
     <div className="chart-controls" style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
       {RESOLUTIONS.filter(r => (source?.resolutions ? source.resolutions.includes(r.value) : (hasTicks || !onChainOnly(r.value)) && (r.value !== '5s' || engineMode))).map(r => (
-        <button key={r.value} onClick={() => setRes(r.value)} style={pill(res === r.value)}>{r.label}</button>
+        <button key={r.value} onClick={() => { picked.current = true; setRes(r.value) }} style={pill(res === r.value)}>{r.label}</button>
       ))}
       {live && <span title={liveTitle ?? T("Every swap appears the moment its block lands")} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 6, fontSize: '0.68rem', fontWeight: 800, color: 'var(--green)', letterSpacing: '0.05em' }}><span className="pulse-dot" />{T("LIVE")}</span>}
       <span style={{ flex: 1 }} />
