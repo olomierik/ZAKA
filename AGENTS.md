@@ -1304,6 +1304,33 @@ Owner: "let users see Robinhood coins and buy and sell them just like Arc coins"
     - `markPools` marks a pool off the market when it has a trap fee or a price more than 1.5× from the best pool's. Off-market pools are left out of the coin's volume, tagged "⚠ Off-market pool" and can't be opened on the coin page; a link naming one opens the best pool. The coin's price is always its best pool's.
     - The browser's market list moved to `arcdex:rh-market:v2`, so lists built the old way are dropped.
   - GeckoTerminal escapes some names ("S&amp;P"); they're unescaped.
+- **The list on the engine (2026-10-04, owner: "Only BANKR coins are shown, PONS and other launchpads' coins are not there").**
+  - **Why:** the browser built the list itself, 17 GeckoTerminal calls in a row:
+    - the busiest pools and the stock tokens;
+    - each launchpad's pools (Bankr, Clanker, Clank.trade, Virtuals, Pons ×3, EasyA, Mint Club, o1, Frontier.fun, Hoodit);
+    - then more pages.
+
+    GeckoTerminal's free API lets one IP make about five calls before it answers 429 (measured 2026-10-04: at one call every 4s, 6 went through, then about one in three). A throttled call was skipped after one retry. So Bankr's, Clanker's and Clank.trade's pools came in, and every launchpad after them was dropped, every time.
+  - **`api/rhmarket.ts` (the engine's `/api/rhmarket`):** the list is read a little at a time on the engine's own GeckoTerminal budget (the metered 25 calls a minute).
+    - Whenever the stored copy (`arcdex_kv` `rh:market`) is over 40s old, the next 2 calls of the round (`rhListPaths` in `api/_rhCore.ts`) refresh their pools. That's about 3 calls a minute while anyone looks, and the whole list is re-read every ~6 minutes.
+    - A throttled call is tried again next time; one answered with an error is left for that round.
+    - A pool not read again for an hour drops out.
+    - Stock-named coins are checked once on Robinhood Chain (the beacon slot, by plain RPC).
+    - With no stored copy, the first request reads as many calls as fit in 12s.
+  - **`api/_rhCore.ts`:** the list logic, shared by the browser and the engine with no browser or chain libraries: the launchpads, `poolToCoin`, trap pools, `mergeCoins`, `listed`. `robinhoodMarket.ts` and `lib/robinhood.ts` re-export it, so their imports didn't change.
+  - **The site (`loadRhMarket`):** the engine's list first (through `siteFetch`).
+  - **Without the engine, the browser builds the list itself:**
+    - The busiest pools come first.
+    - Then the rest of the round, from where its last build stopped (`arcdex:rh-cursor`), stopping at the first refusal.
+    - Coins the last list had that this build didn't reach stay for an hour after they were last read.
+    - So over a few builds every launchpad comes in.
+  - **Coin pages** still call GeckoTerminal from the browser, first in its queue.
+  - **Railway:** the Dockerfile copies `api/_rhCore.ts` and `api/rhmarket.ts`, and `railway.toml` watches them. Add both to the service's own Watch Paths, or an edit to them alone won't redeploy the engine.
+  - **Tests (`scripts/test-robinhood.ts`, offline):**
+    - a round is one call per launchpad venue, and a whole round lists all ten launchpads;
+    - the stock check (a vouched stock listed, an impostor and a coin from no launchpad not);
+    - a throttled call held, an error skipped, an hour-old pool dropped;
+    - the route: a first list, the stored copy after, and two calls in the background when it's stale.
 - **Live trades from the chain (2026-10-04, owner: "the Robinhood trading activity and loading is very slow, it doesn't respond like Arc coins; the buy and sell pop-ups on the chart don't show at all").**
   - **Why:**
     - The coin page's trades were GeckoTerminal's, polled every 12s, and GeckoTerminal's indexer lags. A trade reached the page well after the chart's 60s pop window (`LIVE_WINDOW_MS`), so nothing ever popped.
@@ -1534,7 +1561,14 @@ The owner's new site, www.arcsense.site, is hosted on Netlify and serves only th
 - **Data and writes come from the engine:** besides the read functions above, `/api/session`, `/api/social`, `/api/upload` and `/api/index-trades` run on the engine too (`siteApi.ts` `WRITES`: the request passes through with its headers and body, never cached). They need on Railway what they needed on Vercel: `ARCDEX_SESSION_SECRET` (sign-in), and Supabase's secret key for social writes and uploads. Without them they answer 503 and the site shows its empty states. Card deposits (`/api/onramp`) aren't served there yet: the Deposit modal says they're being switched on.
 - **The engine allows ARCSENSE's domains in code** (`ARCSENSE_ORIGINS` in `engine/src/config.ts`: arcsense.site, www.arcsense.site, arcsense-app.netlify.app), whatever `WS_ALLOWED_ORIGINS` lists on Railway.
 - **Build settings** live in `netlify.toml` (Bun, `dist`, the public `VITE_*` values). `VITE_WC_PROJECT_ID` (WalletConnect) is still missing, from cloud.reown.com; without it, phone wallets by QR code aren't offered. `/api/*` is a plain 404 on Netlify, so the site's fallback fails fast.
-- arcdex.online stays as it is (owner: no redirect).
+- **arcdex.online → www.arcsense.site (owner, 2026-10-04; until then "no redirect"):** `netlify.toml` sends `arcdex.online/*` and `www.arcdex.online/*` (http and https) to the same path on www.arcsense.site with a 301.
+  - **Why Netlify:** arcdex.online's DNS is at Namecheap and points at Vercel, which answers `402 DEPLOYMENT_DISABLED` (the account is blocked), so a redirect can't be deployed there. Vercel also sent HSTS for two years, so browsers that visited will only use HTTPS: the redirect needs a real certificate.
+  - **Owner steps:**
+    1. In Netlify, `arcsense-app` → Domain management → add `arcdex.online` and `www.arcdex.online` as domain aliases.
+    2. At Namecheap (arcdex.online → Advanced DNS), replace Vercel's records:
+       - `A` `@` → `75.2.60.5`;
+       - `CNAME` `www` → `arcsense-app.netlify.app`.
+    3. Netlify then issues the certificate by itself, and the rules take effect.
 
 ## Autotrade paused (2026-10-03)
 

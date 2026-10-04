@@ -30,7 +30,7 @@
 //   GET /v1/coin/program                        $ARCDEX buyback, burns and liquidity: fees in, bought, burned, added (coin/program.ts)
 //   GET /v1/perps/status|prices|candles|state   futures: deployment, keeper, signed prices, chart, contract state (perps/service.ts)
 //   /v1/quant/*                                 the signal engine: signals, radar, positions, wallets, validation, controls (quant/api.ts)
-//   /api/argus|gecko|holders|launchpad|radar|dex|session|social|upload   the site's functions, moved off Vercel (site/siteApi.ts)
+//   /api/argus|gecko|holders|launchpad|radar|dex|rhmarket|session|social|upload   the site's functions, moved off Vercel (site/siteApi.ts)
 //   GET /health           summary (200 ok/degraded, 503 down)
 //   GET /metrics          full metrics (Bearer METRICS_TOKEN when set)
 

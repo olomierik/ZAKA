@@ -1,224 +1,29 @@
 // Robinhood Chain's market, from GeckoTerminal (network `robinhood`): its
 // coins and Robinhood's stock tokens, their prices, trades and candles.
 //
-// Called directly from the visitor's browser (gtDirect, paced to
-// GeckoTerminal's free rate) — never through the app's proxy, whose shared
-// quota is Arc's. The list is kept in this browser for 30 minutes, so a
-// returning visitor sees it at once while it refreshes.
+// The list comes from the engine (api/rhmarket.ts, read a little at a time on
+// its own budget), else from the visitor's browser. A coin's page calls
+// GeckoTerminal from the browser (gtDirect, paced to its free rate), never
+// through the app's proxy, whose shared quota is Arc's. The list is kept in
+// this browser for 30 minutes, so a returning visitor sees it at once while
+// it refreshes.
 
 import { gtDirect } from './gtClient'
+import { siteFetch } from './siteFetch'
 import type { Candle } from '../lib/candles'
 import type { ChartResolution, ChartSource } from '../components/PriceChart'
 import type { TradeRow } from '../components/TokenSocialTabs'
-import { isStockName, isStockToken, QUOTE_SYMBOLS, RH_QUOTES } from '../lib/robinhood'
+import { isStockToken } from '../lib/robinhood'
+import {
+  INCLUDE, RH_NET as NET, isImage, isStockName, listed, isListed, markPools, mergeCoins, num, parsePools, poolToCoin, rhListPaths,
+  type GtPool, type GtPools, type RhCoin,
+} from '../../../api/_rhCore'
 
-const NET = 'robinhood'
+export { RH_LAUNCHPADS, TRAP_FEE_PCT, isWashPool, markPools, mergeCoins, poolFeePct, poolToCoin, rankPools, type RhCoin } from '../../../api/_rhCore'
 /** The coin page's calls go before any market list's (gtClient's pacing): the
  * coin itself (price, stats, pools) first, then its candles, then its trades
  * (the chain gives the live ones; these add older trades and makers). */
 const FIRST = { priority: 3 }, CANDLES = { priority: 2 }, TRADES = { priority: 1 }
-
-/** Robinhood Chain's launchpads, by GeckoTerminal dex id (its venues checked 2026-10-04). Only their
- * coins, and Robinhood's own stock tokens, are listed and can be bought (owner, 2026-10-04: no coins
- * from unknown contracts). Plain DEXes (Uniswap, PancakeSwap, Up V3, Ramses, …) don't count: a coin
- * whose only pools are there came from no launchpad. Pons lists its curve (pons-v2, pons-dot-family)
- * and the DEX its coins graduate to (pons-v2-dex). */
-export const RH_LAUNCHPADS: Record<string, string> = {
-  'bankr-robinhood': 'Bankr',
-  'clanker-robinhood': 'Clanker',
-  'clank-trade': 'Clank.trade',
-  'virtuals-robinhood': 'Virtuals',
-  'pons-dot-family': 'Pons',
-  'pons-v2': 'Pons',
-  'pons-v2-dex': 'Pons',
-  'easya-kickstart-robinhood': 'EasyA Kickstart',
-  'mint-club-robinhood': 'Mint Club',
-  'o1-launchpad-robinhood': 'o1',
-  'frontier-fun': 'Frontier.fun',
-  'hoodit': 'Hoodit',
-}
-
-export interface RhCoin {
-  /** Lower case. */
-  address: string
-  symbol: string
-  name: string
-  image: string | null
-  decimals: number | null
-  /** One of Robinhood's stock tokens (by name here; trading checks the chain). */
-  stock: boolean
-  /** Its main pool: GeckoTerminal's pool id (a v4 pool's is 32 bytes). */
-  pool: string
-  dex: string
-  quote: string
-  quoteSymbol: string
-  priceUsd: number
-  change5m: number
-  change1h: number
-  change24h: number
-  /** Summed over its pools in the list. */
-  volume24h: number
-  liquidity: number
-  marketCap: number
-  buys24h: number
-  sells24h: number
-  /** Unique wallets buying and selling in 24h, in its main pool. */
-  traders24h: number
-  /** When its first listed pool opened (ms). */
-  createdAt: number
-  /** Its pool's fee tier from the pool's name ("SHRINU / USDG 20%" → 20), else null. */
-  feePct: number | null
-  /** A pool priced far from the coin's market, or with a trap's fee tier: never its main pool, never traded. */
-  offMarket?: boolean
-  /** The launchpad it came from (one of its pools is on a launchpad's venue), else null. */
-  launchpad: string | null
-}
-
-// ── GeckoTerminal's shapes ───────────────────────────────────────────────
-
-interface GtRef { data?: { id: string } | null }
-interface GtTx { buys?: number; sells?: number; buyers?: number; sellers?: number }
-interface GtPool {
-  id: string
-  attributes: {
-    address: string
-    name: string
-    pool_created_at?: string | null
-    base_token_price_usd?: string | null
-    quote_token_price_usd?: string | null
-    fdv_usd?: string | null
-    market_cap_usd?: string | null
-    reserve_in_usd?: string | null
-    price_change_percentage?: Partial<Record<'m5' | 'h1' | 'h6' | 'h24', string | null>>
-    transactions?: Partial<Record<'m5' | 'h1' | 'h24', GtTx>>
-    volume_usd?: Partial<Record<'m5' | 'h1' | 'h24', string | null>>
-  }
-  relationships?: { base_token?: GtRef; quote_token?: GtRef; dex?: GtRef }
-}
-interface GtToken { id: string; type: string; attributes: { address: string; name: string; symbol: string; decimals?: number | null; image_url?: string | null } }
-interface GtPools { data?: GtPool[]; included?: GtToken[] }
-
-const num = (v: unknown) => { const n = parseFloat(String(v ?? '')); return Number.isFinite(n) ? n : 0 }
-const idAddr = (id: string | undefined) => (id ?? '').replace(/^[a-z0-9_-]+?_(?=0x)/i, '').toLowerCase()
-const isImage = (u: string | null | undefined) => (u && /^https:\/\//.test(u) && !/missing/.test(u) ? u : null)
-/** GeckoTerminal sends some names HTML-escaped ("SPDR S&amp;P 500"). */
-const unescape = (v: string) => v.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-
-/** One pool as a row for its base token, or null when the base is a quote (USDG/WETH/ETH). */
-export function poolToCoin(p: GtPool, tokens: Map<string, GtToken['attributes']>): RhCoin | null {
-  const a = p.attributes
-  const base = idAddr(p.relationships?.base_token?.data?.id)
-  const quote = idAddr(p.relationships?.quote_token?.data?.id)
-  if (!/^0x[0-9a-f]{40}$/.test(base) || RH_QUOTES.has(base)) return null
-  const t = tokens.get(base)
-  const q = tokens.get(quote)
-  const [poolBase = '', poolQuote = ''] = a.name.split(' / ')
-  const symbol = unescape(t?.symbol || poolBase.trim() || '?')
-  const name = unescape(t?.name || symbol)
-  const tx = a.transactions?.h24 ?? {}
-  return {
-    address: base,
-    symbol,
-    name,
-    image: isImage(t?.image_url),
-    decimals: typeof t?.decimals === 'number' ? t.decimals : null,
-    stock: isStockName(name),
-    pool: a.address.toLowerCase(),
-    dex: p.relationships?.dex?.data?.id ?? '',
-    quote,
-    quoteSymbol: QUOTE_SYMBOLS[quote] ?? q?.symbol ?? poolQuote.split(' ')[0] ?? '',
-    priceUsd: num(a.base_token_price_usd),
-    change5m: num(a.price_change_percentage?.m5),
-    change1h: num(a.price_change_percentage?.h1),
-    change24h: num(a.price_change_percentage?.h24),
-    volume24h: num(a.volume_usd?.h24),
-    liquidity: num(a.reserve_in_usd),
-    // GeckoTerminal leaves a pool's market cap empty when it can't verify the
-    // circulating supply; the fully diluted value stands in, as on its own pages.
-    marketCap: num(a.market_cap_usd) || num(a.fdv_usd),
-    buys24h: tx.buys ?? 0,
-    sells24h: tx.sells ?? 0,
-    traders24h: (tx.buyers ?? 0) + (tx.sellers ?? 0),
-    createdAt: a.pool_created_at ? Date.parse(a.pool_created_at) || 0 : 0,
-    feePct: poolFeePct(a.name),
-    launchpad: RH_LAUNCHPADS[p.relationships?.dex?.data?.id ?? ''] ?? null,
-  }
-}
-
-/** A pool's fee tier from its GeckoTerminal name ("SHRINU / USDG 20%" → 20), else null. */
-export function poolFeePct(name: string): number | null {
-  const m = / (\d+(?:\.\d+)?)%\s*$/.exec(name)
-  return m ? Number(m[1]) : null
-}
-
-/** Pools charging this much a swap are traps, not markets. Seen on Robinhood
- * Chain: SHRINU / USDG at 20% and 55%, priced ~300× under its real pool, with
- * $800K of "liquidity" and a few dollars of trades. Real pools charge 0.01–3%. */
-export const TRAP_FEE_PCT = 10
-/** A pool more than 1.5× off the coin's main pool, either way, is off the market. */
-const OFF_MARKET = 1.5
-
-const trapFee = (r: RhCoin) => r.feePct !== null && r.feePct >= TRAP_FEE_PCT
-
-/** A coin's pools, the best market first: pools without a trap's fee, then by
- * the wallets trading them, their volume, a USDG/WETH/ETH quote, and depth.
- * Depth comes last: a trap pool can show more "liquidity" than the real one. */
-export function rankPools(list: RhCoin[]): RhCoin[] {
-  return list.slice().sort((a, b) =>
-    (Number(trapFee(a)) - Number(trapFee(b)))
-    || (b.traders24h - a.traders24h)
-    || (b.volume24h - a.volume24h)
-    || (Number(RH_QUOTES.has(b.quote)) - Number(RH_QUOTES.has(a.quote)))
-    || (b.liquidity - a.liquidity))
-}
-
-/** Ranks a coin's pools and marks those off the market: a trap's fee, or a
- * price more than 1.5× away from the best pool's. */
-export function markPools(list: RhCoin[]): RhCoin[] {
-  const ranked = rankPools(list)
-  const ref = ranked[0]?.priceUsd ?? 0
-  return ranked.map((r, i) => ({
-    ...r,
-    offMarket: i > 0 && (trapFee(r) || (ref > 0 && r.priceUsd > 0 && Math.max(r.priceUsd / ref, ref / r.priceUsd) > OFF_MARKET)),
-  }))
-}
-
-/** A pool whose big day is one or two wallets trading with themselves (seen
- * on Robinhood Chain: $68M of "volume" from 1 buyer and 1 seller). A quiet
- * pool isn't wash, and young pools get a pass: their first trades come from
- * few wallets. */
-export function isWashPool(c: RhCoin, now = Date.now()): boolean {
-  const young = c.createdAt > 0 && now - c.createdAt < 2 * 3600_000
-  return !young && c.traders24h < 4 && c.volume24h > 10_000
-}
-
-/** One row per coin: its main pool is its best market (`rankPools`), and its
- * volume and trades are the sum of its pools, off-market pools left out. */
-export function mergeCoins(rows: RhCoin[]): RhCoin[] {
-  const by = new Map<string, RhCoin[]>()
-  for (const r of rows) {
-    const list = by.get(r.address)
-    if (!list) by.set(r.address, [r])
-    else if (!list.some(x => x.pool === r.pool)) list.push(r)
-  }
-  const out: RhCoin[] = []
-  for (const list of by.values()) {
-    const marked = markPools(list)
-    const pick = marked[0]
-    const real = marked.filter(r => !r.offMarket)
-    const first = Math.min(...list.map(r => r.createdAt || Infinity))
-    out.push({
-      ...pick,
-      launchpad: (real.find(r => r.launchpad) ?? list.find(r => r.launchpad))?.launchpad ?? null,
-      image: pick.image ?? list.find(r => r.image)?.image ?? null,
-      volume24h: real.reduce((s, r) => s + r.volume24h, 0),
-      buys24h: real.reduce((s, r) => s + r.buys24h, 0),
-      sells24h: real.reduce((s, r) => s + r.sells24h, 0),
-      createdAt: Number.isFinite(first) ? first : 0,
-    })
-  }
-  return out
-}
 
 // ── what's listed: launchpad coins, and Robinhood's stock tokens ────────
 
@@ -237,22 +42,10 @@ function checkStocks(rows: RhCoin[], done: () => void) {
 
 /** Whether a coin is listed: from a launchpad, or one of Robinhood's stock tokens (a stock name the
  * chain hasn't vouched for yet counts until it answers; an impostor never does). */
-export function isListedRh(c: RhCoin): boolean {
-  if (c.launchpad) return true
-  return c.stock && stockCheck.get(c.address) !== false
-}
+export const isListedRh = (c: RhCoin): boolean => isListed(c, a => stockCheck.get(a))
 
 /** The coins to show: listed ones, impostor stock names marked as not stocks. */
-export function listedRh(rows: RhCoin[]): RhCoin[] {
-  return rows.filter(isListedRh).map(c => (c.stock && stockCheck.get(c.address) === false ? { ...c, stock: false } : c))
-}
-
-function parsePools(d: GtPools): RhCoin[] {
-  const tokens = new Map((d.included ?? []).filter(i => i.type === 'token').map(i => [i.attributes.address.toLowerCase(), i.attributes]))
-  return (d.data ?? []).map(p => poolToCoin(p, tokens)).filter((c): c is RhCoin => c !== null)
-}
-
-const INCLUDE = { include: 'base_token,quote_token,dex' }
+export const listedRh = (rows: RhCoin[]): RhCoin[] => listed(rows, a => stockCheck.get(a))
 
 // ── the market list ──────────────────────────────────────────────────────
 
@@ -290,43 +83,80 @@ let built: RhCoin[] = []
 const listeners = new Set<(rows: RhCoin[]) => void>()
 let latest: RhCoin[] = []
 
-/** Robinhood Chain's listed coins: launchpad coins (each launchpad's busiest pools, the busiest
- * pools of the day and the newest) and Robinhood's stock tokens, one row per coin. `onRows` gets the
- * list as each call lands (the first within a second or two). Rebuilt at most every 90s however many
- * pages ask. */
+/** Robinhood Chain's listed coins: launchpad coins and Robinhood's stock tokens, one row per coin.
+ * From the engine first (api/rhmarket.ts: every launchpad's coins at once, read a little at a time
+ * on its own GeckoTerminal budget). Without it, the browser reads the list itself (below). `onRows`
+ * gets the list as it comes. Rebuilt at most every 90s however many pages ask. */
 export function loadRhMarket(onRows?: (rows: RhCoin[]) => void): Promise<RhCoin[]> {
   if (built.length && Date.now() - builtAt < FRESH_MS) { onRows?.(built); return Promise.resolve(built) }
-  // Every caller gets the rows as each call lands, not only the one that started the build: a page
-  // that asks while a build runs (two pages, or React running an effect twice) used to wait for the
-  // whole build, a minute when GeckoTerminal throttles.
+  // Every caller gets the rows as they come, not only the one that started the build: a page that
+  // asks while a build runs (two pages, or React running an effect twice) used to wait for the whole
+  // build, a minute when GeckoTerminal throttles.
   if (onRows) { listeners.add(onRows); if (latest.length) onRows(latest) }
   if (building) return building
-  const raw: RhCoin[] = []
   const tell = (rows: RhCoin[]) => { latest = rows; listeners.forEach(l => l(rows)) }
-  const emit = () => {
-    const merged = mergeCoins(raw)
-    checkStocks(merged, () => { tell(listedRh(mergeCoins(raw))) })
-    const rows = listedRh(merged)
-    tell(rows)
-    return rows
-  }
-  const step = (path: string, params: Record<string, string> = {}) =>
-    gtDirect<GtPools>(path, { ...INCLUDE, ...params }).then(d => { raw.push(...parsePools(d)); emit() }).catch(() => {})
-  building = (async () => {
-    const busiest = (page: string) => step(`/networks/${NET}/pools`, { page, sort: 'h24_volume_usd_desc' })
-    // Robinhood's stock tokens all carry "• Robinhood Token" in their name.
-    const stocks = (page: string) => step('/search/pools', { network: NET, query: 'Robinhood Token', page })
-    // Each launchpad's busiest pools: a coin is listed once one of its pools is a launchpad's.
-    const launchpad = (dex: string) => step(`/networks/${NET}/dexes/${dex}/pools`, { sort: 'h24_volume_usd_desc' })
-    const dexes = [...new Set(Object.keys(RH_LAUNCHPADS))]
-    await busiest('1'); await stocks('1')
-    for (const d of dexes) await launchpad(d)
-    await busiest('2'); await step(`/networks/${NET}/new_pools`); await stocks('2')
-    const rows = listedRh(mergeCoins(raw))
+  const done = (rows: RhCoin[]) => {
     if (rows.length) { built = rows; builtAt = Date.now(); writeCache(rows) }
     return rows.length ? rows : built
+  }
+  building = (async () => {
+    const fromEngine = await engineList()
+    if (fromEngine) { const now = Date.now(); fromEngine.forEach(r => seenAt.set(r.address, now)); tell(fromEngine); return done(fromEngine) }
+    return done(await browserBuild(tell))
   })().finally(() => { building = null; listeners.clear(); latest = [] })
   return building
+}
+
+/** The engine's list, or null when it can't be had (no engine, or an engine without the route). */
+async function engineList(): Promise<RhCoin[] | null> {
+  try {
+    const res = await siteFetch('/api/rhmarket', { signal: AbortSignal.timeout(8_000) })
+    if (!res.ok) return null
+    const j = await res.json() as { rows?: RhCoin[] }
+    return Array.isArray(j.rows) && j.rows.length ? j.rows : null
+  } catch { return null }
+}
+
+/** When each coin was last read, so one a build didn't reach is kept only so long. */
+const seenAt = new Map<string, number>()
+const KEEP_UNSEEN_MS = 60 * 60_000
+const CURSOR_KEY = 'arcdex:rh-cursor'
+const readCursor = () => { try { return Number(localStorage.getItem(CURSOR_KEY)) || 1 } catch { return 1 } }
+const saveCursor = (i: number) => { try { localStorage.setItem(CURSOR_KEY, String(i)) } catch { /* storage blocked */ } }
+
+/** The list read from this browser, on its own GeckoTerminal quota, which allows about five calls
+ * before it throttles (measured 2026-10-04). So: the busiest pools first, then the rest of the round
+ * (`rhListPaths`) from where the last build stopped, stopping at the first refusal, and the coins the
+ * last list had that this one didn't reach are kept. Over a few builds every launchpad comes in. */
+async function browserBuild(tell: (rows: RhCoin[]) => void): Promise<RhCoin[]> {
+  const raw: RhCoin[] = []
+  const before = built.length ? built : cachedRhMarket()
+  const cachedAt = readCache()?.at ?? 0
+  // A coin the last list had and this build hasn't reached stays, for an hour after it was last read.
+  const withBefore = (rows: RhCoin[]) => {
+    const have = new Set(rows.map(r => r.address))
+    const now = Date.now()
+    return [...rows, ...before.filter(r => !have.has(r.address) && now - (seenAt.get(r.address) ?? cachedAt) < KEEP_UNSEEN_MS)]
+  }
+  const emit = () => {
+    const now = Date.now()
+    for (const r of raw) seenAt.set(r.address, now)
+    const merged = mergeCoins(raw)
+    checkStocks(merged, () => { tell(withBefore(listedRh(mergeCoins(raw)))) })
+    tell(withBefore(listedRh(merged)))
+  }
+  const step = (path: string) => gtDirect<GtPools>(path).then(d => { raw.push(...parsePools(d)); emit(); return true }, () => false)
+  const paths = rhListPaths()
+  const start = Math.min(Math.max(1, readCursor()), paths.length - 1)
+  const rest = [...paths.keys()].slice(1)
+  const order = [...rest.slice(start - 1), ...rest.slice(0, start - 1)]
+  await step(paths[0])
+  let stopped = false
+  for (const i of order) {
+    if (!(await step(paths[i]))) { saveCursor(i); stopped = true; break }
+  }
+  if (!stopped) saveCursor(1)
+  return withBefore(listedRh(mergeCoins(raw)))
 }
 
 /** Listed coins matching a name, ticker or address on Robinhood Chain. */

@@ -8,6 +8,7 @@
 import { createPublicClient, formatUnits, getAddress, parseAbi, type Address, type Hex } from 'viem'
 import { robinhood } from 'viem/chains'
 import { chainTransport } from './rpc'
+import { BEACON_SLOT, NATIVE, QUOTE_SYMBOLS, RH_QUOTES, STOCK_BEACON, USDG, WETH, isStockName } from '../../../api/_rhCore'
 
 export { robinhood }
 
@@ -17,13 +18,8 @@ export const RH_EXPLORER = 'https://robinhoodchain.blockscout.com'
 export const rhTx = (hash: string) => `${RH_EXPLORER}/tx/${hash}`
 export const rhAddress = (a: string) => `${RH_EXPLORER}/address/${a}`
 
-/** Paxos's Global Dollar, Robinhood Chain's dollar (6 decimals). */
-export const USDG = '0x5fc5360d0400a0fd4f2af552add042d716f1d168'
-export const WETH = '0x0bd7d308f8e1639fab988df18a8011f41eacad73'
-export const NATIVE = '0x0000000000000000000000000000000000000000'
-/** Quotes, never listed as coins of their own. */
-export const RH_QUOTES = new Set([USDG, WETH, NATIVE])
-export const QUOTE_SYMBOLS: Record<string, string> = { [USDG]: 'USDG', [WETH]: 'WETH', [NATIVE]: 'ETH' }
+// USDG (Paxos's Global Dollar, 6 decimals), WETH and native ETH, the quotes; shared with the engine.
+export { NATIVE, QUOTE_SYMBOLS, RH_QUOTES, STOCK_BEACON, USDG, WETH, isStockName }
 
 /** Lag-tolerant reads on Robinhood Chain's public RPC, batched by multicall. */
 export const rhClient = createPublicClient({ chain: robinhood, transport: chainTransport(RH_RPC), batch: { multicall: true } })
@@ -37,16 +33,9 @@ const ERC20 = parseAbi([
 
 // ── stock tokens ─────────────────────────────────────────────────────────
 
-/** Robinhood's stock tokens name themselves "<Company> • Robinhood Token"
- * ("NVIDIA • Robinhood Token"). */
-export const isStockName = (name: string | null | undefined) => /•\s*Robinhood Token/i.test(name ?? '')
-
 /** "NVIDIA • Robinhood Token" → "NVIDIA". */
 export const stockCompany = (name: string) => name.replace(/\s*•\s*Robinhood Token\s*$/i, '').trim()
 
-/** Every stock token is a beacon proxy on Robinhood's one beacon (EIP-1967's beacon slot). */
-export const STOCK_BEACON = '0xe10b6f6b275de231345c20d14ab812db62151b00'
-const BEACON_SLOT = '0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50'
 
 const stockCheck = new Map<string, Promise<boolean>>()
 

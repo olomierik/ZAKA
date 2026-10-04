@@ -49,6 +49,7 @@ import gecko from '../../../api/gecko'
 import indexTrades from '../../../api/index-trades'
 import launchpad from '../../../api/launchpad'
 import radar from '../../../api/radar'
+import rhmarket from '../../../api/rhmarket'
 import session from '../../../api/session'
 import social from '../../../api/social'
 import upload from '../../../api/upload'
@@ -245,7 +246,7 @@ export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number
   const holders = o.holders ?? (adminReady ? supabaseHolders : sql ? pgHolders(sql, ready) : memoryHolders())
   const handlers: Record<string, Handler> = o.handlers ?? {
     argus: (r, c) => argus(r, c), gecko: (r, c) => gecko(r, c), launchpad: (r, c) => launchpad(r, c),
-    radar: r => radar(r), dex: r => dex(r), holders: holdersHandler(holders),
+    radar: r => radar(r), dex: r => dex(r), holders: holdersHandler(holders), rhmarket: (r, c) => rhmarket(r, c),
     session: r => session(r), social: r => social(r), upload: r => upload(r), 'index-trades': () => indexTrades(),
   }
   const cache = new ResponseCache()

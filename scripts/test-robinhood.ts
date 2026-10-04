@@ -1,7 +1,8 @@
 // Robinhood Chain on ARCDEX: the checks every Across quote must pass
 // before anything is signed (src/arcdex/lib/acrossQuote.ts), Robinhood
-// Chain's market rows (api/robinhoodMarket.ts), trap pools and the price
-// guard on quotes, stock tokens and routes.
+// Chain's market rows (api/robinhoodMarket.ts), the engine's list built a
+// little at a time (api/rhmarket.ts), trap pools and the price guard on
+// quotes, stock tokens and routes.
 // Offline, on real answers recorded 2026-10-04 (scripts/fixtures/across-*.json,
 // rh-pools.json, rh-shrinu.json). With --live it also asks Across for fresh quotes and reads
 // Robinhood Chain (no wallet, nothing sent).
@@ -215,6 +216,90 @@ ok('error' in okReq('/deposits?depositor=' + BUYER) && 'error' in okReq('/deposi
     globalThis.fetch = realFetch
     delete g.Netlify
   }
+}
+
+console.log('the engine’s list (api/rhmarket.ts): every launchpad, a little at a time')
+{
+  const { setGtFetch } = await import('../api/_geckoterminal')
+  const { setKvStore } = await import('../api/_supabaseAdmin')
+  const { advanceRh, rhRows, RH_CALLS_PER_STEP, RH_KEEP_MS, default: rhmarket } = await import('../api/rhmarket')
+  const { rhListPaths, RH_LAUNCHPADS: LPS, BEACON_SLOT, STOCK_BEACON, WETH } = await import('../api/_rhCore')
+  const hex40 = (n: number) => '0x' + n.toString(16).padStart(40, '0')
+  const dexes = [...new Set(Object.keys(LPS))]
+  // One pool per launchpad venue (its coin 0x…01, 0x…02, …), a busiest list with a stock token and an
+  // impostor stock name, and empty answers for the rest.
+  const pool = (i: number, dex: string, name = `C${i} / WETH 1%`, symbol = `C${i}`) => ({
+    data: [{ id: `robinhood_${hex40(0x1000 + i)}`, attributes: { address: hex40(0x1000 + i), name, base_token_price_usd: '1', reserve_in_usd: '5000', volume_usd: { h24: '100' }, transactions: { h24: { buys: 5, sells: 5, buyers: 5, sellers: 5 } } },
+      relationships: { base_token: { data: { id: `robinhood_${hex40(i)}` } }, quote_token: { data: { id: `robinhood_${WETH}` } }, dex: { data: { id: dex } } } }],
+    included: [{ id: `robinhood_${hex40(i)}`, type: 'token', attributes: { address: hex40(i), name: symbol === 'NVDA' || symbol === 'FAKE' ? name.split(' / ')[0] : symbol, symbol } }],
+  })
+  let throttled = new Set<string>(), broken = new Set<string>(), calls: string[] = []
+  setGtFetch(async input => {
+    const url = String(input)
+    const path = url.replace('https://api.geckoterminal.com/api/v2', '')
+    calls.push(path)
+    if (throttled.has(path)) return new Response('{}', { status: 429 })
+    if (broken.has(path)) return new Response('{}', { status: 404 })
+    const d = dexes.findIndex(x => path.startsWith(`/networks/robinhood/dexes/${x}/pools`))
+    if (d >= 0) return Response.json(pool(d + 1, dexes[d]))
+    if (path.startsWith('/networks/robinhood/pools?')) return Response.json({
+      data: [...pool(100, 'uniswap-v4-robinhood', 'NVIDIA • Robinhood Token / USDG 0.3%', 'NVDA').data, ...pool(101, 'uniswap-v4-robinhood', 'Fake • Robinhood Token / WETH 1%', 'FAKE').data, ...pool(102, 'uniswap-v4-robinhood', 'NOLP / WETH 1%', 'NOLP').data],
+      included: [...pool(100, 'x', 'NVIDIA • Robinhood Token / USDG', 'NVDA').included, ...pool(101, 'x', 'Fake • Robinhood Token / WETH', 'FAKE').included, ...pool(102, 'x', 'NOLP', 'NOLP').included],
+    })
+    return Response.json({ data: [], included: [] })
+  })
+  // The chain's answer for the stock check: 0x…64 (NVDA) is on Robinhood's beacon, 0x…65 isn't.
+  const realFetch = globalThis.fetch
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes('chain.robinhood.com')) {
+      const body = JSON.parse(String(init?.body))
+      ok(body.params[1] === BEACON_SLOT, 'stock check reads the beacon slot')
+      const token = String(body.params[0])
+      return Response.json({ result: '0x' + (token === hex40(100) ? STOCK_BEACON.slice(2) : '0'.repeat(40)).padStart(64, '0') })
+    }
+    return realFetch(input, init)
+  }) as typeof fetch
+
+  const paths = rhListPaths()
+  ok(paths.length === dexes.length + 5 && dexes.every(d => paths.some(p => p.includes(`/dexes/${d}/pools`))), `a round is ${paths.length} calls, one for each of the ${dexes.length} launchpad venues`)
+  let s = await advanceRh(null, RH_CALLS_PER_STEP)
+  ok(s.cursor === 2 && calls.length === 2 && s.rounds === 0, 'each step reads the next two calls')
+  for (let i = 0; i < 20 && s.rounds === 0; i++) s = await advanceRh(s, RH_CALLS_PER_STEP)
+  const rows = rhRows(s)
+  const names = new Set(rows.map(r => r.launchpad).filter(Boolean))
+  ok([...new Set(Object.values(LPS))].every(n => names.has(n)), `a whole round lists every launchpad: ${[...names].join(', ')}`)
+  ok(rows.some(r => r.symbol === 'NVDA' && r.stock), 'a stock token the chain vouches for is listed')
+  ok(!rows.some(r => r.symbol === 'FAKE') && !rows.some(r => r.symbol === 'NOLP'), 'an impostor stock name and a coin from no launchpad aren’t')
+
+  calls = []; throttled = new Set([paths[s.cursor]])
+  const held = await advanceRh(s, RH_CALLS_PER_STEP)
+  ok(held.cursor === s.cursor && calls.length === 2, 'a throttled call is tried again next time, not skipped')
+  throttled = new Set(); broken = new Set([paths[s.cursor]])
+  const skipped = await advanceRh(s, RH_CALLS_PER_STEP)
+  ok(skipped.cursor === (s.cursor + 2) % paths.length, 'a call answered with an error is left for the round')
+  broken = new Set()
+
+  const old = { ...s, pools: s.pools.map(p => (p.launchpad === 'Pons' ? { ...p, seenAt: Date.now() - RH_KEEP_MS - 1 } : p)) }
+  const later = await advanceRh(old, 0)
+  ok(!rhRows(later).some(r => r.launchpad === 'Pons') && rhRows(later).some(r => r.launchpad === 'Bankr'), 'a pool not read again for an hour drops out')
+
+  // The route: a first list at once, the stored copy after, read further in the background.
+  const kv = new Map<string, { value: unknown; updatedAt: number }>()
+  setKvStore({ get: async k => kv.get(k) ?? null, set: async (k, v) => { kv.set(k, { value: v, updatedAt: Date.now() }) } })
+  const bg: Promise<unknown>[] = []
+  const ctx = { waitUntil: (p: Promise<unknown>) => { bg.push(p) } }
+  const first = await (await rhmarket(new Request('http://engine/api/rhmarket'), ctx)).json() as { rows: { launchpad: string | null }[]; complete: boolean }
+  await Promise.all(bg)
+  ok(first.complete && new Set(first.rows.map(r => r.launchpad)).size >= 10, `the first request reads a whole round when GeckoTerminal answers (${first.rows.length} coins)`)
+  const stored = kv.get('rh:market')!
+  stored.updatedAt -= 60_000
+  calls = []
+  const again = await rhmarket(new Request('http://engine/api/rhmarket'), ctx)
+  await Promise.all(bg)
+  ok(again.status === 200 && /s-maxage=20/.test(again.headers.get('Cache-Control') ?? ''), 'later requests get the stored copy')
+  ok(calls.length === RH_CALLS_PER_STEP, 'and a stale copy reads its next two calls in the background')
+  globalThis.fetch = realFetch
+  setGtFetch(null); setKvStore(null)
 }
 
 if (process.argv.includes('--live')) {

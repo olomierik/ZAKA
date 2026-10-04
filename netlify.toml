@@ -17,6 +17,32 @@
 
 # The site's functions live on the engine: here they're a plain 404, so the site's fallback fails fast instead of
 # reading the app's HTML as data.
+# arcdex.online and www.arcdex.online open the same page on www.arcsense.site (owner, 2026-10-04). They take
+# effect once both names are domain aliases of this Netlify site and their DNS points here (AGENTS.md).
+[[redirects]]
+  from = "https://arcdex.online/*"
+  to = "https://www.arcsense.site/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.arcdex.online/*"
+  to = "https://www.arcsense.site/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "http://arcdex.online/*"
+  to = "https://www.arcsense.site/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "http://www.arcdex.online/*"
+  to = "https://www.arcsense.site/:splat"
+  status = 301
+  force = true
+
 [[redirects]]
   from = "/api/*"
   to = "/404.html"
