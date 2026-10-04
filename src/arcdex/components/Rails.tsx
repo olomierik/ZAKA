@@ -6,6 +6,7 @@ import { loadBlueChips, type TokenMeta } from '../lib/tokenMeta'
 import { client } from '../api/launchpad'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import { SENSE_LC, SENSE_POOL, fmtPct, fmtSmallUsd, useSense } from '../lib/sense'
 
 // Right-rail suggestions (fomo: "Follow top traders", "Discover clans")
 // and the bottom ticker bar (blue-chip prices + network status).
@@ -74,6 +75,7 @@ export function DiscoverClans({ navigate }: { navigate: (p: Page) => void }) {
 export function TickerBar({ navigate }: { navigate: (p: Page) => void }) {
   const [chips, setChips] = useState<TokenMeta[]>([])
   const [status, setStatus] = useState<'ok' | 'slow' | 'down'>('ok')
+  const sense = useSense()
   useEffect(() => {
     const load = () => void loadBlueChips().then(setChips)
     load()
@@ -91,18 +93,27 @@ export function TickerBar({ navigate }: { navigate: (p: Page) => void }) {
     return () => clearInterval(id)
   }, [])
   const color = { ok: 'var(--green)', slow: 'var(--amber)', down: 'var(--red)' }[status]
+  const chg = sense?.change24h ?? null
+  // Binance's bottom bar: the connection, then prices ($SENSE first), then links.
   return (
-    <div className="ticker-bar">
-      {chips.map(c => (
-        <button key={c.address} onClick={() => navigate({ name: 'argus', address: c.address, pool: c.pool })}>
-          {c.image && <img src={c.image} alt="" style={{ width: 12, height: 12, borderRadius: '50%' }} />}
-          <span>{c.priceUsd >= 1 ? `$${c.priceUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : `$${c.priceUsd.toPrecision(3)}`}</span>
-          <span style={{ color: c.change24h >= 0 ? 'var(--green)' : 'var(--red)' }}>{c.change24h >= 0 ? '▲' : '▼'}{Math.abs(c.change24h).toFixed(2)}%</span>
+    <div className="app-ticker">
+      <span className="app-ticker-status" style={{ color }}>● {status === 'ok' ? T("Arc: Stable") : status === 'slow' ? T("Arc: Slow") : T("Arc: Unreachable")}</span>
+      <div className="app-ticker-pairs">
+        <button className="app-ticker-sense" onClick={() => navigate({ name: 'argus', address: SENSE_LC, pool: SENSE_POOL })}>
+          <b>SENSE/USDC</b>
+          {chg != null && <span className={chg >= 0 ? 'up-txt' : 'down-txt'}>{fmtPct(chg)}</span>}
+          <span>{fmtSmallUsd(sense?.priceUsd)}</span>
         </button>
-      ))}
-      <span style={{ flex: 1 }} />
-      <span style={{ color }}>● {status === 'ok' ? T("Arc: Stable") : status === 'slow' ? T("Arc: Slow") : T("Arc: Unreachable")}</span>
-      <a href="https://explorer.arc.io" target="_blank" rel="noopener noreferrer">{T("Explorer")}</a>
+        {chips.map(c => (
+          <button key={c.address} onClick={() => navigate({ name: 'argus', address: c.address, pool: c.pool })}>
+            <b>{c.symbol}</b>
+            <span className={c.change24h >= 0 ? 'up-txt' : 'down-txt'}>{c.change24h >= 0 ? '+' : ''}{c.change24h.toFixed(2)}%</span>
+            <span>{c.priceUsd >= 1 ? `${c.priceUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : c.priceUsd.toPrecision(3)}</span>
+          </button>
+        ))}
+      </div>
+      <button className="app-ticker-link" onClick={() => navigate({ name: 'sense' })}>🔥 {T('$SENSE burn')}</button>
+      <a className="app-ticker-link" href="https://explorer.arc.io" target="_blank" rel="noopener noreferrer">{T("Explorer")}</a>
     </div>
   )
 }

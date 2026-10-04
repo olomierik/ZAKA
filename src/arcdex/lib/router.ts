@@ -4,6 +4,7 @@
 // the SPA for every path; / itself is the landing page (src/main.tsx).
 
 import type { Page } from '../App'
+import { SENSE_LC, SENSE_POOL } from './sense'
 
 export function pageToPath(p: Page): string {
   switch (p.name) {
@@ -45,7 +46,10 @@ export function pathToPage(pathname: string, search: string): Page | null {
       return null
     case 'profile':     return b ? { name: 'trader', address: b } : null
     case 'clans':       return b ? { name: 'clan', slug: b } : { name: 'clans' }
-    case 'app':         return { name: 'terminal' }
+    case 'app':
+    case 'markets':     return { name: 'terminal' }
+    // Spot opens on $SENSE/USDC, as Binance's opens on its own pair.
+    case 'spot':        return { name: 'argus', address: SENSE_LC, pool: SENSE_POOL }
     case 'leaderboard': return { name: 'leaderboard' }
     case 'feed':        return { name: 'feed' }
     case 'alerts':      return { name: 'alerts' }

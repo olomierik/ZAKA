@@ -87,7 +87,7 @@ function OracleChart({ sym, live }: { sym: string; live: PerpsFeedPrice | undefi
   return (
     <PriceChart
       poolAddress={null} source={source} ticks={ticks} live={Boolean(live)}
-      liveTitle={T('Oracle prices, signed every 10 seconds')} symbol={`${sym}-USDC`}
+      liveTitle={T('Oracle prices, signed every 10 seconds')} symbol={`${sym}USDC`} height={430}
     />
   )
 }
@@ -160,6 +160,7 @@ export default function FuturesPage({ navigate }: { navigate: (p: Page) => void 
   const [sym, setSym] = useState('BTC')
   const [tab, setTab] = useState<Tab>('positions')
   const [listing, setListing] = useState(false)
+  const [picker, setPicker] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
 
@@ -202,155 +203,177 @@ export default function FuturesPage({ navigate }: { navigate: (p: Page) => void 
 
   const execFee = pool ? BigInt(pool.execFee) : 20_000n
   const perpsAddr = dep?.perps as Address | undefined
+  const faucet = () => { if (dep?.usdc) void run('faucet', async () => {
+    await sendTestnet(trader.kind, { address: dep.usdc as Address, abi: TEST_USDC_ABI, functionName: 'faucet', args: [] })
+    return T('1,000 test USDC added to your wallet.')
+  }) }
 
   return (
-    <div className="fx-page">
-      <div className="fx-top">
-        <div className="fx-title">
-          <h2 className="page-h">📊 {T('Perpetual futures')}</h2>
-          <span className="fx-net">{T('Arc testnet')}</span>
-        </div>
-        <button className="btn-ghost fx-list-btn" onClick={() => setListing(true)}>＋ {T('List your coin')}</button>
-      </div>
-
-      <div className="fx-banner">
-        <b>{live ? T('Futures are live on Arc testnet.') : T('Futures open on Arc testnet in a moment.')}</b>{' '}
-        {T('Trade with free test USDC: nothing here is real money. Mainnet follows an independent audit.')}
-      </div>
-
-      <div className="fx-markets" role="tablist">
+    <div className="fx-page fxb">
+      {/* Binance's ticker strip across the top: every pair, its 24h change */}
+      <div className="fxb-strip">
         {PAIRS.map(p => {
           const f = prices?.feeds[p.sym as keyof NonNullable<typeof prices>['feeds']]
-          const tradable = Boolean(marketOf(p.sym))
           return (
-            <button key={p.sym} role="tab" aria-selected={p.sym === sym} className={`fx-market${p.sym === sym ? ' active' : ''}`} onClick={() => setSym(p.sym)}>
-              <b>{p.sym}-USDC{!tradable && live ? <small className="fx-soon"> {T('soon')}</small> : null}</b>
-              <span>{fmt(f?.price, dpOf(f?.price ?? 1))}</span>
-              <span className={f?.change24h == null ? '' : f.change24h >= 0 ? 'fx-up' : 'fx-down'}>{pctTxt(f?.change24h)}</span>
+            <button key={p.sym} className={p.sym === sym ? 'active' : ''} onClick={() => setSym(p.sym)}>
+              <b>{p.sym}USDC</b> <span className={f?.change24h == null ? '' : f.change24h >= 0 ? 'fx-up' : 'fx-down'}>{pctTxt(f?.change24h)}</span>
             </button>
           )
         })}
       </div>
 
-      <div className="fx-stats">
-        <div className="fx-stat-main">
-          <span className="fx-pair">{sym}-USDC <small>{T('Perp')}</small></span>
-          <span className={`fx-last ${dir === 'up' ? 'fx-up' : dir === 'down' ? 'fx-down' : ''}`}>{fmt(mark || null, dp)}</span>
+      <div className="fxb-bar">
+        <div className="fxb-pick">
+          <button className="fxb-pair" onClick={() => setPicker(o => !o)} aria-expanded={picker}>
+            <span className="fxb-coin">{sym.slice(0, 1)}</span>
+            <b>{sym}USDC</b><small>{T('Perp')}</small><span className="fxb-caret">▾</span>
+          </button>
+          {picker && (
+            <div className="fxb-pick-pop" onMouseLeave={() => setPicker(false)}>
+              <div className="fxb-pick-head"><span>{T('Pair')}</span><span>{T('Price')}</span><span>{T('24h change')}</span></div>
+              {PAIRS.map(p => {
+                const f = prices?.feeds[p.sym as keyof NonNullable<typeof prices>['feeds']]
+                const tradable = Boolean(marketOf(p.sym))
+                return (
+                  <button key={p.sym} className={`fxb-pick-row${p.sym === sym ? ' active' : ''}`} onClick={() => { setSym(p.sym); setPicker(false) }}>
+                    <span><b>{p.sym}USDC</b> <small>{p.name}</small>{!tradable && live ? <small className="fx-soon"> · {T('soon')}</small> : null}</span>
+                    <span>{fmt(f?.price, dpOf(f?.price ?? 1))}</span>
+                    <span className={f?.change24h == null ? '' : f.change24h >= 0 ? 'fx-up' : 'fx-down'}>{pctTxt(f?.change24h)}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
-        <div><span>{T('24h change')}</span><b className={feed?.change24h == null ? '' : feed.change24h >= 0 ? 'fx-up' : 'fx-down'}>{pctTxt(feed?.change24h)}</b></div>
-        <div><span>{T('24h high')}</span><b>{fmt(feed?.high24h, dp)}</b></div>
-        <div><span>{T('24h low')}</span><b>{fmt(feed?.low24h, dp)}</b></div>
-        <div><span>{T('Open interest')}</span><b>{market ? `${money(usd(BigInt(market.oiLong)))} / ${money(usd(BigInt(market.oiShort)))}` : '—'}</b></div>
-        <div><span>{T('Max leverage')}</span><b>{market ? `${market.maxLeverage}×` : '10×'}</b></div>
+        <div className="fxb-last">
+          <b className={dir === 'up' ? 'fx-up' : dir === 'down' ? 'fx-down' : feed?.change24h != null && feed.change24h < 0 ? 'fx-down' : 'fx-up'}>{fmt(mark || null, dp)}</b>
+          <span>{T('Oracle')} {fmt(mark || null, dp)}</span>
+        </div>
+        <div className="fxb-stats">
+          <div><span>{T('24h change')}</span><b className={feed?.change24h == null ? '' : feed.change24h >= 0 ? 'fx-up' : 'fx-down'}>{pctTxt(feed?.change24h)}</b></div>
+          <div><span>{T('24h high')}</span><b>{fmt(feed?.high24h, dp)}</b></div>
+          <div><span>{T('24h low')}</span><b>{fmt(feed?.low24h, dp)}</b></div>
+          <div><span>{T('Open interest (long / short)')}</span><b>{market ? `${money(usd(BigInt(market.oiLong)))} / ${money(usd(BigInt(market.oiShort)))}` : '—'}</b></div>
+          <div><span>{T('Borrow fee')}</span><b>{market ? `${(Number(BigInt(market.borrowRatePerHour)) / 1e16).toFixed(4)}% / h` : '—'}</b></div>
+          <div><span>{T('Pool liquidity')}</span><b>{pool ? money(usd(BigInt(pool.poolAmount))) : '—'}</b></div>
+          <div><span>{T('Max leverage')}</span><b>{market ? `${market.maxLeverage}×` : '10×'}</b></div>
+        </div>
+        <span className="fx-net">{T('Arc testnet')}</span>
+        <button className="btn-ghost fx-list-btn" onClick={() => setListing(true)}>＋ {T('List your coin')}</button>
       </div>
 
-      <div className="fx-main">
-        <div className="fx-chart-card">
+      <div className="fxb-notice">
+        <b>{live ? T('Futures are live on Arc testnet.') : T('Futures open on Arc testnet in a moment.')}</b>{' '}
+        {T('Trade with free test USDC: nothing here is real money. Mainnet follows an independent audit.')}
+      </div>
+
+      <div className="fxb-grid">
+        <div className="fxb-chart spot-panel">
           <OracleChart sym={sym} live={feed} />
           <div className="fx-source">
             {prices?.ts ? T('Oracle prices from RedStone, signed every 10 seconds: the prices positions open, close and liquidate at.') : T('Oracle prices are loading…')}
           </div>
         </div>
 
-        <OrderPanel
-          sym={sym} market={market} mark={mark} live={live} pool={pool} execFee={execFee} view={view} trader={trader}
-          busy={busy} waiting={!dep ? T('Futures are being set up on Arc testnet. Trading opens in a moment.') : null}
-          onFaucet={() => dep?.usdc && run('faucet', async () => {
-            await sendTestnet(trader.kind, { address: dep.usdc as Address, abi: TEST_USDC_ABI, functionName: 'faucet', args: [] })
-            return T('1,000 test USDC added to your wallet.')
-          })}
-          onOpen={o => perpsAddr && market && run('open', async () => {
-            // The margin and two keeper fees: this order's and its close's later, so closing needs no approval.
-            await approveFor(o.collateral + 2n * execFee)
-            await sendTestnet(trader.kind, {
-              address: perpsAddr, abi: PERPS_ABI, functionName: 'requestOpen',
-              args: [market.id, o.isLong, o.collateral, o.size, o.acceptable, o.trigger, o.tp, o.sl],
-            })
-            setTab('orders')
-            return o.trigger ? T('Limit order placed: it fills when the oracle price reaches it.') : T('Order sent: it fills at the next oracle price, usually within 30 seconds.')
-          })}
-        />
-      </div>
-
-      {note && <div className={`fx-note ${note.ok ? 'ok' : 'bad'}`}>{note.ok ? '✓' : '⚠'} {note.text}</div>}
-
-      <div className="fx-panel">
-        <div className="fx-tabs">
-          {([
-            ['positions', `${T('Positions')}${view?.positions.length ? ` (${view.positions.length})` : ''}`],
-            ['orders', `${T('Orders')}${view?.requests.length ? ` (${view.requests.length})` : ''}`],
-            ['history', T('History')],
-            ['pool', T('Liquidity pool')],
-          ] as [Tab, string][]).map(([k, label]) => <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>{label}</button>)}
+        <div className="fxb-trades">
+          <TradesColumn trades={allTrades} sym={sym} />
         </div>
-        {!trader.address && tab !== 'pool' ? (
-          <div className="fx-empty">
-            {T('Connect a wallet or unlock your trading wallet to see your positions.')}{' '}
-            <button className="link-btn" onClick={openConnectModal}>{T('Connect wallet')}</button> · <button className="link-btn" onClick={openTradingWallet}>{T('Trading wallet')}</button>
+
+        <div className="fxb-order">
+          <OrderPanel
+            sym={sym} market={market} mark={mark} live={live} pool={pool} execFee={execFee} view={view} trader={trader}
+            busy={busy} waiting={!dep ? T('Futures are being set up on Arc testnet. Trading opens in a moment.') : null}
+            onFaucet={faucet}
+            onOpen={o => perpsAddr && market && run('open', async () => {
+              // The margin and two keeper fees: this order's and its close's later, so closing needs no approval.
+              await approveFor(o.collateral + 2n * execFee)
+              await sendTestnet(trader.kind, {
+                address: perpsAddr, abi: PERPS_ABI, functionName: 'requestOpen',
+                args: [market.id, o.isLong, o.collateral, o.size, o.acceptable, o.trigger, o.tp, o.sl],
+              })
+              setTab('orders')
+              return o.trigger ? T('Limit order placed: it fills when the oracle price reaches it.') : T('Order sent: it fills at the next oracle price, usually within 30 seconds.')
+            })}
+          />
+          <AccountBox view={view} signedIn={Boolean(trader.address)} busy={busy} onFaucet={faucet} />
+        </div>
+
+        <div className="fxb-bottom spot-panel">
+          {note && <div className={`fx-note ${note.ok ? 'ok' : 'bad'}`}>{note.ok ? '✓' : '⚠'} {note.text}</div>}
+          <div className="fx-tabs">
+            {([
+              ['positions', `${T('Positions')}${view?.positions.length ? ` (${view.positions.length})` : ''}`],
+              ['orders', `${T('Open orders')}${view?.requests.length ? ` (${view.requests.length})` : ''}`],
+              ['history', T('Trade history')],
+              ['pool', T('Liquidity pool')],
+            ] as [Tab, string][]).map(([k, label]) => <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>{label}</button>)}
           </div>
-        ) : tab === 'positions' ? (
-          <Positions
-            view={view} state={state} prices={prices} busy={busy}
-            onClose={(id, pos) => perpsAddr && run('close', async () => {
-              await approveFor(execFee)
-              const m = state?.markets[pos.marketId]
-              const p = m ? prices?.feeds[m.feed as keyof NonNullable<typeof prices>['feeds']]?.price : null
-              // Worst exit: 1% from the current price (0: any price, when there isn't one).
-              const worst = p ? toPrice(pos.isLong ? p * 0.99 : p * 1.01) : 0n
-              await sendTestnet(trader.kind, { address: perpsAddr, abi: PERPS_ABI, functionName: 'requestClose', args: [id, worst] })
-              setTab('orders')
-              return T('Close sent: it fills at the next oracle price.')
-            })}
-            onTpSl={(id, tp, sl) => perpsAddr && run('tpsl', async () => {
-              await sendTestnet(trader.kind, { address: perpsAddr, abi: PERPS_ABI, functionName: 'setTpSl', args: [id, tp, sl] })
-              return T('Take-profit and stop-loss saved.')
-            })}
-          />
-        ) : tab === 'orders' ? (
-          <Orders
-            view={view} state={state} timeout={pool?.requestTimeout ?? 120} busy={busy}
-            onCancel={id => perpsAddr && run('cancel', async () => {
-              await sendTestnet(trader.kind, { address: perpsAddr, abi: PERPS_ABI, functionName: 'cancelRequest', args: [id] })
-              return T('Cancelled and refunded.')
-            })}
-          />
-        ) : tab === 'history' ? (
-          <History trades={myTrades} />
-        ) : (
-          <PoolPanel
-            pool={pool} view={view} signedIn={Boolean(trader.address)} execFee={execFee} busy={busy}
-            onDeposit={amount => perpsAddr && run('deposit', async () => {
-              await approveFor(amount + execFee)
-              const supply = BigInt(pool?.totalSupply ?? '0')
-              const value = BigInt(pool?.poolAmount ?? '0')
-              const expected = supply > 0n && value > 0n ? (amount * supply) / value : amount
-              await sendTestnet(trader.kind, { address: perpsAddr, abi: PERPS_ABI, functionName: 'requestDeposit', args: [amount, (expected * 98n) / 100n] })
-              setTab('orders')
-              return T('Deposit sent: the keeper adds it to the pool within a minute.')
-            })}
-            onWithdraw={shares => perpsAddr && run('withdraw', async () => {
-              await approveFor(execFee)
-              const supply = BigInt(pool?.totalSupply ?? '0')
-              const value = BigInt(pool?.poolAmount ?? '0')
-              const expected = supply > 0n ? (shares * value) / supply : 0n
-              await sendTestnet(trader.kind, { address: perpsAddr, abi: PERPS_ABI, functionName: 'requestWithdraw', args: [shares, (expected * 95n) / 100n] })
-              setTab('orders')
-              return T('Withdrawal sent: the keeper pays it out within a minute.')
-            })}
-          />
-        )}
+          {!trader.address && tab !== 'pool' ? (
+            <div className="fx-empty">
+              {T('Connect a wallet or unlock your trading wallet to see your positions.')}{' '}
+              <button className="link-btn" onClick={openConnectModal}>{T('Connect wallet')}</button> · <button className="link-btn" onClick={openTradingWallet}>{T('Trading wallet')}</button>
+            </div>
+          ) : tab === 'positions' ? (
+            <Positions
+              view={view} state={state} prices={prices} busy={busy}
+              onClose={(id, pos) => perpsAddr && run('close', async () => {
+                await approveFor(execFee)
+                const m = state?.markets[pos.marketId]
+                const p = m ? prices?.feeds[m.feed as keyof NonNullable<typeof prices>['feeds']]?.price : null
+                // Worst exit: 1% from the current price (0: any price, when there isn't one).
+                const worst = p ? toPrice(pos.isLong ? p * 0.99 : p * 1.01) : 0n
+                await sendTestnet(trader.kind, { address: perpsAddr, abi: PERPS_ABI, functionName: 'requestClose', args: [id, worst] })
+                setTab('orders')
+                return T('Close sent: it fills at the next oracle price.')
+              })}
+              onTpSl={(id, tp, sl) => perpsAddr && run('tpsl', async () => {
+                await sendTestnet(trader.kind, { address: perpsAddr, abi: PERPS_ABI, functionName: 'setTpSl', args: [id, tp, sl] })
+                return T('Take-profit and stop-loss saved.')
+              })}
+            />
+          ) : tab === 'orders' ? (
+            <Orders
+              view={view} state={state} timeout={pool?.requestTimeout ?? 120} busy={busy}
+              onCancel={id => perpsAddr && run('cancel', async () => {
+                await sendTestnet(trader.kind, { address: perpsAddr, abi: PERPS_ABI, functionName: 'cancelRequest', args: [id] })
+                return T('Cancelled and refunded.')
+              })}
+            />
+          ) : tab === 'history' ? (
+            <History trades={myTrades} />
+          ) : (
+            <PoolPanel
+              pool={pool} view={view} signedIn={Boolean(trader.address)} execFee={execFee} busy={busy}
+              onDeposit={amount => perpsAddr && run('deposit', async () => {
+                await approveFor(amount + execFee)
+                const supply = BigInt(pool?.totalSupply ?? '0')
+                const value = BigInt(pool?.poolAmount ?? '0')
+                const expected = supply > 0n && value > 0n ? (amount * supply) / value : amount
+                await sendTestnet(trader.kind, { address: perpsAddr, abi: PERPS_ABI, functionName: 'requestDeposit', args: [amount, (expected * 98n) / 100n] })
+                setTab('orders')
+                return T('Deposit sent: the keeper adds it to the pool within a minute.')
+              })}
+              onWithdraw={shares => perpsAddr && run('withdraw', async () => {
+                await approveFor(execFee)
+                const supply = BigInt(pool?.totalSupply ?? '0')
+                const value = BigInt(pool?.poolAmount ?? '0')
+                const expected = supply > 0n ? (shares * value) / supply : 0n
+                await sendTestnet(trader.kind, { address: perpsAddr, abi: PERPS_ABI, functionName: 'requestWithdraw', args: [shares, (expected * 95n) / 100n] })
+                setTab('orders')
+                return T('Withdrawal sent: the keeper pays it out within a minute.')
+              })}
+            />
+          )}
+        </div>
       </div>
 
-      <LiveTrades trades={allTrades} />
-
-      <div className="soon-points">
+      <div className="soon-points fxb-points">
         {([
           [T('USDC in, USDC out'), T('Margin, profits and fees are all in USDC, the currency Arc runs on.')],
           [T('Testnet first'), T('Futures run on Arc testnet first, then on mainnet after an independent audit.')],
           [T('Fees fund liquidity'), T('70% of ARCSENSE’s fees go to liquidity pools, and 30% buy back $SENSE and burn it.')],
         ] as [string, string][]).map(([title, body]) => <div key={title} className="soon-point"><b>{title}</b><span>{body}</span></div>)}
       </div>
-      <div className="soon-cta"><button className="btn-ghost" onClick={() => navigate({ name: 'terminal' })}>{T('Trade spot now')} →</button></div>
 
       {listing && <ListingModal onClose={() => setListing(false)} />}
     </div>
@@ -376,10 +399,10 @@ function OrderPanel(props: {
   onOpen: (o: OpenOrder) => void
 }) {
   const { sym, market, mark, live, pool, execFee, view, trader, busy, waiting } = props
-  const [side, setSide] = useState<'long' | 'short'>('long')
   const [kind, setKind] = useState<'market' | 'limit'>('market')
   const [margin, setMargin] = useState('100')
   const [leverage, setLeverage] = useState(5)
+  const [levOpen, setLevOpen] = useState(false)
   const [limitPrice, setLimitPrice] = useState('')
   const [slip, setSlip] = useState(1)
   const [showTpSl, setShowTpSl] = useState(false)
@@ -390,7 +413,6 @@ function OrderPanel(props: {
   const maxLev = market?.maxLeverage ?? 10
   useEffect(() => { if (leverage > maxLev) setLeverage(maxLev) }, [maxLev, leverage])
   const dp = dpOf(mark || 1)
-  const isLong = side === 'long'
   const entry = kind === 'limit' && +limitPrice > 0 ? +limitPrice : mark
   const m = Math.max(0, +margin || 0)
   const size = m * leverage
@@ -399,19 +421,23 @@ function OrderPanel(props: {
   const liqBps = market?.liquidationBps ?? 100
   const collateral = m - openFee
   // Liquidated once collateral + P&L < (maintenance + closing fee) of size (SensePerps._close).
-  const liq = entry && size ? (isLong ? entry * (1 - (collateral - size * (liqBps + closeFeeBps) / 10_000) / size) : entry * (1 + (collateral - size * (liqBps + closeFeeBps) / 10_000) / size)) : null
+  const liqOf = (isLong: boolean) => entry && size ? entry * (isLong ? 1 - (collateral - size * (liqBps + closeFeeBps) / 10_000) / size : 1 + (collateral - size * (liqBps + closeFeeBps) / 10_000) / size) : null
   const minMargin = pool ? usd(BigInt(pool.minCollateral)) : 2
   const need = toUsdc(m) + 2n * execFee
   const gasOk = (view?.gas ?? 0n) > 2n * 10n ** 15n // ~0.002 testnet USDC
   const usdcOk = view ? view.usdc >= need : false
   const faucetReady = !view || !view.lastFaucetAt || nowSec() >= view.lastFaucetAt + 86_400
+  const balance = view ? usd(view.usdc) : 0
+  // The margin as a share of what the wallet holds, after the two keeper fees (Binance's size slider).
+  const spendable = Math.max(0, balance - 2 * usd(execFee))
+  const share = spendable > 0 ? Math.min(100, Math.round((m / spendable) * 100)) : 0
+  const setShare = (pct: number) => setMargin(spendable > 0 ? String(Math.floor(spendable * pct) / 100) : margin)
 
   const tpN = +tp, slN = +sl
-  const tpBad = tp !== '' && entry > 0 && (isLong ? tpN <= entry : tpN >= entry)
-  const slBad = sl !== '' && entry > 0 && (isLong ? slN >= entry : slN <= entry)
-  const ready = live && market?.enabled && entry > 0 && m >= minMargin && leverage >= 1 && !tpBad && !slBad && (kind === 'market' || +limitPrice > 0)
+  const badFor = (isLong: boolean) => (tp !== '' && entry > 0 && (isLong ? tpN <= entry : tpN >= entry)) || (sl !== '' && entry > 0 && (isLong ? slN >= entry : slN <= entry))
+  const ready = live && market?.enabled && entry > 0 && m >= minMargin && leverage >= 1 && (kind === 'market' || +limitPrice > 0)
 
-  function submit() {
+  function submit(isLong: boolean) {
     const trigger = kind === 'limit' ? toPrice(+limitPrice) : 0n
     const base = kind === 'limit' ? +limitPrice : mark
     const acceptable = toPrice(isLong ? base * (1 + slip / 100) : base * (1 - slip / 100))
@@ -421,69 +447,145 @@ function OrderPanel(props: {
     })
   }
 
-  let action: JSX.Element
-  if (waiting) action = <button className="fx-go" disabled>⏳ {waiting}</button>
-  else if (!market) action = <button className="fx-go" disabled>{T('This pair opens for trading soon')}</button>
-  else if (!trader.address) action = <button className="fx-go" onClick={openConnectModal}>{T('Connect wallet to trade')}</button>
-  else if (view && !gasOk) action = (
+  // What's missing before an order can go: shown in place of the Long / Short buttons.
+  let blocker: JSX.Element | null = null
+  if (waiting) blocker = <button className="fx-go" disabled>⏳ {waiting}</button>
+  else if (!market) blocker = <button className="fx-go" disabled>{T('This pair opens for trading soon')}</button>
+  else if (!trader.address) blocker = <button className="fx-go fx-go-primary" onClick={openConnectModal}>{T('Connect wallet to trade')}</button>
+  else if (view && !gasOk) blocker = (
     <a className="fx-go fx-go-link" href={CIRCLE_FAUCET} target="_blank" rel="noreferrer">⛽ {T('Get testnet USDC for gas (Circle faucet)')}</a>
   )
-  else if (view && !usdcOk) action = (
-    <button className="fx-go" disabled={!faucetReady || busy !== null} onClick={props.onFaucet}>
+  else if (view && !usdcOk) blocker = (
+    <button className="fx-go fx-go-primary" disabled={!faucetReady || busy !== null} onClick={props.onFaucet}>
       {busy === 'faucet' ? T('Getting test USDC…') : faucetReady ? `🚰 ${T('Get 1,000 test USDC')}` : T('Faucet used today: come back tomorrow')}
-    </button>
-  )
-  else action = (
-    <button className={`fx-go ${isLong ? 'long' : 'short'}`} disabled={!ready || busy !== null} onClick={submit}>
-      {busy === 'open' ? T('Sending…') : `${isLong ? T('Long') : T('Short')} ${sym} ${leverage}×`}
     </button>
   )
 
   return (
     <div className="fx-order">
-      <div className="fx-side">
-        <button className={isLong ? 'long active' : 'long'} onClick={() => setSide('long')}>{T('Long')}</button>
-        <button className={!isLong ? 'short active' : 'short'} onClick={() => setSide('short')}>{T('Short')}</button>
+      <div className="fxb-mode">
+        <span className="fxb-chip" title={T('Each position has its own margin: a loss can never take more than that position’s margin.')}>{T('Isolated')}</span>
+        <button className="fxb-chip fxb-chip-btn" onClick={() => setLevOpen(true)}>{leverage}×</button>
       </div>
-      <div className="fx-kind">
-        <button className={kind === 'market' ? 'active' : ''} onClick={() => setKind('market')}>{T('Market')}</button>
+      <div className="fxb-kinds">
         <button className={kind === 'limit' ? 'active' : ''} onClick={() => setKind('limit')}>{T('Limit')}</button>
+        <button className={kind === 'market' ? 'active' : ''} onClick={() => setKind('market')}>{T('Market')}</button>
       </div>
-      {kind === 'limit' && (
-        <label className="field-label">{T('Limit price')}
-          <input className="field" inputMode="decimal" value={limitPrice} placeholder={fmt(mark || null, dp)} onChange={e => setLimitPrice(e.target.value.replace(/[^0-9.]/g, ''))} />
-        </label>
+      <div className="fxb-avbl"><span>{T('Avbl')}</span><b>{view ? `${fmt(balance, 2)} tUSDC` : '—'}</b></div>
+      {kind === 'limit' ? (
+        <div className="fxb-input">
+          <span>{T('Price')}</span>
+          <input inputMode="decimal" value={limitPrice} placeholder={fmt(mark || null, dp)} onChange={e => setLimitPrice(e.target.value.replace(/[^0-9.]/g, ''))} />
+          <button className="fxb-last-btn" onClick={() => mark && setLimitPrice(String(+mark.toFixed(dp)))}>{T('Last')}</button>
+          <em>USDC</em>
+        </div>
+      ) : (
+        <div className="fxb-input fxb-input-ro"><span>{T('Price')}</span><input readOnly value={T('Market price')} /><em>USDC</em></div>
       )}
-      <label className="field-label">
-        <span style={{ display: 'flex', justifyContent: 'space-between' }}>{T('Margin (test USDC)')}{view && <small className="fx-bal">{T('Balance')}: {fmt(usd(view.usdc), 2)}</small>}</span>
-        <input className="field" inputMode="decimal" value={margin} onChange={e => setMargin(e.target.value.replace(/[^0-9.]/g, ''))} />
-      </label>
-      <div className="fx-presets">{[10, 50, 100, 500].map(v => <button key={v} onClick={() => setMargin(String(v))}>${v}</button>)}</div>
-      <label className="field-label">{T('Leverage')} <b className="fx-lev">{leverage}×</b>
-        <input type="range" min={1} max={maxLev} step={1} value={leverage} onChange={e => setLeverage(+e.target.value)} />
-      </label>
-      <div className="fx-ticks">{[1, 2, 5, 10].filter(v => v <= maxLev).map(v => <button key={v} className={v === leverage ? 'active' : ''} onClick={() => setLeverage(v)}>{v}×</button>)}</div>
-
-      <button className="link-btn fx-tpsl-toggle" onClick={() => setShowTpSl(x => !x)}>{showTpSl ? '−' : '+'} {T('Take-profit / stop-loss')}</button>
+      <div className="fxb-input">
+        <span>{T('Margin')}</span>
+        <input inputMode="decimal" value={margin} onChange={e => setMargin(e.target.value.replace(/[^0-9.]/g, ''))} />
+        <em>USDC</em>
+      </div>
+      <div className="fxb-slider">
+        <input type="range" min={0} max={100} step={1} value={share} onChange={e => setShare(+e.target.value)} disabled={!view || spendable <= 0} aria-label={T('Share of balance')} />
+        <div className="fxb-ticks">{[0, 25, 50, 75, 100].map(v => <button key={v} className={share >= v ? 'on' : ''} onClick={() => setShare(v)} disabled={!view || spendable <= 0}>{v}%</button>)}</div>
+      </div>
+      <label className="fxb-check"><input type="checkbox" checked={showTpSl} onChange={e => setShowTpSl(e.target.checked)} /> {T('TP/SL')}</label>
       {showTpSl && (
         <div className="fx-tpsl">
-          <label className="field-label">{T('Take-profit price')}<input className="field" inputMode="decimal" value={tp} onChange={e => setTp(e.target.value.replace(/[^0-9.]/g, ''))} /></label>
-          <label className="field-label">{T('Stop-loss price')}<input className="field" inputMode="decimal" value={sl} onChange={e => setSl(e.target.value.replace(/[^0-9.]/g, ''))} /></label>
-          {(tpBad || slBad) && <div className="fx-hint-bad">{isLong ? T('For a long, the take-profit is above the entry and the stop-loss below it.') : T('For a short, the take-profit is below the entry and the stop-loss above it.')}</div>}
+          <div className="fxb-input"><span>{T('Take-profit')}</span><input inputMode="decimal" value={tp} onChange={e => setTp(e.target.value.replace(/[^0-9.]/g, ''))} /></div>
+          <div className="fxb-input"><span>{T('Stop-loss')}</span><input inputMode="decimal" value={sl} onChange={e => setSl(e.target.value.replace(/[^0-9.]/g, ''))} /></div>
+          <div className="fx-fine" style={{ gridColumn: '1 / -1' }}>{T('A long takes profit above the entry and stops below it; a short, the other way round.')}</div>
         </div>
       )}
+
+      {blocker ?? (
+        <div className="fxb-buttons">
+          <button className="fx-go long" disabled={!ready || busy !== null || badFor(true)} onClick={() => submit(true)}>{busy === 'open' ? T('Sending…') : T('Buy / Long')}</button>
+          <button className="fx-go short" disabled={!ready || busy !== null || badFor(false)} onClick={() => submit(false)}>{busy === 'open' ? T('Sending…') : T('Sell / Short')}</button>
+        </div>
+      )}
+      <div className="fxb-sides">
+        <div><span>{T('Liq. price')}</span><b>{fmt(liqOf(true), dp)}</b></div>
+        <div><span>{T('Liq. price')}</span><b>{fmt(liqOf(false), dp)}</b></div>
+        <div><span>{T('Cost')}</span><b>{money(m + usd(2n * execFee))}</b></div>
+        <div><span>{T('Cost')}</span><b>{money(m + usd(2n * execFee))}</b></div>
+      </div>
 
       <div className="fx-summary">
         <div><span>{kind === 'limit' ? T('Limit price') : T('Entry price')}</span><b>{fmt(entry || null, dp)}{kind === 'market' && <small> ±{slip}%</small>}</b></div>
         <div><span>{T('Position size')}</span><b>{size ? money(size) : '—'}{entry && size ? <small> · {fmt(size / entry, size / entry >= 1 ? 4 : 6)} {sym}</small> : null}</b></div>
         <div><span>{T('Opening fee')}</span><b>{money(openFee)}</b></div>
-        <div><span>{T('Est. liquidation')}</span><b className="fx-down">{fmt(liq, dp)}</b></div>
-        <div><span>{T('Borrow fee')}</span><b>{market ? `${(Number(BigInt(market.borrowRatePerHour)) / 1e16).toFixed(4)}% / h` : '—'}</b></div>
-        <div><span>{T('Keeper fee')}</span><b>{money(usd(execFee))}</b></div>
+        <div><span>{T('Keeper fee')}</span><b>{money(usd(execFee))} × 2</b></div>
       </div>
       <div className="fx-slip">{T('Max price move')}: {[0.5, 1, 2].map(v => <button key={v} className={v === slip ? 'active' : ''} onClick={() => setSlip(v)}>{v}%</button>)}</div>
-      {action}
       <div className="fx-fine">{T('Your order fills at the first oracle price signed after it reaches the chain, usually within 30 seconds. If it would fill beyond your max price move, it’s cancelled and refunded.')}</div>
+
+      {levOpen && (
+        <div className="modal-back" onClick={() => setLevOpen(false)}>
+          <div className="modal-card fxb-lev" onClick={e => e.stopPropagation()}>
+            <div className="fxb-lev-h"><b>{T('Adjust leverage')}</b><button className="fxb-x" onClick={() => setLevOpen(false)} aria-label={T('Close')}>✕</button></div>
+            <div className="fxb-lev-val"><button onClick={() => setLeverage(l => Math.max(1, l - 1))}>−</button><b>{leverage}×</b><button onClick={() => setLeverage(l => Math.min(maxLev, l + 1))}>＋</button></div>
+            <input type="range" min={1} max={maxLev} step={1} value={leverage} onChange={e => setLeverage(+e.target.value)} />
+            <div className="fxb-ticks">{[1, 2, 3, 5, 10].filter(v => v <= maxLev).map(v => <button key={v} className={leverage === v ? 'on' : ''} onClick={() => setLeverage(v)}>{v}×</button>)}</div>
+            <p className="fx-fine">{T('Higher leverage means a bigger position for the same margin, and a liquidation price closer to the entry.')}</p>
+            <button className="btn-primary" onClick={() => setLevOpen(false)}>{T('Confirm')}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Binance's account box under the order form: the test balance, gas, and the faucets. */
+function AccountBox({ view, signedIn, busy, onFaucet }: { view: ReturnType<typeof useAccountPerps>['view']; signedIn: boolean; busy: string | null; onFaucet: () => void }) {
+  const faucetReady = !view || !view.lastFaucetAt || nowSec() >= view.lastFaucetAt + 86_400
+  return (
+    <div className="spot-panel fxb-account">
+      <div className="spot-panel-h"><span>{T('Account')}</span></div>
+      {!signedIn ? (
+        <div className="fx-empty"><button className="link-btn" onClick={openConnectModal}>{T('Connect wallet')}</button></div>
+      ) : (
+        <>
+          <div className="fxb-acct-row"><span>{T('Margin balance')}</span><b>{view ? `${fmt(usd(view.usdc), 2)} tUSDC` : '…'}</b></div>
+          <div className="fxb-acct-row"><span>{T('Open positions')}</span><b>{view ? view.positions.length : '…'}</b></div>
+          <div className="fxb-acct-row"><span>{T('Gas (testnet USDC)')}</span><b>{view ? fmt(Number(view.gas) / 1e18, 4) : '…'}</b></div>
+          <div className="fxb-acct-btns">
+            <button className="btn-ghost" disabled={!faucetReady || busy !== null} onClick={onFaucet}>{busy === 'faucet' ? T('Getting test USDC…') : `🚰 ${T('Get 1,000 test USDC')}`}</button>
+            <a className="btn-ghost" href={CIRCLE_FAUCET} target="_blank" rel="noreferrer">⛽ {T('Gas faucet')}</a>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+/** Everyone's latest futures trades, as Binance's trades column: price, size and time (this pair first). */
+function TradesColumn({ trades, sym }: { trades: PerpsTradeView[] | null; sym: string }) {
+  const here = (trades ?? []).filter(t => t.price && (t.kind === 'opened' || t.kind === 'closed' || t.kind === 'liquidated' || t.kind === 'takeProfit' || t.kind === 'stopLoss'))
+  const mine = here.filter(t => t.market === sym)
+  const list = (mine.length ? mine : here).slice(0, 40)
+  return (
+    <div className="spot-panel spot-trades">
+      <div className="spot-panel-h"><span>{T('Trades')}</span>{!mine.length && here.length > 0 && <small className="fx-fine">{T('all pairs')}</small>}</div>
+      <div className="spot-trades-head fxb-trades-head"><span>{T('Price')}</span><span>{T('Size (USDC)')}</span><span>{T('Time')}</span></div>
+      <div className="spot-trades-list">
+        {trades === null && <div className="spot-empty">{T('Loading…')}</div>}
+        {trades !== null && list.length === 0 && <div className="spot-empty">{T('No futures trades yet: yours can be the first.')}</div>}
+        {list.map(t => {
+          const p = px(BigInt(t.price!))
+          // A long opening or a short closing buys; the rest sell.
+          const buys = t.kind === 'opened' ? t.isLong : !t.isLong
+          return (
+            <div key={`${t.tx}:${t.kind}:${t.positionId}`} className="spot-trade" title={`${T(KIND_LABEL[t.kind])} ${t.market ?? ''} ${t.isLong ? T('Long') : T('Short')} · ${shortAddr(t.trader)}`}>
+              <span className={buys ? 'up-txt' : 'down-txt'}>{fmt(p, dpOf(p))}</span>
+              <span>{t.size ? fmt(usd(BigInt(t.size)), 2) : '—'}</span>
+              <span className="spot-time">{new Date(t.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -663,28 +765,6 @@ function PoolPanel({ pool, view, signedIn, execFee, busy, onDeposit, onWithdraw 
       ) : (
         <div className="fx-empty"><button className="link-btn" onClick={openConnectModal}>{T('Connect wallet')}</button> {T('to add liquidity.')}</div>
       )}
-    </div>
-  )
-}
-
-/** The latest opens and closes by everyone: futures activity as it happens. */
-function LiveTrades({ trades }: { trades: PerpsTradeView[] | null }) {
-  if (!trades?.length) return null
-  return (
-    <div className="fx-live">
-      <div className="fx-live-h"><span className="fx-dot" /> {T('Latest futures trades')}</div>
-      <div className="fx-live-list">
-        {trades.slice(0, 12).map(t => {
-          const pnl = t.pnl ? usd(BigInt(t.pnl)) : null
-          return (
-            <div key={`${t.tx}:${t.kind}:${t.positionId}`} className="fx-live-row">
-              <span>{shortAddr(t.trader)}</span>
-              <span>{T(KIND_LABEL[t.kind])} {t.market} {t.isLong == null ? '' : t.isLong ? T('Long') : T('Short')}</span>
-              <span className={pnl == null ? '' : pnl >= 0 ? 'fx-up' : 'fx-down'}>{pnl == null ? (t.size ? money(usd(BigInt(t.size))) : '') : signed(pnl)}</span>
-            </div>
-          )
-        })}
-      </div>
     </div>
   )
 }

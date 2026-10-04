@@ -1,4 +1,4 @@
-// Phones: a native-style bottom tab bar (Spot · Futures · Swap · Portfolio ·
+// Phones: a native-style bottom tab bar (Markets · Futures · Trade · Portfolio ·
 // More) instead of a hamburger drawer. "More" opens a sheet with every other
 // page, plus the lists panel (watchlist, trending, most held…).
 // Hidden on coin pages, which have their own sticky Buy/Sell bar.
@@ -7,16 +7,20 @@ import { useState } from 'react'
 import Sheet, { afterSheetClose } from './Sheet'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
 import type { Page } from '../App'
+import { SENSE_PAGE } from './NavBar'
 import { t as T, N_ } from '../lib/i18n'
 
-const TABS: { page: Page['name']; icon: string; label: string; to: Page }[] = [
-  { page: 'terminal', icon: '◈', label: N_('Spot'), to: { name: 'terminal' } },
+// Binance's app tabs: Markets, Futures, Trade in the middle ($SENSE's trading screen, as Binance's opens
+// on its own pair), Portfolio, More.
+const TABS: { page: Page['name']; icon: string; label: string; to: Page; trade?: boolean }[] = [
+  { page: 'terminal', icon: '◈', label: N_('Markets'), to: { name: 'terminal' } },
   { page: 'futures', icon: '📊', label: N_('Futures'), to: { name: 'futures' } },
-  { page: 'swap', icon: '⇄', label: N_('Swap'), to: { name: 'swap' } },
+  { page: 'argus', icon: '⇄', label: N_('Trade'), to: SENSE_PAGE, trade: true },
   { page: 'portfolio', icon: '▤', label: N_('Portfolio'), to: { name: 'portfolio' } },
 ]
 
 const MORE: { icon: string; label: string; to: Page }[] = [
+  { icon: '⇄', label: N_('Swap'), to: { name: 'swap' } },
   { icon: '◉', label: N_('Feed'), to: { name: 'feed' } },
   { icon: '◎', label: N_('Bridge'), to: { name: 'bridge' } },
   { icon: '♛', label: N_('Leaderboard'), to: { name: 'leaderboard' } },
@@ -40,7 +44,7 @@ export default function MobileTabBar({ page, navigate, onOpenLists }: Props) {
     <>
       <nav className="tabbar" aria-label={T("Main")}>
         {TABS.map(t => (
-          <button key={t.page} className={`tabbar-item${t.page === 'swap' ? ' tabbar-trade' : ''}${page.name === t.page ? ' active' : ''}`} onClick={() => go(t.to)}>
+          <button key={t.page} className={`tabbar-item${t.trade ? ' tabbar-trade' : ''}${page.name === t.page ? ' active' : ''}`} onClick={() => go(t.to)}>
             <span className="tabbar-icon">{t.icon}</span>
             <span className="tabbar-label">{T(t.label)}</span>
           </button>

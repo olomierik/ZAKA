@@ -93,6 +93,8 @@ interface Props {
   supply?: number | null // tokens in circulation, for the Price ⇄ MCap switch
   symbol?: string
   onTraderClick?: (address: string) => void
+  /** The chart's height on desktop (default 340). */
+  height?: number
 }
 
 /** fx/fy: where a pop flies to (px from where it starts) as it fades. */
@@ -124,7 +126,7 @@ const SCALE_MODES = { normal: PriceScaleMode.Normal, log: PriceScaleMode.Logarit
 // Price axis: 2 decimals for $1+ coins, 4 significant digits for micro-caps.
 const fmtPrice = (v: number) => v >= 1000 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v === 0 ? '0' : v.toPrecision(4)
 
-export default function PriceChart({ poolAddress, source, liveTitle, ticks, live, engineToken, trades, thesisMarks, friends, supply, symbol, onTraderClick }: Props) {
+export default function PriceChart({ poolAddress, source, liveTitle, ticks, live, engineToken, trades, thesisMarks, friends, supply, symbol, onTraderClick, height }: Props) {
   const mobile = useIsMobile()
   const engineStatus = useEngineStatus()
   const engineMode = engineEnabled && !!engineToken && engineStatus === 'open' && !source
@@ -382,13 +384,13 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
   useEffect(() => {
     if (!containerRef.current) return
     const chart = createChart(containerRef.current, {
-      layout: { background: { color: '#0b1628' }, textColor: '#64748b' },
-      grid: { vertLines: { color: '#1e3050' }, horzLines: { color: '#1e3050' } },
+      layout: { background: { color: '#181a20' }, textColor: '#848e9c', fontFamily: "'IBM Plex Sans', system-ui, sans-serif" },
+      grid: { vertLines: { color: '#22262d' }, horzLines: { color: '#22262d' } },
       crosshair: {
-        vertLine: { color: '#3b82f6', labelBackgroundColor: '#3b82f6' },
-        horzLine: { color: '#3b82f6', labelBackgroundColor: '#3b82f6' },
+        vertLine: { color: '#5e6673', labelBackgroundColor: '#474d57' },
+        horzLine: { color: '#5e6673', labelBackgroundColor: '#474d57' },
       },
-      rightPriceScale: { borderColor: '#1e3050' },
+      rightPriceScale: { borderColor: '#2b3139' },
       // Every candle fits the window, the first at the left edge, and the
       // line stops short of the price axis (as on fomo): its last point has
       // room on the right. New bars walk into that room instead of shifting
@@ -397,7 +399,7 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
       // (No fixLeftEdge: with it, lightweight-charts 5.2 checks the left edge
       // against the previous last bar while adding a new one, and slides the
       // whole chart a bar anyway — the oldest bar drops off the left.)
-      timeScale: { borderColor: '#1e3050', timeVisible: true, secondsVisible: true, rightOffsetPixels: gapRef.current, shiftVisibleRangeOnNewBar: false, lockVisibleTimeRangeOnResize: true },
+      timeScale: { borderColor: '#2b3139', timeVisible: true, secondsVisible: true, rightOffsetPixels: gapRef.current, shiftVisibleRangeOnNewBar: false, lockVisibleTimeRangeOnResize: true },
       // The page has to scroll past the chart: a wheel or a vertical swipe
       // over it scrolls the page. Zoom with a pinch, a drag on the time
       // axis, or the wheel in fullscreen.
@@ -568,7 +570,7 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
       const vol = volRef.current
       if (vol) for (let i = n - 1; i < candles.length; i++) {
         const c = candles[i]
-        vol.update({ time: c.time as never, value: c.volume, color: c.close >= c.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)' })
+        vol.update({ time: c.time as never, value: c.volume, color: c.close >= c.open ? 'rgba(14,203,129,0.35)' : 'rgba(246,70,93,0.35)' })
       }
     } else {
       stopGlide()
@@ -616,7 +618,7 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
     if (ind.has('volume') && hasVolume) {
       const v = chart.addSeries(HistogramSeries, { priceScaleId: 'vol', priceFormat: { type: 'volume' }, priceLineVisible: false, lastValueVisible: false })
       chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } })
-      v.setData(candles.map(c => ({ time: c.time as never, value: c.volume, color: c.close >= c.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)' })))
+      v.setData(candles.map(c => ({ time: c.time as never, value: c.volume, color: c.close >= c.open ? 'rgba(14,203,129,0.35)' : 'rgba(246,70,93,0.35)' })))
       indSeries.current.push(v as ISeriesApi<SeriesType>)
       volRef.current = v
     }
@@ -715,7 +717,7 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
   )
 
   return (
-    <div ref={wrapRef} className="price-chart" style={{ background: isFull ? '#0b1628' : undefined, display: 'flex', flexDirection: 'column', height: isFull ? '100%' : undefined, padding: isFull ? 16 : 0 }}>
+    <div ref={wrapRef} className="price-chart" style={{ background: isFull ? '#181a20' : undefined, display: 'flex', flexDirection: 'column', height: isFull ? '100%' : undefined, padding: isFull ? 16 : 0 }}>
     <div className="chart-controls" style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
       {RESOLUTIONS.filter(r => (source?.resolutions ? source.resolutions.includes(r.value) : (hasTicks || !onChainOnly(r.value)) && (r.value !== '5s' || engineMode))).map(r => (
         <button key={r.value} onClick={() => setRes(r.value)} style={pill(res === r.value)}>{r.label}</button>
@@ -748,7 +750,7 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
       <button onClick={fullscreen} style={pill(false)} title={T("Fullscreen")}>⛶</button>
     </div>
     <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', flex: 1 }}>
-      <div ref={containerRef} style={{ height: isFull ? 'calc(100vh - 150px)' : (mobile ? 300 : 340) + (withRsi ? RSI_PANE : 0) }} />
+      <div ref={containerRef} style={{ height: isFull ? 'calc(100vh - 150px)' : (mobile ? 300 : height ?? 340) + (withRsi ? RSI_PANE : 0) }} />
       {/* fomo-style legend: coin · timeframe, then the value under the crosshair and its change. */}
       <div className="chart-legend">
         {symbol && <b>{symbol}</b>}
@@ -768,9 +770,9 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
         </div>
       )}
       {!candles.length && (
-        <div style={{ position: 'absolute', inset: 0, height: 340,
+        <div style={{ position: 'absolute', inset: 0, height: mobile ? 300 : height ?? 340,
           display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 16,
-          background: 'rgba(11,22,40,0.7)', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{loading ? T("Loading chart…") : onChainOnly(res) ? T("No trades in the last few hours — try a longer timeframe.") : T("No chart data yet.")}</div>
+          background: 'rgba(24,26,32,0.75)', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{loading ? T("Loading chart…") : onChainOnly(res) ? T("No trades in the last few hours — try a longer timeframe.") : T("No chart data yet.")}</div>
       )}
     </div>
     <div className="chart-footer">

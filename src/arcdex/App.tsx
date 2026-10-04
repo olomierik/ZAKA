@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
-import NavBar from './components/NavBar'
+import NavBar, { SENSE_PAGE } from './components/NavBar'
 import Terminal from './pages/Terminal'
 // Everything but the Terminal loads on first visit to that page — they
 // pull in heavy libraries (Circle Bridge Kit, charting, launchpad flows)
@@ -25,7 +25,7 @@ const DeployCurveRouter = lazy(() => import('./pages/DeployCurveRouter'))
 const SignalsPage     = lazy(() => import('./pages/SignalsPage'))
 import TradingWalletPanel from './components/TradingWalletPanel'
 import DiscoveryPanel from './components/DiscoveryPanel'
-import { DiscoverClans, FollowTopTraders, TickerBar } from './components/Rails'
+import { TickerBar } from './components/Rails'
 import { captureReferral } from './lib/referral'
 import { loadLaunchpadCoins } from './lib/launchpadCoins'
 import { pageToPath, pathToPage } from './lib/router'
@@ -72,7 +72,7 @@ export type Page =
 const fromUrl = (): Page => pathToPage(window.location.pathname, window.location.search) ?? { name: 'terminal' }
 
 const MOBILE_NAV: [Page, string, string][] = [
-  [{ name: 'terminal' }, '◈', N_('Spot')], [{ name: 'futures' }, '📊', N_('Futures')], [{ name: 'swap' }, '⇄', N_('Swap')],
+  [{ name: 'terminal' }, '◈', N_('Markets')], [SENSE_PAGE, '◆', N_('Spot')], [{ name: 'futures' }, '📊', N_('Futures')], [{ name: 'swap' }, '⇄', N_('Swap')],
   [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'portfolio' }, '▤', N_('Portfolio')], [{ name: 'feed' }, '◉', N_('Feed')],
   [{ name: 'leaderboard' }, '♛', N_('Leaderboard')], [{ name: 'clans' }, '⚑', N_('Clans')], [{ name: 'rewards' }, '✦', N_('Rewards')],
   [{ name: 'signals' }, '⚡', N_('Autotrade')], [{ name: 'alerts' }, '🔔', N_('Alerts')], [{ name: 'transfers' }, '⇅', N_('Transfers')],
@@ -138,15 +138,18 @@ export default function App() {
 
       <div className="app-body" key={lang}>
         {navOpen && <div className="sidebar-backdrop" onClick={() => setNavOpen(false)} />}
-        {/* left: fomo-style discovery panel (+ nav on phones) */}
-        <aside className={`sidebar with-discovery${navOpen ? ' sidebar-open' : ''}`}>
-          <nav className="mobile-nav" style={{ flexWrap: 'wrap', gap: 4, padding: 8, borderBottom: '1px solid var(--adx-border)' }}>
-            {MOBILE_NAV.map(([p, icon, label]) => (
-              <button key={label} className={`disc-sub${page.name === p.name ? ' active' : ''}`} onClick={() => navigate(p)}>{icon} {T(label)}</button>
-            ))}
-          </nav>
-          <DiscoveryPanel navigate={navigate} />
-        </aside>
+        {/* The drawer (☰ on narrow screens, the lists on phones): every page, then the discovery lists.
+            Desktop is edge to edge, as on Binance: the pages are in the top bar and its More menu. */}
+        {navOpen && (
+          <aside className="sidebar with-discovery sidebar-open">
+            <nav className="mobile-nav" style={{ flexWrap: 'wrap', gap: 4, padding: 8, borderBottom: '1px solid var(--adx-border)' }}>
+              {MOBILE_NAV.map(([p, icon, label]) => (
+                <button key={label} className={`disc-sub${page.name === p.name ? ' active' : ''}`} onClick={() => navigate(p)}>{icon} {T(label)}</button>
+              ))}
+            </nav>
+            <DiscoveryPanel navigate={navigate} />
+          </aside>
+        )}
 
         <main className="main-content">
           <Suspense fallback={<div className="loading-state">{T("Loading…")}</div>}>
@@ -174,12 +177,6 @@ export default function App() {
           </Suspense>
         </main>
 
-        {/* right: cash / trading wallet + who to follow */}
-        <aside className="feed-panel" style={{ overflowY: 'auto' }}>
-          <TradingWalletPanel navigate={navigate} />
-          <FollowTopTraders navigate={navigate} />
-          <DiscoverClans navigate={navigate} />
-        </aside>
       </div>
 
       <TickerBar navigate={navigate} />

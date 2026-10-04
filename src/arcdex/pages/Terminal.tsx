@@ -21,6 +21,7 @@ import MobileHome from '../components/MobileHome'
 import FoundOnArc from '../components/FoundOnArc'
 import RiskBadge from '../components/RiskBadge'
 import { RISK_COLOR as RISK_DOT, riskText, tokenRisk, type Risk } from '../lib/risk'
+import { SENSE_IMAGE, SENSE_LC, SENSE_POOL, fmtPct as fmtPctSense, fmtSmallUsd, useSense } from '../lib/sense'
 
 interface Props {
   navigate: (p: Page) => void
@@ -125,22 +126,6 @@ function SortTh({ col, label, sortCol, sortAsc, onSort }: { col: SortCol; label:
   )
 }
 
-function ScoreBar({ score }: { score: number }) {
-  const pct = Math.min(100, Math.max(0, score))
-  const color = pct >= 80 ? 'var(--green)' : pct >= 60 ? '#f59e0b' : 'var(--red)'
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-      <div style={{
-        width: 36, height: 14, background: 'var(--bg-2)', borderRadius: 3,
-        overflow: 'hidden', border: '1px solid var(--adx-border)',
-      }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width 0.3s' }} />
-      </div>
-      <span style={{ fontSize: '0.65rem', color, fontWeight: 700, fontFamily: 'var(--mono)' }}>{Math.round(pct)}</span>
-    </div>
-  )
-}
-
 function TokenLogo({ src, symbol, size = 28 }: { src?: string; symbol: string; size?: number }) {
   const [err, setErr] = useState(false)
   const bg = `hsl(${(symbol.charCodeAt(0) * 17 + 180) % 360},60%,25%)`
@@ -174,117 +159,68 @@ interface RowProps {
 function HotBadge({ n }: { n: number }) {
   return <span className="hot-badge" title={T('{n} trades in the last 15 minutes', { n })}>🔥 {n}</span>
 }
-function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onToggleExpand, isDuplicateRow = false, risk, flash, hot }: RowProps) {
+function fmtPrice(p: number): string {
+  if (!p || !Number.isFinite(p)) return '—'
+  if (p >= 1000) return `$${p.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+  if (p >= 1) return `$${p.toFixed(4)}`
+  return `$${p.toPrecision(4)}`
+}
+function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onToggleExpand, isDuplicateRow = false, risk, flash, hot, pinned }: RowProps & { pinned?: boolean }) {
   const lp      = token.launchpad
   const lpColor = getLaunchpadColor(lp)
   const ch24    = token.priceChange24h
   const starred = usePrefs().watchlist.includes(token.address.toLowerCase())
-  const score   = Math.min(100, Math.max(0,
-    (token.holderCount > 0 ? Math.min(40, token.holderCount / 25) : 0) +
-    (token.volume24h > 0   ? Math.min(40, Math.log10(token.volume24h + 1) * 8) : 0) +
-    (token.txCount24h > 0  ? Math.min(20, token.txCount24h / 50) : 0)
-  ))
 
   return (
-    <tr className={`token-row${isDuplicateRow ? ' duplicate-row' : ''}${flashClass(flash)}`} onClick={onClick}>
-      {/* rank */}
+    <tr className={`token-row${isDuplicateRow ? ' duplicate-row' : ''}${pinned ? ' pinned-row' : ''}${flashClass(flash)}`} onClick={onClick}>
       <td className="td-rank">
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           {!isDuplicateRow && <button className={`row-star${starred ? ' on' : ''}`} title={starred ? T("Remove from watchlist") : T("Add to watchlist")} onClick={e => { e.stopPropagation(); toggleWatch(token.address) }}>{starred ? '★' : '☆'}</button>}
-          <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{isDuplicateRow ? '↳' : rank}</span>
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{pinned ? '' : isDuplicateRow ? '↳' : rank}</span>
         </span>
       </td>
-      {/* token */}
       <td className="td-token">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: isDuplicateRow ? 20 : 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: isDuplicateRow ? 20 : 0 }}>
           <TokenLogo src={token.logoUrl} symbol={token.symbol} size={isDuplicateRow ? 22 : 28} />
           <div style={{ minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 700, fontSize: '0.82rem', color: isDuplicateRow ? 'var(--text-muted)' : 'var(--text)' }}>
-                {token.symbol}
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+              <span className="mk-sym" style={{ color: isDuplicateRow ? 'var(--text-muted)' : undefined }}>{token.symbol}</span>
+              <span className="mk-quote">/{token.quoteSymbol || 'USDC'}</span>
+              {pinned && <span className="mk-official">{T('Official')}</span>}
               {hot ? <HotBadge n={hot} /> : null}
-              {token.verified && (
-                <span style={{ fontSize: '0.55rem', background: '#1d4ed822', color: '#60a5fa', border: '1px solid #1d4ed844', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>{T("✓ VERIFIED")}</span>
-              )}
-              <span style={{ fontSize: '0.55rem', background: lpColor + '22', color: lpColor, border: `1px solid ${lpColor}44`, borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>
-                {lp}
-              </span>
+              {token.verified && <span className="mk-tag" style={{ color: '#6ea2ff', borderColor: '#2a6df455' }}>{T("✓ VERIFIED")}</span>}
+              <span className="mk-tag" style={{ color: lpColor, borderColor: lpColor + '55' }}>{lp}</span>
               {isDuplicateRow && (
-                <span title={T("Another contract also uses this ticker — sorted below the highest-liquidity one.")} style={{ fontSize: '0.55rem', background: '#f59e0b18', color: 'var(--amber)', border: '1px solid #f59e0b44', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>{T("⚠ SAME TICKER")}</span>
+                <span title={T("Another contract also uses this ticker — sorted below the highest-liquidity one.")} className="mk-tag" style={{ color: 'var(--amber)', borderColor: '#f0b90b55' }}>{T("⚠ SAME TICKER")}</span>
               )}
               {!isDuplicateRow && dupCount > 0 && (
-                <button
-                  onClick={e => { e.stopPropagation(); onToggleExpand?.() }}
-                  style={{ fontSize: '0.6rem', background: 'var(--bg-3)', color: 'var(--text-muted)', border: '1px solid var(--border-hi)', borderRadius: 3, padding: '1px 5px', fontWeight: 700, cursor: 'pointer' }}
-                >
+                <button onClick={e => { e.stopPropagation(); onToggleExpand?.() }} className="mk-tag mk-dup">
                   {expanded ? '▾' : '▸'} +{dupCount}{' '}{T("same ticker")}</button>
               )}
             </div>
-            <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: 1, display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+            <div className="mk-sub">
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{token.name}</span>
-              <span style={{ fontFamily: 'var(--mono)', opacity: 0.6, flexShrink: 0 }}>
-                {token.address.slice(0,6)}…{token.address.slice(-4)}
-              </span>
-              <a
-                href={`${ARC_EXPLORER}/address/${token.address}`}
-                target="_blank" rel="noopener noreferrer"
-                onClick={e => e.stopPropagation()}
-                style={{ color: 'var(--text-muted)', opacity: 0.5, textDecoration: 'none', fontSize: '0.6rem', flexShrink: 0 }}
-              >↗</a>
+              <span style={{ flexShrink: 0 }}>· {fmtAge(token.ageMs)}</span>
+              {token.ageMs < 5 * 60_000 && <span className="new-badge">{T("NEW")}</span>}
+              <a href={`${ARC_EXPLORER}/address/${token.address}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="mk-addr">
+                {token.address.slice(0,6)}…{token.address.slice(-4)} ↗
+              </a>
             </div>
           </div>
         </div>
       </td>
-      {/* age */}
+      <td className="td-num mk-price">{fmtPrice(token.price)}</td>
+      <td className="td-num"><span className="mk-chg" style={{ color: pctColor(ch24) }}>{ch24 > 0 ? '+' : ''}{ch24.toFixed(2)}%</span></td>
+      <td className="td-num">{fmt(token.marketCap, '$')}</td>
+      <td className="td-num">{fmt(token.liquidity, '$')}</td>
+      <td className="td-num">{fmt(token.volume24h, '$')}</td>
       <td className="td-num">
-        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-          {fmtAge(token.ageMs)}
-        </span>
-        {token.ageMs < 5 * 60_000 && <span className="new-badge">{T("NEW")}</span>}
+        <div>{token.txCount24h.toLocaleString()}</div>
+        <div style={{ fontSize: '0.66rem' }}><span style={{ color: 'var(--green)' }}>{token.buys24h}</span>{' / '}<span style={{ color: 'var(--red)' }}>{token.sells24h}</span></div>
       </td>
-      {/* mcap */}
-      <td className="td-num">
-        <div style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--text)' }}>{fmt(token.marketCap, '$')}</div>
-        <div style={{ fontSize: '0.65rem', color: pctColor(ch24) }}>{fmtPct(ch24)}</div>
-      </td>
-      {/* liquidity */}
-      <td className="td-num">
-        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text)' }}>{fmt(token.liquidity, '$')}</span>
-      </td>
-      {/* volume 24h */}
-      <td className="td-num">
-        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text)' }}>{fmt(token.volume24h, '$')}</span>
-      </td>
-      {/* txns */}
-      <td className="td-num">
-        <div style={{ fontSize: '0.75rem', color: 'var(--text)' }}>{token.txCount24h.toLocaleString()}</div>
-        <div style={{ fontSize: '0.63rem', color: 'var(--text-muted)' }}>
-          <span style={{ color: 'var(--green)' }}>{token.buys24h}</span>
-          {' / '}
-          <span style={{ color: 'var(--red)' }}>{token.sells24h}</span>
-        </div>
-      </td>
-      {/* holders */}
-      <td className="td-num">
-        <span style={{ fontSize: '0.78rem', fontFamily: 'var(--mono)', color: 'var(--text)' }}>
-          {token.holderCount > 0 ? token.holderCount.toLocaleString() : '—'}
-        </span>
-      </td>
-      {/* score */}
-      <td className="td-num">
-        <ScoreBar score={score} />
-      </td>
-      {/* risk */}
-      <td className="td-num">
-        <RiskBadge risk={risk} quick />
-      </td>
-      {/* quote */}
-      <td className="td-num">
-        <span style={{ fontSize: '0.65rem', color: 'var(--adx-accent)', background: 'var(--adx-accent)18', borderRadius: 3, padding: '2px 5px', fontWeight: 700 }}>
-          {token.quoteSymbol}
-        </span>
-      </td>
+      <td className="td-num">{token.holderCount > 0 ? token.holderCount.toLocaleString() : '—'}</td>
+      <td className="td-num"><RiskBadge risk={risk} quick /></td>
+      <td className="td-num td-trade"><button className="mk-trade" onClick={e => { e.stopPropagation(); onClick() }}>{T('Trade')}</button></td>
     </tr>
   )
 }
@@ -352,7 +288,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   const [maxMcap,  setMaxMcap]  = useState('')
   const [minVol,   setMinVol]   = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const tickerRef = useRef<HTMLDivElement>(null)
+  const sense = useSense()
 
   // ARCSENSE's own launches, Argus (every Portal) and every other Arc
   // launchpad GeckoTerminal lists (api/_launchpads.ts), each with its badge.
@@ -688,26 +624,59 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   }
   const sortTh = (col: SortCol, label: string) => <SortTh col={col} label={label} sortCol={sortCol} sortAsc={sortAsc} onSort={toggleSort} />
 
-  // ── top ticker tokens ─────────────────────────────────────────────
-  const tickerTokens = tokens.slice(0, 20)
+  // $SENSE, pinned above the list (the first page, unless a search leaves it out): its row from the list, else
+  // one built from the engine's numbers for it.
+  const listedSense = tokens.find(t => t.address.toLowerCase() === SENSE_LC)
+  const senseMatches = !search || 'sense arcsense'.includes(search.toLowerCase()) || SENSE_LC.includes(search.toLowerCase())
+  const senseRow: ArcToken | null = page !== 1 || !senseMatches ? null : listedSense ? { ...listedSense, logoUrl: SENSE_IMAGE } : (sense ? {
+    address: SENSE_LC, symbol: 'SENSE', name: 'ARCSENSE', decimals: 18, logoUrl: sense.image,
+    price: sense.priceUsd ?? 0, priceChange5m: 0, priceChange1h: 0, priceChange24h: sense.change24h ?? 0,
+    volume24h: sense.volume24h ?? 0, marketCap: sense.marketCapUsd ?? 0, liquidity: sense.liquidityUsd ?? 0,
+    ageMs: Date.now() - Date.parse('2026-10-03T16:34:23Z'), launchpad: 'Argus', poolAddress: SENSE_POOL,
+    txCount24h: sense.buys24h + sense.sells24h, holderCount: 0, buys24h: sense.buys24h, sells24h: sense.sells24h,
+    verified: false, graduated: false, bondingProgress: null, spark: [], quoteSymbol: 'USDC',
+  } : null)
+
+  // Binance's market overview: the most active coins, the biggest gainers and the most traded, beside $SENSE.
+  const primaries = curation.groups.map(g => g.primary).filter(t => t.address.toLowerCase() !== SENSE_LC && t.price > 0)
+  const overview = {
+    hot: [...primaries].sort((a, b) => activityOf(b) - activityOf(a) || b.volume24h - a.volume24h).slice(0, 3),
+    gainers: primaries.filter(t => t.volume24h >= 500 && t.liquidity >= 1_000).sort((a, b) => b.priceChange24h - a.priceChange24h).slice(0, 3),
+    volume: [...primaries].sort((a, b) => b.volume24h - a.volume24h).slice(0, 3),
+  }
 
   return (
     <div className={`terminal-shell${filtersOpen ? ' filters-open' : ''}`}>
       {/* Phones open like fomo's app: cash + Deposit, then top traders, then the coins. */}
       {mobile && <MobileHome navigate={navigate} />}
 
-      {/* ── scrolling ticker ── */}
-      <div className="ticker-bar" ref={tickerRef}>
-        <div className="ticker-track">
-          {[...tickerTokens, ...tickerTokens].map((t, i) => (
-            <span key={i} className="ticker-item" onClick={() => navigate(openPage(t))}>
-              <TokenLogo src={t.logoUrl} symbol={t.symbol} size={16} />
-              <span className="ticker-sym">{t.symbol}</span>
-              <span className="ticker-price">${t.price < 0.001 ? t.price.toExponential(2) : t.price.toPrecision(4)}</span>
-              <span className="ticker-chg" style={{ color: pctColor(t.priceChange24h) }}>
-                {fmtPct(t.priceChange24h)}
-              </span>
-            </span>
+      {/* ── Binance's Markets header: the overview cards ── */}
+      <div className="mk-head">
+        <div className="mk-title">
+          <h1>{T('Markets')}</h1>
+          <span>{T('Every coin on Arc, live: price, volume and safety checks.')}</span>
+        </div>
+        <div className="mk-overview">
+          <div className="mk-card mk-card-sense" onClick={() => navigate({ name: 'argus', address: SENSE_LC, pool: SENSE_POOL })}>
+            <div className="mk-card-h"><span>◆ $SENSE</span><span className="mk-official">{T('Official')}</span></div>
+            <div className="mk-sense-price">{fmtSmallUsd(sense?.priceUsd)} <span style={{ color: pctColor(sense?.change24h ?? 0) }}>{fmtPctSense(sense?.change24h)}</span></div>
+            <div className="mk-sense-meta">{T('Market cap')} {fmt(sense?.marketCapUsd ?? 0, '$')} · {T('Liquidity')} {fmt(sense?.liquidityUsd ?? 0, '$')}</div>
+            <div className="mk-sense-note">{T('30% of ARCSENSE’s fees buy back $SENSE and burn it.')}</div>
+            <button className="mk-trade mk-trade-solid" onClick={e => { e.stopPropagation(); navigate({ name: 'argus', address: SENSE_LC, pool: SENSE_POOL }) }}>{T('Buy $SENSE')}</button>
+          </div>
+          {([[`🔥 ${T('Hot coins')}`, overview.hot], [T('Top gainers'), overview.gainers], [T('Top volume'), overview.volume]] as [string, ArcToken[]][]).map(([title, list]) => (
+            <div key={title} className="mk-card">
+              <div className="mk-card-h"><span>{title}</span></div>
+              {list.length === 0 && <div className="mk-card-empty">{T('Loading…')}</div>}
+              {list.map(t => (
+                <button key={t.address} className="mk-card-row" onClick={() => navigate(openPage(t))}>
+                  <TokenLogo src={t.logoUrl} symbol={t.symbol} size={20} />
+                  <b>{t.symbol}</b>
+                  <span className="mk-card-price">{fmtPrice(t.price)}</span>
+                  <span style={{ color: pctColor(t.priceChange24h) }}>{t.priceChange24h > 0 ? '+' : ''}{t.priceChange24h.toFixed(2)}%</span>
+                </button>
+              ))}
+            </div>
           ))}
         </div>
       </div>
@@ -790,20 +759,21 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
             <thead>
               <tr>
                 <th className="th-rank">#</th>
-                <th className="th-token" style={{ textAlign: 'left' }}>{T("TOKEN / AGE ↕")}</th>
-                {sortTh('age', T("AGE"))}
-                {sortTh('mcap', T("MC $"))}
-                {sortTh('liq', T("LIQ"))}
-                {sortTh('volume', T("ALL VOL"))}
-                {sortTh('txns', T("ALL TXS"))}
-                {sortTh('holders', T("HOLDERS"))}
-                {sortTh('score', T("SCORE"))}
-                {sortTh('risk', T("RISK"))}
-                <th className="th-sort" style={{ textAlign: 'right' }}>{T("QUOTE")}</th>
+                <th className="th-token" style={{ textAlign: 'left' }}>{T("Name")}</th>
+                <th className="th-sort" style={{ textAlign: 'right' }}><span>{T("Price")}</span></th>
+                {sortTh('change', T("24h change"))}
+                {sortTh('mcap', T("Market cap"))}
+                {sortTh('liq', T("Liquidity"))}
+                {sortTh('volume', T("24h volume"))}
+                {sortTh('txns', T("24h trades"))}
+                {sortTh('holders', T("Holders"))}
+                {sortTh('risk', T("Risk"))}
+                <th className="th-sort" />
               </tr>
             </thead>
             <tbody>
-              {pageItems.map((token, i) => {
+              {senseRow && <TokenRow token={senseRow} rank={0} pinned risk={riskOfRow(senseRow)} flash={flash.get(SENSE_LC)} hot={hotOf(senseRow)} onClick={() => navigate({ name: 'argus', address: SENSE_LC, pool: senseRow.poolAddress || SENSE_POOL })} />}
+              {pageItems.filter(t => !senseRow || t.address.toLowerCase() !== SENSE_LC).map((token, i) => {
                 const group = groupByPrimaryAddress.get(token.address)
                 const dupCount = group?.duplicates.length ?? 0
                 const isExpanded = expanded.has(token.address)

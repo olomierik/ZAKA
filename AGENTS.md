@@ -1212,6 +1212,55 @@ Owner: ARCDEX becomes **ARCSENSE**, spot and futures trading on Arc, at www.arcs
 - **The whitepaper is offline** (the page, `whitepaper.html`, its PDF and X images): it described $ARCD's fee model. An ARCSENSE whitepaper is still to be written.
 - **The landing page** (`landing/Landing.tsx`): "Spot and futures trading on Arc.", a perpetual-futures card (BTC, ETH, SOL; up to 10×; testnet first, then mainnet after an independent audit), the app's features, where the fees go (since 2026-10-03: 30% buy back and burn $SENSE, 70% to liquidity pools; see "$SENSE buyback and liquidity" below), the roadmap and four questions. The bots' board and profit pop-ups are off while Autotrade is paused (`LiveBots.tsx`, `ProfitToasts.tsx` are kept).
 
+## ARCSENSE looks like Binance, in blue (2026-10-04)
+
+Owner: "the app should behave like Binance where we're in common, spot and futures included; layout and UX like Binance but blue; not everything; a site that makes people want to buy $SENSE; the landing page can go, but $SENSE must be visible". Binance's spot, futures and home pages were studied in Chrome (read-only).
+- **Theme (`arcdex.css` `:root`, `landing.css`):**
+  - Binance's dark palette: page `#0b0e11`, panels `#181a20`, raised `#1e2329`, lines `#2b3139`, text `#eaecef`, muted `#848e9c`, green `#0ecb81`, red `#f6465d`.
+  - ARCSENSE blue where Binance has yellow: buttons `--accent-btn` `#2a6df4`, links `--accent-text`.
+  - IBM Plex Sans for text and numbers, with tabular figures (`index.html` loads it).
+  - The chart uses the same colours (`PriceChart`, `lib/chartStyle.ts`).
+  - The redesign's rules sit at the end of `arcdex.css`, after the older ones they override.
+- **Top bar (`components/NavBar.tsx`):**
+  - Markets (the coin list), Spot ($SENSE/USDC), Futures (Testnet), Swap, Portfolio, Bridge, $SENSE, then More (the social pages). Links that don't fit move into More as the screen narrows.
+  - On the right: search, $SENSE's live price and 24h change, a blue **Buy $SENSE** button and the account.
+  - Desktop has no side panels any more (no discovery panel, no right rail). The ☰ drawer keeps them on narrow screens.
+  - The bottom bar (`Rails.tsx` `TickerBar`): Arc's status, $SENSE/USDC first, then the blue chips.
+- **$SENSE's numbers (`lib/sense.ts`):**
+  - One shared poller of the engine's `/v1/tokens/<SENSE>`, every 15s (`useSense`), used by the top bar, Markets, the spot screen and the home page.
+  - Also the constants: address, pool, `SENSE_PATH`.
+  - Its logo is the site's own `arcsense-mark.png`; the IPFS image loads slowly.
+- **Markets (`pages/Terminal.tsx`, `/app`, also `/markets`):**
+  - Binance's overview cards: $SENSE (price, market cap, liquidity, Buy), Hot coins, Top gainers (with $500+ volume and $1,000+ liquidity) and Top volume.
+  - Binance's table: Name (SYMBOL/QUOTE), Price, 24h change, Market cap, Liquidity, 24h volume, 24h trades, Holders, Risk, Trade.
+  - $SENSE is pinned above the first page, marked Official.
+- **Spot (`pages/ArgusTokenPage.tsx` on desktop, `/spot` opens $SENSE/USDC, as Binance opens on its own pair):**
+  - The pair bar.
+  - Market trades where Binance has its order book (`components/SpotPanels.tsx` `MarketTrades`): Arc coins trade against pools, so the trades are the book, with the 24h buy/sell balance underneath.
+  - The chart (420px), then a buy form and a sell form side by side (`ArgusSwapWidget` `side`, `compact`): market orders only, which fill at once against the pool.
+  - The pair list on the right (`PairList`: what's trading now on the engine, $SENSE first, ★ favourites).
+  - Position, safety and about under the pair list; trades, holders and theses underneath.
+  - Every other coin's page has a one-line $SENSE strip.
+  - Phones keep the app layout (chart, stats, tabs, Buy / Sell bar).
+- **Futures (`pages/FuturesPage.tsx`):**
+  - Binance's ticker strip and pair bar, with a pair picker.
+  - The chart (430px), a trades column (everyone's opens and closes, this pair first), and Binance's order panel:
+    - Isolated, and a leverage button that opens Adjust leverage;
+    - Limit / Market; Avbl, price and margin inputs; a share-of-balance slider; TP/SL;
+    - **Buy / Long** and **Sell / Short** side by side, each with its liquidation price and cost.
+  - Below the order panel, an account box (test balance, gas, both faucets). Positions, open orders, trade history and the pool are underneath.
+  - The contract calls are unchanged.
+- **Home (`landing/Landing.tsx`, `/`):** Binance's home.
+  - Headline "TRADE ARC. / OWN $SENSE." with the fee line, two laurel badges (First: spot + futures on Arc; 30% of fees burn $SENSE), and $SENSE's contract address with Copy and Buy $SENSE.
+  - Beside it, a markets card (Popular with $SENSE first, New listing, Futures) and $SENSE's card (price, market cap, liquidity, bought back, burned, Buy).
+  - Then futures, where the fees go, the app, the roadmap, questions (now including how to buy $SENSE) and the footer.
+- **Phones:** the tab bar is Markets · Futures · **Trade** ($SENSE's screen) · Portfolio · More (Swap moved to More).
+- **Every new string is in all six dictionaries.**
+- **Checked (local dev against the live engine):**
+  - Markets, spot, futures and home at 1440 and 1280px: the top bar fits, More opens, no script errors.
+  - Home, Markets, spot and futures at 375px: no sideways scroll.
+- **Local dev against the live engine:** set `VITE_ARCDEX_WS_URL=ws://localhost:5173/__engine/ws` in `.env.development.local`. `vite.config.ts` proxies `/__engine` to Railway with ARCSENSE's origin (the engine answers only its own origins).
+
 ## ARCSENSE: spot and futures first (2026-10-03)
 
 Owner: "hide the autotrade marketplace and let the users see only COMING SOON; hide the launchpad; put futures and spot trading as our main features; rebrand the app to be the first on Arc".

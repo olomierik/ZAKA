@@ -45,6 +45,15 @@ export default defineConfig({
     allowedHosts: true,
     cors: true,
     proxy: {
+      // Local dev against the live market engine (it only answers ARCSENSE's own origins): set
+      // VITE_ARCDEX_WS_URL=ws://localhost:5173/__engine/ws in .env.development.local.
+      '/__engine': {
+        target: 'https://arcdex-engine-production.up.railway.app',
+        changeOrigin: true,
+        ws: true,
+        headers: { origin: 'https://arcsense.site' },
+        rewrite: (path) => path.replace(/^\/__engine/, ''),
+      },
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,

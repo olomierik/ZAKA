@@ -28,6 +28,8 @@ import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 import { getLaunchpadColor } from '../api/radardex'
 import { launchpadLabel, launchpadNamed } from '../../../api/_launchpads'
+import { MarketTrades, PairList } from '../components/SpotPanels'
+import { SENSE_IMAGE, SENSE_LC, SENSE_POOL, fmtPct as fmtPctSense, fmtSmallUsd, useSense } from '../lib/sense'
 
 // Full page for one Argus launch. What moves is read straight from the
 // chain: every swap in the pool (history from the logs, then each new one
@@ -69,14 +71,29 @@ function fmtPrice(p: number) {
 }
 function pct(n: number) { return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%` }
 
-function TokenImage({ src, symbol }: { src: string | null; symbol: string }) {
+function TokenImage({ src, symbol, size = 44 }: { src: string | null; symbol: string; size?: number }) {
   const [err, setErr] = useState(false)
   if (!src || err) return (
-    <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'linear-gradient(135deg,#1e3a5f,#0f1e30)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#3b82f6', flexShrink: 0 }}>
+    <div style={{ width: size, height: size, borderRadius: '50%', background: 'linear-gradient(135deg,#2b3139,#1e2329)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.28, fontWeight: 700, color: '#6ea2ff', flexShrink: 0 }}>
       {symbol.slice(0, 3)}
     </div>
   )
-  return <img src={src} alt={symbol} style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} onError={() => setErr(true)} />
+  return <img src={src} alt={symbol} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} onError={() => setErr(true)} />
+}
+
+/** On every other coin's page: $SENSE, one line, with the way to it. */
+function SenseStrip({ navigate }: { navigate: (p: Page) => void }) {
+  const sense = useSense()
+  return (
+    <button className="sense-strip" onClick={() => navigate({ name: 'argus', address: SENSE_LC, pool: SENSE_POOL })}>
+      <img src={SENSE_IMAGE} alt="" width={18} height={18} />
+      <b>$SENSE</b>
+      <span>{fmtSmallUsd(sense?.priceUsd)}</span>
+      {sense?.change24h != null && <span className={sense.change24h >= 0 ? 'up-txt' : 'down-txt'}>{fmtPctSense(sense.change24h)}</span>}
+      <span className="sense-strip-note">{T('ARCSENSE’s coin: 30% of every platform fee buys it back and burns it.')}</span>
+      <span className="sense-strip-go">{T('Buy $SENSE')} →</span>
+    </button>
+  )
 }
 
 export default function ArgusTokenPage({ address, pool, navigate }: Props) {
@@ -412,7 +429,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
 
   const symbol = active?.token.symbol || info?.symbol || engineMeta?.symbol || curveHere?.symbol || '…'
   const name = active?.token.name || info?.name || engineMeta?.name || curveHere?.name || ''
-  const image = info?.image ?? active?.token.image ?? engineMeta?.image ?? null
+  const image = address.toLowerCase() === SENSE_LC ? SENSE_IMAGE : info?.image ?? active?.token.image ?? engineMeta?.image ?? null
   // The pool's price only changes on a swap, so the latest swap's price IS
   // the live price (GeckoTerminal's is 10-60s behind).
   const livePrice = swaps?.[0] ? (swaps[0].priceUsd ?? (usdPerQuote ? swaps[0].price * usdPerQuote : null)) : null
@@ -486,6 +503,21 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   // ARCSENSE's own chart, the only one (owner's choice): history from
   // GeckoTerminal's API or the market engine, every swap live on top, trade
   // labels, theses and indicators. A live curve charts the curve's trades.
+  const isSense = address.toLowerCase() === SENSE_LC
+  const stats: [string, string, string][] = active ? [
+    ['5m', pct(active.change.m5), active.change.m5 >= 0 ? 'var(--green)' : 'var(--red)'],
+    ['1h', pct(active.change.h1), active.change.h1 >= 0 ? 'var(--green)' : 'var(--red)'],
+    ['6h', pct(active.change.h6), active.change.h6 >= 0 ? 'var(--green)' : 'var(--red)'],
+    [T('24h change'), pct(active.change.h24), active.change.h24 >= 0 ? 'var(--green)' : 'var(--red)'],
+    [T('Market Cap'), fmt(mcap, '$'), 'var(--text)'],
+    [T('Liquidity'), fmt(active.liquidityUsd, '$'), 'var(--text)'],
+    [T('Volume 24h'), fmt(active.volume24h, '$'), 'var(--text)'],
+    [T('Buys 24h'), active.txns24h.buys.toLocaleString(), 'var(--green)'],
+    [T('Sells 24h'), active.txns24h.sells.toLocaleString(), 'var(--red)'],
+    [T('Holders'), holdersLabel, 'var(--text)'],
+    [T('Top 10 hold'), infoLive?.top10Pct != null ? `${infoLive.top10Pct.toFixed(1)}%` : '—', 'var(--text)'],
+  ] : []
+
   const chartCard = (
     <div className="coin-chart-card" style={{ ...card, padding: 16 }}>
       <div className="coin-chart-title" style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{T("PRICE CHART · USD")}</div>
@@ -493,9 +525,9 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         onTraderClick={a => navigate({ name: 'trader', address: a })} />
     </div>
   )
-  const swapWidget = (mode?: 'buy' | 'sell') => (
-    <ArgusSwapWidget key={mode ?? 'inline'} token={address as Address} symbol={symbol} tokenImage={image} priceUsd={priceUsd}
-      marketCapUsd={mcap} route={tradeRoute} routeLoading={tradeRouteLoading} initialMode={mode}
+  const swapWidget = (mode?: 'buy' | 'sell', side?: boolean) => (
+    <ArgusSwapWidget key={`${mode ?? 'inline'}${side ? '-side' : ''}`} token={address as Address} symbol={symbol} tokenImage={image} priceUsd={priceUsd}
+      marketCapUsd={mcap} route={tradeRoute} routeLoading={tradeRouteLoading} initialMode={mode} side={side ? mode : undefined} compact={side}
       buyTaxBps={chain?.buyTaxBps} sellTaxBps={chain?.sellTaxBps} onTraded={onTraded} unverified={info ? !info.verified : false} venue={venue} />
   )
   const socialTabs = (
@@ -512,105 +544,143 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     </>
   )
 
-  return (
-    <div className={`token-page${mobile ? ' coin-mobile' : ''}`}>
-      {!mobile && info?.banner && /^https:\/\//i.test(info.banner) && (
-        <img src={info.banner} alt="" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 12, marginBottom: 12, display: 'block' }}
-          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+  const badge = (
+    <span className="spot-lp" style={{ color: lpColor, borderColor: `${lpColor}66` }}>
+      {chain?.portal ? `ARGUS · Portal ${chain.portal}` : lpName ? lpName.toUpperCase() : '…'}
+    </span>
+  )
+  const headActions = (
+    <div className="token-head-actions">
+      <button title={starred ? T("Remove from watchlist") : T("Add to watchlist")} onClick={() => toggleWatch(address)} className={`head-icon${starred ? ' on' : ''}`}>{starred ? '★' : '☆'}</button>
+      <button title={T("Copy contract address")} className="head-icon" onClick={() => { void navigator.clipboard?.writeText(address); setCopiedCa(true); setTimeout(() => setCopiedCa(false), 1200) }}>{copiedCa ? '✓' : '⧉'}</button>
+      {info?.websites[0] && /^https?:\/\//i.test(info.websites[0]) && <a title={T("Website")} className="head-icon" href={info.websites[0]} target="_blank" rel="noopener noreferrer">🌐</a>}
+      {info?.twitter && <a title={T("X / Twitter")} className="head-icon" href={`https://x.com/${info.twitter}`} target="_blank" rel="noopener noreferrer">𝕏</a>}
+      <a title={T("Search on X")} className="head-icon" href={`https://x.com/search?q=${encodeURIComponent(`${address} OR $${symbol}`)}&f=live`} target="_blank" rel="noopener noreferrer">🔍</a>
+    </div>
+  )
+  const notices = (
+    <>
+      {copy && (
+        <div className="spot-notice warn">{T("⚠ This is")}{' '}<b>{T("not")}</b>{' '}{T("the real")}{' '}{copy}{venue ? T(". It's a separate launch that reuses the") : T(". It's a separate Argus launch that reuses the")}{' '}{copy}{' '}{T("ticker — check the contract address before trading.")}</div>
       )}
+      {liveCurve ? (
+        <div className="spot-notice" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ flex: 1 }}>{T("On {launchpad}'s bonding curve: {pct} of the way to its Uniswap pool.", { launchpad: liveCurve.venue, pct: `${Math.floor(liveCurve.progress * 100)}%` })}</span>
+          <span style={{ flex: '0 0 120px', height: 6, borderRadius: 99, background: 'var(--bg-4)', overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${Math.min(100, liveCurve.progress * 100)}%`, background: lpColor }} /></span>
+        </div>
+      ) : pools !== null && pools.length === 0 && curve !== undefined && (
+        <div className="spot-notice">{T("GeckoTerminal has no USDC- or ARGUS-quoted pool for this token yet.")}</div>
+      )}
+    </>
+  )
 
+  // Phones: the app layout (price, chart, stats, tabs, and a Buy / Sell bar opening the trade sheet).
+  if (mobile) return (
+    <div className="token-page coin-mobile">
       <div className="token-page-header">
-        {!mobile && <button className="back-btn" onClick={() => navigate({ name: 'terminal' })}>{T("← Back")}</button>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
           <TokenImage src={image} symbol={symbol} />
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: '1.2rem', display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-              ${symbol}
-              <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-muted)' }}>{name}</span>
+            <div style={{ fontWeight: 700, fontSize: '1.15rem', display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+              {symbol}<span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-muted)' }}>/{active?.quote.symbol ?? 'USDC'}</span>
+              {isSense && <span className="mk-official">{T('Official')}</span>}
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
-              <span key={priceUsd} className={priceDir ? `price-tick ${priceDir}` : undefined} style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--text)', fontFamily: 'var(--mono)', borderRadius: 4, padding: '0 2px' }}>{priceUsd ? fmtPrice(priceUsd) : '…'}</span>
-              {active && <span style={{ fontWeight: 700, fontSize: '0.8rem', color: active.change.h24 >= 0 ? 'var(--green)' : 'var(--red)' }}>{pct(active.change.h24)}</span>}
-              <span style={{ background: `${lpColor}26`, color: lpColor, fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: `1px solid ${lpColor}59`, filter: 'brightness(1.35)' }}>
-                {chain?.portal ? `ARGUS · Portal ${chain.portal}` : lpName ? lpName.toUpperCase() : '…'}
-              </span>
-              {active && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>/ {active.quote.symbol}</span>}
-              {info && !info.verified && <span title={T("GeckoTerminal hasn't verified this token's metadata")} style={{ background: 'rgba(245,158,11,0.12)', color: '#fcd34d', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99 }}>{T("Unverified")}</span>}
-              {info?.isHoneypot && <span style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99 }}>{T("HONEYPOT RISK")}</span>}
+              <span key={priceUsd} className={priceDir ? `price-tick ${priceDir}` : undefined} style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--text)', borderRadius: 4, padding: '0 2px' }}>{priceUsd ? fmtPrice(priceUsd) : '…'}</span>
+              {active && <span style={{ fontWeight: 600, fontSize: '0.82rem', color: active.change.h24 >= 0 ? 'var(--green)' : 'var(--red)' }}>{pct(active.change.h24)}</span>}
+              {badge}
               {active && <RiskBadge risk={risk} />}
             </div>
           </div>
         </div>
-        <div className="token-head-actions">
-          <button title={starred ? T("Remove from watchlist") : T("Add to watchlist")} onClick={() => toggleWatch(address)} className={`head-icon${starred ? ' on' : ''}`}>{starred ? '★' : '☆'}</button>
-          <button title={T("Copy contract address")} className="head-icon" onClick={() => { void navigator.clipboard?.writeText(address); setCopiedCa(true); setTimeout(() => setCopiedCa(false), 1200) }}>{copiedCa ? '✓' : '⧉'}</button>
-          {info?.websites[0] && /^https?:\/\//i.test(info.websites[0]) && <a title={T("Website")} className="head-icon" href={info.websites[0]} target="_blank" rel="noopener noreferrer">🌐</a>}
-          {info?.twitter && <a title={T("X / Twitter")} className="head-icon" href={`https://x.com/${info.twitter}`} target="_blank" rel="noopener noreferrer">𝕏</a>}
-          <a title={T("Search on X")} className="head-icon" href={`https://x.com/search?q=${encodeURIComponent(`${address} OR $${symbol}`)}&f=live`} target="_blank" rel="noopener noreferrer">🔍</a>
-        </div>
+        {headActions}
       </div>
-
-      {/* phones: the chart comes straight after the price, fomo-style */}
-      {mobile && chartCard}
-
-      {/* stats */}
+      {chartCard}
       {active && (
         <div className="coin-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', fontSize: '0.8rem' }}>
-          {([
-            ['5m', pct(active.change.m5), active.change.m5 >= 0 ? 'var(--green)' : 'var(--red)'],
-            ['1h', pct(active.change.h1), active.change.h1 >= 0 ? 'var(--green)' : 'var(--red)'],
-            ['6h', pct(active.change.h6), active.change.h6 >= 0 ? 'var(--green)' : 'var(--red)'],
-            ['24h', pct(active.change.h24), active.change.h24 >= 0 ? 'var(--green)' : 'var(--red)'],
-            [T('Market Cap'), fmt(mcap, '$'), 'var(--text)'],
-            ['FDV', fmt(active.fdvUsd, '$'), 'var(--text)'],
-            [T('Liquidity'), fmt(active.liquidityUsd, '$'), 'var(--text)'],
-            [T('Volume 24h'), fmt(active.volume24h, '$'), 'var(--text)'],
-            [T('Buys 24h'), active.txns24h.buys.toLocaleString(), 'var(--green)'],
-            [T('Sells 24h'), active.txns24h.sells.toLocaleString(), 'var(--red)'],
-            [T('Holders'), holdersLabel, 'var(--text)'],
-            [T('Top 10 hold'), infoLive?.top10Pct != null ? `${infoLive.top10Pct.toFixed(1)}%` : '—', 'var(--text)'],
-          ] as [string, string, string][]).map(([label, val, color]) => (
+          {stats.map(([label, val, color]) => (
             <div key={label}>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', marginBottom: 2 }}>{label}</div>
-              <div style={{ fontWeight: 700, color, fontFamily: 'var(--mono)' }}>{val}</div>
+              <div style={{ fontWeight: 600, color }}>{val}</div>
             </div>
           ))}
         </div>
       )}
-      {copy && (
-        <div style={{ ...card, padding: '12px 16px', fontSize: '0.82rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.4)', color: '#fcd34d' }}>{T("⚠ This is")}{' '}<b>{T("not")}</b>{' '}{T("the real")}{' '}{copy}{venue ? T(". It's a separate launch that reuses the") : T(". It's a separate Argus launch that reuses the")}{' '}{copy}{' '}{T("ticker — check the contract address before trading.")}</div>
-      )}
-      {liveCurve ? (
-        <div style={{ ...card, padding: '12px 16px', color: 'var(--text-muted)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ flex: 1 }}>{T("On {launchpad}'s bonding curve: {pct} of the way to its Uniswap pool.", { launchpad: liveCurve.venue, pct: `${Math.floor(liveCurve.progress * 100)}%` })}</span>
-          <span style={{ flex: '0 0 120px', height: 6, borderRadius: 99, background: 'var(--bg-2)', overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${Math.min(100, liveCurve.progress * 100)}%`, background: lpColor }} /></span>
-        </div>
-      ) : pools !== null && pools.length === 0 && curve !== undefined && (
-        <div style={{ ...card, padding: 16, color: 'var(--text-muted)', fontSize: '0.85rem' }}>{T("GeckoTerminal has no USDC- or ARGUS-quoted pool for this token yet.")}</div>
-      )}
+      {notices}
+      <div className="coin-mobile-body">
+        {socialTabs}
+        {sidePanels}
+        <TradeBar symbol={symbol} onTrade={setTradeSheet} />
+        <Sheet open={tradeSheet !== null} onClose={() => setTradeSheet(null)}>
+          {tradeSheet && swapWidget(tradeSheet)}
+        </Sheet>
+      </div>
+    </div>
+  )
 
-      {mobile ? (
-        <div className="coin-mobile-body">
-          {socialTabs}
+  // Desktop: Binance's spot screen. The pair bar; market trades where Binance has its order book; the
+  // chart, and under it a buy form and a sell form side by side; the pair list on the right; the
+  // trades, holders and theses underneath.
+  const change24 = active?.change.h24 ?? null
+  return (
+    <div className="token-page spot-page">
+      <div className="spot-bar">
+        <div className="spot-bar-pair">
+          <TokenImage src={image} symbol={symbol} size={32} />
+          <div style={{ minWidth: 0 }}>
+            <div className="spot-bar-sym">{symbol}<span>/{active?.quote.symbol ?? 'USDC'}</span>{isSense && <span className="mk-official">{T('Official')}</span>}</div>
+            <div className="spot-bar-name">{name}{name && ' · '}{badge}</div>
+          </div>
+        </div>
+        <div className="spot-bar-price">
+          <b key={priceUsd} className={`${priceDir ? `price-tick ${priceDir} ` : ''}${(change24 ?? 0) >= 0 ? 'up-txt' : 'down-txt'}`}>{priceUsd ? fmtPrice(priceUsd) : '…'}</b>
+          <span>{mcap ? T('MCap {v}', { v: fmt(mcap, '$') }) : ''}</span>
+        </div>
+        <div className="spot-bar-stats">
+          {stats.slice(3).map(([label, val, color]) => (
+            <div key={label}><span>{label}</span><b style={{ color }}>{val}</b></div>
+          ))}
+          {active && <div><span>{T('Risk')}</span><b><RiskBadge risk={risk} /></b></div>}
+        </div>
+        {headActions}
+      </div>
+      {!isSense && <SenseStrip navigate={navigate} />}
+      {notices}
+
+      <div className="spot-grid">
+        <div className="spot-book">
+          <MarketTrades rows={rows} priceUsd={priceUsd} change24h={change24} symbol={symbol} loaded={tradesLoaded}
+            buys24h={active?.txns24h.buys ?? null} sells24h={active?.txns24h.sells ?? null} />
+        </div>
+        <div className="spot-main">
+          <div className="spot-panel spot-chart">
+            <PriceChart poolAddress={activePool || null} engineToken={address} ticks={onchainFailed ? undefined : ticks} live={streaming} trades={chartTrades} thesisMarks={thesisMarks} friends={friends} supply={supply} symbol={symbol}
+              height={420} onTraderClick={a => navigate({ name: 'trader', address: a })} />
+          </div>
+          <div className="spot-panel spot-form">
+            <div className="spot-form-tabs">
+              <span className="active">{T('Spot')}</span>
+              <span className="spot-form-kind">{T('Market')}</span>
+              <span className="spot-form-hint">{T('Fills at once against the pool, at the best price on Arc.')}</span>
+            </div>
+            <div className="spot-form-sides">
+              {swapWidget('buy', true)}
+              {swapWidget('sell', true)}
+            </div>
+            <p className="spot-form-note">
+              {trader.address
+                ? <>{T("Trading as")}{' '}{trader.kind === 'trading-wallet' ? T("⚡ trading wallet") : T("wallet")} <span className="spot-addr">{trader.address.slice(0, 6)}…{trader.address.slice(-4)}</span>{trader.kind === 'trading-wallet' ? T(" · one-tap, no pop-ups") : ''} · </>
+                : null}
+              {T("Every trade is simulated before it's sent.")}
+            </p>
+          </div>
+        </div>
+        <div className="spot-side">
+          <PairList current={address.toLowerCase()} navigate={navigate} />
           {sidePanels}
-          <TradeBar symbol={symbol} onTrade={setTradeSheet} />
-          <Sheet open={tradeSheet !== null} onClose={() => setTradeSheet(null)}>
-            {tradeSheet && swapWidget(tradeSheet)}
-          </Sheet>
         </div>
-      ) : (
-        <div className="token-detail-grid">
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {chartCard}
-            {socialTabs}
-          </div>
-
-          <div className="token-detail-swap">
-            <div style={{ ...card, overflow: 'hidden' }}>{swapWidget()}</div>
-            {sidePanels}
-          </div>
-        </div>
-      )}
+        <div className="spot-bottom spot-panel">{socialTabs}</div>
+      </div>
     </div>
   )
 }

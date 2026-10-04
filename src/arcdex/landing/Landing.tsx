@@ -4,30 +4,72 @@ import { LANGS, setLang, t, useLang, type Lang } from '../lib/i18n'
 import TrafficCard from './TrafficCard'
 import SenseProgram from './SenseProgram'
 import { PHASES, phaseStatus } from './roadmap'
+import { ENGINE_API, SENSE, SENSE_IMAGE, SENSE_PATH, fmtCompactUsd, fmtPct, fmtSmallUsd, useSense } from '../lib/sense'
+import type { SenseProgramView } from '../../../engine/src/sense/shared'
 import './landing.css'
 
-// arcsense.site/ — the landing page. ARCSENSE (2026-10-03, owner): the first
-// spot and futures trading platform on Arc. The hero is the slogan and futures (on Arc testnet); then
-// the app's features, the futures plan, the roadmap in one line and a few
-// questions. A separate small bundle (no wallet libraries); "Launch app" goes
-// to /app.
+// arcsense.site/ — the home page, laid out like Binance's (owner, 2026-10-04: "the layout and UX
+// should mimic Binance but blue; make sure $SENSE becomes visible"). The hero pairs the platform with
+// its coin; beside it, live markets (Arc coins, new listings, futures) and $SENSE's own card. Then
+// futures, where the fees go, the app, the roadmap and questions. A separate small bundle (no wallet
+// libraries); every "trade" link goes into the app.
 
 export function mountLanding(root: HTMLElement) {
-  document.title = 'ARCSENSE · The first spot and futures trading platform on Arc'
+  document.title = 'ARCSENSE · Spot and futures trading on Arc · $SENSE'
   createRoot(root).render(<StrictMode><Landing /></StrictMode>)
 }
 
-/** The market engine's REST base (the scanner's numbers), when the site has one. */
-const ENGINE = ((import.meta.env.VITE_ARCDEX_API_URL as string | undefined) || ((import.meta.env.VITE_ARCDEX_WS_URL as string | undefined) ?? '').replace(/^ws/, 'http').replace(/\/ws\/?$/, '')).replace(/\/$/, '')
-interface ScanNumbers { watching: number; evalsPerMin: number; signals24h: number; rejected24h: number }
-
-/** The futures markets (contracts/SensePerps.sol), priced by RedStone's signed oracle prices. */
-const PERPS = ['BTC', 'ETH', 'SOL']
-
-/** $SENSE, ARCSENSE's coin: an Argus launch (name ARCSENSE, symbol SENSE, 1B supply), and its ARGUS-quoted v4 pool. */
-const SENSE = '0x91402b32C4Ab7915132b8B24e0d084E0428667ED'
-const SENSE_POOL = '0x879394cd067942b06d9e15aa58420729b30944901bf107b5f7779a8c5c9de047'
+const ENGINE = ENGINE_API
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
+
+interface Row { key: string; href: string; symbol: string; name: string; image: string | null; price: number | null; change: number | null; tag?: string }
+
+/** Live rows for the markets card: what's trading now, the newest launches, and the futures pairs. */
+function useMarkets() {
+  const [popular, setPopular] = useState<Row[] | null>(null)
+  const [fresh, setFresh] = useState<Row[] | null>(null)
+  const [perps, setPerps] = useState<Row[] | null>(null)
+  useEffect(() => {
+    if (!ENGINE) return
+    const get = (path: string) => fetch(`${ENGINE}${path}`, { signal: AbortSignal.timeout(8_000) }).then(r => (r.ok ? r.json() : null)).catch(() => null)
+    type Meta = { token: string; name: string; symbol: string; image?: string | null; pool?: string | null; priceUsd?: number | null }
+    const load = () => {
+      void get('/v1/tokens/active?limit=12').then((j: { tokens?: { token: string; stats: { priceUsd: number | null; chg: { h24: number | null } }; meta: Meta | null }[] } | null) => {
+        if (!j?.tokens) return
+        setPopular(j.tokens.filter(a => a.meta && a.token !== SENSE.toLowerCase() && a.stats.priceUsd).slice(0, 5).map(a => ({
+          key: a.token, href: `/token/${a.token}${a.meta?.pool ? `?pool=${a.meta.pool}` : ''}`, symbol: a.meta!.symbol, name: a.meta!.name,
+          image: a.meta!.image ?? null, price: a.stats.priceUsd, change: a.stats.chg.h24,
+        })))
+      })
+      void get('/v1/tokens/new?limit=8').then((j: { launches?: Meta[] } | null) => {
+        if (!j?.launches) return
+        setFresh(j.launches.slice(0, 6).map(l => ({
+          key: l.token, href: `/token/${l.token}${l.pool ? `?pool=${l.pool}` : ''}`, symbol: l.symbol, name: l.name, image: l.image ?? null, price: l.priceUsd ?? null, change: null, tag: t('New'),
+        })))
+      })
+      void get('/v1/perps/prices').then((j: { feeds?: Record<string, { price: number; change24h: number | null }> } | null) => {
+        if (!j?.feeds) return
+        setPerps(['BTC', 'ETH', 'SOL'].filter(s => j.feeds![s]).map(s => ({
+          key: s, href: '/futures', symbol: `${s}USDC`, name: t('Perpetual'), image: null, price: j.feeds![s].price, change: j.feeds![s].change24h, tag: t('Up to 10×'),
+        })))
+      })
+    }
+    load()
+    const id = setInterval(() => { if (!document.hidden) load() }, 20_000)
+    return () => clearInterval(id)
+  }, [])
+  return { popular, fresh, perps }
+}
+
+/** The fee wallet's ledger (engine/src/sense/program.ts): what's been bought back and burned. */
+function useProgram() {
+  const [v, setV] = useState<SenseProgramView | null>(null)
+  useEffect(() => {
+    if (!ENGINE) return
+    void fetch(`${ENGINE}/v1/sense/program`, { signal: AbortSignal.timeout(10_000) }).then(r => (r.ok ? r.json() : null)).then((x: SenseProgramView | null) => x && setV(x)).catch(() => {})
+  }, [])
+  return v
+}
 
 function Copy({ text }: { text: string }) {
   const [done, setDone] = useState(false)
@@ -38,11 +80,37 @@ function Copy({ text }: { text: string }) {
   )
 }
 
+function Logo({ src, symbol }: { src: string | null; symbol: string }) {
+  const [err, setErr] = useState(false)
+  if (!src || err) return <span className="ld-mk-logo">{symbol.slice(0, 1)}</span>
+  return <img className="ld-mk-logo" src={src} alt="" onError={() => setErr(true)} />
+}
+
+/** A laurel branch (Binance's award badges): leaves along an arc; `flip` for the right-hand one. */
+function Laurel({ flip }: { flip?: boolean }) {
+  const leaves = [0, 1, 2, 3, 4, 5]
+  return (
+    <svg className="ld-laurel-svg" viewBox="0 0 24 48" width="20" height="40" aria-hidden="true" style={flip ? { transform: 'scaleX(-1)' } : undefined}>
+      <path d="M18 46 C 6 38, 4 20, 12 3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      {leaves.map(i => {
+        const y = 42 - i * 7.2
+        const x = 14 - Math.sin((i / 5) * Math.PI) * 6.5 - i * 0.2
+        return <ellipse key={i} cx={x - 3.2} cy={y - 1} rx="4.2" ry="1.9" fill="currentColor" transform={`rotate(${-40 + i * 6} ${x - 3.2} ${y - 1})`} />
+      })}
+    </svg>
+  )
+}
+
+const price = (p: number | null) => (p == null ? '—' : p >= 1000 ? `$${p.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : fmtSmallUsd(p))
+
 export default function Landing() {
   const lang = useLang()
-  const [scan, setScan] = useState<ScanNumbers | null>(null)
   const [menu, setMenu] = useState(false)
+  const [tab, setTab] = useState<'popular' | 'new' | 'futures'>('popular')
   const navRef = useRef<HTMLElement>(null)
+  const sense = useSense()
+  const markets = useMarkets()
+  const program = useProgram()
 
   // The links fold into the ☰ menu wherever they don't fit on one line.
   useLayoutEffect(() => {
@@ -58,57 +126,41 @@ export default function Landing() {
     return () => window.removeEventListener('resize', fit)
   }, [lang])
 
-  useEffect(() => {
-    if (!ENGINE) return
-    const load = () => void fetch(`${ENGINE}/v1/bot/scan?limit=1`, { signal: AbortSignal.timeout(6_000) })
-      .then(r => (r.ok ? r.json() : null)).then((j: { stats?: ScanNumbers } | null) => { if (j?.stats) setScan(j.stats) }).catch(() => {})
-    load()
-    const id = setInterval(() => { if (!document.hidden) load() }, 15_000)
-    return () => clearInterval(id)
-  }, [])
+  const senseRow: Row = { key: 'sense', href: SENSE_PATH, symbol: 'SENSE', name: 'ARCSENSE', image: SENSE_IMAGE, price: sense?.priceUsd ?? null, change: sense?.change24h ?? null, tag: t('Official') }
+  const rows = tab === 'popular' ? (markets.popular ? [senseRow, ...markets.popular] : null) : tab === 'new' ? markets.fresh : markets.perps
 
-  const metrics: [string, string][] = [
-    [t('Coins tracked'), scan ? scan.watching.toLocaleString() : '…'],
-    [t('Safety checks a minute'), scan ? scan.evalsPerMin.toLocaleString() : '…'],
-  ]
-
-  const PLATFORM: [string, string, string][] = [
-    ['📈', t('Terminal'), t('Every coin on Arc, live.')],
-    ['⚡', t('One-tap trading'), t('Buy and sell with no pop-ups.')],
-    ['🛡', t('Safety checks'), t('Honeypots and rugs flagged first.')],
-    ['▤', t('Portfolio'), t('Every coin you hold, valued live.')],
-    ['🌉', t('Bridge'), t('USDC from Ethereum and Base.')],
-    ['📊', t('Futures'), t('BTC, ETH and SOL perpetuals, on Arc testnet.')],
-  ]
-
-  const FUTURES: [string, string][] = [
-    [t('USDC in, USDC out'), t('Margin, profits and fees are all in USDC, the currency Arc runs on.')],
-    [t('Signed oracle prices'), t('Positions are priced by RedStone’s signed oracle prices, checked on-chain, not by thin pools anyone can push.')],
-    [t('Fees fund liquidity'), t('70% of ARCSENSE’s fees go to liquidity pools, and 30% buy back $SENSE and burn it.')],
+  const PLATFORM: [string, string, string, string][] = [
+    ['📈', t('Markets'), t('Every coin on Arc, live, with safety checks.'), '/app'],
+    ['◆', t('Spot'), t('Buy and sell any Arc coin in one tap, no pop-ups.'), '/spot'],
+    ['📊', t('Futures'), t('BTC, ETH and SOL perpetuals, up to 10×.'), '/futures'],
+    ['⇄', t('Swap'), t('USDC in and out of any coin.'), '/swap'],
+    ['🌉', t('Bridge'), t('USDC from Ethereum and Base.'), '/bridge'],
+    ['▤', t('Portfolio'), t('Every coin you hold, valued live.'), '/portfolio'],
   ]
 
   const FAQ: [string, string][] = [
     [t('What is ARCSENSE?'), t('The first platform on Arc for spot and perpetual futures trading: a live terminal for every coin, one-tap swaps, a USDC bridge and BTC, ETH and SOL perpetuals, now on Arc testnet.')],
-    [t('When do futures launch?'), t('They’re on Arc testnet now: try them with free test USDC, without risk. Mainnet follows an independent security audit; the date will be announced.')],
     [t('What is $SENSE?'), t('The ARCSENSE coin, launched on Argus. 30% of ARCSENSE’s fees buy back $SENSE and burn it, and 70% go to liquidity pools. Every buyback and burn is on-chain and shown on this page.')],
+    [t('How do I buy $SENSE?'), t('Open the app, create a trading wallet or connect your own, add USDC on Arc, then buy $SENSE on its trading page. Always check the contract address: {ca}.', { ca: short(SENSE) })],
+    [t('When do futures launch?'), t('They’re on Arc testnet now: try them with free test USDC, without risk. Mainnet follows an independent security audit; the date will be announced.')],
     [t('Is my money at risk?'), t('Yes. Coins on Arc are very volatile, and futures with leverage can lose money quickly. Trade only what you can afford to lose. Nothing here is financial advice.')],
   ]
 
   const phaseNow = PHASES.find(p => phaseStatus(p.n) === 'now') ?? PHASES.find(p => phaseStatus(p.n) === 'next') ?? PHASES[PHASES.length - 1]
+  const chg = sense?.change24h ?? null
 
   return (
     <div className="ld" lang={lang}>
-      <div className="ld-glow ld-glow-a" /><div className="ld-glow ld-glow-b" />
-
-      {/* ── nav ─────────────────────────────────────────── */}
+      {/* ── nav: Binance's, in blue ─────────────────────── */}
       <header className="ld-nav" ref={navRef}>
-        <a href="/" className="ld-brand"><img src="/arcsense-mark.png" alt="" width={30} height={30} /><span className="ld-word">Arc<span>sense</span></span></a>
+        <a href="/" className="ld-brand"><img src="/arcsense-mark.png" alt="" width={28} height={28} /><span className="ld-word">Arc<span>sense</span></span></a>
         <nav className={`ld-links${menu ? ' open' : ''}`} onClick={() => setMenu(false)}>
-          <a href="#platform">{t('Features')}</a>
-          <a href="#futures">{t('Futures')}</a>
-          <a href="#sense">$SENSE</a>
-          <a href="#roadmap">{t('Roadmap')}</a>
-          <a href="#faq">{t('Questions')}</a>
+          <a href="/app">{t('Markets')}</a>
+          <a href="/spot">{t('Spot')}</a>
+          <a href="/futures">{t('Futures')} <small className="ld-tag">{t('Testnet')}</small></a>
+          <a href="/swap">{t('Swap')}</a>
+          <a href="/bridge">{t('Bridge')}</a>
+          <a href="#sense" className="ld-link-sense">$SENSE</a>
           <div className="ld-menu-lang" onClick={e => e.stopPropagation()}>
             <select className="ld-lang" value={lang} onChange={e => void setLang(e.target.value as Lang)} aria-label={t('Language')}>
               {LANGS.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
@@ -119,66 +171,104 @@ export default function Landing() {
           <select className="ld-lang ld-lang-top" value={lang} onChange={e => void setLang(e.target.value as Lang)} aria-label={t('Language')}>
             {LANGS.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
           </select>
-          <a className="ld-btn ld-btn-primary ld-btn-sm" href="/app">{t('Launch app')}</a>
+          <a className="ld-btn ld-btn-ghost ld-btn-sm ld-hide-sm" href="/app">{t('Launch app')}</a>
+          <a className="ld-btn ld-btn-primary ld-btn-sm" href={SENSE_PATH}>{t('Buy $SENSE')}</a>
           <button className="ld-burger" onClick={() => setMenu(o => !o)} aria-label={t('Menu')}>☰</button>
         </div>
       </header>
 
-      {/* ── hero: the slogan, and futures ───── */}
+      {/* ── hero: the platform and its coin; live markets and $SENSE beside ── */}
       <section className="ld-hero">
         <div className="ld-hero-text">
-          <span className="ld-pill"><span className="ld-dot" />{t('Live on Arc mainnet')}</span>
-          <h1>{t('The first spot and futures trading platform on Arc.')}</h1>
-          <p className="ld-lead">{t('Trade every coin on Arc in one tap, and go long or short on BTC, ETH and SOL with up to 10× leverage, now on Arc testnet. All in USDC.')}</p>
-          <div className="ld-cta">
-            <a className="ld-btn ld-btn-primary" href="/app">{t('Launch app')} →</a>
-            <a className="ld-btn ld-btn-ghost" href="/futures">{t('Futures')}</a>
+          <h1><span className="ld-hero-blue">{t('TRADE ARC.')}</span><br />{t('OWN $SENSE.')}</h1>
+          <p className="ld-lead">{t('The first spot and futures trading platform on Arc. 30% of every fee buys back $SENSE and burns it.')}</p>
+          <div className="ld-laurels">
+            <div className="ld-laurel"><Laurel /><div><b>{t('First')}</b><span>{t('Spot + futures on Arc')}</span></div><Laurel flip /></div>
+            <div className="ld-laurel"><Laurel /><div><b>30%</b><span>{t('Of fees burn $SENSE')}</span></div><Laurel flip /></div>
           </div>
-          <div className="ld-ca ld-sense">
-            <b className="ld-sense-tag">$SENSE</b>
-            <code title={SENSE}><span className="ld-ca-full">{SENSE}</span><span className="ld-ca-short">{short(SENSE)}</span></code>
-            <Copy text={SENSE} />
-            <a className="ld-sense-buy" href={`/token/${SENSE}?pool=${SENSE_POOL}`}>{t('Buy $SENSE')} →</a>
+          <div className="ld-buybox">
+            <div className="ld-ca">
+              <img src={SENSE_IMAGE} alt="" width={22} height={22} />
+              <code title={SENSE}><span className="ld-ca-full">{SENSE}</span><span className="ld-ca-short">{short(SENSE)}</span></code>
+              <Copy text={SENSE} />
+            </div>
+            <a className="ld-btn ld-btn-primary ld-buy" href={SENSE_PATH}>{t('Buy $SENSE')}</a>
           </div>
-          <div className="ld-trust">{t('One-tap trading')} · {t('Safety checks')} · {t('USDC in and out')} · {t('7 languages')}</div>
+          <div className="ld-hero-links">
+            <a className="ld-btn ld-btn-ghost ld-btn-sm" href="/app">{t('Explore markets')}</a>
+            <a className="ld-btn ld-btn-ghost ld-btn-sm" href="/futures">{t('Try futures free')}</a>
+          </div>
           <TrafficCard engine={ENGINE} />
         </div>
-        <div className="ld-card ld-perps">
-          <div className="ld-perps-head"><b>{t('Perpetual futures')}</b><span className="ld-pill">{t('On testnet')}</span></div>
-          {PERPS.map(c => (
-            <div key={c} className="ld-perps-row"><b>{c}-PERP</b><span className="ld-muted">{t('Long or short')} · {t('Up to 10× leverage')}</span></div>
-          ))}
-          <p className="ld-muted">{t('Try them on Arc testnet with free test USDC. Mainnet after an independent audit.')}</p>
-        </div>
-      </section>
 
-      <section className="ld-metrics">
-        {metrics.map(([k, v]) => <div key={k}><b>{v}</b><span>{k}</span></div>)}
-      </section>
+        <div className="ld-hero-side">
+          <div className="ld-card ld-mkts">
+            <div className="ld-mkts-tabs">
+              {([['popular', t('Popular')], ['new', t('New listing')], ['futures', t('Futures')]] as const).map(([k, l]) => (
+                <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>{l}</button>
+              ))}
+              <a className="ld-mkts-all" href={tab === 'futures' ? '/futures' : '/app'}>{t('View all')} ›</a>
+            </div>
+            {!rows && <div className="ld-mkts-empty">{t('Loading markets…')}</div>}
+            {rows?.map(r => (
+              <a key={r.key} className={`ld-mkts-row${r.key === 'sense' ? ' sense' : ''}`} href={r.href}>
+                <Logo src={r.image} symbol={r.symbol} />
+                <span className="ld-mkts-name"><b>{r.symbol}</b><small>{r.name}</small>{r.tag && <em>{r.tag}</em>}</span>
+                <span className="ld-mkts-price">{price(r.price)}</span>
+                <span className={`ld-mkts-chg ${r.change == null ? '' : r.change >= 0 ? 'ld-up' : 'ld-down'}`}>{r.change == null ? '—' : fmtPct(r.change)}</span>
+              </a>
+            ))}
+          </div>
 
-      {/* ── the app ─────────────────────────────────────── */}
-      <section className="ld-section" id="platform">
-        <h2>{t('A full trading app for Arc')}</h2>
-        <div className="ld-platform">
-          {PLATFORM.map(([icon, title, body]) => (
-            <div key={title} className="ld-card ld-tile"><span className="ld-icon">{icon}</span><div><h3>{title}</h3><p>{body}</p></div></div>
-          ))}
+          <a className="ld-card ld-sense-card" href={SENSE_PATH} id="sense-card">
+            <div className="ld-sense-head">
+              <img src={SENSE_IMAGE} alt="" width={36} height={36} />
+              <div><b>$SENSE</b><small>{t('The ARCSENSE coin')}</small></div>
+              <span className="ld-sense-price">{fmtSmallUsd(sense?.priceUsd)} <span className={chg == null ? '' : chg >= 0 ? 'ld-up' : 'ld-down'}>{fmtPct(chg)}</span></span>
+            </div>
+            <div className="ld-sense-stats">
+              <div><span>{t('Market cap')}</span><b>{fmtCompactUsd(sense?.marketCapUsd)}</b></div>
+              <div><span>{t('Liquidity')}</span><b>{fmtCompactUsd(sense?.liquidityUsd)}</b></div>
+              <div><span>{t('Bought back')}</span><b>{program ? fmtCompactUsd(program.totals.buybackUsd) : '…'}</b></div>
+              <div><span>{t('Burned')}</span><b>{program ? Math.round(program.totals.senseBurned).toLocaleString() : '…'}</b></div>
+            </div>
+            <span className="ld-btn ld-btn-primary ld-btn-block">{t('Buy $SENSE')} →</span>
+          </a>
         </div>
       </section>
 
       {/* ── futures ─────────────────────────────────────── */}
       <section className="ld-section" id="futures">
-        <h2>{t('Perpetual futures on Arc')}</h2>
-        <p className="ld-sub">{t('Long or short BTC, ETH and SOL with up to 10× leverage, settled in USDC at RedStone’s signed oracle prices. On Arc testnet now; mainnet after an independent audit.')}</p>
-        <div className="ld-steps">
-          {FUTURES.map(([title, body], i) => (
-            <div key={title} className="ld-card ld-step"><span className="ld-step-n">{i + 1}</span><h3>{title}</h3><p>{body}</p></div>
+        <div className="ld-split-head">
+          <div>
+            <h2>{t('Perpetual futures on Arc')}</h2>
+            <p className="ld-sub">{t('Long or short BTC, ETH and SOL with up to 10× leverage, settled in USDC at RedStone’s signed oracle prices. On Arc testnet now; mainnet after an independent audit.')}</p>
+          </div>
+          <a className="ld-btn ld-btn-primary" href="/futures">{t('Trade futures')} →</a>
+        </div>
+        <div className="ld-perps">
+          {(markets.perps ?? ['BTC', 'ETH', 'SOL'].map(s => ({ key: s, symbol: `${s}USDC`, price: null, change: null } as Row))).map(p => (
+            <a key={p.key} className="ld-card ld-perp" href="/futures">
+              <span className="ld-perp-sym">{p.symbol} <small>{t('Perp')}</small></span>
+              <b>{price(p.price)}</b>
+              <span className="ld-muted">{t('Long or short')} · {t('Up to 10× leverage')}</span>
+            </a>
           ))}
         </div>
       </section>
 
       {/* ── where the fees go: 30% $SENSE buyback & burn, 70% liquidity ── */}
       <SenseProgram engine={ENGINE} />
+
+      {/* ── the app ─────────────────────────────────────── */}
+      <section className="ld-section" id="platform">
+        <h2>{t('Everything to trade on Arc')}</h2>
+        <div className="ld-platform">
+          {PLATFORM.map(([icon, title, body, href]) => (
+            <a key={title} href={href} className="ld-card ld-tile"><span className="ld-icon">{icon}</span><div><h3>{title}</h3><p>{body}</p></div></a>
+          ))}
+        </div>
+      </section>
 
       {/* ── roadmap, in one line ────────────────────────── */}
       <section className="ld-section" id="roadmap">
@@ -202,11 +292,12 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="ld-final ld-card">
+      <section className="ld-final">
         <h2>{t('Start trading on Arc.')}</h2>
         <p>{t('Create a trading wallet in seconds. No sign-up.')}</p>
         <div className="ld-cta ld-center">
-          <a className="ld-btn ld-btn-primary" href="/app">{t('Launch app')} →</a>
+          <a className="ld-btn ld-btn-primary" href={SENSE_PATH}>{t('Buy $SENSE')}</a>
+          <a className="ld-btn ld-btn-ghost" href="/app">{t('Launch app')} →</a>
         </div>
       </section>
 
@@ -214,11 +305,12 @@ export default function Landing() {
         <div className="ld-foot-top">
           <a href="/" className="ld-brand"><img src="/arcsense-mark.png" alt="" width={24} height={24} /><span className="ld-word">Arc<span>sense</span></span></a>
           <nav>
-            <a href="/app">{t('App')}</a>
-            <a href="/swap">{t('Swap')}</a>
+            <a href="/app">{t('Markets')}</a>
+            <a href="/spot">{t('Spot')}</a>
             <a href="/futures">{t('Futures')}</a>
+            <a href="/swap">{t('Swap')}</a>
             <a href="/bridge">{t('Bridge')}</a>
-            <a href="/portfolio">{t('Portfolio')}</a>
+            <a href="/sense">{t('$SENSE burn')}</a>
           </nav>
         </div>
         <p className="ld-disclaimer">{t('Trading crypto is risky, and leveraged futures more so. Nothing here is financial advice.')}</p>

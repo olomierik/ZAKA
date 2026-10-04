@@ -80,6 +80,10 @@ interface Props {
   /** The coin's launchpad, when it isn't Argus: named in the notes, and
    * linked when ARCSENSE can't route the coin's pool. */
   venue?: { name: string; site?: string } | null
+  /** One side only, with no Buy/Sell switch (the spot screen shows a buy form and a sell form side by side). */
+  side?: 'buy' | 'sell'
+  /** Leave out the notes under the button (the spot screen shows them once, under both forms). */
+  compact?: boolean
 }
 
 type Step = 'idle' | 'approving' | 'quoting' | 'swapping' | 'done' | 'error'
@@ -87,12 +91,12 @@ type Step = 'idle' | 'approving' | 'quoting' | 'swapping' | 'done' | 'error'
 const fmtUsd = (n: number) => n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(2)}`
 const fmtTok = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toFixed(2)
 
-export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, marketCapUsd, route, routeLoading, buyTaxBps, sellTaxBps, onTraded, unverified, initialMode, venue }: Props) {
+export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, marketCapUsd, route, routeLoading, buyTaxBps, sellTaxBps, onTraded, unverified, initialMode, venue, side, compact }: Props) {
   const trader = useTrader()
   const me = trader.address
   const info = useRouterInfo()
 
-  const [mode, setMode] = useState<'buy' | 'sell'>(initialMode ?? 'buy')
+  const [mode, setMode] = useState<'buy' | 'sell'>(side ?? initialMode ?? 'buy')
   const [amount, setAmount] = useState('')
   const [slippage, setSlippage] = useState(3)
   const [step, setStep] = useState<Step>('idle')
@@ -424,8 +428,8 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
   const blocked = busy || amountIn === 0n || !route || insufficient || !info || (needsRiskTick && !riskOk) || (needsSnipeTick && !snipeOk) || buyClosed
 
   return (
-    <div className="swap-box">
-      <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--adx-card-border)', background: 'var(--bg-2)' }}>
+    <div className={`swap-box${side ? ` swap-side-${side}` : ''}`}>
+      {!side && <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--adx-card-border)', background: 'var(--bg-2)' }}>
         {(['buy', 'sell'] as const).map(m => (
           <button key={m} onClick={() => { setMode(m); setAmount(''); setStep('idle'); setMsg(''); setEditing(null) }} style={{
             flex: 1, padding: 8, fontSize: '0.82rem', fontWeight: 700, border: 'none', cursor: 'pointer',
@@ -433,7 +437,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
             color: mode === m ? '#fff' : 'var(--text-muted)',
           }}>{m === 'buy' ? T("Buy") : T("Sell")} {symbol}</button>
         ))}
-      </div>
+      </div>}
 
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 6 }}>
@@ -534,7 +538,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         </Note>
       )}
 
-      {me && (
+      {me && !compact && (
         <div className="swap-note">{T("Trading as")}{' '}{trader.kind === 'trading-wallet' ? T("⚡ trading wallet") : T("wallet")} <span style={{ fontFamily: 'var(--mono)' }}>{shortAddr(me)}</span>
           {trader.kind === 'trading-wallet' ? T(" · one-tap, no pop-ups") : ''}
         </div>
@@ -544,13 +548,13 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         <div style={{ fontSize: '0.7rem', color: '#fcd34d', textAlign: 'center' }}>{T("⚠ Unverified token — anyone can launch a coin with any name. Check the contract before trading.")}</div>
       )}
 
-      <p className="swap-note">{curve
+      {!compact && <p className="swap-note">{curve
         ? curveRouterConfigured
           ? T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee on top of the platform fee.", { launchpad: curve.venue })
           : T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee; ARCSENSE adds none.", { launchpad: curve.venue })
         : venue
           ? T("Every trade is simulated before it's sent. The pool's own fee, set by {launchpad}, applies on top of the platform fee.", { launchpad: venue.name })
-          : T("Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.")}</p>
+          : T("Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.")}</p>}
 
       {share && <ShareCardModal card={share.card} text={share.text} referralsLive={info?.version === 2} onClose={() => setShare(null)} />}
     </div>

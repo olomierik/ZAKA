@@ -24,13 +24,13 @@ export function onChartStyle(cb: (s: ChartStyle) => void): () => void {
   return () => window.removeEventListener(EVENT, h)
 }
 
-const UP = '#22c55e', DOWN = '#ef4444'
+const UP = '#0ecb81', DOWN = '#f6465d'
 
 /** Line colours for a chart that is up (or down) over its window. */
 export const lineColors = (up: boolean) => ({
   lineColor: up ? UP : DOWN,
-  topColor: up ? 'rgba(34,197,94,0.28)' : 'rgba(239,68,68,0.28)',
-  bottomColor: up ? 'rgba(34,197,94,0)' : 'rgba(239,68,68,0)',
+  topColor: up ? 'rgba(14,203,129,0.24)' : 'rgba(246,70,93,0.24)',
+  bottomColor: up ? 'rgba(14,203,129,0)' : 'rgba(246,70,93,0)',
 })
 
 export function addMainSeries(chart: IChartApi, style: ChartStyle): MainSeries {
