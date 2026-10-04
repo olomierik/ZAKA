@@ -27,6 +27,8 @@ export function pageToPath(p: Page): string {
     case 'signals':     return p.bot ? `/bots/${encodeURIComponent(p.bot)}` : p.view === 'market' ? '/bots' : p.view === 'manage' ? '/autotrade/manage' : '/autotrade'
     case 'futures':     return '/futures'
     case 'sense':       return '/sense'
+    case 'robinhood':   return '/robinhood'
+    case 'rh-token':    return `/robinhood/token/${p.address}${p.pool ? `?pool=${p.pool}` : ''}`
   }
 }
 
@@ -69,6 +71,13 @@ export function pathToPage(pathname: string, search: string): Page | null {
     case 'burn':        return { name: 'sense' }
     // The bot marketplace, and one bot's public page.
     case 'bots':        return b ? { name: 'signals', view: 'market', bot: b.toLowerCase() } : { name: 'signals', view: 'market' }
+    // Robinhood Chain's markets, and one of its coins (a v4 pool's id is 32 bytes).
+    case 'robinhood':
+      if (b === 'token' && parts[2] && /^0x[0-9a-fA-F]{40}$/.test(parts[2])) {
+        const pool = (q.get('pool') ?? '').toLowerCase()
+        return { name: 'rh-token', address: parts[2].toLowerCase(), pool: /^0x([0-9a-f]{40}|[0-9a-f]{64})$/.test(pool) ? pool : '' }
+      }
+      return { name: 'robinhood' }
     // Not linked anywhere: the owner deploys ArcDexCurveRouter here.
     case 'deploy':      return b === 'curve-router' ? { name: 'deploy-curve-router' } : null
     default:            return null

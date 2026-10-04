@@ -3,6 +3,7 @@ import { ConnectButton } from '../components/ConnectWallet'
 import { DepositModal, WithdrawModal } from '../components/CashModals'
 import Sheet from '../components/Sheet'
 import TokenSwap from '../components/TokenSwap'
+import RobinhoodHoldings from '../components/RobinhoodHoldings'
 import { hasStoredWallet } from '../lib/embeddedWallet'
 import { shortAddr, useTrader } from '../lib/identity'
 import { loadHoldings, type Holding } from '../lib/portfolio'
@@ -37,6 +38,8 @@ export default function Portfolio({ navigate }: Props) {
   const [sell, setSell] = useState<Holding | null>(null)
   const [send, setSend] = useState<Holding | null>(null)
   const [modal, setModal] = useState<'deposit' | 'withdraw' | null>(null)
+  // Coins held on Robinhood Chain, counted in the total (components/RobinhoodHoldings.tsx).
+  const [rhValue, setRhValue] = useState(0)
   const seq = useRef(0)
 
   const load = useCallback(() => {
@@ -74,7 +77,7 @@ export default function Portfolio({ navigate }: Props) {
   }
 
   const coinsValue = (holdings ?? []).reduce((s, h) => s + h.valueUsd, 0)
-  const total = (cash ?? 0) + coinsValue
+  const total = (cash ?? 0) + coinsValue + rhValue
   const visible = (holdings ?? []).filter(h => showDust || h.valueUsd >= DUST_USD || h.priceUsd === 0)
   const dust = (holdings ?? []).length - visible.length
 
@@ -93,6 +96,7 @@ export default function Portfolio({ navigate }: Props) {
         <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: 6 }}>
           <span>{T("Cash (USDC)")}: <b className="sensitive" style={{ color: 'var(--text)' }}>{cash === null ? '…' : money(cash)}</b></span>
           <span>{T("Coins")}: <b className="sensitive" style={{ color: 'var(--text)' }}>{holdings === null ? '…' : money(coinsValue)}</b></span>
+          {rhValue > 0 && <span>{T("Robinhood Chain")}: <b className="sensitive" style={{ color: 'var(--text)' }}>{money(rhValue)}</b></span>}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           <button className="btn-primary" style={{ flex: 1, padding: '8px 12px' }} onClick={() => setModal('deposit')}>{T("Deposit")}</button>
@@ -144,6 +148,8 @@ export default function Portfolio({ navigate }: Props) {
           <button className="link-btn" onClick={() => setShowDust(true)} style={{ fontSize: '0.78rem' }}>{T("Show {n} small balances", { n: dust })}</button>
         </div>
       )}
+
+      <RobinhoodHoldings owner={me} navigate={navigate} onValue={setRhValue} />
 
       <Sheet open={!!sell} onClose={() => setSell(null)} title={sell ? T('Sell {symbol}', { symbol: sell.symbol }) : undefined}>
         {sell && <TokenSwap key={sell.address} address={sell.address} pool={sell.pool ?? undefined} initialMode="sell"

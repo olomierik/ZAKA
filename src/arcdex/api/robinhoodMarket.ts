@@ -1,0 +1,317 @@
+// Robinhood Chain's market, from GeckoTerminal (network `robinhood`): its
+// coins and Robinhood's stock tokens, their prices, trades and candles.
+//
+// Called directly from the visitor's browser (gtDirect, paced to
+// GeckoTerminal's free rate) — never through the app's proxy, whose shared
+// quota is Arc's. The list is kept in this browser for 30 minutes, so a
+// returning visitor sees it at once while it refreshes.
+
+import { gtDirect } from './gtClient'
+import type { Candle } from '../lib/candles'
+import type { ChartResolution, ChartSource } from '../components/PriceChart'
+import type { TradeRow } from '../components/TokenSocialTabs'
+import { isStockName, QUOTE_SYMBOLS, RH_QUOTES } from '../lib/robinhood'
+
+const NET = 'robinhood'
+
+export interface RhCoin {
+  /** Lower case. */
+  address: string
+  symbol: string
+  name: string
+  image: string | null
+  decimals: number | null
+  /** One of Robinhood's stock tokens (by name here; trading checks the chain). */
+  stock: boolean
+  /** Its main pool: GeckoTerminal's pool id (a v4 pool's is 32 bytes). */
+  pool: string
+  dex: string
+  quote: string
+  quoteSymbol: string
+  priceUsd: number
+  change5m: number
+  change1h: number
+  change24h: number
+  /** Summed over its pools in the list. */
+  volume24h: number
+  liquidity: number
+  marketCap: number
+  buys24h: number
+  sells24h: number
+  /** Unique wallets buying and selling in 24h, in its main pool. */
+  traders24h: number
+  /** When its first listed pool opened (ms). */
+  createdAt: number
+}
+
+// ── GeckoTerminal's shapes ───────────────────────────────────────────────
+
+interface GtRef { data?: { id: string } | null }
+interface GtTx { buys?: number; sells?: number; buyers?: number; sellers?: number }
+interface GtPool {
+  id: string
+  attributes: {
+    address: string
+    name: string
+    pool_created_at?: string | null
+    base_token_price_usd?: string | null
+    quote_token_price_usd?: string | null
+    fdv_usd?: string | null
+    market_cap_usd?: string | null
+    reserve_in_usd?: string | null
+    price_change_percentage?: Partial<Record<'m5' | 'h1' | 'h6' | 'h24', string | null>>
+    transactions?: Partial<Record<'m5' | 'h1' | 'h24', GtTx>>
+    volume_usd?: Partial<Record<'m5' | 'h1' | 'h24', string | null>>
+  }
+  relationships?: { base_token?: GtRef; quote_token?: GtRef; dex?: GtRef }
+}
+interface GtToken { id: string; type: string; attributes: { address: string; name: string; symbol: string; decimals?: number | null; image_url?: string | null } }
+interface GtPools { data?: GtPool[]; included?: GtToken[] }
+
+const num = (v: unknown) => { const n = parseFloat(String(v ?? '')); return Number.isFinite(n) ? n : 0 }
+const idAddr = (id: string | undefined) => (id ?? '').replace(/^[a-z0-9_-]+?_(?=0x)/i, '').toLowerCase()
+const isImage = (u: string | null | undefined) => (u && /^https:\/\//.test(u) && !/missing/.test(u) ? u : null)
+/** GeckoTerminal sends some names HTML-escaped ("SPDR S&amp;P 500"). */
+const unescape = (v: string) => v.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+
+/** One pool as a row for its base token, or null when the base is a quote (USDG/WETH/ETH). */
+export function poolToCoin(p: GtPool, tokens: Map<string, GtToken['attributes']>): RhCoin | null {
+  const a = p.attributes
+  const base = idAddr(p.relationships?.base_token?.data?.id)
+  const quote = idAddr(p.relationships?.quote_token?.data?.id)
+  if (!/^0x[0-9a-f]{40}$/.test(base) || RH_QUOTES.has(base)) return null
+  const t = tokens.get(base)
+  const q = tokens.get(quote)
+  const [poolBase = '', poolQuote = ''] = a.name.split(' / ')
+  const symbol = unescape(t?.symbol || poolBase.trim() || '?')
+  const name = unescape(t?.name || symbol)
+  const tx = a.transactions?.h24 ?? {}
+  return {
+    address: base,
+    symbol,
+    name,
+    image: isImage(t?.image_url),
+    decimals: typeof t?.decimals === 'number' ? t.decimals : null,
+    stock: isStockName(name),
+    pool: a.address.toLowerCase(),
+    dex: p.relationships?.dex?.data?.id ?? '',
+    quote,
+    quoteSymbol: QUOTE_SYMBOLS[quote] ?? q?.symbol ?? poolQuote.split(' ')[0] ?? '',
+    priceUsd: num(a.base_token_price_usd),
+    change5m: num(a.price_change_percentage?.m5),
+    change1h: num(a.price_change_percentage?.h1),
+    change24h: num(a.price_change_percentage?.h24),
+    volume24h: num(a.volume_usd?.h24),
+    liquidity: num(a.reserve_in_usd),
+    // GeckoTerminal leaves a pool's market cap empty when it can't verify the
+    // circulating supply; the fully diluted value stands in, as on its own pages.
+    marketCap: num(a.market_cap_usd) || num(a.fdv_usd),
+    buys24h: tx.buys ?? 0,
+    sells24h: tx.sells ?? 0,
+    traders24h: (tx.buyers ?? 0) + (tx.sellers ?? 0),
+    createdAt: a.pool_created_at ? Date.parse(a.pool_created_at) || 0 : 0,
+  }
+}
+
+/** A pool whose big day is one or two wallets trading with themselves (seen
+ * on Robinhood Chain: $68M of "volume" from 1 buyer and 1 seller). A quiet
+ * pool isn't wash, and young pools get a pass: their first trades come from
+ * few wallets. */
+export function isWashPool(c: RhCoin, now = Date.now()): boolean {
+  const young = c.createdAt > 0 && now - c.createdAt < 2 * 3600_000
+  return !young && c.traders24h < 4 && c.volume24h > 10_000
+}
+
+/** One row per coin: its main pool is the deepest one quoted in USDG, WETH or
+ * ETH (else the deepest), and its volume and trades are the sum of its pools. */
+export function mergeCoins(rows: RhCoin[]): RhCoin[] {
+  const by = new Map<string, RhCoin[]>()
+  for (const r of rows) {
+    const list = by.get(r.address)
+    if (!list) by.set(r.address, [r])
+    else if (!list.some(x => x.pool === r.pool)) list.push(r)
+  }
+  const out: RhCoin[] = []
+  for (const list of by.values()) {
+    const quoted = list.filter(r => RH_QUOTES.has(r.quote))
+    const pick = (quoted.length ? quoted : list).slice().sort((a, b) => (b.liquidity - a.liquidity) || (b.volume24h - a.volume24h))[0]
+    const first = Math.min(...list.map(r => r.createdAt || Infinity))
+    out.push({
+      ...pick,
+      image: pick.image ?? list.find(r => r.image)?.image ?? null,
+      volume24h: list.reduce((s, r) => s + r.volume24h, 0),
+      buys24h: list.reduce((s, r) => s + r.buys24h, 0),
+      sells24h: list.reduce((s, r) => s + r.sells24h, 0),
+      createdAt: Number.isFinite(first) ? first : 0,
+    })
+  }
+  return out
+}
+
+function parsePools(d: GtPools): RhCoin[] {
+  const tokens = new Map((d.included ?? []).filter(i => i.type === 'token').map(i => [i.attributes.address.toLowerCase(), i.attributes]))
+  return (d.data ?? []).map(p => poolToCoin(p, tokens)).filter((c): c is RhCoin => c !== null)
+}
+
+const INCLUDE = { include: 'base_token,quote_token,dex' }
+
+// ── the market list ──────────────────────────────────────────────────────
+
+const CACHE_KEY = 'arcdex:rh-market:v1'
+const CACHE_MS = 30 * 60_000
+const FRESH_MS = 90_000
+
+function readCache(): { at: number; rows: RhCoin[] } | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(CACHE_KEY) ?? 'null') as { at: number; rows: RhCoin[] } | null
+    return v && Array.isArray(v.rows) && Date.now() - v.at < CACHE_MS ? v : null
+  } catch { return null }
+}
+function writeCache(rows: RhCoin[]) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), rows })) } catch { /* full or blocked */ }
+}
+
+/** The last list this browser built (≤30 minutes old), shown while a new one loads. */
+export const cachedRhMarket = (): RhCoin[] => readCache()?.rows ?? []
+
+let building: Promise<RhCoin[]> | null = null
+let builtAt = 0
+let built: RhCoin[] = []
+
+/** Robinhood Chain's coins: the 60 busiest pools of the day, the newest
+ * pools and Robinhood's stock tokens (40 of their pools), one row per coin. `onRows` gets the
+ * list as each call lands (the first within a second or two). Rebuilt at
+ * most every 90s however many pages ask. */
+export function loadRhMarket(onRows?: (rows: RhCoin[]) => void): Promise<RhCoin[]> {
+  if (built.length && Date.now() - builtAt < FRESH_MS) { onRows?.(built); return Promise.resolve(built) }
+  if (building) { void building.then(r => onRows?.(r)); return building }
+  const raw: RhCoin[] = []
+  const emit = () => { const rows = mergeCoins(raw); onRows?.(rows); return rows }
+  const step = (path: string, params: Record<string, string> = {}) =>
+    gtDirect<GtPools>(path, { ...INCLUDE, ...params }).then(d => { raw.push(...parsePools(d)); emit() }).catch(() => {})
+  building = (async () => {
+    const busiest = (page: string) => step(`/networks/${NET}/pools`, { page, sort: 'h24_volume_usd_desc' })
+    // Robinhood's stock tokens all carry "• Robinhood Token" in their name.
+    const stocks = (page: string) => step('/search/pools', { network: NET, query: 'Robinhood Token', page })
+    await busiest('1'); await stocks('1'); await busiest('2'); await step(`/networks/${NET}/new_pools`); await stocks('2'); await busiest('3')
+    const rows = mergeCoins(raw)
+    if (rows.length) { built = rows; builtAt = Date.now(); writeCache(rows) }
+    return rows.length ? rows : built
+  })().finally(() => { building = null })
+  return building
+}
+
+/** Pools matching a name, ticker or address on Robinhood Chain. */
+export async function searchRh(query: string): Promise<RhCoin[]> {
+  const d = await gtDirect<GtPools>('/search/pools', { ...INCLUDE, network: NET, query })
+  return mergeCoins(parsePools(d))
+}
+
+// ── one coin ─────────────────────────────────────────────────────────────
+
+interface GtTokenDetail {
+  data?: {
+    attributes: {
+      address: string; name: string; symbol: string; decimals?: number | null; image_url?: string | null
+      price_usd?: string | null; fdv_usd?: string | null; market_cap_usd?: string | null; normalized_total_supply?: string | null
+    }
+    relationships?: { top_pools?: { data?: { id: string }[] } }
+  }
+  included?: GtPool[]
+}
+
+export interface RhCoinDetail extends RhCoin {
+  /** Tokens in existence, for the chart's market cap. */
+  supply: number | null
+  /** Its pools, deepest first. */
+  pools: RhCoin[]
+}
+
+/** A coin's price, supply and pools (GeckoTerminal's token page). `pool`
+ * picks the main pool when the link named one. */
+export async function getRhCoin(address: string, pool?: string | null): Promise<RhCoinDetail | null> {
+  const d = await gtDirect<GtTokenDetail>(`/networks/${NET}/tokens/${address.toLowerCase()}`, { include: 'top_pools' })
+  const t = d.data?.attributes
+  if (!t) return null
+  const tokens = new Map([[t.address.toLowerCase(), t]])
+  const pools = (d.included ?? []).map(p => poolToCoin(p, tokens)).filter((c): c is RhCoin => !!c && c.address === t.address.toLowerCase())
+  const named = pool ? pools.find(p => p.pool === pool.toLowerCase()) : undefined
+  const main = named ?? mergeCoins(pools)[0]
+  const price = num(t.price_usd) || main?.priceUsd || 0
+  const base: RhCoin = main ?? {
+    address: t.address.toLowerCase(), symbol: t.symbol, name: t.name, image: isImage(t.image_url), decimals: t.decimals ?? null,
+    stock: isStockName(t.name), pool: '', dex: '', quote: '', quoteSymbol: '', priceUsd: price, change5m: 0, change1h: 0, change24h: 0,
+    volume24h: 0, liquidity: 0, marketCap: 0, buys24h: 0, sells24h: 0, traders24h: 0, createdAt: 0,
+  }
+  return {
+    ...base,
+    symbol: t.symbol || base.symbol,
+    name: t.name || base.name,
+    image: isImage(t.image_url) ?? base.image,
+    decimals: typeof t.decimals === 'number' ? t.decimals : base.decimals,
+    stock: isStockName(t.name),
+    priceUsd: price,
+    marketCap: num(t.market_cap_usd) || num(t.fdv_usd) || base.marketCap,
+    volume24h: pools.reduce((s, p) => s + p.volume24h, 0) || base.volume24h,
+    supply: num(t.normalized_total_supply) || null,
+    pools: pools.slice().sort((a, b) => b.liquidity - a.liquidity),
+  }
+}
+
+interface GtTrade {
+  attributes: {
+    tx_hash: string; tx_from_address?: string | null; kind?: string; block_timestamp: string
+    volume_in_usd?: string | null; from_token_amount?: string | null; to_token_amount?: string | null
+    from_token_address?: string | null; to_token_address?: string | null
+  }
+}
+
+/** A pool's latest trades (up to 300, last 24h), as the trades list's rows.
+ * The side is read from which way the coin moved, so it's right whichever
+ * side of the pool the coin sits on. */
+export async function getRhTrades(pool: string, coin: string): Promise<TradeRow[]> {
+  const d = await gtDirect<{ data?: GtTrade[] }>(`/networks/${NET}/pools/${pool}/trades`)
+  const c = coin.toLowerCase()
+  return (d.data ?? []).map(t => {
+    const a = t.attributes
+    const bought = (a.to_token_address ?? '').toLowerCase() === c
+    return {
+      txHash: a.tx_hash,
+      maker: a.tx_from_address ?? null,
+      kind: bought ? 'buy' as const : 'sell' as const,
+      usd: num(a.volume_in_usd),
+      tokenAmount: num(bought ? a.to_token_amount : a.from_token_amount),
+      timestamp: Date.parse(a.block_timestamp) || 0,
+      live: false,
+    }
+  }).filter(r => r.timestamp > 0)
+}
+
+const RES: Partial<Record<ChartResolution, { timeframe: 'day' | 'hour' | 'minute'; aggregate: number }>> = {
+  '1m': { timeframe: 'minute', aggregate: 1 },
+  '5m': { timeframe: 'minute', aggregate: 5 },
+  '15m': { timeframe: 'minute', aggregate: 15 },
+  '1h': { timeframe: 'hour', aggregate: 1 },
+  '4h': { timeframe: 'hour', aggregate: 4 },
+  '1d': { timeframe: 'day', aggregate: 1 },
+}
+export const RH_RESOLUTIONS = Object.keys(RES) as ChartResolution[]
+
+/** A pool's candles in the coin's own price (USD), oldest first. */
+export async function getRhCandles(pool: string, coin: string, res: ChartResolution, limit = 300): Promise<Candle[]> {
+  const r = RES[res]
+  if (!r) return []
+  const d = await gtDirect<{ data?: { attributes?: { ohlcv_list?: [number, number, number, number, number, number][] } } }>(
+    `/networks/${NET}/pools/${pool}/ohlcv/${r.timeframe}`,
+    { aggregate: String(r.aggregate), limit: String(limit), currency: 'usd', token: coin.toLowerCase() },
+  )
+  return (d.data?.attributes?.ohlcv_list ?? [])
+    .map(([time, open, high, low, close, volume]) => ({ time, open, high, low, close, volume }))
+    .sort((a, b) => a.time - b.time)
+}
+
+/** The chart's source for a coin's pool (refreshed every 30s: GeckoTerminal's
+ * free rate is shared with the trades list). */
+export function rhChartSource(pool: string, coin: string): ChartSource {
+  return { id: `rh:${pool}:${coin.toLowerCase()}`, load: res => getRhCandles(pool, coin, res), refreshMs: 30_000, resolutions: RH_RESOLUTIONS }
+}

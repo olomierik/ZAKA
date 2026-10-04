@@ -2232,3 +2232,74 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .xs-main { max-width: none; justify-self: stretch; }
 .xs-head { max-width: 960px; margin-left: auto; margin-right: auto; width: 100%; }
 @media (max-width: 960px) { .xs-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* ── Robinhood Chain (2026-10-04): the Markets network switch, its markets, coin page and trade forms ── */
+.chain-switch { display: inline-flex; flex-shrink: 0; padding: 2px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--adx-border); gap: 2px; }
+.chain-switch button { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: none; border-radius: 6px; background: none; color: var(--text-muted); font: 600 0.76rem var(--sans); cursor: pointer; white-space: nowrap; }
+.chain-switch button:hover { color: var(--text); }
+.chain-switch button.on { background: var(--bg-4); color: var(--text); }
+.chain-switch .chain-icon { flex-shrink: 0; }
+.chain-switch .cs-short { display: none; }
+@media (max-width: 1280px) { .chain-switch .cs-full { display: none; } .chain-switch .cs-short { display: inline; } .chain-switch button { padding: 4px 8px; } }
+.mk-toolbar .view-tab.rh-tab, .mk-toolbar .view-tab.rh-tab-arc { color: var(--text); }
+.rh-logo { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 50%; object-fit: cover; color: #fff; font-weight: 800; border: 1px solid rgba(255,255,255,0.08); }
+.mk-tag.rh-stock-tag { color: #ccff00; border-color: #ccff0055; }
+.rh-overview { grid-template-columns: 1.3fr repeat(3, minmax(0, 1fr)); }
+.rh-how ol { margin: 4px 0 0; padding-left: 18px; color: var(--text-muted); font-size: 0.74rem; line-height: 1.5; display: flex; flex-direction: column; gap: 2px; }
+.rh-mobile-search { padding: 8px 12px; border-bottom: 1px solid var(--adx-border); }
+.rh-mobile-search .filter-input { width: 100%; }
+.rh-source { margin: 14px 20px 24px; font-size: 0.7rem; color: var(--text-muted); }
+.rh-net { display: inline-flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
+
+/* trade forms */
+.rh-modes { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--adx-card-border); background: var(--bg-2); }
+.rh-modes button { flex: 1; padding: 8px; border: none; background: none; color: var(--text-muted); font: 700 0.82rem var(--sans); cursor: pointer; }
+.rh-modes button.on.buy { background: var(--green); color: #fff; }
+.rh-modes button.on.sell { background: var(--red); color: #fff; }
+.rh-field-head { display: flex; justify-content: space-between; gap: 8px; font-size: 0.72rem; color: var(--text-muted); margin-bottom: 6px; }
+.rh-field-head .link-btn { font-size: 0.72rem; text-decoration: none; }
+.rh-chips { display: flex; gap: 6px; margin-top: 8px; }
+.rh-chips button { flex: 1; padding: 5px 0; border-radius: 6px; font: 600 0.74rem var(--sans); background: var(--bg-2); border: 1px solid var(--adx-card-border); color: var(--text); cursor: pointer; }
+.rh-chips button:disabled { opacity: 0.5; cursor: default; }
+.rh-tick { display: flex; gap: 8px; align-items: flex-start; font-size: 0.74rem; color: var(--text-muted); cursor: pointer; line-height: 1.4; }
+.rh-tick input { margin-top: 2px; flex-shrink: 0; }
+.rh-tick.warn { color: #fcd34d; }
+.rh-msg { padding: 9px 11px; border-radius: 8px; font-size: 0.76rem; line-height: 1.45; display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
+.rh-msg.busy { background: rgba(240,185,11,0.08); border: 1px solid rgba(240,185,11,0.3); color: #fcd34d; }
+.rh-msg.done { background: rgba(14,203,129,0.08); border: 1px solid rgba(14,203,129,0.3); color: #86efac; }
+.rh-msg.error { background: rgba(246,70,93,0.08); border: 1px solid rgba(246,70,93,0.3); color: #fca5a5; }
+.rh-links { display: flex; flex-wrap: wrap; gap: 10px; }
+.rh-links a { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.rh-gas { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; border: 1px dashed var(--border-hi); font-size: 0.74rem; color: var(--text-muted); }
+.rh-gas span { flex: 1; min-width: 0; }
+.rh-gas button { flex-shrink: 0; }
+.rh-btn { width: 100%; padding: 11px; border-radius: 9px; border: none; background: var(--accent-btn); color: #fff; font: 700 0.88rem var(--sans); cursor: pointer; }
+.rh-btn.buy { background: var(--green); }
+.rh-btn.sell { background: var(--red); }
+.rh-btn:disabled { cursor: default; }
+
+/* coin page */
+.rh-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 8px; padding: 12px 14px; border-bottom: 1px solid var(--adx-card-border); font-size: 0.8rem; }
+.rh-stats span { display: block; color: var(--text-muted); font-size: 0.68rem; margin-bottom: 2px; }
+.rh-stats b { font-weight: 600; }
+.rh-trades .spot-panel-h { display: flex; justify-content: space-between; align-items: center; }
+.rh-gt { font-size: 0.7rem; color: var(--text-muted); text-decoration: none; }
+.rh-swaps { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.rh-swaps th { text-align: left; padding: 7px 10px; color: var(--text-muted); font-weight: 500; font-size: 0.7rem; border-bottom: 1px solid var(--adx-card-border); white-space: nowrap; }
+.rh-swaps td { padding: 6px 10px; border-bottom: 1px solid var(--adx-card-border); white-space: nowrap; }
+.rh-swaps tr.rh-mine { background: rgba(250,204,21,0.07); }
+.rh-mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.rh-muted { color: var(--text-muted); text-decoration: none; }
+.rh-maker { color: var(--text); text-decoration: none; font-family: var(--code); font-size: 0.72rem; }
+.rh-maker:hover { color: var(--accent-text); }
+.rh-pools { display: flex; flex-direction: column; }
+.rh-pool { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "pair liq" "dex liq"; gap: 0 8px; padding: 8px 12px; border: none; border-bottom: 1px solid var(--adx-border); background: none; color: var(--text); text-align: left; cursor: pointer; font: 600 0.78rem var(--sans); }
+.rh-pool span { grid-area: pair; }
+.rh-pool small { grid-area: dex; color: var(--text-muted); font-weight: 400; font-size: 0.68rem; text-transform: capitalize; }
+.rh-pool b { grid-area: liq; align-self: center; font-weight: 600; font-size: 0.76rem; color: var(--text-muted); }
+.rh-pool.on, .rh-pool:hover { background: var(--bg-3); }
+.rh-back { padding: 6px; }
+@media (max-width: 767px) {
+  .mk-toolbar .chain-switch { display: none; }
+  .rh-token .rh-trades { margin: 0; border-radius: 0; }
+}

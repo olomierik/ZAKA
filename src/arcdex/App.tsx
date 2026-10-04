@@ -23,6 +23,9 @@ const TransfersPage   = lazy(() => import('./pages/TransfersPage'))
 const AlertsPage      = lazy(() => import('./pages/AlertsPage'))
 const DeployCurveRouter = lazy(() => import('./pages/DeployCurveRouter'))
 const SignalsPage     = lazy(() => import('./pages/SignalsPage'))
+// Robinhood Chain: its coins and stock tokens, bought with USDC on Arc (through Across).
+const RobinhoodMarkets   = lazy(() => import('./pages/RobinhoodMarkets'))
+const RobinhoodTokenPage = lazy(() => import('./pages/RobinhoodTokenPage'))
 import TradingWalletPanel from './components/TradingWalletPanel'
 import DiscoveryPanel from './components/DiscoveryPanel'
 import { TickerBar } from './components/Rails'
@@ -68,11 +71,13 @@ export type Page =
   | { name: 'signals'; view?: 'market' | 'manage'; bot?: string }
   | { name: 'futures' }
   | { name: 'sense' }
+  | { name: 'robinhood' }
+  | { name: 'rh-token'; address: string; pool?: string }
 
 const fromUrl = (): Page => pathToPage(window.location.pathname, window.location.search) ?? { name: 'terminal' }
 
 const MOBILE_NAV: [Page, string, string][] = [
-  [{ name: 'terminal' }, '◈', N_('Markets')], [SENSE_PAGE, '◆', N_('Spot')], [{ name: 'futures' }, '📊', N_('Futures')], [{ name: 'swap' }, '⇄', N_('Swap')],
+  [{ name: 'terminal' }, '◈', N_('Markets')], [{ name: 'robinhood' }, '🪶', N_('Robinhood Chain')], [SENSE_PAGE, '◆', N_('Spot')], [{ name: 'futures' }, '📊', N_('Futures')], [{ name: 'swap' }, '⇄', N_('Swap')],
   [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'portfolio' }, '▤', N_('Portfolio')], [{ name: 'feed' }, '◉', N_('Feed')],
   [{ name: 'leaderboard' }, '♛', N_('Leaderboard')], [{ name: 'clans' }, '⚑', N_('Clans')], [{ name: 'rewards' }, '✦', N_('Rewards')],
   [{ name: 'signals' }, '⚡', N_('Autotrade')], [{ name: 'alerts' }, '🔔', N_('Alerts')], [{ name: 'transfers' }, '⇅', N_('Transfers')],
@@ -112,7 +117,7 @@ export default function App() {
   const lang = useLang()
   // Coin pages are "pushed" screens on phones: a back arrow up top, their
   // own Buy/Sell bar at the bottom instead of the tab bar.
-  const detail = page.name === 'argus' || page.name === 'token'
+  const detail = page.name === 'argus' || page.name === 'token' || page.name === 'rh-token'
   const goBack = useCallback(() => {
     if (depth.current > 0) window.history.back()
     else navigate({ name: 'terminal' })
@@ -133,8 +138,8 @@ export default function App() {
   return (
     <div className={`app-shell${detail ? ' is-detail' : ''}`}>
       <NavBar page={page} navigate={navigate} onMenuClick={() => setNavOpen(o => !o)} onBack={detail ? goBack : undefined} />
-      {/* The bridge switches the wallet to other chains on purpose. */}
-      <NetworkGuard hidden={page.name === 'bridge'} />
+      {/* The bridge switches the wallet to other chains on purpose, and Robinhood Chain sales are signed there. */}
+      <NetworkGuard hidden={page.name === 'bridge' || page.name === 'robinhood' || page.name === 'rh-token'} />
 
       <div className="app-body" key={lang}>
         {navOpen && <div className="sidebar-backdrop" onClick={() => setNavOpen(false)} />}
@@ -174,6 +179,8 @@ export default function App() {
           {page.name === 'deploy-curve-router' && <DeployCurveRouter />}
           {/* Autotrade is coming soon; owners still reach their bots to manage and withdraw (/autotrade/manage). */}
           {page.name === 'signals'     && (page.view === 'manage' ? <SignalsPage navigate={navigate} manage /> : <AutotradeSoon navigate={navigate} />)}
+          {page.name === 'robinhood'   && <RobinhoodMarkets navigate={navigate} />}
+          {page.name === 'rh-token'    && <RobinhoodTokenPage key={page.address + (page.pool ?? '')} address={page.address} pool={page.pool} navigate={navigate} />}
           </Suspense>
         </main>
 

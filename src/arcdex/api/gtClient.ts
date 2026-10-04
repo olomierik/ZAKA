@@ -65,3 +65,8 @@ export async function gtGet<T>(path: string, params: Record<string, string> = {}
 /** Direct-only fetcher for rebuilding the Argus market list in-browser —
  * used exactly when the proxy side was throttled, so skip it. */
 export const gtDirectFetcher = (path: string): Promise<GtList | null> => direct<GtList>(path).catch(() => null)
+
+/** Direct only, on the visitor's own quota: Robinhood Chain's data
+ * (api/robinhoodMarket.ts). The app's proxy serves Arc's network only, and
+ * its shared quota stays Arc's. */
+export const gtDirect = <T>(path: string, params: Record<string, string> = {}): Promise<T> => direct<T>(withQuery(path, params))

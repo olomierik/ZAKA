@@ -1283,6 +1283,67 @@ Owner: "the app should behave like Binance where we're in common, spot and futur
   - Home, Markets, spot and futures at 375px: no sideways scroll.
 - **Local dev against the live engine:** set `VITE_ARCDEX_WS_URL=ws://localhost:5173/__engine/ws` in `.env.development.local`. `vite.config.ts` proxies `/__engine` to Railway with ARCSENSE's origin (the engine answers only its own origins).
 
+## Robinhood Chain: its coins and stock tokens, traded from Arc (2026-10-04)
+
+Owner: "let users see Robinhood coins and buy and sell them just like Arc coins". Scope chosen: view and trade Robinhood Chain's coins, funded from Arc, with the fee in each trade and Arc untouched. Robinhood's stock tokens can be traded too, blocked by the visitor's location (owner's choice; **the owner's legal check comes first**, and location blocking isn't watertight).
+
+- **Robinhood Chain:** chain 4663, an Arbitrum Orbit L2 with ETH gas and ~100ms blocks (viem's `robinhood`). Its dollar is Paxos's USDG.
+  - Coins mostly trade against WETH or native ETH; stock tokens trade against USDG.
+  - Circle's Bridge Kit doesn't support the chain. Across does.
+  - Constants and reads are in `lib/robinhood.ts`.
+- **Where:**
+  - `/robinhood` (`pages/RobinhoodMarkets.tsx`): the Markets layout. Cards: how it works, stock tokens, hot coins, top gainers (a day old at least). Tabs: All / Memecoins / Stocks / New, plus search and sort.
+  - `/robinhood/token/0x…?pool=` (`pages/RobinhoodTokenPage.tsx`): the spot screen's layout. Market trades, the chart (`PriceChart` with a GeckoTerminal source), buy and sell forms side by side, the coin's pools, and every trade. Phones get chart, stats, trades and a Buy / Sell bar.
+  - Reached from an Arc | Robinhood Chain switch in the Markets toolbar (phones: a tab at the end of the tab row), More (top bar and phones) and the drawer.
+- **Data (`api/robinhoodMarket.ts`):** GeckoTerminal's network `robinhood`, called straight from the visitor's browser (`gtDirect` in `gtClient.ts`, the same 2s pacing). It never goes through the app's proxy or the engine: their shared quota stays Arc's.
+  - **The list:** the 60 busiest pools, the newest pools, and two pages of the search "Robinhood Token". It's one row per coin: the main pool is the deepest one quoted in USDG, WETH or ETH, and volume is summed over the coin's pools.
+  - **Caching:** the list is kept in the browser for 30 minutes (`arcdex:rh-market:v1`) and rebuilt at most every 90s.
+  - **Wash filter:** a pool doing over $10k in a day from fewer than 4 wallets is hidden; it seemed common, e.g. ZYNOREK's "$68M" from 1 buyer and 1 seller. Quiet pools and pools under 2 hours old are kept.
+  - GeckoTerminal escapes some names ("S&amp;P"); they're unescaped.
+- **Stock tokens:**
+  - **What they are:** named "<Company> • Robinhood Token". On-chain, each is a beacon proxy on Robinhood's beacon `0xe10b…1b00` (`isStockToken` reads the EIP-1967 beacon slot).
+  - **Impostors:** the chain decides. A token with a stock name that isn't on the beacon gets a warning and no stock tag.
+  - Counted on 2026-10-04: 17 listed, among them NVDA, SPY, TSLA, AAPL, GOOGL, META, AMC, GLD, MSTR and QQQ.
+- **Trading (`lib/acrossQuote.ts` quotes and checks, `lib/across.ts` sends, `components/RobinhoodTrade.tsx`):** Across's Swap API.
+  - **Buy:** USDC on Arc, signed on Arc, where gas is USDC, so the trading wallet trades at once. It goes to `SpokePool.deposit`, and the coin arrives at the same address on Robinhood Chain in ~2s. Refunds come back as USDC on Arc (`refundOnOrigin`).
+  - **Sell:** signed on Robinhood Chain with ETH gas (`SpokePoolPeriphery.swapAndBridge`); USDC arrives on Arc.
+  - **Gas:** "Add $0.50 of gas" swaps Arc USDC for ETH on Robinhood Chain (~0.00017 ETH, 10–20 sales, no fee). A first buy offers it as a tick box, approved together with the buy.
+  - **Fee:** the swap router's `feeBps` (2%), as Across's `appFee`, to the fee wallet `0x2742…86Bb`. A buy's fee arrives as the coin on Robinhood Chain (the fee wallet is an ordinary account there too); a sale's fee arrives as USDC on Arc.
+  - **Quote checks:** a quote is refused unless its transaction is exactly the trade asked for:
+    - the contract Across publishes for that chain (SpokePool `0x9b4a…4a84` on Arc, periphery `0x97cc…5fd4` on Robinhood Chain);
+    - no native value;
+    - the trader as depositor, and the token and amount asked for;
+    - the right destination chain;
+    - the approval asked for on that contract;
+    - a recipient that is the trader or Across's handler (`0xa8ad…b6bd` / `0xa074…547b`), whose instructions name the trader and, with a fee, the fee wallet;
+    - a minimum received.
+  - **Sending:** the approval is always for the exact amount (Across's own approval transactions ask for unlimited and are ignored). Then a fresh quote, which stops if it delivers 3% less than the one shown. The exact transaction is simulated from the trader, then sent, and the fill is followed through Across's `/deposit/status` until it lands or is refunded.
+  - **Safety rails:** a contract wallet (not EIP-7702) can't buy, because it may not exist at the same address there. A trade costing 15%+ in fees and price impact needs a tick box (at $0.20 Across's ~$0.08 is 40%).
+- **Stock gate (buys only; selling is never blocked):**
+  - The country comes from `netlify/edge-functions/geo.ts` at `/geo` (Netlify's edge, never cached), read by `lib/geo.ts`.
+  - Unknown means not allowed: local dev, an outage, a blocked request.
+  - Blocked countries (`STOCK_RESTRICTED`): the US, Canada, the UK, Switzerland, the UAE, and sanctioned countries (Cuba, Iran, North Korea, Syria, Russia, Belarus). Elsewhere the buyer ticks that they're not a US person and don't live there; the tick is remembered in this browser.
+  - In local dev, `?geo=XX` (or localStorage `arcdex:dev-geo`) sets a country.
+- **Portfolio:** "On Robinhood Chain" (`components/RobinhoodHoldings.tsx`, `lib/rhPortfolio.ts`): the coins held there, valued and counted in the total, each with Sell to USDC, plus the ETH for gas.
+  - Coins checked: those bought from this browser (`arcdex:held-rh:v1:<owner>`) and the cached market list, in one multicall. The section makes no GeckoTerminal calls of its own, and is hidden when nothing is held there.
+  - Blockscout's token API answers 403 (a challenge page), so it isn't used.
+- **Wallets:** `robinhood` is in `wagmi.ts`, so a connected wallet is switched (or the chain added) for a sale. The trading wallet signs there through `getEmbeddedWalletClientOn`. The "Switch to Arc" bar is hidden on Robinhood pages.
+- **Owner steps:**
+  1. Register an Across integrator ID (Across calls it "required for production"; quotes work without it) and set `VITE_ACROSS_INTEGRATOR_ID = "0x…"` (2 bytes, public) in `netlify.toml`.
+  2. The legal check on offering stock tokens.
+  3. Buy fees collect as coins on Robinhood Chain at the fee wallet: selling them needs ETH gas there.
+- **Not in the $SENSE ledger yet:** `engine/src/sense/program.ts` counts fees paid by ARCSENSE's own contracts. A Robinhood sale's fee comes from Across's handler on Arc, and a buy's fee is a coin on Robinhood Chain.
+- **Tests:**
+  - `bun scripts/test-robinhood.ts [--live]`, offline on recorded quotes (`scripts/fixtures/across-*.json`, `rh-pools.json`). It covers the quote URL, real quotes passing, and 20 tampered quotes refused. It also covers market rows, wash and quiet pools, stock names, restricted countries and routes. `--live` adds fresh Across quotes and on-chain stock checks. Removing the recipient check or the native-value check fails it.
+  - `bun scripts/sim-robinhood.ts` simulates on mainnet, from a throwaway address with state overrides (nothing sent), the exact transactions for a $5 MOW buy, a $5 NVDA buy, a $0.50 gas top-up and a 10 MOW sale. Each goes through with exactly the amount approved, and is refused with less.
+- **Checked in the browser (local dev):**
+  - `/robinhood` and its Stocks tab, at 1024px and 375px with no sideways scroll.
+  - NVDA's page: chart, trades, pools, and the gate (no country → closed, Kenya/Tanzania → the tick, US → blocked, selling open).
+  - A $5 quote of 0.0207 NVDA ≈ $4.86 (2.8% all in).
+  - An address with no token.
+  - A read-only test wallet (the fee wallet's public address, every signature refused): Buy $0.21 asked for exactly `approve(SpokePool, 210000)` on Arc USDC.
+  - The Arc Markets page unchanged on phones (first coin 144px down).
+
 ## ARCSENSE: spot and futures first (2026-10-03)
 
 Owner: "hide the autotrade marketplace and let the users see only COMING SOON; hide the launchpad; put futures and spot trading as our main features; rebrand the app to be the first on Arc".

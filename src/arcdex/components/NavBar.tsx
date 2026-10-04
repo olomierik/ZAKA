@@ -28,7 +28,7 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
 
   const onSpot = page.name === 'argus' || page.name === 'token'
   const navLinks: { label: string; page: Page; active: boolean; cls?: string; badge?: string }[] = [
-    { label: T('Markets'),   page: { name: 'terminal' }, active: page.name === 'terminal' || page.name === 'launchpad' },
+    { label: T('Markets'),   page: { name: 'terminal' }, active: page.name === 'terminal' || page.name === 'launchpad' || page.name === 'robinhood' || page.name === 'rh-token' },
     { label: T('Spot'),      page: SENSE_PAGE, active: onSpot },
     { label: T('Futures'),   page: { name: 'futures' }, active: page.name === 'futures', badge: T('Testnet') },
     { label: T('Swap'),      page: { name: 'swap' }, active: page.name === 'swap', cls: 'nav-l1' },
@@ -37,6 +37,7 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
     { label: '$SENSE',       page: { name: 'sense' }, active: page.name === 'sense', cls: 'nav-l3 nav-sense-link' },
   ]
   const moreLinks: { label: string; icon: string; page: Page; cls?: string }[] = [
+    { label: T('Robinhood Chain'), icon: '🪶', page: { name: 'robinhood' } },
     { label: T('Swap'),        icon: '⇄', page: { name: 'swap' }, cls: 'more-l1' },
     { label: T('Portfolio'),   icon: '▤', page: { name: 'portfolio' }, cls: 'more-l2' },
     { label: T('Bridge'),      icon: '◎', page: { name: 'bridge' }, cls: 'more-l3' },

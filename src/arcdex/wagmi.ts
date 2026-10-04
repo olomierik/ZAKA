@@ -1,7 +1,7 @@
 import { createConfig, http } from 'wagmi'
 import { coinbaseWallet, injected, walletConnect } from 'wagmi/connectors'
 import { defineChain } from 'viem'
-import { arbitrum, avalanche, base, linea, mainnet, optimism, polygon, sonic, unichain, worldchain } from 'viem/chains'
+import { arbitrum, avalanche, base, linea, mainnet, optimism, polygon, robinhood, sonic, unichain, worldchain } from 'viem/chains'
 import { arcTransport } from './lib/rpc'
 import { ARC_TESTNET } from '../../engine/src/perps/shared'
 
@@ -60,12 +60,14 @@ function lazyWalletConnect(params: Parameters<typeof walletConnect>[0]) {
 // are added automatically. The WalletConnect and Coinbase SDKs load only
 // when someone picks them — see ConnectWallet.tsx and lib/reconnect.ts.
 export const wagmiConfig = createConfig({
-  chains: [arc, arcTestnet, ...BRIDGE_EVM_CHAINS],
+  // Robinhood Chain: its coins are bought from Arc and sold there (lib/across.ts).
+  chains: [arc, arcTestnet, ...BRIDGE_EVM_CHAINS, robinhood],
   transports: {
     // Lag-tolerant: Arc's RPC nodes can trail by a block (lib/rpc.ts).
     [arc.id]: arcTransport(),
     [arcTestnet.id]: http(ARC_TESTNET.rpcUrls.default.http[0]),
     ...Object.fromEntries(BRIDGE_EVM_CHAINS.map(c => [c.id, http()])),
+    [robinhood.id]: http(robinhood.rpcUrls.default.http[0]),
   } as Record<number, ReturnType<typeof http>>,
   connectors: [
     injected({ target: 'metaMask' }),

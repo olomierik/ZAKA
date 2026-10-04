@@ -22,6 +22,7 @@ import FoundOnArc from '../components/FoundOnArc'
 import RiskBadge from '../components/RiskBadge'
 import { RISK_COLOR as RISK_DOT, riskText, tokenRisk, type Risk } from '../lib/risk'
 import { SENSE_IMAGE, SENSE_LC, SENSE_POOL, fmtPct as fmtPctSense, fmtSmallUsd, useSense } from '../lib/sense'
+import { ChainSwitch } from '../components/Robinhood'
 
 interface Props {
   navigate: (p: Page) => void
@@ -661,12 +662,16 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
 
       {/* ── one toolbar, as on Binance: the tabs, then search, sort and Filters ── */}
       <div className="mk-toolbar">
+        {/* Arc or Robinhood Chain (phones: a tab at the end of the row) */}
+        {!mobile && <ChainSwitch chain="arc" navigate={navigate} />}
         <div className="view-tabs">
           {VIEW_TABS.map(t => (
             <button key={t} className={`view-tab${viewTab === t ? ' active' : ''}`} onClick={() => setViewTab(t)}>
               {t === 'Trending' ? '⚡ ' + T('Trending') : T(t)}
             </button>
           ))}
+          {/* Phones have no header line: Robinhood Chain's markets are a tab away. */}
+          {mobile && <button className="view-tab rh-tab" onClick={() => navigate({ name: 'robinhood' })}>🪶 {T('Robinhood Chain')}</button>}
         </div>
         <span className="live-badge" title={T("Every buy and sell on Arc, as its block lands")}>{T("● live")}{perMin > 0 && <> · {T('{n} trades/min', { n: perMin })}</>}</span>
         <div className="mk-tools">
