@@ -72,7 +72,10 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate 
     void isStockToken(address).then(setStockOnChain).catch(() => setStockOnChain(null))
   }, [address])
 
-  const pool = poolParam || coin?.pool || ''
+  // The pool shown: the link's, unless it's off the market (getRhCoin then picks the coin's best).
+  const offLink = !!poolParam && !!coin?.pools.some(p => p.pool === poolParam.toLowerCase() && p.offMarket)
+  const pool = (offLink ? coin?.pool : poolParam || coin?.pool) || ''
+  const shown = pool.toLowerCase()
   const notToken = loaded && !coin && onchain === null
   const symbol = coin?.symbol ?? onchain?.symbol ?? (notToken ? '?' : '…')
   const fullName = coin?.name ?? onchain?.name ?? ''
@@ -189,9 +192,12 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate 
     <div className="spot-panel rh-pools">
       <div className="spot-panel-h"><span>{T('Pools')}</span></div>
       {coin.pools.slice(0, 6).map(p => (
-        <button key={p.pool} className={`rh-pool${p.pool === pool ? ' on' : ''}`} onClick={() => navigate({ name: 'rh-token', address, pool: p.pool })}>
-          <span>{symbol}/{p.quoteSymbol || '?'}</span>
-          <small>{p.dex.replace(/-robinhood$/, '').replace(/-/g, ' ')}</small>
+        // Off-market pools (a trap's fee, or priced far from the coin's market) are listed, never opened.
+        <button key={p.pool} className={`rh-pool${p.pool === shown ? ' on' : ''}${p.offMarket ? ' off' : ''}`} disabled={p.offMarket}
+          title={p.offMarket ? T('Priced far off {symbol}’s market: a trap pool, not a market.', { symbol }) : undefined}
+          onClick={() => navigate({ name: 'rh-token', address, pool: p.pool })}>
+          <span>{symbol}/{p.quoteSymbol || '?'}{p.feePct !== null && <em> {p.feePct}%</em>}</span>
+          <small>{p.offMarket ? T('⚠ Off-market pool') : p.dex.replace(/-robinhood$/, '').replace(/-/g, ' ')}</small>
           <b>{fmt(p.liquidity, '$')}</b>
         </button>
       ))}

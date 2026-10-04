@@ -1299,6 +1299,10 @@ Owner: "let users see Robinhood coins and buy and sell them just like Arc coins"
   - **The list:** the 60 busiest pools, the newest pools, and two pages of the search "Robinhood Token". It's one row per coin: the main pool is the deepest one quoted in USDG, WETH or ETH, and volume is summed over the coin's pools.
   - **Caching:** the list is kept in the browser for 30 minutes (`arcdex:rh-market:v1`) and rebuilt at most every 90s.
   - **Wash filter:** a pool doing over $10k in a day from fewer than 4 wallets is hidden; it seemed common, e.g. ZYNOREK's "$68M" from 1 buyer and 1 seller. Quiet pools and pools under 2 hours old are kept.
+  - **Trap pools (2026-10-04):** some coins have pools with a 20–90% fee priced hundreds of times off the market, with large "liquidity" and almost no trades (SHRINU / USDG 20% and 55%: $818K "liquidity", $629 of volume, priced ~300× under SHRINU's busy WETH pool).
+    - A coin's main pool (price, chart, trades, liquidity) used to be its deepest, which picked the trap: SHRINU showed −99% and the trap's chart. Now pools are ranked (`rankPools`): no trap fee (≥10%, `TRAP_FEE_PCT`, read from the pool's name by `poolFeePct`), then traders, then volume, then a USDG/WETH/ETH quote, then depth.
+    - `markPools` marks a pool off the market when it has a trap fee or a price more than 1.5× from the best pool's. Off-market pools are left out of the coin's volume, tagged "⚠ Off-market pool" and can't be opened on the coin page; a link naming one opens the best pool. The coin's price is always its best pool's.
+    - The browser's market list moved to `arcdex:rh-market:v2`, so lists built the old way are dropped.
   - GeckoTerminal escapes some names ("S&amp;P"); they're unescaped.
 - **Stock tokens:**
   - **What they are:** named "<Company> • Robinhood Token". On-chain, each is a beacon proxy on Robinhood's beacon `0xe10b…1b00` (`isStockToken` reads the EIP-1967 beacon slot).
@@ -1318,7 +1322,21 @@ Owner: "let users see Robinhood coins and buy and sell them just like Arc coins"
     - a recipient that is the trader or Across's handler (`0xa8ad…b6bd` / `0xa074…547b`), whose instructions name the trader and, with a fee, the fee wallet;
     - a minimum received.
   - **Sending:** the approval is always for the exact amount (Across's own approval transactions ask for unlimited and are ignored). Then a fresh quote, which stops if it delivers 3% less than the one shown. The exact transaction is simulated from the trader, then sent, and the fill is followed through Across's `/deposit/status` until it lands or is refunded.
-  - **Safety rails:** a contract wallet (not EIP-7702) can't buy, because it may not exist at the same address there. A trade costing 15%+ in fees and price impact needs a tick box (at $0.20 Across's ~$0.08 is 40%).
+  - **Safety rails:** a contract wallet (not EIP-7702) can't buy, because it may not exist at the same address there.
+  - **The price guard (2026-10-04, owner: "fix the price impact"):** Across picks its own route on Robinhood Chain, and it took SHRINU's trap pool both ways. A $25 buy quoted "771M SHRINU ≈ $5.4K" while the form said "Total cost 0.0%"; a ~$7 sale quoted $0.01 (99.8%) behind only a tick box.
+    - Every quote is valued at the coin's market price (`quoteValue` in `lib/acrossQuote.ts`). Price impact is what the swap delivered (before the 2% fee, after the bridge's fee) against the market value. Total cost includes the fees.
+    - `quoteVerdict`, with `QUOTE_LIMITS`:
+      - over 25% better than the market: refused, a route through an off-market pool ("This quote pays 222× SHRINU's market price…");
+      - 50%+ price impact: refused;
+      - 15%+ price impact or total cost: a tick box;
+      - no market price: a tick box.
+    - Refused quotes show why, and the button reads "No fair route".
+    - `runAcross` also stops when the fresh quote before signing delivers over 25% more than the one shown: the route changed.
+    - The form shows Price impact on its own row, next to the total cost.
+    - Checked: NVDA $25 under 0.1% impact (2.3% / 1.9% total), MOW $25 2.4% / under 0.1%, SHRINU both ways refused.
+  - **LI.FI was looked at instead (2026-10-04):** it supports both chains, but bridges through Across too (AcrossV4) and its DEX step (Kyberswap) routed the same SHRINU buy into the trap (783M SHRINU ≈ $5,500). It had no quote for selling SHRINU or buying MOW. It priced NVDA a little better.
+    - Its integrator fee builds up in LI.FI's fee collector and must be claimed to the fee wallet, a different way of collecting fees. Its transactions go to LI.FI's own contracts, which would need their own quote checks.
+    - Not used; the price guard applies to whatever route is quoted.
 - **Stock gate (buys only; selling is never blocked):**
   - The country comes from `netlify/edge-functions/geo.ts` at `/geo` (Netlify's edge, never cached), read by `lib/geo.ts`.
   - Unknown means not allowed: local dev, an outage, a blocked request.
@@ -1339,7 +1357,7 @@ Owner: "let users see Robinhood coins and buy and sell them just like Arc coins"
   3. Buy fees collect as coins on Robinhood Chain at the fee wallet: selling them needs ETH gas there.
 - **Not in the $SENSE ledger yet:** `engine/src/sense/program.ts` counts fees paid by ARCSENSE's own contracts. A Robinhood sale's fee comes from Across's handler on Arc, and a buy's fee is a coin on Robinhood Chain.
 - **Tests:**
-  - `bun scripts/test-robinhood.ts [--live]`, offline on recorded quotes (`scripts/fixtures/across-*.json`, `rh-pools.json`). It covers the quote URL, real quotes passing, and 20 tampered quotes refused. It also covers market rows, wash and quiet pools, stock names, restricted countries and routes. It also covers the `/across` proxy: what it forwards and refuses, and that the key goes only in the `Authorization` header to Across (with a fake key). `--live` adds fresh Across quotes and on-chain stock checks. Removing the recipient check or the native-value check fails it.
+  - `bun scripts/test-robinhood.ts [--live]`, offline on recorded quotes (`scripts/fixtures/across-*.json`, `rh-pools.json`, `rh-shrinu.json`). It also covers trap pools (SHRINU's recorded pools: the WETH pool first, both traps off the market) and the price guard (MOW's quotes pass; SHRINU's trap-routed buy and sale, `across-trap-*.json`, are refused; the 15%, 50% and +25% limits). Without the off-market check, or with pools ranked by depth again, it fails. It covers the quote URL, real quotes passing, and 20 tampered quotes refused. It also covers market rows, wash and quiet pools, stock names, restricted countries and routes. It also covers the `/across` proxy: what it forwards and refuses, and that the key goes only in the `Authorization` header to Across (with a fake key). `--live` adds fresh Across quotes and on-chain stock checks. Removing the recipient check or the native-value check fails it.
   - `bun scripts/sim-robinhood.ts` simulates on mainnet, from a throwaway address with state overrides (nothing sent), the exact transactions for a $5 MOW buy, a $5 NVDA buy, a $0.50 gas top-up and a 10 MOW sale. Each goes through with exactly the amount approved, and is refused with less.
 - **Checked in the browser (local dev):**
   - `/robinhood` and its Stocks tab, at 1024px and 375px with no sideways scroll.

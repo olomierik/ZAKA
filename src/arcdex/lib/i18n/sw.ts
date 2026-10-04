@@ -2435,5 +2435,14 @@ const d: Record<string, string> = {
   "Across couldn’t quote this trade.": "Across haikuweza kutoa bei ya biashara hii.",
   "On Robinhood Chain": "Kwenye Robinhood Chain",
   "No token at this address on Robinhood Chain.": "Hakuna tokeni kwenye anwani hii kwenye Robinhood Chain.",
+  // Robinhood Chain: trap pools and the price guard (2026-10-04)
+  "No fair route": "Hakuna njia ya haki",
+  "{x}× the market price": "Mara {x} ya bei ya soko",
+  "This quote pays {x}× {symbol}’s market price: Across would route it through a pool priced far off the market, the way trap pools catch trades. ARCSENSE won’t send it.": "Nukuu hii inalipa mara {x} ya bei ya soko ya {symbol}: Across ingeipitisha kwenye pool yenye bei iliyo mbali sana na soko, kama pool za mtego zinazonasa biashara. ARCSENSE haitaituma.",
+  "Across’s best route loses {n}% of this trade to price impact, so ARCSENSE won’t send it. A smaller amount may route better; if not, {symbol} has no fair route right now.": "Njia bora ya Across inapoteza {n}% ya biashara hii kwa athari ya bei, kwa hiyo ARCSENSE haitaituma. Kiasi kidogo kinaweza kupata njia bora; vinginevyo, {symbol} haina njia ya haki kwa sasa.",
+  "I understand this quote can’t be checked against a market price.": "Ninaelewa kwamba nukuu hii haiwezi kulinganishwa na bei ya soko.",
+  "Across’s route changed since your quote: check the new quote and try again.": "Njia ya Across imebadilika tangu nukuu yako: angalia nukuu mpya kisha ujaribu tena.",
+  "Priced far off {symbol}’s market: a trap pool, not a market.": "Bei iko mbali sana na soko la {symbol}: pool ya mtego, si soko.",
+  "⚠ Off-market pool": "⚠ Pool nje ya soko",
 }
 export default d

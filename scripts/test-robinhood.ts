@@ -1,15 +1,16 @@
 // Robinhood Chain on ARCSENSE: the checks every Across quote must pass
 // before anything is signed (src/arcdex/lib/acrossQuote.ts), Robinhood
-// Chain's market rows (api/robinhoodMarket.ts), stock tokens and routes.
+// Chain's market rows (api/robinhoodMarket.ts), trap pools and the price
+// guard on quotes, stock tokens and routes.
 // Offline, on real answers recorded 2026-10-04 (scripts/fixtures/across-*.json,
-// rh-pools.json). With --live it also asks Across for fresh quotes and reads
+// rh-pools.json, rh-shrinu.json). With --live it also asks Across for fresh quotes and reads
 // Robinhood Chain (no wallet, nothing sent).
 // Run: bun scripts/test-robinhood.ts [--live]
 
 import { readFileSync } from 'fs'
 
-const { checkQuote, quoteUrl, AcrossError, ACROSS_TARGETS, ACROSS_HANDLERS, ARC_USDC, getAcrossQuote, acrossErrorText } = await import('../src/arcdex/lib/acrossQuote')
-const { poolToCoin, mergeCoins, isWashPool } = await import('../src/arcdex/api/robinhoodMarket')
+const { checkQuote, quoteUrl, AcrossError, ACROSS_TARGETS, ACROSS_HANDLERS, ARC_USDC, getAcrossQuote, acrossErrorText, quoteValue, quoteVerdict } = await import('../src/arcdex/lib/acrossQuote')
+const { poolToCoin, mergeCoins, isWashPool, poolFeePct, markPools } = await import('../src/arcdex/api/robinhoodMarket')
 const { isStockName, stockCompany, isStockToken, RH_QUOTES, USDG, STOCK_RESTRICTED, rhTokenInfo } = await import('../src/arcdex/lib/robinhood')
 const { pathToPage, pageToPath } = await import('../src/arcdex/lib/router')
 const { FEE_WALLET } = await import('../src/arcdex/lib/platform')
@@ -107,6 +108,42 @@ ok(Math.abs(nvda.volume24h - nvdaPools.reduce((s, r) => s + r.volume24h, 0)) < 1
 ok(nvda.quote === USDG && nvda.stock, 'NVDA: quoted in USDG, a stock token by name')
 ok(rows.find(r => r.symbol === 'AVGO')?.quoteSymbol === 'NVDA', 'a pool quoted in another coin keeps that quote’s ticker (AVGO/NVDA)')
 ok(merged.find(r => r.symbol === 'MOW')?.quoteSymbol === 'ETH', 'MOW trades against native ETH')
+
+console.log('trap pools (SHRINU / USDG at 20% and 55%, priced ~300× under its real pool)')
+ok(poolFeePct('SHRINU / USDG 20%') === 20 && poolFeePct('NVDA / USDG 0.05%') === 0.05 && poolFeePct('MOW / WETH') === null, 'the fee tier is read from the pool’s name')
+const shr = fixture('rh-shrinu')
+const shrTokens = new Map([[shr.data.attributes.address.toLowerCase(), shr.data.attributes]])
+const shrPools = (shr.included as never[]).map(p => poolToCoin(p, shrTokens as never)).filter(Boolean) as NonNullable<ReturnType<typeof poolToCoin>>[]
+const trap = shrPools.slice().sort((a, b) => b.liquidity - a.liquidity)[0]
+ok(shrPools.length === 3 && trap.feePct === 20, 'the deepest SHRINU pool by "liquidity" is the 20% trap')
+const marked = markPools(shrPools)
+ok(marked[0].quoteSymbol === 'WETH' && marked[0].feePct === 0.3 && !marked[0].offMarket, 'its best market is the busy WETH 0.3% pool')
+ok(marked.slice(1).every(p => p.offMarket), 'both trap pools are off the market')
+const shrRow = mergeCoins(shrPools)[0]
+ok(Math.abs(shrRow.priceUsd / Number(shr.data.attributes.price_usd) - 1) < 0.01 && shrRow.liquidity < 200_000, 'the coin’s row: the real pool’s price and depth')
+ok(Math.abs(shrRow.volume24h - marked[0].volume24h) < 1, 'trap pools’ volume isn’t counted')
+const fakeTrap = { ...marked[0], pool: '0xfake', feePct: null, traders24h: 0, volume24h: 0, liquidity: 5e6, priceUsd: marked[0].priceUsd / 300 }
+ok(markPools([fakeTrap, marked[0]])[1].offMarket && markPools([fakeTrap, marked[0]])[0].pool === marked[0].pool, 'a trap without a fee in its name: an idle pool far off the busy one’s price')
+ok(!markPools([marked[0], { ...marked[0], pool: '0xother', priceUsd: marked[0].priceUsd * 1.2 }])[1].offMarket, 'a second real pool 20% away is still a market')
+
+console.log('quotes valued at the market price')
+const mowPrice = rows.find(r => r.symbol === 'MOW')!.priceUsd
+const vBuy = quoteValue(qb, 5, mowPrice)!
+ok(quoteVerdict(vBuy) === 'ok' && Math.abs(vBuy.impact) < 0.03 && vBuy.cost > vBuy.impact, 'MOW $5 buy: under 3% price impact, fees on top')
+const vSell = quoteValue(qs, 10, mowPrice)!
+ok(quoteVerdict(vSell) === 'ok' && Math.abs(vSell.impact) < 0.03, 'MOW sale of 10: under 3% price impact')
+const shrPrice = shrRow.priceUsd
+const trapBuy = fixture('across-trap-buy'), trapSell = fixture('across-trap-sell')
+const asQuote = (j: any, side: 'buy' | 'sell') => ({ side, expectedOut: BigInt(j.expectedOutputAmount), appFee: BigInt(j.fees.total.details.app.amount), outDecimals: j.outputToken.decimals, bridgeFeeUsd: Number(j.fees.total.details.bridge.amountUsd) })
+const vTrapBuy = quoteValue(asQuote(trapBuy, 'buy'), 25, shrPrice)!
+ok(vTrapBuy.rate > 100 && quoteVerdict(vTrapBuy) === 'off-market', `a $25 SHRINU buy routed through the trap pays ${Math.round(vTrapBuy.rate)}× the market: refused`)
+const vTrapSell = quoteValue(asQuote(trapSell, 'sell'), 1_000_000, shrPrice)!
+ok(vTrapSell.impact > 0.99 && quoteVerdict(vTrapSell) === 'refuse', 'a ~$7 SHRINU sale routed through it pays $0.01: refused, no tick box')
+const synth = (rate: number, side: 'buy' | 'sell' = 'sell') => quoteVerdict(quoteValue({ side, expectedOut: BigInt(Math.round(rate * 100 * 1e6)), appFee: 0n, outDecimals: 6, bridgeFeeUsd: 0 }, 100, 1))
+ok(synth(0.97) === 'ok' && synth(0.8) === 'confirm' && synth(0.49) === 'refuse', 'price impact: fine at 3%, a tick box at 20%, refused at 51%')
+ok(synth(1.2) === 'ok' && synth(1.3) === 'off-market', 'better than the market: fine at +20% (a stale price), refused at +30%')
+ok(quoteVerdict(quoteValue({ side: 'sell', expectedOut: 84_000_000n, appFee: 0n, outDecimals: 6, bridgeFeeUsd: 2 }, 100, 1)) === 'confirm', 'a tick box when fees and impact together pass 15%')
+ok(quoteValue(qb, 5, 0) === null && quoteVerdict(null) === 'unpriced' && quoteValue(qg, 0.5, 1) === null, 'no market price (or the gas top-up): unpriced, never "ok"')
 
 console.log('stock tokens')
 ok(isStockName('NVIDIA • Robinhood Token') && !isStockName('MowCat') && !isStockName(null), 'by name')

@@ -2435,5 +2435,14 @@ const d: Record<string, string> = {
   "Across couldn’t quote this trade.": "Across n’a pas pu chiffrer cette transaction.",
   "On Robinhood Chain": "Sur Robinhood Chain",
   "No token at this address on Robinhood Chain.": "Aucun jeton à cette adresse sur Robinhood Chain.",
+  // Robinhood Chain: trap pools and the price guard (2026-10-04)
+  "No fair route": "Pas de route équitable",
+  "{x}× the market price": "{x}× le prix du marché",
+  "This quote pays {x}× {symbol}’s market price: Across would route it through a pool priced far off the market, the way trap pools catch trades. ARCSENSE won’t send it.": "Ce devis paie {x}× le prix du marché de {symbol} : Across le ferait passer par un pool dont le prix est très éloigné du marché, comme les pools pièges qui attrapent les ordres. ARCSENSE ne l’enverra pas.",
+  "Across’s best route loses {n}% of this trade to price impact, so ARCSENSE won’t send it. A smaller amount may route better; if not, {symbol} has no fair route right now.": "La meilleure route d’Across perd {n} % de cet ordre en impact sur le prix, donc ARCSENSE ne l’enverra pas. Un montant plus petit peut mieux passer ; sinon, {symbol} n’a pas de route équitable pour le moment.",
+  "I understand this quote can’t be checked against a market price.": "Je comprends que ce devis ne peut pas être comparé à un prix de marché.",
+  "Across’s route changed since your quote: check the new quote and try again.": "La route d’Across a changé depuis votre devis : vérifiez le nouveau devis et réessayez.",
+  "Priced far off {symbol}’s market: a trap pool, not a market.": "Prix très éloigné du marché de {symbol} : un pool piège, pas un marché.",
+  "⚠ Off-market pool": "⚠ Pool hors marché",
 }
 export default d

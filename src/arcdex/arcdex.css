@@ -2298,6 +2298,10 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .rh-pool small { grid-area: dex; color: var(--text-muted); font-weight: 400; font-size: 0.68rem; text-transform: capitalize; }
 .rh-pool b { grid-area: liq; align-self: center; font-weight: 600; font-size: 0.76rem; color: var(--text-muted); }
 .rh-pool.on, .rh-pool:hover { background: var(--bg-3); }
+.rh-pool em { font-style: normal; color: var(--text-muted); font-weight: 400; }
+.rh-pool.off { cursor: default; opacity: 0.55; }
+.rh-pool.off:hover { background: none; }
+.rh-pool.off small { color: var(--red); text-transform: none; }
 .rh-back { padding: 6px; }
 @media (max-width: 767px) {
   .mk-toolbar .chain-switch { display: none; }

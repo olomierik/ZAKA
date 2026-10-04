@@ -21,7 +21,7 @@ import { onBalances } from '../lib/balances'
 import { ARC_EXPLORER, FEE_WALLET } from '../lib/platform'
 import { visitorCountry } from '../lib/geo'
 import { rhEthBalance, rhTokenBalance, rhTx, SELL_GAS_ETH, STOCK_RESTRICTED } from '../lib/robinhood'
-import { getAcrossQuote, type AcrossQuote, type QuoteRequest } from '../lib/acrossQuote'
+import { getAcrossQuote, QUOTE_LIMITS, quoteValue, quoteVerdict, type AcrossQuote, type QuoteRequest } from '../lib/acrossQuote'
 import { acrossErrorText, runAcross, type AcrossProgress } from '../lib/across'
 import { t as T } from '../lib/i18n'
 
@@ -45,7 +45,6 @@ const GAS_RESERVE = 0.15
 /** The gas top-up: $0.50 of ETH on Robinhood Chain, ~10–20 sales. */
 const GAS_TOPUP = 0.5
 const GAS_TOPUP_UNITS = 500_000n
-const CONFIRM_COST = 15
 const BUY_PRESETS = [5, 10, 25, 50]
 const SELL_PRESETS = [25, 50, 100]
 const ATTEST_KEY = 'arcdex:rh-stock-attest:v1'
@@ -53,6 +52,7 @@ const ATTEST_KEY = 'arcdex:rh-stock-attest:v1'
 const fmtUsd = (n: number) => (n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : n >= 0.01 || n === 0 ? `$${n.toFixed(2)}` : `$${n.toPrecision(2)}`)
 const fmtTok = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n >= 1 ? n.toFixed(2) : n === 0 ? '0' : n.toPrecision(3))
 const arcTx = (h: string) => `${ARC_EXPLORER}/tx/${h}`
+const fmtTimes = (r: number) => (r >= 10 ? Math.round(r).toLocaleString('en-US') : r.toFixed(1))
 
 function readAttest(): boolean { try { return localStorage.getItem(ATTEST_KEY) === '1' } catch { return false } }
 function writeAttest(v: boolean) { try { if (v) localStorage.setItem(ATTEST_KEY, '1'); else localStorage.removeItem(ATTEST_KEY) } catch { /* blocked */ } }
@@ -137,13 +137,18 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [amountIn, mode, token, me, feeBps, busy])
 
-  // What the trade delivers, valued at the coin's market price; the rest is fees and price impact.
+  // What the trade delivers, valued at the coin's market price (its busiest
+  // real pool): price impact, and everything it costs. A route through an
+  // off-market pool, or one losing half the trade, is never sent.
   const outAmount = quote ? Number(formatUnits(quote.expectedOut, quote.outDecimals)) : 0
   const minAmount = quote ? Number(formatUnits(quote.minOut, quote.outDecimals)) : 0
   const outUsd = mode === 'buy' ? outAmount * priceUsd : outAmount
-  const inUsd = mode === 'buy' ? amountNum : amountNum * priceUsd
-  const cost = quote && priceUsd > 0 && inUsd > 0 ? Math.max(0, (1 - outUsd / inUsd) * 100) : null
-  const needsCostTick = cost !== null && cost >= CONFIRM_COST
+  const value = quote ? quoteValue(quote, amountNum, priceUsd) : null
+  const verdict = quote ? quoteVerdict(value) : null
+  const refused = verdict === 'refuse' || verdict === 'off-market'
+  const impactPct = value ? Math.max(0, value.impact * 100) : null
+  const cost = value ? Math.max(0, value.cost * 100) : null
+  const needsCostTick = verdict === 'confirm' || verdict === 'unpriced'
 
   // Stock tokens: the buyer's country, then their word.
   const gate: 'ok' | 'checking' | 'blocked' | 'unknown' | 'attest' = !(stock && mode === 'buy') ? 'ok'
@@ -153,7 +158,7 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
     : attested ? 'ok' : 'attest'
 
   const sellNoGas = mode === 'sell' && me !== null && eth !== null && eth === 0
-  const blocked = busy || !quote || quoting || insufficient || (needsCostTick && !costOk) || gate !== 'ok' || sellNoGas
+  const blocked = busy || !quote || quoting || insufficient || refused || (needsCostTick && !costOk) || gate !== 'ok' || sellNoGas
 
   const kindOf = () => trader.kind ?? 'wallet'
 
@@ -219,6 +224,7 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
   }
 
   const label = insufficient ? T('Insufficient balance')
+    : refused && !busy ? T('No fair route')
     : busy ? (progress?.step === 'approve' ? T('Approving…') : progress?.step === 'bridge' ? T('Delivering…') : mode === 'buy' ? T('Buying…') : T('Selling…'))
     : quoting && !quote ? T('Getting a quote…')
     : T(mode === 'buy' ? 'Buy {symbol}' : 'Sell {symbol}', { symbol })
@@ -253,20 +259,29 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
 
       <div className="swap-info">
         <Row label={T('You receive (est.)')} value={quote ? (mode === 'buy' ? `${fmtTok(outAmount)} ${symbol}` : `${fmtUsd(outAmount)} USDC`) : quoting ? '…' : '—'}
-          sub={quote && mode === 'buy' && priceUsd > 0 ? `≈ ${fmtUsd(outUsd)}` : undefined} />
+          sub={quote && mode === 'buy' && priceUsd > 0 && verdict !== 'off-market' ? `≈ ${fmtUsd(outUsd)}` : undefined} />
         <Row label={T('Minimum received')} value={quote ? (mode === 'buy' ? `${fmtTok(minAmount)} ${symbol}` : `${fmtUsd(minAmount)} USDC`) : '—'} />
         <Row label={T('Platform fee')} value={mode === 'buy' ? T('{pct} (in {symbol})', { pct: pct(feeBps), symbol }) : T('{pct} (in USDC)', { pct: pct(feeBps) })} />
         <Row label={T('Bridge & gas (Across)')} value={quote ? fmtUsd(quote.bridgeFeeUsd) : '—'} />
-        {cost !== null && <Row label={T('Total cost (fees and price impact)')} value={`${cost.toFixed(1)}%`} color={cost >= CONFIRM_COST ? 'var(--red)' : cost >= 6 ? 'var(--amber)' : undefined} />}
+        {value && <Row label={T('Price impact')} value={verdict === 'off-market' ? T('{x}× the market price', { x: fmtTimes(value.rate) }) : impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`}
+          color={refused || impactPct! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : impactPct! >= 5 ? 'var(--amber)' : 'var(--green)'} />}
+        {value && !refused && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} color={cost! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : cost! >= 6 ? 'var(--amber)' : undefined} />}
         <Row label={T('Arrives')} value={quote ? (mode === 'buy' ? T('on Robinhood Chain in ~{s}s', { s: Math.max(2, quote.fillSeconds) }) : T('on Arc in ~{s}s', { s: Math.max(2, quote.fillSeconds) })) : '—'} />
       </div>
 
       {quoteErr && !busy && <div className="rh-msg error">{quoteErr}</div>}
 
+      {verdict === 'off-market' && !busy && (
+        <div className="rh-msg error">{T('This quote pays {x}× {symbol}’s market price: Across would route it through a pool priced far off the market, the way trap pools catch trades. ARCSENSE won’t send it.', { x: fmtTimes(value!.rate), symbol })}</div>
+      )}
+      {verdict === 'refuse' && !busy && (
+        <div className="rh-msg error">{T('Across’s best route loses {n}% of this trade to price impact, so ARCSENSE won’t send it. A smaller amount may route better; if not, {symbol} has no fair route right now.', { n: impactPct!.toFixed(0), symbol })}</div>
+      )}
       {needsCostTick && (
         <label className="rh-tick warn">
           <input type="checkbox" checked={costOk} onChange={e => setCostOk(e.target.checked)} />
-          {T('I understand this trade costs {n}% in fees and price impact.', { n: cost!.toFixed(1) })}
+          {verdict === 'unpriced' ? T('I understand this quote can’t be checked against a market price.')
+            : T('I understand this trade costs {n}% in fees and price impact.', { n: Math.max(cost!, impactPct!).toFixed(1) })}
         </label>
       )}
 

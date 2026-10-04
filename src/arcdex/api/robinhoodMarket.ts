@@ -42,6 +42,10 @@ export interface RhCoin {
   traders24h: number
   /** When its first listed pool opened (ms). */
   createdAt: number
+  /** Its pool's fee tier from the pool's name ("SHRINU / USDG 20%" → 20), else null. */
+  feePct: number | null
+  /** A pool priced far from the coin's market, or with a trap's fee tier: never its main pool, never traded. */
+  offMarket?: boolean
 }
 
 // ── GeckoTerminal's shapes ───────────────────────────────────────────────
@@ -110,7 +114,46 @@ export function poolToCoin(p: GtPool, tokens: Map<string, GtToken['attributes']>
     sells24h: tx.sells ?? 0,
     traders24h: (tx.buyers ?? 0) + (tx.sellers ?? 0),
     createdAt: a.pool_created_at ? Date.parse(a.pool_created_at) || 0 : 0,
+    feePct: poolFeePct(a.name),
   }
+}
+
+/** A pool's fee tier from its GeckoTerminal name ("SHRINU / USDG 20%" → 20), else null. */
+export function poolFeePct(name: string): number | null {
+  const m = / (\d+(?:\.\d+)?)%\s*$/.exec(name)
+  return m ? Number(m[1]) : null
+}
+
+/** Pools charging this much a swap are traps, not markets. Seen on Robinhood
+ * Chain: SHRINU / USDG at 20% and 55%, priced ~300× under its real pool, with
+ * $800K of "liquidity" and a few dollars of trades. Real pools charge 0.01–3%. */
+export const TRAP_FEE_PCT = 10
+/** A pool more than 1.5× off the coin's main pool, either way, is off the market. */
+const OFF_MARKET = 1.5
+
+const trapFee = (r: RhCoin) => r.feePct !== null && r.feePct >= TRAP_FEE_PCT
+
+/** A coin's pools, the best market first: pools without a trap's fee, then by
+ * the wallets trading them, their volume, a USDG/WETH/ETH quote, and depth.
+ * Depth comes last: a trap pool can show more "liquidity" than the real one. */
+export function rankPools(list: RhCoin[]): RhCoin[] {
+  return list.slice().sort((a, b) =>
+    (Number(trapFee(a)) - Number(trapFee(b)))
+    || (b.traders24h - a.traders24h)
+    || (b.volume24h - a.volume24h)
+    || (Number(RH_QUOTES.has(b.quote)) - Number(RH_QUOTES.has(a.quote)))
+    || (b.liquidity - a.liquidity))
+}
+
+/** Ranks a coin's pools and marks those off the market: a trap's fee, or a
+ * price more than 1.5× away from the best pool's. */
+export function markPools(list: RhCoin[]): RhCoin[] {
+  const ranked = rankPools(list)
+  const ref = ranked[0]?.priceUsd ?? 0
+  return ranked.map((r, i) => ({
+    ...r,
+    offMarket: i > 0 && (trapFee(r) || (ref > 0 && r.priceUsd > 0 && Math.max(r.priceUsd / ref, ref / r.priceUsd) > OFF_MARKET)),
+  }))
 }
 
 /** A pool whose big day is one or two wallets trading with themselves (seen
@@ -122,8 +165,8 @@ export function isWashPool(c: RhCoin, now = Date.now()): boolean {
   return !young && c.traders24h < 4 && c.volume24h > 10_000
 }
 
-/** One row per coin: its main pool is the deepest one quoted in USDG, WETH or
- * ETH (else the deepest), and its volume and trades are the sum of its pools. */
+/** One row per coin: its main pool is its best market (`rankPools`), and its
+ * volume and trades are the sum of its pools, off-market pools left out. */
 export function mergeCoins(rows: RhCoin[]): RhCoin[] {
   const by = new Map<string, RhCoin[]>()
   for (const r of rows) {
@@ -133,15 +176,16 @@ export function mergeCoins(rows: RhCoin[]): RhCoin[] {
   }
   const out: RhCoin[] = []
   for (const list of by.values()) {
-    const quoted = list.filter(r => RH_QUOTES.has(r.quote))
-    const pick = (quoted.length ? quoted : list).slice().sort((a, b) => (b.liquidity - a.liquidity) || (b.volume24h - a.volume24h))[0]
+    const marked = markPools(list)
+    const pick = marked[0]
+    const real = marked.filter(r => !r.offMarket)
     const first = Math.min(...list.map(r => r.createdAt || Infinity))
     out.push({
       ...pick,
       image: pick.image ?? list.find(r => r.image)?.image ?? null,
-      volume24h: list.reduce((s, r) => s + r.volume24h, 0),
-      buys24h: list.reduce((s, r) => s + r.buys24h, 0),
-      sells24h: list.reduce((s, r) => s + r.sells24h, 0),
+      volume24h: real.reduce((s, r) => s + r.volume24h, 0),
+      buys24h: real.reduce((s, r) => s + r.buys24h, 0),
+      sells24h: real.reduce((s, r) => s + r.sells24h, 0),
       createdAt: Number.isFinite(first) ? first : 0,
     })
   }
@@ -157,7 +201,8 @@ const INCLUDE = { include: 'base_token,quote_token,dex' }
 
 // ── the market list ──────────────────────────────────────────────────────
 
-const CACHE_KEY = 'arcdex:rh-market:v1'
+// v2 (2026-10-04): main pools by activity; v1's could be trap pools.
+const CACHE_KEY = 'arcdex:rh-market:v2'
 const CACHE_MS = 30 * 60_000
 const FRESH_MS = 90_000
 
@@ -223,25 +268,28 @@ interface GtTokenDetail {
 export interface RhCoinDetail extends RhCoin {
   /** Tokens in existence, for the chart's market cap. */
   supply: number | null
-  /** Its pools, deepest first. */
+  /** Its pools, the best market first (`markPools`), off-market ones marked. */
   pools: RhCoin[]
 }
 
 /** A coin's price, supply and pools (GeckoTerminal's token page). `pool`
- * picks the main pool when the link named one. */
+ * picks the main pool when the link named one (never an off-market pool).
+ * The price is always its best market's, whichever pool the page shows. */
 export async function getRhCoin(address: string, pool?: string | null): Promise<RhCoinDetail | null> {
   const d = await gtDirect<GtTokenDetail>(`/networks/${NET}/tokens/${address.toLowerCase()}`, { include: 'top_pools' })
   const t = d.data?.attributes
   if (!t) return null
   const tokens = new Map([[t.address.toLowerCase(), t]])
   const pools = (d.included ?? []).map(p => poolToCoin(p, tokens)).filter((c): c is RhCoin => !!c && c.address === t.address.toLowerCase())
-  const named = pool ? pools.find(p => p.pool === pool.toLowerCase()) : undefined
-  const main = named ?? mergeCoins(pools)[0]
-  const price = num(t.price_usd) || main?.priceUsd || 0
+  const ranked = markPools(pools)
+  const best = ranked[0]
+  const named = pool ? ranked.find(p => p.pool === pool.toLowerCase() && !p.offMarket) : undefined
+  const main = named ?? best
+  const price = (best && best.traders24h > 0 ? best.priceUsd : 0) || num(t.price_usd) || best?.priceUsd || 0
   const base: RhCoin = main ?? {
     address: t.address.toLowerCase(), symbol: t.symbol, name: t.name, image: isImage(t.image_url), decimals: t.decimals ?? null,
     stock: isStockName(t.name), pool: '', dex: '', quote: '', quoteSymbol: '', priceUsd: price, change5m: 0, change1h: 0, change24h: 0,
-    volume24h: 0, liquidity: 0, marketCap: 0, buys24h: 0, sells24h: 0, traders24h: 0, createdAt: 0,
+    volume24h: 0, liquidity: 0, marketCap: 0, buys24h: 0, sells24h: 0, traders24h: 0, createdAt: 0, feePct: null,
   }
   return {
     ...base,
@@ -252,9 +300,9 @@ export async function getRhCoin(address: string, pool?: string | null): Promise<
     stock: isStockName(t.name),
     priceUsd: price,
     marketCap: num(t.market_cap_usd) || num(t.fdv_usd) || base.marketCap,
-    volume24h: pools.reduce((s, p) => s + p.volume24h, 0) || base.volume24h,
+    volume24h: ranked.filter(p => !p.offMarket).reduce((s, p) => s + p.volume24h, 0) || base.volume24h,
     supply: num(t.normalized_total_supply) || null,
-    pools: pools.slice().sort((a, b) => b.liquidity - a.liquidity),
+    pools: ranked,
   }
 }
 

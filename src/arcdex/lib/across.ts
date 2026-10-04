@@ -19,7 +19,7 @@ import { waitForReceipt } from './receipts'
 import { notifyBalances } from './balances'
 import { isContractCode, rememberRh, rhClient, RH_RPC, robinhood } from './robinhood'
 import type { TraderKind } from './identity'
-import { AcrossError, ARC_ID, depositStatus, getAcrossQuote, RH_ID, type AcrossQuote, type FillStatus, type QuoteRequest } from './acrossQuote'
+import { AcrossError, ARC_ID, depositStatus, getAcrossQuote, QUOTE_LIMITS, RH_ID, type AcrossQuote, type FillStatus, type QuoteRequest } from './acrossQuote'
 import { t as T } from './i18n'
 
 export { AcrossError }
@@ -102,7 +102,8 @@ const DRIFT = 0.03
 /**
  * Runs one trade end to end. `shown` is the quote the trader agreed to: a
  * fresh quote that would deliver over 3% less stops the trade, so they see
- * the new one first. Resolves once Across has filled (or refunded) it, or
+ * the new one first. So does one delivering over 25% more: Across's route
+ * changed, maybe to an off-market pool (acrossQuote.ts `quoteValue`). Resolves once Across has filled (or refunded) it, or
  * after 15 minutes with the status then (a late fill still lands by itself).
  * `approveExtra`: USDC the next trade will spend right after this one (a
  * buy's gas top-up), approved together, so it takes one approval, not two.
@@ -122,6 +123,9 @@ export async function runAcross(kind: TraderKind, req: QuoteRequest, shown: Acro
     const q = await getAcrossQuote(req)
     if (shown && Number(q.expectedOut) < Number(shown.expectedOut) * (1 - DRIFT)) {
       throw new AcrossError(T('The price moved since your quote: check the new quote and try again.'))
+    }
+    if (shown && Number(q.expectedOut) > Number(shown.expectedOut) * (1 + QUOTE_LIMITS.offMarket)) {
+      throw new AcrossError(T('Across’s route changed since your quote: check the new quote and try again.'))
     }
     return q
   }

@@ -2435,5 +2435,14 @@ const d: Record<string, string> = {
   "Across couldn’t quote this trade.": "Across 无法为该交易报价。",
   "On Robinhood Chain": "在 Robinhood Chain 上",
   "No token at this address on Robinhood Chain.": "Robinhood Chain 上此地址没有代币。",
+  // Robinhood Chain: trap pools and the price guard (2026-10-04)
+  "No fair route": "没有公允路由",
+  "{x}× the market price": "市场价的 {x} 倍",
+  "This quote pays {x}× {symbol}’s market price: Across would route it through a pool priced far off the market, the way trap pools catch trades. ARCSENSE won’t send it.": "该报价按 {symbol} 市场价的 {x} 倍成交：Across 会把它路由到一个价格远离市场的池子，这正是陷阱池捕获交易的方式。ARCSENSE 不会发送这笔交易。",
+  "Across’s best route loses {n}% of this trade to price impact, so ARCSENSE won’t send it. A smaller amount may route better; if not, {symbol} has no fair route right now.": "Across 的最佳路由会因价格影响损失这笔交易的 {n}%，因此 ARCSENSE 不会发送。较小的金额可能有更好的路由；如果仍然不行，{symbol} 目前没有公允路由。",
+  "I understand this quote can’t be checked against a market price.": "我了解该报价无法与市场价进行核对。",
+  "Across’s route changed since your quote: check the new quote and try again.": "自你获取报价以来 Across 的路由已变化：请查看新报价后重试。",
+  "Priced far off {symbol}’s market: a trap pool, not a market.": "价格远离 {symbol} 的市场：这是陷阱池，不是市场。",
+  "⚠ Off-market pool": "⚠ 偏离市场的池子",
 }
 export default d

@@ -2435,5 +2435,14 @@ const d: Record<string, string> = {
   "Across couldn’t quote this trade.": "A Across não conseguiu cotar esta negociação.",
   "On Robinhood Chain": "Na Robinhood Chain",
   "No token at this address on Robinhood Chain.": "Não há token neste endereço na Robinhood Chain.",
+  // Robinhood Chain: trap pools and the price guard (2026-10-04)
+  "No fair route": "Sem rota justa",
+  "{x}× the market price": "{x}× o preço de mercado",
+  "This quote pays {x}× {symbol}’s market price: Across would route it through a pool priced far off the market, the way trap pools catch trades. ARCSENSE won’t send it.": "Esta cotação paga {x}× o preço de mercado de {symbol}: a Across a passaria por um pool com preço muito longe do mercado, como os pools armadilha que capturam negociações. A ARCSENSE não vai enviá-la.",
+  "Across’s best route loses {n}% of this trade to price impact, so ARCSENSE won’t send it. A smaller amount may route better; if not, {symbol} has no fair route right now.": "A melhor rota da Across perde {n}% desta negociação em impacto no preço, então a ARCSENSE não vai enviá-la. Um valor menor pode ter uma rota melhor; se não, {symbol} não tem uma rota justa agora.",
+  "I understand this quote can’t be checked against a market price.": "Entendo que esta cotação não pode ser comparada com um preço de mercado.",
+  "Across’s route changed since your quote: check the new quote and try again.": "A rota da Across mudou desde a sua cotação: veja a nova cotação e tente de novo.",
+  "Priced far off {symbol}’s market: a trap pool, not a market.": "Preço muito longe do mercado de {symbol}: um pool armadilha, não um mercado.",
+  "⚠ Off-market pool": "⚠ Pool fora do mercado",
 }
 export default d

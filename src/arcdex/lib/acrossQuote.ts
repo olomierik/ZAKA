@@ -21,7 +21,7 @@
 // with a fee, the fee wallet). Approvals are always for the exact amount, so
 // nothing beyond the trade can move.
 
-import { decodeFunctionData, parseAbi, type Address, type Hex } from 'viem'
+import { decodeFunctionData, formatUnits, parseAbi, type Address, type Hex } from 'viem'
 import { FEE_WALLET } from './platform'
 import { t as T } from './i18n'
 
@@ -258,6 +258,58 @@ export function checkQuote(r: QuoteRequest, j: ApiQuote): AcrossQuote {
     fillSeconds: Number(j.expectedFillTime ?? 0) || 0,
     expiresAt: (Number(j.quoteExpiryTimestamp ?? 0) || 0) * 1000,
   }
+}
+
+// ── what a quote is worth ────────────────────────────────────────────────
+//
+// Across picks its own route on Robinhood Chain, and a coin's pools there can
+// include traps: pools with a 20–90% fee priced hundreds of times off the
+// market (SHRINU / USDG 20%, 2026-10-04). A $25 buy routed through one quoted
+// "771M SHRINU ≈ $5.4K" and a $7 sale quoted $0.01. So every quote is valued
+// at the coin's market price (its busiest real pool, api/robinhoodMarket.ts)
+// before it can be sent.
+
+export interface QuoteValue {
+  /** What the swap delivered (before ARCSENSE's fee and after the bridge's) as a share of its market value: 1 is the market price. */
+  rate: number
+  /** Price impact: what the swap lost against the market price (0.03 = 3%; negative = better than the market). */
+  impact: number
+  /** Everything: fees, bridge and price impact, as a share of what's paid (negative = better than the market). */
+  cost: number
+}
+
+/** A quote valued at the coin's market price. `input` is what's paid: dollars
+ * for a buy, coins for a sale. Null without a price (or for the gas top-up). */
+export function quoteValue(q: Pick<AcrossQuote, 'side' | 'expectedOut' | 'appFee' | 'outDecimals' | 'bridgeFeeUsd'>, input: number, priceUsd: number): QuoteValue | null {
+  if (q.side === 'gas' || !(priceUsd > 0) || !(input > 0)) return null
+  const out = Number(formatUnits(q.expectedOut, q.outDecimals))
+  const fee = Number(formatUnits(q.appFee, q.outDecimals))
+  if (q.side === 'buy') {
+    // The bridge's fee comes off the USDC before the swap on Robinhood Chain.
+    const swapIn = input - q.bridgeFeeUsd
+    if (!(swapIn > 0)) return null
+    const rate = ((out + fee) * priceUsd) / swapIn
+    return { rate, impact: 1 - rate, cost: 1 - (out * priceUsd) / input }
+  }
+  // A sale swaps first, then bridges (its fee comes off the proceeds).
+  const worth = input * priceUsd
+  const rate = (out + fee + q.bridgeFeeUsd) / worth
+  return { rate, impact: 1 - rate, cost: 1 - out / worth }
+}
+
+/** Where a quote stops: a tick box from 15% (impact or all costs), refused
+ * from 50% of price impact, and refused when it pays over 25% more than the
+ * market price (a route through an off-market pool, however good it looks). */
+export const QUOTE_LIMITS = { confirm: 0.15, refuse: 0.5, offMarket: 0.25 }
+
+export type QuoteVerdict = 'ok' | 'confirm' | 'refuse' | 'off-market' | 'unpriced'
+
+export function quoteVerdict(v: QuoteValue | null): QuoteVerdict {
+  if (!v) return 'unpriced'
+  if (v.rate > 1 + QUOTE_LIMITS.offMarket) return 'off-market'
+  if (v.impact >= QUOTE_LIMITS.refuse) return 'refuse'
+  if (v.impact >= QUOTE_LIMITS.confirm || v.cost >= QUOTE_LIMITS.confirm) return 'confirm'
+  return 'ok'
 }
 
 /** Across's own reasons, in words a trader can act on. */
