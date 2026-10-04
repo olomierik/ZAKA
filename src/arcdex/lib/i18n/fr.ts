@@ -2570,5 +2570,7 @@ const d: Record<string, string> = {
   "Long or short BTC, ETH and SOL with up to 10× leverage, settled in USDC at RedStone’s signed oracle prices. On testnet now; mainnet after an independent audit.": "Long ou short sur BTC, ETH et SOL avec un levier jusqu’à 10×, réglé en USDC aux prix signés de l’oracle RedStone. Sur testnet pour l’instant ; le mainnet après un audit indépendant.",
   "Everything to trade, in one place": "Tout pour trader, au même endroit",
   "Connecting…": "Connexion…",
+  "Arc CA": "CA Arc",
+  "Robinhood CA": "CA Robinhood",
 }
 export default d

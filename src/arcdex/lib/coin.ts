@@ -8,6 +8,8 @@ import { useSyncExternalStore } from 'react'
 
 export const COIN = '0x4b93446882d29e094181b2fae14b126577a2676c'
 export const COIN_LC = COIN.toLowerCase()
+/** $ARCDEX on Robinhood Chain (owner, 2026-10-04): name ARCDEX, symbol ARCD, 1B supply, 18 decimals. */
+export const COIN_RH = '0xdf12A26048Be60079b5486Ae63Cbde713DbEc265'
 export const COIN_POOL = '0x87b65f8831a8f3ba17da44003fae5294476b9a5c7ac5da53485a44dd12af9897'
 /** The ticker the site shows; on-chain the symbol is ARCD. */
 export const COIN_TICKER = 'ARCDEX'
