@@ -1328,13 +1328,18 @@ Owner: "let users see Robinhood coins and buy and sell them just like Arc coins"
   - Coins checked: those bought from this browser (`arcdex:held-rh:v1:<owner>`) and the cached market list, in one multicall. The section makes no GeckoTerminal calls of its own, and is hidden when nothing is held there.
   - Blockscout's token API answers 403 (a challenge page), so it isn't used.
 - **Wallets:** `robinhood` is in `wagmi.ts`, so a connected wallet is switched (or the chain added) for a sale. The trading wallet signs there through `getEmbeddedWalletClientOn`. The "Switch to Arc" bar is hidden on Robinhood pages.
+- **Across API key (2026-10-04):** Across requires an API key and an integrator ID in production; without the key, requests get strict rate limits (429). The form to get both is docs.across.to/tools/integrator-id.
+  - **Where the key lives:** it's a secret, so it's never in the page. `netlify/edge-functions/across.ts` serves `/across/swap/approval` and `/across/deposit/status`, adding `Authorization: Bearer <key>` from the Netlify environment variable `ACROSS_API_KEY`. It also adds `ACROSS_INTEGRATOR_ID` (or `VITE_ACROSS_INTEGRATOR_ID` in `netlify.toml`, which the page sends itself).
+  - **What it forwards:** only requests from the site's own pages (`Sec-Fetch-Site: same-origin`): quotes between Arc and Robinhood Chain with any fee at most 2% and paid to the fee wallet, and a deposit's status. Everything else is refused.
+  - **Without a key:** it answers 503 and `acrossFetch` (`lib/acrossQuote.ts`) asks Across directly for the rest of the visit, as before. Local dev, which has no edge, does the same.
+  - Answers sent with the key carry `x-arcsense-across: key`, which is how to check it's on.
 - **Owner steps:**
-  1. Register an Across integrator ID (Across calls it "required for production"; quotes work without it) and set `VITE_ACROSS_INTEGRATOR_ID = "0x…"` (2 bytes, public) in `netlify.toml`.
+  1. Put the Across API key in Netlify (project `arcsense-app` → environment variables, `ACROSS_API_KEY`, marked secret) and the integrator ID as `ACROSS_INTEGRATOR_ID`, then redeploy.
   2. The legal check on offering stock tokens.
   3. Buy fees collect as coins on Robinhood Chain at the fee wallet: selling them needs ETH gas there.
 - **Not in the $SENSE ledger yet:** `engine/src/sense/program.ts` counts fees paid by ARCSENSE's own contracts. A Robinhood sale's fee comes from Across's handler on Arc, and a buy's fee is a coin on Robinhood Chain.
 - **Tests:**
-  - `bun scripts/test-robinhood.ts [--live]`, offline on recorded quotes (`scripts/fixtures/across-*.json`, `rh-pools.json`). It covers the quote URL, real quotes passing, and 20 tampered quotes refused. It also covers market rows, wash and quiet pools, stock names, restricted countries and routes. `--live` adds fresh Across quotes and on-chain stock checks. Removing the recipient check or the native-value check fails it.
+  - `bun scripts/test-robinhood.ts [--live]`, offline on recorded quotes (`scripts/fixtures/across-*.json`, `rh-pools.json`). It covers the quote URL, real quotes passing, and 20 tampered quotes refused. It also covers market rows, wash and quiet pools, stock names, restricted countries and routes. It also covers the `/across` proxy: what it forwards and refuses, and that the key goes only in the `Authorization` header to Across (with a fake key). `--live` adds fresh Across quotes and on-chain stock checks. Removing the recipient check or the native-value check fails it.
   - `bun scripts/sim-robinhood.ts` simulates on mainnet, from a throwaway address with state overrides (nothing sent), the exact transactions for a $5 MOW buy, a $5 NVDA buy, a $0.50 gas top-up and a 10 MOW sale. Each goes through with exactly the amount approved, and is refused with less.
 - **Checked in the browser (local dev):**
   - `/robinhood` and its Stocks tab, at 1024px and 375px with no sideways scroll.

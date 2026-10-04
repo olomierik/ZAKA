@@ -126,6 +126,47 @@ ok((pathToPage(`/robinhood/token/${MOW}`, '?pool=junk') as { pool?: string }).po
 ok(pathToPage('/robinhood/token/0x12', '')?.name === 'robinhood', 'a bad address opens the markets')
 ok(pathToPage(`/token/${MOW}`, '')?.name === 'argus', 'Arc’s /token links are unchanged')
 
+console.log('the /across proxy (netlify/edge-functions/across.ts)')
+const proxy = await import('../netlify/edge-functions/across')
+const site = 'https://arcsense.site'
+const same = new Headers({ 'sec-fetch-site': 'same-origin' })
+const pathOf = (r: Parameters<typeof quoteUrl>[0]) => quoteUrl(r).slice('https://app.across.to/api'.length)
+const buyPath = pathOf(buyReq)
+const okReq = (path: string, h = same) => proxy.acrossRequest(new URL(site + '/across' + path), h)
+ok('path' in okReq(buyPath) && (okReq(buyPath) as { path: string }).path.startsWith('/swap/approval?'), 'forwards ARCSENSE’s own buy quote')
+ok('path' in okReq(pathOf(sellReq)) && 'path' in okReq(pathOf(gasReq)), 'and its sale and gas quotes')
+ok('path' in okReq('/deposit/status?depositTxnRef=0x' + 'ab'.repeat(32)), 'and a deposit’s status')
+ok('error' in okReq(buyPath, new Headers({ 'sec-fetch-site': 'cross-site' })) && 'error' in okReq(buyPath, new Headers()), 'refuses other sites’ pages and requests that don’t say where they come from')
+ok('error' in okReq(buyPath.replace('originChainId=5042', 'originChainId=1')), 'refuses a route that isn’t Arc ⇄ Robinhood Chain')
+ok('error' in okReq(buyPath.replace(FEE_WALLET, ATTACKER)), 'refuses a fee to anyone but the fee wallet')
+ok('error' in okReq(buyPath.replace('appFee=0.02', 'appFee=0.5')), 'refuses a fee over 2%')
+ok('error' in okReq('/deposits?depositor=' + BUYER) && 'error' in okReq('/deposit/status?depositTxnRef=0x12'), 'refuses anything else')
+{
+  const realFetch = globalThis.fetch
+  const g = globalThis as unknown as { Netlify?: unknown }
+  const env: Record<string, string> = {}
+  g.Netlify = { env: { get: (k: string) => env[k] } }
+  const seen: { url: string; auth: string | null }[] = []
+  globalThis.fetch = (async (u: string, init?: RequestInit) => {
+    seen.push({ url: String(u), auth: new Headers(init?.headers).get('authorization') })
+    return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }) as typeof fetch
+  try {
+    const call = (path: string, h: HeadersInit = { 'sec-fetch-site': 'same-origin' }, method = 'GET') => proxy.default(new Request(site + '/across' + path, { headers: h, method }))
+    ok((await call(buyPath)).status === 503 && seen.length === 0, 'without a key: 503, nothing forwarded (the site then asks Across directly)')
+    env.ACROSS_API_KEY = 'test-key-not-real'
+    env.ACROSS_INTEGRATOR_ID = '0x1a2b'
+    const r = await call(buyPath)
+    ok(r.status === 200 && r.headers.get('x-arcsense-across') === 'key', 'with a key: Across’s answer, marked as sent with the key')
+    ok(seen[0]?.auth === 'Bearer test-key-not-real' && seen[0].url.startsWith('https://app.across.to/api/swap/approval?'), 'the key goes only in the Authorization header, to Across')
+    ok(new URL(seen[0].url).searchParams.get('integratorId') === '0x1a2b' && new URL(seen[0].url).searchParams.get('appFeeRecipient') === FEE_WALLET, 'the integrator ID is added; the request is otherwise as asked')
+    ok((await call(buyPath, { 'sec-fetch-site': 'cross-site' })).status === 403 && (await call(buyPath, undefined, 'POST')).status === 405 && seen.length === 1, 'other sites and other methods are refused, never forwarded')
+  } finally {
+    globalThis.fetch = realFetch
+    delete g.Netlify
+  }
+}
+
 if (process.argv.includes('--live')) {
   console.log('live (no wallet, nothing sent)')
   ok(await isStockToken(NVDA) && !(await isStockToken(MOW)), 'on-chain: NVDA is on Robinhood’s stock beacon, MOW isn’t')

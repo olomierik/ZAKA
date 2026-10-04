@@ -135,6 +135,25 @@ export function quoteUrl(r: QuoteRequest): string {
   return `${ACROSS_API}/swap/approval?${q}`
 }
 
+/** Off once the site's /across proxy said it has no key, or isn't there (local dev): Across directly from then on. */
+let proxyOff = false
+
+/** Across, through the site's own /across (netlify/edge-functions/across.ts), which adds
+ * ARCSENSE's API key (Across rate-limits requests without one); else Across directly. */
+async function acrossFetch(path: string, signal?: AbortSignal): Promise<Response> {
+  if (typeof window !== 'undefined' && !proxyOff) {
+    try {
+      const r = await fetch(`/across${path}`, { signal, cache: 'no-store' })
+      if (r.headers.get('x-arcsense-across') === 'key') return r
+      // No key yet (503), or no proxy at all (the app's HTML): stop asking it.
+      if (r.status === 503 || !(r.headers.get('content-type') ?? '').includes('json')) proxyOff = true
+    } catch (e) {
+      if (signal?.aborted) throw e
+    }
+  }
+  return fetch(`${ACROSS_API}${path}`, { signal, cache: 'no-store' })
+}
+
 interface ApiToken { address?: string; chainId?: number; decimals?: number; symbol?: string }
 interface ApiQuote {
   id?: string
@@ -252,7 +271,7 @@ export function acrossErrorText(code: string | undefined, message: string | unde
 
 /** A checked quote for `r`. Never cached: Across's quotes follow each block. */
 export async function getAcrossQuote(r: QuoteRequest, signal?: AbortSignal): Promise<AcrossQuote> {
-  const res = await fetch(quoteUrl(r), { signal, cache: 'no-store' })
+  const res = await acrossFetch(quoteUrl(r).slice(ACROSS_API.length), signal)
   let j: ApiQuote
   try { j = await res.json() as ApiQuote } catch { throw new AcrossError(T('Across couldn’t quote this trade.')) }
   if (!res.ok || !j.swapTx) throw new AcrossError(acrossErrorText(j.code, j.message))
@@ -265,7 +284,7 @@ export interface DepositStatus { status: FillStatus; fillTx: string | null; refu
 
 /** Where a deposit stands (Across's indexer; "not found" for its first seconds). */
 export async function depositStatus(depositTx: string): Promise<DepositStatus> {
-  const res = await fetch(`${ACROSS_API}/deposit/status?depositTxnRef=${depositTx}`, { cache: 'no-store' })
+  const res = await acrossFetch(`/deposit/status?depositTxnRef=${depositTx}`)
   const j = await res.json().catch(() => ({})) as { status?: string; fillTx?: string | null; depositRefundTxHash?: string | null }
   const s = j.status === 'filled' ? 'filled' : j.status === 'refunded' ? 'refunded' : j.status === 'expired' ? 'expired' : 'pending'
   return { status: s, fillTx: j.fillTx ?? null, refundTx: j.depositRefundTxHash ?? null }
