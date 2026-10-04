@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useSolanaWallets } from '../lib/solanaWallet'
 import { createPublicClient, http, parseAbi, formatUnits } from 'viem'
 import { arc } from '../wagmi'
 import {
@@ -28,6 +29,8 @@ export default function TradingWalletPanel({ navigate }: { navigate?: (p: Page) 
   const [importKey, setImportKey] = useState('')
   const [error, setError]     = useState('')
   const [address, setAddress] = useState<string | null>(currentAddress())
+  const sol = useSolanaWallets()
+  const [solCopied, setSolCopied] = useState(false)
   const [balance, setBalance] = useState<string | null>(null)
   const [exported, setExported] = useState('')
   const [copied, setCopied]   = useState(false)
@@ -131,6 +134,16 @@ export default function TradingWalletPanel({ navigate }: { navigate?: (p: Page) 
             <span style={{ fontSize: '0.65rem', fontWeight: 500, color: 'var(--text-muted)', marginLeft: 4 }}>{T("USDC")}</span>
           </div>
           <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: 10 }}>{T("Deposit USDC on Arc mainnet to this address to trade with one click from the terminal.")}</div>
+          {sol.trading && (
+            // Its Solana address (2026-10-04, lib/solanaWallet.ts): Solana coins bought here land there.
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 6 }} title={T('Solana coins you buy land at this address. It comes from the same key, so your backup covers it.')}>
+              <span style={{ fontFamily: 'var(--mono)', fontSize: '0.68rem', color: 'var(--text-muted)' }}>◎ Solana {sol.trading.slice(0, 4)}…{sol.trading.slice(-4)}</span>
+              <button onClick={() => { void navigator.clipboard.writeText(sol.trading!); setSolCopied(true); setTimeout(() => setSolCopied(false), 1500) }}
+                style={{ background: 'none', border: 'none', color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.68rem' }}>
+                {solCopied ? T("Copied") : T("Copy")}
+              </button>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
             <button onClick={() => setCashModal('deposit')} style={btnStyle}>{T("Deposit")}</button>
             <button onClick={() => setCashModal('withdraw')} style={{ ...btnStyle, background: 'var(--bg-2)', color: 'var(--text)', border: '1px solid var(--adx-card-border)' }}>{T("Withdraw")}</button>

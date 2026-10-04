@@ -167,3 +167,6 @@ export async function runAcross(kind: TraderKind, req: QuoteRequest, shown: Acro
     await new Promise(r => setTimeout(r, i < 30 ? 2_000 : 6_000))
   }
 }
+
+/** Arc's side of a Solana trade (lib/relay.ts) is sent the same way: an exact approval, the transaction, its receipt. */
+export { approve as evmApprove, sendRaw as evmSend, mined as evmMined }

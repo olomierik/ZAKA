@@ -9,6 +9,7 @@
 
 import type { ArcToken } from '../api/radardex'
 import type { RhCoin } from '../api/robinhoodMarket'
+import { SOL_CURVE_DEXES, type SolCoin } from '../../../api/_solCore'
 import { N_ } from './i18n'
 
 export type Stage = 'new' | 'bonding' | 'near' | 'graduated' | 'established'
@@ -75,3 +76,20 @@ export function rhStageInput(c: RhCoin): StageInput {
 
 export const rhStage = (c: RhCoin): Stage => (c.stock && !c.launchpad ? 'established' : stageOf(rhStageInput(c)))
 export const arcStage = (t: ArcToken): Stage => stageOf(arcStageInput(t))
+
+/** A Solana coin (2026-10-04): on its launchpad's curve until the chain says it graduated (pump.fun, LaunchLab and
+ * LetsBonk, Meteora DBC and Moonshot are read: api/_solCore.ts `readCurves`); other curve venues (Boop, …) count as
+ * Bonding without a percentage. PumpSwap is where pump.fun's coins graduate. */
+export function solStageInput(c: SolCoin): StageInput {
+  const read = c.graduated !== undefined
+  const onCurve = read ? !c.graduated : SOL_CURVE_DEXES.has(c.dex)
+  return {
+    ageMs: c.createdAt > 0 ? Math.max(0, Date.now() - c.createdAt) : 0,
+    onCurve,
+    progress: onCurve && read ? c.curveProgress ?? null : null,
+    liquidityUsd: c.liquidity,
+    holders: null,
+    traders24h: c.traders24h,
+  }
+}
+export const solStage = (c: SolCoin): Stage => stageOf(solStageInput(c))

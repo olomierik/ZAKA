@@ -257,6 +257,7 @@ export async function unlock(passcode: string): Promise<`0x${string}`> {
 export function lock(): void {
   unlockedPrivateKey = null
   unlockedAccount = null
+  solanaSeedCache = null
   changed()
 }
 
@@ -327,6 +328,26 @@ export async function disablePasskey(passcode: string): Promise<void> {
 export function deleteWallet(): void {
   localStorage.removeItem(STORAGE_KEY)
   lock()
+}
+
+// ── Solana (2026-10-04) ────────────────────────────────────────────────
+// The trading wallet's Solana key is derived from its own private key (HKDF-SHA256, info "arcdex:solana:ed25519:v1"),
+// so nothing new is stored and the one backup (exportPrivateKey) restores both. Like the EVM key, it exists only
+// while the wallet is unlocked, and never leaves this module except as a signature (lib/solanaWallet.ts asks for the
+// seed to sign with; it's not kept there).
+
+let solanaSeedCache: { from: Hex; seed: Uint8Array } | null = null
+
+/** The trading wallet's Solana ed25519 seed (32 bytes). Throws if locked. */
+export async function solanaSeed(): Promise<Uint8Array> {
+  if (!unlockedPrivateKey) throw new Error('Wallet is locked')
+  if (solanaSeedCache?.from === unlockedPrivateKey) return solanaSeedCache.seed
+  const ikm = Uint8Array.from(unlockedPrivateKey.slice(2).match(/../g)!.map(h => parseInt(h, 16)))
+  const key = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits'])
+  const seed = new Uint8Array(await crypto.subtle.deriveBits(
+    { name: 'HKDF', hash: 'SHA-256', salt: new TextEncoder().encode('arcdex'), info: new TextEncoder().encode('arcdex:solana:ed25519:v1') }, key, 256))
+  solanaSeedCache = { from: unlockedPrivateKey, seed }
+  return seed
 }
 
 /** The unlocked embedded account on another chain (futures on Arc testnet). Throws if locked. */

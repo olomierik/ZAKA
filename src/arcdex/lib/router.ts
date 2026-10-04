@@ -29,6 +29,8 @@ export function pageToPath(p: Page): string {
     case 'coin':        return '/burn'
     case 'robinhood':   return '/robinhood'
     case 'rh-token':    return `/robinhood/token/${p.address}${p.pool ? `?pool=${p.pool}` : ''}`
+    case 'solana':      return '/solana'
+    case 'sol-token':   return `/solana/token/${p.address}${p.pool ? `?pool=${p.pool}` : ''}`
   }
 }
 
@@ -78,6 +80,13 @@ export function pathToPage(pathname: string, search: string): Page | null {
         return { name: 'rh-token', address: parts[2].toLowerCase(), pool: /^0x([0-9a-f]{40}|[0-9a-f]{64})$/.test(pool) ? pool : '' }
       }
       return { name: 'robinhood' }
+    // Solana's markets, and one of its coins (base58 mints and pools: case kept).
+    case 'solana':
+      if (b === 'token' && parts[2] && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(parts[2])) {
+        const pool = q.get('pool') ?? ''
+        return { name: 'sol-token', address: parts[2], pool: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(pool) ? pool : '' }
+      }
+      return { name: 'solana' }
     // Not linked anywhere: the owner deploys ArcDexCurveRouter here.
     case 'deploy':      return b === 'curve-router' ? { name: 'deploy-curve-router' } : null
     default:            return null

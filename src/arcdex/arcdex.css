@@ -2364,3 +2364,12 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .mk-tag.mk-og, .cb-og { color: #0ecb81; border: 1px solid #0ecb8166; background: #0ecb811a; font-weight: 800; }
 .cb-og, .cb-dup { font-size: 0.6rem; border-radius: 3px; padding: 1px 4px; white-space: nowrap; }
 .cb-dup { color: var(--amber); border: 1px solid #f0b90b55; }
+
+/* ── Solana (2026-10-04) ─────────────────────────────────────────────── */
+.mk-tag.sol-curve-tag { background: rgba(153, 69, 255, 0.14); color: #c4a1ff; border: 1px solid rgba(153, 69, 255, 0.4); }
+.spot-notice.sol-curve { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sol-curve-bar { flex: 1 1 160px; max-width: 320px; height: 6px; border-radius: 3px; background: var(--bg-3, rgba(255, 255, 255, 0.08)); overflow: hidden; }
+.sol-curve-bar i { display: block; height: 100%; background: linear-gradient(90deg, #9945ff, #14f195); border-radius: 3px; }
+.sol-wallet-line { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; }
+.sol-wallet-line a { color: var(--accent-text); }
+.spot-form .sol-wallet-line { padding: 0 12px 8px; margin: 0; }

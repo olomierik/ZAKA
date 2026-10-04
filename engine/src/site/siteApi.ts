@@ -50,6 +50,7 @@ import indexTrades from '../../../api/index-trades'
 import launchpad from '../../../api/launchpad'
 import radar from '../../../api/radar'
 import rhmarket from '../../../api/rhmarket'
+import solmarket from '../../../api/solmarket'
 import session from '../../../api/session'
 import social from '../../../api/social'
 import upload from '../../../api/upload'
@@ -246,7 +247,7 @@ export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number
   const holders = o.holders ?? (adminReady ? supabaseHolders : sql ? pgHolders(sql, ready) : memoryHolders())
   const handlers: Record<string, Handler> = o.handlers ?? {
     argus: (r, c) => argus(r, c), gecko: (r, c) => gecko(r, c), launchpad: (r, c) => launchpad(r, c),
-    radar: r => radar(r), dex: r => dex(r), holders: holdersHandler(holders), rhmarket: (r, c) => rhmarket(r, c),
+    radar: r => radar(r), dex: r => dex(r), holders: holdersHandler(holders), rhmarket: (r, c) => rhmarket(r, c), solmarket: (r, c) => solmarket(r, c),
     session: r => session(r), social: r => social(r), upload: r => upload(r), 'index-trades': () => indexTrades(),
   }
   const cache = new ResponseCache()
@@ -293,6 +294,11 @@ export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number
   if (o.warm !== false && handlers.rhmarket) {
     const rh = handlers.rhmarket
     setInterval(() => { Promise.resolve().then(() => rh(new Request('http://engine/api/rhmarket'), ctx)).catch(e => log.debug('site api: rhmarket', { error: errMsg(e) })) }, 40_000)
+  }
+  // Solana's (api/solmarket.ts, 2026-10-04): the same, plus each coin's launch curve and mint read from the chain.
+  if (o.warm !== false && handlers.solmarket) {
+    const sol = handlers.solmarket
+    setInterval(() => { Promise.resolve().then(() => sol(new Request('http://engine/api/solmarket'), ctx)).catch(e => log.debug('site api: solmarket', { error: errMsg(e) })) }, 40_000)
   }
 
   // Indexes that build in slices (the launchpad's, the curves'): kept going from the start, so the first visitors after a

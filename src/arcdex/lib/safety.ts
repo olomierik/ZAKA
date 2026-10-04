@@ -19,6 +19,7 @@ import type { CoinSafety } from '../../../api/_marketProtocol'
 import type { ArcToken } from '../api/radardex'
 import type { RhCoin } from '../api/robinhoodMarket'
 import { isWashPool } from '../api/robinhoodMarket'
+import { isWashSol, type SolCoin } from '../../../api/_solCore'
 import { copycatOf } from '../api/argusMarket'
 import { riskOf, riskReasons, type Risk } from './risk'
 import type { Stage } from './coinStage'
@@ -108,6 +109,32 @@ export function rhRisk(c: RhCoin): Risk {
 export function rhSafety(c: RhCoin, risk: Risk = rhRisk(c)): SafetyView {
   if (c.stock && !c.launchpad) return { level: 'safe', reasons: [T('A Robinhood stock token: issued by Robinhood')], source: 'market' }
   return fromMarket(risk, null, { danger: isWashPool(c) ? [T('Wash trading: a few wallets trade with themselves')] : [] })
+}
+
+const MINT_TEXT: Record<string, string> = {
+  'permanent-delegate': N_('A permanent delegate can move anyone’s coins'),
+  'pausable': N_('Its transfers can be paused'),
+  'non-transferable': N_('Its coins can’t be transferred'),
+  'frozen-by-default': N_('New holders’ accounts start frozen'),
+  'transfer-hook': N_('A transfer hook runs on every transfer: it could block sales'),
+  'transfer-fee': N_('A fee is taken on every transfer'),
+  'close-authority': N_('Its mint can be closed'),
+}
+
+/** A Solana coin (2026-10-04): what its mint lets someone do, read from the chain (api/_solCore.ts `decodeMint`), with
+ * its market data. Freezing holders or minting more puts everything at risk; launchpads renounce both at launch. */
+export function solSafety(c: SolCoin, risk: Risk = rhRisk(c)): SafetyView {
+  const danger: string[] = [], risky: string[] = []
+  const m = c.mint
+  if (m?.freezeAuthority) danger.push(T('Its creator can freeze holders’ coins, so they couldn’t sell'))
+  if (m?.mintAuthority) danger.push(T('Its creator can still mint more'))
+  for (const d of m?.danger ?? []) danger.push(T(MINT_TEXT[d] ?? d))
+  for (const r of m?.risky ?? []) risky.push(T(MINT_TEXT[r] ?? r))
+  if (isWashSol(c)) danger.push(T('Wash trading: a few wallets trade with themselves'))
+  if (danger.length) return { level: 'danger', reasons: [...danger, ...risky], source: m ? 'chain' : 'market' }
+  if (!m) return fromMarket(risk, null)
+  if (risky.length || risk.level !== 'low') return { level: 'risky', reasons: [...risky, ...(risk.level !== 'low' ? riskReasons(risk, 2) : [])], source: 'chain' }
+  return { level: 'safe', reasons: [T('Its mint can’t be inflated, and holders can’t be frozen'), ...riskReasons(risk, 1)], source: 'chain' }
 }
 
 // ── the listing standard ───────────────────────────────────────────────
