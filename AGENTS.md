@@ -1561,7 +1561,7 @@ The owner's new site, www.arcsense.site, is hosted on Netlify and serves only th
 - **Data and writes come from the engine:** besides the read functions above, `/api/session`, `/api/social`, `/api/upload` and `/api/index-trades` run on the engine too (`siteApi.ts` `WRITES`: the request passes through with its headers and body, never cached). They need on Railway what they needed on Vercel: `ARCDEX_SESSION_SECRET` (sign-in), and Supabase's secret key for social writes and uploads. Without them they answer 503 and the site shows its empty states. Card deposits (`/api/onramp`) aren't served there yet: the Deposit modal says they're being switched on.
 - **The engine allows ARCSENSE's domains in code** (`ARCSENSE_ORIGINS` in `engine/src/config.ts`: arcsense.site, www.arcsense.site, arcsense-app.netlify.app), whatever `WS_ALLOWED_ORIGINS` lists on Railway.
 - **Build settings** live in `netlify.toml` (Bun, `dist`, the public `VITE_*` values). `VITE_WC_PROJECT_ID` (WalletConnect) is still missing, from cloud.reown.com; without it, phone wallets by QR code aren't offered. `/api/*` is a plain 404 on Netlify, so the site's fallback fails fast.
-- **arcdex.online → www.arcsense.site (owner, 2026-10-04; until then "no redirect"):** `netlify.toml` sends `arcdex.online/*` and `www.arcdex.online/*` (http and https) to the same path on www.arcsense.site with a 301.
+- **arcdex.online → www.arcsense.site (owner, 2026-10-04; until then "no redirect"):** `netlify.toml` sends `arcdex.online/*` and `www.arcdex.online/*` (http and https) to the same path on arcsense.site with a 301 (the primary domain: www.arcsense.site itself redirects there, so this saves a hop).
   - **Why Netlify:** arcdex.online's DNS is at Namecheap and points at Vercel, which answers `402 DEPLOYMENT_DISABLED` (the account is blocked), so a redirect can't be deployed there. Vercel also sent HSTS for two years, so browsers that visited will only use HTTPS: the redirect needs a real certificate.
   - **Owner steps:**
     1. In Netlify, `arcsense-app` → Domain management → add `arcdex.online` and `www.arcdex.online` as domain aliases.
@@ -1569,6 +1569,7 @@ The owner's new site, www.arcsense.site, is hosted on Netlify and serves only th
        - `A` `@` → `75.2.60.5`;
        - `CNAME` `www` → `arcsense-app.netlify.app`.
     3. Netlify then issues the certificate by itself, and the rules take effect.
+  - **Done by the owner on 2026-10-04:** both names resolve to Netlify (checked through Google's and Namecheap's DNS). Until Netlify issued the arcdex.online certificate, https answered with Netlify's generic `*.netlify.app` certificate, and http went to https on the same host first.
 
 ## Autotrade paused (2026-10-03)
 
