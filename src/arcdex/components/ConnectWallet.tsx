@@ -128,7 +128,7 @@ export function ConnectModalHost() {
         {err && <div style={{ fontSize: '0.76rem', color: '#fca5a5', wordBreak: 'break-word' }}>{err}</div>}
         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
           {noBrowserWallet && !isMobile() ? T("No browser wallet found — install MetaMask or Rabby, or scan with WalletConnect.") + ' ' : ''}
-          {T("No wallet? The ARCSENSE trading wallet lives in your browser — one-tap trades, no pop-ups.")}
+          {T("No wallet? The ARCDEX trading wallet lives in your browser — one-tap trades, no pop-ups.")}
         </div>
       </div>
     </div>

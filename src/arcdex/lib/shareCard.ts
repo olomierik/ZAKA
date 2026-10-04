@@ -42,7 +42,7 @@ export async function renderCard(d: CardData): Promise<Blob> {
 
   // brand
   g.fillStyle = '#eef3fa'; g.font = '700 34px "Space Grotesk", system-ui, sans-serif'
-  g.fillText('ARCSENSE', 64, 84)
+  g.fillText('ARCDEX', 64, 84)
   g.fillStyle = '#86a2c2'; g.font = '500 22px "Space Grotesk", system-ui, sans-serif'
   g.fillText('Social trading on Arc', 64, 118)
 
@@ -133,7 +133,7 @@ export async function renderBotCard(d: BotCardData): Promise<Blob> {
 
   // brand and mode
   g.fillStyle = '#eef3fa'; g.font = `700 32px ${sans}`
-  g.fillText('ARCSENSE', 64, 82)
+  g.fillText('ARCDEX', 64, 82)
   g.fillStyle = '#f59e0b'; g.font = `700 20px ${sans}`
   g.fillText('⚡ AUTOTRADE', 196, 81)
   const mode = d.mode === 'live' ? 'LIVE' : 'PAPER'
@@ -216,5 +216,5 @@ export function botShareText(d: Pick<BotCardData, 'name' | 'mode' | 'pnlUsd' | '
   const pct = d.pnlPct === null ? '' : ` (${d.pnlPct >= 0 ? '+' : '−'}${Math.abs(d.pnlPct).toFixed(1)}%)`
   const won = d.winRate === null ? '' : `, ${Math.round(d.winRate * 100)}% of ${d.trades} trades won`
   const streak = (d.streak ?? 0) >= 3 ? ` 🔥 ${d.streak} wins in a row.` : ''
-  return `🤖 ${mine ? 'My bot' : 'The bot'} ${d.name} is ${usdText(d.pnlUsd)}${pct}${won}${d.mode === 'paper' ? ' (paper trading)' : ' trading real USDC'} on ARCSENSE Autotrade.${streak} Self-improving trading bots for Arc.`
+  return `🤖 ${mine ? 'My bot' : 'The bot'} ${d.name} is ${usdText(d.pnlUsd)}${pct}${won}${d.mode === 'paper' ? ' (paper trading)' : ' trading real USDC'} on ARCDEX Autotrade.${streak} Self-improving trading bots for Arc.`
 }

@@ -1,4 +1,4 @@
-// Robinhood Chain on ARCSENSE: the checks every Across quote must pass
+// Robinhood Chain on ARCDEX: the checks every Across quote must pass
 // before anything is signed (src/arcdex/lib/acrossQuote.ts), Robinhood
 // Chain's market rows (api/robinhoodMarket.ts), trap pools and the price
 // guard on quotes, stock tokens and routes.
@@ -10,7 +10,8 @@
 import { readFileSync } from 'fs'
 
 const { checkQuote, quoteUrl, AcrossError, ACROSS_TARGETS, ACROSS_HANDLERS, ARC_USDC, getAcrossQuote, acrossErrorText, quoteValue, quoteVerdict } = await import('../src/arcdex/lib/acrossQuote')
-const { poolToCoin, mergeCoins, isWashPool, poolFeePct, markPools } = await import('../src/arcdex/api/robinhoodMarket')
+const { poolToCoin, mergeCoins, isWashPool, poolFeePct, markPools, isListedRh, RH_LAUNCHPADS } = await import('../src/arcdex/api/robinhoodMarket')
+const { isLaunchpadCoin } = await import('../api/_launchpads')
 const { isStockName, stockCompany, isStockToken, RH_QUOTES, USDG, STOCK_RESTRICTED, rhTokenInfo } = await import('../src/arcdex/lib/robinhood')
 const { pathToPage, pageToPath } = await import('../src/arcdex/lib/router')
 const { FEE_WALLET } = await import('../src/arcdex/lib/platform')
@@ -40,7 +41,7 @@ const swapWord = (data: string, i: number, addr: string) => {
   return data.slice(0, at) + addr.toLowerCase().replace('0x', '').padStart(64, '0') + data.slice(at + 64)
 }
 
-console.log('the quote ARCSENSE asks for')
+console.log('the quote ARCDEX asks for')
 const bu = new URL(quoteUrl(buyReq)).searchParams
 ok(bu.get('inputToken') === ARC_USDC && bu.get('outputToken') === MOW && bu.get('originChainId') === '5042' && bu.get('destinationChainId') === '4663', 'buy: USDC on Arc → the coin on Robinhood Chain')
 ok(bu.get('appFee') === '0.02' && bu.get('appFeeRecipient') === FEE_WALLET, 'buy: 2% to the fee wallet')
@@ -126,6 +127,18 @@ const fakeTrap = { ...marked[0], pool: '0xfake', feePct: null, traders24h: 0, vo
 ok(markPools([fakeTrap, marked[0]])[1].offMarket && markPools([fakeTrap, marked[0]])[0].pool === marked[0].pool, 'a trap without a fee in its name: an idle pool far off the busy one’s price')
 ok(!markPools([marked[0], { ...marked[0], pool: '0xother', priceUsd: marked[0].priceUsd * 1.2 }])[1].offMarket, 'a second real pool 20% away is still a market')
 
+console.log('launchpad coins only (owner, 2026-10-04)')
+const onPad = (dex: string) => poolToCoin({ ...(pools.data as any[]).find(p => p.attributes.name.startsWith('MOW')), relationships: { ...(pools.data as any[]).find(p => p.attributes.name.startsWith('MOW')).relationships, dex: { data: { id: dex } } } } as never, tokens as never)!
+ok(onPad('bankr-robinhood').launchpad === 'Bankr' && onPad('pons-v2-dex').launchpad === 'Pons' && onPad('clanker-robinhood').launchpad === 'Clanker', 'a pool on a launchpad’s venue names its launchpad (Bankr, Pons’s DEX, Clanker)')
+ok(onPad('uniswap-v4-robinhood').launchpad === null && onPad('up-v3').launchpad === null && !('up-v3' in RH_LAUNCHPADS), 'a plain DEX pool names none (Uniswap, Up V3)')
+const mowRow = merged.find(r => r.symbol === 'MOW')!
+ok(!mowRow.launchpad && !mowRow.stock && !isListedRh(mowRow), 'a coin whose pools are all on plain DEXes isn’t listed (MOW, in the recorded pools)')
+const mixed = mergeCoins([onPad('uniswap-v4-robinhood'), { ...onPad('bankr-robinhood'), pool: '0xbankr', traders24h: 1, volume24h: 10 }])[0]
+ok(mixed.launchpad === 'Bankr' && isListedRh(mixed) && mixed.pool !== '0xbankr', 'one launchpad pool lists the coin, whichever pool is its busiest')
+ok(isListedRh(nvda) && nvda.stock && !nvda.launchpad, 'a stock token is listed (until the chain says it’s an impostor)')
+ok(['Argus', 'ARGUS', 'ARCDEX', 'Mercuri', 'SolonPad', 'Peach', 'Faze', 'Aka.fun', 'o1', 'Minara', 'Long.supply', 'Minara.fun', 'Argus (Arc)'].every(isLaunchpadCoin), 'Arc: every launchpad the engine and the market list name')
+ok(![null, undefined, '', 'Other', 'other', 'Uniswap V4 (Arc)', 'uniswap-v3-arc', 'Curve'].some(isLaunchpadCoin), 'Arc: "Other" (a contract no launchpad made), plain DEXes and nothing at all aren’t listed')
+
 console.log('quotes valued at the market price')
 const mowPrice = rows.find(r => r.symbol === 'MOW')!.priceUsd
 const vBuy = quoteValue(qb, 5, mowPrice)!
@@ -170,7 +183,7 @@ const same = new Headers({ 'sec-fetch-site': 'same-origin' })
 const pathOf = (r: Parameters<typeof quoteUrl>[0]) => quoteUrl(r).slice('https://app.across.to/api'.length)
 const buyPath = pathOf(buyReq)
 const okReq = (path: string, h = same) => proxy.acrossRequest(new URL(site + '/across' + path), h)
-ok('path' in okReq(buyPath) && (okReq(buyPath) as { path: string }).path.startsWith('/swap/approval?'), 'forwards ARCSENSE’s own buy quote')
+ok('path' in okReq(buyPath) && (okReq(buyPath) as { path: string }).path.startsWith('/swap/approval?'), 'forwards ARCDEX’s own buy quote')
 ok('path' in okReq(pathOf(sellReq)) && 'path' in okReq(pathOf(gasReq)), 'and its sale and gas quotes')
 ok('path' in okReq('/deposit/status?depositTxnRef=0x' + 'ab'.repeat(32)), 'and a deposit’s status')
 ok('error' in okReq(buyPath, new Headers({ 'sec-fetch-site': 'cross-site' })) && 'error' in okReq(buyPath, new Headers()), 'refuses other sites’ pages and requests that don’t say where they come from')

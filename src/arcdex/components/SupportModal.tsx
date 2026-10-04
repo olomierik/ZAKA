@@ -4,7 +4,7 @@ import { useTrader } from '../lib/identity'
 import { t, N_ } from '../lib/i18n'
 
 // Contact support (fomo's avatar menu → Contact support). Messages go to a
-// private table only ARCSENSE's team can read (RLS: no public access); the
+// private table only ARCDEX's team can read (RLS: no public access); the
 // sender is the signed-in wallet, so the team can look up its trades.
 
 const CATEGORIES: [SupportCategory, string][] = [
@@ -39,7 +39,7 @@ export default function SupportModal({ onClose }: { onClose: () => void }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', textAlign: 'center', padding: '10px 0' }}>
             <div style={{ fontSize: '2rem' }}>✓</div>
             <b>{t('Message sent')}{state.ticket ? ` · #${state.ticket}` : ''}</b>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{t('The ARCSENSE team reads every message. If you left a contact, we will reply there.')}</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{t('The ARCDEX team reads every message. If you left a contact, we will reply there.')}</div>
             <button className="btn-primary" style={{ width: '100%' }} onClick={onClose}>{t('Done')}</button>
           </div>
         ) : (
@@ -58,7 +58,7 @@ export default function SupportModal({ onClose }: { onClose: () => void }) {
             <label className="field-label">{t('How can we reach you? (optional)')}
               <input className="field" value={contact} maxLength={120} onChange={e => setContact(e.target.value)} placeholder={t('X, Telegram or email')} />
             </label>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{t('Never share your passcode or private key. ARCSENSE support will never ask for them.')}</div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{t('Never share your passcode or private key. ARCDEX support will never ask for them.')}</div>
             {typeof state === 'object' && 'error' in state && <div style={{ fontSize: '0.76rem', color: '#fca5a5' }}>{state.error}</div>}
             <button className="btn-primary" disabled={state === 'sending' || message.trim().length < 5} onClick={() => void send()}>{state === 'sending' ? t('Sending…') : t('Send message')}</button>
           </>

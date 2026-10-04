@@ -15,10 +15,10 @@ import { arc } from '../wagmi'
 // ArcDexCurveRouter (2% on Mercuri and SolonPad curve trades) from their own
 // wallet, in three steps: simulate it against the live curves, deploy it
 // with one signature, and check the deployed contract. A new router changes
-// nothing on ARCSENSE until it's named (api/_curves.ts CURVE_ROUTER, or
+// nothing on ARCDEX until it's named (api/_curves.ts CURVE_ROUTER, or
 // VITE_ARCDEX_CURVE_ROUTER_ADDRESS). The work is in lib/curveRouterDeploy.ts.
 
-// The router ARCSENSE routes curve trades through now, if any: chosen as
+// The router ARCDEX routes curve trades through now, if any: chosen as
 // api/curves.ts chooses it (not imported from there, so the coin pages'
 // code stays in their own chunk).
 const CONFIGURED = curveRouterFrom(import.meta.env.VITE_ARCDEX_CURVE_ROUTER_ADDRESS as string | undefined)
@@ -157,12 +157,12 @@ export default function DeployCurveRouter() {
     <div className="token-page content-page" style={{ '--page-w': '820px' } as React.CSSProperties}>
       <h2 className="page-h">{T('Deploy the curve router')}</h2>
       <div style={{ ...muted, marginTop: 6, fontSize: '0.86rem' }}>
-        {T("ArcDexCurveRouter takes ARCSENSE's 2% fee on Mercuri and SolonPad curve trades. Deploy it once, from your own wallet. Nothing on ARCSENSE changes until you switch it on (step 4).")}
+        {T("ArcDexCurveRouter takes ARCDEX's 2% fee on Mercuri and SolonPad curve trades. Deploy it once, from your own wallet. Nothing on ARCDEX changes until you switch it on (step 4).")}
       </div>
 
       {CURRENT && (
         <div style={{ ...card, borderColor: 'rgba(34,197,94,0.4)' }}>
-          <div style={{ fontSize: '0.84rem' }}>✓ {T('ARCSENSE already routes curve trades through')} <Addr a={CURRENT} /></div>
+          <div style={{ fontSize: '0.84rem' }}>✓ {T('ARCDEX already routes curve trades through')} <Addr a={CURRENT} /></div>
           <button className="btn-ghost" style={{ marginTop: 8 }} disabled={check?.running} onClick={() => void runCheck(CURRENT)}>{T('Check it')}</button>
         </div>
       )}
@@ -202,7 +202,7 @@ export default function DeployCurveRouter() {
           <>
             <div style={{ fontSize: '0.8rem' }}>{T('Owner')}: <span style={mono}>{wallet}</span></div>
             {wallet.toLowerCase() !== ARCDEX_DEPLOYER.toLowerCase() && (
-              <div style={{ ...muted, marginTop: 4, fontSize: '0.76rem' }}>{T("ARCSENSE's swap router and launchpad are owned by {deployer}. Deploying from that wallet keeps one owner for all three; any wallet you control works.", { deployer: shortAddress(ARCDEX_DEPLOYER) })}</div>
+              <div style={{ ...muted, marginTop: 4, fontSize: '0.76rem' }}>{T("ARCDEX's swap router and launchpad are owned by {deployer}. Deploying from that wallet keeps one owner for all three; any wallet you control works.", { deployer: shortAddress(ARCDEX_DEPLOYER) })}</div>
             )}
             {chainId !== arc.id && <div style={{ ...muted, marginTop: 4 }}>{T('Your wallet is on another network: it will be asked to switch to Arc.')}</div>}
             <div style={{ ...muted, marginTop: 6 }}>
@@ -266,7 +266,7 @@ export default function DeployCurveRouter() {
       <Step n={4} title={T('Switch it on')}>
         {check?.result?.passed ? (
           check.address.toLowerCase() === CURRENT?.toLowerCase() ? (
-            <div style={{ fontSize: '0.84rem' }}>✓ {T('ARCSENSE already uses this router.')}</div>
+            <div style={{ fontSize: '0.84rem' }}>✓ {T('ARCDEX already uses this router.')}</div>
           ) : (
             <>
               <div style={muted}>{T('Set this address as VITE_ARCDEX_CURVE_ROUTER_ADDRESS in Vercel (project app → Settings → Environment Variables, Production), then redeploy. From then on, curve trades go through it with the 2% fee.')}</div>

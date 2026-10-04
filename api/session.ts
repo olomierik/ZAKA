@@ -4,7 +4,7 @@
 // a session token for social writes. See _session.ts.
 
 import { createPublicClient, http, isAddress, type Hex } from 'viem'
-import { issueToken, sessionReady, signInMessage, SIGN_IN_MAX_AGE_MS } from './_session'
+import { issueToken, sessionReady, signInMessage, SIGN_IN_BRANDS, SIGN_IN_MAX_AGE_MS } from './_session'
 import { json } from './_supabaseAdmin'
 
 export const config = { runtime: 'edge' }
@@ -31,14 +31,17 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   let valid = false
-  try {
-    valid = await client.verifyMessage({
-      address: address as Hex,
-      message: signInMessage(address, issuedAt, nonce),
-      signature: signature as Hex,
-    })
-  } catch {
-    valid = false
+  for (const brand of SIGN_IN_BRANDS) {
+    try {
+      valid = await client.verifyMessage({
+        address: address as Hex,
+        message: signInMessage(address, issuedAt, nonce, brand),
+        signature: signature as Hex,
+      })
+    } catch {
+      valid = false
+    }
+    if (valid) break
   }
   if (!valid) return json(401, { error: 'Signature does not match this wallet' })
 

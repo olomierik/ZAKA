@@ -259,7 +259,7 @@ export async function getRecentTrades(token: Address, fromBlock?: bigint): Promi
 
 /** Maps our own launchpad tokens into the same shape RadarDex tokens use,
  * so they can sit in the unified Terminal table as a real, first-party
- * source — tagged 'ARCSENSE' — instead of only existing on a separate page.
+ * source — tagged 'ARCDEX' — instead of only existing on a separate page.
  * Volume, trade and trader counts come from the launchpad index. */
 export async function getAllLaunchpadTokensAsArcTokens(): Promise<import('./radardex').ArcToken[]> {
   const [tokens, index] = await Promise.all([getAllLaunchpadTokens(), launchpadIndex().catch(() => ({ launches: [] as IndexedLaunch[] }))])
@@ -288,7 +288,7 @@ export async function getAllLaunchpadTokensAsArcTokens(): Promise<import('./rada
       marketCap: t.priceUsd * 1_000_000_000,
       liquidity: Number(t.curve.rUsdc) / 1e6,
       ageMs: Date.now() - t.curve.launchedAt * 1000,
-      launchpad: 'ARCSENSE',
+      launchpad: 'ARCDEX',
       poolAddress: '',
       txCount24h: s?.trades24 ?? 0,
       holderCount,

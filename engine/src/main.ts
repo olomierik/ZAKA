@@ -51,7 +51,7 @@ import { Users } from './bot/users'
 import { Tiers } from './bot/tiers'
 import { MemoryBotStore, PostgresBotStore } from './bot/store'
 import { PerpsService } from './perps/service'
-import { SenseProgram } from './sense/program'
+import { CoinProgram } from './coin/program'
 import { PostgresCandleStore } from './perps/store'
 import { MemoryCandleStore } from './perps/candles'
 import { LiveExecutor } from './trading/live'
@@ -247,17 +247,19 @@ async function main() {
     dataApi.perps = perps
     void perps.start().catch(e => log.error('perps: did not start', { error: errMsg(e) }))
   }
-  // $SENSE buyback and liquidity (sense/program.ts): the fee wallet's activity, 30% / 70% of fees.
-  if (dataApi && !/^(0|off|false|no)$/i.test(process.env.SENSE_PROGRAM?.trim() ?? '')) {
+  // $ARCDEX buyback, burns and liquidity (coin/program.ts): the fee wallet's activity, 30% / 70% of
+  // fees, and every burn. The SENSE_* names still work (the program bought $SENSE until 2026-10-04).
+  const env = (name: string) => process.env[`COIN_${name}`] ?? process.env[`SENSE_${name}`]
+  if (dataApi && !/^(0|off|false|no)$/i.test(env('PROGRAM')?.trim() ?? '')) {
     const list = (v: string | undefined) => (v ?? '').split(',').map(s => s.trim()).filter(s => /^0x[0-9a-fA-F]{40}$/.test(s))
-    const program = new SenseProgram({
+    const program = new CoinProgram({
       rpc, settings: botStore, priceOf: t => eng.tokens.get(t)?.priceUsd ?? null,
       // More contracts whose payments are fees (the futures contract on mainnet), and where liquidity goes.
-      feeSources: list(process.env.SENSE_FEE_SOURCES),
-      liquidityTargets: list(process.env.SENSE_LIQUIDITY_TARGETS),
+      feeSources: list(env('FEE_SOURCES')),
+      liquidityTargets: list(env('LIQUIDITY_TARGETS')),
     })
-    dataApi.sense = program
-    void program.start().catch(e => log.error('sense program: did not start', { error: errMsg(e) }))
+    dataApi.coin = program
+    void program.start().catch(e => log.error('coin program: did not start', { error: errMsg(e) }))
   }
   botsHealth = () => ({ email: mailer.enabled, userLive: !!vault, ownerWallet: !!live, mode: botRef?.mode ?? null, bots: accounts?.count ?? 0, running: accounts?.running ?? 0 })
   // Tiers (bot/tiers.ts): what each account gets; everything, for everyone, until TIERS_ENFORCED.

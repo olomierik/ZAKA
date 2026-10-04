@@ -13,14 +13,15 @@ const money = (n: number | null) => n == null ? '—' : `$${n >= 1e9 ? (n / 1e9)
 const NONE: never[] = []
 
 export default function FoundOnArc({ query, shown, navigate }: { query: string; shown: Set<string>; navigate: (p: Page) => void }) {
-  const { results, searching, noToken } = useCoinFinder(query, NONE, 12)
+  const { results, searching, noToken, notLaunchpad } = useCoinFinder(query, NONE, 12)
   const extra = useMemo(() => results.filter(c => !shown.has(c.address)), [results, shown])
-  if (query.trim().length < 2 || (!searching && !extra.length && !noToken)) return null
+  if (query.trim().length < 2 || (!searching && !extra.length && !noToken && !notLaunchpad)) return null
   return (
     <div className="found-arc">
       <div className="found-arc-h">{T('More on Arc')} <span>{T('coins not in this list')}</span></div>
       {searching && !extra.length && <div className="found-arc-note">{T('Searching all of Arc…')}</div>}
       {noToken && <div className="found-arc-note">{T('No token at this address on Arc.')}</div>}
+      {notLaunchpad && <div className="found-arc-note">{T('This token wasn’t launched on a launchpad, so ARCDEX doesn’t list it: coins from unknown contracts can be malicious.')}</div>}
       {extra.map(c => (
         <button key={c.address} className="found-arc-row" onClick={() => navigate({ name: 'argus', address: c.address, pool: c.pool ?? '' })}>
           {c.image ? <img src={c.image} alt="" width={28} height={28} style={{ borderRadius: '50%', flexShrink: 0 }} /> : <Avatar address={c.address} size={28} />}

@@ -8,7 +8,7 @@ import { PointsBoard } from '../components/PointsPanel'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 
-// Top traders on ARCSENSE by realized PnL — the competition that keeps
+// Top traders on ARCDEX by realized PnL — the competition that keeps
 // traders coming back (and trading through our router).
 
 const money = (n: number) => `${n < 0 ? '-' : n > 0 ? '+' : ''}$${Math.abs(n) >= 1e6 ? (Math.abs(n) / 1e6).toFixed(2) + 'M' : Math.abs(n) >= 1e3 ? (Math.abs(n) / 1e3).toFixed(1) + 'K' : Math.abs(n).toFixed(2)}`
@@ -34,7 +34,7 @@ export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => v
     if (!me) return
     const p = await getProfile(me).catch(() => null)
     const label = { '24h': 'today', '7d': 'this week', '30d': 'this month', all: 'all time' }[period]
-    window.open(tweetUrl(`I'm #${rank} on the ARCSENSE leaderboard ${label} (${money(pnl)}) trading Arc memecoins ⚡ Come beat me:`, referralLink(me, p)), '_blank', 'noopener')
+    window.open(tweetUrl(`I'm #${rank} on the ARCDEX leaderboard ${label} (${money(pnl)}) trading Arc memecoins ⚡ Come beat me:`, referralLink(me, p)), '_blank', 'noopener')
   }
 
   useEffect(() => {
@@ -66,7 +66,7 @@ export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => v
               <button key={k} onClick={() => setKind(k)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: kind === k ? '1.4rem' : '1.05rem', fontWeight: 800, color: kind === k ? 'var(--text)' : 'var(--text-muted)' }}>{k === 'traders' ? T("Traders") : k === 'clans' ? T("Clans") : T("★ Points")}</button>
             ))}
           </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>{T("Realized profit from trades made on ARCSENSE. Trade here to climb it.")}</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>{T("Realized profit from trades made on ARCDEX. Trade here to climb it.")}</div>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>{tab('24h', '24H')}{tab('7d', '7D')}{tab('30d', '30D')}{tab('all', T('All'))}</div>
       </div>
@@ -85,7 +85,7 @@ export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => v
       )}
 
       {kind === 'traders' && <div style={{ marginTop: 14, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
-        {rows === null ? <Empty>{T("Loading…")}</Empty> : rows.length === 0 ? <Empty>{T("No trades in this period yet. The first trader to take profit on ARCSENSE tops this board.")}</Empty> : (
+        {rows === null ? <Empty>{T("Loading…")}</Empty> : rows.length === 0 ? <Empty>{T("No trades in this period yet. The first trader to take profit on ARCDEX tops this board.")}</Empty> : (
           <table className="lb-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
             <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
               {['#', T('Trader'), T('Realized PnL'), T('Volume'), T('Trades')].map((h, i) => <th key={h} style={{ padding: '10px 16px', textAlign: i >= 2 ? 'right' : 'left', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{h}</th>)}

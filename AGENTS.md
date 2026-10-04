@@ -1367,6 +1367,36 @@ Owner: "let users see Robinhood coins and buy and sell them just like Arc coins"
   - A read-only test wallet (the fee wallet's public address, every signature refused): Buy $0.21 asked for exactly `approve(SpokePool, 210000)` on Arc USDC.
   - The Arc Markets page unchanged on phones (first coin 144px down).
 
+## ARCDEX again: the platform and its coin, launchpad coins only (2026-10-04)
+
+Owner: "Change the CA on our landing page to 0x4b93…676c, the ticker is ARCDEX, I have given you the logo; remove SENSE and make ARCDEX our platform coin; bring back the coin info, the burn rate, its MC and each buy and burn in real time; this is a multichain DEX where spot and futures trade, now Arc and Robinhood are tradable; make it appealing; only list coins launched on launchpads, on both Arc and Robinhood, to avoid malicious contracts". Asked, the owner chose:
+- **ARCDEX everywhere:** app, landing page, page titles, link previews, share cards, sign-in text and the header wordmark. The domain stays arcsense.site.
+- **The 30% / 70% fee split, now for $ARCDEX:** 30% of fees buy back $ARCDEX and burn it, 70% go to liquidity. Fee collection is unchanged (fee wallet `0x2742…86Bb`).
+- **Robinhood's stock tokens stay listed** beside launchpad coins, with buying still blocked by country.
+
+- **The coin (`lib/coin.ts`, was `lib/sense.ts`):** `0x4b93446882d29e094181b2fae14b126577a2676c`, an Argus Portal 8 launch. On-chain its name is ARCDEX and its symbol ARCD (wallets show ARCD; the site shows $ARCDEX). 1B supply; pool `0x87b65f…9897`, recovered from git history.
+  - The engine's ledger is `engine/src/coin/program.ts` (was `sense/`), served at `GET /v1/coin/program` (`/v1/sense/program` still answers). The old `sense-program` setting is left alone; the ARCDEX ledger starts fresh.
+  - **Burn history:** besides the program's own burns, it reads every $ARCDEX anyone sent to `0x…dEaD` since the coin was created (block 22,522,612), through the archive-aware `scanLogs`. That gives the burned total, the share of supply, the count, and the 24-hour and 7-day amounts. Checked against mainnet on 2026-10-04: 403 burns, ~32.76M burned (3.28%). `bun engine/scripts/check-coin-program.ts` runs the ledger against mainnet in memory.
+- **Logo:** the owner's image cut into `public/arcdex-mark.png` (header, transparent), `arcdex-logo.png` and `arcdex-og.png` (link previews, on the logo's own background). The wordmark is lower-case "arcdex", as in the logo.
+- **Landing (`landing/Landing.tsx`, `landing/CoinLive.tsx`):** "Trade Arc & Robinhood. Own $ARCDEX."
+  - The coin card shows price, market cap, liquidity, 24h volume and trades.
+  - The burn meter shows the burned total, the share of supply, and the last 24 hours and 7 days.
+  - A live feed lists buys, sells and burns.
+  - The burn chart shows a bar per day on a square-root scale, so the launch week's big burns don't flatten every later day, with dates under it.
+  - Then the CA with Copy, a "Two chains. One exchange." section listing each chain's launchpads, and the fee split (`CoinProgram.tsx`, was `SenseProgram.tsx`).
+- **App:** $ARCDEX takes $SENSE's places: the top-bar price and Buy button, the pinned Markets row, Spot, the bottom ticker and the pair list.
+  - The burn page is `pages/ArcdexPage.tsx` at `/burn`; `/sense` still opens it. It isn't at `/arcdex`, which an old standalone page (`arcdex.html`) already serves.
+  - That page's owner controls now burn $ARCDEX: before, they still pointed at SENSE.
+- **Sign-in (`api/_session.ts`):** the message reads "Sign in to ARCDEX (arcsense.site)". The engine accepts both names (`SIGN_IN_BRANDS`), so a page loaded before the switch still signs in.
+- **Launchpad coins only:**
+  - **On Arc:** `isLaunchpadCoin` (`api/_launchpads.ts`) passes ARCDEX's own launchpad, a known launchpad, or a venue named like one. "Other" and plain DEX pools don't pass. It's applied to Markets, search, the spot pair list, the Swap list and the landing's lists. Blue chips (WETH, EURC…) carry no launchpad.
+  - **On Robinhood Chain:** `RH_LAUNCHPADS` (`api/robinhoodMarket.ts`) holds the launchpads by GeckoTerminal dex id: Bankr, Clanker, Clank.trade, Virtuals, Pons (curve and DEX), EasyA Kickstart, Mint Club, o1, Frontier.fun and Hoodit. A coin is listed once one of its pools is a launchpad's (`isListedRh`); Robinhood's stock tokens are listed once the chain vouches for them.
+    - The list build also reads each launchpad's busiest pools, so it makes about 18 GeckoTerminal calls. The browser's list key is `arcdex:rh-market:v3`.
+    - Rows tagged with their launchpad.
+    - A coin page for an unlisted coin blocks buying (selling stays open, so nobody is stuck holding it).
+  - **Fixed afterwards (2026-10-04):** a page that asked for the Robinhood list while a build was running got only the finished list. React's development mode runs effects twice, so `/robinhood` sat empty for up to a minute when GeckoTerminal throttled. Now every caller gets rows as each call lands (`listeners` in `loadRhMarket`): measured from a cold start, 22 coins by 14s and 42 by 26s while throttled.
+- **Tests:** `scripts/test-robinhood.ts` (which Robinhood coins are listed), `engine/test/coinProgram.test.ts` (burns by anyone show in the history without counting as the program's), and `test-session`, `test-curve-index` and `test-launchpads`. Every new string is in all six dictionaries.
+
 ## ARCSENSE: spot and futures first (2026-10-03)
 
 Owner: "hide the autotrade marketplace and let the users see only COMING SOON; hide the launchpad; put futures and spot trading as our main features; rebrand the app to be the first on Arc".

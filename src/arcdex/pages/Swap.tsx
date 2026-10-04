@@ -1,15 +1,16 @@
+import { isLaunchpadCoin } from '../../../api/_launchpads'
 import { useEffect, useMemo, useState } from 'react'
 import { cachedArgusMarket, copycatOf, getArgusMarket, type ArgusPool } from '../api/argusMarket'
 import { getAllLaunchpadTokens } from '../api/launchpad'
 import TokenSwap from '../components/TokenSwap'
 import { ChainIcon, ChainStrip, UsdcIcon } from '../components/Chains'
 import { BRIDGE_NETWORKS } from '../lib/bridgeChains'
-import { SENSE_IMAGE, SENSE_LC, SENSE_POOL, fmtPct, fmtSmallUsd, useSense } from '../lib/sense'
+import { COIN_IMAGE, COIN_LC, COIN_POOL, fmtPct, fmtSmallUsd, useCoin } from '../lib/coin'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 
 // /swap: Binance's Convert, for Arc. USDC on Arc in, any coin out (or back), in one card; beside it,
-// the way in for anyone whose USDC is on another chain (11 networks, Circle's CCTP), and $SENSE.
+// the way in for anyone whose USDC is on another chain (11 networks, Circle's CCTP), and $ARCDEX.
 
 interface Props { navigate: (p: Page) => void }
 
@@ -17,7 +18,8 @@ interface Coin { address: string; symbol: string; name: string; image: string | 
 
 const fromMarket = (list: ArgusPool[]): Coin[] => {
   const best = new Map<string, ArgusPool>()
-  for (const p of list) {
+  // Launchpad coins only (owner, 2026-10-04).
+  for (const p of list.filter(x => isLaunchpadCoin(x.launchpad ?? 'Argus'))) {
     const k = p.token.address.toLowerCase()
     const cur = best.get(k)
     if (!cur || p.liquidityUsd > cur.liquidityUsd) best.set(k, p)
@@ -39,8 +41,8 @@ export default function Swap({ navigate }: Props) {
   const [coins, setCoins] = useState<Coin[]>(() => fromMarket(cachedArgusMarket() ?? []))
   const [query, setQuery] = useState('')
   const [picked, setPicked] = useState<Coin | null>(null)
-  const sense = useSense()
-  const senseCoin: Coin = { address: SENSE_LC, symbol: 'SENSE', name: 'ARCSENSE', image: SENSE_IMAGE, priceUsd: sense?.priceUsd ?? 0, volume24h: sense?.volume24h ?? 0, pool: SENSE_POOL, launchpad: false }
+  const coinQ = useCoin()
+  const coinPick: Coin = { address: COIN_LC, symbol: 'ARCDEX', name: 'ARCDEX', image: COIN_IMAGE, priceUsd: coinQ?.priceUsd ?? 0, volume24h: coinQ?.volume24h ?? 0, pool: COIN_POOL, launchpad: false }
 
   useEffect(() => {
     let cancelled = false
@@ -61,16 +63,16 @@ export default function Swap({ navigate }: Props) {
     return () => { cancelled = true }
   }, [])
 
-  // Most traded first ($SENSE always on top); typing narrows by symbol, name or address.
+  // Most traded first ($ARCDEX always on top); typing narrows by symbol, name or address.
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
-    const rest = coins.filter(c => c.address !== SENSE_LC)
+    const rest = coins.filter(c => c.address !== COIN_LC)
     const list = q ? rest.filter(c => c.symbol.toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || c.address === q) : rest
     const top = [...list].sort((a, b) => b.volume24h - a.volume24h).slice(0, q ? 20 : 10)
-    const senseFits = !q || 'sense arcsense'.includes(q) || q === SENSE_LC
-    return senseFits ? [{ ...senseCoin, priceUsd: sense?.priceUsd ?? coins.find(c => c.address === SENSE_LC)?.priceUsd ?? 0 }, ...top] : top
-  }, [coins, query, sense]) // eslint-disable-line react-hooks/exhaustive-deps
-  const popular = useMemo(() => [...coins].filter(c => c.address !== SENSE_LC && !copycatOf(c.symbol, c.address)).sort((a, b) => b.volume24h - a.volume24h).slice(0, 5), [coins])
+    const coinFits = !q || 'arcdex arcd'.includes(q) || q === COIN_LC
+    return coinFits ? [{ ...coinPick, priceUsd: coinQ?.priceUsd ?? coins.find(c => c.address === COIN_LC)?.priceUsd ?? 0 }, ...top] : top
+  }, [coins, query, coinQ]) // eslint-disable-line react-hooks/exhaustive-deps
+  const popular = useMemo(() => [...coins].filter(c => c.address !== COIN_LC && !copycatOf(c.symbol, c.address)).sort((a, b) => b.volume24h - a.volume24h).slice(0, 5), [coins])
 
   return (
     <div className="xs-page">
@@ -94,7 +96,7 @@ export default function Swap({ navigate }: Props) {
                   <input placeholder={T("Search by symbol, name, or address…")} value={query} onChange={e => setQuery(e.target.value)} inputMode="search" className="xs-search" />
                   {!query && (
                     <div className="xs-chips">
-                      <button className="xs-chip sense" onClick={() => setPicked(senseCoin)}><CoinLogo coin={senseCoin} size={18} />SENSE</button>
+                      <button className="xs-chip arcdex" onClick={() => setPicked(coinPick)}><CoinLogo coin={coinPick} size={18} />ARCDEX</button>
                       {popular.map(c => <button key={c.address} className="xs-chip" onClick={() => setPicked(c)}><CoinLogo coin={c} size={18} />{c.symbol}</button>)}
                     </div>
                   )}
@@ -103,10 +105,10 @@ export default function Swap({ navigate }: Props) {
                     {matches.map(c => {
                       const copy = copycatOf(c.symbol, c.address)
                       return (
-                        <button key={c.address} onClick={() => setPicked(c)} className={`xs-coin${c.address === SENSE_LC ? ' sense' : ''}`}>
+                        <button key={c.address} onClick={() => setPicked(c)} className={`xs-coin${c.address === COIN_LC ? ' arcdex' : ''}`}>
                           <CoinLogo coin={c} />
                           <span className="xs-coin-name">
-                            <b>{c.symbol}{c.address === SENSE_LC && <span className="mk-official">{T('Official')}</span>}{c.launchpad && <span className="swap-tag">{T("Launchpad")}</span>}</b>
+                            <b>{c.symbol}{c.address === COIN_LC && <span className="mk-official">{T('Official')}</span>}{c.launchpad && <span className="swap-tag">{T("Launchpad")}</span>}</b>
                             <small style={copy ? { color: '#fca5a5' } : undefined}>{copy ? T("⚠ Not real {symbol}", { symbol: copy }) : c.name}</small>
                           </span>
                           <span className="xs-coin-price">{price(c.priceUsd)}</span>
@@ -132,7 +134,7 @@ export default function Swap({ navigate }: Props) {
               </>
             )}
           </div>
-          <p className="xs-fine">{T("Trades go through ARCSENSE's swap router (launchpad coins on their bonding curve). Every trade is simulated first, and approvals are for the exact amount only.")}</p>
+          <p className="xs-fine">{T("Trades go through ARCDEX's swap router (launchpad coins on their bonding curve). Every trade is simulated first, and approvals are for the exact amount only.")}</p>
         </div>
 
         <aside className="xs-side">
@@ -151,10 +153,10 @@ export default function Swap({ navigate }: Props) {
               <li><span>3</span>{T('Confirm. With the trading wallet it’s one tap, no pop-ups.')}</li>
             </ol>
           </div>
-          <button className="xs-panel xs-sense" onClick={() => setPicked(senseCoin)}>
-            <img src={SENSE_IMAGE} alt="" width={32} height={32} />
-            <span><b>$SENSE</b><small>{T('30% of ARCSENSE’s fees buy back $SENSE and burn it.')}</small></span>
-            <span className="xs-sense-price">{fmtSmallUsd(sense?.priceUsd)}<small className={(sense?.change24h ?? 0) >= 0 ? 'up-txt' : 'down-txt'}>{fmtPct(sense?.change24h)}</small></span>
+          <button className="xs-panel xs-arcdex" onClick={() => setPicked(coinPick)}>
+            <img src={COIN_IMAGE} alt="" width={32} height={32} />
+            <span><b>$ARCDEX</b><small>{T('30% of ARCDEX’s fees buy back $ARCDEX and burn it.')}</small></span>
+            <span className="xs-arcdex-price">{fmtSmallUsd(coinQ?.priceUsd)}<small className={(coinQ?.change24h ?? 0) >= 0 ? 'up-txt' : 'down-txt'}>{fmtPct(coinQ?.change24h)}</small></span>
           </button>
         </aside>
       </div>

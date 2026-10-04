@@ -3,7 +3,7 @@ import type { PnlPoint } from '../api/social'
 import { t as T } from '../lib/i18n'
 
 // Profile PnL chart (fomo's portfolio chart): cumulative realized PnL from
-// trades through ARCSENSE, for the chosen window, as a line with hover value.
+// trades through ARCDEX, for the chosen window, as a line with hover value.
 
 const money = (n: number) => `${n < 0 ? '-' : n > 0 ? '+' : ''}$${Math.abs(n) >= 1e6 ? (Math.abs(n) / 1e6).toFixed(2) + 'M' : Math.abs(n) >= 1e3 ? (Math.abs(n) / 1e3).toFixed(1) + 'K' : Math.abs(n).toFixed(2)}`
 

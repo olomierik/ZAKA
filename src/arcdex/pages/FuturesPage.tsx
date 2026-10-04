@@ -1,4 +1,4 @@
-// /futures — ARCSENSE perpetual futures, live on Arc testnet (owner, 2026-10-03: "a USDC pool,
+// /futures — ARCDEX perpetual futures, live on Arc testnet (owner, 2026-10-03: "a USDC pool,
 // BTC/ETH/SOL up to 10x, testnet first, then an audit before mainnet").
 //
 // Every price here is the oracle's: RedStone's signed prices, the same ones positions open,
@@ -119,14 +119,14 @@ function ListingModal({ onClose }: { onClose: () => void }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', textAlign: 'center', padding: '10px 0' }}>
             <div style={{ fontSize: '2rem' }}>✓</div>
             <b>{T('Request sent')}</b>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{T('The ARCSENSE team reviews every request. If it fits, we will reach out.')}</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{T('The ARCDEX team reviews every request. If it fits, we will reach out.')}</div>
             <button className="btn-primary" style={{ width: '100%' }} onClick={onClose}>{T('Done')}</button>
           </div>
         ) : !trader.address ? (
           <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{T('Connect or unlock a wallet first, so we can reach you about your coin.')}</div>
         ) : (
           <>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{T('Want your coin listed on ARCSENSE? Tell us about it and the team will review it.')}</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{T('Want your coin listed on ARCDEX? Tell us about it and the team will review it.')}</div>
             <label className="field-label">{T('Project name')}<input className="field" value={name} maxLength={80} onChange={e => setName(e.target.value)} /></label>
             <label className="field-label">{T('Token contract address')}<input className="field" value={token} onChange={e => setToken(e.target.value)} placeholder="0x…" style={{ fontFamily: 'var(--mono)' }} /></label>
             {token.trim() && !validToken && <div className="fx-hint-bad">{T('That address looks wrong.')}</div>}
@@ -371,7 +371,7 @@ export default function FuturesPage({ navigate }: { navigate: (p: Page) => void 
         {([
           [T('USDC in, USDC out'), T('Margin, profits and fees are all in USDC, the currency Arc runs on.')],
           [T('Testnet first'), T('Futures run on Arc testnet first, then on mainnet after an independent audit.')],
-          [T('Fees fund liquidity'), T('70% of ARCSENSE’s fees go to liquidity pools, and 30% buy back $SENSE and burn it.')],
+          [T('Fees fund liquidity'), T('70% of ARCDEX’s fees go to liquidity pools, and 30% buy back $ARCDEX and burn it.')],
         ] as [string, string][]).map(([title, body]) => <div key={title} className="soon-point"><b>{title}</b><span>{body}</span></div>)}
       </div>
 

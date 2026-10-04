@@ -10,7 +10,7 @@ import { addBridgeDeposit } from '../lib/funding'
 import { t as T } from '../lib/i18n'
 import { promptWallet, txErrorText } from '../lib/tx'
 import { ChainIcon, ChainPicker, ChainStrip, UsdcIcon } from '../components/Chains'
-import { SENSE_PAGE } from '../components/NavBar'
+import { COIN_PAGE } from '../components/NavBar'
 import type { Page } from '../App'
 import { hideWalletPrompt } from '../lib/walletPrompt'
 
@@ -138,7 +138,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
     } finally {
       kit.off('*' as never, onStep as never)
       if (prompted) hideWalletPrompt()
-      // Bringing USDC in switched the wallet away from Arc: switch it back for the rest of ARCSENSE.
+      // Bringing USDC in switched the wallet away from Arc: switch it back for the rest of ARCDEX.
       if (provider && from !== 'Arc') void ensureWalletChain(provider, 'Arc').catch(() => {})
     }
   }
@@ -240,7 +240,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
                 {quote ? (
                   <>
                     <div><span>{T("Circle's fees (fast transfer + relayer)")}</span><span>{usd(quote.circleUsdc)}</span></div>
-                    <div><span>{T("ARCSENSE fee ({pct}%, min $0.05)", { pct: (BRIDGE_FEE_BPS / 100).toFixed(2) })}</span><span>{usd(quote.platformUsdc)}</span></div>
+                    <div><span>{T("ARCDEX fee ({pct}%, min $0.05)", { pct: (BRIDGE_FEE_BPS / 100).toFixed(2) })}</span><span>{usd(quote.platformUsdc)}</span></div>
                     <div><span>{T("Leaves your wallet on {chain}", { chain: from === 'Arc' ? 'Arc' : otherDef.label })}</span><b>{usd(quote.debitUsdc)}</b></div>
                     <div className="good"><span>{T("Arrives on {chain}", { chain: to === 'Arc' ? 'Arc' : otherDef.label })}</span><b>≈ {usd(quote.receiveUsdc)}</b></div>
                     <div><span>{T('Route')}</span><span>Circle CCTP v2</span></div>
@@ -301,7 +301,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
 
         <aside className="xs-side">
           <div className="xs-panel">
-            <b>{T('Why bridge with ARCSENSE')}</b>
+            <b>{T('Why bridge with ARCDEX')}</b>
             <ul className="xs-why">
               <li><span>◎</span><div><b>{T('Native USDC')}</b><small>{T('Burned on one chain, minted on the other by Circle: no wrapped tokens, no pools.')}</small></div></li>
               <li><span>⚡</span><div><b>{T('About a minute')}</b><small>{T('Fast transfers, and Circle’s relayer mints for you: no gas needed on arrival.')}</small></div></li>
@@ -324,10 +324,10 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
           </div>
           <div className="xs-panel">
             <b>{T('On Arc? Start trading')}</b>
-            <p>{T('USDC on Arc trades every coin on ARCSENSE, spot and futures.')}</p>
+            <p>{T('USDC on Arc trades every coin on ARCDEX, spot and futures.')}</p>
             <div className="xs-row-btns">
               <a className="btn-ghost" href="/app" onClick={e => { if (navigate) { e.preventDefault(); navigate({ name: 'terminal' }) } }}>{T('Markets')}</a>
-              <a className="btn-primary" href="/spot" onClick={e => { if (navigate) { e.preventDefault(); navigate(SENSE_PAGE) } }}>{T('Buy $SENSE')}</a>
+              <a className="btn-primary" href="/spot" onClick={e => { if (navigate) { e.preventDefault(); navigate(COIN_PAGE) } }}>{T('Buy $ARCDEX')}</a>
             </div>
           </div>
         </aside>

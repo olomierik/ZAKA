@@ -1,5 +1,5 @@
 // ── Launchpad trust score — bundling / wallet-cluster heuristics ───────
-// Every ARCSENSE launchpad token already gets the same on-chain floor from
+// Every ARCDEX launchpad token already gets the same on-chain floor from
 // ArcLaunchpad.sol itself: anti-snipe ($2k/tx for 10min), anti-bundle
 // ($5k/block across ALL wallets), anti-bot (tx.origin), and a curve design
 // with no owner withdrawal path — see AGENTS.md. Those are guarantees, the

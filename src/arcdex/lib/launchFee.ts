@@ -2,7 +2,7 @@
 //
 // Paid in USDC to the platform fee wallet as its own transfer, just before
 // the launch transaction. ArcLaunchpad itself has no creation fee and is
-// immutable, so the app collects it: every launch made through ARCSENSE pays
+// immutable, so the app collects it: every launch made through ARCDEX pays
 // it; a direct contract call doesn't (enforcing it on-chain needs a new
 // launchpad contract).
 //

@@ -2,20 +2,22 @@ import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { LANGS, setLang, t, useLang, type Lang } from '../lib/i18n'
 import TrafficCard from './TrafficCard'
-import SenseProgram from './SenseProgram'
+import CoinProgram from './CoinProgram'
+import { BurnChart, BurnList, BurnMeter, CoinFeed, CoinLiveCard, big, useCoinProgram } from './CoinLive'
 import { PHASES, phaseStatus } from './roadmap'
-import { ENGINE_API, SENSE, SENSE_IMAGE, SENSE_PATH, fmtCompactUsd, fmtPct, fmtSmallUsd, useSense } from '../lib/sense'
-import type { SenseProgramView } from '../../../engine/src/sense/shared'
+import { ENGINE_API, COIN, COIN_IMAGE, COIN_PATH, fmtPct, fmtSmallUsd, useCoin } from '../lib/coin'
+import { isLaunchpadCoin } from '../../../api/_launchpads'
 import './landing.css'
 
-// arcsense.site/ — the home page, laid out like Binance's (owner, 2026-10-04: "the layout and UX
-// should mimic Binance but blue; make sure $SENSE becomes visible"). The hero pairs the platform with
-// its coin; beside it, live markets (Arc coins, new listings, futures) and $SENSE's own card. Then
+// arcsense.site/ — ARCDEX's home page (owner, 2026-10-04: ARCDEX, the multichain decentralized exchange
+// for spot and futures, with $ARCDEX as its coin; "make it appealing so it attracts users and holders").
+// The hero pairs the exchange with its coin: $ARCDEX's live card (price, market cap, the burn meter and
+// every buy, sell and burn as it happens). Then the two chains (launchpad coins only), the burn tracker,
 // futures, where the fees go, the app, the roadmap and questions. A separate small bundle (no wallet
 // libraries); every "trade" link goes into the app.
 
 export function mountLanding(root: HTMLElement) {
-  document.title = 'ARCSENSE · Spot and futures exchange on Arc · $SENSE'
+  document.title = 'ARCDEX · Multichain DEX: spot & futures on Arc and Robinhood Chain · $ARCDEX'
   createRoot(root).render(<StrictMode><Landing /></StrictMode>)
 }
 
@@ -24,7 +26,7 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 
 interface Row { key: string; href: string; symbol: string; name: string; image: string | null; price: number | null; change: number | null; tag?: string }
 
-/** Live rows for the markets card: what's trading now, the newest launches, and the futures pairs. */
+/** Live rows for the markets card: launchpad coins trading now, the newest launches, and the futures pairs. */
 function useMarkets() {
   const [popular, setPopular] = useState<Row[] | null>(null)
   const [fresh, setFresh] = useState<Row[] | null>(null)
@@ -32,19 +34,20 @@ function useMarkets() {
   useEffect(() => {
     if (!ENGINE) return
     const get = (path: string) => fetch(`${ENGINE}${path}`, { signal: AbortSignal.timeout(8_000) }).then(r => (r.ok ? r.json() : null)).catch(() => null)
-    type Meta = { token: string; name: string; symbol: string; image?: string | null; pool?: string | null; priceUsd?: number | null }
+    type Meta = { token: string; name: string; symbol: string; image?: string | null; pool?: string | null; priceUsd?: number | null; launchpad?: string | null }
     const load = () => {
-      void get('/v1/tokens/active?limit=12').then((j: { tokens?: { token: string; stats: { priceUsd: number | null; chg: { h24: number | null } }; meta: Meta | null }[] } | null) => {
+      void get('/v1/tokens/active?limit=24').then((j: { tokens?: { token: string; stats: { priceUsd: number | null; chg: { h24: number | null } }; meta: Meta | null }[] } | null) => {
         if (!j?.tokens) return
-        setPopular(j.tokens.filter(a => a.meta && a.token !== SENSE.toLowerCase() && a.stats.priceUsd).slice(0, 5).map(a => ({
+        // Launchpad coins only (owner, 2026-10-04).
+        setPopular(j.tokens.filter(a => a.meta && isLaunchpadCoin(a.meta.launchpad) && a.token !== COIN.toLowerCase() && a.stats.priceUsd).slice(0, 5).map(a => ({
           key: a.token, href: `/token/${a.token}${a.meta?.pool ? `?pool=${a.meta.pool}` : ''}`, symbol: a.meta!.symbol, name: a.meta!.name,
           image: a.meta!.image ?? null, price: a.stats.priceUsd, change: a.stats.chg.h24,
         })))
       })
-      void get('/v1/tokens/new?limit=8').then((j: { launches?: Meta[] } | null) => {
+      void get('/v1/tokens/new?limit=20').then((j: { launches?: Meta[] } | null) => {
         if (!j?.launches) return
-        setFresh(j.launches.slice(0, 6).map(l => ({
-          key: l.token, href: `/token/${l.token}${l.pool ? `?pool=${l.pool}` : ''}`, symbol: l.symbol, name: l.name, image: l.image ?? null, price: l.priceUsd ?? null, change: null, tag: t('New'),
+        setFresh(j.launches.filter(l => isLaunchpadCoin(l.launchpad)).slice(0, 6).map(l => ({
+          key: l.token, href: `/token/${l.token}${l.pool ? `?pool=${l.pool}` : ''}`, symbol: l.symbol, name: l.name, image: l.image ?? null, price: l.priceUsd ?? null, change: null, tag: l.launchpad ?? t('New'),
         })))
       })
       void get('/v1/perps/prices').then((j: { feeds?: Record<string, { price: number; change24h: number | null }> } | null) => {
@@ -59,16 +62,6 @@ function useMarkets() {
     return () => clearInterval(id)
   }, [])
   return { popular, fresh, perps }
-}
-
-/** The fee wallet's ledger (engine/src/sense/program.ts): what's been bought back and burned. */
-function useProgram() {
-  const [v, setV] = useState<SenseProgramView | null>(null)
-  useEffect(() => {
-    if (!ENGINE) return
-    void fetch(`${ENGINE}/v1/sense/program`, { signal: AbortSignal.timeout(10_000) }).then(r => (r.ok ? r.json() : null)).then((x: SenseProgramView | null) => x && setV(x)).catch(() => {})
-  }, [])
-  return v
 }
 
 function Copy({ text }: { text: string }) {
@@ -101,16 +94,24 @@ function Laurel({ flip }: { flip?: boolean }) {
   )
 }
 
+/** A chain's mark: a coloured disc with its initial (no third-party logos bundled). */
+function ChainMark({ name, color }: { name: string; color: string }) {
+  return <span className="ld-chain-mark" style={{ background: color }}>{name.slice(0, 1)}</span>
+}
+
 const price = (p: number | null) => (p == null ? '—' : p >= 1000 ? `$${p.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : fmtSmallUsd(p))
+
+const ARC_PADS = ['Argus', 'Mercuri', 'SolonPad', 'Peach', 'Faze', 'o1', 'Minara', 'Aka.fun']
+const RH_PADS = ['Bankr', 'Pons', 'Clanker', 'Virtuals', 'Clank.trade', 'Mint Club', 'EasyA Kickstart', 'Frontier.fun']
 
 export default function Landing() {
   const lang = useLang()
   const [menu, setMenu] = useState(false)
   const [tab, setTab] = useState<'popular' | 'new' | 'futures'>('popular')
   const navRef = useRef<HTMLElement>(null)
-  const sense = useSense()
+  const coinQ = useCoin()
   const markets = useMarkets()
-  const program = useProgram()
+  const program = useCoinProgram(ENGINE)
 
   // The links fold into the ☰ menu wherever they don't fit on one line.
   useLayoutEffect(() => {
@@ -126,41 +127,42 @@ export default function Landing() {
     return () => window.removeEventListener('resize', fit)
   }, [lang])
 
-  const senseRow: Row = { key: 'sense', href: SENSE_PATH, symbol: 'SENSE', name: 'ARCSENSE', image: SENSE_IMAGE, price: sense?.priceUsd ?? null, change: sense?.change24h ?? null, tag: t('Official') }
-  const rows = tab === 'popular' ? (markets.popular ? [senseRow, ...markets.popular] : null) : tab === 'new' ? markets.fresh : markets.perps
+  const coinRow: Row = { key: 'coin', href: COIN_PATH, symbol: 'ARCDEX', name: 'ARCDEX', image: COIN_IMAGE, price: coinQ?.priceUsd ?? null, change: coinQ?.change24h ?? null, tag: t('Official') }
+  const rows = tab === 'popular' ? (markets.popular ? [coinRow, ...markets.popular] : null) : tab === 'new' ? markets.fresh : markets.perps
+  const burnedPct = program?.burned.pct ?? null
 
   const PLATFORM: [string, string, string, string][] = [
-    ['📈', t('Markets'), t('Every coin on Arc, live, with safety checks.'), '/app'],
-    ['◆', t('Spot'), t('Buy and sell any Arc coin in one tap, no pop-ups.'), '/spot'],
+    ['📈', t('Arc markets'), t('Every launchpad coin on Arc, live, with safety checks.'), '/app'],
+    ['🏹', t('Robinhood Chain'), t('Launchpad coins and Robinhood’s stock tokens, bought from Arc.'), '/robinhood'],
+    ['◆', t('Spot'), t('Buy and sell in one tap, no pop-ups.'), '/spot'],
     ['📊', t('Futures'), t('BTC, ETH and SOL perpetuals, up to 10×.'), '/futures'],
-    ['⇄', t('Swap'), t('USDC in and out of any coin.'), '/swap'],
-    ['🌉', t('Bridge'), t('USDC from Ethereum and Base.'), '/bridge'],
-    ['▤', t('Portfolio'), t('Every coin you hold, valued live.'), '/portfolio'],
+    ['🌉', t('Bridge'), t('USDC from 11 chains.'), '/bridge'],
+    ['▤', t('Portfolio'), t('Every coin you hold, on every chain, valued live.'), '/portfolio'],
   ]
 
   const FAQ: [string, string][] = [
-    [t('What is ARCSENSE?'), t('A spot and perpetual futures exchange on Arc: a live market for every coin, one-tap swaps, a multichain USDC bridge and BTC, ETH and SOL perpetuals, now on Arc testnet.')],
-    [t('What is $SENSE?'), t('The ARCSENSE coin, launched on Argus. 30% of ARCSENSE’s fees buy back $SENSE and burn it, and 70% go to liquidity pools. Every buyback and burn is on-chain and shown on this page.')],
-    [t('How do I buy $SENSE?'), t('Open the app, create a trading wallet or connect your own, add USDC on Arc, then buy $SENSE on its trading page. Always check the contract address: {ca}.', { ca: short(SENSE) })],
+    [t('What is ARCDEX?'), t('A multichain decentralized exchange: spot trading on Arc and Robinhood Chain, one-tap swaps, a USDC bridge from 11 chains, and BTC, ETH and SOL perpetual futures, now on Arc testnet.')],
+    [t('What is $ARCDEX?'), t('ARCDEX’s platform coin, launched on Argus on Arc. 30% of ARCDEX’s fees buy back $ARCDEX and burn it, and 70% go to liquidity pools. Every buyback and burn is on-chain and shown live on this page. Wallets show its symbol as ARCD.')],
+    [t('How do I buy $ARCDEX?'), t('Open the app, create a trading wallet or connect your own, add USDC on Arc, then buy $ARCDEX on its trading page. Always check the contract address: {ca}.', { ca: short(COIN) })],
+    [t('Which coins can I trade?'), t('Only coins launched on a launchpad (on Arc: Argus, Mercuri, SolonPad and others; on Robinhood Chain: Bankr, Pons, Clanker and others) and Robinhood’s own stock tokens. Coins from unknown contracts aren’t listed, because they can be malicious.')],
     [t('When do futures launch?'), t('They’re on Arc testnet now: try them with free test USDC, without risk. Mainnet follows an independent security audit; the date will be announced.')],
     [t('Is my money at risk?'), t('Yes. Coins on Arc are very volatile, and futures with leverage can lose money quickly. Trade only what you can afford to lose. Nothing here is financial advice.')],
   ]
 
   const phaseNow = PHASES.find(p => phaseStatus(p.n) === 'now') ?? PHASES.find(p => phaseStatus(p.n) === 'next') ?? PHASES[PHASES.length - 1]
-  const chg = sense?.change24h ?? null
 
   return (
-    <div className="ld" lang={lang}>
-      {/* ── nav: Binance's, in blue ─────────────────────── */}
+    <div className="ld ld-x" lang={lang}>
+      {/* ── nav ─────────────────────────────────────────── */}
       <header className="ld-nav" ref={navRef}>
-        <a href="/" className="ld-brand"><img src="/arcsense-mark.png" alt="" width={28} height={28} /><span className="ld-word">Arc<span>sense</span></span></a>
+        <a href="/" className="ld-brand"><img src="/arcdex-mark.png" alt="" width={30} height={30} /><span className="ld-word">arc<span>dex</span></span></a>
         <nav className={`ld-links${menu ? ' open' : ''}`} onClick={() => setMenu(false)}>
           <a href="/app">{t('Markets')}</a>
-          <a href="/spot">{t('Spot')}</a>
+          <a href="/robinhood">{t('Robinhood')}</a>
           <a href="/futures">{t('Futures')} <small className="ld-tag">{t('Testnet')}</small></a>
           <a href="/swap">{t('Swap')}</a>
           <a href="/bridge">{t('Bridge')}</a>
-          <a href="#sense" className="ld-link-sense">$SENSE</a>
+          <a href="#burn" className="ld-link-arcdex">🔥 $ARCDEX</a>
           <div className="ld-menu-lang" onClick={e => e.stopPropagation()}>
             <select className="ld-lang" value={lang} onChange={e => void setLang(e.target.value as Lang)} aria-label={t('Language')}>
               {LANGS.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
@@ -172,36 +174,75 @@ export default function Landing() {
             {LANGS.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
           </select>
           <a className="ld-btn ld-btn-ghost ld-btn-sm ld-hide-sm" href="/app">{t('Launch app')}</a>
-          <a className="ld-btn ld-btn-primary ld-btn-sm" href={SENSE_PATH}>{t('Buy $SENSE')}</a>
+          <a className="ld-btn ld-btn-primary ld-btn-sm" href={COIN_PATH}>{t('Buy $ARCDEX')}</a>
           <button className="ld-burger" onClick={() => setMenu(o => !o)} aria-label={t('Menu')}>☰</button>
         </div>
       </header>
 
-      {/* ── hero: the platform and its coin; live markets and $SENSE beside ── */}
+      {/* ── hero: the exchange and its coin, live ───────── */}
       <section className="ld-hero">
         <div className="ld-hero-text">
-          <h1><span className="ld-hero-blue">{t('TRADE ARC.')}</span><br />{t('OWN $SENSE.')}</h1>
-          <p className="ld-lead">{t('The spot and futures exchange on Arc. 30% of every fee buys back $SENSE and burns it.')}</p>
+          <div className="ld-pill"><span className="ld-live-dot" />{t('Multichain DEX · live on Arc and Robinhood Chain')}</div>
+          <h1><span className="ld-hero-blue">{t('TRADE ARC & ROBINHOOD.')}</span><br />{t('OWN $ARCDEX.')}</h1>
+          <p className="ld-lead">{t('The multichain decentralized exchange for spot and futures: launchpad coins and Robinhood stock tokens, one USDC balance. 30% of every fee buys back $ARCDEX and burns it.')}</p>
           <div className="ld-laurels">
-            <div className="ld-laurel"><Laurel /><div><b>10×</b><span>{t('Futures on BTC, ETH and SOL')}</span></div><Laurel flip /></div>
-            <div className="ld-laurel"><Laurel /><div><b>30%</b><span>{t('Of fees burn $SENSE')}</span></div><Laurel flip /></div>
+            <div className="ld-laurel"><Laurel /><div><b>{burnedPct == null ? '…' : `${burnedPct.toFixed(2)}%`}</b><span>{t('Of the supply burned')}</span></div><Laurel flip /></div>
+            <div className="ld-laurel"><Laurel /><div><b>30%</b><span>{t('Of fees burn $ARCDEX')}</span></div><Laurel flip /></div>
+            <div className="ld-laurel ld-hide-xs"><Laurel /><div><b>10×</b><span>{t('Futures on BTC, ETH and SOL')}</span></div><Laurel flip /></div>
           </div>
           <div className="ld-buybox">
             <div className="ld-ca">
-              <img src={SENSE_IMAGE} alt="" width={22} height={22} />
-              <code title={SENSE}><span className="ld-ca-full">{SENSE}</span><span className="ld-ca-short">{short(SENSE)}</span></code>
-              <Copy text={SENSE} />
+              <img src={COIN_IMAGE} alt="" width={22} height={22} />
+              <code title={COIN}><span className="ld-ca-full">{COIN}</span><span className="ld-ca-short">{short(COIN)}</span></code>
+              <Copy text={COIN} />
             </div>
-            <a className="ld-btn ld-btn-primary ld-buy" href={SENSE_PATH}>{t('Buy $SENSE')}</a>
+            <a className="ld-btn ld-btn-primary ld-buy" href={COIN_PATH}>{t('Buy $ARCDEX')}</a>
           </div>
+          <p className="ld-ca-note">{t('$ARCDEX contract on Arc · wallets show the symbol as ARCD')}</p>
           <div className="ld-hero-links">
             <a className="ld-btn ld-btn-ghost ld-btn-sm" href="/app">{t('Explore markets')}</a>
+            <a className="ld-btn ld-btn-ghost ld-btn-sm" href="/robinhood">🏹 {t('Robinhood Chain')}</a>
             <a className="ld-btn ld-btn-ghost ld-btn-sm" href="/futures">{t('Try futures free')}</a>
           </div>
           <TrafficCard engine={ENGINE} />
         </div>
 
         <div className="ld-hero-side">
+          <CoinLiveCard engine={ENGINE} program={program} />
+        </div>
+      </section>
+
+      {/* ── two chains, launchpad coins only ────────────── */}
+      <section className="ld-section" id="chains">
+        <div className="ld-split-head">
+          <div>
+            <h2>{t('Two chains. One exchange.')}</h2>
+            <p className="ld-sub">{t('Trade Arc and Robinhood Chain from one USDC balance on Arc. Only coins launched on a launchpad are listed, so coins from unknown contracts never reach you.')}</p>
+          </div>
+        </div>
+        <div className="ld-chains">
+          <div className="ld-chain-col">
+            <a className="ld-card ld-chain" href="/app">
+              <div className="ld-chain-head"><ChainMark name="Arc" color="linear-gradient(135deg,#2a6df4,#7c3aed)" /><b>Arc</b><span className="ld-chain-live">{t('Live')}</span></div>
+              <p>{t('Every launchpad coin on Arc, live, bonding curves included: one-tap trades with USDC, which is also Arc’s gas.')}</p>
+              <div className="ld-chips">{ARC_PADS.map(p => <span key={p}>{p}</span>)}<span>+ {t('more')}</span></div>
+              <span className="ld-chain-go">{t('Arc markets')} →</span>
+            </a>
+            <a className="ld-card ld-chain" href="/robinhood">
+              <div className="ld-chain-head"><ChainMark name="Robinhood" color="linear-gradient(135deg,#00c805,#0a7d3b)" /><b>Robinhood Chain</b><span className="ld-chain-live">{t('Live')}</span></div>
+              <p>{t('Launchpad coins and Robinhood’s stock tokens (NVDA, TSLA, SPY…), bought with USDC on Arc and delivered in seconds.')}</p>
+              <div className="ld-chips">{RH_PADS.map(p => <span key={p}>{p}</span>)}<span>{t('Stock tokens')}</span></div>
+              <span className="ld-chain-go">{t('Robinhood markets')} →</span>
+            </a>
+            <div className="ld-card ld-shield">
+              <span className="ld-shield-icon">🛡</span>
+              <div>
+                <b>{t('Launchpad coins only')}</b>
+                <p>{t('A coin is listed only if a launchpad launched it, or it’s one of Robinhood’s own stock tokens. Every trade is simulated before it’s sent, and approvals are for the exact amount.')}</p>
+              </div>
+            </div>
+          </div>
+
           <div className="ld-card ld-mkts">
             <div className="ld-mkts-tabs">
               {([['popular', t('Popular')], ['new', t('New listing')], ['futures', t('Futures')]] as const).map(([k, l]) => (
@@ -211,7 +252,7 @@ export default function Landing() {
             </div>
             {!rows && <div className="ld-mkts-empty">{t('Loading markets…')}</div>}
             {rows?.map(r => (
-              <a key={r.key} className={`ld-mkts-row${r.key === 'sense' ? ' sense' : ''}`} href={r.href}>
+              <a key={r.key} className={`ld-mkts-row${r.key === 'coin' ? ' arcdex' : ''}`} href={r.href}>
                 <Logo src={r.image} symbol={r.symbol} />
                 <span className="ld-mkts-name"><b>{r.symbol}</b><small>{r.name}</small>{r.tag && <em>{r.tag}</em>}</span>
                 <span className="ld-mkts-price">{price(r.price)}</span>
@@ -219,21 +260,34 @@ export default function Landing() {
               </a>
             ))}
           </div>
+        </div>
+      </section>
 
-          <a className="ld-card ld-sense-card" href={SENSE_PATH} id="sense-card">
-            <div className="ld-sense-head">
-              <img src={SENSE_IMAGE} alt="" width={36} height={36} />
-              <div><b>$SENSE</b><small>{t('The ARCSENSE coin')}</small></div>
-              <span className="ld-sense-price">{fmtSmallUsd(sense?.priceUsd)} <span className={chg == null ? '' : chg >= 0 ? 'ld-up' : 'ld-down'}>{fmtPct(chg)}</span></span>
+      {/* ── the $ARCDEX burn, live ──────────────────────── */}
+      <section className="ld-section" id="burn">
+        <div className="ld-split-head">
+          <div>
+            <h2>{t('The $ARCDEX burn, live')}</h2>
+            <p className="ld-sub">{t('Every $ARCDEX sent to the dead address since the coin launched, read from Arc. Burned coins can never move again.')}</p>
+          </div>
+          <a className="ld-btn ld-btn-primary" href={COIN_PATH}>{t('Buy $ARCDEX')} →</a>
+        </div>
+        <div className="ld-burngrid">
+          <div className="ld-card ld-burncard">
+            <BurnMeter program={program} />
+            <div className="ld-burncard-h">{t('Burned per day')}</div>
+            <BurnChart program={program} />
+            <div className="ld-burnstats">
+              <div><span>{t('Burns')}</span><b>{program ? program.burned.count.toLocaleString() : '…'}</b></div>
+              <div><span>{t('Bought back from fees')}</span><b>{program ? `$${program.totals.buybackUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '…'}</b></div>
+              <div><span>{t('Burned by the fee wallet')}</span><b>{program ? big(program.totals.coinBurned) : '…'}</b></div>
             </div>
-            <div className="ld-sense-stats">
-              <div><span>{t('Market cap')}</span><b>{fmtCompactUsd(sense?.marketCapUsd)}</b></div>
-              <div><span>{t('Liquidity')}</span><b>{fmtCompactUsd(sense?.liquidityUsd)}</b></div>
-              <div><span>{t('Bought back')}</span><b>{program ? fmtCompactUsd(program.totals.buybackUsd) : '…'}</b></div>
-              <div><span>{t('Burned')}</span><b>{program ? Math.round(program.totals.senseBurned).toLocaleString() : '…'}</b></div>
-            </div>
-            <span className="ld-btn ld-btn-primary ld-btn-block">{t('Buy $SENSE')} →</span>
-          </a>
+          </div>
+          <div className="ld-card ld-burncard">
+            <CoinFeed engine={ENGINE} program={program} limit={10} />
+            {program && program.burns.length > 0 && <div className="ld-burncard-h">{t('Latest burns')}</div>}
+            <BurnList program={program} limit={5} />
+          </div>
         </div>
       </section>
 
@@ -257,12 +311,12 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── where the fees go: 30% $SENSE buyback & burn, 70% liquidity ── */}
-      <SenseProgram engine={ENGINE} />
+      {/* ── where the fees go: 30% $ARCDEX buyback & burn, 70% liquidity ── */}
+      <CoinProgram engine={ENGINE} />
 
       {/* ── the app ─────────────────────────────────────── */}
       <section className="ld-section" id="platform">
-        <h2>{t('Everything to trade on Arc')}</h2>
+        <h2>{t('Everything to trade, on every chain')}</h2>
         <div className="ld-platform">
           {PLATFORM.map(([icon, title, body, href]) => (
             <a key={title} href={href} className="ld-card ld-tile"><span className="ld-icon">{icon}</span><div><h3>{title}</h3><p>{body}</p></div></a>
@@ -293,28 +347,30 @@ export default function Landing() {
       </section>
 
       <section className="ld-final">
-        <h2>{t('Start trading on Arc.')}</h2>
+        <img src="/arcdex-mark.png" alt="" width={56} height={56} />
+        <h2>{t('Trade every chain. Hold $ARCDEX.')}</h2>
         <p>{t('Create a trading wallet in seconds. No sign-up.')}</p>
         <div className="ld-cta ld-center">
-          <a className="ld-btn ld-btn-primary" href={SENSE_PATH}>{t('Buy $SENSE')}</a>
+          <a className="ld-btn ld-btn-primary" href={COIN_PATH}>{t('Buy $ARCDEX')}</a>
           <a className="ld-btn ld-btn-ghost" href="/app">{t('Launch app')} →</a>
         </div>
       </section>
 
       <footer className="ld-footer">
         <div className="ld-foot-top">
-          <a href="/" className="ld-brand"><img src="/arcsense-mark.png" alt="" width={24} height={24} /><span className="ld-word">Arc<span>sense</span></span></a>
+          <a href="/" className="ld-brand"><img src="/arcdex-mark.png" alt="" width={24} height={24} /><span className="ld-word">arc<span>dex</span></span></a>
           <nav>
             <a href="/app">{t('Markets')}</a>
+            <a href="/robinhood">{t('Robinhood Chain')}</a>
             <a href="/spot">{t('Spot')}</a>
             <a href="/futures">{t('Futures')}</a>
             <a href="/swap">{t('Swap')}</a>
             <a href="/bridge">{t('Bridge')}</a>
-            <a href="/sense">{t('$SENSE burn')}</a>
+            <a href="/burn">{t('$ARCDEX burn')}</a>
           </nav>
         </div>
         <p className="ld-disclaimer">{t('Trading crypto is risky, and leveraged futures more so. Nothing here is financial advice.')}</p>
-        <p className="ld-muted">© 2026 ARCSENSE</p>
+        <p className="ld-muted">© 2026 ARCDEX · {t('Multichain Decentralized Exchange')}</p>
       </footer>
     </div>
   )

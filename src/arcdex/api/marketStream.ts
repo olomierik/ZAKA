@@ -1,4 +1,4 @@
-// Client for the ARCSENSE market engine (engine/): one shared WebSocket for
+// Client for the ARCDEX market engine (engine/): one shared WebSocket for
 // the whole app, plus the engine's REST history endpoints.
 //
 // Enabled when VITE_ARCDEX_WS_URL is set at build time (e.g.

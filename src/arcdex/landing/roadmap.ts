@@ -1,4 +1,4 @@
-// The ARCSENSE roadmap: what's live, then a new phase every week. One source
+// The ARCDEX roadmap: what's live, then a new phase every week. One source
 // for the landing page (#roadmap, translated)
 // and the images made from it for X (scripts/whitepaper-assets.mjs).
 // To move the plan, change ROADMAP_START: every phase is PHASE_DAYS long.
@@ -53,9 +53,9 @@ export const PHASES: Phase[] = [
     { text: N_('Live chat on every coin') },
     { text: N_('Seasons: points become fee discounts and cashback boosts; clan wars') },
   ] },
-  { n: 6, title: N_('Launchpad v2 and ARCSENSE Verified'), items: [
+  { n: 6, title: N_('Launchpad v2 and ARCDEX Verified'), items: [
     { text: N_('Creators choose where fees go: to themselves, traders or holders'), dep: true },
-    { text: N_('ARCSENSE Verified: bundle and linked-wallet screening before a coin is listed') },
+    { text: N_('ARCDEX Verified: bundle and linked-wallet screening before a coin is listed') },
     { text: N_('Public safety-score API') },
   ] },
   { n: 7, title: N_('Access and more markets'), items: [

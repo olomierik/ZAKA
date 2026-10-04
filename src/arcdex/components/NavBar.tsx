@@ -3,21 +3,21 @@ import AccountMenu from './AccountMenu'
 import SearchBox from './SearchBox'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
-import { SENSE_IMAGE, SENSE_LC, SENSE_POOL, fmtPct, fmtSmallUsd, useSense } from '../lib/sense'
+import { COIN_IMAGE, COIN_LC, COIN_POOL, fmtPct, fmtSmallUsd, useCoin } from '../lib/coin'
 
 interface Props { page: Page; navigate: (p: Page) => void; onMenuClick: () => void; onBack?: () => void }
 
-/** $SENSE's trading page (the spot screen opens on it). */
-export const SENSE_PAGE: Page = { name: 'argus', address: SENSE_LC, pool: SENSE_POOL }
+/** $ARCDEX's trading page (the spot screen opens on it). */
+export const COIN_PAGE: Page = { name: 'argus', address: COIN_LC, pool: COIN_POOL }
 
-// Binance's top bar, in ARCSENSE blue: the trading links, a "More" menu for the
-// social pages, then search, $SENSE's live price and a Buy $SENSE button, and
+// Binance's top bar, in ARCDEX blue: the trading links, a "More" menu for the
+// social pages, then search, $ARCDEX's live price and a Buy $ARCDEX button, and
 // the account. Links that don't fit drop into "More" as the screen narrows.
 export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [more, setMore] = useState(false)
   const moreRef = useRef<HTMLDivElement>(null)
-  const sense = useSense()
+  const coinQ = useCoin()
 
   useEffect(() => {
     if (!more) return
@@ -29,19 +29,19 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
   const onSpot = page.name === 'argus' || page.name === 'token'
   const navLinks: { label: string; page: Page; active: boolean; cls?: string; badge?: string }[] = [
     { label: T('Markets'),   page: { name: 'terminal' }, active: page.name === 'terminal' || page.name === 'launchpad' || page.name === 'robinhood' || page.name === 'rh-token' },
-    { label: T('Spot'),      page: SENSE_PAGE, active: onSpot },
+    { label: T('Spot'),      page: COIN_PAGE, active: onSpot },
     { label: T('Futures'),   page: { name: 'futures' }, active: page.name === 'futures', badge: T('Testnet') },
     { label: T('Swap'),      page: { name: 'swap' }, active: page.name === 'swap', cls: 'nav-l1' },
     { label: T('Portfolio'), page: { name: 'portfolio' }, active: page.name === 'portfolio', cls: 'nav-l2' },
     { label: T('Bridge'),    page: { name: 'bridge' }, active: page.name === 'bridge', cls: 'nav-l3' },
-    { label: '$SENSE',       page: { name: 'sense' }, active: page.name === 'sense', cls: 'nav-l3 nav-sense-link' },
+    { label: '$ARCDEX',       page: { name: 'coin' }, active: page.name === 'coin', cls: 'nav-l3 nav-arcdex-link' },
   ]
   const moreLinks: { label: string; icon: string; page: Page; cls?: string }[] = [
-    { label: T('Robinhood Chain'), icon: '🪶', page: { name: 'robinhood' } },
+    { label: T('Robinhood Chain'), icon: '🏹', page: { name: 'robinhood' } },
     { label: T('Swap'),        icon: '⇄', page: { name: 'swap' }, cls: 'more-l1' },
     { label: T('Portfolio'),   icon: '▤', page: { name: 'portfolio' }, cls: 'more-l2' },
     { label: T('Bridge'),      icon: '◎', page: { name: 'bridge' }, cls: 'more-l3' },
-    { label: T('$SENSE burn'), icon: '🔥', page: { name: 'sense' }, cls: 'more-l3' },
+    { label: T('$ARCDEX burn'), icon: '🔥', page: { name: 'coin' }, cls: 'more-l3' },
     { label: T('Feed'),        icon: '◉', page: { name: 'feed' } },
     { label: T('Leaderboard'), icon: '♛', page: { name: 'leaderboard' } },
     { label: T('Clans'),       icon: '⚑', page: { name: 'clans' } },
@@ -50,7 +50,7 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
     { label: T('Transfers'),   icon: '⇅', page: { name: 'transfers' } },
     { label: T('Autotrade'),   icon: '⚡', page: { name: 'signals' } },
   ]
-  const chg = sense?.change24h ?? null
+  const chg = coinQ?.change24h ?? null
 
   return (
     <header className="top-navbar">
@@ -61,7 +61,7 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
       {onBack && <button className="navbar-back" onClick={onBack} aria-label={T("Back")}>‹</button>}
 
       <button className="navbar-logo" onClick={() => navigate({ name: 'terminal' })}>
-        <img src="/arcsense-mark.png" alt="" width={26} height={26} style={{ flexShrink: 0 }} /><span className="brand-word">Arc<span>sense</span></span>
+        <img src="/arcdex-mark.png" alt="" width={26} height={26} style={{ flexShrink: 0 }} /><span className="brand-word">arc<span>dex</span></span>
       </button>
 
       <nav className="navbar-links">
@@ -91,14 +91,14 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
       </button>
 
       <div className="navbar-right">
-        {/* $SENSE, live: its price and 24h change, and the way to buy it */}
-        <button className="nav-sense" onClick={() => navigate(SENSE_PAGE)} title={T('$SENSE, the ARCSENSE coin')}>
-          <img src={SENSE_IMAGE} alt="" width={18} height={18} />
-          <b>SENSE</b>
-          <span className="nav-sense-price">{fmtSmallUsd(sense?.priceUsd)}</span>
-          {chg != null && <span className={`nav-sense-chg ${chg >= 0 ? 'up' : 'down'}`}>{fmtPct(chg)}</span>}
+        {/* $ARCDEX, live: its price and 24h change, and the way to buy it */}
+        <button className="nav-arcdex" onClick={() => navigate(COIN_PAGE)} title={T('$ARCDEX, the ARCDEX coin')}>
+          <img src={COIN_IMAGE} alt="" width={18} height={18} />
+          <b>ARCDEX</b>
+          <span className="nav-arcdex-price">{fmtSmallUsd(coinQ?.priceUsd)}</span>
+          {chg != null && <span className={`nav-arcdex-chg ${chg >= 0 ? 'up' : 'down'}`}>{fmtPct(chg)}</span>}
         </button>
-        <button className="nav-buy" onClick={() => navigate(SENSE_PAGE)}>{T('Buy $SENSE')}</button>
+        <button className="nav-buy" onClick={() => navigate(COIN_PAGE)}>{T('Buy $ARCDEX')}</button>
         <AccountMenu navigate={navigate} />
       </div>
     </header>

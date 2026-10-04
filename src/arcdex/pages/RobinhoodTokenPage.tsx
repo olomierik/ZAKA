@@ -83,6 +83,10 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate 
   // The chain decides. Until it answers, a stock name counts as a stock (the buy side stays gated).
   const stock = stockOnChain ?? stockName
   const impostor = stockName && stockOnChain === false
+  // Launchpad coins and Robinhood's stock tokens only (owner, 2026-10-04): anything else can't be bought here,
+  // and says why; selling is never blocked.
+  const unlisted = !!coin && !coin.launchpad && !(stock && !impostor)
+  const buyBlocked = unlisted ? T('Not a launchpad coin: ARCDEX only lists and sells coins launched on a launchpad (and Robinhood’s stock tokens), because coins from unknown contracts can be malicious. You can still sell any you hold.') : undefined
   const name = stock ? stockCompany(fullName) : fullName
   const priceUsd = coin?.priceUsd ?? 0
   const decimals = coin?.decimals ?? onchain?.decimals ?? null
@@ -123,7 +127,7 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate 
     }]
   }), [rows, me])
 
-  useEffect(() => { document.title = `${priceUsd ? fmtPrice(priceUsd) + ' | ' : ''}${symbol} | ARCSENSE` }, [priceUsd, symbol])
+  useEffect(() => { document.title = `${priceUsd ? fmtPrice(priceUsd) + ' | ' : ''}${symbol} | ARCDEX` }, [priceUsd, symbol])
 
   const chart = source ? (
     <PriceChart poolAddress={null} source={source} ticks={ticks} live={rows.some(r => r.live)} trades={chartTrades} supply={coin?.supply ?? null}
@@ -150,12 +154,13 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate 
   const notices = (
     <>
       {notToken && <div className="spot-notice warn">{T('No token at this address on Robinhood Chain.')}</div>}
+      {unlisted && !impostor && <div className="spot-notice warn">{T('⚠ This coin wasn’t launched on a launchpad, so ARCDEX doesn’t list it or offer it to buy. Coins from unknown contracts can be malicious.')}</div>}
       {impostor && <div className="spot-notice warn">{T('⚠ This token uses a Robinhood stock name, but it isn’t one of Robinhood’s stock tokens. Check the contract address before trading.')}</div>}
       {stock && !impostor && <div className="spot-notice">{T('A Robinhood stock token: it tracks {name}’s share price. Not offered to US persons or in some countries; buying asks where you are first.', { name: name || symbol })}</div>}
     </>
   )
   const trade = (side?: 'buy' | 'sell', compact?: boolean, initialMode?: 'buy' | 'sell') => notToken ? null : (
-    <RobinhoodTrade key={`${side ?? initialMode ?? 'x'}`} token={address} symbol={symbol} decimals={decimals} priceUsd={priceUsd} stock={stock}
+    <RobinhoodTrade key={`${side ?? initialMode ?? 'x'}`} token={address} symbol={symbol} decimals={decimals} priceUsd={priceUsd} stock={stock} buyBlocked={buyBlocked}
       side={side} compact={compact} initialMode={initialMode} />
   )
   const tradesTable = (

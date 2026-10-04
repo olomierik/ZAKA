@@ -78,7 +78,7 @@ interface Props {
   /** Which side opens first (the phone trade bar's Buy / Sell). */
   initialMode?: 'buy' | 'sell'
   /** The coin's launchpad, when it isn't Argus: named in the notes, and
-   * linked when ARCSENSE can't route the coin's pool. */
+   * linked when ARCDEX can't route the coin's pool. */
   venue?: { name: string; site?: string } | null
   /** One side only, with no Buy/Sell switch (the spot screen shows a buy form and a sell form side by side). */
   side?: 'buy' | 'sell'
@@ -124,13 +124,13 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
   const tokenIn = mode === 'buy' ? USDC_ADDRESS : token
   const decIn = mode === 'buy' ? 6 : 18
   const amountIn = useMemo(() => { try { return amount ? parseUnits(amount, decIn) : 0n } catch { return 0n } }, [amount, decIn])
-  // Mercuri's or SolonPad's own curve: its fee and creator tax, and ARCSENSE's
+  // Mercuri's or SolonPad's own curve: its fee and creator tax, and ARCDEX's
   // fee once the curve router is deployed (api/curves.ts; none before).
   const curve = route?.kind === 'curve' ? route.curve : null
   const [curveRouter, setCurveRouter] = useState<CurveRouter | null>(null)
   const onCurve = !!curve
   useEffect(() => { if (onCurve) void loadCurveRouter().then(setCurveRouter).catch(() => {}) }, [onCurve])
-  // ARCSENSE's fee, as the router in force charges it (null while it loads).
+  // ARCDEX's fee, as the router in force charges it (null while it loads).
   const platformBps = curve ? (curveRouterConfigured ? curveRouter?.feeBps ?? null : 0) : info?.feeBps ?? null
   const feeBps = platformBps ?? 0
   const curveFeeBps = curve?.feeBps ?? 0
@@ -171,7 +171,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
 
   useEffect(() => { setImpact(null); setRiskOk(false); setSnipe(null); setSnipeOk(false) }, [amount, mode])
 
-  // Pre-trade estimate from the market price, net of ARCSENSE's fee, a curve's
+  // Pre-trade estimate from the market price, net of ARCDEX's fee, a curve's
   // own fee and the coin's creator tax. The exact figure comes from
   // simulating the real transaction just before it's sent.
   const net = (1 - feeBps / 10_000) * (1 - curveFeeBps / 10_000) * (1 - taxBps / 10_000)
@@ -230,7 +230,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
     return true
   }
 
-  /** A native-USDC pool, through Uniswap's Universal Router: ARCSENSE's fee and
+  /** A native-USDC pool, through Uniswap's Universal Router: ARCDEX's fee and
    * the referrer's share come off the USDC side in the same transaction. */
   async function submitNative(r: RouterInfo, key: Extract<SwapRoute, { kind: 'v4native' }>['key']) {
     if (!me) return
@@ -290,10 +290,10 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
     finish(outNum)
   }
 
-  /** Mercuri's or SolonPad's own bonding curve: through ARCSENSE's curve
-   * router once it's deployed, which takes ARCSENSE's fee in the same
+  /** Mercuri's or SolonPad's own bonding curve: through ARCDEX's curve
+   * router once it's deployed, which takes ARCDEX's fee in the same
    * transaction; straight to the curve from this wallet before that, with no
-   * ARCSENSE fee (api/curves.ts). The curve's own fee and taxes are inside its
+   * ARCDEX fee (api/curves.ts). The curve's own fee and taxes are inside its
    * quote either way. */
   async function submitCurve(c: CurveInfo) {
     if (!me) return
@@ -304,7 +304,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
     // Through the router: the referrer this visitor arrived with, bound there
     // on their first referred trade. Directly: Mercuri binds the referrer a
     // wallet names on its first Mercuri trade (and ignores it after that),
-    // ARCSENSE's fee wallet.
+    // ARCDEX's fee wallet.
     const referrer = r
       ? await referrerFor(me)
       : c.venue === 'Mercuri'
@@ -327,7 +327,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       if (holdForImpact(outNum, 1 - q.snipeBps / 10_000)) return
       req = r ? routerBuyCall(c, r, value, keep(q.tokensOut), referrer, deadline) : curveBuyCall(c, value, keep(q.tokensOut), me, referrer, deadline)
     } else {
-      // Exact amount only: to ARCSENSE's curve router, or to the curve the
+      // Exact amount only: to ARCDEX's curve router, or to the curve the
       // launchpad's factory names for this token.
       const spender = r ? r.address : c.curve
       const approved = await client.readContract({ address: token, abi: ERC20_ABI, functionName: 'allowance', args: [me, spender] })
@@ -404,7 +404,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
     const link = referralLink(me, profile)
     const mc = marketCapUsd ? ` at ${fmtUsd(marketCapUsd)} market cap` : ''
     setShare({
-      text: `Just ${lastTrade.kind === 'buy' ? 'aped into' : 'took profit on'} $${symbol}${mc} on ARCSENSE ⚡ Trade Arc memecoins with me:`,
+      text: `Just ${lastTrade.kind === 'buy' ? 'aped into' : 'took profit on'} $${symbol}${mc} on ARCDEX ⚡ Trade Arc memecoins with me:`,
       card: {
         symbol, tokenImage: tokenImage ?? null,
         headline: lastTrade.kind === 'buy' ? 'BOUGHT' : 'SOLD',
@@ -511,7 +511,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       )}
 
       {!routerConfigured ? (
-        <Note>{T("Trading opens once the ARCSENSE swap router is deployed.")}</Note>
+        <Note>{T("Trading opens once the ARCDEX swap router is deployed.")}</Note>
       ) : !me ? (
         <>
           <button onClick={openConnectModal} style={btn('var(--adx-accent)')}>{T("Connect Wallet")}</button>
@@ -533,7 +533,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
 
       {!routeLoading && !route && venue && (
         <Note>
-          {T("{symbol} trades on {launchpad}'s own contracts, which ARCSENSE can't route yet.", { symbol, launchpad: venue.name })}
+          {T("{symbol} trades on {launchpad}'s own contracts, which ARCDEX can't route yet.", { symbol, launchpad: venue.name })}
           {venue.site && <><br /><a href={venue.site} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--adx-accent)', fontWeight: 700 }}>{T("Trade on {launchpad} ↗", { launchpad: venue.name })}</a></>}
         </Note>
       )}
@@ -551,7 +551,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       {!compact && <p className="swap-note">{curve
         ? curveRouterConfigured
           ? T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee on top of the platform fee.", { launchpad: curve.venue })
-          : T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee; ARCSENSE adds none.", { launchpad: curve.venue })
+          : T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee; ARCDEX adds none.", { launchpad: curve.venue })
         : venue
           ? T("Every trade is simulated before it's sent. The pool's own fee, set by {launchpad}, applies on top of the platform fee.", { launchpad: venue.name })
           : T("Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.")}</p>}

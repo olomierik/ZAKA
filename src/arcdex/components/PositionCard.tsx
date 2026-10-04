@@ -13,7 +13,7 @@ import { t as T } from '../lib/i18n'
 // "Your position" on a coin: what you hold now, what you paid, your PnL,
 // and a one-tap share card — the brag that brings new users in.
 //
-// Cost basis comes from your trades through ARCSENSE (indexed from the
+// Cost basis comes from your trades through ARCDEX (indexed from the
 // router's own events — exact). If you traded this coin elsewhere, it
 // falls back to your trades in the recent GeckoTerminal window.
 
@@ -69,7 +69,7 @@ export default function PositionCard({ token, symbol, image, priceUsd, trader, r
     const profile = await getProfile(me).catch(() => null)
     const link = referralLink(me, profile)
     setShare({
-      text: `${up ? 'Up' : 'Down'} ${Math.abs(pnlPct).toFixed(1)}% on $${symbol} ${up ? '🚀' : ''} Trading Arc memecoins on ARCSENSE:`,
+      text: `${up ? 'Up' : 'Down'} ${Math.abs(pnlPct).toFixed(1)}% on $${symbol} ${up ? '🚀' : ''} Trading Arc memecoins on ARCDEX:`,
       card: {
         symbol, tokenImage: image,
         headline: `${up ? '+' : '-'}${Math.abs(pnlPct).toFixed(1)}%`,

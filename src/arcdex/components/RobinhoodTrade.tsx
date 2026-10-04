@@ -1,9 +1,9 @@
-// Buy or sell a Robinhood Chain coin from ARCSENSE (lib/across.ts).
+// Buy or sell a Robinhood Chain coin from ARCDEX (lib/across.ts).
 //
 // Buy: pay USDC on Arc (Arc's gas is USDC too, so the trading wallet trades
 // at once); the coin arrives at the same address on Robinhood Chain in
 // seconds. Sell: signed on Robinhood Chain, where gas is ETH (a few cents,
-// added in one tap from Arc's USDC); the USDC lands on Arc. ARCSENSE's fee
+// added in one tap from Arc's USDC); the USDC lands on Arc. ARCDEX's fee
 // (the swap router's, 2%) comes out of what the trade delivers.
 //
 // Robinhood's stock tokens can't be bought from some countries
@@ -37,6 +37,8 @@ interface Props {
   initialMode?: 'buy' | 'sell'
   /** The spot screen shows its notes once, under both forms. */
   compact?: boolean
+  /** Why this coin can't be bought here (not from a launchpad); selling stays open. */
+  buyBlocked?: string
   onTraded?: () => void
 }
 
@@ -59,7 +61,7 @@ function writeAttest(v: boolean) { try { if (v) localStorage.setItem(ATTEST_KEY,
 
 type Step = 'idle' | 'working' | 'done' | 'error'
 
-export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stock, side, initialMode, compact, onTraded }: Props) {
+export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stock, side, initialMode, compact, buyBlocked, onTraded }: Props) {
   const trader = useTrader()
   const me = trader.address
   const info = useRouterInfo()
@@ -158,7 +160,8 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
     : attested ? 'ok' : 'attest'
 
   const sellNoGas = mode === 'sell' && me !== null && eth !== null && eth === 0
-  const blocked = busy || !quote || quoting || insufficient || refused || (needsCostTick && !costOk) || gate !== 'ok' || sellNoGas
+  const noBuy = mode === 'buy' && !!buyBlocked
+  const blocked = busy || !quote || quoting || insufficient || refused || noBuy || (needsCostTick && !costOk) || gate !== 'ok' || sellNoGas
 
   const kindOf = () => trader.kind ?? 'wallet'
 
@@ -272,10 +275,10 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
       {quoteErr && !busy && <div className="rh-msg error">{quoteErr}</div>}
 
       {verdict === 'off-market' && !busy && (
-        <div className="rh-msg error">{T('This quote pays {x}× {symbol}’s market price: Across would route it through a pool priced far off the market, the way trap pools catch trades. ARCSENSE won’t send it.', { x: fmtTimes(value!.rate), symbol })}</div>
+        <div className="rh-msg error">{T('This quote pays {x}× {symbol}’s market price: Across would route it through a pool priced far off the market, the way trap pools catch trades. ARCDEX won’t send it.', { x: fmtTimes(value!.rate), symbol })}</div>
       )}
       {verdict === 'refuse' && !busy && (
-        <div className="rh-msg error">{T('Across’s best route loses {n}% of this trade to price impact, so ARCSENSE won’t send it. A smaller amount may route better; if not, {symbol} has no fair route right now.', { n: impactPct!.toFixed(0), symbol })}</div>
+        <div className="rh-msg error">{T('Across’s best route loses {n}% of this trade to price impact, so ARCDEX won’t send it. A smaller amount may route better; if not, {symbol} has no fair route right now.', { n: impactPct!.toFixed(0), symbol })}</div>
       )}
       {needsCostTick && (
         <label className="rh-tick warn">
@@ -299,6 +302,7 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
         </div>
       )}
 
+      {noBuy && <div className="rh-msg error">{buyBlocked}</div>}
       {gate === 'blocked' && <div className="rh-msg error">{T('Stock tokens can’t be bought from your country ({c}). You can still sell any you hold.', { c: country ?? '' })}</div>}
       {gate === 'unknown' && <div className="rh-msg error">{T('Your location couldn’t be checked, so stock tokens can’t be bought from here right now.')}</div>}
       {gate === 'attest' && (

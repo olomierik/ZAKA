@@ -4,7 +4,7 @@
 // the SPA for every path; / itself is the landing page (src/main.tsx).
 
 import type { Page } from '../App'
-import { SENSE_LC, SENSE_POOL } from './sense'
+import { COIN_LC, COIN_POOL } from './coin'
 
 export function pageToPath(p: Page): string {
   switch (p.name) {
@@ -26,7 +26,7 @@ export function pageToPath(p: Page): string {
     case 'deploy-curve-router': return '/deploy/curve-router'
     case 'signals':     return p.bot ? `/bots/${encodeURIComponent(p.bot)}` : p.view === 'market' ? '/bots' : p.view === 'manage' ? '/autotrade/manage' : '/autotrade'
     case 'futures':     return '/futures'
-    case 'sense':       return '/sense'
+    case 'coin':        return '/burn'
     case 'robinhood':   return '/robinhood'
     case 'rh-token':    return `/robinhood/token/${p.address}${p.pool ? `?pool=${p.pool}` : ''}`
   }
@@ -50,8 +50,8 @@ export function pathToPage(pathname: string, search: string): Page | null {
     case 'clans':       return b ? { name: 'clan', slug: b } : { name: 'clans' }
     case 'app':
     case 'markets':     return { name: 'terminal' }
-    // Spot opens on $SENSE/USDC, as Binance's opens on its own pair.
-    case 'spot':        return { name: 'argus', address: SENSE_LC, pool: SENSE_POOL }
+    // Spot opens on $ARCDEX/USDC, as Binance's opens on its own pair.
+    case 'spot':        return { name: 'argus', address: COIN_LC, pool: COIN_POOL }
     case 'leaderboard': return { name: 'leaderboard' }
     case 'feed':        return { name: 'feed' }
     case 'alerts':      return { name: 'alerts' }
@@ -66,9 +66,9 @@ export function pathToPage(pathname: string, search: string): Page | null {
     case 'autotrade':   return b === 'manage' ? { name: 'signals', view: 'manage' } : { name: 'signals' }
     case 'futures':
     case 'perps':       return { name: 'futures' }
-    // $SENSE: the buyback-and-burn and liquidity ledger.
+    // $ARCDEX: its burns, buybacks and the fee ledger (/sense was $SENSE's, before 2026-10-04).
     case 'sense':
-    case 'burn':        return { name: 'sense' }
+    case 'burn':        return { name: 'coin' }
     // The bot marketplace, and one bot's public page.
     case 'bots':        return b ? { name: 'signals', view: 'market', bot: b.toLowerCase() } : { name: 'signals', view: 'market' }
     // Robinhood Chain's markets, and one of its coins (a v4 pool's id is 32 bytes).

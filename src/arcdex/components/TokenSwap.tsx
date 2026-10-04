@@ -1,7 +1,7 @@
 // The right swap for any Arc token:
-//   • an ARCSENSE launchpad coin trades on its bonding curve (CurveSwapWidget)
+//   • an ARCDEX launchpad coin trades on its bonding curve (CurveSwapWidget)
 //   • anything with a USDC (or ARGUS) Uniswap pool — from Argus or any other
-//     Arc launchpad — trades through ARCSENSE's swap router (ArgusSwapWidget:
+//     Arc launchpad — trades through ARCDEX's swap router (ArgusSwapWidget:
 //     exact approvals, simulated before sending)
 //   • a coin on Mercuri's or SolonPad's own curve trades on that curve
 //     (api/curves.ts) until it graduates
@@ -75,7 +75,7 @@ export default function TokenSwap({ address, pool, fallback, onTraded, initialMo
     if (!poolId) { if (row === null) setRouteLoading(false); return }
     let cancelled = false
     setRouteLoading(true)
-    // This pool first; if ARCSENSE can't route it (a launchpad's own curve),
+    // This pool first; if ARCDEX can't route it (a launchpad's own curve),
     // the coin's other pools, deepest first (a graduated coin's Uniswap pool).
     buildSwapRoute(token, poolId, row?.createdAt)
       .catch(() => null)
@@ -102,7 +102,7 @@ export default function TokenSwap({ address, pool, fallback, onTraded, initialMo
   if (row === null && !poolId) {
     return (
       <div style={{ padding: 20, fontSize: '0.84rem', color: 'var(--text-muted)', lineHeight: 1.5, textAlign: 'center' }}>
-        {T("{symbol} has no USDC or ARGUS pool that ARCSENSE can route yet, so it can't be swapped here.", { symbol })}
+        {T("{symbol} has no USDC or ARGUS pool that ARCDEX can route yet, so it can't be swapped here.", { symbol })}
       </div>
     )
   }

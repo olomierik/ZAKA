@@ -3,7 +3,7 @@
 //
 // A wallet has no list of its tokens, so these are checked:
 //  • coins bought from this browser (remembered on every buy),
-//  • coins traded through ARCSENSE's swap router (the Supabase index),
+//  • coins traded through ARCDEX's swap router (the Supabase index),
 //  • every coin on the Terminal's market list and every ArcLaunchpad coin,
 //  • any token sent to the wallet in the last ~2 days (Transfer logs).
 // Their balances come from one multicall per ~150 coins. Prices: the market

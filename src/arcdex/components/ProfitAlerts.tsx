@@ -7,11 +7,11 @@ import { BotShareModal, cardFromMarket } from './BotShare'
 import type { BotCardData } from '../lib/shareCard'
 
 // Profit notifications (owner's request, 2026-10-01: "notifications for each
-// profit realized on each trade"). While ARCSENSE is open, on any page and in
+// profit realized on each trade"). While ARCDEX is open, on any page and in
 // any tab, a signed-in owner's bots are asked every 15 seconds (a minute in a
 // background tab) for winning trades they closed. Each one shows a toast here
 // with Share and View, and, once the owner allows it, a system notification
-// (the one that shows with the tab in the background). With every ARCSENSE tab
+// (the one that shows with the tab in the background). With every ARCDEX tab
 // closed there's no notification: that needs web push, a later step.
 
 const SINCE_KEY = 'arcdex:profit-since'

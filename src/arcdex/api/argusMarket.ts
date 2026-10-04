@@ -511,7 +511,7 @@ export async function buildSwapRoute(token: string, pool: string, createdAt?: st
   return null
 }
 
-/** The first of a coin's pools (deepest first) that ARCSENSE can route —
+/** The first of a coin's pools (deepest first) that ARCDEX can route —
  * e.g. a graduated coin's Uniswap pool when its launchpad pool is a curve. */
 export async function bestSwapRoute(token: string, pools: { pool: string; createdAt?: string | null }[]): Promise<SwapRoute | null> {
   for (const p of pools) {

@@ -107,7 +107,7 @@ function Tokens({ navigate }: { navigate: (p: Page) => void }) {
       {rows.length === 0 ? (
         <div className="disc-empty">
           {list === 'watchlist' ? T("Star ☆ a coin to add it to your watchlist.")
-            : list === 'mostheld' ? T("Coins held by the most ARCSENSE traders show up here.")
+            : list === 'mostheld' ? T("Coins held by the most ARCDEX traders show up here.")
             : list === 'graduated' || list === 'bonding' ? (market.some(t => t.bonded != null) ? T("None right now.") : T("Loading launch status…"))
             : T("Loading…")}
         </div>
@@ -268,7 +268,7 @@ function Alerts({ navigate }: { navigate: (p: Page) => void }) {
           const who = names.get(x.trader)?.username ? '@' + names.get(x.trader)!.username : x.trader.slice(0, 6) + '…'
           const sym = m.get(x.token)?.symbol ?? T('a coin')
           const amt = '$' + (x.usdc >= 1000 ? (x.usdc / 1000).toFixed(1) + 'K' : x.usdc.toFixed(0))
-          notify(T(x.side === 'buy' ? '{who} bought {amount} of {symbol}' : '{who} sold {amount} of {symbol}', { who, amount: amt, symbol: sym }), T('ARCSENSE alert'), () => go({ name: 'argus', address: x.token, pool: m.get(x.token)?.pool ?? '' }))
+          notify(T(x.side === 'buy' ? '{who} bought {amount} of {symbol}' : '{who} sold {amount} of {symbol}', { who, amount: amt, symbol: sym }), T('ARCDEX alert'), () => go({ name: 'argus', address: x.token, pool: m.get(x.token)?.pool ?? '' }))
         }
       }
     }
@@ -310,7 +310,7 @@ function Alerts({ navigate }: { navigate: (p: Page) => void }) {
       </div>
       {scope === 'following' && !me ? <div className="disc-empty">{T("Connect or unlock a wallet, then follow traders to get alerts.")}</div>
         : trades === null ? <div className="disc-empty">{T("Loading…")}</div>
-        : alerts.length === 0 ? <div className="disc-empty">{scope === 'following' ? T("No moves yet from traders you follow. Follow top traders from the Leaderboard.") : T("No trades on ARCSENSE yet.")}</div>
+        : alerts.length === 0 ? <div className="disc-empty">{scope === 'following' ? T("No moves yet from traders you follow. Follow top traders from the Leaderboard.") : T("No trades on ARCDEX yet.")}</div>
         : alerts.map(a => {
           const m = meta.get(a.token)
           const priceAt = a.tokenAmount > 0 ? (a.usdc / a.tokenAmount) : 0

@@ -81,6 +81,19 @@ export function isLaunchpadDex(dexId: string, dexName = ''): boolean {
   return !GENERIC_DEX.test(s) && LAUNCH_WORDS.test(s)
 }
 
+/** ARCDEX's own launchpad (ArcLaunchpad), as market rows and the engine name it. */
+export const OWN_LAUNCHPAD = 'ARCDEX'
+
+/** Whether a coin's launchpad (a market row's badge, the engine's name, or a GeckoTerminal dex name)
+ * is a real launch venue: ARCDEX's own, a known launchpad, or a venue named like one. Coins from
+ * anywhere else ("Other": a contract no launchpad made, or a plain DEX pool) aren't listed or
+ * searchable (owner, 2026-10-04: only launchpad coins, to keep malicious contracts out). */
+export function isLaunchpadCoin(launchpad: string | null | undefined): boolean {
+  const lp = (launchpad ?? '').trim()
+  if (!lp || /^other$/i.test(lp)) return false
+  return lp.toUpperCase() === OWN_LAUNCHPAD || isLaunchpadDex(lp, lp)
+}
+
 /** A market row's badge: the launchpad's name, else GeckoTerminal's name for the dex. */
 export function launchpadLabel(dexId: string, dexName = ''): string {
   return launchpadOf(dexId, dexName)?.name ?? (dexName.replace(/\s*\(arc\)\s*$/i, '').trim() || dexId)

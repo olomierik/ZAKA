@@ -1,30 +1,37 @@
-// $SENSE buyback-and-burn and liquidity (owner, 2026-10-03): of the fees ARCSENSE collects, 30%
-// buys back $SENSE and burns it, 70% goes to liquidity pools. Fee collection doesn't change:
+// $ARCDEX buyback-and-burn and liquidity: of the fees ARCDEX collects, 30% buys back $ARCDEX (the
+// platform coin since 2026-10-04; $SENSE before) and burns it, 70% goes to liquidity pools. Fee collection doesn't change:
 // every fee still goes to the fee wallet. This ledger reads that wallet's activity on Arc so
 // anyone can check the program on the landing page:
 //
-//   fees     USDC ARCSENSE's trading contracts paid the fee wallet in someone else's transaction:
+//   fees     USDC ARCDEX's trading contracts paid the fee wallet in someone else's transaction:
 //            the swap routers, the curve router, the launchpad, and the Universal Router (trades
-//            in native-USDC pools) (FEE_SOURCES; SENSE_FEE_SOURCES adds more, e.g. the futures
+//            in native-USDC pools) (FEE_SOURCES; COIN_FEE_SOURCES adds more, e.g. the futures
 //            contract on mainnet). Anything else that arrives (a person's transfer) isn't a fee.
-//   buyback  a transaction the fee wallet sent that brought it $SENSE (outside a liquidity
+//   buyback  a transaction the fee wallet sent that brought it $ARCDEX (outside a liquidity
 //            add): what it paid for it, in USD
-//   burn     $SENSE the fee wallet sent to 0x…dEaD
+//   burn     $ARCDEX the fee wallet sent to 0x…dEaD
 //   liquidity  a transaction the fee wallet sent that added liquidity to a pool (a Uniswap v4
 //            ModifyLiquidity or v3 Mint with liquidity going in), or USDC it sent to a
 //            liquidity target (the futures pool, once it's on mainnet): the value it put in.
 //            Liquidity taken back out counts against it.
 //
+//   burns    every $ARCDEX anyone sent to 0x…dEaD since the coin was created (block 22,522,612),
+//            not only the program's: the burn history and rate the landing page shows.
+//
 // What's owed: 30% / 70% of the fees since the program started. Pending = owed − done.
 // Token values other than USDC come from the engine's own prices when the transaction is read.
 
 import { pad } from 'viem'
-import { hex, type RawLog } from '../../../api/_arcLogs'
+import { ARCHIVE_RPCS, hex, rpcCall, scanLogs, type RawLog } from '../../../api/_arcLogs'
 import type { Rpc } from '../chain/http'
 import { errMsg, log } from '../log'
-import type { SenseEntry, SenseEntryKind, SenseProgramView } from './shared'
+import type { CoinEntry, CoinEntryKind, CoinProgramView } from './shared'
 
-export const SENSE = '0x91402b32c4ab7915132b8b24e0d084e0428667ed'
+/** $ARCDEX (on-chain name ARCDEX, symbol ARCD): an Argus Portal 8 launch on Arc, 1B supply. */
+export const COIN = '0x4b93446882d29e094181b2fae14b126577a2676c'
+export const COIN_SUPPLY = 1_000_000_000
+/** The block $ARCDEX was created in (2026-09-24 13:11 UTC): its burn history starts here. */
+export const COIN_CREATED_BLOCK = 22_522_612
 export const FEE_WALLET = '0x274262a0321a0701b0a46a3576e07ae881c286bb'
 export const DEAD = '0x000000000000000000000000000000000000dead'
 const USDC = '0x3600000000000000000000000000000000000000'
@@ -37,7 +44,7 @@ const MODIFY_LIQUIDITY = '0xf208f4912782fd25c7f114ca3723a2d5dd6f3bcc3ac8db5af63b
 const V3_MINT = '0x7a53080ba414158be7ec69b987b5fb7d07dee101fe85488f0853ae16239d0bde'
 const V3_BURN = '0x0c396cd989a39f4459b5fa1aed6a9a8dcdbc45908acfd67e028cd568da98982c'
 
-/** The contracts whose USDC to the fee wallet is ARCSENSE's fees. */
+/** The contracts whose USDC to the fee wallet is ARCDEX's fees. */
 export const FEE_SOURCES = [
   '0xc519b929981f5375d67ab3930ffb100f0a606088', // ArcDexSwapRouter v1
   '0xd07583f7db671521aacfda2b4612ad187aa2924e', // ArcDexSwapRouter v2
@@ -57,10 +64,43 @@ export const PROGRAM = {
   perBatch: 6,
   keepActions: 200,
   keepFees: 50,
+  keepBurns: 200,
 }
 
-export type EntryKind = SenseEntryKind
-export type Entry = SenseEntry
+/** One transfer of $ARCDEX to the dead address, by anyone. */
+export interface Burn { tx: string; block: number; at: number | null; from: string; amount: number }
+
+/** Reads the transfers of $ARCDEX to the dead address in [from, to]: the contiguous prefix it read. */
+export type BurnLogReader = (from: number, to: number, head: number, deadline: number) => Promise<{ scannedTo: number; logs: RawLog[] }>
+
+const BURN_FILTER = { address: COIN, topics: [TRANSFER, null, pad(DEAD as `0x${string}`)] }
+
+/** With the shared log scanner (api/_arcLogs.ts): recent blocks from Blockdaemon, older ones from the
+ * archive endpoints, which hold the coin's whole history (Blockdaemon keeps only a few days). */
+export const scanBurnLogs: BurnLogReader = async (from, to, head, deadline) => {
+  const r = await scanLogs<RawLog[]>(BURN_FILTER, from, to, { head, reduce: logs => logs, deadline })
+  return { scannedTo: r.scannedTo, logs: r.parts.flat() }
+}
+
+/** With one RPC client, 12 slices of 9k blocks a batch (for a client that serves the whole history). */
+export function rpcBurnLogs(rpc: Rpc): BurnLogReader {
+  return async (from, to) => {
+    const slices: [number, number][] = []
+    for (let a = from; a <= to && slices.length < PROGRAM.perBatch * 2; a += PROGRAM.slice) slices.push([a, Math.min(to, a + PROGRAM.slice - 1)])
+    const res = await rpc.batch<RawLog[]>(slices.map(([a, b]) => ({ method: 'eth_getLogs', params: [{ address: [COIN], topics: BURN_FILTER.topics, fromBlock: hex(a), toBlock: hex(b) }] })))
+    const logs: RawLog[] = []
+    let scannedTo = from - 1
+    for (let i = 0; i < slices.length; i++) {
+      if (!res[i]) break // the contiguous prefix only
+      logs.push(...res[i]!)
+      scannedTo = slices[i][1]
+    }
+    return { scannedTo, logs }
+  }
+}
+
+export type EntryKind = CoinEntryKind
+export type Entry = CoinEntry
 
 export interface ProgramState {
   /** The program's first block (0 until the chain reaches PROGRAM.since). */
@@ -68,18 +108,26 @@ export interface ProgramState {
   scannedTo: number
   feesUsd: number
   buybackUsd: number
-  senseBought: number
-  senseBurned: number
+  coinBought: number
+  coinBurned: number
   liquidityUsd: number
   unliquidityUsd: number
   feeDays: Record<string, number>
   actions: Entry[]
   fees: Entry[]
+  /** Burns by anyone, read from the coin's creation onward. */
+  burnScannedTo: number
+  burnedLogged: number
+  /** Every burn read (the list keeps the latest 200). */
+  burnCount: number
+  burnDays: Record<string, number>
+  burns: Burn[]
 }
 
 export const emptyState = (): ProgramState => ({
-  startBlock: 0, scannedTo: 0, feesUsd: 0, buybackUsd: 0, senseBought: 0, senseBurned: 0,
+  startBlock: 0, scannedTo: 0, feesUsd: 0, buybackUsd: 0, coinBought: 0, coinBurned: 0,
   liquidityUsd: 0, unliquidityUsd: 0, feeDays: {}, actions: [], fees: [],
+  burnScannedTo: COIN_CREATED_BLOCK - 1, burnedLogged: 0, burnCount: 0, burnDays: {}, burns: [],
 })
 
 const addr = (topic: string | undefined) => (topic ? `0x${topic.slice(26)}`.toLowerCase() : ZERO)
@@ -142,7 +190,7 @@ export function liquidityOf(logs: RawLog[]): 'add' | 'remove' | null {
 
 export interface ClassifyCtx {
   feeWallet: string
-  sense: string
+  coin: string
   /** The contracts whose USDC to the fee wallet is a fee. */
   feeSources: Set<string>
   /** Where USDC the fee wallet sends counts as liquidity (the futures pool on mainnet). */
@@ -155,12 +203,12 @@ export interface ClassifyCtx {
 export function classify(txFrom: string, logs: RawLog[], ctx: ClassifyCtx): Omit<Entry, 'tx' | 'block' | 'at'>[] {
   const w = ctx.feeWallet.toLowerCase()
   const f = flowsOf(logs, w, ctx.decimals)
-  const sense = f.tokens.get(ctx.sense) ?? { in: 0, out: 0 }
+  const coin = f.tokens.get(ctx.coin) ?? { in: 0, out: 0 }
   const value = (token: string, n: number) => (n ? n * (ctx.priceOf(token) ?? 0) : 0)
   const out: Omit<Entry, 'tx' | 'block' | 'at'>[] = []
 
   if (txFrom.toLowerCase() !== w) {
-    // Someone else's transaction: USDC from ARCSENSE's trading contracts is a fee; liquidity
+    // Someone else's transaction: USDC from ARCDEX's trading contracts is a fee; liquidity
     // coming back from a target counts against liquidity; anything else isn't counted.
     let fee = 0
     let back = 0
@@ -174,18 +222,18 @@ export function classify(txFrom: string, logs: RawLog[], ctx: ClassifyCtx): Omit
   }
 
   // The fee wallet's own transaction.
-  const burned = logs.filter(l => l.address.toLowerCase() === ctx.sense && l.topics[0]?.toLowerCase() === TRANSFER && addr(l.topics[1]) === w && addr(l.topics[2]) === DEAD)
-    .reduce((s, l) => s + Number(amount(l)) / 10 ** ctx.decimals(ctx.sense), 0)
-  if (burned > 0) out.push({ kind: 'burn', usd: r2(value(ctx.sense, burned)), sense: r2(burned) })
+  const burned = logs.filter(l => l.address.toLowerCase() === ctx.coin && l.topics[0]?.toLowerCase() === TRANSFER && addr(l.topics[1]) === w && addr(l.topics[2]) === DEAD)
+    .reduce((s, l) => s + Number(amount(l)) / 10 ** ctx.decimals(ctx.coin), 0)
+  if (burned > 0) out.push({ kind: 'burn', usd: r2(value(ctx.coin, burned)), coin: r2(burned) })
 
-  // A buyback: $SENSE came in for something else going out. Checked before liquidity, since a
+  // A buyback: $ARCDEX came in for something else going out. Checked before liquidity, since a
   // pool's hook can touch liquidity during an ordinary swap.
-  const netSense = sense.in - sense.out
+  const netSense = coin.in - coin.out
   if (netSense > 0) {
     let paid = f.usdc.out - f.usdc.in
-    for (const [t, x] of f.tokens) if (t !== ctx.sense) paid += value(t, x.out - x.in)
+    for (const [t, x] of f.tokens) if (t !== ctx.coin) paid += value(t, x.out - x.in)
     if (paid > 0) {
-      out.push({ kind: 'buyback', usd: r2(paid), sense: r2(netSense) })
+      out.push({ kind: 'buyback', usd: r2(paid), coin: r2(netSense) })
       return out
     }
   }
@@ -209,6 +257,25 @@ export function classify(txFrom: string, logs: RawLog[], ctx: ClassifyCtx): Omit
   return out
 }
 
+/** Folds burns (oldest first) into the state. */
+export function applyBurns(s: ProgramState, burns: Burn[]): ProgramState {
+  const next: ProgramState = { ...s, burnDays: { ...s.burnDays }, burns: [...s.burns] }
+  for (const b of burns) {
+    next.burnedLogged = r2(next.burnedLogged + b.amount)
+    next.burnCount = (next.burnCount ?? 0) + 1
+    if (b.at) {
+      const day = new Date(b.at).toISOString().slice(0, 10)
+      next.burnDays[day] = r2((next.burnDays[day] ?? 0) + b.amount)
+    }
+    next.burns.unshift(b)
+  }
+  next.burns = next.burns.slice(0, PROGRAM.keepBurns)
+  return next
+}
+
+/** Burned since `since` (ms), from the burns kept. */
+const burnedSince = (burns: Burn[], since: number) => burns.reduce((sum, b) => sum + ((b.at ?? 0) >= since ? b.amount : 0), 0)
+
 /** Folds entries into the state (totals, recent lists, fees by day). */
 export function apply(s: ProgramState, entries: Entry[]): ProgramState {
   const next: ProgramState = { ...s, feeDays: { ...s.feeDays }, actions: [...s.actions], fees: [...s.fees] }
@@ -219,8 +286,8 @@ export function apply(s: ProgramState, entries: Entry[]): ProgramState {
       next.feeDays[day] = r2((next.feeDays[day] ?? 0) + e.usd)
       next.fees.unshift(e)
     } else {
-      if (e.kind === 'buyback') { next.buybackUsd = r2(next.buybackUsd + e.usd); next.senseBought = r2(next.senseBought + (e.sense ?? 0)) }
-      if (e.kind === 'burn') next.senseBurned = r2(next.senseBurned + (e.sense ?? 0))
+      if (e.kind === 'buyback') { next.buybackUsd = r2(next.buybackUsd + e.usd); next.coinBought = r2(next.coinBought + (e.coin ?? 0)) }
+      if (e.kind === 'burn') next.coinBurned = r2(next.coinBurned + (e.coin ?? 0))
       if (e.kind === 'liquidity') next.liquidityUsd = r2(next.liquidityUsd + e.usd)
       if (e.kind === 'unliquidity') next.unliquidityUsd = r2(next.unliquidityUsd + e.usd)
       next.actions.unshift(e)
@@ -233,50 +300,69 @@ export function apply(s: ProgramState, entries: Entry[]): ProgramState {
   return next
 }
 
-/** What the landing page shows (GET /v1/sense/program). */
-export function view(s: ProgramState, deadBalance: number | null, now = Date.now(), since = PROGRAM.since): SenseProgramView {
+/** What the landing page shows (GET /v1/coin/program). `head`: the chain's latest block, to say
+ * whether the burn history has been read to the present. */
+export function view(s: ProgramState, deadBalance: number | null, now = Date.now(), since = PROGRAM.since, head = 0): CoinProgramView {
   const started = s.startBlock > 0
   const buybackOwed = r2(s.feesUsd * PROGRAM.buybackPct / 100)
   const liquidityOwed = r2(s.feesUsd * PROGRAM.liquidityPct / 100)
   const liquidityNet = r2(s.liquidityUsd - s.unliquidityUsd)
   return {
     at: now,
-    program: { since, startBlock: s.startBlock || null, started, buybackPct: PROGRAM.buybackPct, liquidityPct: PROGRAM.liquidityPct, feeWallet: FEE_WALLET, sense: SENSE, dead: DEAD },
+    program: { since, startBlock: s.startBlock || null, started, buybackPct: PROGRAM.buybackPct, liquidityPct: PROGRAM.liquidityPct, feeWallet: FEE_WALLET, coin: COIN, supply: COIN_SUPPLY, dead: DEAD },
     scannedTo: s.scannedTo,
     totals: {
       feesUsd: s.feesUsd,
-      buybackOwedUsd: buybackOwed, buybackUsd: s.buybackUsd, senseBought: s.senseBought, senseBurned: s.senseBurned,
+      buybackOwedUsd: buybackOwed, buybackUsd: s.buybackUsd, coinBought: s.coinBought, coinBurned: s.coinBurned,
       liquidityOwedUsd: liquidityOwed, liquidityUsd: liquidityNet,
-      /** Every $SENSE at the dead address, the program's and anyone else's. */
+      /** Every $ARCDEX at the dead address, the program's and anyone else's. */
       deadBalance,
     },
     pending: { buybackUsd: Math.max(0, r2(buybackOwed - s.buybackUsd)), liquidityUsd: Math.max(0, r2(liquidityOwed - liquidityNet)) },
     feeDays: Object.entries(s.feeDays).sort(([a], [b]) => a.localeCompare(b)).slice(-30).map(([day, usd]) => ({ day, usd })),
     actions: s.actions.slice(0, 50),
     fees: s.fees.slice(0, 20),
+    burned: {
+      // The dead address's balance is the total; the logs give the history and the rate.
+      total: deadBalance ?? s.burnedLogged,
+      pct: r2(((deadBalance ?? s.burnedLogged) / COIN_SUPPLY) * 100),
+      h24: r2(burnedSince(s.burns, now - 86_400_000)),
+      // Seven days from the daily totals (more burns than the list keeps can fall in a week).
+      d7: r2(Object.entries(s.burnDays).filter(([day]) => day >= new Date(now - 6 * 86_400_000).toISOString().slice(0, 10)).reduce((sum, [, n]) => sum + n, 0)),
+      count: s.burnCount ?? s.burns.length,
+      complete: head > 0 && s.burnScannedTo >= head - 120,
+      scannedTo: s.burnScannedTo,
+    },
+    burnDays: Object.entries(s.burnDays).sort(([a], [b]) => a.localeCompare(b)).slice(-60).map(([day, amount]) => ({ day, amount })),
+    burns: s.burns.slice(0, 50),
   }
 }
-export type ProgramView = SenseProgramView
+export type ProgramView = CoinProgramView
 
 export interface Settings {
   getSetting(key: string): Promise<string | null>
   setSetting(key: string, value: string): Promise<void>
 }
 
-const KEY = 'sense-program'
+// $ARCDEX's ledger starts fresh (the $SENSE one was saved as 'sense-program').
+const KEY = 'coin-program'
 
 /** Reads the fee wallet's activity every 30 seconds and keeps the ledger (saved in the settings). */
-export class SenseProgram {
+export class CoinProgram {
   state: ProgramState = emptyState()
   deadBalance: number | null = null
+  private head = 0
   private busy = false
   private timer: ReturnType<typeof setInterval> | null = null
-  private decimals = new Map<string, number>([[USDC, 6], [SENSE, 18]])
+  private decimals = new Map<string, number>([[USDC, 6], [COIN, 18]])
   private ctx: ClassifyCtx
 
-  constructor(private o: { rpc: Rpc; settings: Settings; priceOf: (token: string) => number | null; feeSources?: string[]; liquidityTargets?: string[]; since?: string }) {
+  private burnLogs: BurnLogReader
+
+  constructor(private o: { rpc: Rpc; settings: Settings; priceOf: (token: string) => number | null; feeSources?: string[]; liquidityTargets?: string[]; since?: string; burnLogs?: BurnLogReader }) {
+    this.burnLogs = o.burnLogs ?? scanBurnLogs
     this.ctx = {
-      feeWallet: FEE_WALLET, sense: SENSE,
+      feeWallet: FEE_WALLET, coin: COIN,
       feeSources: new Set([...FEE_SOURCES, ...(o.feeSources ?? [])].map(a => a.toLowerCase())),
       liquidityTargets: new Set((o.liquidityTargets ?? []).map(a => a.toLowerCase())),
       priceOf: t => (t === USDC ? 1 : o.priceOf(t)),
@@ -298,7 +384,7 @@ export class SenseProgram {
   }
 
   view() {
-    return view(this.state, this.deadBalance, Date.now(), this.o.since ?? PROGRAM.since)
+    return view(this.state, this.deadBalance, Date.now(), this.o.since ?? PROGRAM.since, this.head)
   }
 
   async tick(deadline = Date.now() + 25_000) {
@@ -307,13 +393,14 @@ export class SenseProgram {
     try {
       const rpc = this.o.rpc
       const head = Number(BigInt(await rpc.call<string>('eth_blockNumber', [])))
+      this.head = head
       if (!this.state.startBlock) {
         // The first block at or after the program's start, once the chain gets there.
         const start = await this.firstBlockAt(Date.parse(this.o.since ?? PROGRAM.since) / 1000, head)
         if (start === null) return
         this.state = { ...this.state, startBlock: start, scannedTo: start - 1 }
         await this.o.settings.setSetting(KEY, JSON.stringify(this.state)).catch(() => {})
-        log.info('sense program: counting from', { block: start })
+        log.info('coin program: counting from', { block: start })
       }
       const w = pad(FEE_WALLET as `0x${string}`)
       let from = this.state.scannedTo + 1
@@ -321,8 +408,8 @@ export class SenseProgram {
         const slices: [number, number][] = []
         for (let a = from; a <= head && slices.length < PROGRAM.perBatch; a += PROGRAM.slice) slices.push([a, Math.min(head, a + PROGRAM.slice - 1)])
         const reqs = slices.flatMap(([a, b]) => [
-          { method: 'eth_getLogs', params: [{ address: [USDC, NATIVE_LOGGER, SENSE], topics: [TRANSFER, null, w], fromBlock: hex(a), toBlock: hex(b) }] },
-          { method: 'eth_getLogs', params: [{ address: [USDC, NATIVE_LOGGER, SENSE], topics: [TRANSFER, w], fromBlock: hex(a), toBlock: hex(b) }] },
+          { method: 'eth_getLogs', params: [{ address: [USDC, NATIVE_LOGGER, COIN], topics: [TRANSFER, null, w], fromBlock: hex(a), toBlock: hex(b) }] },
+          { method: 'eth_getLogs', params: [{ address: [USDC, NATIVE_LOGGER, COIN], topics: [TRANSFER, w], fromBlock: hex(a), toBlock: hex(b) }] },
         ])
         const res = await rpc.batch<RawLog[]>(reqs)
         let done = 0
@@ -337,16 +424,53 @@ export class SenseProgram {
         await this.process(logs)
         this.state.scannedTo = slices[done - 1][1]
         from = this.state.scannedTo + 1
-        await this.o.settings.setSetting(KEY, JSON.stringify(this.state)).catch(e => log.warn('sense program: not saved', { error: errMsg(e) }))
+        await this.o.settings.setSetting(KEY, JSON.stringify(this.state)).catch(e => log.warn('coin program: not saved', { error: errMsg(e) }))
         if (done < slices.length) break
       }
-      const bal = await rpc.call<string>('eth_call', [{ to: SENSE, data: `0x70a08231${DEAD.slice(2).padStart(64, '0')}` }, 'latest']).catch(() => null)
+      const bal = await rpc.call<string>('eth_call', [{ to: COIN, data: `0x70a08231${DEAD.slice(2).padStart(64, '0')}` }, 'latest']).catch(() => null)
       if (bal) this.deadBalance = Number(BigInt(bal)) / 1e18
+      await this.scanBurns(head, deadline + 15_000)
     } catch (e) {
-      log.warn('sense program: scan failed', { error: errMsg(e) })
+      log.warn('coin program: scan failed', { error: errMsg(e) })
     } finally {
       this.busy = false
     }
+  }
+
+  /** Every transfer of $ARCDEX to the dead address, from the coin's creation: the history takes a few
+   * minutes the first time, then only new blocks are read. */
+  private async scanBurns(head: number, deadline: number) {
+    let from = this.state.burnScannedTo + 1
+    while (from <= head && Date.now() < deadline) {
+      const r = await this.burnLogs(from, head, head, deadline)
+      if (r.scannedTo < from) break
+      const blocks = [...new Set(r.logs.map(l => Number(BigInt(l.blockNumber))))]
+      const timeOf = await this.blockTimes(blocks)
+      const burns = r.logs
+        .map(l => ({ l, block: Number(BigInt(l.blockNumber)), li: Number(BigInt(l.logIndex)) }))
+        .sort((a, b) => a.block - b.block || a.li - b.li)
+        .map(({ l, block }) => ({ tx: l.transactionHash.toLowerCase(), block, at: timeOf.get(block) ?? null, from: addr(l.topics[1]), amount: r2(Number(amount(l)) / 1e18) }))
+        .filter(b => b.amount > 0) // dust rounds to nothing (a launch sends a few wei)
+      this.state = { ...applyBurns(this.state, burns), burnScannedTo: r.scannedTo }
+      from = r.scannedTo + 1
+      await this.o.settings.setSetting(KEY, JSON.stringify(this.state)).catch(e => log.warn('coin program: not saved', { error: errMsg(e) }))
+    }
+  }
+
+  /** Blocks' times (ms): from the engine's client, else the archive endpoints for blocks it no longer serves. */
+  private async blockTimes(blocks: number[]): Promise<Map<number, number | null>> {
+    const out = new Map<number, number | null>()
+    if (!blocks.length) return out
+    const res = await this.o.rpc.batch<{ timestamp: string } | null>(blocks.map(b => ({ method: 'eth_getBlockByNumber', params: [hex(b), false] }))).catch(() => blocks.map(() => null))
+    for (let i = 0; i < blocks.length; i++) {
+      let ts = res[i]?.timestamp
+      for (const url of ts ? [] : ARCHIVE_RPCS) {
+        ts = await rpcCall<{ timestamp: string } | null>(url, 'eth_getBlockByNumber', [hex(blocks[i]), false]).then(x => x?.timestamp).catch(() => undefined)
+        if (ts) break
+      }
+      out.set(blocks[i], ts ? Number(BigInt(ts)) * 1000 : null)
+    }
+    return out
   }
 
   /** The transactions in these logs, each classified once. */

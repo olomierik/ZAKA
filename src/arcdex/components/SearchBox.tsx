@@ -64,13 +64,13 @@ export default function SearchBox({ navigate, mobileOpen = false }: { navigate: 
     const seen = new Set<string>()
     const out: FoundCoin[] = []
     const add = (c: FoundCoin) => { if (!seen.has(c.address)) { seen.add(c.address); out.push(c) } }
-    const fromMeta = (t: TokenMeta): FoundCoin => ({ address: t.address.toLowerCase(), symbol: t.symbol, name: t.name, image: t.image, pool: t.pool || null, launchpad: null, priceUsd: t.priceUsd || null, marketCapUsd: t.marketCapUsd, liquidityUsd: t.liquidityUsd || null, change24h: t.change24h, source: 'local' })
-    chips.forEach(c => add(fromMeta(c)))
+    const fromMeta = (t: TokenMeta, trusted = false): FoundCoin => ({ address: t.address.toLowerCase(), symbol: t.symbol, name: t.name, image: t.image, pool: t.pool || null, launchpad: t.launchpad, trusted, priceUsd: t.priceUsd || null, marketCapUsd: t.marketCapUsd, liquidityUsd: t.liquidityUsd || null, change24h: t.change24h, source: 'local' })
+    chips.forEach(c => add(fromMeta(c, true)))
     market.forEach(m => add(fromMeta(m)))
     launches.forEach(l => add({ address: l.token.toLowerCase(), symbol: l.symbol, name: l.name, image: l.image ?? null, pool: l.pool ?? null, launchpad: l.launchpad, priceUsd: l.priceUsd ?? null, marketCapUsd: l.marketCapUsd ?? null, liquidityUsd: null, change24h: null, source: 'local' }))
     return out
   }, [market, chips, launches])
-  const { results: tokens, searching, noToken } = useCoinFinder(q, local, 12)
+  const { results: tokens, searching, noToken, notLaunchpad } = useCoinFinder(q, local, 12)
   const isAddr = /^0x[0-9a-f]{40}$/.test(s)
 
   const openToken = (t: { address: string; pool: string | null }) => { setOpen(false); setQ(''); navigate({ name: 'argus', address: t.address, pool: t.pool ?? '' }) }
@@ -119,6 +119,7 @@ export default function SearchBox({ navigate, mobileOpen = false }: { navigate: 
               {(tab === 'all' || tab === 'tokens') && (tokens.length ? tokens.map(tokenRow)
                 : searching ? <div style={{ padding: 12, fontSize: '0.78rem', color: 'var(--text-muted)' }}>{T('Searching all of Arc…')}</div>
                 : noToken ? <div style={{ padding: 12, fontSize: '0.78rem', color: 'var(--text-muted)' }}>{T('No token at this address on Arc. It may be a wallet: see it below.')}</div>
+                : notLaunchpad ? <div style={{ padding: 12, fontSize: '0.78rem', color: 'var(--text-muted)' }}>{T('This token wasn’t launched on a launchpad, so ARCDEX doesn’t list it: coins from unknown contracts can be malicious.')}</div>
                 : tab === 'tokens' ? <Nothing /> : null)}
               {(tab === 'all' || tab === 'users') && (users.length ? users.map(u => (
                 <div key={u.address} className="menu-item" style={{ cursor: 'default' }}>

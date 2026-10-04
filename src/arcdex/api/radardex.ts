@@ -1,4 +1,4 @@
-// ARCSENSE — RadarDex API aggregator, all requests proxied via /api/radar
+// ARCDEX — RadarDex API aggregator, all requests proxied via /api/radar
 
 import { launchpadNamed, launchpadOf } from '../../../api/_launchpads'
 import { siteFetch } from './siteFetch'

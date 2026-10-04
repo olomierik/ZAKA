@@ -194,6 +194,7 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
                           <span className="mk-sym">{c.symbol}</span>
                           <span className="mk-quote">/{c.quoteSymbol || '—'}</span>
                           {c.stock && <StockTag />}
+                          {!c.stock && c.launchpad && <span className="mk-tag rh-lp-tag">{c.launchpad}</span>}
                         </div>
                         <div className="mk-sub">
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name(c)}</span>
@@ -225,7 +226,7 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
               <div key={c.address} className="token-card mk-row" onClick={() => navigate(rhPage(c))}>
                 <RhLogo src={c.image} symbol={c.symbol} size={30} />
                 <div className="mk-row-name">
-                  <div className="mk-row-sym"><b>{c.symbol}</b><span>/{c.quoteSymbol || '—'}</span>{c.stock && <StockTag />}</div>
+                  <div className="mk-row-sym"><b>{c.symbol}</b><span>/{c.quoteSymbol || '—'}</span>{c.stock && <StockTag />}{!c.stock && c.launchpad && <span className="mk-tag rh-lp-tag">{c.launchpad}</span>}</div>
                   <div className="mk-row-meta">{T('Vol')} {fmt(c.volume24h, '$')} · {T('MCap')} {fmt(c.marketCap, '$')}</div>
                 </div>
                 <div className="mk-row-price">{fmtPrice(c.priceUsd)}<small>{name(c).slice(0, 18)}</small></div>

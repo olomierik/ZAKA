@@ -1,4 +1,4 @@
-// ARCSENSE futures on the site: what the engine serves (status, signed prices, the chart, the
+// ARCDEX futures on the site: what the engine serves (status, signed prices, the chart, the
 // contract's state, trades), the account's own state read from Arc testnet, and sending
 // transactions there from the trading wallet or a connected wallet.
 //

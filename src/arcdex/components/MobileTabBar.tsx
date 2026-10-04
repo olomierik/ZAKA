@@ -7,27 +7,27 @@ import { useState } from 'react'
 import Sheet, { afterSheetClose } from './Sheet'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
 import type { Page } from '../App'
-import { SENSE_PAGE } from './NavBar'
+import { COIN_PAGE } from './NavBar'
 import { t as T, N_ } from '../lib/i18n'
 
-// Binance's app tabs: Markets, Futures, Trade in the middle ($SENSE's trading screen, as Binance's opens
+// Binance's app tabs: Markets, Futures, Trade in the middle ($ARCDEX's trading screen, as Binance's opens
 // on its own pair), Portfolio, More.
 const TABS: { page: Page['name']; icon: string; label: string; to: Page; trade?: boolean }[] = [
   { page: 'terminal', icon: '◈', label: N_('Markets'), to: { name: 'terminal' } },
   { page: 'futures', icon: '📊', label: N_('Futures'), to: { name: 'futures' } },
-  { page: 'argus', icon: '⇄', label: N_('Trade'), to: SENSE_PAGE, trade: true },
+  { page: 'argus', icon: '⇄', label: N_('Trade'), to: COIN_PAGE, trade: true },
   { page: 'portfolio', icon: '▤', label: N_('Portfolio'), to: { name: 'portfolio' } },
 ]
 
 const MORE: { icon: string; label: string; to: Page }[] = [
-  { icon: '🪶', label: N_('Robinhood Chain'), to: { name: 'robinhood' } },
+  { icon: '🏹', label: N_('Robinhood Chain'), to: { name: 'robinhood' } },
   { icon: '⇄', label: N_('Swap'), to: { name: 'swap' } },
   { icon: '◉', label: N_('Feed'), to: { name: 'feed' } },
   { icon: '◎', label: N_('Bridge'), to: { name: 'bridge' } },
   { icon: '♛', label: N_('Leaderboard'), to: { name: 'leaderboard' } },
   { icon: '⚑', label: N_('Clans'), to: { name: 'clans' } },
   { icon: '✦', label: N_('Rewards'), to: { name: 'rewards' } },
-  { icon: '🔥', label: N_('$SENSE burn'), to: { name: 'sense' } },
+  { icon: '🔥', label: N_('$ARCDEX burn'), to: { name: 'coin' } },
   { icon: '🔔', label: N_('Alerts'), to: { name: 'alerts' } },
   { icon: '⇅', label: N_('Transfers'), to: { name: 'transfers' } },
   { icon: '⚡', label: N_('Autotrade'), to: { name: 'signals' } },

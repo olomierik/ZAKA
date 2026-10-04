@@ -5,7 +5,7 @@ import { shortAddr } from '../lib/identity'
 import { t } from '../lib/i18n'
 import type { Page } from '../App'
 
-// ARCSENSE Points — ARCSENSE's own rewards program (fomo has token rewards; we
+// ARCDEX Points — ARCDEX's own rewards program (fomo has token rewards; we
 // start with seasonal points). Earned from real activity only, computed in
 // SQL from indexed router trades (arcdex_points): trading volume, 20% of
 // referrals' volume, active days and likes from other traders.
@@ -60,7 +60,7 @@ export function MyPoints({ address, navigate }: { address: string; navigate: (p:
         <Box label={t('Active days')} value={mine === undefined ? '…' : String(mine?.active_days ?? 0)} />
       </div>
       <div style={{ marginTop: 12 }}>
-        {row(t('Trading'), mine?.trade_pts ?? 0, t('1 point for every $1 you trade on ARCSENSE'))}
+        {row(t('Trading'), mine?.trade_pts ?? 0, t('1 point for every $1 you trade on ARCDEX'))}
         {row(t('Referrals'), mine?.referral_pts ?? 0, t('20% of the trading points of everyone you invited'))}
         {row(t('Active days'), mine?.day_pts ?? 0, t('10 points for each day you trade $5 or more'))}
         {row(t('Theses'), mine?.social_pts ?? 0, t('2 points per like from other traders (up to 500 a season)'))}
@@ -72,7 +72,7 @@ export function MyPoints({ address, navigate }: { address: string; navigate: (p:
         </div>
       )}
       <div style={{ marginTop: 14, fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-        {t('Points track real activity on ARCSENSE and reset every 30-day season. They are not a token and have no cash value; ARCSENSE may use them for future rewards, and the rules can change between seasons.')}
+        {t('Points track real activity on ARCDEX and reset every 30-day season. They are not a token and have no cash value; ARCDEX may use them for future rewards, and the rules can change between seasons.')}
       </div>
     </div>
   )
@@ -103,7 +103,7 @@ export function PointsBoard({ me, navigate }: { me: string | null; navigate: (p:
         </div>
       )}
       <div style={{ marginTop: 10, background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, overflow: 'hidden' }}>
-        {rows === null ? <Empty>{t('Loading…')}</Empty> : rows.length === 0 ? <Empty>{t('No points this season yet. Trade on ARCSENSE to earn the first ones.')}</Empty> : (
+        {rows === null ? <Empty>{t('Loading…')}</Empty> : rows.length === 0 ? <Empty>{t('No points this season yet. Trade on ARCDEX to earn the first ones.')}</Empty> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
             <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
               {['#', t('Trader'), t('Points'), t('Trading'), t('Referrals'), t('Days')].map((h, i) => <th key={h} style={{ padding: '10px 16px', textAlign: i >= 2 ? 'right' : 'left', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{h}</th>)}

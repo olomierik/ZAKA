@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
-import NavBar, { SENSE_PAGE } from './components/NavBar'
+import NavBar, { COIN_PAGE } from './components/NavBar'
 import Terminal from './pages/Terminal'
 // Everything but the Terminal loads on first visit to that page — they
 // pull in heavy libraries (Circle Bridge Kit, charting, launchpad flows)
@@ -9,7 +9,7 @@ const TokenPage       = lazy(() => import('./pages/TokenPage'))
 const CoinPage        = lazy(() => import('./pages/CoinPage'))
 const Portfolio       = lazy(() => import('./pages/Portfolio'))
 const FuturesPage     = lazy(() => import('./pages/FuturesPage'))
-const SensePage       = lazy(() => import('./pages/SensePage'))
+const ArcdexPage       = lazy(() => import('./pages/ArcdexPage'))
 const AutotradeSoon   = lazy(() => import('./pages/AutotradeSoon'))
 const Swap            = lazy(() => import('./pages/Swap'))
 const Bridge          = lazy(() => import('./pages/Bridge'))
@@ -70,18 +70,18 @@ export type Page =
   | { name: 'deploy-curve-router' }
   | { name: 'signals'; view?: 'market' | 'manage'; bot?: string }
   | { name: 'futures' }
-  | { name: 'sense' }
+  | { name: 'coin' }
   | { name: 'robinhood' }
   | { name: 'rh-token'; address: string; pool?: string }
 
 const fromUrl = (): Page => pathToPage(window.location.pathname, window.location.search) ?? { name: 'terminal' }
 
 const MOBILE_NAV: [Page, string, string][] = [
-  [{ name: 'terminal' }, '◈', N_('Markets')], [{ name: 'robinhood' }, '🪶', N_('Robinhood Chain')], [SENSE_PAGE, '◆', N_('Spot')], [{ name: 'futures' }, '📊', N_('Futures')], [{ name: 'swap' }, '⇄', N_('Swap')],
+  [{ name: 'terminal' }, '◈', N_('Markets')], [{ name: 'robinhood' }, '🏹', N_('Robinhood Chain')], [COIN_PAGE, '◆', N_('Spot')], [{ name: 'futures' }, '📊', N_('Futures')], [{ name: 'swap' }, '⇄', N_('Swap')],
   [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'portfolio' }, '▤', N_('Portfolio')], [{ name: 'feed' }, '◉', N_('Feed')],
   [{ name: 'leaderboard' }, '♛', N_('Leaderboard')], [{ name: 'clans' }, '⚑', N_('Clans')], [{ name: 'rewards' }, '✦', N_('Rewards')],
   [{ name: 'signals' }, '⚡', N_('Autotrade')], [{ name: 'alerts' }, '🔔', N_('Alerts')], [{ name: 'transfers' }, '⇅', N_('Transfers')],
-  [{ name: 'sense' }, '🔥', N_('$SENSE burn')],
+  [{ name: 'coin' }, '🔥', N_('$ARCDEX burn')],
 ]
 
 export default function App() {
@@ -165,7 +165,7 @@ export default function App() {
           {/* The launchpad is hidden (owner, 2026-10-03): its address shows the spot terminal. */}
           {page.name === 'launchpad'   && <Terminal navigate={navigate} registerFeedTokens={registerFeedTokens} />}
           {page.name === 'futures'     && <FuturesPage navigate={navigate} />}
-          {page.name === 'sense'       && <SensePage navigate={navigate} />}
+          {page.name === 'coin'       && <ArcdexPage navigate={navigate} />}
           {page.name === 'swap'        && <Swap navigate={navigate} />}
           {page.name === 'bridge'      && <Bridge key={page.dir ?? 'out'} initialDir={page.dir ?? 'out'} navigate={navigate} />}
           {page.name === 'trader'      && <TraderPage key={page.address} address={page.address} navigate={navigate} />}

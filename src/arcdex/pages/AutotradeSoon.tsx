@@ -1,4 +1,4 @@
-// /autotrade, /bots — Autotrade is coming soon (ARCSENSE, 2026-10-03, owner:
+// /autotrade, /bots — Autotrade is coming soon (ARCDEX, 2026-10-03, owner:
 // "hide the autotrade marketplace and let the users see only COMING SOON").
 // Bots open no new trades (AUTOTRADE_PAUSED on the engine). An owner whose
 // bots hold USDC still gets one button to them, to manage and withdraw
@@ -22,7 +22,7 @@ export default function AutotradeSoon({ navigate }: { navigate: (p: Page) => voi
       <div className="soon-hero">
         <span className="soon-badge">{T('Coming soon')}</span>
         <h2 className="page-h">⚡ {T('Autotrade')}</h2>
-        <p className="soon-lead">{T('Bots that trade spot and futures for you, with the safety checks ARCSENSE runs on every coin.')}</p>
+        <p className="soon-lead">{T('Bots that trade spot and futures for you, with the safety checks ARCDEX runs on every coin.')}</p>
       </div>
       {bots !== null && bots > 0 && (
         <div className="soon-owner">

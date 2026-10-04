@@ -10,7 +10,7 @@
 //          Chain (ETH pays the gas): SpokePoolPeriphery.swapAndBridge.
 //  • gas:  a little USDC on Arc → ETH on Robinhood Chain, for selling later.
 //
-// ARCSENSE's fee is Across's `appFee`, taken from what the trade delivers and
+// ARCDEX's fee is Across's `appFee`, taken from what the trade delivers and
 // sent to the fee wallet in the same fill: a buy's in the coin (on Robinhood
 // Chain), a sale's in USDC (on Arc). The gas top-up carries no fee.
 //
@@ -31,7 +31,7 @@ export const RH_ID = 4663
 export const ARC_USDC = '0x3600000000000000000000000000000000000000'
 const ZERO = '0x0000000000000000000000000000000000000000'
 
-/** Across's contracts that take ARCSENSE's deposits (Across's deployments, checked 2026-10-04). */
+/** Across's contracts that take ARCDEX's deposits (Across's deployments, checked 2026-10-04). */
 export const ACROSS_TARGETS = {
   /** SpokePool on Arc: buys and gas top-ups. */
   [ARC_ID]: '0x9b4a302a548c7e313c2b74c461db7b84d3074a84',
@@ -63,7 +63,7 @@ export interface QuoteRequest {
   /** What goes in, in the input token's smallest units (USDC: 6 decimals). */
   amount: bigint
   trader: string
-  /** ARCSENSE's fee in basis points (the swap router's, 200); 0 for gas. */
+  /** ARCDEX's fee in basis points (the swap router's, 200); 0 for gas. */
   feeBps: number
 }
 
@@ -81,7 +81,7 @@ export interface AcrossQuote {
   minOut: bigint
   outDecimals: number
   outSymbol: string
-  /** ARCSENSE's fee, in the output token. */
+  /** ARCDEX's fee, in the output token. */
   appFee: bigint
   /** Across's bridge fee and destination gas, in dollars. */
   bridgeFeeUsd: number
@@ -139,7 +139,7 @@ export function quoteUrl(r: QuoteRequest): string {
 let proxyOff = false
 
 /** Across, through the site's own /across (netlify/edge-functions/across.ts), which adds
- * ARCSENSE's API key (Across rate-limits requests without one); else Across directly. */
+ * ARCDEX's API key (Across rate-limits requests without one); else Across directly. */
 async function acrossFetch(path: string, signal?: AbortSignal): Promise<Response> {
   if (typeof window !== 'undefined' && !proxyOff) {
     try {
@@ -174,7 +174,7 @@ interface ApiQuote {
 }
 
 function fail(why: string): never {
-  throw new AcrossError(T('This quote didn’t pass ARCSENSE’s checks ({why}), so nothing was sent.', { why }))
+  throw new AcrossError(T('This quote didn’t pass ARCDEX’s checks ({why}), so nothing was sent.', { why }))
 }
 
 /** Checks a Swap API answer against what was asked for, and returns it as a
@@ -192,7 +192,7 @@ export function checkQuote(r: QuoteRequest, j: ApiQuote): AcrossQuote {
 
   if (!tx?.data || !tx.to) fail('Across sent no transaction')
   if (Number(tx.chainId) !== chainId) fail('the transaction is for another chain')
-  if (lc(tx.to) !== target) fail('the transaction goes to a contract ARCSENSE doesn’t know')
+  if (lc(tx.to) !== target) fail('the transaction goes to a contract ARCDEX doesn’t know')
   if (big(tx.value) !== 0n) fail('the transaction would send native funds')
   if (j.crossSwapType !== (buyLike ? 'bridgeableToAny' : 'anyToBridgeable')) fail(`an unexpected route (${j.crossSwapType ?? '?'})`)
   if (lc(j.inputToken?.address) !== inputToken || Number(j.inputToken?.chainId) !== chainId) fail('the quote spends another token')
@@ -226,11 +226,11 @@ export function checkQuote(r: QuoteRequest, j: ApiQuote): AcrossQuote {
   // instructions must then name the trader (and the fee wallet, for a fee).
   const data = lc(tx.data)
   if (recipient !== trader) {
-    if (recipient !== handler) fail('the trade is delivered to an address ARCSENSE doesn’t know')
+    if (recipient !== handler) fail('the trade is delivered to an address ARCDEX doesn’t know')
     if (data.split(trader.slice(2)).length - 1 < 2) fail('the trade’s instructions don’t pay you')
   }
   const appFee = big(j.fees?.total?.details?.app?.amount)
-  if (r.side !== 'gas' && r.feeBps > 0 && !data.includes(FEE_WALLET.slice(2))) fail('the fee doesn’t go to ARCSENSE')
+  if (r.side !== 'gas' && r.feeBps > 0 && !data.includes(FEE_WALLET.slice(2))) fail('the fee doesn’t go to ARCDEX')
   if (r.side === 'gas' && appFee !== 0n) fail('a fee on gas')
   const minOut = big(j.minOutputAmount)
   const expectedOut = big(j.expectedOutputAmount)
@@ -270,7 +270,7 @@ export function checkQuote(r: QuoteRequest, j: ApiQuote): AcrossQuote {
 // before it can be sent.
 
 export interface QuoteValue {
-  /** What the swap delivered (before ARCSENSE's fee and after the bridge's) as a share of its market value: 1 is the market price. */
+  /** What the swap delivered (before ARCDEX's fee and after the bridge's) as a share of its market value: 1 is the market price. */
   rate: number
   /** Price impact: what the swap lost against the market price (0.03 = 3%; negative = better than the market). */
   impact: number

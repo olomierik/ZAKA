@@ -128,7 +128,7 @@ export function tokenRisk(t: ArcToken, o: { sameTicker?: boolean } = {}): Risk {
   return riskOf({
     liquidityUsd: t.liquidity, marketCapUsd: t.marketCap, ageMs: t.ageMs || null,
     holders: t.holderCount || null, txns24h: t.txCount24h, buys24h: t.buys24h, sells24h: t.sells24h,
-    change24h: t.priceChange24h, curve: t.launchpad === 'ARCSENSE', bonded: t.graduated || null,
+    change24h: t.priceChange24h, curve: t.launchpad === 'ARCDEX', bonded: t.graduated || null,
     copycat: copycatOf(t.symbol, t.address), sameTicker: o.sameTicker,
   })
 }

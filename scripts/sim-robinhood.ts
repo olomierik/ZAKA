@@ -1,4 +1,4 @@
-// Simulates the exact transactions ARCSENSE sends for a Robinhood Chain trade
+// Simulates the exact transactions ARCDEX sends for a Robinhood Chain trade
 // (src/arcdex/lib/across.ts), on mainnet, from a throwaway address with state
 // overrides: nothing is signed or sent, no funds or keys.
 //
@@ -61,7 +61,7 @@ for (const [label, req] of [
   ['$0.50 → ETH for gas', { side: 'gas' as const, token: '', amount: 500_000n, trader: ME, feeBps: 0 }],
 ] as const) {
   const q = await getAcrossQuote(req)
-  ok(true, `${label}: Across’s quote passed ARCSENSE’s checks (min ${q.minOut} out)`)
+  ok(true, `${label}: Across’s quote passed ARCDEX’s checks (min ${q.minOut} out)`)
   if (!usdcAllow) continue
   const exact = numberToHex(q.inputAmount, { size: 32 })
   const funded = { address: ME, balance: 100n * 10n ** 18n }
@@ -75,7 +75,7 @@ for (const [label, req] of [
 console.log('a sale, signed on Robinhood Chain')
 const amount = 10n ** 19n // 10 MOW
 const q = await getAcrossQuote({ side: 'sell', token: MOW, amount, trader: ME, feeBps: 200 })
-ok(q.chainId === 4663 && q.minOut > 0n, `10 MOW → USDC on Arc: the quote passed ARCSENSE’s checks (min $${(Number(q.minOut) / 1e6).toFixed(2)})`)
+ok(q.chainId === 4663 && q.minOut > 0n, `10 MOW → USDC on Arc: the quote passed ARCDEX’s checks (min $${(Number(q.minOut) / 1e6).toFixed(2)})`)
 const mowBal = await balanceSlot(rh, MOW, amount)
 const mowAllow = await allowanceSlot(rh, MOW, ACROSS_TARGETS[4663] as Address)
 ok(mowBal !== null && mowAllow !== null, 'found MOW’s balance and allowance slots (read back)')

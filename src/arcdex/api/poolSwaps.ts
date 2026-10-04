@@ -76,7 +76,7 @@ export function decodeSwap(l: RawLog & { removed?: boolean }, m: PoolMeta): Pool
     time: l.blockTimestamp ? parseInt(l.blockTimestamp, 16) * 1000 : Date.now(),
   }
   if (m.curve) {
-    // Only this curve's own events. They name the trader, or ARCSENSE's curve
+    // Only this curve's own events. They name the trader, or ARCDEX's curve
     // router for a trade through it: then the maker is the transaction's
     // sender, looked up like a pool swap's (resolveMakers).
     if (l.address.toLowerCase() !== m.pool) return null

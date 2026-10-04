@@ -75,7 +75,7 @@ export function fundingMessage(wallet: string, ledger: Ledger): string {
     return [k, d.from, d.usd, d.mintTx ?? '']
   })
   const body = JSON.stringify({ scannedTo: ledger.scannedTo, deposits, contracts: [...ledger.contracts].sort() })
-  return `ARCSENSE funding wallets v2\n${wallet.toLowerCase()}\n${body}`
+  return `ARCDEX funding wallets v2\n${wallet.toLowerCase()}\n${body}`
 }
 
 /** The rule for one transfer out: `guarded` = the trading wallet is

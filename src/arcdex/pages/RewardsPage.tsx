@@ -78,7 +78,7 @@ export default function RewardsPage({ navigate }: { navigate: (p: Page) => void 
   return (
     <div className="token-page content-page">
       <h2 className="page-h">{T("Rewards")}</h2>
-      <div style={{ fontSize: '0.86rem', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5 }}>{T("Earn")}{' '}<b style={{ color: 'var(--text)' }}>{sharePct}{' '}{T("of the trading fees")}</b>{' '}{T("of everyone you bring to ARCSENSE, in USDC, on every trade they make, for good. Launch a coin and earn 60% of its creator tax too.")}</div>
+      <div style={{ fontSize: '0.86rem', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5 }}>{T("Earn")}{' '}<b style={{ color: 'var(--text)' }}>{sharePct}{' '}{T("of the trading fees")}</b>{' '}{T("of everyone you bring to ARCDEX, in USDC, on every trade they make, for good. Launch a coin and earn 60% of its creator tax too.")}</div>
 
       {!live && (
         <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 10, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: '#fcd34d', fontSize: '0.8rem' }}>{T("Referral payouts switch on with the next router upgrade. Links you share now are remembered by the people who click them.")}</div>
@@ -102,7 +102,7 @@ export default function RewardsPage({ navigate }: { navigate: (p: Page) => void 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <input readOnly value={link} onFocus={e => e.currentTarget.select()} style={{ flex: 1, minWidth: 220, padding: '10px 12px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', fontFamily: 'var(--mono)', fontSize: '0.84rem' }} />
               <button onClick={() => { void navigator.clipboard?.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500) }} style={btn('var(--adx-accent)')}>{copied ? T("Copied ✓") : T("Copy")}</button>
-              <a href={tweetUrl('Trading Arc memecoins on ARCSENSE — live charts, see who’s buying, one-tap trades. Join me:', link)} target="_blank" rel="noopener noreferrer" style={{ ...btn('#000'), textDecoration: 'none', border: '1px solid #333' }}>{T("Post on 𝕏")}</a>
+              <a href={tweetUrl('Trading Arc memecoins on ARCDEX — live charts, see who’s buying, one-tap trades. Join me:', link)} target="_blank" rel="noopener noreferrer" style={{ ...btn('#000'), textDecoration: 'none', border: '1px solid #333' }}>{T("Post on 𝕏")}</a>
             </div>
             {!profile?.username && (
               <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: 10 }}>{T("Want a short link like")}{' '}<span style={{ fontFamily: 'var(--mono)' }}>{T("arcsense.site/r/yourname")}</span>?{' '}
@@ -134,14 +134,14 @@ export default function RewardsPage({ navigate }: { navigate: (p: Page) => void 
                 </div>
               ))}
               <div style={{ marginTop: 14, fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                <b style={{ color: 'var(--text)' }}>{T("How it works")}</b><br />{T("1. Someone opens your link and makes their first trade on ARCSENSE.")}<br />{T("2. The swap router records you as their referrer on-chain — permanently.")}<br />{T("3. On every trade they make after that,")}{' '}{sharePct}{' '}{T("of the")}{' '}{info ? pct(info.feeBps) : ''}{' '}{T("platform fee goes straight to your wallet in USDC, in the same transaction. No claiming, no minimums.")}</div>
+                <b style={{ color: 'var(--text)' }}>{T("How it works")}</b><br />{T("1. Someone opens your link and makes their first trade on ARCDEX.")}<br />{T("2. The swap router records you as their referrer on-chain — permanently.")}<br />{T("3. On every trade they make after that,")}{' '}{sharePct}{' '}{T("of the")}{' '}{info ? pct(info.feeBps) : ''}{' '}{T("platform fee goes straight to your wallet in USDC, in the same transaction. No claiming, no minimums.")}</div>
             </div>
           )}
 
           {tab === 'creator' && (
             <div>
               {creator === null ? <Empty>{T("Reading your launches from the chain…")}</Empty> : creator.length === 0 ? (
-                <Empty>{T("You haven't launched a coin on ARCSENSE yet. Launch one, set a creator tax of 0–3%, and 60% of it is paid to you in USDC on every trade — automatically.")}{LAUNCHPAD_ADDRESS && <div style={{ marginTop: 12 }}><button onClick={() => navigate({ name: 'launchpad' })} style={btn('var(--adx-accent)')}>{T("Launch a coin")}</button></div>}
+                <Empty>{T("You haven't launched a coin on ARCDEX yet. Launch one, set a creator tax of 0–3%, and 60% of it is paid to you in USDC on every trade — automatically.")}{LAUNCHPAD_ADDRESS && <div style={{ marginTop: 12 }}><button onClick={() => navigate({ name: 'launchpad' })} style={btn('var(--adx-accent)')}>{T("Launch a coin")}</button></div>}
                 </Empty>
               ) : creator.map(c => (
                 <div key={c.token} className="reward-row">

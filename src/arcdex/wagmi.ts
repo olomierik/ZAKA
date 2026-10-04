@@ -75,11 +75,11 @@ export const wagmiConfig = createConfig({
     lazyWalletConnect({
       projectId: (import.meta.env.VITE_WC_PROJECT_ID as string | undefined) ?? 'e5f3a751de0ba10999179b7f1e2d557b',
       showQrModal: true,
-      // Above ARCSENSE's own sheets (1100) and modals (1200): connecting from
+      // Above ARCDEX's own sheets (1100) and modals (1200): connecting from
       // the Buy sheet on a phone used to open the wallet list behind it.
       qrModalOptions: { themeVariables: { '--wcm-z-index': '1300' } },
-      metadata: { name: 'ARCSENSE', description: 'Spot and futures exchange on Arc', url: 'https://arcsense.site', icons: [APP_ICON] },
+      metadata: { name: 'ARCDEX', description: 'Spot and futures exchange on Arc', url: 'https://arcsense.site', icons: [APP_ICON] },
     }),
-    coinbaseWallet({ appName: 'ARCSENSE', appLogoUrl: APP_ICON }),
+    coinbaseWallet({ appName: 'ARCDEX', appLogoUrl: APP_ICON }),
   ],
 })

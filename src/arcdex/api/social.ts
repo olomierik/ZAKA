@@ -1,4 +1,4 @@
-// ARCSENSE social layer — client side.
+// ARCDEX social layer — client side.
 //
 // Reads go straight to Supabase with the public anon key (every arcdex_*
 // table is public-read). Writes go through /api/social with a session
@@ -268,7 +268,7 @@ const SESSION_KEY = (a: string) => `arcdex:session:${lc(a)}`
 /** Same text the server rebuilds in api/_session.ts — must match exactly. */
 function signInMessage(address: string, issuedAt: string, nonce: string): string {
   return [
-    'Sign in to ARCSENSE (arcsense.site)',
+    'Sign in to ARCDEX (arcsense.site)',
     '',
     'This only proves you own this wallet. It is not a transaction and costs nothing.',
     '',
@@ -308,12 +308,12 @@ export async function signIn(trader: Trader): Promise<string> {
   return j.token
 }
 
-/** POSTs JSON to one of ARCSENSE's signed-in endpoints as `trader` (served by the market engine since 2026-10-03; siteFetch). */
+/** POSTs JSON to one of ARCDEX's signed-in endpoints as `trader` (served by the market engine since 2026-10-03; siteFetch). */
 function authedPost<T>(trader: Trader, url: string, body: Record<string, unknown>): Promise<T> {
   return authedRequest<T>(trader, url, JSON.stringify(body), 'application/json')
 }
 
-/** POSTs to one of ARCSENSE's signed-in endpoints as `trader`, signing in
+/** POSTs to one of ARCDEX's signed-in endpoints as `trader`, signing in
  * first if needed (and once more if the server rejects the token). */
 export async function authedRequest<T>(trader: Trader, url: string, body: BodyInit, contentType: string): Promise<T> {
   if (!trader.address) throw new Error('Connect or unlock a wallet first')
@@ -345,7 +345,7 @@ export async function socialWrite<T = unknown>(trader: Trader, action: string, p
 
 // ── account: sign out everywhere, support ─────────────────────────────
 
-/** Invalidates every ARCSENSE session for this wallet on every device
+/** Invalidates every ARCDEX session for this wallet on every device
  * (including this one — the next write signs in again). */
 export async function signOutEverywhere(trader: Trader): Promise<void> {
   await socialWrite(trader, 'session.revoke_all')

@@ -382,7 +382,7 @@ try {
   const ti = curveRowToArcToken(gi, NOW * 1000)
   ok(ti.poolAddress === I_POOL && ti.bondingProgress === null && !ti.graduated && ti.launchpad === 'SolonPad', 'as a Terminal row: SolonPad badge, opens on its pool')
   const { withCurveCoins } = await import('../src/arcdex/lib/tokenMeta')
-  const meta = (address: string, volume24h: number) => ({ address, symbol: address.slice(2, 5), name: '', image: null, priceUsd: 1, pool: '', change24h: 0, change1h: 0, marketCapUsd: null, volume24h, liquidityUsd: 0, bonded: null, createdAt: null })
+  const meta = (address: string, volume24h: number) => ({ address, symbol: address.slice(2, 5), name: '', image: null, priceUsd: 1, pool: '', change24h: 0, change1h: 0, marketCapUsd: null, volume24h, liquidityUsd: 0, bonded: null, createdAt: null, launchpad: 'Argus' })
   const gtList = [meta(a('01'), 900), meta(a('02'), 50), meta(a('03'), 70), meta(a('04'), 10)] // a carried coin (70) sits out of volume order
   const merged = withCurveCoins(gtList, [meta(a('11'), 60), meta(a('02'), 999), meta(a('12'), 5_000), meta(a('13'), 0)])
   ok(merged.map(x => x.address.slice(2, 4)).join() === '12,01,11,02,03,04,13', 'the shared market list: curve coins placed by volume, GeckoTerminal\'s own order kept, no coin twice')

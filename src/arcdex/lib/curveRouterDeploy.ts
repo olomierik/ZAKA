@@ -373,8 +373,8 @@ export async function verifyRouter(address: Address, report: Report, opts: { own
   if (opts.owner && !same(owner, opts.owner)) fail(T('Its owner is {owner}, not your wallet.', { owner }))
   else report({ ok: opts.owner ? true : null, text: opts.owner ? T('Owned by your wallet, {owner}', { owner }) : T('Owned by {owner}', { owner }) })
 
-  if (same(feeWallet, ROUTER_SETUP.feeWallet)) report({ ok: true, text: T("Fees go to ARCSENSE's fee wallet, {wallet}", { wallet: feeWallet }) })
-  else fail(T("Fees go to {wallet}, not ARCSENSE's fee wallet {expected}.", { wallet: feeWallet, expected: ROUTER_SETUP.feeWallet }))
+  if (same(feeWallet, ROUTER_SETUP.feeWallet)) report({ ok: true, text: T("Fees go to ARCDEX's fee wallet, {wallet}", { wallet: feeWallet }) })
+  else fail(T("Fees go to {wallet}, not ARCDEX's fee wallet {expected}.", { wallet: feeWallet, expected: ROUTER_SETUP.feeWallet }))
 
   const settingsOk = feeBps === ROUTER_SETUP.feeBps && referralShareBps === ROUTER_SETUP.referralShareBps && !paused && version === ROUTER_SETUP.version
   const settings = T('Fee {fee} of each trade, {share} of it to the referrer; {state}', { fee: pct(feeBps), share: pct(referralShareBps), state: paused ? T('paused') : T('open for trading') })
@@ -384,7 +384,7 @@ export async function verifyRouter(address: Address, report: Report, opts: { own
   if (same(mercuriFactory, ROUTER_SETUP.mercuriFactory) && same(solonFactory, ROUTER_SETUP.solonFactory) && same(usdcToken, ROUTER_SETUP.usdc)) {
     report({ ok: true, text: T('Trades coins of the Mercuri factory {mercuri} and the SolonPad factory {solon}', { mercuri: shortAddress(mercuriFactory), solon: shortAddress(solonFactory) }) })
   } else {
-    fail(`factories ${mercuriFactory} / ${solonFactory}, USDC ${usdcToken}: not the ones ARCSENSE deploys with`)
+    fail(`factories ${mercuriFactory} / ${solonFactory}, USDC ${usdcToken}: not the ones ARCDEX deploys with`)
   }
 
   const trades = await tradeChecks({ router: address, fees: { feeBps, referralShareBps, feeWallet }, coins: opts.coins, fresh: !!opts.fresh, atBlock: opts.atBlock }, report)

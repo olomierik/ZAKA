@@ -8,6 +8,7 @@
 // Everything is merged by address and ranked with the Launchpad's matcher
 // (exact ticker or address, then prefixes, then contains; bigger coins first).
 
+import { isLaunchpadCoin } from '../../../api/_launchpads'
 import { useEffect, useMemo, useState } from 'react'
 import { erc20Abi, type Address } from 'viem'
 import { searchScore, type SearchHit } from '../../../api/_marketProtocol'
@@ -23,6 +24,8 @@ export interface FoundCoin {
   image: string | null
   pool: string | null
   launchpad: string | null
+  /** A blue chip (Circle's own tokens and the like): listed whatever its launchpad. */
+  trusted?: boolean
   priceUsd: number | null
   marketCapUsd: number | null
   liquidityUsd: number | null
@@ -88,6 +91,9 @@ export function rankCoins(coins: FoundCoin[], q: string, limit = 15): FoundCoin[
     byAddr.set(c.address, prev ? { ...c, ...Object.fromEntries(Object.entries(prev).filter(([, v]) => v !== null && v !== undefined)) } as FoundCoin : c)
   }
   return [...byAddr.values()]
+    // Launchpad coins only (owner, 2026-10-04): an address no launchpad made isn't offered. The blue
+    // chips (Circle's own tokens and the like) are trusted.
+    .filter(c => c.trusted || isLaunchpadCoin(c.launchpad))
     .map(c => ({ c, s: searchScore({ symbol: c.symbol, name: c.name, address: c.address }, q) || (c.address === q ? 6 : 0) }))
     .filter(x => x.s > 0)
     .sort((a, b) => b.s - a.s || (b.c.marketCapUsd ?? b.c.liquidityUsd ?? 0) - (a.c.marketCapUsd ?? a.c.liquidityUsd ?? 0))
@@ -96,7 +102,7 @@ export function rankCoins(coins: FoundCoin[], q: string, limit = 15): FoundCoin[
 }
 
 /** Coins matching `query`: `local` at once, then the engine, GeckoTerminal and (for an address) the chain. */
-export function useCoinFinder(query: string, local: FoundCoin[], limit = 15): { results: FoundCoin[]; searching: boolean; noToken: boolean } {
+export function useCoinFinder(query: string, local: FoundCoin[], limit = 15): { results: FoundCoin[]; searching: boolean; noToken: boolean; notLaunchpad: boolean } {
   const q = normQuery(query)
   const [remote, setRemote] = useState<{ q: string; coins: FoundCoin[] } | null>(null)
   const [searching, setSearching] = useState(false)
@@ -116,5 +122,7 @@ export function useCoinFinder(query: string, local: FoundCoin[], limit = 15): { 
     return rankCoins([...local, ...(remote?.q === q ? remote.coins : [])], q, limit)
   }, [q, local, remote, limit])
 
-  return { results, searching, noToken: isAddress(q) && !searching && remote?.q === q && results.length === 0 }
+  // A full address that is a token, but not a launchpad's: said so, never listed.
+  const notLaunchpad = isAddress(q) && remote?.q === q && results.length === 0 && remote.coins.some(c => c.address === q && !isLaunchpadCoin(c.launchpad))
+  return { results, searching, noToken: isAddress(q) && !searching && remote?.q === q && results.length === 0 && !notLaunchpad, notLaunchpad }
 }

@@ -1,3 +1,4 @@
+import { isLaunchpadCoin } from '../../../api/_launchpads'
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react'
 import {
   getLaunchpadColor,
@@ -21,7 +22,7 @@ import MobileHome from '../components/MobileHome'
 import FoundOnArc from '../components/FoundOnArc'
 import RiskBadge from '../components/RiskBadge'
 import { RISK_COLOR as RISK_DOT, riskText, tokenRisk, type Risk } from '../lib/risk'
-import { SENSE_IMAGE, SENSE_LC, SENSE_POOL, fmtPct as fmtPctSense, fmtSmallUsd, useSense } from '../lib/sense'
+import { COIN_IMAGE, COIN_LC, COIN_POOL, fmtPct as fmtPctCoin, fmtSmallUsd, useCoin } from '../lib/coin'
 import { ChainSwitch } from '../components/Robinhood'
 
 interface Props {
@@ -32,9 +33,9 @@ interface Props {
 const ARC_EXPLORER = 'https://explorer.arc.io'
 
 // Every launchpad's coin with a pool (Argus, Minara, Tolly, …) opens the
-// full coin page; ARCSENSE's own curve coins keep theirs.
+// full coin page; ARCDEX's own curve coins keep theirs.
 function openPage(t: ArcToken): Page {
-  return t.launchpad !== 'ARCSENSE' && t.poolAddress
+  return t.launchpad !== 'ARCDEX' && t.poolAddress
     ? { name: 'argus', address: t.address, pool: t.poolAddress }
     : { name: 'token', address: t.address, symbol: t.symbol }
 }
@@ -265,9 +266,9 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   const [maxMcap,  setMaxMcap]  = useState('')
   const [minVol,   setMinVol]   = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const sense = useSense()
+  const coinQ = useCoin()
 
-  // ARCSENSE's own launches, Argus (every Portal) and every other Arc
+  // ARCDEX's own launches, Argus (every Portal) and every other Arc
   // launchpad GeckoTerminal lists (api/_launchpads.ts), each with its badge.
   const argusSeen = useRef(new Map<string, { t: ArcToken; seen: number }>())
   const oursRef = useRef<ArcToken[]>([])
@@ -323,7 +324,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     const launched = [...launchesRef.current.values()].filter(l => !listed.has(l.token)).map(launchToArcToken)
     for (const t of launched) listed.add(t.address.toLowerCase())
     const busy = [...activeRef.current.values()].filter(a => !listed.has(a.token)).map(activeToArcToken).filter((t): t is ArcToken => t !== null)
-    const data = [...oursRef.current, ...[...seen.values()].map(v => v.t), ...curves, ...launched, ...busy].map(withTick)
+    // Launchpad coins only (owner, 2026-10-04): a coin from a contract no launchpad made isn't listed.
+    const data = [...oursRef.current, ...[...seen.values()].map(v => v.t), ...curves, ...launched, ...busy].filter(t => isLaunchpadCoin(t.launchpad)).map(withTick)
     setTokens(data)
     // Keep the loading state until there's something to show — the first
     // source to land may be an empty one.
@@ -414,7 +416,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     const pools = new Map<string, { token: string; quote: string }>()
     const curve = new Set<string>()
     for (const t of tokens) {
-      if (t.launchpad === 'ARCSENSE') curve.add(t.address.toLowerCase())
+      if (t.launchpad === 'ARCDEX') curve.add(t.address.toLowerCase())
       const quote = t.quoteAddress || QUOTE_BY_SYMBOL[t.quoteSymbol]
       if (t.poolAddress && quote) pools.set(t.poolAddress.toLowerCase(), { token: t.address.toLowerCase(), quote: quote.toLowerCase() })
     }
@@ -474,7 +476,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   // reset page on filter change
   useEffect(() => { setPage(1); setShown(PAGE_SIZE) }, [source, viewTab, search, sortCol, sortAsc, minMcap, maxMcap, minVol])
 
-  // Holder counts from ARCSENSE's own on-chain index, for the coins it has
+  // Holder counts from ARCDEX's own on-chain index, for the coins it has
   // counted within the last day (every coin page keeps its coin's count
   // current) — the market list itself carries none.
   const tokensRef = useRef(tokens)
@@ -601,21 +603,21 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   }
   const sortTh = (col: SortCol, label: string) => <SortTh col={col} label={label} sortCol={sortCol} sortAsc={sortAsc} onSort={toggleSort} />
 
-  // $SENSE, pinned above the list (the first page, unless a search leaves it out): its row from the list, else
+  // $ARCDEX, pinned above the list (the first page, unless a search leaves it out): its row from the list, else
   // one built from the engine's numbers for it.
-  const listedSense = tokens.find(t => t.address.toLowerCase() === SENSE_LC)
-  const senseMatches = !search || 'sense arcsense'.includes(search.toLowerCase()) || SENSE_LC.includes(search.toLowerCase())
-  const senseRow: ArcToken | null = page !== 1 || !senseMatches ? null : listedSense ? { ...listedSense, logoUrl: SENSE_IMAGE } : (sense ? {
-    address: SENSE_LC, symbol: 'SENSE', name: 'ARCSENSE', decimals: 18, logoUrl: sense.image,
-    price: sense.priceUsd ?? 0, priceChange5m: 0, priceChange1h: 0, priceChange24h: sense.change24h ?? 0,
-    volume24h: sense.volume24h ?? 0, marketCap: sense.marketCapUsd ?? 0, liquidity: sense.liquidityUsd ?? 0,
-    ageMs: Date.now() - Date.parse('2026-10-03T16:34:23Z'), launchpad: 'Argus', poolAddress: SENSE_POOL,
-    txCount24h: sense.buys24h + sense.sells24h, holderCount: 0, buys24h: sense.buys24h, sells24h: sense.sells24h,
+  const listedCoin = tokens.find(t => t.address.toLowerCase() === COIN_LC)
+  const coinMatches = !search || 'arcdex arcd'.includes(search.toLowerCase()) || COIN_LC.includes(search.toLowerCase())
+  const coinRow: ArcToken | null = page !== 1 || !coinMatches ? null : listedCoin ? { ...listedCoin, logoUrl: COIN_IMAGE } : (coinQ ? {
+    address: COIN_LC, symbol: 'ARCDEX', name: 'ARCDEX', decimals: 18, logoUrl: coinQ.image,
+    price: coinQ.priceUsd ?? 0, priceChange5m: 0, priceChange1h: 0, priceChange24h: coinQ.change24h ?? 0,
+    volume24h: coinQ.volume24h ?? 0, marketCap: coinQ.marketCapUsd ?? 0, liquidity: coinQ.liquidityUsd ?? 0,
+    ageMs: Date.now() - Date.parse('2026-09-24T13:11:17Z'), launchpad: 'Argus', poolAddress: COIN_POOL,
+    txCount24h: coinQ.buys24h + coinQ.sells24h, holderCount: 0, buys24h: coinQ.buys24h, sells24h: coinQ.sells24h,
     verified: false, graduated: false, bondingProgress: null, spark: [], quoteSymbol: 'USDC',
   } : null)
 
-  // Binance's market overview: the most active coins, the biggest gainers and the most traded, beside $SENSE.
-  const primaries = curation.groups.map(g => g.primary).filter(t => t.address.toLowerCase() !== SENSE_LC && t.price > 0)
+  // Binance's market overview: the most active coins, the biggest gainers and the most traded, beside $ARCDEX.
+  const primaries = curation.groups.map(g => g.primary).filter(t => t.address.toLowerCase() !== COIN_LC && t.price > 0)
   const overview = {
     hot: [...primaries].sort((a, b) => activityOf(b) - activityOf(a) || b.volume24h - a.volume24h).slice(0, 3),
     gainers: primaries.filter(t => t.volume24h >= 500 && t.liquidity >= 1_000).sort((a, b) => b.priceChange24h - a.priceChange24h).slice(0, 3),
@@ -634,14 +636,14 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
           <span>{T('Every coin on Arc, live: price, volume and safety checks.')}</span>
         </div>
         <div className="mk-overview">
-          <div className="mk-card mk-card-sense" onClick={() => navigate({ name: 'argus', address: SENSE_LC, pool: SENSE_POOL })}>
+          <div className="mk-card mk-card-arcdex" onClick={() => navigate({ name: 'argus', address: COIN_LC, pool: COIN_POOL })}>
             <div className="mk-card-h">
-              <span>◆ $SENSE <span className="mk-official">{T('Official')}</span></span>
-              <button className="mk-trade mk-trade-solid mk-trade-sm" onClick={e => { e.stopPropagation(); navigate({ name: 'argus', address: SENSE_LC, pool: SENSE_POOL }) }}>{T('Buy $SENSE')}</button>
+              <span>◆ $ARCDEX <span className="mk-official">{T('Official')}</span></span>
+              <button className="mk-trade mk-trade-solid mk-trade-sm" onClick={e => { e.stopPropagation(); navigate({ name: 'argus', address: COIN_LC, pool: COIN_POOL }) }}>{T('Buy $ARCDEX')}</button>
             </div>
-            <div className="mk-sense-price">{fmtSmallUsd(sense?.priceUsd)} <span style={{ color: pctColor(sense?.change24h ?? 0) }}>{fmtPctSense(sense?.change24h)}</span></div>
-            <div className="mk-sense-meta">{T('MCap')} {fmt(sense?.marketCapUsd ?? 0, '$')} · {T('Liq')} {fmt(sense?.liquidityUsd ?? 0, '$')}</div>
-            <div className="mk-sense-note">{T('30% of ARCSENSE’s fees buy back $SENSE and burn it.')}</div>
+            <div className="mk-arcdex-price">{fmtSmallUsd(coinQ?.priceUsd)} <span style={{ color: pctColor(coinQ?.change24h ?? 0) }}>{fmtPctCoin(coinQ?.change24h)}</span></div>
+            <div className="mk-arcdex-meta">{T('MCap')} {fmt(coinQ?.marketCapUsd ?? 0, '$')} · {T('Liq')} {fmt(coinQ?.liquidityUsd ?? 0, '$')}</div>
+            <div className="mk-arcdex-note">{T('30% of ARCDEX’s fees buy back $ARCDEX and burn it.')}</div>
           </div>
           {([[`🔥 ${T('Hot coins')}`, overview.hot], [T('Top gainers'), overview.gainers], [T('Top volume'), overview.volume]] as [string, ArcToken[]][]).map(([title, list]) => (
             <div key={title} className="mk-card">
@@ -671,7 +673,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
             </button>
           ))}
           {/* Phones have no header line: Robinhood Chain's markets are a tab away. */}
-          {mobile && <button className="view-tab rh-tab" onClick={() => navigate({ name: 'robinhood' })}>🪶 {T('Robinhood Chain')}</button>}
+          {mobile && <button className="view-tab rh-tab" onClick={() => navigate({ name: 'robinhood' })}>🏹 {T('Robinhood Chain')}</button>}
         </div>
         <span className="live-badge" title={T("Every buy and sell on Arc, as its block lands")}>{T("● live")}{perMin > 0 && <> · {T('{n} trades/min', { n: perMin })}</>}</span>
         <div className="mk-tools">
@@ -731,8 +733,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
               </tr>
             </thead>
             <tbody>
-              {senseRow && <TokenRow token={senseRow} rank={0} pinned risk={riskOfRow(senseRow)} flash={flash.get(SENSE_LC)} hot={hotOf(senseRow)} onClick={() => navigate({ name: 'argus', address: SENSE_LC, pool: senseRow.poolAddress || SENSE_POOL })} />}
-              {pageItems.filter(t => !senseRow || t.address.toLowerCase() !== SENSE_LC).map((token, i) => {
+              {coinRow && <TokenRow token={coinRow} rank={0} pinned risk={riskOfRow(coinRow)} flash={flash.get(COIN_LC)} hot={hotOf(coinRow)} onClick={() => navigate({ name: 'argus', address: COIN_LC, pool: coinRow.poolAddress || COIN_POOL })} />}
+              {pageItems.filter(t => !coinRow || t.address.toLowerCase() !== COIN_LC).map((token, i) => {
                 const group = groupByPrimaryAddress.get(token.address)
                 const dupCount = group?.duplicates.length ?? 0
                 const isExpanded = expanded.has(token.address)
@@ -796,8 +798,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
         {/* mobile card list — same data, CSS toggles which one is visible */}
         {!loading && (
           <div className="token-cards">
-            {senseRow && <TokenCard token={senseRow} pinned risk={riskOfRow(senseRow)} flash={flash.get(SENSE_LC)} hot={hotOf(senseRow)} onClick={() => navigate({ name: 'argus', address: SENSE_LC, pool: senseRow.poolAddress || SENSE_POOL })} />}
-            {sorted.filter(t => !senseRow || t.address.toLowerCase() !== SENSE_LC).slice(0, shown).map(token => {
+            {coinRow && <TokenCard token={coinRow} pinned risk={riskOfRow(coinRow)} flash={flash.get(COIN_LC)} hot={hotOf(coinRow)} onClick={() => navigate({ name: 'argus', address: COIN_LC, pool: coinRow.poolAddress || COIN_POOL })} />}
+            {sorted.filter(t => !coinRow || t.address.toLowerCase() !== COIN_LC).slice(0, shown).map(token => {
               const group = groupByPrimaryAddress.get(token.address)
               return (
                 <TokenCard

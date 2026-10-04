@@ -6,7 +6,7 @@ import { loadBlueChips, type TokenMeta } from '../lib/tokenMeta'
 import { client } from '../api/launchpad'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
-import { SENSE_LC, SENSE_POOL, fmtPct, fmtSmallUsd, useSense } from '../lib/sense'
+import { COIN_LC, COIN_POOL, fmtPct, fmtSmallUsd, useCoin } from '../lib/coin'
 
 // Right-rail suggestions (fomo: "Follow top traders", "Discover clans")
 // and the bottom ticker bar (blue-chip prices + network status).
@@ -75,7 +75,7 @@ export function DiscoverClans({ navigate }: { navigate: (p: Page) => void }) {
 export function TickerBar({ navigate }: { navigate: (p: Page) => void }) {
   const [chips, setChips] = useState<TokenMeta[]>([])
   const [status, setStatus] = useState<'ok' | 'slow' | 'down'>('ok')
-  const sense = useSense()
+  const coinQ = useCoin()
   useEffect(() => {
     const load = () => void loadBlueChips().then(setChips)
     load()
@@ -93,16 +93,16 @@ export function TickerBar({ navigate }: { navigate: (p: Page) => void }) {
     return () => clearInterval(id)
   }, [])
   const color = { ok: 'var(--green)', slow: 'var(--amber)', down: 'var(--red)' }[status]
-  const chg = sense?.change24h ?? null
-  // Binance's bottom bar: the connection, then prices ($SENSE first), then links.
+  const chg = coinQ?.change24h ?? null
+  // Binance's bottom bar: the connection, then prices ($ARCDEX first), then links.
   return (
     <div className="app-ticker">
       <span className="app-ticker-status" style={{ color }}>● {status === 'ok' ? T("Arc: Stable") : status === 'slow' ? T("Arc: Slow") : T("Arc: Unreachable")}</span>
       <div className="app-ticker-pairs">
-        <button className="app-ticker-sense" onClick={() => navigate({ name: 'argus', address: SENSE_LC, pool: SENSE_POOL })}>
-          <b>SENSE/USDC</b>
+        <button className="app-ticker-arcdex" onClick={() => navigate({ name: 'argus', address: COIN_LC, pool: COIN_POOL })}>
+          <b>ARCDEX/USDC</b>
           {chg != null && <span className={chg >= 0 ? 'up-txt' : 'down-txt'}>{fmtPct(chg)}</span>}
-          <span>{fmtSmallUsd(sense?.priceUsd)}</span>
+          <span>{fmtSmallUsd(coinQ?.priceUsd)}</span>
         </button>
         {chips.map(c => (
           <button key={c.address} onClick={() => navigate({ name: 'argus', address: c.address, pool: c.pool })}>
@@ -112,7 +112,7 @@ export function TickerBar({ navigate }: { navigate: (p: Page) => void }) {
           </button>
         ))}
       </div>
-      <button className="app-ticker-link" onClick={() => navigate({ name: 'sense' })}>🔥 {T('$SENSE burn')}</button>
+      <button className="app-ticker-link" onClick={() => navigate({ name: 'coin' })}>🔥 {T('$ARCDEX burn')}</button>
       <a className="app-ticker-link" href="https://explorer.arc.io" target="_blank" rel="noopener noreferrer">{T("Explorer")}</a>
     </div>
   )

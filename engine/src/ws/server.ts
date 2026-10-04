@@ -27,7 +27,7 @@
 //   GET /v1/bot/rejections                      why watched coins aren't signals, by main reason
 //   GET /v1/bot/board                           the strategy board: which of the three strategies live bots trade, with whose settings
 //   /v1/auth/*, /v1/me…, /v1/bots…               accounts, owners' bots, the marketplace (ws/botApi.ts)
-//   GET /v1/sense/program                       $SENSE buyback and liquidity: fees in, bought, burned, added (sense/program.ts)
+//   GET /v1/coin/program                        $ARCDEX buyback, burns and liquidity: fees in, bought, burned, added (coin/program.ts)
 //   GET /v1/perps/status|prices|candles|state   futures: deployment, keeper, signed prices, chart, contract state (perps/service.ts)
 //   /v1/quant/*                                 the signal engine: signals, radar, positions, wallets, validation, controls (quant/api.ts)
 //   /api/argus|gecko|holders|launchpad|radar|dex|session|social|upload   the site's functions, moved off Vercel (site/siteApi.ts)
@@ -56,7 +56,7 @@ import type { Traffic } from '../traffic'
 import { quantApi, type QuantApiDeps } from '../quant/api'
 import type { SiteApi } from '../site/siteApi'
 import type { PerpsService } from '../perps/service'
-import type { SenseProgram } from '../sense/program'
+import type { CoinProgram } from '../coin/program'
 
 interface Conn { id: number; ip: string; subs: Set<string>; allowance: number; last: number }
 
@@ -81,8 +81,8 @@ export class DataApi {
   site: SiteApi | null = null
   /** ARCSENSE futures: prices, chart, the testnet deployment and keeper (engine/src/perps). */
   perps: PerpsService | null = null
-  /** $SENSE buyback and liquidity: the fee wallet's ledger (engine/src/sense/program.ts). */
-  sense: SenseProgram | null = null
+  /** $ARCDEX buyback, burns and liquidity: the fee wallet's ledger (engine/src/coin/program.ts). */
+  coin: CoinProgram | null = null
   attachBot(b: Bot, control: ControlVerifier | null = null, accounts: PaperAccounts | null = null, users: Users | null = null, tiers: Tiers | null = null) { this.bot = b; this.control = control; this.accounts = accounts; this.users = users; this.tiers = tiers }
 
   async tokenSnapshot(token: string, limit = 50): Promise<{ stats: TokenStats | null; trades: WireTrade[] }> {
@@ -273,11 +273,11 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         try { return await quantApi(req, url, api.quant, (status, body, cache) => json(req, status, body, cache)) }
         catch (e) { log.warn('quant api error', { path: url.pathname, error: errMsg(e) }); return json(req, 500, { error: 'internal error' }) }
       }
-      // $SENSE buyback and liquidity (sense/program.ts).
-      if (url.pathname === '/v1/sense/program') {
+      // $ARCDEX buyback, burns and liquidity (coin/program.ts). /v1/sense/program is the old name.
+      if (url.pathname === '/v1/coin/program' || url.pathname === '/v1/sense/program') {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
-        if (!api.sense) return json(req, 503, { error: 'the program ledger is not running in this process' })
-        return json(req, 200, api.sense.view(), 'public, max-age=15')
+        if (!api.coin) return json(req, 503, { error: 'the program ledger is not running in this process' })
+        return json(req, 200, api.coin.view(), 'public, max-age=15')
       }
       // Futures (perps/service.ts): status, prices, candles, the contract's state.
       if (url.pathname.startsWith('/v1/perps/')) {

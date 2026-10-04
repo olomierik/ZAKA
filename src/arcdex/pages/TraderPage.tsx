@@ -160,7 +160,7 @@ function Profile_({ addr, navigate }: { addr: string; navigate: (p: Page) => voi
           <div style={{ flex: 1 }} />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingBottom: 4 }}>
             <button onClick={() => { void navigator.clipboard?.writeText(profileUrl); setCopied('profile'); setTimeout(() => setCopied(''), 1500) }} style={btn('var(--bg-2)')}>{copied === 'profile' ? T("Copied ✓") : T("Share")}</button>
-            <a href={tweetUrl(`Check out ${name} on ARCSENSE — trading Arc memecoins`, profileUrl)} target="_blank" rel="noopener noreferrer" style={{ ...btn('var(--bg-2)'), textDecoration: 'none' }}>𝕏</a>
+            <a href={tweetUrl(`Check out ${name} on ARCDEX — trading Arc memecoins`, profileUrl)} target="_blank" rel="noopener noreferrer" style={{ ...btn('var(--bg-2)'), textDecoration: 'none' }}>𝕏</a>
             {isMe ? (
               <>
                 <button onClick={() => setModal('edit')} style={btn('var(--bg-2)')}>{T("Edit profile")}</button>
@@ -256,7 +256,7 @@ function Profile_({ addr, navigate }: { addr: string; navigate: (p: Page) => voi
                 </select>
               </div>
             </div>
-            {loading ? <Empty>{T("Loading…")}</Empty> : shownPos.length === 0 ? <Empty>{posTab === 'open' ? (isMe ? T("No open positions yet — buy a coin to see it here.") : T("No open positions traded through ARCSENSE.")) : T("No closed positions yet.")}</Empty> : (
+            {loading ? <Empty>{T("Loading…")}</Empty> : shownPos.length === 0 ? <Empty>{posTab === 'open' ? (isMe ? T("No open positions yet — buy a coin to see it here.") : T("No open positions traded through ARCDEX.")) : T("No closed positions yet.")}</Empty> : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                 <tbody>
                   {shownPos.map(p => {
@@ -289,7 +289,7 @@ function Profile_({ addr, navigate }: { addr: string; navigate: (p: Page) => voi
                 {(['all', 'buy', 'sell'] as const).map(t => <button key={t} onClick={() => setSwapTab(t)} className={`disc-sub${swapTab === t ? ' active' : ''}`}>{t === 'all' ? T("All swaps") : t === 'buy' ? T("Buys") : T("Sells")}</button>)}
               </div>
             </div>
-            {swaps.length === 0 ? <Empty>{T("No")}{' '}{swapTab === 'all' ? T("trades") : swapTab + 's'}{' '}{T("through ARCSENSE yet.")}</Empty> : (
+            {swaps.length === 0 ? <Empty>{T("No")}{' '}{swapTab === 'all' ? T("trades") : swapTab + 's'}{' '}{T("through ARCDEX yet.")}</Empty> : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                 <tbody>
                   {swaps.map(t => {

@@ -61,11 +61,15 @@ export function bearer(req: Request): string | null {
   return h.startsWith('Bearer ') ? h.slice(7) : null
 }
 
+/** The names the sign-in message has carried: ARCDEX since 2026-10-04 (ARCSENSE the day before), both
+ * accepted so a page loaded before the rename still signs in. */
+export const SIGN_IN_BRANDS = ['ARCDEX', 'ARCSENSE'] as const
+
 /** The exact message the client asks the wallet to sign. Kept identical
  * on both sides (src/arcdex/api/social.ts builds the same text). */
-export function signInMessage(address: string, issuedAt: string, nonce: string): string {
+export function signInMessage(address: string, issuedAt: string, nonce: string, brand: string = SIGN_IN_BRANDS[0]): string {
   return [
-    'Sign in to ARCSENSE (arcsense.site)',
+    `Sign in to ${brand} (arcsense.site)`,
     '',
     'This only proves you own this wallet. It is not a transaction and costs nothing.',
     '',

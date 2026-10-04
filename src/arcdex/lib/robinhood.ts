@@ -1,5 +1,5 @@
 // Robinhood Chain (chain 4663): an Arbitrum Orbit L2 with ETH for gas and
-// ~100ms blocks. ARCSENSE lists its coins and Robinhood's stock tokens, and
+// ~100ms blocks. ARCDEX lists its coins and Robinhood's stock tokens, and
 // trades them from Arc through Across (lib/across.ts): a buy is paid in USDC
 // on Arc and the coin arrives at the same address on Robinhood Chain; a sale
 // is signed there (a few cents of ETH for gas) and the USDC lands on Arc.

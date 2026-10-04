@@ -29,12 +29,12 @@ import { t as T } from '../lib/i18n'
 import { getLaunchpadColor } from '../api/radardex'
 import { launchpadLabel, launchpadNamed } from '../../../api/_launchpads'
 import { MarketTrades, PairList } from '../components/SpotPanels'
-import { SENSE_IMAGE, SENSE_LC, SENSE_POOL, fmtPct as fmtPctSense, fmtSmallUsd, useSense } from '../lib/sense'
+import { COIN_IMAGE, COIN_LC, COIN_POOL, fmtPct as fmtPctCoin, fmtSmallUsd, useCoin } from '../lib/coin'
 
 // Full page for one Argus launch. What moves is read straight from the
 // chain: every swap in the pool (history from the logs, then each new one
 // over Arc's WebSocket the moment its block lands) drives the price, the
-// candles and the trades list, and holders come from ARCSENSE's own index of
+// candles and the trades list, and holders come from ARCDEX's own index of
 // the token's transfers. GeckoTerminal supplies the rest (24h stats,
 // liquidity, older candles, socials) and stands in if the chain can't be
 // read. Arc RPC also gives what GeckoTerminal doesn't carry (creator
@@ -81,17 +81,17 @@ function TokenImage({ src, symbol, size = 44 }: { src: string | null; symbol: st
   return <img src={src} alt={symbol} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} onError={() => setErr(true)} />
 }
 
-/** On every other coin's page: $SENSE, one line, with the way to it. */
-function SenseStrip({ navigate }: { navigate: (p: Page) => void }) {
-  const sense = useSense()
+/** On every other coin's page: $ARCDEX, one line, with the way to it. */
+function CoinStrip({ navigate }: { navigate: (p: Page) => void }) {
+  const coinQ = useCoin()
   return (
-    <button className="sense-strip" onClick={() => navigate({ name: 'argus', address: SENSE_LC, pool: SENSE_POOL })}>
-      <img src={SENSE_IMAGE} alt="" width={18} height={18} />
-      <b>$SENSE</b>
-      <span>{fmtSmallUsd(sense?.priceUsd)}</span>
-      {sense?.change24h != null && <span className={sense.change24h >= 0 ? 'up-txt' : 'down-txt'}>{fmtPctSense(sense.change24h)}</span>}
-      <span className="sense-strip-note">{T('ARCSENSE’s coin: 30% of every platform fee buys it back and burns it.')}</span>
-      <span className="sense-strip-go">{T('Buy $SENSE')} →</span>
+    <button className="arcdex-strip" onClick={() => navigate({ name: 'argus', address: COIN_LC, pool: COIN_POOL })}>
+      <img src={COIN_IMAGE} alt="" width={18} height={18} />
+      <b>$ARCDEX</b>
+      <span>{fmtSmallUsd(coinQ?.priceUsd)}</span>
+      {coinQ?.change24h != null && <span className={coinQ.change24h >= 0 ? 'up-txt' : 'down-txt'}>{fmtPctCoin(coinQ.change24h)}</span>}
+      <span className="arcdex-strip-note">{T('ARCDEX’s coin: 30% of every platform fee buys it back and burns it.')}</span>
+      <span className="arcdex-strip-go">{T('Buy $ARCDEX')} →</span>
     </button>
   )
 }
@@ -179,7 +179,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
 
   // Mercuri's or SolonPad's own bonding curve, if the coin launched on one
   // (api/curves.ts). While it's live the curve is the coin's market: its
-  // trades are the chart and the list, and ARCSENSE trades on it directly.
+  // trades are the chart and the list, and ARCDEX trades on it directly.
   // Re-read while live (price, progress, phase), and shortly after each
   // live trade; a coin with no curve is checked once.
   const [curve, setCurve] = useState<CurveInfo | null | undefined>(undefined)
@@ -429,7 +429,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
 
   const symbol = active?.token.symbol || info?.symbol || engineMeta?.symbol || curveHere?.symbol || '…'
   const name = active?.token.name || info?.name || engineMeta?.name || curveHere?.name || ''
-  const image = address.toLowerCase() === SENSE_LC ? SENSE_IMAGE : info?.image ?? active?.token.image ?? engineMeta?.image ?? null
+  const image = address.toLowerCase() === COIN_LC ? COIN_IMAGE : info?.image ?? active?.token.image ?? engineMeta?.image ?? null
   // The pool's price only changes on a swap, so the latest swap's price IS
   // the live price (GeckoTerminal's is 10-60s behind).
   const livePrice = swaps?.[0] ? (swaps[0].priceUsd ?? (usdPerQuote ? swaps[0].price * usdPerQuote : null)) : null
@@ -439,7 +439,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   const priceUsd = (liveCurve?.venue === 'SolonPad' ? curveSpot : null) ?? livePrice ?? curveSpot ?? active?.priceUsd ?? 0
   const copy = symbol === '…' ? null : copycatOf(symbol, address)
   // Where the coin launched (its pool's GeckoTerminal dex), for the badge,
-  // the notes and — when ARCSENSE can't route it — a link to trade it there.
+  // the notes and — when ARCDEX can't route it — a link to trade it there.
   const listed = useMemo(() => cachedArgusMarket()?.find(p => p.token.address === address.toLowerCase()) ?? null, [address])
   const lpName = chain?.portal ? 'Argus' : curveHere ? curveHere.venue : active ? (active.launchpad ?? launchpadLabel(active.dex)) : listed?.launchpad ?? null
   const lpColor = getLaunchpadColor(lpName ?? '')
@@ -457,7 +457,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     lastPrice.current = priceUsd
   }, [priceUsd])
 
-  // True holders from ARCSENSE's own index (GeckoTerminal's is hours old).
+  // True holders from ARCDEX's own index (GeckoTerminal's is hours old).
   const chainHolders = useChainHolders(address, active?.createdAt)
   // …moving live: +1 when a new wallet buys in, −1 when a holder sells out.
   const liveHolders = useLiveHolderCount(address, !!chainHolders?.complete, rows[0]?.txHash)
@@ -493,17 +493,17 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     if (symbol !== '…') pushRecent({ address, symbol, image, pool: activePool || null })
   }, [address, symbol, image, activePool])
 
-  // Tab title like fomo: "$1.2M | SYMBOL | ARCSENSE".
+  // Tab title like fomo: "$1.2M | SYMBOL | ARCDEX".
   useEffect(() => {
     const prev = document.title
-    if (symbol !== '…') document.title = `${mcap ? fmt(mcap, '$') + ' | ' : ''}${symbol} | ARCSENSE`
+    if (symbol !== '…') document.title = `${mcap ? fmt(mcap, '$') + ' | ' : ''}${symbol} | ARCDEX`
     return () => { document.title = prev }
   }, [symbol, mcap])
 
-  // ARCSENSE's own chart, the only one (owner's choice): history from
+  // ARCDEX's own chart, the only one (owner's choice): history from
   // GeckoTerminal's API or the market engine, every swap live on top, trade
   // labels, theses and indicators. A live curve charts the curve's trades.
-  const isSense = address.toLowerCase() === SENSE_LC
+  const isCoin = address.toLowerCase() === COIN_LC
   const stats: [string, string, string][] = active ? [
     ['5m', pct(active.change.m5), active.change.m5 >= 0 ? 'var(--green)' : 'var(--red)'],
     ['1h', pct(active.change.h1), active.change.h1 >= 0 ? 'var(--green)' : 'var(--red)'],
@@ -583,7 +583,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: '1.15rem', display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
               {symbol}<span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-muted)' }}>/{active?.quote.symbol ?? 'USDC'}</span>
-              {isSense && <span className="mk-official">{T('Official')}</span>}
+              {isCoin && <span className="mk-official">{T('Official')}</span>}
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
               <span key={priceUsd} className={priceDir ? `price-tick ${priceDir}` : undefined} style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--text)', borderRadius: 4, padding: '0 2px' }}>{priceUsd ? fmtPrice(priceUsd) : '…'}</span>
@@ -628,7 +628,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         <div className="spot-bar-pair">
           <TokenImage src={image} symbol={symbol} size={32} />
           <div style={{ minWidth: 0 }}>
-            <div className="spot-bar-sym">{symbol}<span>/{active?.quote.symbol ?? 'USDC'}</span>{isSense && <span className="mk-official">{T('Official')}</span>}</div>
+            <div className="spot-bar-sym">{symbol}<span>/{active?.quote.symbol ?? 'USDC'}</span>{isCoin && <span className="mk-official">{T('Official')}</span>}</div>
             <div className="spot-bar-name">{name}{name && ' · '}{badge}</div>
           </div>
         </div>
@@ -644,7 +644,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         </div>
         {headActions}
       </div>
-      {!isSense && <SenseStrip navigate={navigate} />}
+      {!isCoin && <CoinStrip navigate={navigate} />}
       {notices}
 
       <div className="spot-grid">

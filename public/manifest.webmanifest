@@ -1,7 +1,7 @@
 {
-  "name": "ARCSENSE — spot & futures on Arc",
-  "short_name": "ARCSENSE",
-  "description": "Spot and futures exchange on Arc: live coins and charts, one-tap trades and a multichain USDC bridge.",
+  "name": "ARCDEX — multichain spot & futures",
+  "short_name": "ARCDEX",
+  "description": "The multichain decentralized exchange: spot and futures on Arc and Robinhood Chain, launchpad coins only, and a multichain USDC bridge.",
   "id": "/app",
   "start_url": "/app",
   "scope": "/",

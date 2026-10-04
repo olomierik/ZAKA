@@ -1,5 +1,5 @@
 // Networks for the multichain screens (Swap, Bridge): each chain's mark in its own colour, a strip of
-// every chain ARCSENSE bridges USDC with, and a picker that opens a grid of them.
+// every chain ARCDEX bridges USDC with, and a picker that opens a grid of them.
 
 import { useEffect, useRef, useState } from 'react'
 import { BRIDGE_NETWORKS as BRIDGE_CHAINS } from '../lib/bridgeChains'

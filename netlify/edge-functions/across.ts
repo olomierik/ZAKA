@@ -1,7 +1,7 @@
-// Across's API with ARCSENSE's key, for the Robinhood Chain trades (src/arcdex/lib/acrossQuote.ts).
+// Across's API with ARCDEX's key, for the Robinhood Chain trades (src/arcdex/lib/acrossQuote.ts).
 // The key is a secret in Netlify's environment (ACROSS_API_KEY), never in the page; the integrator
-// ID can sit there too (ACROSS_INTEGRATOR_ID). Only ARCSENSE's own requests pass: from the site's
-// own pages, a quote between Arc and Robinhood Chain whose fee (if any) goes to ARCSENSE's fee
+// ID can sit there too (ACROSS_INTEGRATOR_ID). Only ARCDEX's own requests pass: from the site's
+// own pages, a quote between Arc and Robinhood Chain whose fee (if any) goes to ARCDEX's fee
 // wallet, or a deposit's status. Without a key it answers 503 and the site asks Across directly.
 
 declare const Netlify: { env: { get(name: string): string | undefined } }

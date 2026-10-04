@@ -21,12 +21,15 @@ export interface TokenMeta {
   liquidityUsd: number
   bonded: boolean | null
   createdAt: string | null
+  /** Where it launched ("Argus", "Mercuri", …); null for the blue chips (Circle's own tokens and the like). */
+  launchpad: string | null
 }
 
 const toMeta = (p: ArgusPool): TokenMeta => ({
   address: p.token.address, symbol: p.token.symbol, name: p.token.name, image: p.token.image, priceUsd: p.priceUsd,
   pool: p.pool, change24h: p.change.h24, change1h: p.change.h1, marketCapUsd: p.marketCapUsd ?? p.fdvUsd,
   volume24h: p.volume24h, liquidityUsd: p.liquidityUsd, bonded: p.bonded ?? null, createdAt: p.createdAt,
+  launchpad: p.launchpad ?? 'Argus',
 })
 
 /** A Mercuri or SolonPad coin (api/curveMarket.ts): "bonded" once it has
@@ -36,6 +39,7 @@ const curveMeta = (c: CurveMarketRow): TokenMeta => ({
   pool: c.pool, change24h: c.change24h, change1h: 0, marketCapUsd: c.marketCapUsd,
   volume24h: c.volume24h, liquidityUsd: c.liquidityUsd ?? 0, bonded: c.mode === 'instant' ? null : c.graduated,
   createdAt: c.launchedAt ? new Date(c.launchedAt).toISOString() : null,
+  launchpad: c.launchpad,
 })
 
 /** The market list with the curve coins it lacks, each placed by its 24h
@@ -126,7 +130,7 @@ export function loadBlueChips(): Promise<TokenMeta[]> {
             address: String(a.address).toLowerCase(), symbol: String(a.symbol ?? ''), name: String(a.name ?? ''),
             image: img && !img.includes('missing') ? img : null, priceUsd: n(a.price_usd), pool: String(top?.address ?? '').toLowerCase(),
             change24h: n(pc.h24), change1h: n(pc.h1), marketCapUsd: n(a.market_cap_usd) || n(a.fdv_usd) || null,
-            volume24h: n((a.volume_usd as Record<string, unknown> | undefined)?.h24), liquidityUsd: n(a.total_reserve_in_usd), bonded: null, createdAt: null,
+            volume24h: n((a.volume_usd as Record<string, unknown> | undefined)?.h24), liquidityUsd: n(a.total_reserve_in_usd), bonded: null, createdAt: null, launchpad: null,
           } as TokenMeta
         }).sort((x, y) => BLUE_CHIPS.indexOf(x.address) - BLUE_CHIPS.indexOf(y.address))
       }).catch(() => [] as TokenMeta[]),
