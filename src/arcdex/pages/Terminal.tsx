@@ -20,8 +20,12 @@ import { t as T, N_ } from '../lib/i18n'
 import { useIsMobile } from '../lib/useMobile'
 import MobileHome from '../components/MobileHome'
 import FoundOnArc from '../components/FoundOnArc'
-import RiskBadge from '../components/RiskBadge'
-import { RISK_COLOR as RISK_DOT, riskText, tokenRisk, type Risk } from '../lib/risk'
+import SafetyBadge from '../components/SafetyBadge'
+import CoinBoard, { type BoardCoin } from '../components/CoinBoard'
+import { tokenRisk, type Risk } from '../lib/risk'
+import { arcStage, arcStageInput } from '../lib/coinStage'
+import { arcSafety, LISTING, meetsStandard, safetyRank, SAFETY_COLOR, SAFETY_ICON, SAFETY_LABEL, type SafetyView } from '../lib/safety'
+import { useCoinSafety } from '../api/coinSafety'
 import { COIN_IMAGE, COIN_LC, COIN_POOL, fmtPct as fmtPctCoin, fmtSmallUsd, useCoin } from '../lib/coin'
 import { ChainSwitch } from '../components/Robinhood'
 
@@ -108,7 +112,13 @@ function fmtPct(n: number) {
 // picks', 'Watchlist' and 'Holdings' implied personalization features
 // (saved watchlists, wallet-linked holdings, curated calls) this app
 // doesn't have, so they did nothing when clicked.
-const VIEW_TABS = [N_('All'), N_('New pair'), N_('New <15m'), N_('Trending'), N_('Top volume')]
+// Since 2026-10-04 the stages of a coin's life (lib/coinStage.ts) are tabs too: New, Near bond, Graduated, Established.
+const VIEW_TABS = [N_('All'), N_('New'), N_('Near bond'), N_('Graduated'), N_('Established'), N_('Trending'), N_('Top volume')]
+const STAGE_TAB: Record<string, string> = { New: 'new', 'Near bond': 'near', Graduated: 'graduated', Established: 'established' }
+
+/** A per-browser choice (the list or the board; risky coins shown or not). */
+const readPref = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
+const writePref = (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* storage blocked */ } }
 
 // ── sort columns ─────────────────────────────────────────────────────
 type SortCol = 'active' | 'mcap' | 'volume' | 'txns' | 'score' | 'age' | 'liq' | 'holders' | 'change' | 'risk'
@@ -154,6 +164,7 @@ interface RowProps {
   dupCount?: number; expanded?: boolean; onToggleExpand?: () => void
   isDuplicateRow?: boolean
   risk: Risk
+  safety: SafetyView
   flash?: Flash
   /** Trades in the last 15 minutes, when it's one of the most active coins right now. */
   hot?: number
@@ -167,7 +178,7 @@ function fmtPrice(p: number): string {
   if (p >= 1) return `$${p.toFixed(4)}`
   return `$${p.toPrecision(4)}`
 }
-function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onToggleExpand, isDuplicateRow = false, risk, flash, hot, pinned }: RowProps & { pinned?: boolean }) {
+function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onToggleExpand, isDuplicateRow = false, safety, flash, hot, pinned }: RowProps & { pinned?: boolean }) {
   const lp      = token.launchpad
   const lpColor = getLaunchpadColor(lp)
   const ch24    = token.priceChange24h
@@ -204,6 +215,7 @@ function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onTogg
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{token.name}</span>
               <span style={{ flexShrink: 0 }}>· {fmtAge(token.ageMs)}</span>
               {token.ageMs < 5 * 60_000 && <span className="new-badge">{T("NEW")}</span>}
+              {!token.graduated && token.bondingProgress !== null && token.bondingProgress < 100 && <span className="mk-tag" title={T('{pct}% of the way to graduating', { pct: token.bondingProgress.toFixed(0) })} style={{ color: '#6ea2ff', borderColor: '#2a6df455' }}>🚀 {token.bondingProgress.toFixed(0)}%</span>}
               <a href={`${ARC_EXPLORER}/address/${token.address}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="mk-addr">
                 {token.address.slice(0,6)}…{token.address.slice(-4)} ↗
               </a>
@@ -221,14 +233,14 @@ function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onTogg
         <div style={{ fontSize: '0.66rem' }}><span style={{ color: 'var(--green)' }}>{token.buys24h}</span>{' / '}<span style={{ color: 'var(--red)' }}>{token.sells24h}</span></div>
       </td>
       <td className="td-num">{token.holderCount > 0 ? token.holderCount.toLocaleString() : '—'}</td>
-      <td className="td-num"><RiskBadge risk={risk} quick /></td>
+      <td className="td-num"><SafetyBadge view={safety} /></td>
       <td className="td-num td-trade"><button className="mk-trade" onClick={e => { e.stopPropagation(); onClick() }}>{T('Trade')}</button></td>
     </tr>
   )
 }
 
-interface CardProps { token: ArcToken; dupCount?: number; onClick: () => void; risk: Risk; flash?: Flash; hot?: number; pinned?: boolean }
-function TokenCard({ token, dupCount = 0, onClick, risk, flash, hot, pinned }: CardProps) {
+interface CardProps { token: ArcToken; dupCount?: number; onClick: () => void; safety: SafetyView; flash?: Flash; hot?: number; pinned?: boolean }
+function TokenCard({ token, dupCount = 0, onClick, safety, flash, hot, pinned }: CardProps) {
   const ch24 = token.priceChange24h
   return (
     <div className={`token-card mk-row${pinned ? ' pinned' : ''}${flashClass(flash)}`} onClick={onClick}>
@@ -239,9 +251,9 @@ function TokenCard({ token, dupCount = 0, onClick, risk, flash, hot, pinned }: C
           {pinned && <span className="mk-official">{T('Official')}</span>}
           {hot ? <HotBadge n={hot} /> : null}
         </div>
-        <div className="mk-row-meta"><span style={{ color: RISK_DOT[risk.level] }}>●</span> {T("Vol")} {fmt(token.volume24h, '$')} · {T("MCap")} {fmt(token.marketCap, '$')}{dupCount > 0 ? ` · +${dupCount}` : ''}</div>
+        <div className="mk-row-meta"><span style={{ color: SAFETY_COLOR[safety.level] }}>{SAFETY_ICON[safety.level]}</span> {T("Vol")} {fmt(token.volume24h, '$')} · {T("MCap")} {fmt(token.marketCap, '$')}{dupCount > 0 ? ` · +${dupCount}` : ''}</div>
       </div>
-      <div className="mk-row-price">{fmtPrice(token.price)}<small>{fmtAge(token.ageMs)} · {riskText(risk.level)}</small></div>
+      <div className="mk-row-price">{fmtPrice(token.price)}<small>{fmtAge(token.ageMs)} · {T(SAFETY_LABEL[safety.level])}</small></div>
       <span className={`mk-row-chg ${ch24 > 0 ? 'up' : ch24 < 0 ? 'down' : 'flat'}`}>{ch24 > 0 ? '+' : ''}{ch24.toFixed(2)}%</span>
     </div>
   )
@@ -262,6 +274,11 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   // "Show more" (an app feed) instead of numbered pages.
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [shown, setShown] = useState(PAGE_SIZE)
+  // The list or the coin board (CoinBoard), and whether coins under the listing standard show (lib/safety.ts).
+  const [view, setView] = useState<'list' | 'board'>(() => (readPref('arcdex:mk-view') === 'board' ? 'board' : 'list'))
+  const [showRisky, setShowRisky] = useState(() => readPref('arcdex:show-risky') === '1')
+  useEffect(() => { writePref('arcdex:mk-view', view) }, [view])
+  useEffect(() => { writePref('arcdex:show-risky', showRisky ? '1' : '0') }, [showRisky])
   const [minMcap,  setMinMcap]  = useState('')
   const [maxMcap,  setMaxMcap]  = useState('')
   const [minVol,   setMinVol]   = useState('')
@@ -549,20 +566,43 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
       if (src === 'uniswap v4') { if (!lp.includes('uniswap') && !lp.includes('v4')) return false }
       else if (!lp.includes(src.split(' ')[0])) return false
     }
-    if (viewTab === 'New pair' || viewTab === 'New <15m') {
-      const maxAge = viewTab === 'New <15m' ? 15 * 60 * 1000 : 24 * 60 * 60 * 1000
-      if (t.ageMs > maxAge) return false
-    }
-    if (viewTab === 'Top volume') {
+    // The board has its own columns: the tabs only filter the list.
+    const stageTab = view === 'list' ? STAGE_TAB[viewTab] : undefined
+    if (stageTab && arcStage(t) !== stageTab) return false
+    if (view === 'list' && viewTab === 'Top volume') {
       if (t.volume24h < 1000) return false
     }
     if (minMcap && t.marketCap < parseFloat(minMcap)) return false
     if (maxMcap && t.marketCap > parseFloat(maxMcap)) return false
     if (minVol  && t.volume24h < parseFloat(minVol))  return false
     return true
-  }, [search, source, viewTab, minMcap, maxMcap, minVol])
+  }, [search, source, viewTab, minMcap, maxMcap, minVol, view])
 
-  const filtered = curation.groups.map(g => g.primary).filter(matchesFilters)
+  // ── safety (lib/safety.ts): the engine's scan of the coins worth asking about (the young and on-curve ones, the
+  // busiest, the youngest graduates and $ARCDEX), with each coin's market data. Others are rated from market data. ──
+  const askTokens = useMemo(() => {
+    const prim = curation.groups.map(g => g.primary)
+    const young = prim.filter(t => { const st = arcStage(t); return st === 'new' || st === 'near' || st === 'bonding' }).sort((a, b) => a.ageMs - b.ageMs).slice(0, 120)
+    const busy = [...prim].sort((a, b) => b.volume24h - a.volume24h).slice(0, 150)
+    const grads = prim.filter(t => arcStage(t) === 'graduated').sort((a, b) => a.ageMs - b.ageMs).slice(0, 40)
+    return [...new Set([COIN_LC, ...young, ...busy, ...grads].map(t => (typeof t === 'string' ? t : t.address.toLowerCase())))]
+  }, [curation])
+  const asked = useMemo(() => new Set(askTokens), [askTokens])
+  const chainSafety = useCoinSafety(askTokens)
+  const safetyOf = (t: ArcToken): SafetyView => {
+    const k = t.address.toLowerCase()
+    return arcSafety(t, riskOfRow(t), asked.has(k) ? chainSafety.get(k) : null, arcStageInput(t).onCurve)
+  }
+  const passes = (t: ArcToken, v: SafetyView) => meetsStandard({ level: v.level, stage: arcStage(t), onCurve: arcStageInput(t).onCurve, liquidityUsd: t.liquidity, holders: t.holderCount > 0 ? t.holderCount : null })
+
+  const matched = curation.groups.map(g => g.primary).filter(matchesFilters)
+  const rated = new Map(matched.map(t => [t.address, safetyOf(t)]))
+  const ratedOf = (t: ArcToken) => rated.get(t.address) ?? safetyOf(t)
+  // The listing standard (lib/safety.ts): danger, and pool coins under $2K of liquidity or 20 holders, stay out of the
+  // default lists; a search, or "Show risky coins", shows everything with its badge.
+  const standardOn = !showRisky && !search.trim()
+  const filtered = standardOn ? matched.filter(t => passes(t, ratedOf(t))) : matched
+  const hiddenCount = matched.length - filtered.length
   const shownAddresses = useMemo(() => new Set(filtered.map(t => t.address.toLowerCase())), [filtered])
 
   // ── sort ──────────────────────────────────────────────────────────
@@ -585,7 +625,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     if (sortCol === 'change')   diff = (b.priceChange24h??0) - (a.priceChange24h??0)
     if (sortCol === 'age')      diff = a.ageMs - b.ageMs
     // Safest first; tap again for the riskiest.
-    if (sortCol === 'risk')     diff = riskOfRow(a).score - riskOfRow(b).score
+    if (sortCol === 'risk')     diff = safetyRank(ratedOf(a).level) - safetyRank(ratedOf(b).level) || riskOfRow(a).score - riskOfRow(b).score
     if (sortCol === 'score') {
       const scoreOf = (t: ArcToken) =>
         Math.min(40, t.holderCount/25) + Math.min(40, Math.log10(t.volume24h+1)*8) + Math.min(20, t.txCount24h/50)
@@ -617,7 +657,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   } : null)
 
   // Binance's market overview: the most active coins, the biggest gainers and the most traded, beside $ARCDEX.
-  const primaries = curation.groups.map(g => g.primary).filter(t => t.address.toLowerCase() !== COIN_LC && t.price > 0)
+  // The overview cards only pick coins that meet the listing standard.
+  const primaries = curation.groups.map(g => g.primary).filter(t => t.address.toLowerCase() !== COIN_LC && t.price > 0 && passes(t, ratedOf(t)))
   const overview = {
     hot: [...primaries].sort((a, b) => activityOf(b) - activityOf(a) || b.volume24h - a.volume24h).slice(0, 3),
     gainers: primaries.filter(t => t.volume24h >= 500 && t.liquidity >= 1_000).sort((a, b) => b.priceChange24h - a.priceChange24h).slice(0, 3),
@@ -677,6 +718,13 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
         </div>
         <span className="live-badge" title={T("Every buy and sell on Arc, as its block lands")}>{T("● live")}{perMin > 0 && <> · {T('{n} trades/min', { n: perMin })}</>}</span>
         <div className="mk-tools">
+          <div className="mk-view-switch" role="group" aria-label={T('View')}>
+            <button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}>☰ {T('List')}</button>
+            <button className={view === 'board' ? 'on' : ''} onClick={() => setView('board')}>▦ {T('Board')}</button>
+          </div>
+          <label className="mk-safe-toggle" title={T('Off: coins rated Danger, and pool coins under ${usd} of liquidity or {holders} holders, are left out.', { usd: LISTING.minLiquidityUsd.toLocaleString(), holders: LISTING.minHolders })}>
+            <input type="checkbox" checked={showRisky} onChange={e => setShowRisky(e.target.checked)} /><span>{T('Show risky coins')}</span>
+          </label>
           <input className="filter-input mk-search" placeholder={T("🔍 Search…")} value={search} onChange={e => setSearch(e.target.value)} />
           <select className="sort-select" value={sortCol} onChange={e => setSortCol(e.target.value as SortCol)}>
             <option value="active">{T("Sort: most active")}</option>
@@ -711,8 +759,28 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
         </div>
       )}
 
+      {standardOn && hiddenCount > 0 && (
+        <div className="mk-hidden-note">
+          {T('Hidden by the safety standard: {n} (rated Danger, or under ${usd} of liquidity or {holders} holders).', { n: hiddenCount, usd: LISTING.minLiquidityUsd.toLocaleString(), holders: LISTING.minHolders })}
+          <button onClick={() => setShowRisky(true)}>{T('Show them')}</button>
+        </div>
+      )}
+
+      {/* ── the coin board: New, Near bond, Graduated ── */}
+      {view === 'board' && (
+        <CoinBoard mobile={mobile} onOpen={c => { const t = filtered.find(x => x.address === c.key); if (t) navigate(openPage(t)) }}
+          coins={filtered.map((t): BoardCoin => {
+            const inp = arcStageInput(t)
+            return {
+              key: t.address, symbol: t.symbol, name: t.name, logo: t.logoUrl || null, launchpad: t.launchpad, launchpadColor: getLaunchpadColor(t.launchpad),
+              ageMs: t.ageMs, marketCap: t.marketCap, liquidity: t.liquidity, volume24h: t.volume24h, change24h: t.priceChange24h,
+              holders: t.holderCount > 0 ? t.holderCount : null, progress: inp.onCurve ? inp.progress : null, stage: arcStage(t), safety: ratedOf(t), hot: hotOf(t),
+            }
+          })} />
+      )}
+
       {/* ── table ── */}
-      <div className="table-scroll">
+      {view === 'list' && <div className="table-scroll">
         {loading && tokens.length === 0 ? (
           <div className="loading-state">{T("Loading Arc tokens…")}</div>
         ) : (
@@ -728,12 +796,12 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
                 {sortTh('volume', T("24h volume"))}
                 {sortTh('txns', T("24h trades"))}
                 {sortTh('holders', T("Holders"))}
-                {sortTh('risk', T("Risk"))}
+                {sortTh('risk', T("Safety"))}
                 <th className="th-sort" />
               </tr>
             </thead>
             <tbody>
-              {coinRow && <TokenRow token={coinRow} rank={0} pinned risk={riskOfRow(coinRow)} flash={flash.get(COIN_LC)} hot={hotOf(coinRow)} onClick={() => navigate({ name: 'argus', address: COIN_LC, pool: coinRow.poolAddress || COIN_POOL })} />}
+              {coinRow && <TokenRow token={coinRow} rank={0} pinned risk={riskOfRow(coinRow)} safety={safetyOf(coinRow)} flash={flash.get(COIN_LC)} hot={hotOf(coinRow)} onClick={() => navigate({ name: 'argus', address: COIN_LC, pool: coinRow.poolAddress || COIN_POOL })} />}
               {pageItems.filter(t => !coinRow || t.address.toLowerCase() !== COIN_LC).map((token, i) => {
                 const group = groupByPrimaryAddress.get(token.address)
                 const dupCount = group?.duplicates.length ?? 0
@@ -745,6 +813,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
                       token={token}
                       rank={(page - 1) * PAGE_SIZE + i + 1}
                       risk={riskOfRow(token)}
+                      safety={ratedOf(token)}
                       flash={flash.get(token.address.toLowerCase())}
                       hot={hotOf(token)}
                       onClick={() => goTo(token)}
@@ -762,6 +831,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
                         token={dup}
                         rank={0}
                         risk={riskOfRow(dup)}
+                        safety={safetyOf(dup)}
                         flash={flash.get(dup.address.toLowerCase())}
                         isDuplicateRow
                         onClick={() => goTo(dup)}
@@ -798,14 +868,14 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
         {/* mobile card list — same data, CSS toggles which one is visible */}
         {!loading && (
           <div className="token-cards">
-            {coinRow && <TokenCard token={coinRow} pinned risk={riskOfRow(coinRow)} flash={flash.get(COIN_LC)} hot={hotOf(coinRow)} onClick={() => navigate({ name: 'argus', address: COIN_LC, pool: coinRow.poolAddress || COIN_POOL })} />}
+            {coinRow && <TokenCard token={coinRow} pinned safety={safetyOf(coinRow)} flash={flash.get(COIN_LC)} hot={hotOf(coinRow)} onClick={() => navigate({ name: 'argus', address: COIN_LC, pool: coinRow.poolAddress || COIN_POOL })} />}
             {sorted.filter(t => !coinRow || t.address.toLowerCase() !== COIN_LC).slice(0, shown).map(token => {
               const group = groupByPrimaryAddress.get(token.address)
               return (
                 <TokenCard
                   key={token.address}
                   token={token}
-                  risk={riskOfRow(token)}
+                  safety={ratedOf(token)}
                   flash={flash.get(token.address.toLowerCase())}
                   hot={hotOf(token)}
                   dupCount={group?.duplicates.length ?? 0}
@@ -818,9 +888,9 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
             )}
           </div>
         )}
-        {/* A name or pasted address the list doesn't have: found anyway, from all of Arc. */}
-        {search.trim().length >= 2 && <FoundOnArc query={search} shown={shownAddresses} navigate={navigate} />}
-      </div>
+      </div>}
+      {/* A name or pasted address the list doesn't have: found anyway, from all of Arc. */}
+      {search.trim().length >= 2 && <FoundOnArc query={search} shown={shownAddresses} navigate={navigate} />}
     </div>
   )
 }

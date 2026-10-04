@@ -7,11 +7,21 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Page } from '../App'
 import { cachedRhMarket, isWashPool, loadRhMarket, searchRh, type RhCoin } from '../api/robinhoodMarket'
 import { ChainSwitch, RhLogo, StockTag } from '../components/Robinhood'
+import SafetyBadge from '../components/SafetyBadge'
+import CoinBoard, { type BoardCoin } from '../components/CoinBoard'
+import { rhStage, rhStageInput, type Stage } from '../lib/coinStage'
+import { LISTING, meetsStandard, rhSafety, SAFETY_COLOR, SAFETY_ICON, type SafetyView } from '../lib/safety'
 import { rhAddress, stockCompany } from '../lib/robinhood'
 import { useIsMobile } from '../lib/useMobile'
 import { t as T, N_ } from '../lib/i18n'
 
-const TABS = [N_('All'), N_('Memecoins'), N_('Stocks'), N_('New')] as const
+// Since 2026-10-04 the stages of a coin's life (lib/coinStage.ts) are tabs too. Robinhood Chain's curves (Pons) don't
+// say how far along a coin is, so there's no Near bond here: Bonding is every coin still on one.
+const TABS = [N_('All'), N_('Memecoins'), N_('Stocks'), N_('New'), N_('Bonding'), N_('Graduated'), N_('Established')] as const
+const STAGE_TAB: Partial<Record<string, Stage>> = { New: 'new', Bonding: 'bonding', Graduated: 'graduated', Established: 'established' }
+/** A per-browser choice (the list or the board; risky coins shown or not), shared with Arc's Markets. */
+const readPref = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
+const writePref = (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* storage blocked */ } }
 type Tab = typeof TABS[number]
 type Sort = 'volume' | 'mcap' | 'liq' | 'change' | 'txns' | 'age'
 const PAGE = 50
@@ -51,6 +61,10 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
   const [search, setSearch] = useState('')
   const [shown, setShown] = useState(PAGE)
   const [found, setFound] = useState<RhCoin[]>([])
+  const [view, setView] = useState<'list' | 'board'>(() => (readPref('arcdex:mk-view') === 'board' ? 'board' : 'list'))
+  const [showRisky, setShowRisky] = useState(() => readPref('arcdex:show-risky') === '1')
+  useEffect(() => { writePref('arcdex:mk-view', view) }, [view])
+  useEffect(() => { writePref('arcdex:show-risky', showRisky ? '1' : '0') }, [showRisky])
 
   useEffect(() => {
     let live = true
@@ -65,12 +79,28 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
   const isAddr = /^0x[0-9a-f]{40}$/.test(q)
   const matches = (c: RhCoin) => !q || c.address === q || c.symbol.toLowerCase().includes(q.replace(/^\$/, '')) || c.name.toLowerCase().includes(q)
 
+  // Each coin's safety (lib/safety.ts: market data on Robinhood Chain) and the listing standard: danger (wash trading
+  // included), and pool coins under $2K of liquidity, stay out of the default lists; a search, or "Show risky coins",
+  // shows everything with its badge.
+  const rated = useMemo(() => new Map(rows.map(c => [c.address, rhSafety(c)])), [rows])
+  const safetyOf = (c: RhCoin): SafetyView => rated.get(c.address) ?? rhSafety(c)
+  const standardOn = !showRisky && !q
+  const passes = (c: RhCoin) => meetsStandard({ level: safetyOf(c).level, stage: rhStage(c), onCurve: rhStageInput(c).onCurve, liquidityUsd: c.liquidity, holders: null })
+  const hiddenCount = useMemo(() => (standardOn ? rows.filter(c => !passes(c)).length : 0),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, standardOn, rated])
+
   const list = useMemo(() => {
     const now = Date.now()
-    let l = rows.filter(c => !isWashPool(c, now) || (q && c.address === q))
-    if (tab === 'Memecoins') l = l.filter(c => !c.stock)
-    if (tab === 'Stocks') l = l.filter(c => c.stock)
-    if (tab === 'New') l = l.filter(c => c.createdAt > now - 3 * 86400_000)
+    let l = showRisky ? rows.slice() : rows.filter(c => !isWashPool(c, now) || (q && c.address === q))
+    if (standardOn) l = l.filter(passes)
+    // The board has its own columns: the tabs only filter the list.
+    if (view === 'list') {
+      if (tab === 'Memecoins') l = l.filter(c => !c.stock)
+      if (tab === 'Stocks') l = l.filter(c => c.stock)
+      const st = STAGE_TAB[tab]
+      if (st) l = l.filter(c => rhStage(c) === st)
+    }
     l = l.filter(matches)
     const key: Record<Sort, (c: RhCoin) => number> = {
       volume: c => c.volume24h, mcap: c => c.marketCap, liq: c => c.liquidity, change: c => c.change24h,
@@ -79,7 +109,7 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
     const by = key[tab === 'New' && sort === 'volume' ? 'age' : sort]
     return l.slice().sort((a, b) => by(b) - by(a))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, tab, sort, q])
+  }, [rows, tab, sort, q, view, showRisky, standardOn, rated])
 
   // A name or address the list doesn't have: asked of GeckoTerminal (debounced).
   useEffect(() => {
@@ -91,7 +121,8 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
   }, [q])
 
   const now = Date.now()
-  const live = rows.filter(c => !isWashPool(c, now))
+  // The overview cards only pick coins that meet the listing standard.
+  const live = rows.filter(c => !isWashPool(c, now) && passes(c))
   const overview: [string, RhCoin[]][] = [
     [T('Stock tokens'), live.filter(c => c.stock).sort((a, b) => b.volume24h - a.volume24h).slice(0, 3)],
     [`🔥 ${T('Hot coins')}`, live.filter(c => !c.stock).sort((a, b) => (b.buys24h + b.sells24h) - (a.buys24h + a.sells24h)).slice(0, 3)],
@@ -141,6 +172,13 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
           ))}
         </div>
         <div className="mk-tools">
+          <div className="mk-view-switch" role="group" aria-label={T('View')}>
+            <button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}>☰ {T('List')}</button>
+            <button className={view === 'board' ? 'on' : ''} onClick={() => setView('board')}>▦ {T('Board')}</button>
+          </div>
+          <label className="mk-safe-toggle" title={T('Off: coins rated Danger, and pool coins under ${usd} of liquidity or {holders} holders, are left out.', { usd: LISTING.minLiquidityUsd.toLocaleString(), holders: LISTING.minHolders })}>
+            <input type="checkbox" checked={showRisky} onChange={e => setShowRisky(e.target.checked)} /><span>{T('Show risky coins')}</span>
+          </label>
           <input className="filter-input mk-search" placeholder={T('🔍 Search…')} value={search} onChange={e => setSearch(e.target.value)} />
           <select className="sort-select" value={sort} onChange={e => setSort(e.target.value as Sort)}>
             <option value="volume">{T('Sort: volume')}</option>
@@ -158,7 +196,24 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
         </div>
       )}
 
-      <div className="table-scroll">
+      {standardOn && hiddenCount > 0 && (
+        <div className="mk-hidden-note">
+          {T('Hidden by the safety standard: {n} (rated Danger, or under ${usd} of liquidity or {holders} holders).', { n: hiddenCount, usd: LISTING.minLiquidityUsd.toLocaleString(), holders: LISTING.minHolders })}
+          <button onClick={() => setShowRisky(true)}>{T('Show them')}</button>
+        </div>
+      )}
+
+      {/* ── the coin board: New, Bonding (Pons's curve), Graduated ── */}
+      {view === 'board' && (
+        <CoinBoard mobile={mobile} onOpen={b => { const c = list.find(x => x.address === b.key); if (c) navigate(rhPage(c)) }}
+          coins={list.map((c): BoardCoin => ({
+            key: c.address, symbol: c.symbol, name: name(c), logo: c.image, launchpad: c.stock ? T('Stock') : c.launchpad,
+            ageMs: c.createdAt > 0 ? Math.max(0, Date.now() - c.createdAt) : 0, marketCap: c.marketCap, liquidity: c.liquidity, volume24h: c.volume24h,
+            change24h: c.change24h, holders: null, traders24h: c.traders24h, progress: null, stage: rhStage(c), safety: safetyOf(c),
+          }))} />
+      )}
+
+      {view === 'list' && <div className="table-scroll">
         {list.length === 0 && loading ? (
           <div className="loading-state">{T('Loading Robinhood Chain…')}</div>
         ) : list.length === 0 && found.length === 0 ? (
@@ -179,6 +234,7 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
                 <th className="th-sort" style={{ textAlign: 'right' }}>{T('Liquidity')}</th>
                 <th className="th-sort" style={{ textAlign: 'right' }}>{T('24h volume')}</th>
                 <th className="th-sort" style={{ textAlign: 'right' }}>{T('24h trades')}</th>
+                <th className="th-sort" style={{ textAlign: 'right' }}>{T('Safety')}</th>
                 <th className="th-sort" />
               </tr>
             </thead>
@@ -215,6 +271,7 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
                     <div>{(c.buys24h + c.sells24h).toLocaleString()}</div>
                     <div style={{ fontSize: '0.66rem' }}><span style={{ color: 'var(--green)' }}>{c.buys24h}</span>{' / '}<span style={{ color: 'var(--red)' }}>{c.sells24h}</span></div>
                   </td>
+                  <td className="td-num"><SafetyBadge view={safetyOf(c)} /></td>
                   <td className="td-num td-trade"><button className="mk-trade" onClick={e => { e.stopPropagation(); navigate(rhPage(c)) }}>{T('Trade')}</button></td>
                 </tr>
               ))}
@@ -227,7 +284,7 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
                 <RhLogo src={c.image} symbol={c.symbol} size={30} />
                 <div className="mk-row-name">
                   <div className="mk-row-sym"><b>{c.symbol}</b><span>/{c.quoteSymbol || '—'}</span>{c.stock && <StockTag />}{!c.stock && c.launchpad && <span className="mk-tag rh-lp-tag">{c.launchpad}</span>}</div>
-                  <div className="mk-row-meta">{T('Vol')} {fmt(c.volume24h, '$')} · {T('MCap')} {fmt(c.marketCap, '$')}</div>
+                  <div className="mk-row-meta"><span style={{ color: SAFETY_COLOR[safetyOf(c).level] }}>{SAFETY_ICON[safetyOf(c).level]}</span> {T('Vol')} {fmt(c.volume24h, '$')} · {T('MCap')} {fmt(c.marketCap, '$')}</div>
                 </div>
                 <div className="mk-row-price">{fmtPrice(c.priceUsd)}<small>{name(c).slice(0, 18)}</small></div>
                 <span className={`mk-row-chg ${c.change24h > 0 ? 'up' : c.change24h < 0 ? 'down' : 'flat'}`}>{pct(c.change24h)}</span>
@@ -238,8 +295,8 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
         {shown < list.length && (
           <button className="show-more" onClick={() => setShown(n => n + PAGE)}>{T('Show more')} · {(list.length - shown).toLocaleString()}</button>
         )}
-        <p className="rh-source">{T('Prices and trades from GeckoTerminal. Coins on Robinhood Chain are launched by anyone: check a coin before you buy it.')}</p>
-      </div>
+      </div>}
+      <p className="rh-source">{T('Prices and trades from GeckoTerminal. Coins on Robinhood Chain are launched by anyone: check a coin before you buy it.')} {T('Safety ratings here come from market data: on-chain checks run on Arc.')}</p>
     </div>
   )
 }

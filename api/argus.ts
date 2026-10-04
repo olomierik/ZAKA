@@ -10,7 +10,7 @@
 import { gtFetch, gtUpstream } from './_geckoterminal'
 import { buildMarket, discoverLaunchpads, type ArgusPool, type GtDex, type GtList } from './_argusCore'
 import { KNOWN_LAUNCHPAD_DEXES } from './_launchpads'
-import { bondedFlags } from './_argusBonded'
+import { launchStatus, type LaunchStatus } from './_argusBonded'
 import { kvGet, kvSet } from './_supabaseAdmin'
 
 export const config = { runtime: 'edge' }
@@ -74,14 +74,19 @@ async function build(prev: Snapshot | null): Promise<Snapshot | null> {
   const concurrency = gtUpstream() === 'coingecko-pro' ? 4 : gtUpstream() === 'coingecko-demo' ? 2 : 1
   const pools = await buildMarket(path => gtBudgeted(path, deadline, failures), undefined, { launchpads: lps, concurrency })
 
-  // Graduated vs still-bonding, for the Graduated / Bonding lists. Capped
-  // at 5s so a slow RPC can never hold up the market list itself.
+  // Graduated vs still-bonding, and how far along its curve each one is, for
+  // the Graduated / Bonding lists and the coin board. Capped at 6s so a slow
+  // RPC can never hold up the market list itself.
   try {
-    const flags = await Promise.race([
-      bondedFlags(pools.map(p => p.token.address)),
-      new Promise<Map<string, boolean>>((_, rej) => setTimeout(() => rej(new Error('timeout')), 5_000)),
+    const status = await Promise.race([
+      launchStatus(pools.map(p => p.token.address)),
+      new Promise<Map<string, LaunchStatus>>((_, rej) => setTimeout(() => rej(new Error('timeout')), 6_000)),
     ])
-    for (const p of pools) p.bonded = flags.has(p.token.address) ? flags.get(p.token.address)! : null
+    for (const p of pools) {
+      const st = status.get(p.token.address)
+      p.bonded = st ? st.bonded : null
+      p.progress = st ? st.progress : null
+    }
   } catch { /* flags stay absent this round */ }
   if (pools.length === 0) return null
 
@@ -89,7 +94,10 @@ async function build(prev: Snapshot | null): Promise<Snapshot | null> {
   // previous list for a while instead of dropping those coins.
   const now = Date.now()
   const before = new Map((prev?.pools ?? []).map(p => [p.token.address, p]))
-  const fresh = pools.map(p => ({ ...p, seenAt: now, bonded: p.bonded ?? before.get(p.token.address)?.bonded ?? null }))
+  const fresh = pools.map(p => {
+    const was = before.get(p.token.address)
+    return { ...p, seenAt: now, bonded: p.bonded ?? was?.bonded ?? null, progress: p.progress ?? (p.bonded == null ? was?.progress ?? null : null) }
+  })
   const seen = new Set(fresh.map(p => p.token.address))
   const carried = (prev?.pools ?? []).filter(p => !seen.has(p.token.address) && now - (p.seenAt ?? 0) < KEEP_UNSEEN_MS)
   return {

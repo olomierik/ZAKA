@@ -1455,6 +1455,57 @@ Owner: "Change the CA on our landing page to 0x4b93…676c, the ticker is ARCDEX
   - **Fixed afterwards (2026-10-04):** a page that asked for the Robinhood list while a build was running got only the finished list. React's development mode runs effects twice, so `/robinhood` sat empty for up to a minute when GeckoTerminal throttled. Now every caller gets rows as each call lands (`listeners` in `loadRhMarket`): measured from a cold start, 22 coins by 14s and 42 by 26s while throttled.
 - **Tests:** `scripts/test-robinhood.ts` (which Robinhood coins are listed), `engine/test/coinProgram.test.ts` (burns by anyone show in the history without counting as the program's), and `test-session`, `test-curve-index` and `test-launchpads`. Every new string is in all six dictionaries.
 
+## The coin board, safety ratings and a listing standard, on Arc and Robinhood Chain (2026-10-04)
+
+Owner: "what feature should I add to attract more users and avoid buying rugs; should we set a standard for which coins appear, classifying coins as near bond, graduated, new?", then "do it for all chains". The owner didn't pick the two numbers offered, so the suggested ones are used: **Near bond at 70%**, and **$2K of liquidity and 20 holders** for the default lists. Each is one constant to change.
+
+- **Stages (`lib/coinStage.ts`):**
+
+  | Stage | When |
+  |---|---|
+  | **New** | under an hour old |
+  | **Bonding** | still on a launchpad's curve |
+  | **Near bond** | 70%+ along that curve (`STAGE.nearPct`) |
+  | **Graduated** | off the curve, or launched straight into a pool |
+  | **Established** | a day old, $10K+ of liquidity and 100+ holders (on Robinhood Chain, 50+ wallets trading in 24h stand in for holders) |
+
+  - **Arc:** curve coins are ArcLaunchpad, Mercuri and SolonPad (their curve's progress), and Argus launches not yet bonded.
+    - **Argus progress (`api/_argusBonded.ts` `launchStatus`):** each launch's start and bond ticks, from its Portal record, plus the launch pool's current tick (a v3 pool's `slot0`, or v4's StateView `getSlot0` by the hook's `poolId`, cached). That's one more multicall a build; the market list carries it as `ArgusPool.progress`.
+    - Measured: 28 Argus coins in 2.5s, 20 bonded and 8 bonding (the top one 45%). Every bonded flag matched the stored copy.
+    - Before, the site's Argus rows said `graduated: false` and no progress.
+  - **Robinhood Chain:** Pons's curve pools (`pons-v2`, `pons-dot-family`) are Bonding, with no progress to read. Every other launchpad launches straight into a pool. Robinhood's stock tokens are Established.
+- **Safety rating (`lib/safety.ts`):** ✅ Safe, ⚠ Risky, ⛔ Danger or ◌ Checking, with the reasons in words.
+  - **On Arc, from the engine's safety scan:** the sell test, contract, hook, creator and buyers (below), plus the launcher's record and the market data.
+    - **Danger:** a failed sell test (a honeypot, or a heavy tax), hook, contract, proxy, self-destruct, creator (already sold most) or launchpad check. Also a fake ticker, or a launcher that dumped 2+ coins at a rate (dumps + 1) / (coins + 4) over 40%.
+    - **Risky:** a failed bundle, clusters, wash, liquidity, holders, serial or copycat check; a launcher rate over 25%; or a high market risk.
+    - **Safe:** the sell test passed (on a curve there's none to wait for) and nothing above.
+    - **Checking:** not scanned yet.
+  - **A coin the engine doesn't track, and every Robinhood Chain coin,** is rated from its market data (`lib/risk.ts`), and its badge says so. Only a low market risk reads as Safe; wash trading is Danger, and a Robinhood stock token is Safe.
+- **Engine (`bot/boardSafety.ts`, `Bot.boardSafety`, `GET /v1/safety?tokens=…`, up to 120 a request):**
+  - Answers at once from each coin's last report, as the site reads it (`CoinSafety` in `api/_marketProtocol.ts`), with the launcher's record (`bot/creatorMemory.ts`).
+  - A coin with no report, or one over 10 minutes old, is queued: two scans at a time, a request's first coins (the top of the page) first, newer requests ahead of older asks, 400 waiting at most.
+  - Coins under 6 hours old get the full scan. Older ones get the sell test alone (`report(…, { probe: true })`, cached 30 minutes), since reading days of transfers for holders takes too long.
+  - The site (`api/coinSafety.ts`) asks every 20s for the coins worth asking about: the young and on-curve ones, the busiest 150, the youngest 40 graduates and $ARCDEX.
+- **The listing standard (`meetsStandard`):** the default lists leave out Danger, and pool coins under $2K of liquidity or 20 holders (holders unknown doesn't count against a coin). New coins and coins on a curve are thin by nature, so only Danger keeps those out. A search, or **Show risky coins** (remembered in the browser, `arcdex:show-risky`), shows everything with its badge; a note says how many are hidden. The overview cards (Hot coins, Top gainers, Top volume) only pick coins that meet it.
+- **The board (`components/CoinBoard.tsx`), on Arc's Markets and on Robinhood Chain's:** a ☰ List / ▦ Board switch (`arcdex:mk-view`).
+  - **Columns:** New (newest first); Near bond (70%+ first, then the rest still bonding, closest first, with progress bars); Graduated (youngest first).
+  - **Cards:** launchpad, age, 🔥 trades in 15 minutes, market cap, liquidity, holders (or wallets trading), 24h change and the badge.
+  - **Phones:** one column at a time behind tabs.
+- **The lists:**
+  - **Arc's tabs:** All · New · Near bond · Graduated · Established · Trending · Top volume (New pair and New <15m are gone).
+  - **Robinhood Chain's tabs:** All · Memecoins · Stocks · New · Bonding · Graduated · Established.
+  - The Risk column is now Safety, sorted safest first. Curve coins show 🚀 and their progress.
+- **Checked:**
+  - In the browser (dev server against the live engine, which then had no `/v1/safety`, so market ratings): Arc's board (New 6, Near bond 29, Graduated 85), Robinhood's board, the tabs and the hidden-coins note. At 375px: column tabs and no sideways scroll.
+  - `bun scripts/test-coin-board.ts`: stages, every rating rule, the standard.
+  - `engine/test/boardSafety.test.ts`: what the site reads of a report; full scan vs sell test; two at a time, top of the page first; fresh reports not rescanned; untracked coins null.
+  - The engine suite: 588 pass.
+- **Every new string is in all six dictionaries** (44).
+- **Not done yet:**
+  - On-chain checks on Robinhood Chain (a sell test there needs the engine to read that chain).
+  - Rug alerts to holders, and creator pages (suggested next).
+  - The safety rating on coin pages, which still show their own risk score and Safety check panel.
+
 ## ARCSENSE: spot and futures first (2026-10-03)
 
 Owner: "hide the autotrade marketplace and let the users see only COMING SOON; hide the launchpad; put futures and spot trading as our main features; rebrand the app to be the first on Arc".

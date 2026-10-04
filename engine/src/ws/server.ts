@@ -15,6 +15,7 @@
 //   GET /v1/market?limit=100
 //   GET /v1/signals?limit=50                    trading signals (engine/src/bot)
 //   GET /v1/safety/:token                       a coin's latest safety report
+//   GET /v1/safety?tokens=0x…,0x…               the coin board's safety for up to 120 coins (bot/boardSafety.ts)
 //   GET /v1/bot/stats                           paper and live trading results
 //   GET /v1/bot/positions?status=open|closed|all&limit=100
 //   GET /v1/bot/status                          mode, bot wallet, live limits and activity
@@ -369,6 +370,13 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         if (url.pathname === '/v1/tokens/active') return json(req, 200, { at: Date.now(), tokens: api.active(limit(100, 300)) }, 'public, max-age=5')
         if (url.pathname === '/v1/market') return json(req, 200, { tokens: await api.market(limit(100, 1_000)) }, 'public, max-age=2')
         if (url.pathname === '/v1/search') return json(req, 200, { tokens: await api.search(url.searchParams.get('q') ?? '', limit(20, 50)) }, 'public, max-age=10')
+        // The coin board's safety (bot/boardSafety.ts): every coin a page shows, answered at once; unscanned ones queued.
+        if (url.pathname === '/v1/safety') {
+          const bot = api.bot
+          if (!bot) return json(req, 503, { error: 'signals are not running in this process' })
+          const tokens = (url.searchParams.get('tokens') ?? '').split(',').map(t => t.trim().toLowerCase()).filter(t => /^0x[0-9a-f]{40}$/.test(t))
+          return json(req, 200, { at: Date.now(), safety: bot.boardSafety(tokens) }, 'public, max-age=10')
+        }
         if (url.pathname.startsWith('/v1/signals') || url.pathname.startsWith('/v1/safety/') || url.pathname.startsWith('/v1/bot/')) {
           const bot = api.bot
           if (!bot) return json(req, 503, { error: 'signals are not running in this process' })

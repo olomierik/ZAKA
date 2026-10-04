@@ -28,7 +28,7 @@
 // mode (the owner's switch, bot/liveTrader.ts) the bot wallet also trades it.
 
 import { POOL_MANAGER } from '../../../api/_arcSwaps'
-import type { LaunchInfo, ServerMessage, Trade } from '../../../api/_marketProtocol'
+import type { CoinSafety, LaunchInfo, ServerMessage, Trade } from '../../../api/_marketProtocol'
 import type { Rpc } from '../chain/http'
 import type { PoolInfo, PoolRegistry } from '../dex/pools'
 import { clustersOf, type Clusters } from '../intel/clusters'
@@ -48,6 +48,7 @@ import { QUALITY, QualityRank, qualityScore, type RuleRecord } from '../signals/
 import { LIVE_GATE, liveKey, LiveSpeedBook, replayAtLiveSpeed, type LiveSpeedRecord, type Replay } from '../signals/liveSpeed'
 import { canOpen, closeNow, costPerSide, LIVE_SPEED, onPrice, openPosition, QUICK_EXITS, RISK, STRATEGIES, stats, type ExitReason, type Position, type Strategy, type StrategyParams } from '../trading/paper'
 import { CreatorMemory } from './creatorMemory'
+import { BOARD, boardView } from './boardSafety'
 import { DOLLAR_PLAN, DOLLAR_TARGET_USD, dollarParams, dollarPlanText, dollarTradeSize, isDollarStrategy, isDollarTrade, planBlocks, PROVE_FIRST, SNIPE_EXITS, snipePlanText, VOLUME_EXITS, volumeParams, type DollarStrategy } from './dollarPlan'
 import { PatternBook, patternWhy, type Outcome } from './patterns'
 import type { HistoryStore } from '../store/history'
@@ -142,6 +143,12 @@ export class Bot implements EngineObserver {
   private statics = new Map<string, Promise<StaticFacts>>()
   private deeps = new Map<string, Deep>()
   private reports = new Map<string, SafetyReport>()
+  /** The site's coin board (boardSafety): coins waiting for a scan, newest asks last (taken first), and those scanning. */
+  private boardQueue: string[] = []
+  private boardQueued = new Set<string>()
+  private boardRunning = 0
+  /** The sell test alone, for coins too old for a full scan (cached 30 minutes). */
+  private probes = new Map<string, { at: number; r: HoneypotResult }>()
   private lastEval = new Map<string, number>()
   private evaluating = new Set<string>()
   private fired = new Map<string, number>()
@@ -918,8 +925,9 @@ export class Bot implements EngineObserver {
     return r && now - r.at <= maxAgeMs ? r : null
   }
 
-  /** The coin's safety report; `deep` adds the probe, holders and funding (cached 2 minutes). */
-  async report(token: string, deep: boolean): Promise<SafetyReport | null> {
+  /** The coin's safety report; `deep` adds the probe, holders and funding (cached 2 minutes); `probe` adds the sell test
+   * alone (for the coin board's older coins, whose holders would take long to read). */
+  async report(token: string, deep: boolean, o: { probe?: boolean } = {}): Promise<SafetyReport | null> {
     const meta = this.o.engine.metas.get(token)
     const st = this.o.engine.tokens.get(token)
     if (!meta || !st) return this.reports.get(token) ?? null
@@ -933,10 +941,66 @@ export class Bot implements EngineObserver {
       input.honeypot = d.honeypot
       input.holders = d.holders
       input.clusters = d.clusters
+    } else if (o.probe && !onCurve && pool) {
+      input.honeypot = await this.probeOnce(token, pool)
     }
     const r = assess(s, input)
     this.reports.set(token, r)
     return r
+  }
+
+  /** The sell test alone, cached 30 minutes (the deep scan's limiter, so the bots' scans still come first in line). */
+  private probeOnce(token: string, pool: PoolInfo): Promise<HoneypotResult> {
+    const hit = this.probes.get(token)
+    if (hit && Date.now() - hit.at < BOARD.probeTtlMs && hit.r.verdict !== 'unknown') return Promise.resolve(hit.r)
+    const slow: HoneypotResult = { verdict: 'unknown', buyTaxPct: null, transferTaxPct: null, roundTripLossPct: null, error: 'the probe took too long' }
+    return this.deepLimit.run(() => within(probeHoneypot(this.o.rpc, pool), DEEP_BUDGET_MS.honeypot, slow)).then(r => {
+      this.probes.set(token, { at: Date.now(), r })
+      if (this.probes.size > 5_000) this.probes.delete(this.probes.keys().next().value!)
+      return r
+    })
+  }
+
+  /** Safety for the coins a page of the site shows (GET /v1/safety?tokens=…): each one's last report as the site reads it,
+   * and its launcher's record. Coins with no report, or one older than BOARD.freshMs, are queued for a scan (two at a
+   * time): a full one for coins under BOARD.deepUnderMs old, the sell test alone for older ones. Answers at once; a
+   * coin this engine doesn't track is null. */
+  boardSafety(tokens: string[], now = Date.now()): Record<string, CoinSafety | null> {
+    const out: Record<string, CoinSafety | null> = {}
+    const scan: string[] = []
+    for (const raw of tokens.slice(0, BOARD.maxTokens)) {
+      const token = raw.toLowerCase()
+      const meta = this.o.engine.metas.get(token)
+      if (!meta) { out[token] = null; continue }
+      const r = this.reports.get(token)
+      if (!r || now - r.at > BOARD.freshMs || r.checks.some(c => c.id === 'honeypot' && c.ok === null)) scan.push(token)
+      const launcher = meta.creator ? this.launchers.record(meta.creator, now) : null
+      out[token] = boardView(r ?? null, launcher)
+    }
+    // Scans are taken from the end: this request's coins go ahead of older asks, its first ones (the top of the page) first.
+    for (const token of scan.reverse()) this.queueBoardScan(token)
+    this.pumpBoard()
+    return out
+  }
+
+  private queueBoardScan(token: string) {
+    if (this.boardQueued.has(token)) return
+    this.boardQueued.add(token)
+    this.boardQueue.push(token)
+    // Past the cap, the oldest asks are dropped (asked again on the next poll).
+    while (this.boardQueue.length > BOARD.maxQueue) this.boardQueued.delete(this.boardQueue.shift()!)
+  }
+
+  private pumpBoard() {
+    while (this.boardRunning < BOARD.concurrency && this.boardQueue.length) {
+      const token = this.boardQueue.pop()!
+      this.boardRunning++
+      const meta = this.o.engine.metas.get(token)
+      const young = !!meta && Date.now() - meta.timestamp < BOARD.deepUnderMs
+      void this.report(token, young, { probe: !young })
+        .then(() => metrics.inc('board_scans'), e => { metrics.inc('board_scan_errors'); log.debug('bot: board scan', { token, error: errMsg(e) }) })
+        .finally(() => { this.boardRunning--; this.boardQueued.delete(token); this.pumpBoard() })
+    }
   }
 
   /** Contract and hook facts, read once per coin (a few at a time). */

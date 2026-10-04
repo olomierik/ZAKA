@@ -177,8 +177,10 @@ export function argusPoolToArcToken(p: ArgusPool): ArcToken {
     buys24h: p.txns24h.buys,
     sells24h: p.txns24h.sells,
     verified: true,
-    graduated: false,
-    bondingProgress: null,
+    // An Argus launch that reached its bond tick has graduated; one still on its curve says how far along (0 when its
+    // progress couldn't be read: still bonding, not graduated). Unknown status: null.
+    graduated: p.bonded === true,
+    bondingProgress: p.bonded === true ? 100 : p.bonded === false ? p.progress ?? 0 : null,
     spark: [],
     quoteSymbol: p.quote.symbol,
     quoteAddress: p.quote.address,

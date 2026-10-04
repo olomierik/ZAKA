@@ -177,6 +177,24 @@ export interface LaunchInfo {
 /** One safety check of a coin (engine/src/intel/scanner.ts). */
 export interface SafetyCheck { id: string; ok: boolean | null; hard: boolean; /** Doesn't block: failing it makes the coin risky (a scalp). */ risk?: boolean; detail: string }
 
+/** A coin's safety for the site's coin board and lists (GET /v1/safety?tokens=…, engine/src/bot/bot.ts boardSafety):
+ * the checks it failed, whether it sold back in the simulation, and its launcher's record. The site turns these into
+ * Safe / Risky / Danger (src/arcdex/lib/safety.ts). */
+export interface CoinSafety {
+  /** When its report was made (ms); 0 while it waits for its first scan. */
+  at: number
+  /** Hard checks it failed: honeypot, hook, contract, proxy, selfdestruct, creator, launchpad, bundle, clusters, wash, liquidity. */
+  fails: { id: string; detail: string }[]
+  /** Risk checks it failed: holders, serial, copycat. */
+  risks: { id: string; detail: string }[]
+  /** Sold back in the simulation: true, false (can't sell, or a heavy tax), null not probed yet. On a launchpad curve, true. */
+  sellable: boolean | null
+  /** Its launcher's last coins and how many it dumped early (bot/creatorMemory.ts); null when the creator isn't known. */
+  launcher: { coins: number; dumps: number } | null
+  /** The full scan ran (holders and funding too), not only the sell test. */
+  deep: boolean
+}
+
 /** A trading signal (engine/src/bot/bot.ts): market rules met and every hard safety check passed.
  * A scalp is a snipe on a coin that failed a risk check: traded small and out fast. */
 export interface TradeSignal {

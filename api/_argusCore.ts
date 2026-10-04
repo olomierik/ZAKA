@@ -35,6 +35,8 @@ export interface ArgusPool {
   createdAt: string | null
   /** Argus launch graduated from its curve (null/absent = unknown or not an Argus launch) */
   bonded?: boolean | null
+  /** How far along its Argus launch curve, 0–100 (100 once bonded; null/absent = unknown, or no curve). */
+  progress?: number | null
   /** Where the coin launched: "Argus", "Tolly", … (absent on lists from before other launchpads were listed = Argus). */
   launchpad?: string
 }
