@@ -81,7 +81,8 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate 
   // The coin: GeckoTerminal's page for it (price, supply, pools), every 60s.
   useEffect(() => {
     let live = true
-    setCoin(seedCoin(address, poolParam)); setLoaded(false)
+    // Another pool of the same coin keeps what's known; another coin starts from its cached row.
+    setCoin(prev => (prev && prev.address === address.toLowerCase() ? prev : seedCoin(address, poolParam))); setLoaded(false)
     const load = () => getRhCoin(address, poolParam).then(c => { if (live && c) setCoin(c) }).catch(() => {}).finally(() => { if (live) setLoaded(true) })
     void load()
     const id = setInterval(() => { if (!document.hidden) void load() }, 60_000)
@@ -236,12 +237,13 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate 
       label: `${who} ${r.kind === 'buy' ? 'bought' : 'sold'} $${r.usd >= 1000 ? (r.usd / 1000).toFixed(1) + 'K' : r.usd.toFixed(2)}`,
     }]
   }), [rows, me])
-  // The price: the last swap's on the chain, else GeckoTerminal's. Only from a pool GeckoTerminal has
-  // listed for the coin and not marked off-market: a link to a trap pool, read on the chain before
-  // GeckoTerminal answers, must never set the market price the trade form's price guard checks against.
-  const priceFromChain = chainOn && !!poolRow && !poolRow.offMarket
-  const livePrice = priceFromChain && rows[0] && !rows[0].id.includes(':gt:') ? rows[0].priceUsd : 0
+  // The price shown: the last swap's on the chain, else GeckoTerminal's.
+  const livePrice = chainOn && rows[0] && !rows[0].id.includes(':gt:') ? rows[0].priceUsd : 0
   const priceUsd = livePrice || gtPrice
+  // The market price the trade form's price guard checks quotes against: the chain's only from a pool
+  // GeckoTerminal has listed for the coin and not marked off-market (a link to a trap pool, read on the
+  // chain before GeckoTerminal answers, must never set it), else GeckoTerminal's.
+  const guardPrice = (!!poolRow && !poolRow.offMarket && livePrice) || gtPrice
 
   useEffect(() => { document.title = `${priceUsd ? fmtPrice(priceUsd) + ' | ' : ''}${symbol} | ARCDEX` }, [priceUsd, symbol])
 
@@ -276,7 +278,7 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate 
     </>
   )
   const trade = (side?: 'buy' | 'sell', compact?: boolean, initialMode?: 'buy' | 'sell') => notToken ? null : (
-    <RobinhoodTrade key={`${side ?? initialMode ?? 'x'}`} token={address} symbol={symbol} decimals={decimals} priceUsd={priceUsd} stock={stock} buyBlocked={buyBlocked}
+    <RobinhoodTrade key={`${side ?? initialMode ?? 'x'}`} token={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} stock={stock} buyBlocked={buyBlocked}
       side={side} compact={compact} initialMode={initialMode} />
   )
   const tradesTable = (

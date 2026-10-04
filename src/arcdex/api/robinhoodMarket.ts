@@ -13,8 +13,10 @@ import type { TradeRow } from '../components/TokenSocialTabs'
 import { isStockName, isStockToken, QUOTE_SYMBOLS, RH_QUOTES } from '../lib/robinhood'
 
 const NET = 'robinhood'
-/** The coin page's calls go before any market list's (gtClient's pacing). */
-const URGENT = { urgent: true }
+/** The coin page's calls go before any market list's (gtClient's pacing): the
+ * coin itself (price, stats, pools) first, then its candles, then its trades
+ * (the chain gives the live ones; these add older trades and makers). */
+const FIRST = { priority: 3 }, CANDLES = { priority: 2 }, TRADES = { priority: 1 }
 
 /** Robinhood Chain's launchpads, by GeckoTerminal dex id (its venues checked 2026-10-04). Only their
  * coins, and Robinhood's own stock tokens, are listed and can be bought (owner, 2026-10-04: no coins
@@ -357,7 +359,7 @@ export interface RhCoinDetail extends RhCoin {
  * picks the main pool when the link named one (never an off-market pool).
  * The price is always its best market's, whichever pool the page shows. */
 export async function getRhCoin(address: string, pool?: string | null): Promise<RhCoinDetail | null> {
-  const d = await gtDirect<GtTokenDetail>(`/networks/${NET}/tokens/${address.toLowerCase()}`, { include: 'top_pools' }, URGENT)
+  const d = await gtDirect<GtTokenDetail>(`/networks/${NET}/tokens/${address.toLowerCase()}`, { include: 'top_pools' }, FIRST)
   const t = d.data?.attributes
   if (!t) return null
   const tokens = new Map([[t.address.toLowerCase(), t]])
@@ -400,7 +402,7 @@ interface GtTrade {
  * The side is read from which way the coin moved, so it's right whichever
  * side of the pool the coin sits on. */
 export async function getRhTrades(pool: string, coin: string): Promise<TradeRow[]> {
-  const d = await gtDirect<{ data?: GtTrade[] }>(`/networks/${NET}/pools/${pool}/trades`, {}, URGENT)
+  const d = await gtDirect<{ data?: GtTrade[] }>(`/networks/${NET}/pools/${pool}/trades`, {}, TRADES)
   const c = coin.toLowerCase()
   return (d.data ?? []).map(t => {
     const a = t.attributes
@@ -434,7 +436,7 @@ export async function getRhCandles(pool: string, coin: string, res: ChartResolut
   const d = await gtDirect<{ data?: { attributes?: { ohlcv_list?: [number, number, number, number, number, number][] } } }>(
     `/networks/${NET}/pools/${pool}/ohlcv/${r.timeframe}`,
     { aggregate: String(r.aggregate), limit: String(limit), currency: 'usd', token: coin.toLowerCase() },
-    URGENT,
+    CANDLES,
   )
   return (d.data?.attributes?.ohlcv_list ?? [])
     .map(([time, open, high, low, close, volume]) => ({ time, open, high, low, close, volume }))

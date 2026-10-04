@@ -1321,7 +1321,7 @@ Owner: "let users see Robinhood coins and buy and sell them just like Arc coins"
     - One `getLogs` may span 10M blocks and return 10k logs.
     - QuickNode serves Robinhood Chain over WebSocket too. It would need an endpoint of the owner's and bills each event, so it isn't used.
   - **GeckoTerminal now:** older trades and makers (every 60s while the chain feeds the page; every 12s, as before, for a pool the chain can't read), candles, stats and pools.
-  - **GeckoTerminal's queue:** `gtClient.ts` has an urgent lane (`gtDirect(…, { urgent: true })`). The coin page's calls go before any market list's.
+  - **GeckoTerminal's queue:** `gtClient.ts` releases the highest priority first (`gtDirect(…, { priority })`). The coin page's calls go before any market list's: the coin itself (3), its candles (2), then its trades (1). The first release waits a tick, so a page's calls are all in line before one goes (a chart's effect runs before its page's).
   - **Opens at once:** the page starts from the coin's row in the market list already in the browser (`rhSeed`).
     - A link with a pool reads the pool's two tokens from the chain (`rhPoolTokens`): `token0()`/`token1()`, or a v4 pool's `Initialize` event, newest 10M-block slice first. So trades start without GeckoTerminal: 100 rows 2.5s after a cold load while GeckoTerminal was throttled.
   - **Safety:** the chain's live price feeds the trade form's price guard only for a pool GeckoTerminal has listed for the coin and not marked off-market. A link to a trap pool can't set the market price before GeckoTerminal answers.

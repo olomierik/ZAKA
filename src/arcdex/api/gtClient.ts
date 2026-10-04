@@ -24,10 +24,10 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 // cycle, which was slower overall. (The market build streams its rows as
 // each call lands, so the first ones still show within a second or two.)
 const MIN_GAP_MS = 2_000
-// One call every MIN_GAP_MS, urgent ones first: the page someone is looking
-// at (a Robinhood coin's price, trades, chart) never waits behind a market
-// list's dozen-plus calls.
-const waiting: { urgent: boolean; go: () => void }[] = []
+// One call every MIN_GAP_MS, the highest priority first (in order within a
+// priority): the page someone is looking at (a Robinhood coin's price, chart,
+// trades) never waits behind a market list's dozen-plus calls.
+const waiting: { priority: number; go: () => void }[] = []
 let lastGo = 0
 let pump: ReturnType<typeof setTimeout> | null = null
 function release() {
@@ -35,19 +35,22 @@ function release() {
   if (!waiting.length) return
   const wait = lastGo + MIN_GAP_MS - Date.now()
   if (wait > 0) { pump = setTimeout(release, wait); return }
-  const i = waiting.findIndex(w => w.urgent)
-  const [next] = waiting.splice(i >= 0 ? i : 0, 1)
+  let i = 0
+  for (let j = 1; j < waiting.length; j++) if (waiting[j].priority > waiting[i].priority) i = j
+  const [next] = waiting.splice(i, 1)
   lastGo = Date.now()
   next.go()
   if (waiting.length) pump = setTimeout(release, MIN_GAP_MS)
 }
-function paced(urgent = false): Promise<void> {
-  return new Promise(go => { waiting.push({ urgent, go }); if (!pump) release() })
+function paced(priority = 0): Promise<void> {
+  // The first release waits a tick, so calls a page makes together (a chart's
+  // effect runs before its page's) are all in line before the first goes.
+  return new Promise(go => { waiting.push({ priority, go }); if (!pump) pump = setTimeout(release, 0) })
 }
 
-async function direct<T>(pathWithQuery: string, urgent = false): Promise<T> {
+async function direct<T>(pathWithQuery: string, priority = 0): Promise<T> {
   for (let attempt = 0; ; attempt++) {
-    await paced(urgent)
+    await paced(priority)
     let res: Response
     try {
       res = await fetch(`${DIRECT}${pathWithQuery}`, { headers: HEADERS })
@@ -82,5 +85,5 @@ export const gtDirectFetcher = (path: string): Promise<GtList | null> => direct<
 /** Direct only, on the visitor's own quota: Robinhood Chain's data
  * (api/robinhoodMarket.ts). The app's proxy serves Arc's network only, and
  * its shared quota stays Arc's. */
-export const gtDirect = <T>(path: string, params: Record<string, string> = {}, opts: { urgent?: boolean } = {}): Promise<T> =>
-  direct<T>(withQuery(path, params), opts.urgent)
+export const gtDirect = <T>(path: string, params: Record<string, string> = {}, opts: { priority?: number } = {}): Promise<T> =>
+  direct<T>(withQuery(path, params), opts.priority)
