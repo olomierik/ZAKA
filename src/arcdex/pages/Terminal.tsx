@@ -225,46 +225,22 @@ function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onTogg
   )
 }
 
-interface CardProps { token: ArcToken; dupCount?: number; onClick: () => void; risk: Risk; flash?: Flash; hot?: number }
-function TokenCard({ token, dupCount = 0, onClick, risk, flash, hot }: CardProps) {
-  const lp = token.launchpad
-  const lpColor = getLaunchpadColor(lp)
+interface CardProps { token: ArcToken; dupCount?: number; onClick: () => void; risk: Risk; flash?: Flash; hot?: number; pinned?: boolean }
+function TokenCard({ token, dupCount = 0, onClick, risk, flash, hot, pinned }: CardProps) {
   const ch24 = token.priceChange24h
   return (
-    <div className={`token-card${flashClass(flash)}`} onClick={onClick}>
-      <div className="token-card-top">
-        <TokenLogo src={token.logoUrl} symbol={token.symbol} size={36} />
-        <div className="token-card-name">
-          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {token.symbol}{hot ? <> <HotBadge n={hot} /></> : null}
-          </div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {token.name} · {fmtAge(token.ageMs)}
-          </div>
-          {/* phones: one quiet line instead of the badge row and stat grid */}
-          <div className="token-card-meta"><span style={{ color: RISK_DOT[risk.level] }}>●</span> {riskText(risk.level)} · {T("Vol")} {fmt(token.volume24h, '$')} · {T("Liq")} {fmt(token.liquidity, '$')}{dupCount > 0 ? ` · +${dupCount} ${T("same ticker")}` : ''}</div>
-          <div className="token-card-badges">
-            {token.verified && (
-              <span style={{ fontSize: '0.58rem', background: '#1d4ed822', color: '#60a5fa', border: '1px solid #1d4ed844', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>{T("✓ VERIFIED")}</span>
-            )}
-            <span style={{ fontSize: '0.58rem', background: lpColor + '22', color: lpColor, border: `1px solid ${lpColor}44`, borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>{lp}</span>
-            <RiskBadge risk={risk} quick compact />
-            {dupCount > 0 && (
-              <span style={{ fontSize: '0.58rem', background: '#f59e0b18', color: 'var(--amber)', border: '1px solid #f59e0b44', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>+{dupCount}{' '}{T("same ticker")}</span>
-            )}
-          </div>
+    <div className={`token-card mk-row${pinned ? ' pinned' : ''}${flashClass(flash)}`} onClick={onClick}>
+      <TokenLogo src={token.logoUrl} symbol={token.symbol} size={30} />
+      <div className="mk-row-name">
+        <div className="mk-row-sym">
+          <b>{token.symbol}</b><span>/{token.quoteSymbol || 'USDC'}</span>
+          {pinned && <span className="mk-official">{T('Official')}</span>}
+          {hot ? <HotBadge n={hot} /> : null}
         </div>
-        <div className="token-card-price">
-          <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text)' }}>{fmt(token.marketCap, '$')}</div>
-          <div style={{ fontSize: '0.72rem', color: pctColor(ch24), fontWeight: 700 }}>{fmtPct(ch24)}</div>
-        </div>
+        <div className="mk-row-meta"><span style={{ color: RISK_DOT[risk.level] }}>●</span> {T("Vol")} {fmt(token.volume24h, '$')} · {T("MCap")} {fmt(token.marketCap, '$')}{dupCount > 0 ? ` · +${dupCount}` : ''}</div>
       </div>
-      <div className="token-card-stats">
-        <div className="token-card-stat"><span className="token-card-stat-label">{T("Liq")}</span><span className="token-card-stat-value">{fmt(token.liquidity, '$')}</span></div>
-        <div className="token-card-stat"><span className="token-card-stat-label">{T("Vol")}</span><span className="token-card-stat-value">{fmt(token.volume24h, '$')}</span></div>
-        <div className="token-card-stat"><span className="token-card-stat-label">{T("Txns")}</span><span className="token-card-stat-value">{token.txCount24h.toLocaleString()}</span></div>
-        <div className="token-card-stat"><span className="token-card-stat-label">{T("Holders")}</span><span className="token-card-stat-value">{token.holderCount > 0 ? token.holderCount.toLocaleString() : '—'}</span></div>
-      </div>
+      <div className="mk-row-price">{fmtPrice(token.price)}<small>{fmtAge(token.ageMs)} · {riskText(risk.level)}</small></div>
+      <span className={`mk-row-chg ${ch24 > 0 ? 'up' : ch24 < 0 ? 'down' : 'flat'}`}>{ch24 > 0 ? '+' : ''}{ch24.toFixed(2)}%</span>
     </div>
   )
 }
@@ -647,10 +623,10 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
 
   return (
     <div className={`terminal-shell${filtersOpen ? ' filters-open' : ''}`}>
-      {/* Phones open like fomo's app: cash + Deposit, then top traders, then the coins. */}
+      {/* Phones: one slim line with your cash and Deposit, then the coins. */}
       {mobile && <MobileHome navigate={navigate} />}
 
-      {/* ── Binance's Markets header: the overview cards ── */}
+      {/* ── Binance's Markets header: a title line and four compact cards (not on phones) ── */}
       <div className="mk-head">
         <div className="mk-title">
           <h1>{T('Markets')}</h1>
@@ -658,11 +634,13 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
         </div>
         <div className="mk-overview">
           <div className="mk-card mk-card-sense" onClick={() => navigate({ name: 'argus', address: SENSE_LC, pool: SENSE_POOL })}>
-            <div className="mk-card-h"><span>◆ $SENSE</span><span className="mk-official">{T('Official')}</span></div>
+            <div className="mk-card-h">
+              <span>◆ $SENSE <span className="mk-official">{T('Official')}</span></span>
+              <button className="mk-trade mk-trade-solid mk-trade-sm" onClick={e => { e.stopPropagation(); navigate({ name: 'argus', address: SENSE_LC, pool: SENSE_POOL }) }}>{T('Buy $SENSE')}</button>
+            </div>
             <div className="mk-sense-price">{fmtSmallUsd(sense?.priceUsd)} <span style={{ color: pctColor(sense?.change24h ?? 0) }}>{fmtPctSense(sense?.change24h)}</span></div>
-            <div className="mk-sense-meta">{T('Market cap')} {fmt(sense?.marketCapUsd ?? 0, '$')} · {T('Liquidity')} {fmt(sense?.liquidityUsd ?? 0, '$')}</div>
+            <div className="mk-sense-meta">{T('MCap')} {fmt(sense?.marketCapUsd ?? 0, '$')} · {T('Liq')} {fmt(sense?.liquidityUsd ?? 0, '$')}</div>
             <div className="mk-sense-note">{T('30% of ARCSENSE’s fees buy back $SENSE and burn it.')}</div>
-            <button className="mk-trade mk-trade-solid" onClick={e => { e.stopPropagation(); navigate({ name: 'argus', address: SENSE_LC, pool: SENSE_POOL }) }}>{T('Buy $SENSE')}</button>
           </div>
           {([[`🔥 ${T('Hot coins')}`, overview.hot], [T('Top gainers'), overview.gainers], [T('Top volume'), overview.volume]] as [string, ArcToken[]][]).map(([title, list]) => (
             <div key={title} className="mk-card">
@@ -670,7 +648,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
               {list.length === 0 && <div className="mk-card-empty">{T('Loading…')}</div>}
               {list.map(t => (
                 <button key={t.address} className="mk-card-row" onClick={() => navigate(openPage(t))}>
-                  <TokenLogo src={t.logoUrl} symbol={t.symbol} size={20} />
+                  <TokenLogo src={t.logoUrl} symbol={t.symbol} size={18} />
                   <b>{t.symbol}</b>
                   <span className="mk-card-price">{fmtPrice(t.price)}</span>
                   <span style={{ color: pctColor(t.priceChange24h) }}>{t.priceChange24h > 0 ? '+' : ''}{t.priceChange24h.toFixed(2)}%</span>
@@ -681,35 +659,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
         </div>
       </div>
 
-      {/* ── filter bar ── */}
-      <div className="filter-bar">
-        <div className="source-pills">
-          {sources.map(s => (
-            <button key={s} className={`source-pill${source === s ? ' active' : ''}`} onClick={() => setSource(s)}>
-              {s === 'All sources' ? '◉ ' + T('All sources') : s}
-            </button>
-          ))}
-        </div>
-        <div className="filter-controls">
-          <input className="filter-input" placeholder={T("min MC $")} value={minMcap} onChange={e => setMinMcap(e.target.value)} style={{ width: 90 }} />
-          <input className="filter-input" placeholder={T("max MC $")} value={maxMcap} onChange={e => setMaxMcap(e.target.value)} style={{ width: 90 }} />
-          <input className="filter-input" placeholder={T("min vol $")} value={minVol}  onChange={e => setMinVol(e.target.value)}  style={{ width: 90 }} />
-        </div>
-      </div>
-
-      {/* ── sort dropdown + view tabs ── */}
-      <div className="view-bar">
-        <select className="sort-select" value={sortCol} onChange={e => setSortCol(e.target.value as SortCol)}>
-          <option value="active">{T("Sort: most active")}</option>
-          <option value="volume">{T("Sort: volume")}</option>
-          <option value="mcap">{T("Sort: market cap")}</option>
-          <option value="txns">{T("Sort: transactions")}</option>
-          <option value="holders">{T("Sort: holders")}</option>
-          <option value="age">{T("Sort: newest")}</option>
-          <option value="liq">{T("Sort: liquidity")}</option>
-          <option value="score">{T("Sort: score")}</option>
-          <option value="risk">{T("Sort: risk")}</option>
-        </select>
+      {/* ── one toolbar, as on Binance: the tabs, then search, sort and Filters ── */}
+      <div className="mk-toolbar">
         <div className="view-tabs">
           {VIEW_TABS.map(t => (
             <button key={t} className={`view-tab${viewTab === t ? ' active' : ''}`} onClick={() => setViewTab(t)}>
@@ -717,38 +668,41 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
             </button>
           ))}
         </div>
-        <div className="time-tabs">
-          <span className="live-badge" title={T("Every buy and sell on Arc, as its block lands")}>{T("● live")}{perMin > 0 && <> · {T('{n} trades/min', { n: perMin })}</>}</span>
+        <span className="live-badge" title={T("Every buy and sell on Arc, as its block lands")}>{T("● live")}{perMin > 0 && <> · {T('{n} trades/min', { n: perMin })}</>}</span>
+        <div className="mk-tools">
+          <input className="filter-input mk-search" placeholder={T("🔍 Search…")} value={search} onChange={e => setSearch(e.target.value)} />
+          <select className="sort-select" value={sortCol} onChange={e => setSortCol(e.target.value as SortCol)}>
+            <option value="active">{T("Sort: most active")}</option>
+            <option value="volume">{T("Sort: volume")}</option>
+            <option value="mcap">{T("Sort: market cap")}</option>
+            <option value="txns">{T("Sort: transactions")}</option>
+            <option value="holders">{T("Sort: holders")}</option>
+            <option value="age">{T("Sort: newest")}</option>
+            <option value="liq">{T("Sort: liquidity")}</option>
+            <option value="score">{T("Sort: score")}</option>
+            <option value="risk">{T("Sort: risk")}</option>
+          </select>
+          <button className={`filters-btn${filtersOpen ? ' on' : ''}`} onClick={() => setFiltersOpen(o => !o)} aria-expanded={filtersOpen}>⚙ {T("Filters")}{source !== 'All sources' || minMcap || maxMcap || minVol ? ' •' : ''}</button>
         </div>
-        <button className={`filters-btn${filtersOpen ? ' on' : ''}`} onClick={() => setFiltersOpen(o => !o)} aria-expanded={filtersOpen}>⚙ {T("Filters")}</button>
       </div>
 
-      {/* ── pagination + search ── */}
-      <div className="pagination-bar">
-        <button className="pg-btn" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>{T("← prev")}</button>
-        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => i + 1).map(n => (
-          <button key={n} className={`pg-btn${page === n ? ' active' : ''}`} onClick={() => setPage(n)}>{n}</button>
-        ))}
-        {totalPages > 5 && <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', padding: '0 4px' }}>…</span>}
-        <button className="pg-btn" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>{T("next →")}</button>
-        <span className="pg-info">
-          {sorted.length.toLocaleString()}{' '}{T("tokens · page")}{' '}{page}/{totalPages}
-          {(curation.hiddenDuplicateCount > 0 || curation.deadFilteredCount > 0) && (
-            <span title={T("Contracts reusing another token's ticker are folded into that token's row (expand with the ticker badge); listings with zero liquidity, volume, and holders are hidden entirely.")}>
-              {' · '}{curation.hiddenDuplicateCount > 0 && T('{n} same-ticker duplicates folded', { n: curation.hiddenDuplicateCount })}
-              {curation.hiddenDuplicateCount > 0 && curation.deadFilteredCount > 0 && ', '}
-              {curation.deadFilteredCount > 0 && T('{n} dead listings hidden', { n: curation.deadFilteredCount })}
-            </span>
-          )}
-        </span>
-        <div style={{ marginLeft: 'auto' }}>
-          <input
-            className="filter-input" placeholder={T("🔍 Search…")}
-            value={search} onChange={e => setSearch(e.target.value)}
-            style={{ width: 160 }}
-          />
+      {/* ── filters, folded away until asked for: launchpads and ranges ── */}
+      {filtersOpen && (
+        <div className="filter-bar">
+          <div className="source-pills">
+            {sources.map(s => (
+              <button key={s} className={`source-pill${source === s ? ' active' : ''}`} onClick={() => setSource(s)}>
+                {s === 'All sources' ? '◉ ' + T('All sources') : s}
+              </button>
+            ))}
+          </div>
+          <div className="filter-controls">
+            <input className="filter-input" placeholder={T("min MC $")} value={minMcap} onChange={e => setMinMcap(e.target.value)} style={{ width: 90 }} />
+            <input className="filter-input" placeholder={T("max MC $")} value={maxMcap} onChange={e => setMaxMcap(e.target.value)} style={{ width: 90 }} />
+            <input className="filter-input" placeholder={T("min vol $")} value={minVol}  onChange={e => setMinVol(e.target.value)}  style={{ width: 90 }} />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── table ── */}
       <div className="table-scroll">
@@ -813,10 +767,32 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
           </table>
         )}
 
+        {!loading && totalPages > 1 && (
+          <div className="pagination-bar">
+            <button className="pg-btn" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>‹</button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => i + 1).map(n => (
+              <button key={n} className={`pg-btn${page === n ? ' active' : ''}`} onClick={() => setPage(n)}>{n}</button>
+            ))}
+            {totalPages > 5 && <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', padding: '0 4px' }}>…</span>}
+            <button className="pg-btn" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>›</button>
+            <span className="pg-info">
+              {sorted.length.toLocaleString()}{' '}{T("tokens · page")}{' '}{page}/{totalPages}
+              {(curation.hiddenDuplicateCount > 0 || curation.deadFilteredCount > 0) && (
+                <span title={T("Contracts reusing another token's ticker are folded into that token's row (expand with the ticker badge); listings with zero liquidity, volume, and holders are hidden entirely.")}>
+                  {' · '}{curation.hiddenDuplicateCount > 0 && T('{n} same-ticker duplicates folded', { n: curation.hiddenDuplicateCount })}
+                  {curation.hiddenDuplicateCount > 0 && curation.deadFilteredCount > 0 && ', '}
+                  {curation.deadFilteredCount > 0 && T('{n} dead listings hidden', { n: curation.deadFilteredCount })}
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+
         {/* mobile card list — same data, CSS toggles which one is visible */}
         {!loading && (
           <div className="token-cards">
-            {sorted.slice(0, shown).map(token => {
+            {senseRow && <TokenCard token={senseRow} pinned risk={riskOfRow(senseRow)} flash={flash.get(SENSE_LC)} hot={hotOf(senseRow)} onClick={() => navigate({ name: 'argus', address: SENSE_LC, pool: senseRow.poolAddress || SENSE_POOL })} />}
+            {sorted.filter(t => !senseRow || t.address.toLowerCase() !== SENSE_LC).slice(0, shown).map(token => {
               const group = groupByPrimaryAddress.get(token.address)
               return (
                 <TokenCard

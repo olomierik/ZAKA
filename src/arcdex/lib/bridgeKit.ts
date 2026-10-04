@@ -19,6 +19,7 @@ import * as Chains from '@circle-fin/bridge-kit/chains'
 import { createViemAdapterFromProvider, ViemAdapter } from '@circle-fin/adapter-viem-v2'
 import { getEmbeddedWalletClient, recordBroadcasts } from './embeddedWallet'
 import { chainTransport } from './rpc'
+import { BRIDGE_NETWORKS } from './bridgeChains'
 
 /** Reads, simulations and gas estimates for the kit: lag-tolerant, because
  * the kit simulates the burn the moment the approval confirms, and a
@@ -60,19 +61,7 @@ export interface BridgeChainOption { label: string; chain: BridgeChain; evm: boo
 /** The chains offered opposite Arc (a curated subset of Circle's CCTP v2
  * mainnet chains). Solana can only receive: bridging *from* it needs a
  * Solana wallet, which this app doesn't connect. */
-export const BRIDGE_CHAINS: BridgeChainOption[] = [
-  { label: 'Base', chain: 'Base' as BridgeChain, evm: true },
-  { label: 'Ethereum', chain: 'Ethereum' as BridgeChain, evm: true },
-  { label: 'Arbitrum', chain: 'Arbitrum' as BridgeChain, evm: true },
-  { label: 'Optimism', chain: 'Optimism' as BridgeChain, evm: true },
-  { label: 'Polygon', chain: 'Polygon' as BridgeChain, evm: true },
-  { label: 'Avalanche', chain: 'Avalanche' as BridgeChain, evm: true },
-  { label: 'Linea', chain: 'Linea' as BridgeChain, evm: true },
-  { label: 'Unichain', chain: 'Unichain' as BridgeChain, evm: true },
-  { label: 'World Chain', chain: 'WorldChain' as BridgeChain, evm: true },
-  { label: 'Sonic', chain: 'Sonic' as BridgeChain, evm: true },
-  { label: 'Solana', chain: 'Solana' as BridgeChain, evm: false },
-]
+export const BRIDGE_CHAINS: BridgeChainOption[] = BRIDGE_NETWORKS.map(n => ({ ...n, chain: n.chain as BridgeChain }))
 /** Kept for older imports: the chains USDC can be sent to from Arc. */
 export const BRIDGE_DESTINATIONS = BRIDGE_CHAINS
 

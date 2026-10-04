@@ -8,51 +8,29 @@ import { t as T } from '../lib/i18n'
 
 const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-/** The top of the phone home: only what matters. Your cash with Deposit
- * and Withdraw (or, with no wallet yet, one tap to get one), and perpetual
- * futures, on Arc testnet. The coin list follows. */
+/** The top of the phone Markets page: one line with your cash, Withdraw and Deposit (or, with no
+ * wallet yet, one tap to get one). The coin list follows straight under it. */
 export default function MobileHome({ navigate }: { navigate: (p: Page) => void }) {
   const trader = useTrader()
   const { cash } = useCash(trader.address)
   const [deposit, setDeposit] = useState(false)
   const [withdraw, setWithdraw] = useState(false)
 
+  // One slim line, so the coins start right under it (Binance's app has no banner above its markets).
   return (
-    <div className="m-home">
-      <div className="m-home-cash">
-        {trader.address ? (
-          <>
-            <div style={{ minWidth: 0 }}>
-              <div className="m-home-balance">{cash === null ? '…' : usd(cash)}</div>
-              <div className="m-home-label">{T('Cash · USDC on Arc')}</div>
-            </div>
-            <button className="m-home-cta" onClick={() => setDeposit(true)}>{T('Deposit')}</button>
-          </>
-        ) : (
-          <>
-            <div style={{ minWidth: 0 }}>
-              <div className="m-home-balance small">{T('Trade Arc coins in one tap')}</div>
-              <div className="m-home-label">{T('No app needed — your trading wallet lives in this browser.')}</div>
-            </div>
-            <button className="m-home-cta" onClick={openTradingWallet}>{T('Get started')}</button>
-          </>
-        )}
-      </div>
-      {trader.address && (
-        <div className="m-home-actions">
-          <button onClick={() => setWithdraw(true)}>{T('↑ Withdraw')}</button>
-        </div>
+    <div className="m-home m-home-slim">
+      {trader.address ? (
+        <>
+          <div className="m-slim-cash"><b>{cash === null ? '…' : usd(cash)}</b><span>{T('Cash · USDC on Arc')}</span></div>
+          <button className="m-slim-btn" onClick={() => setWithdraw(true)}>{T('Withdraw')}</button>
+          <button className="m-slim-btn primary" onClick={() => setDeposit(true)}>{T('Deposit')}</button>
+        </>
+      ) : (
+        <>
+          <div className="m-slim-cash"><b>{T('Trade Arc coins in one tap')}</b><span>{T('No app needed — your trading wallet lives in this browser.')}</span></div>
+          <button className="m-slim-btn primary" onClick={openTradingWallet}>{T('Get started')}</button>
+        </>
       )}
-
-      <button className="m-autotrade" onClick={() => navigate({ name: 'futures' })}>
-        <span className="m-autotrade-bolt">📊</span>
-        <span className="m-autotrade-text">
-          <b>{T('Perpetual futures')}</b>
-          <span>{T('BTC, ETH and SOL · up to 10×')}</span>
-        </span>
-        <span className="m-home-live">{T('Testnet')}</span>
-        <span className="m-autotrade-go" aria-hidden>›</span>
-      </button>
 
       {deposit && trader.address && <DepositModal trader={trader} navigate={navigate} onClose={() => setDeposit(false)} />}
       {withdraw && trader.address && <WithdrawModal trader={trader} onClose={() => setWithdraw(false)} />}

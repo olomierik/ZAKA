@@ -1255,6 +1255,28 @@ Owner: "the app should behave like Binance where we're in common, spot and futur
   - Beside it, a markets card (Popular with $SENSE first, New listing, Futures) and $SENSE's card (price, market cap, liquidity, bought back, burned, Buy).
   - Then futures, where the fees go, the app, the roadmap, questions (now including how to buy $SENSE) and the footer.
 - **Phones:** the tab bar is Markets · Futures · **Trade** ($SENSE's screen) · Portfolio · More (Swap moved to More).
+- **Round 2 (same day, owner: "the main page takes so much space the coins can't be seen, on phones and PCs; remove 'the first', just an exchange; style Swap and Bridge to attract multichain users"):**
+  - **Markets, as Binance proportions it:**
+    - Desktop: no title line; four compact cards; then one toolbar (tabs, live count, search, sort, Filters).
+    - Launchpad pills and min/max ranges sit behind Filters; page numbers are under the table.
+    - The first coin row is about 270px from the top on desktop (8+ rows on a 900px screen).
+    - Phones: the cards are hidden, and the cash strip is one line (`MobileHome`: cash, Withdraw, Deposit; the futures banner is gone, Futures has its own tab).
+    - Phone rows are like Binance's app: name and volume, price, and the 24h change in a green or red box. $SENSE is pinned first. The first coin is about 144px down, with 11 on a 812px screen.
+  - **Wording:** "exchange" everywhere "first" was. The home badge reads "10× · Futures on BTC, ETH and SOL", and the stale dictionary entries are gone.
+  - **Networks (`components/Chains.tsx`, `lib/bridgeChains.ts`):**
+    - Each chain's mark in its colour (no third-party logos bundled), a strip of all of them, and `ChainPicker`, a button that opens a searchable grid.
+    - `lib/bridgeChains.ts` holds the 11 networks; `lib/bridgeKit.ts` builds `BRIDGE_CHAINS` from it, so pages that only show networks don't load Circle's library.
+    - Don't name a class `fixed`: Tailwind's `.fixed` makes it `position: fixed`.
+  - **Swap (`pages/Swap.tsx`), as Binance's Convert:**
+    - A From box (USDC on Arc), then a To box with search, quick picks ($SENSE first, copycat tickers left out) and the most traded list.
+    - The picked coin's header has Change and View chart, and the swap widget sits below it.
+    - Beside it: "USDC on another chain?" with the 11 networks and Deposit USDC to Arc, how it works in three steps, and $SENSE's card.
+  - **Bridge (`pages/Bridge.tsx`):**
+    - Deposit to Arc / Send from Arc tabs.
+    - From and To boxes, each with its network picker (Arc's side fixed), a large amount and "You receive ≈ …", and a flip button.
+    - The quote, the route (Circle CCTP v2), and a stepper for approve → burn → attestation → mint with explorer links. Retry works as before.
+    - Beside it: why bridge here, all supported networks (Solana greyed out for deposits), and "On Arc? Start trading". The bridge logic is unchanged.
+  - **Checked** in the browser pane: the Markets positions on desktop and at 375px; the Swap and Bridge layouts at 1280px and 375px; the network picker (Ethereum picked, the route and note follow; Solana left out of deposits). No sideways scroll.
 - **Every new string is in all six dictionaries.**
 - **Checked (local dev against the live engine):**
   - Markets, spot, futures and home at 1440 and 1280px: the top bar fits, More opens, no script errors.
@@ -1270,7 +1292,7 @@ Owner: "hide the autotrade marketplace and let the users see only COMING SOON; h
 - **Autotrade (`pages/AutotradeSoon.tsx`, `/autotrade`, `/bots`):** "coming soon" only. A signed-in owner with bots gets "Manage and withdraw" to `/autotrade/manage`: the Autotrade page in an owners-only mode (`SignalsPage` `manage`: My bots, no marketplace, scanner or signals), so money in bot wallets is never out of reach.
 - **Launchpad hidden:** out of every menu and the landing page; `/launchpad` shows the spot terminal; Rewards' "Creator rewards" tab is hidden (creators' share is still paid on-chain on every trade).
 - **$SENSE on the landing (owner, 2026-10-03):** the contract address `0x91402b32C4Ab7915132b8B24e0d084E0428667ED` (on-chain: ARCSENSE / SENSE, 1B supply, an Argus launch; pool `0x8793…e047`) in the hero with a Copy button (full address on wide screens, shortened under 560px) and "Buy $SENSE" to its coin page.
-- **Positioning:** "The first spot and futures trading platform on Arc" (landing, page titles, link previews, the app manifest, the wallet-connect description). DefiLlama listed no perpetual-futures venue on Arc on 2026-10-03; spot trading on Arc exists elsewhere, so "first" rests on the combination and on futures.
+- **Positioning:** "Spot and futures exchange on Arc" (landing, page titles, link previews, the app manifest, the wallet-connect description). Until 2026-10-04 it said "the first spot and futures trading platform on Arc"; the owner dropped "first" ("just an exchange").
 
 ## $SENSE buyback and liquidity (2026-10-03)
 

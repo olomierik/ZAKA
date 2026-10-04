@@ -15,7 +15,7 @@ import './landing.css'
 // libraries); every "trade" link goes into the app.
 
 export function mountLanding(root: HTMLElement) {
-  document.title = 'ARCSENSE · Spot and futures trading on Arc · $SENSE'
+  document.title = 'ARCSENSE · Spot and futures exchange on Arc · $SENSE'
   createRoot(root).render(<StrictMode><Landing /></StrictMode>)
 }
 
@@ -139,7 +139,7 @@ export default function Landing() {
   ]
 
   const FAQ: [string, string][] = [
-    [t('What is ARCSENSE?'), t('The first platform on Arc for spot and perpetual futures trading: a live terminal for every coin, one-tap swaps, a USDC bridge and BTC, ETH and SOL perpetuals, now on Arc testnet.')],
+    [t('What is ARCSENSE?'), t('A spot and perpetual futures exchange on Arc: a live market for every coin, one-tap swaps, a multichain USDC bridge and BTC, ETH and SOL perpetuals, now on Arc testnet.')],
     [t('What is $SENSE?'), t('The ARCSENSE coin, launched on Argus. 30% of ARCSENSE’s fees buy back $SENSE and burn it, and 70% go to liquidity pools. Every buyback and burn is on-chain and shown on this page.')],
     [t('How do I buy $SENSE?'), t('Open the app, create a trading wallet or connect your own, add USDC on Arc, then buy $SENSE on its trading page. Always check the contract address: {ca}.', { ca: short(SENSE) })],
     [t('When do futures launch?'), t('They’re on Arc testnet now: try them with free test USDC, without risk. Mainnet follows an independent security audit; the date will be announced.')],
@@ -181,9 +181,9 @@ export default function Landing() {
       <section className="ld-hero">
         <div className="ld-hero-text">
           <h1><span className="ld-hero-blue">{t('TRADE ARC.')}</span><br />{t('OWN $SENSE.')}</h1>
-          <p className="ld-lead">{t('The first spot and futures trading platform on Arc. 30% of every fee buys back $SENSE and burns it.')}</p>
+          <p className="ld-lead">{t('The spot and futures exchange on Arc. 30% of every fee buys back $SENSE and burns it.')}</p>
           <div className="ld-laurels">
-            <div className="ld-laurel"><Laurel /><div><b>{t('First')}</b><span>{t('Spot + futures on Arc')}</span></div><Laurel flip /></div>
+            <div className="ld-laurel"><Laurel /><div><b>10×</b><span>{t('Futures on BTC, ETH and SOL')}</span></div><Laurel flip /></div>
             <div className="ld-laurel"><Laurel /><div><b>30%</b><span>{t('Of fees burn $SENSE')}</span></div><Laurel flip /></div>
           </div>
           <div className="ld-buybox">

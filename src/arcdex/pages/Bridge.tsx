@@ -9,6 +9,9 @@ import { PasscodeField, useWithdrawGuard } from '../components/WithdrawGuard'
 import { addBridgeDeposit } from '../lib/funding'
 import { t as T } from '../lib/i18n'
 import { promptWallet, txErrorText } from '../lib/tx'
+import { ChainIcon, ChainPicker, ChainStrip, UsdcIcon } from '../components/Chains'
+import { SENSE_PAGE } from '../components/NavBar'
+import type { Page } from '../App'
 import { hideWalletPrompt } from '../lib/walletPrompt'
 
 type Dir = 'out' | 'in'
@@ -21,13 +24,8 @@ const STEP: Record<string, string> = {
   approve: 'Approved USDC', burn: 'Burned on the source chain', fetchAttestation: 'Circle attested the transfer', mint: 'Minted on the destination',
 }
 
-const field: React.CSSProperties = {
-  padding: '9px 11px', borderRadius: 8, fontSize: '0.9rem', fontFamily: 'var(--mono)', background: 'var(--bg-2)',
-  border: '1px solid var(--adx-card-border)', color: 'var(--text)', outline: 'none', width: '100%', minWidth: 0,
-}
-const label: React.CSSProperties = { fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 4, display: 'block' }
 
-export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
+export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: Dir; navigate?: (p: Page) => void }) {
   const { address, connector } = useAccount()
   const tradingAddr = useEmbeddedAddress()
   const [dir, setDir] = useState<Dir>(initialDir)
@@ -164,136 +162,175 @@ export default function Bridge({ initialDir = 'out' }: { initialDir?: Dir }) {
   const needsWallet = !sender
   const tooSmall = quote !== null && quote.receiveUsdc <= 0
   const passcodeMissing = fromTrading && guard.needsPasscode && !guard.passcode
-  const chainBox = (side: 'from' | 'to') => {
-    const isArc = (side === 'from') === (dir === 'out')
-    return (
-      <div>
-        <label style={label}>{side === 'from' ? T('From') : T('To')}</label>
-        {isArc ? (
-          <div style={{ ...field, fontFamily: 'var(--sans)', fontWeight: 700 }}>{T("Arc Mainnet")} <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{T("· USDC")}</span></div>
-        ) : (
-          <select value={other} onChange={e => setOther(e.target.value as BridgeChain)} style={{ ...field, fontFamily: 'var(--sans)', fontWeight: 700, cursor: 'pointer' }}>
-            {choices.map(c => <option key={c.chain} value={c.chain}>{c.label}</option>)}
-          </select>
-        )}
-      </div>
-    )
+  const STEPS = ['approve', 'burn', 'fetchAttestation', 'mint']
+  const stepState = (name: string) => {
+    const r = result?.steps.find(x => x.name === name)
+    if (r) return r.state === 'success' ? 'done' : r.state === 'error' ? 'bad' : 'now'
+    if (progress.includes(name)) return 'done'
+    const next = STEPS.find(x => !progress.includes(x))
+    return busy && next === name ? 'now' : 'todo'
   }
+  const otherOptions = choices.map(c => c.chain as string)
+  const pickOther = (c: string) => setOther(c as BridgeChain)
+  const actionLabel = busy ? T("Bridging…") : tooSmall ? T("Amount too small to cover Circle's fees")
+    : dir === 'in' ? T('Deposit {amount} USDC to Arc', { amount: n > 0 ? amount : '' }).replace('  ', ' ') : T('Send {amount} USDC to {chain}', { amount: n > 0 ? amount : '', chain: otherDef.label }).replace('  ', ' ')
 
   return (
-    <div className="form-page">
-      <h1 className="page-title">{T("Bridge")}</h1>
-      <p className="page-sub">{T("Move USDC between Arc and other chains with Circle's Cross-Chain Transfer Protocol (CCTP v2): native burn-and-mint, no wrapped tokens, no third-party bridge.")}</p>
-
-      <div style={{ display: 'flex', background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', borderRadius: 9, padding: 3, marginBottom: 10 }}>
-        {(['in', 'out'] as const).map(d => (
-          <button key={d} onClick={() => { if (d !== dir) flip() }} style={{
-            flex: 1, padding: '7px 6px', borderRadius: 7, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.78rem',
-            background: dir === d ? 'var(--adx-accent)' : 'transparent', color: dir === d ? '#fff' : 'var(--text-muted)',
-          }}>{d === 'in' ? T('Deposit to Arc') : T('Send from Arc')}</button>
-        ))}
+    <div className="xs-page">
+      <div className="xs-head">
+        <h1>{T("Bridge")}</h1>
+        <p>{T('Native USDC between Arc and {n} networks, with Circle’s CCTP: no wrapped tokens, no third-party bridge, usually under a minute.', { n: BRIDGE_CHAINS.length })}</p>
+        <ChainStrip size={24} onPick={c => { if (dir === 'in' && !BRIDGE_CHAINS.find(x => x.chain === c)?.evm) return; pickOther(c) }} />
       </div>
 
-      <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {chainBox('from')}
-        <button onClick={flip} aria-label={T("Swap direction")} style={{ alignSelf: 'center', margin: '-4px 0', width: 30, height: 30, borderRadius: '50%', border: '1px solid var(--adx-card-border)', background: 'var(--bg-2)', color: 'var(--text)', fontSize: '0.9rem', cursor: 'pointer' }}>⇅</button>
-        {chainBox('to')}
+      <div className="xs-grid">
+        <div className="xs-main">
+          <div className="xs-card">
+            <div className="xs-tabs">
+              {(['in', 'out'] as const).map(d => (
+                <button key={d} className={dir === d ? 'active' : ''} onClick={() => { if (d !== dir) flip() }}>{d === 'in' ? T('Deposit to Arc') : T('Send from Arc')}</button>
+              ))}
+            </div>
 
-        <div>
-          <label style={label}>{T("Amount (USDC)")}</label>
-          <input type="text" inputMode="decimal" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} style={field} />
-        </div>
+            <div className="xs-box">
+              <div className="xs-box-h">
+                <span>{T('From')}</span>
+                <ChainPicker value={from} options={otherOptions} onChange={pickOther} fixed={dir === 'out'} />
+              </div>
+              <div className="xs-amount">
+                <input type="text" inputMode="decimal" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} aria-label={T("Amount (USDC)")} />
+                <span className="xs-token"><UsdcIcon size={22} />USDC</span>
+              </div>
+              <div className="xs-box-f">{sender ? <>{fromTrading ? T('From trading wallet') : T('From connected wallet')} · <span className="xs-mono">{sender.slice(0, 6)}…{sender.slice(-4)}</span></> : T('Connect a wallet to see your balance')}</div>
+            </div>
 
-        {dir === 'out' && tradingAddr && address && (
-          <div style={{ display: 'flex', gap: 6 }}>
-            {[true, false].map(v => (
-              <button key={String(v)} onClick={() => setFromTradingPref(v)} style={{
-                flex: 1, padding: '6px 6px', borderRadius: 7, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-                border: `1px solid ${fromTradingPref === v ? 'var(--adx-accent)' : 'var(--adx-card-border)'}`,
-                background: fromTradingPref === v ? 'rgba(59,130,246,0.15)' : 'var(--bg-2)', color: fromTradingPref === v ? 'var(--adx-accent)' : 'var(--text-muted)',
-              }}>{v ? T('From trading wallet') : T('From connected wallet')}</button>
-            ))}
-          </div>
-        )}
+            <button className="xs-flip" onClick={flip} aria-label={T("Swap direction")}>⇅</button>
 
-        <div>
-          <label style={label}>{toSolana ? T("Solana address to receive") : dir === 'in' ? T("Receive on Arc at") : T("Recipient on {chain}", { chain: otherDef.label })}{' '}
-            {!toSolana && <span style={{ opacity: 0.7 }}>{T("(optional)")}</span>}
-          </label>
-          <input placeholder={toSolana ? T("Solana address") : defaultRecipient || '0x…'} value={recipient} onChange={e => setRecipient(e.target.value.trim())} style={{ ...field, fontSize: '0.85rem' }} />
-          {dir === 'in' && !recipient && tradingAddr && <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 5 }}>{T("Arrives in your trading wallet, ready to trade.")}</div>}
-          {recipient && !recipientOk && <div style={{ fontSize: '0.7rem', color: '#fca5a5', marginTop: 5 }}>{toSolana ? T("That isn't a Solana address.") : T("That isn't a valid address.")}</div>}
-        </div>
+            <div className="xs-box">
+              <div className="xs-box-h">
+                <span>{T('To')}</span>
+                <ChainPicker value={to} options={otherOptions} onChange={pickOther} fixed={dir === 'in'} />
+              </div>
+              <div className="xs-amount xs-amount-out">
+                <b>{quote ? `≈ ${quote.receiveUsdc.toFixed(2)}` : n > 0 && quoting ? '…' : '0.00'}</b>
+                <span className="xs-token"><UsdcIcon size={22} />USDC</span>
+              </div>
+              <div className="xs-box-f">{T('You receive')} · {T('about a minute')}</div>
+            </div>
 
-        {fromTrading && recipientOk && <PasscodeField guard={guard} />}
-
-        {n > 0 && (
-          <div style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: 5 }}>
-            {quote ? (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}><span>{T("Circle's fees (fast transfer + relayer)")}</span><span>{usd(quote.circleUsdc)}</span></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}><span>{T("ARCSENSE fee ({pct}%, min $0.05)", { pct: (BRIDGE_FEE_BPS / 100).toFixed(2) })}</span><span>{usd(quote.platformUsdc)}</span></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>{T("Leaves your wallet on {chain}", { chain: from === 'Arc' ? 'Arc' : otherDef.label })}</span><b>{usd(quote.debitUsdc)}</b></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--green)' }}><span>{T("Arrives on {chain}", { chain: to === 'Arc' ? 'Arc' : otherDef.label })}</span><b>≈ {usd(quote.receiveUsdc)}</b></div>
-              </>
-            ) : (
-              <div style={{ color: 'var(--text-muted)' }}>{quoting ? T("Getting Circle's fees…") : T("Couldn't get a quote for this route right now.")}</div>
-            )}
-          </div>
-        )}
-
-        {errMsg && (
-          <div style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5', fontSize: '0.8rem', lineHeight: 1.45 }}>{errMsg}</div>
-        )}
-
-        {(busy || result) && (
-          <div style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {result ? (
-              <>
-                <div style={{ fontWeight: 700, color: result.state === 'success' ? 'var(--green)' : 'var(--amber)' }}>{result.state === 'success' ? T("✓ Bridge complete") : T('State: {state}', { state: result.state })}</div>
-                {result.steps.map((s, i) => (
-                  <div key={i}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: 'var(--text-muted)' }}>
-                      <span>{T(STEP[s.name] ?? s.name)}{s.forwarded ? T(" (auto via Circle relayer)") : ''}</span>
-                      <span style={{ color: s.state === 'success' ? 'var(--green)' : s.state === 'error' ? 'var(--red)' : 'var(--text-muted)', flexShrink: 0 }}>
-                        {s.explorerUrl && s.txHash ? <a href={s.explorerUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>{s.state}</a> : s.state}
-                      </span>
-                    </div>
-                    {/* Why a step failed, in the kit's words (or ours for the common ones). */}
-                    {s.state === 'error' && (s.errorMessage || s.error) ? <div style={{ color: '#fca5a5', fontSize: '0.72rem', marginTop: 2, wordBreak: 'break-word' }}>{txErrorText(s.error ?? new Error(s.errorMessage))}</div> : null}
-                  </div>
+            {dir === 'out' && tradingAddr && address && (
+              <div className="xs-seg">
+                {[true, false].map(v => (
+                  <button key={String(v)} className={fromTradingPref === v ? 'active' : ''} onClick={() => setFromTradingPref(v)}>{v ? T('From trading wallet') : T('From connected wallet')}</button>
                 ))}
-                {result.state !== 'success' && <button className="btn-ghost" onClick={() => void retry()} disabled={busy}>{T("Retry")}</button>}
-              </>
-            ) : (
-              <>
-                <div style={{ fontWeight: 700 }}>{status === 'switching' ? T("Switching your wallet to {chain}…", { chain: from === 'Arc' ? 'Arc' : otherDef.label }) : fromTrading ? T("Sending from your trading wallet…") : T("Confirm in your wallet…")}</div>
-                {progress.map(p => <div key={p} style={{ color: 'var(--green)' }}>✓ {T(STEP[p] ?? p)}</div>)}
-                {progress.includes('burn') && !progress.includes('mint') && <div style={{ color: 'var(--text-muted)' }}>{T("Waiting for Circle's attestation (usually under a minute)…")}</div>}
-              </>
+              </div>
             )}
+
+            <label className="xs-field">
+              <span>{toSolana ? T("Solana address to receive") : dir === 'in' ? T("Receive on Arc at") : T("Recipient on {chain}", { chain: otherDef.label })}{' '}{!toSolana && <em>{T("(optional)")}</em>}</span>
+              <input placeholder={toSolana ? T("Solana address") : defaultRecipient || '0x…'} value={recipient} onChange={e => setRecipient(e.target.value.trim())} />
+              {dir === 'in' && !recipient && tradingAddr && <small>{T("Arrives in your trading wallet, ready to trade.")}</small>}
+              {recipient && !recipientOk && <small className="bad">{toSolana ? T("That isn't a Solana address.") : T("That isn't a valid address.")}</small>}
+            </label>
+
+            {fromTrading && recipientOk && <PasscodeField guard={guard} />}
+
+            {n > 0 && (
+              <div className="xs-quote">
+                {quote ? (
+                  <>
+                    <div><span>{T("Circle's fees (fast transfer + relayer)")}</span><span>{usd(quote.circleUsdc)}</span></div>
+                    <div><span>{T("ARCSENSE fee ({pct}%, min $0.05)", { pct: (BRIDGE_FEE_BPS / 100).toFixed(2) })}</span><span>{usd(quote.platformUsdc)}</span></div>
+                    <div><span>{T("Leaves your wallet on {chain}", { chain: from === 'Arc' ? 'Arc' : otherDef.label })}</span><b>{usd(quote.debitUsdc)}</b></div>
+                    <div className="good"><span>{T("Arrives on {chain}", { chain: to === 'Arc' ? 'Arc' : otherDef.label })}</span><b>≈ {usd(quote.receiveUsdc)}</b></div>
+                    <div><span>{T('Route')}</span><span>Circle CCTP v2</span></div>
+                  </>
+                ) : (
+                  <div><span>{quoting ? T("Getting Circle's fees…") : T("Couldn't get a quote for this route right now.")}</span></div>
+                )}
+              </div>
+            )}
+
+            {errMsg && <div className="xs-error">{errMsg}</div>}
+
+            {(busy || result) && (
+              <div className="xs-progress">
+                <div className="xs-progress-h">
+                  {result ? (result.state === 'success' ? T("✓ Bridge complete") : T('State: {state}', { state: result.state }))
+                    : status === 'switching' ? T("Switching your wallet to {chain}…", { chain: from === 'Arc' ? 'Arc' : otherDef.label })
+                    : fromTrading ? T("Sending from your trading wallet…") : T("Confirm in your wallet…")}
+                </div>
+                <div className="xs-stepper">
+                  {STEPS.map(name => {
+                    const st = stepState(name)
+                    const r = result?.steps.find(x => x.name === name)
+                    return (
+                      <div key={name} className={`xs-step ${st}`}>
+                        <span className="xs-step-dot">{st === 'done' ? '✓' : st === 'bad' ? '!' : ''}</span>
+                        <span className="xs-step-label">
+                          {T(STEP[name] ?? name)}{r?.forwarded ? T(" (auto via Circle relayer)") : ''}
+                          {r?.explorerUrl && r.txHash && <a href={r.explorerUrl} target="_blank" rel="noopener noreferrer"> ↗</a>}
+                          {r?.state === 'error' && (r.errorMessage || r.error) ? <small>{txErrorText(r.error ?? new Error(r.errorMessage))}</small> : null}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+                {!result && progress.includes('burn') && !progress.includes('mint') && <div className="xs-fine">{T("Waiting for Circle's attestation (usually under a minute)…")}</div>}
+                {result && result.state !== 'success' && <button className="btn-ghost" onClick={() => void retry()} disabled={busy}>{T("Retry")}</button>}
+              </div>
+            )}
+
+            {needsWallet ? (
+              <button className="btn-primary xs-go" onClick={openConnectModal}>
+                {dir === 'in' ? T('Connect the wallet holding your USDC') : T('Connect Wallet')}
+              </button>
+            ) : (
+              <button className="btn-primary xs-go" onClick={() => void handleBridge()} disabled={!(n > 0) || !recipientOk || busy || tooSmall || passcodeMissing}>
+                {actionLabel}
+              </button>
+            )}
+
+            <p className="xs-fine">
+              {dir === 'in'
+                ? T("You sign on {chain} (approve + burn). Circle's relayer then mints your USDC on Arc automatically — no Arc gas, usually under a minute.", { chain: otherDef.label })
+                : T("You sign on Arc (approve + burn). Circle's relayer then mints your USDC on {chain} automatically — no network switch, usually under a minute.", { chain: otherDef.label })}
+            </p>
           </div>
-        )}
+        </div>
 
-        {needsWallet ? (
-          <button onClick={openConnectModal} style={{ padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>
-            {dir === 'in' ? T('Connect the wallet holding your USDC') : T('Connect Wallet')}
-          </button>
-        ) : (
-          <button onClick={() => void handleBridge()} disabled={!(n > 0) || !recipientOk || busy || tooSmall || passcodeMissing} style={{
-            padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%',
-            opacity: !(n > 0) || !recipientOk || busy || tooSmall || passcodeMissing ? 0.5 : 1,
-          }}>
-            {busy ? T("Bridging…") : tooSmall ? T("Amount too small to cover Circle's fees")
-              : dir === 'in' ? T('Deposit {amount} USDC to Arc', { amount: n > 0 ? amount : '' }).replace('  ', ' ') : T('Send {amount} USDC to {chain}', { amount: n > 0 ? amount : '', chain: otherDef.label }).replace('  ', ' ')}
-          </button>
-        )}
-
-        <p className="swap-note">
-          {dir === 'in'
-            ? T("You sign on {chain} (approve + burn). Circle's relayer then mints your USDC on Arc automatically — no Arc gas, usually under a minute.", { chain: otherDef.label })
-            : T("You sign on Arc (approve + burn). Circle's relayer then mints your USDC on {chain} automatically — no network switch, usually under a minute.", { chain: otherDef.label })}
-        </p>
+        <aside className="xs-side">
+          <div className="xs-panel">
+            <b>{T('Why bridge with ARCSENSE')}</b>
+            <ul className="xs-why">
+              <li><span>◎</span><div><b>{T('Native USDC')}</b><small>{T('Burned on one chain, minted on the other by Circle: no wrapped tokens, no pools.')}</small></div></li>
+              <li><span>⚡</span><div><b>{T('About a minute')}</b><small>{T('Fast transfers, and Circle’s relayer mints for you: no gas needed on arrival.')}</small></div></li>
+              <li><span>⇄</span><div><b>{T('{n} networks', { n: BRIDGE_CHAINS.length + 1 })}</b><small>{T('Ethereum, Base, Arbitrum, Optimism, Polygon, Solana and more, to and from Arc.')}</small></div></li>
+              <li><span>✓</span><div><b>{T('Fees shown first')}</b><small>{T('Circle’s fees and ours are quoted before you sign: what leaves and what arrives.')}</small></div></li>
+            </ul>
+          </div>
+          <div className="xs-panel">
+            <b>{T('Supported networks')}</b>
+            <div className="xs-nets">
+              {BRIDGE_CHAINS.map(c => {
+                const usable = dir === 'out' || c.evm
+                return (
+                  <button key={c.chain} className={`xs-net-item${c.chain === other ? ' active' : ''}`} disabled={!usable} onClick={() => pickOther(c.chain)} title={usable ? c.label : T('Solana can receive USDC from Arc; sending from it needs a Solana wallet.')}>
+                    <ChainIcon chain={c.chain} size={22} /><span>{c.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          <div className="xs-panel">
+            <b>{T('On Arc? Start trading')}</b>
+            <p>{T('USDC on Arc trades every coin on ARCSENSE, spot and futures.')}</p>
+            <div className="xs-row-btns">
+              <a className="btn-ghost" href="/app" onClick={e => { if (navigate) { e.preventDefault(); navigate({ name: 'terminal' }) } }}>{T('Markets')}</a>
+              <a className="btn-primary" href="/spot" onClick={e => { if (navigate) { e.preventDefault(); navigate(SENSE_PAGE) } }}>{T('Buy $SENSE')}</a>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
   )

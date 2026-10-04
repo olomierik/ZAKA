@@ -162,7 +162,7 @@ export default function App() {
           {page.name === 'futures'     && <FuturesPage navigate={navigate} />}
           {page.name === 'sense'       && <SensePage navigate={navigate} />}
           {page.name === 'swap'        && <Swap navigate={navigate} />}
-          {page.name === 'bridge'      && <Bridge key={page.dir ?? 'out'} initialDir={page.dir ?? 'out'} />}
+          {page.name === 'bridge'      && <Bridge key={page.dir ?? 'out'} initialDir={page.dir ?? 'out'} navigate={navigate} />}
           {page.name === 'trader'      && <TraderPage key={page.address} address={page.address} navigate={navigate} />}
           {page.name === 'clans'       && <ClansPage navigate={navigate} />}
           {page.name === 'clan'        && <ClanPage key={page.slug} slug={page.slug} navigate={navigate} />}

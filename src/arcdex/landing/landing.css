@@ -465,3 +465,13 @@ body { font-family: 'IBM Plex Sans', 'DM Sans', system-ui, sans-serif; font-vari
   .ld-mkts-name small, .ld-mkts-name em { display: none; }
   .ld-sense-stats { grid-template-columns: 1fr; }
 }
+
+/* phones: a shorter hero, so the live markets card shows sooner (2026-10-04) */
+@media (max-width: 560px) {
+  .ld-hero { padding-top: 20px; gap: 20px; }
+  .ld-hero h1 { font-size: 2.1rem; margin: 4px 0 12px; }
+  .ld-lead { font-size: 0.92rem; }
+  .ld-laurels { margin: 14px 0 16px; }
+  .ld-laurel-svg { width: 14px; height: 30px; }
+  .ld-hero-links, .ld-traffic { display: none; }
+}
