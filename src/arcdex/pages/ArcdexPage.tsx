@@ -20,7 +20,7 @@ import { notifyBalances } from '../lib/balances'
 import type { CoinEntry, CoinProgramView } from '../../../engine/src/coin/shared'
 import type { Page } from '../App'
 
-import { COIN, COIN_DEAD as DEAD, COIN_POOL, COIN_SUPPLY, fmtCompactUsd, fmtPct, fmtSmallUsd, useCoin } from '../lib/coin'
+import { COIN, COIN_DEAD as DEAD, COIN_POOL, COIN_SUPPLY, fmtCompactUsd, fmtPct, fmtSmallUsd, useCoin, useCoinBurned } from '../lib/coin'
 
 const usd = (n: number | null | undefined) => (n == null ? '—' : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
 const big = (n: number | null | undefined) => (n == null ? '—' : n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toFixed(0))
@@ -86,6 +86,10 @@ export default function ArcdexPage({ navigate }: { navigate: (p: Page) => void }
   const tt = v?.totals
   const q = useCoin()
   const b = v?.burned
+  // What the dead wallet holds, read from Arc at once; the ledger's total until it answers.
+  const dead = useCoinBurned()
+  const burnedTotal = dead?.total ?? b?.total ?? null
+  const burnedPct = dead?.pct ?? b?.pct ?? null
   return (
     <div className="token-page content-page arcdex-page">
       <h2 className="page-h">🔥 {T('$ARCDEX burn')}</h2>
@@ -102,9 +106,9 @@ export default function ArcdexPage({ navigate }: { navigate: (p: Page) => void }
         </div>
         <div className="arcdex-card">
           <span>{T('Burned forever')}</span>
-          <b>{big(b?.total)} <small>/ {big(COIN_SUPPLY)}</small></b>
-          <div className="arcdex-bar"><span style={{ width: `${Math.min(100, b?.pct ?? 0)}%` }} /></div>
-          <small>{b ? T('{pct}% of the supply', { pct: b.pct.toFixed(2) }) : '…'}</small>
+          <b>{big(burnedTotal)} <small>/ {big(COIN_SUPPLY)}</small></b>
+          <div className="arcdex-bar"><span style={{ width: `${Math.min(100, burnedPct ?? 0)}%` }} /></div>
+          <small>{burnedPct != null ? T('{pct}% of the supply', { pct: burnedPct.toFixed(2) }) : '…'}</small>
         </div>
         <div className="arcdex-card">
           <span>{T('Burned in 24 hours')}</span>

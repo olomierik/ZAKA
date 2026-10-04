@@ -24,17 +24,30 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 // cycle, which was slower overall. (The market build streams its rows as
 // each call lands, so the first ones still show within a second or two.)
 const MIN_GAP_MS = 2_000
-let nextSlot = 0
-async function paced() {
-  const now = Date.now()
-  const at = Math.max(now, nextSlot)
-  nextSlot = at + MIN_GAP_MS
-  if (at > now) await sleep(at - now)
+// One call every MIN_GAP_MS, urgent ones first: the page someone is looking
+// at (a Robinhood coin's price, trades, chart) never waits behind a market
+// list's dozen-plus calls.
+const waiting: { urgent: boolean; go: () => void }[] = []
+let lastGo = 0
+let pump: ReturnType<typeof setTimeout> | null = null
+function release() {
+  pump = null
+  if (!waiting.length) return
+  const wait = lastGo + MIN_GAP_MS - Date.now()
+  if (wait > 0) { pump = setTimeout(release, wait); return }
+  const i = waiting.findIndex(w => w.urgent)
+  const [next] = waiting.splice(i >= 0 ? i : 0, 1)
+  lastGo = Date.now()
+  next.go()
+  if (waiting.length) pump = setTimeout(release, MIN_GAP_MS)
+}
+function paced(urgent = false): Promise<void> {
+  return new Promise(go => { waiting.push({ urgent, go }); if (!pump) release() })
 }
 
-async function direct<T>(pathWithQuery: string): Promise<T> {
+async function direct<T>(pathWithQuery: string, urgent = false): Promise<T> {
   for (let attempt = 0; ; attempt++) {
-    await paced()
+    await paced(urgent)
     let res: Response
     try {
       res = await fetch(`${DIRECT}${pathWithQuery}`, { headers: HEADERS })
@@ -69,4 +82,5 @@ export const gtDirectFetcher = (path: string): Promise<GtList | null> => direct<
 /** Direct only, on the visitor's own quota: Robinhood Chain's data
  * (api/robinhoodMarket.ts). The app's proxy serves Arc's network only, and
  * its shared quota stays Arc's. */
-export const gtDirect = <T>(path: string, params: Record<string, string> = {}): Promise<T> => direct<T>(withQuery(path, params))
+export const gtDirect = <T>(path: string, params: Record<string, string> = {}, opts: { urgent?: boolean } = {}): Promise<T> =>
+  direct<T>(withQuery(path, params), opts.urgent)

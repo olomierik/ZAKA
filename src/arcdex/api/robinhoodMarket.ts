@@ -13,6 +13,8 @@ import type { TradeRow } from '../components/TokenSocialTabs'
 import { isStockName, isStockToken, QUOTE_SYMBOLS, RH_QUOTES } from '../lib/robinhood'
 
 const NET = 'robinhood'
+/** The coin page's calls go before any market list's (gtClient's pacing). */
+const URGENT = { urgent: true }
 
 /** Robinhood Chain's launchpads, by GeckoTerminal dex id (its venues checked 2026-10-04). Only their
  * coins, and Robinhood's own stock tokens, are listed and can be bought (owner, 2026-10-04: no coins
@@ -270,6 +272,15 @@ function writeCache(rows: RhCoin[]) {
 /** The last list this browser built (≤30 minutes old), shown while a new one loads. */
 export const cachedRhMarket = (): RhCoin[] => readCache()?.rows ?? []
 
+/** A coin's row from the market list already in this browser (the last build,
+ * else the stored one), so its page can show it and start reading its pool's
+ * swaps at once. Only when it's the pool asked for. */
+export function rhSeed(address: string, pool?: string | null): RhCoin | null {
+  const a = address.toLowerCase(), p = pool?.toLowerCase()
+  const rows = built.length ? built : cachedRhMarket()
+  return rows.find(c => c.address === a && (!p || c.pool === p)) ?? null
+}
+
 let building: Promise<RhCoin[]> | null = null
 let builtAt = 0
 let built: RhCoin[] = []
@@ -346,7 +357,7 @@ export interface RhCoinDetail extends RhCoin {
  * picks the main pool when the link named one (never an off-market pool).
  * The price is always its best market's, whichever pool the page shows. */
 export async function getRhCoin(address: string, pool?: string | null): Promise<RhCoinDetail | null> {
-  const d = await gtDirect<GtTokenDetail>(`/networks/${NET}/tokens/${address.toLowerCase()}`, { include: 'top_pools' })
+  const d = await gtDirect<GtTokenDetail>(`/networks/${NET}/tokens/${address.toLowerCase()}`, { include: 'top_pools' }, URGENT)
   const t = d.data?.attributes
   if (!t) return null
   const tokens = new Map([[t.address.toLowerCase(), t]])
@@ -389,7 +400,7 @@ interface GtTrade {
  * The side is read from which way the coin moved, so it's right whichever
  * side of the pool the coin sits on. */
 export async function getRhTrades(pool: string, coin: string): Promise<TradeRow[]> {
-  const d = await gtDirect<{ data?: GtTrade[] }>(`/networks/${NET}/pools/${pool}/trades`)
+  const d = await gtDirect<{ data?: GtTrade[] }>(`/networks/${NET}/pools/${pool}/trades`, {}, URGENT)
   const c = coin.toLowerCase()
   return (d.data ?? []).map(t => {
     const a = t.attributes
@@ -423,6 +434,7 @@ export async function getRhCandles(pool: string, coin: string, res: ChartResolut
   const d = await gtDirect<{ data?: { attributes?: { ohlcv_list?: [number, number, number, number, number, number][] } } }>(
     `/networks/${NET}/pools/${pool}/ohlcv/${r.timeframe}`,
     { aggregate: String(r.aggregate), limit: String(limit), currency: 'usd', token: coin.toLowerCase() },
+    URGENT,
   )
   return (d.data?.attributes?.ohlcv_list ?? [])
     .map(([time, open, high, low, close, volume]) => ({ time, open, high, low, close, volume }))

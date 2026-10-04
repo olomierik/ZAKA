@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { t } from '../lib/i18n'
-import { COIN, COIN_IMAGE, COIN_LC, COIN_PATH, COIN_SUPPLY, fmtCompactUsd, fmtPct, fmtSmallUsd, useCoin } from '../lib/coin'
+import { COIN, COIN_IMAGE, COIN_LC, COIN_PATH, COIN_SUPPLY, fmtCompactUsd, fmtPct, fmtSmallUsd, useCoin, useCoinBurned } from '../lib/coin'
 import type { CoinBurn, CoinProgramView } from '../../../engine/src/coin/shared'
 
 // $ARCDEX, live, for the home page (owner, 2026-10-04: "the coin info including the burn rate and its
@@ -90,15 +90,18 @@ export function CoinFeed({ engine, program, limit = 8 }: { engine: string; progr
   )
 }
 
-/** The share of the supply burned, as a meter, with the last 24 hours and 7 days. */
+/** The share of the supply burned, as a meter, with the last 24 hours and 7 days. The total is
+ * the dead wallet's balance read from Arc (shown at once), else the engine's ledger. */
 export function BurnMeter({ program }: { program: CoinProgramView | null }) {
   const b = program?.burned
-  const pct = b?.pct ?? null
+  const dead = useCoinBurned()
+  const total = dead?.total ?? b?.total ?? null
+  const pct = dead?.pct ?? b?.pct ?? null
   return (
     <div className="ld-burn">
       <div className="ld-burn-top">
         <span>🔥 {t('Burned forever')}</span>
-        <b>{b ? big(b.total) : '…'} <small>/ {big(COIN_SUPPLY)}</small></b>
+        <b>{total != null ? big(total) : '…'} <small>/ {big(COIN_SUPPLY)}</small></b>
       </div>
       <div className="ld-burn-bar" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct ?? 0} aria-label={t('Share of the supply burned')}>
         <span style={{ width: `${Math.min(100, Math.max(pct ?? 0, pct ? 1.5 : 0))}%` }} />

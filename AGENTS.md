@@ -1304,6 +1304,27 @@ Owner: "let users see Robinhood coins and buy and sell them just like Arc coins"
     - `markPools` marks a pool off the market when it has a trap fee or a price more than 1.5× from the best pool's. Off-market pools are left out of the coin's volume, tagged "⚠ Off-market pool" and can't be opened on the coin page; a link naming one opens the best pool. The coin's price is always its best pool's.
     - The browser's market list moved to `arcdex:rh-market:v2`, so lists built the old way are dropped.
   - GeckoTerminal escapes some names ("S&amp;P"); they're unescaped.
+- **Live trades from the chain (2026-10-04, owner: "the Robinhood trading activity and loading is very slow, it doesn't respond like Arc coins; the buy and sell pop-ups on the chart don't show at all").**
+  - **Why:**
+    - The coin page's trades were GeckoTerminal's, polled every 12s, and GeckoTerminal's indexer lags. A trade reached the page well after the chart's 60s pop window (`LIVE_WINDOW_MS`), so nothing ever popped.
+    - Every GeckoTerminal call shares one 2s pace per visitor, and the market list's ~18 calls queued ahead of the coin page's.
+  - **Now (`api/rhSwaps.ts`), as `poolSwaps.ts` does for Arc:** the pool's swaps come from Robinhood Chain's public RPC.
+    - **On open:** the last 30k blocks (~50 minutes; ~1.5s for the busiest pool), or 300k (~8.5h) when that found under 50 swaps.
+    - **Live:** a filtered `getLogs` plus the latest block every 0.8s, start to start, while the tab is visible. Each new swap shows ~0.4–0.5s after its block, is marked live, pops on the chart, moves the chart's last candle (`ticks`) and sets the price.
+    - **Which logs:** v4 pools (Uniswap's and Pons's) by pool id on the PoolManager, `0x8366…0951` as on Arc. v2/v3 pools by address, with the v3 and v2 `Swap` topics. Decoded with the shared `decodeSwapLog`; the coin's side comes from address order.
+    - **Dollars:** USDG is $1. ETH and WETH are priced from Uniswap v3's WETH/USDG pool `0x52e6…71ca` (`slot0`). Any other quote is priced off the coin's GeckoTerminal price, once.
+    - **Makers:** the transaction's sender, 3 reads at a time (the RPC refuses batches), for the newest 40 rows. Older ones come from GeckoTerminal's trades.
+  - **The RPC (measured 2026-10-04):**
+    - No WebSocket, and batches are refused (429). 20 calls at once and 10 a second are fine.
+    - A call takes ~0.3s, and logs are readable 0–9 blocks behind the head.
+    - Logs carry no block time (`blockTimestamp` is `0x0`), and blocks come every 0.102s. So a swap's time is counted back from the latest block, timed by the browser's clock.
+    - One `getLogs` may span 10M blocks and return 10k logs.
+    - QuickNode serves Robinhood Chain over WebSocket too. It would need an endpoint of the owner's and bills each event, so it isn't used.
+  - **GeckoTerminal now:** older trades and makers (every 60s while the chain feeds the page; every 12s, as before, for a pool the chain can't read), candles, stats and pools.
+  - **GeckoTerminal's queue:** `gtClient.ts` has an urgent lane (`gtDirect(…, { urgent: true })`). The coin page's calls go before any market list's.
+  - **Opens at once:** the page starts from the coin's row in the market list already in the browser (`rhSeed`).
+    - A link with a pool reads the pool's two tokens from the chain (`rhPoolTokens`): `token0()`/`token1()`, or a v4 pool's `Initialize` event, newest 10M-block slice first. So trades start without GeckoTerminal: 100 rows 2.5s after a cold load while GeckoTerminal was throttled.
+  - **Safety:** the chain's live price feeds the trade form's price guard only for a pool GeckoTerminal has listed for the coin and not marked off-market. A link to a trap pool can't set the market price before GeckoTerminal answers.
 - **Stock tokens:**
   - **What they are:** named "<Company> • Robinhood Token". On-chain, each is a beacon proxy on Robinhood's beacon `0xe10b…1b00` (`isStockToken` reads the EIP-1967 beacon slot).
   - **Impostors:** the chain decides. A token with a stock name that isn't on the beacon gets a warning and no stock tag.
@@ -1358,6 +1379,7 @@ Owner: "let users see Robinhood coins and buy and sell them just like Arc coins"
 - **Not in the $SENSE ledger yet:** `engine/src/sense/program.ts` counts fees paid by ARCSENSE's own contracts. A Robinhood sale's fee comes from Across's handler on Arc, and a buy's fee is a coin on Robinhood Chain.
 - **Tests:**
   - `bun scripts/test-robinhood.ts [--live]`, offline on recorded quotes (`scripts/fixtures/across-*.json`, `rh-pools.json`, `rh-shrinu.json`). It also covers trap pools (SHRINU's recorded pools: the WETH pool first, both traps off the market) and the price guard (MOW's quotes pass; SHRINU's trap-routed buy and sale, `across-trap-*.json`, are refused; the 15%, 50% and +25% limits). Without the off-market check, or with pools ranked by depth again, it fails. It covers the quote URL, real quotes passing, and 20 tampered quotes refused. It also covers market rows, wash and quiet pools, stock names, restricted countries and routes. It also covers the `/across` proxy: what it forwards and refuses, and that the key goes only in the `Authorization` header to Across (with a fake key). `--live` adds fresh Across quotes and on-chain stock checks. Removing the recipient check or the native-value check fails it.
+  - `bun scripts/check-rh-swaps.ts` (live, nothing sent): the busiest v4 and v3 pools read the way the page reads them, against GeckoTerminal's trades. 300 of 300 matched on side, coin amount, dollars (within 5%) and time (within 20s), and new swaps arrived ~0.4–0.5s after their block.
   - `bun scripts/sim-robinhood.ts` simulates on mainnet, from a throwaway address with state overrides (nothing sent), the exact transactions for a $5 MOW buy, a $5 NVDA buy, a $0.50 gas top-up and a 10 MOW sale. Each goes through with exactly the amount approved, and is refused with less.
 - **Checked in the browser (local dev):**
   - `/robinhood` and its Stocks tab, at 1024px and 375px with no sideways scroll.
@@ -1381,6 +1403,7 @@ Owner: "Change the CA on our landing page to 0x4b93…676c, the ticker is ARCDEX
 - **Landing (`landing/Landing.tsx`, `landing/CoinLive.tsx`):** "Trade Arc & Robinhood. Own $ARCDEX."
   - The coin card shows price, market cap, liquidity, 24h volume and trades.
   - The burn meter shows the burned total, the share of supply, and the last 24 hours and 7 days.
+    - **Burned is read from the dead wallet (owner, 2026-10-04):** `useCoinBurned` (`lib/coin.ts`) reads `balanceOf(0x…dEaD)` on $ARCDEX from Arc (Blockdaemon and the public RPC, first answer wins; ~0.45s) every 15s. It feeds the meter, the hero's share burned and `/burn`'s total, so the number shows before the engine answers and doesn't depend on it. The engine's ledger still gives the 24h, 7d, count and history (it matched: 32,761,511.04).
   - A live feed lists buys, sells and burns.
   - The burn chart shows a bar per day on a square-root scale, so the launch week's big burns don't flatten every later day, with dates under it.
   - Then the CA with Copy, a "Two chains. One exchange." section listing each chain's launchpads, and the fee split (`CoinProgram.tsx`, was `SenseProgram.tsx`).

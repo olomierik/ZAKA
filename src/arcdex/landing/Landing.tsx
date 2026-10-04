@@ -5,7 +5,7 @@ import TrafficCard from './TrafficCard'
 import CoinProgram from './CoinProgram'
 import { BurnChart, BurnList, BurnMeter, CoinFeed, CoinLiveCard, big, useCoinProgram } from './CoinLive'
 import { PHASES, phaseStatus } from './roadmap'
-import { ENGINE_API, COIN, COIN_IMAGE, COIN_PATH, fmtPct, fmtSmallUsd, useCoin } from '../lib/coin'
+import { ENGINE_API, COIN, COIN_IMAGE, COIN_PATH, fmtPct, fmtSmallUsd, useCoin, useCoinBurned } from '../lib/coin'
 import { isLaunchpadCoin } from '../../../api/_launchpads'
 import './landing.css'
 
@@ -129,7 +129,8 @@ export default function Landing() {
 
   const coinRow: Row = { key: 'coin', href: COIN_PATH, symbol: 'ARCDEX', name: 'ARCDEX', image: COIN_IMAGE, price: coinQ?.priceUsd ?? null, change: coinQ?.change24h ?? null, tag: t('Official') }
   const rows = tab === 'popular' ? (markets.popular ? [coinRow, ...markets.popular] : null) : tab === 'new' ? markets.fresh : markets.perps
-  const burnedPct = program?.burned.pct ?? null
+  const dead = useCoinBurned()
+  const burnedPct = dead?.pct ?? program?.burned.pct ?? null
 
   const PLATFORM: [string, string, string, string][] = [
     ['📈', t('Arc markets'), t('Every launchpad coin on Arc, live, with safety checks.'), '/app'],

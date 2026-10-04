@@ -89,3 +89,58 @@ export function fmtCompactUsd(n: number | null | undefined): string {
 }
 
 export const fmtPct = (n: number | null | undefined) => n == null || !Number.isFinite(n) ? '—' : `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
+
+// ── burned: the dead wallet's balance, read straight from Arc ────────────
+
+/** Arc RPCs the browser can read from (both answer cross-origin), first to answer wins. */
+const ARC_READ = ['https://rpc.blockdaemon.mainnet.arc.io', 'https://rpc.mainnet.arc.io']
+/** balanceOf(0x…dEaD) on $ARCDEX. */
+const DEAD_BALANCE_CALL = { to: COIN_LC, data: '0x70a08231' + COIN_DEAD.slice(2).toLowerCase().padStart(64, '0') }
+
+export interface CoinBurned { total: number; pct: number; at: number }
+
+let burned: CoinBurned | null = null
+const burnListeners = new Set<() => void>()
+let burnTimer: ReturnType<typeof setInterval> | null = null
+
+async function readDead(url: string): Promise<number> {
+  const r = await fetch(url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(6_000),
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [DEAD_BALANCE_CALL, 'latest'] }),
+  })
+  const j = await r.json() as { result?: string }
+  if (!j.result || !/^0x[0-9a-f]+$/i.test(j.result)) throw new Error('no balance')
+  // 18 decimals: whole coins and the fraction apart, so nothing is lost to floating point.
+  const raw = BigInt(j.result)
+  return Number(raw / 10n ** 18n) + Number(raw % 10n ** 18n) / 1e18
+}
+
+async function loadBurned() {
+  try {
+    // The first RPC to answer (the target is ES2020, so no Promise.any).
+    const total = await new Promise<number>((ok, fail) => {
+      let failed = 0
+      for (const url of ARC_READ) readDead(url).then(ok, () => { if (++failed === ARC_READ.length) fail(new Error('no rpc')) })
+    })
+    burned = { total, pct: (total / COIN_SUPPLY) * 100, at: Date.now() }
+    burnListeners.forEach(f => f())
+  } catch { /* keep the last reading */ }
+}
+
+function subscribeBurned(f: () => void) {
+  burnListeners.add(f)
+  if (!burnTimer) {
+    void loadBurned()
+    burnTimer = setInterval(() => { if (!document.hidden) void loadBurned() }, 15_000)
+  }
+  return () => {
+    burnListeners.delete(f)
+    if (!burnListeners.size && burnTimer) { clearInterval(burnTimer); burnTimer = null }
+  }
+}
+
+/** $ARCDEX burned: what the dead wallet (0x…dEaD) holds, read from Arc every 15 seconds
+ * (null until the first answer). The engine's ledger adds each burn's history. */
+export function useCoinBurned(): CoinBurned | null {
+  return useSyncExternalStore(subscribeBurned, () => burned, () => null)
+}
