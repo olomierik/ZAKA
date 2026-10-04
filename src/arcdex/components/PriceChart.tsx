@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createChart, type AutoscaleInfo, type IChartApi, type ISeriesApi, type SeriesType, type CandlestickData, type Logical, type MouseEventParams, LineSeries, HistogramSeries, PriceScaleMode } from 'lightweight-charts'
+import { createChart, type IChartApi, type ISeriesApi, type SeriesType, type CandlestickData, type MouseEventParams, LineSeries, HistogramSeries, PriceScaleMode } from 'lightweight-charts'
 import { addMainSeries, DEFAULT_CHART_STYLE, lineColors, onChartStyle, setChartStyle, type ChartStyle, type MainSeries } from '../lib/chartStyle'
 import { useIsMobile } from '../lib/useMobile'
 import { getPoolOhlcv } from '../api/gecko'
@@ -8,7 +8,7 @@ import { engineEnabled, getEngineCandles, marketStream, useEngineStatus } from '
 import type { WireCandle } from '../../../api/_marketProtocol'
 import { INDICATORS, bollinger, ema, rsi, sma, vwap, type IndicatorId } from '../lib/indicators'
 import { t as T } from '../lib/i18n'
-import { LIVE_GAP, LIVE_GAP_MIN, easeOut, fitRange, flightOf, needsRefit } from '../lib/chartMotion'
+import { RIGHT_OFFSET_BARS, flightOf, followAfterRedraw } from '../lib/chartMotion'
 
 const IND_KEY = 'arcdex:chart-indicators'
 const RSI_PANE = 110
@@ -116,11 +116,6 @@ const LABEL_H = 16
 const LABEL_GAP = 11
 /** Market caps on the legend: $563.2K, $1.25M. */
 const compactValue = (x: number) => x >= 1e9 ? (x / 1e9).toFixed(2) + 'B' : x >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : x >= 1e3 ? (x / 1e3).toFixed(1) + 'K' : x.toFixed(x >= 1 ? 0 : 2)
-/** The line's last point glides to each new price in this long (fomo-like:
- * every move is seen, not a jump), and the view glides back to a fit in this. */
-const GLIDE_MS = 420
-const REFIT_MS = 380
-const still = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const SCALE_MODES = { normal: PriceScaleMode.Normal, log: PriceScaleMode.Logarithmic, pct: PriceScaleMode.Percentage } as const
 
 // Price axis: 2 decimals for $1+ coins, 4 significant digits for micro-caps.
@@ -268,12 +263,6 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
   const applied      = useRef<{ key: string; data: CandlestickData[] }>({ key: '', data: [] })
   const lineUp       = useRef(true)
   const frame        = useRef(0)
-  // The live end of the line: room kept right of its last point, the glide
-  // of its value between prices, and the glide of the view back to a fit.
-  const gapRef       = useRef<number>(mobile ? LIVE_GAP.phone : LIVE_GAP.desktop)
-  const glide        = useRef<{ raf: number; time: number; value: number; to: number } | null>(null)
-  const refitRaf     = useRef(0)
-  const stopGlide = () => { if (glide.current) cancelAnimationFrame(glide.current.raf); glide.current = null }
 
   // Each new swap pops up at its candle and price the moment it lands —
   // buys just above the line, sells just below — then flies off upward as
@@ -324,10 +313,9 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
         const x = chart.timeScale().timeToCoordinate(bucket as never)
         const y = series.priceToCoordinate(t.priceUsd * scale)
         if (x === null || y === null || x < 0 || x > paneW) continue
-        // A swap's pop sits at its price: the axis stretches to a new price as
-        // the line starts gliding there (autoscaleInfoProvider, below). Should
-        // it still be off the axis, the pop is held at the edge (placed below)
-        // and re-placed when the glide lands. A thesis off the axis isn't shown.
+        // A swap's pop sits at its price (the axis has already re-fitted to it:
+        // the line takes each trade at once). Should it be off the axis, the pop
+        // is held at the edge (placed below). A thesis off the axis isn't shown.
         if (t.kind === 'thesis' && (y < 0 || y > paneH)) continue
         const text = labelText(t)
         const w = t.kind === 'thesis' ? 18 : text.length * 6.6 + 8
@@ -391,15 +379,12 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
         horzLine: { color: '#5e6673', labelBackgroundColor: '#474d57' },
       },
       rightPriceScale: { borderColor: '#2b3139' },
-      // Every candle fits the window, the first at the left edge, and the
-      // line stops short of the price axis (as on fomo): its last point has
-      // room on the right. New bars walk into that room instead of shifting
-      // the chart, and the view glides back to a fit before one reaches the
-      // axis (keepInView, below). A resize keeps the fit.
-      // (No fixLeftEdge: with it, lightweight-charts 5.2 checks the left edge
-      // against the previous last bar while adding a new one, and slides the
-      // whole chart a bar anyway — the oldest bar drops off the left.)
-      timeScale: { borderColor: '#2b3139', timeVisible: true, secondsVisible: true, rightOffsetPixels: gapRef.current, shiftVisibleRangeOnNewBar: false, lockVisibleTimeRangeOnResize: true },
+      // As on fomo (its TradingView chart, read 2026-10-04): the latest bar
+      // sits RIGHT_OFFSET_BARS bars short of the price axis, and each new bar
+      // slides the whole chart one bar to the left (the oldest scroll off),
+      // so the line keeps moving while the axis re-fits to what's on screen.
+      // A resize keeps the time range.
+      timeScale: { borderColor: '#2b3139', timeVisible: true, secondsVisible: true, rightOffset: RIGHT_OFFSET_BARS, shiftVisibleRangeOnNewBar: true, lockVisibleTimeRangeOnResize: true },
       // The page has to scroll past the chart: a wheel or a vertical swipe
       // over it scrolls the page. Zoom with a pinch, a drag on the time
       // axis, or the wheel in fullscreen.
@@ -417,7 +402,7 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
     })
     ro.observe(containerRef.current)
     return () => {
-      ro.disconnect(); stopGlide(); cancelAnimationFrame(refitRaf.current)
+      ro.disconnect()
       chart.remove(); chartRef.current = null; seriesRef.current = null
     }
   }, [])
@@ -428,19 +413,10 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
     const chart = chartRef.current
     if (!chart) return
     const s = addMainSeries(chart, style)
-    // While the line's last point glides to a new price, the price axis
-    // already reaches that price: the dot moves inside a still axis, and a
-    // swap's pop is placed at its final height at once.
-    if (style === 'line') s.applyOptions({ autoscaleInfoProvider: (base: () => AutoscaleInfo | null) => {
-      const info = base(), to = glide.current?.to
-      if (to === undefined || !info?.priceRange) return info
-      return { ...info, priceRange: { minValue: Math.min(info.priceRange.minValue, to), maxValue: Math.max(info.priceRange.maxValue, to) } }
-    } })
     seriesRef.current = s
     lineUp.current = true
     applied.current = { key: '', data: [] }
     return () => {
-      stopGlide()
       try { chart.removeSeries(s) } catch { /* the chart itself is gone */ }
       if (seriesRef.current === s) seriesRef.current = null
     }
@@ -465,70 +441,16 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
   const recolorRef = useRef(recolor)
   recolorRef.current = recolor
 
-  // Back to a fit (every bar in the window, the gap free on the right):
-  // gliding there, or at once for a new view or for people who asked for
-  // less motion. Someone dragging or zooming stops the glide.
-  const refit = (smooth: boolean) => {
-    const chart = chartRef.current
-    if (!chart) return
-    const ts = chart.timeScale()
-    cancelAnimationFrame(refitRaf.current)
-    const bars = applied.current.data.length, width = ts.width()
-    const from = ts.getVisibleLogicalRange()
-    if (!smooth || still() || !from || bars < 2 || width <= gapRef.current) { ts.fitContent(); return }
-    const to = fitRange(bars, width, gapRef.current), t0 = performance.now()
-    const step = (now: number) => {
-      if (userMoved.current || chartRef.current !== chart) return
-      const e = easeOut((now - t0) / REFIT_MS)
-      if (e >= 1) { ts.fitContent(); return } // land exactly on the fit
-      ts.setVisibleLogicalRange({ from: from.from + (to.from - from.from) * e, to: from.to + (to.to - from.to) * e })
-      refitRaf.current = requestAnimationFrame(step)
-    }
-    refitRaf.current = requestAnimationFrame(step)
-  }
-  // New bars walk into the room on the right; re-fit once the last one is
-  // within LIVE_GAP_MIN of the axis (or off screen, or bars fell off the left).
-  const keepInView = (smooth: boolean) => {
-    const chart = chartRef.current, bars = applied.current.data.length
-    if (!chart || !bars || userMoved.current) return
-    const ts = chart.timeScale()
-    if (needsRefit(ts.getVisibleLogicalRange(), ts.width(), ts.logicalToCoordinate((bars - 1) as Logical), gapRef.current, LIVE_GAP_MIN)) refit(smooth)
-  }
-  // Less room on a phone.
-  useEffect(() => {
-    gapRef.current = mobile ? LIVE_GAP.phone : LIVE_GAP.desktop
-    chartRef.current?.applyOptions({ timeScale: { rightOffsetPixels: gapRef.current } })
-    keepInView(false)
-    // keepInView reads refs only: any render's copy does the same
-  }, [mobile])
-
-  // The line's last point glides to a new price over GLIDE_MS instead of
-  // jumping, so every move up or down is seen. `from`: where it's drawn now.
-  const glideTo = (series: ISeriesApi<'Area'>, time: number, from: number, to: number) => {
-    stopGlide()
-    series.update({ time: time as never, value: from })
-    if (from === to || still()) { series.update({ time: time as never, value: to }); return }
-    const g = { raf: 0, time, value: from, to }, t0 = performance.now()
-    glide.current = g
-    const step = (now: number) => {
-      if (glide.current !== g) return
-      const k = (now - t0) / GLIDE_MS
-      g.value = k >= 1 ? to : from + (to - from) * easeOut(k)
-      try { series.update({ time: time as never, value: g.value }) } catch { glide.current = null; return }
-      if (k < 1) g.raf = requestAnimationFrame(step)
-      else { glide.current = null; layoutRef.current() } // pops: the axis now reaches the new price
-    }
-    g.raf = requestAnimationFrame(step)
-  }
+  // Every bar in the window (a new timeframe, coin or view, a big backfill,
+  // a double-click), the latest RIGHT_OFFSET_BARS bars short of the axis.
+  const fitAll = () => { chartRef.current?.timeScale().fitContent() }
 
   // Pan/zoom/resize → re-place bubbles, re-colour the line.
   useEffect(() => {
     const chart = chartRef.current
     if (!chart) return
     const onRange = () => { layout(); recolorRef.current() }
-    // A resize also re-checks the fit (not every range change: the view's
-    // own glide back to a fit changes it every frame).
-    const onSize = () => { onRange(); keepInView(false) }
+    const onSize = onRange
     chart.timeScale().subscribeVisibleLogicalRangeChange(onRange)
     chart.timeScale().subscribeSizeChange(onSize)
     layout()
@@ -555,37 +477,31 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
     // A line only needs each bar's close.
     const point = (d: CandlestickData) => (style === 'candles' ? d : { time: d.time, value: d.close })
     if (tailOnly) {
-      const last = data[data.length - 1]
-      if (style === 'line') {
-        // Where the last point is drawn now: mid-glide, its final spot, or
-        // (a new bar) where the line was — it grows out of the old price.
-        const shown = glide.current && glide.current.time === (last.time as number) ? glide.current.value
-          : data.length === n ? prev.data[n - 1].close : data[data.length - 2].close
-        stopGlide()
-        for (let i = n - 1; i < data.length - 1; i++) series.update(point(data[i]))
-        glideTo(series as ISeriesApi<'Area'>, last.time as number, shown, last.close)
-      } else {
-        for (let i = n - 1; i < data.length; i++) series.update(point(data[i]))
-      }
+      // Each trade moves the last point at once (as on fomo: every buy and
+      // sell is a bend in the line), and a new bar slides the chart a bar left.
+      for (let i = n - 1; i < data.length; i++) series.update(point(data[i]))
       const vol = volRef.current
       if (vol) for (let i = n - 1; i < candles.length; i++) {
         const c = candles[i]
         vol.update({ time: c.time as never, value: c.volume, color: c.close >= c.open ? 'rgba(14,203,129,0.35)' : 'rgba(246,70,93,0.35)' })
       }
     } else {
-      stopGlide()
       // Market caps under $100K in full dollars ($7,001): a new coin's moves are
       // a few dollars wide, and "$7.0K" on every gridline says nothing.
       series.applyOptions({ priceFormat: scale > 1 ? { type: 'custom', formatter: (v: number) => v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : v >= 1e5 ? `$${(v / 1e3).toFixed(1)}K` : `$${Math.round(v).toLocaleString('en-US')}`, minMove: 1 } : { type: 'custom', formatter: fmtPrice, minMove: 1e-12 } })
       series.setData(data.map(point))
     }
     applied.current = { key, data }
-    // Fit every candle in the window — at once for a new timeframe, coin or
-    // view; after that, new bars walk into the room on the right and the
-    // view glides back to a fit when needed. Someone who zoomed or scrolled
-    // keeps their view.
-    if (data.length && needsFit.current) { needsFit.current = false; refit(false) }
-    else keepInView(true)
+    // Every bar in the window for a new timeframe, coin or view. After that the
+    // chart follows the latest bar: new bars slide it left (shiftVisibleRangeOnNewBar),
+    // and a history refresh keeps the bar spacing and the latest bar in place,
+    // unless it brought in many more bars (a backfill), which re-fits.
+    // Someone who zoomed or scrolled keeps their view.
+    if (data.length && needsFit.current) { needsFit.current = false; fitAll() }
+    else if (!tailOnly && data.length && !userMoved.current) {
+      if (followAfterRedraw(n, data.length) === 'fit') fitAll()
+      else chartRef.current?.timeScale().scrollToRealTime()
+    }
     writeLegendRef.current()
     recolorRef.current()
     layoutRef.current()
@@ -665,7 +581,7 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
     const up = () => { x0 = null }
     const wheel = () => { if (document.fullscreenElement) userMoved.current = true }
     const pinch = (e: TouchEvent) => { if (e.touches.length > 1) userMoved.current = true }
-    const refit = () => { userMoved.current = false; cancelAnimationFrame(refitRaf.current); chartRef.current?.timeScale().fitContent(); setAutoScale(true) }
+    const refit = () => { userMoved.current = false; chartRef.current?.timeScale().fitContent(); setAutoScale(true) }
     el.addEventListener('pointerdown', down)
     el.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)

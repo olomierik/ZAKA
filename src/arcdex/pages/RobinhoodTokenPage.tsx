@@ -223,7 +223,7 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate 
     if (need.length) void resolveRhMakers(need, () => setMakersFound(n => n + 1))
   }, [rows])
 
-  const source = useMemo(() => (pool ? rhChartSource(pool, address) : undefined), [pool, address])
+  const source = useMemo(() => (pool ? rhChartSource(pool, address, chainOn) : undefined), [pool, address, chainOn])
   // The chart's live end: every swap the chain read (as Arc's coins), else GeckoTerminal's new ones.
   const ticks: Tick[] = useMemo(() => rows
     .filter(r => r.priceUsd > 0 && (chainOn ? !r.id.includes(':gt:') : r.live))

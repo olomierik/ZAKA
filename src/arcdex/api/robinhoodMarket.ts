@@ -274,7 +274,9 @@ export async function getRhCandles(pool: string, coin: string, res: ChartResolut
 }
 
 /** The chart's source for a coin's pool (refreshed every 30s: GeckoTerminal's
- * free rate is shared with the trades list). */
-export function rhChartSource(pool: string, coin: string): ChartSource {
-  return { id: `rh:${pool}:${coin.toLowerCase()}`, load: res => getRhCandles(pool, coin, res), refreshMs: 30_000, resolutions: RH_RESOLUTIONS }
+ * free rate is shared with the trades list). With the pool's swaps read from the
+ * chain (`fromChain`, api/rhSwaps.ts) it also has 15s, as fomo does: drawn from
+ * those swaps alone (GeckoTerminal has nothing under a minute). */
+export function rhChartSource(pool: string, coin: string, fromChain = false): ChartSource {
+  return { id: `rh:${pool}:${coin.toLowerCase()}`, load: res => getRhCandles(pool, coin, res), refreshMs: 30_000, resolutions: fromChain ? ['15s', ...RH_RESOLUTIONS] : RH_RESOLUTIONS }
 }

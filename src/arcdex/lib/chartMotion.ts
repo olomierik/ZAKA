@@ -15,41 +15,22 @@ export function flightOf(key: string, scale = 1): { fx: number; fy: number } {
 }
 
 // ── the live end of the line (PriceChart) ─────────────────────────────
-// As on fomo, the line stops short of the price axis: its last point floats
-// with room on its right to move up and down in, and new bars walk into that
-// room. Once the last one gets within LIVE_GAP_MIN of the axis, the view
-// glides back to a fit (every bar in the window, the whole gap free again),
-// so the line never touches the axis.
+// As on fomo (its TradingView chart, read 2026-10-04: line chart, 15s bars,
+// right offset 10 bars, the visible range moving 15s with every new bar):
+// each trade moves the last point at once, so every buy and sell is a bend
+// in the line; the latest bar sits RIGHT_OFFSET_BARS bars short of the price
+// axis; and each new bar slides the whole chart one bar left while the price
+// axis re-fits to what's on screen. (Until then the chart held still, new bars
+// walked into a gap on the right, and prices glided: the owner wanted fomo's.)
 
-/** px kept free right of the last point after a fit. */
-export const LIVE_GAP = { desktop: 64, phone: 40 } as const
-/** px it may shrink to as new bars walk in, before the view re-fits. */
-export const LIVE_GAP_MIN = 14
+/** Bars of room kept right of the latest one (fomo's TradingView: 10). */
+export const RIGHT_OFFSET_BARS = 10
 
-/** The visible logical range a fit gives (lightweight-charts' fitContent
- * with rightOffsetPixels = `gap`): the first bar at the left edge, the last
- * `gap` px short of the right one. */
-export function fitRange(bars: number, width: number, gap: number): { from: number; to: number } {
-  const spacing = (width - gap) / Math.max(1, bars)
-  return { from: 0, to: bars - 1 + gap / spacing }
+/** After a history refresh redrew the chart (not just its last bars): keep
+ * following the latest bar at the same bar spacing ('follow'), or fit every
+ * bar again ('fit') when the bar count jumped (a backfill or a reload: more
+ * than 2 bars more or fewer), so a first sliver of bars doesn't leave the view
+ * zoomed in on it. */
+export function followAfterRedraw(prevBars: number, bars: number): 'fit' | 'follow' {
+  return prevBars < 2 || Math.abs(bars - prevBars) > 2 ? 'fit' : 'follow'
 }
-
-/** Free px right of the last bar: `lastX` is its centre (null when it's off
- * screen), and the library draws bar i at width − (offset + ½)·spacing − 1. */
-export function roomRight(range: { from: number; to: number }, width: number, lastX: number): number {
-  const spacing = width / (range.to - range.from + 1)
-  return width - lastX - spacing / 2 - 1
-}
-
-/** Whether the view has to re-fit: the last bar off screen or within
- * `minGap` of the axis, far more room than a fit leaves, or bars hidden off
- * the left (history grew). */
-export function needsRefit(range: { from: number; to: number } | null, width: number, lastX: number | null, gap: number, minGap: number): boolean {
-  if (!range || lastX === null || !(width > 0)) return true
-  const spacing = width / (range.to - range.from + 1)
-  const room = roomRight(range, width, lastX)
-  return room < minGap || room > gap + spacing + 1 || range.from > 0.5 || range.from < -1.5
-}
-
-/** Ease-out (cubic): fast, then settling. */
-export const easeOut = (k: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, k)), 3)

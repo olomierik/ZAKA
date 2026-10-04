@@ -168,7 +168,7 @@ Why buys, swaps and bridges failed for people, and the fixes:
   - Your own trades get a yellow outline.
   - Placement: yours, then theses, then the largest trades; overlapping labels are dropped (28 on phones, 70 on desktop).
 - **Fits itself (owner's request, round 4):** every candle of the chosen timeframe fits the window, and changing the timeframe is all anyone needs to do.
-  - A fit runs on load and on a new timeframe, coin, view or style. Since round 7, new candles walk into the room on the right, and the view re-fits only when needed (see below); a history refresh re-fits only if bars fell off the view.
+  - A fit runs on load and on a new timeframe, coin, view or style. Since round 8, new bars slide the chart a bar left, as on fomo (see below); a history refresh keeps the bar spacing unless many bars were added.
   - The price axis goes back to auto on a new timeframe, coin, Price/MCap view or style.
   - A resize keeps the fit (`lockVisibleTimeRangeOnResize`, then a re-check). The edges are no longer pinned: `fixRightEdge` glued the last point to the price axis, and `fixLeftEdge` made 5.2 slide the chart on every new bar (round 7).
   - Someone who drags, pinches or wheel-zooms keeps their view until they change the timeframe; a double-click fits it again. The old "last 140 bars" window is gone.
@@ -178,18 +178,22 @@ Why buys, swaps and bridges failed for people, and the fixes:
   - Price by default, with a switch to market cap (see "Coin page chart" below).
   - Caps under $100K in full dollars on the axis.
 - Launchpad coins use this chart too (the old `CurveChart` is gone), priced from the curve's reserves after each trade.
-- **The live end of the line, as on fomo (owner's request, round 7).** Pinning the right edge had glued the last point to the price axis.
-  - **Room on the right:** the line stops 64px short of the axis (40px on phones), using `rightOffsetPixels` and `LIVE_GAP` in `lib/chartMotion.ts`. Candles get the same room.
-  - **New bars walk right:** `shiftVisibleRangeOnNewBar` is off, so each new bar moves one step into that room while the chart holds still.
-  - **Re-fit before the axis:** once the last bar is within `LIVE_GAP_MIN` (14px) of the axis, the view glides back to a fit over `REFIT_MS`. The target range is `fitRange()`, and it lands on `fitContent()`. The decision is `needsRefit()`, which also fires if bars fall off the left or far too much room opens up.
-  - **The last point pulses** (`lastPriceAnimation` Continuous), with a dotted price line to the axis label (`chartStyle.ts`).
-  - **Prices glide:** each new price reaches the last point over `GLIDE_MS` (ease-out) instead of jumping. A new bar grows out of the previous price.
-    - While it glides, `autoscaleInfoProvider` stretches the price axis to the target at once. The dot moves inside a still axis, and a swap's pop is placed at its final height (pops off the axis are held at the edge until the glide lands).
-  - **Reduced motion:** no pulse, no glide, and re-fits happen at once.
-  - A drag, pinch or wheel-zoom still keeps the user's view; a double-click fits it again.
-  - **Tests:**
-    - `bun scripts/test-chart-motion.ts`: the fit, walk and re-fit math against the library's own formulas.
-    - A browser check reads the chart's canvas pixels. It covers the room, the pulse, walking and re-fitting, the glide (a drop and a new high), drag and double-click, resizes, candles, phones and reduced motion.
+- **The line moves as fomo's does (owner's request, round 8, 2026-10-04: "the line moves going right, the entire chart shakes when it moves, and it shows the bends when buys and sells occur").** fomo's chart was read in Chrome: a TradingView Line chart on 15S bars, right offset 10 bars, the price axis on auto, and its visible range moving 15s with every new bar (sampled every 2s while trades came in).
+  - **Each trade at once:** a trade moves the line's last point straight to its price (`series.update`), so every buy and sell shows as a bend, and each finished bar keeps its bend. The price glide (`GLIDE_MS`) and the axis stretching ahead of it are gone.
+  - **The chart slides with each new bar:** `shiftVisibleRangeOnNewBar` is on, with `rightOffset` `RIGHT_OFFSET_BARS` (10, fomo's) in `lib/chartMotion.ts`.
+    - The latest bar stays 10 bars short of the price axis, and every new bar slides the whole chart one bar left: the oldest scroll off.
+    - The price axis re-fits to what's on screen as it goes. Together, that's the movement fomo's chart has.
+    - Round 7's room on the right, bars walking into it and the glide back to a fit (`LIVE_GAP`, `needsRefit`, `REFIT_MS`) are gone.
+  - **Fit:** every bar fits the window on load and for a new timeframe, coin, view or style (fomo fits too).
+    - After a history refresh the chart keeps its bar spacing and the latest bar (`scrollToRealTime`). It re-fits only when the bar count jumped by more than 2, a backfill or a reload (`followAfterRedraw`).
+    - Someone who drags, pinches or zooms keeps their view; a double-click fits again.
+  - **The last point still pulses,** with its dotted price line (`chartStyle.ts`), and swaps still pop.
+  - **15s on Robinhood coins:** their pages now offer 15s whenever the pool's swaps come from the chain (`rhChartSource(…, fromChain)`), drawn from those swaps alone (GeckoTerminal has nothing under a minute), as Arc coins already did.
+  - **Checked:**
+    - lightweight-charts with these options, in the browser: a fit of 160 bars plus 10 of room; trades in the last bar moving its point at once; each new bar moving the visible range one bar while the latest point stays at the same x.
+    - A live Robinhood coin on 15s.
+    - `bun scripts/test-chart-motion.ts` (the offset and when a refresh re-fits).
+- **The live end of the line, round 7 (replaced by round 8 above):** the line stopped 64px short of the axis, new bars walked into that room with the chart holding still, the view glided back to a fit, and prices glided between trades. The owner wanted fomo's motion instead.
 
 ### Phone home and desktop nav (2026-09-26)
 - **Phone home** (`components/MobileHome.tsx`, top of the Terminal on phones): only what matters (owner's request, 2026-09-30).
