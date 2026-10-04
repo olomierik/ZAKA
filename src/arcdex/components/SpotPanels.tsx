@@ -3,6 +3,7 @@
 // balance underneath; on the right, the pair list ($ARCDEX first) to switch coins in one click.
 
 import { isLaunchpadCoin } from '../../../api/_launchpads'
+import { isListable, isRugged } from '../lib/safety'
 import { useEffect, useMemo, useState } from 'react'
 import type { TradeRow } from './TokenSocialTabs'
 import Ago from './Ago'
@@ -61,7 +62,10 @@ interface PairRow { address: string; pool: string; symbol: string; image: string
 
 /** Coins to switch to: what's trading now on the engine (else the last market list), $ARCDEX first. */
 function usePairs(): PairRow[] {
-  const [rows, setRows] = useState<PairRow[]>(() => (cachedArgusMarket() ?? []).slice(0, 80).map(p => ({
+  // Listed coins only (lib/safety.ts isListable: $15K or more of market cap, not rugged; owner, 2026-10-04).
+  const [rows, setRows] = useState<PairRow[]>(() => (cachedArgusMarket() ?? [])
+    .filter(p => isListable({ official: false, marketCapUsd: p.marketCapUsd ?? p.fdvUsd ?? 0, rugged: isRugged({ change24h: p.change.h24, liquidityUsd: p.liquidityUsd, onCurve: p.bonded === false }) }))
+    .slice(0, 80).map(p => ({
     address: p.token.address, pool: p.pool, symbol: p.token.symbol, image: p.token.image, priceUsd: p.priceUsd, change24h: p.change.h24, volume: p.volume24h,
   })))
   useEffect(() => {
@@ -72,7 +76,7 @@ function usePairs(): PairRow[] {
       .then((j: { tokens?: ActiveToken[] } | null) => {
         if (!alive || !j?.tokens?.length) return
         // Launchpad coins only (owner, 2026-10-04).
-        const fresh = j.tokens.filter(a => isLaunchpadCoin(a.meta?.launchpad)).flatMap(a => (a.meta?.pool && a.stats.priceUsd ? [{
+        const fresh = j.tokens.filter(a => isLaunchpadCoin(a.meta?.launchpad) && isListable({ official: false, marketCapUsd: a.stats.marketCapUsd ?? 0, rugged: (a.stats.chg.h24 ?? 0) <= -90 })).flatMap(a => (a.meta?.pool && a.stats.priceUsd ? [{
           address: a.token, pool: a.meta.pool, symbol: a.meta.symbol, image: a.meta.image ?? null, priceUsd: a.stats.priceUsd,
           change24h: a.stats.chg.h24 ?? 0, volume: a.stats.vol24,
         }] : []))

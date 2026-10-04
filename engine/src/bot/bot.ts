@@ -975,7 +975,7 @@ export class Bot implements EngineObserver {
       const r = this.reports.get(token)
       if (!r || now - r.at > BOARD.freshMs || r.checks.some(c => c.id === 'honeypot' && c.ok === null)) scan.push(token)
       const launcher = meta.creator ? this.launchers.record(meta.creator, now) : null
-      out[token] = boardView(r ?? null, launcher)
+      out[token] = boardView(r ?? null, launcher, meta.creator?.toLowerCase() ?? null)
     }
     // Scans are taken from the end: this request's coins go ahead of older asks, its first ones (the top of the page) first.
     for (const token of scan.reverse()) this.queueBoardScan(token)

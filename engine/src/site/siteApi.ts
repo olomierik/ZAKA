@@ -287,6 +287,14 @@ export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number
     setInterval(() => void refresh(), o.holdersEveryMs ?? 60_000)
   }
 
+  // Robinhood Chain's market list (api/rhmarket.ts) reads two of its GeckoTerminal calls whenever its stored copy is
+  // stale; asked here every 40 seconds, so it stays whole with nobody looking (until 2026-10-04 only visitors asked, and
+  // a quiet spell let stock tokens and whole launchpads age out of it).
+  if (o.warm !== false && handlers.rhmarket) {
+    const rh = handlers.rhmarket
+    setInterval(() => { Promise.resolve().then(() => rh(new Request('http://engine/api/rhmarket'), ctx)).catch(e => log.debug('site api: rhmarket', { error: errMsg(e) })) }, 40_000)
+  }
+
   // Indexes that build in slices (the launchpad's, the curves'): kept going from the start, so the first visitors after a
   // deploy don't each wait on a slice (their state was in Supabase; here it starts in the engine's own database).
   if (o.warm !== false) {

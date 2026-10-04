@@ -3,7 +3,9 @@
 // Run: bun scripts/test-coin-board.ts
 
 const { stageOf, rhStage, arcStage, STAGE } = await import('../src/arcdex/lib/coinStage')
-const { arcSafety, rhSafety, meetsStandard, launcherRate, LISTING } = await import('../src/arcdex/lib/safety')
+const { arcSafety, rhSafety, meetsStandard, launcherRate, LISTING, isListable, isRugged } = await import('../src/arcdex/lib/safety')
+const { markDupes, tickerKey } = await import('../src/arcdex/lib/dupes')
+const { ponsProgress, ponsTargets } = await import('../api/rhmarket')
 const { riskOf } = await import('../src/arcdex/lib/risk')
 import type { CoinSafety } from '../api/_marketProtocol'
 import type { ArcToken } from '../src/arcdex/api/radardex'
@@ -38,6 +40,13 @@ const rh = (o: Partial<RhCoin>): RhCoin => ({
   marketCap: 300_000, buys24h: 300, sells24h: 250, traders24h: 120, createdAt: Date.now() - 3 * 24 * H, feePct: 1, launchpad: 'Bankr', ...o,
 })
 ok(rhStage(rh({ dex: 'pons-v2', createdAt: Date.now() - 3 * H })) === 'bonding', 'Robinhood: a coin on Pons’s curve is Bonding')
+ok(rhStage(rh({ dex: 'pons-dot-family', createdAt: Date.now() - 3 * H, curveProgress: 77.8, graduated: false })) === 'near', 'Robinhood: Pons says 3.27 of 4.2 ETH raised (77.8%): Near bond')
+ok(rhStage(rh({ dex: 'pons-dot-family', createdAt: Date.now() - 3 * 24 * H, curveProgress: 100, graduated: true })) === 'established', 'Robinhood: GeckoTerminal still lists it on Pons’s curve venue, Pons says graduated: off the curve')
+ok(ponsProgress(3_268_400_000_000_000_000n, 4_200_000_000_000_000_000n) === 77.81 && ponsProgress(91n * 10n ** 18n, 42n * 10n ** 17n) === 100 && ponsProgress(1n, 0n) === 0, 'Pons progress: ETH raised over the threshold, capped at 100')
+{
+  const t = ponsTargets([rh({ address: '0xaa', dex: 'pons-dot-family' }), rh({ address: '0xbb', dex: 'pons-v2', pool: '0x' + '55'.repeat(20) }), rh({ address: '0xcc', dex: 'pons-v2-dex' }), rh({ address: '0xdd' })])
+  ok(t.get('0xaa')?.via === 'factory' && t.get('0xbb')?.curve === '0x' + '55'.repeat(20) && !t.has('0xcc') && !t.has('0xdd'), 'Pons reads: its factory for pons-dot-family, the curve itself for pons-v2, none once graduated or elsewhere')
+}
 ok(rhStage(rh({})) === 'established' && rhStage(rh({ createdAt: Date.now() - 20 * 60_000 })) === 'new', 'a busy Bankr coin is Established; one 20 minutes old New')
 ok(rhStage(rh({ stock: true, launchpad: null })) === 'established', 'a Robinhood stock token: Established')
 
@@ -83,5 +92,35 @@ ok(!meetsStandard({ ...base, holders: LISTING.minHolders - 1 }) && meetsStandard
 ok(meetsStandard({ ...base, stage: 'new', liquidityUsd: 300, holders: 4 }) && !meetsStandard({ ...base, stage: 'new', liquidityUsd: 300, level: 'danger' }), 'a new coin is listed however thin, unless it’s in danger')
 ok(meetsStandard({ ...base, stage: 'bonding', onCurve: true, liquidityUsd: 900, holders: 9 }), 'a curve coin is listed however thin: its liquidity can’t be pulled')
 ok(meetsStandard({ ...base, level: 'risky' }) && meetsStandard({ ...base, level: 'checking' }), 'risky and checking coins are listed, with their badge')
+
+console.log('listed at all: $15K and not rugged (owner, 2026-10-04)')
+ok(LISTING.minMarketCapUsd === 15_000, 'the floor is $15K of market cap')
+ok(isListable({ official: false, marketCapUsd: 20_000, rugged: false }) && !isListable({ official: false, marketCapUsd: 14_999, rugged: false }), '$20K listed, $14,999 not')
+ok(!isListable({ official: false, marketCapUsd: 900_000, rugged: true }), 'rugged: not listed whatever its market cap')
+ok(isListable({ official: true, marketCapUsd: 0, rugged: true }), '$ARCDEX is always listed')
+const live = { change24h: 3, liquidityUsd: 8_000, onCurve: false, chain: null }
+ok(!isRugged(live), 'trading normally: not rugged')
+ok(isRugged({ ...live, change24h: -92 }), 'down 92% in a day: rugged')
+ok(isRugged({ ...live, liquidityUsd: 300 }) && !isRugged({ ...live, liquidityUsd: 300, onCurve: true }), 'a pool drained to $300: rugged; a curve coin that thin: not (its curve can’t be pulled)')
+ok(isRugged({ ...live, chain: { at: 1, fails: [{ id: 'creator', detail: 'sold 90%' }], risks: [], sellable: true, launcher: null, deep: true } }), 'the creator dumped (the scan’s hard check): rugged')
+
+console.log('same tickers: the OG and its duplicates')
+ok(tickerKey('$Pepe ') === 'pepe' && tickerKey('P.E.P.E') === 'pepe', 'tickers compare without $, case or punctuation')
+{
+  type R = { a: string; s: string; at: number; by: string | null }
+  const rows: R[] = [
+    { a: 'copy1', s: 'DOG', at: 3_000, by: '0xdev' },
+    { a: 'og', s: '$dog', at: 1_000, by: '0xDEV' },
+    { a: 'copy2', s: 'DOG', at: 2_000, by: '0xother' },
+    { a: 'unknown', s: 'DOG', at: 0, by: null },
+    { a: 'solo', s: 'CAT', at: 500, by: '0xdev' },
+  ]
+  const d = markDupes(rows, { key: r => r.a, symbol: r => r.s, launchedAt: r => r.at, creator: r => r.by })
+  ok(d.get('og')?.og === true && !d.get('og')?.dup, 'the earliest launched is the OG')
+  ok(d.get('copy1')?.dup && d.get('copy1')?.sameCreator, 'a later one by the OG’s creator: duplicate, same creator')
+  ok(d.get('copy2')?.dup && !d.get('copy2')?.sameCreator, 'a later one by someone else: duplicate')
+  ok(d.get('unknown')?.dup === true, 'a launch time unknown can’t make it the OG')
+  ok(!d.has('solo'), 'a ticker with one coin is neither')
+}
 
 console.log('\nall coin board checks passed')

@@ -301,15 +301,6 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
 
         <aside className="xs-side">
           <div className="xs-panel">
-            <b>{T('Why bridge with ARCDEX')}</b>
-            <ul className="xs-why">
-              <li><span>◎</span><div><b>{T('Native USDC')}</b><small>{T('Burned on one chain, minted on the other by Circle: no wrapped tokens, no pools.')}</small></div></li>
-              <li><span>⚡</span><div><b>{T('About a minute')}</b><small>{T('Fast transfers, and Circle’s relayer mints for you: no gas needed on arrival.')}</small></div></li>
-              <li><span>⇄</span><div><b>{T('{n} networks', { n: BRIDGE_CHAINS.length + 1 })}</b><small>{T('Ethereum, Base, Arbitrum, Optimism, Polygon, Solana and more, to and from Arc.')}</small></div></li>
-              <li><span>✓</span><div><b>{T('Fees shown first')}</b><small>{T('Circle’s fees and ours are quoted before you sign: what leaves and what arrives.')}</small></div></li>
-            </ul>
-          </div>
-          <div className="xs-panel">
             <b>{T('Supported networks')}</b>
             <div className="xs-nets">
               {BRIDGE_CHAINS.map(c => {

@@ -148,6 +148,31 @@ export interface ActiveToken {
   meta: LaunchInfo | null
 }
 
+/** An Argus coin on its launch curve (GET /v1/bonding, engine/src/market/bonding.ts): how close it is to graduating,
+ * by market cap. */
+export interface BondingCoin {
+  token: string
+  symbol: string
+  name: string
+  image: string | null
+  /** Argus Portal 7 or 8. */
+  portal: number
+  /** v4 pool id. */
+  pool: string
+  createdAt: number
+  creator: string | null
+  priceUsd: number
+  marketCapUsd: number
+  /** The market cap at which it graduates. */
+  bondMarketCapUsd: number
+  liquidityUsd: number | null
+  volume24h: number
+  buys24h: number
+  sells24h: number
+  /** 0–100 of the graduation market cap. */
+  progress: number
+}
+
 export interface LaunchInfo {
   token: string
   name: string
@@ -193,6 +218,8 @@ export interface CoinSafety {
   launcher: { coins: number; dumps: number } | null
   /** The full scan ran (holders and funding too), not only the sell test. */
   deep: boolean
+  /** Who launched it (the site marks a same-ticker coin launched by the OG's creator: lib/dupes.ts). */
+  creator?: string | null
 }
 
 /** A trading signal (engine/src/bot/bot.ts): market rules met and every hard safety check passed.

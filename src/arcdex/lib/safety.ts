@@ -113,8 +113,23 @@ export function rhSafety(c: RhCoin, risk: Risk = rhRisk(c)): SafetyView {
 // ── the listing standard ───────────────────────────────────────────────
 
 /** What a coin needs to be in the default lists (owner's call: $2K suggested). Under it, or in danger, a coin is still
- * found by search and shown with "Show risky coins". */
-export const LISTING = { minLiquidityUsd: 2_000, minHolders: 20 } as const
+ * found by search and shown with "Show risky coins". Below minMarketCapUsd, or rugged, a coin isn't listed at all,
+ * "Show risky coins" or not (owner, 2026-10-04: "don't show coins that already rugged or are below 15K market cap, on
+ * all chains, except our native coin"); a search still finds it. */
+export const LISTING = { minLiquidityUsd: 2_000, minHolders: 20, minMarketCapUsd: 15_000 } as const
+
+/** Already rugged: its creator sold most of their coins (the engine's check), it fell 90%+ in a day, or its pool's
+ * liquidity was drained (under $500; a curve's can't be). */
+export function isRugged(o: { change24h: number; liquidityUsd: number; onCurve: boolean; chain?: CoinSafety | null }): boolean {
+  if (o.chain?.fails.some(f => f.id === 'creator')) return true
+  if (o.change24h <= -90) return true
+  return !o.onCurve && o.liquidityUsd > 0 && o.liquidityUsd < 500
+}
+
+/** Whether a coin is listed at all (ARCDEX's own coin always is): $15K of market cap or more, and not rugged. */
+export function isListable(o: { official: boolean; marketCapUsd: number; rugged: boolean }): boolean {
+  return o.official || (o.marketCapUsd >= LISTING.minMarketCapUsd && !o.rugged)
+}
 
 export function meetsStandard(o: { level: SafetyLevel; stage: Stage; onCurve: boolean; liquidityUsd: number; holders: number | null }): boolean {
   if (o.level === 'danger') return false

@@ -39,7 +39,8 @@ describe('what the site reads of a report', () => {
     expect(v.fails).toEqual([])
   })
   test('no report yet', () => {
-    expect(boardView(null, { coins: 0, dumps: 0 })).toEqual({ at: 0, fails: [], risks: [], sellable: null, launcher: { coins: 0, dumps: 0 }, deep: false })
+    expect(boardView(null, { coins: 0, dumps: 0 })).toEqual({ at: 0, fails: [], risks: [], sellable: null, launcher: { coins: 0, dumps: 0 }, deep: false, creator: null })
+    expect(boardView(null, null, '0xabc').creator).toBe('0xabc')
   })
 })
 
@@ -68,7 +69,7 @@ describe('the scans the board asks for', () => {
     const bot = setup([young, old])
     const stranger = '0x' + '99'.repeat(20)
     const first = bot.boardSafety([young.token, old.token, stranger])
-    expect(first[young.token]).toMatchObject({ at: 0, sellable: null, launcher: { coins: 0, dumps: 0 } })
+    expect(first[young.token]).toMatchObject({ at: 0, sellable: null, launcher: { coins: 0, dumps: 0 }, creator: '0x' + 'cc'.repeat(20) })
     expect(first[stranger]).toBeNull()
     await settle()
     expect(bot.calls).toEqual(expect.arrayContaining([{ token: young.token, deep: true, probe: false }, { token: old.token, deep: false, probe: true }]))

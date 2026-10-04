@@ -77,7 +77,7 @@ export function CoinFeed({ engine, program, limit = 8 }: { engine: string; progr
   return (
     <div className="ld-feed">
       <div className="ld-feed-h"><span className="ld-live-dot" />{t('Live: buys, sells and burns')}</div>
-      {!items.length && <div className="ld-feed-empty">{trades === null && !program ? t('Connecting to Arc…') : t('No trades yet today.')}</div>}
+      {!items.length && <div className="ld-feed-empty">{trades === null && !program ? t('Connecting…') : t('No trades yet today.')}</div>}
       {items.map(i => (
         <a key={i.key} className={`ld-feed-row ${i.kind}${fresh.has(i.key) ? ' fresh' : ''}`} href={`${EXPLORER}/tx/${i.tx}`} target="_blank" rel="noreferrer">
           <span className="ld-feed-kind">{i.kind === 'burn' ? '🔥' : i.kind === 'buy' ? '▲' : '▼'} {label[i.kind]}</span>
@@ -142,7 +142,6 @@ export function CoinLiveCard({ engine, program }: { engine: string; program: Coi
       <CoinFeed engine={engine} program={program} limit={6} />
       <a className="ld-btn ld-btn-primary ld-btn-block" href={COIN_PATH}>{t('Buy $ARCDEX')} →</a>
       <p className="ld-coin-fine">
-        {t('Wallets show its symbol as ARCD.')}{' '}
         <a href={`${EXPLORER}/address/${COIN}`} target="_blank" rel="noreferrer">{t('Explorer')} ↗</a>
       </p>
     </div>

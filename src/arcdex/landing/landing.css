@@ -593,3 +593,9 @@ body { font-family: 'IBM Plex Sans', 'DM Sans', system-ui, sans-serif; font-vari
   .ld-burnlist a { grid-template-columns: minmax(0, 1fr) auto; }
   .ld-burnlist a span:nth-child(2) { display: none; }
 }
+
+/* The headline is the name alone (owner, 2026-10-04: "just the word ARCDEX"). */
+.ld-hero h1.ld-h1-name { font-size: clamp(3.4rem, 8vw, 6rem); letter-spacing: 0.02em; margin: 10px 0 14px; }
+@media (max-width: 600px) { .ld-hero h1.ld-h1-name { font-size: 3rem; } }
+/* Live markets, on their own now the chain cards are gone. */
+.ld-mkts-solo { margin-top: 22px; max-width: 760px; }

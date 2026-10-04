@@ -47,9 +47,14 @@ const poolIds = new Map<string, `0x${string}`>()
 
 /** Progress from the start tick to the bond tick, clamped for display (a tick retreat doesn't clear bonded). */
 export function progressOf(tick: number, tickStart: number, tickBond: number): number | null {
+  // By market cap (2026-10-04): the share of the graduation market cap, as on Argus's own pages. The price moves 0.01% a
+  // tick, so a coin `toGo` ticks short of its bond tick is at 1.0001^-toGo of that cap. Counting ticks instead put a
+  // fresh launch (about $2,500 of a $45,000 cap) at 0% and a coin at half the cap past 90%.
   const span = tickBond - tickStart
   if (span === 0) return null
-  return Math.max(0, Math.min(100, ((tick - tickStart) / span) * 100))
+  const toGo = (tickBond - tick) * Math.sign(span)
+  if (toGo <= 0) return 100
+  return Math.max(0, Math.min(100, 100 * Math.pow(1.0001, -toGo)))
 }
 
 type R = { status: 'success' | 'failure'; result?: unknown }

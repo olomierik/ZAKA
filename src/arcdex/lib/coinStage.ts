@@ -58,12 +58,15 @@ export function arcStageInput(t: ArcToken): StageInput {
 const RH_CURVE_DEXES = new Set(['pons-dot-family', 'pons-v2'])
 
 /** A Robinhood Chain coin: Pons coins on their curve; every other launchpad launches straight into a pool. Robinhood's
- * stock tokens are established by nature. */
+ * stock tokens are established by nature. Where the chain has answered (`curveProgress`, `graduated`: the engine reads
+ * each Pons curve), that decides; GeckoTerminal still lists some graduated Pons coins on a curve venue. */
 export function rhStageInput(c: RhCoin): StageInput {
+  const read = c.graduated !== undefined
+  const onCurve = read ? !c.graduated : RH_CURVE_DEXES.has(c.dex)
   return {
     ageMs: c.createdAt > 0 ? Math.max(0, Date.now() - c.createdAt) : 0,
-    onCurve: RH_CURVE_DEXES.has(c.dex),
-    progress: null,
+    onCurve,
+    progress: onCurve && read ? c.curveProgress ?? null : null,
     liquidityUsd: c.liquidity,
     holders: null,
     traders24h: c.traders24h,

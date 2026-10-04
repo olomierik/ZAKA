@@ -1,4 +1,5 @@
 import { isLaunchpadCoin } from '../../../api/_launchpads'
+import { isListable, isRugged, LISTING } from '../lib/safety'
 import { useEffect, useMemo, useState } from 'react'
 import { cachedArgusMarket, copycatOf, getArgusMarket, type ArgusPool } from '../api/argusMarket'
 import { getAllLaunchpadTokens } from '../api/launchpad'
@@ -14,7 +15,9 @@ import { t as T } from '../lib/i18n'
 
 interface Props { navigate: (p: Page) => void }
 
-interface Coin { address: string; symbol: string; name: string; image: string | null; priceUsd: number; volume24h: number; pool?: string; launchpad: boolean }
+interface Coin { address: string; symbol: string; name: string; image: string | null; priceUsd: number; volume24h: number; pool?: string; launchpad: boolean
+  /** Listed (lib/safety.ts isListable): $15K or more of market cap and not rugged. Searching still finds the rest. */
+  listed: boolean }
 
 const fromMarket = (list: ArgusPool[]): Coin[] => {
   const best = new Map<string, ArgusPool>()
@@ -24,10 +27,15 @@ const fromMarket = (list: ArgusPool[]): Coin[] => {
     const cur = best.get(k)
     if (!cur || p.liquidityUsd > cur.liquidityUsd) best.set(k, p)
   }
-  return [...best.values()].map(p => ({
-    address: p.token.address.toLowerCase(), symbol: p.token.symbol, name: p.token.name, image: p.token.image,
-    priceUsd: p.priceUsd, volume24h: p.volume24h, pool: p.pool, launchpad: false,
-  }))
+  return [...best.values()].map(p => {
+    const onCurve = p.bonded === false
+    const mc = p.marketCapUsd ?? p.fdvUsd ?? 0
+    return {
+      address: p.token.address.toLowerCase(), symbol: p.token.symbol, name: p.token.name, image: p.token.image,
+      priceUsd: p.priceUsd, volume24h: p.volume24h, pool: p.pool, launchpad: false,
+      listed: isListable({ official: false, marketCapUsd: mc, rugged: isRugged({ change24h: p.change.h24, liquidityUsd: p.liquidityUsd, onCurve }) }),
+    }
+  })
 }
 const price = (n: number) => !n ? '—' : n < 0.0001 ? `$${n.toPrecision(3)}` : n < 1 ? `$${n.toPrecision(3)}` : `$${n.toFixed(2)}`
 
@@ -42,15 +50,16 @@ export default function Swap({ navigate }: Props) {
   const [query, setQuery] = useState('')
   const [picked, setPicked] = useState<Coin | null>(null)
   const coinQ = useCoin()
-  const coinPick: Coin = { address: COIN_LC, symbol: 'ARCDEX', name: 'ARCDEX', image: COIN_IMAGE, priceUsd: coinQ?.priceUsd ?? 0, volume24h: coinQ?.volume24h ?? 0, pool: COIN_POOL, launchpad: false }
+  const coinPick: Coin = { address: COIN_LC, symbol: 'ARCDEX', name: 'ARCDEX', image: COIN_IMAGE, priceUsd: coinQ?.priceUsd ?? 0, volume24h: coinQ?.volume24h ?? 0, pool: COIN_POOL, launchpad: false, listed: true }
 
   useEffect(() => {
     let cancelled = false
     void Promise.all([
       getArgusMarket().then(fromMarket).catch(() => [] as Coin[]),
+      // ARCDEX's own launchpad: every coin has a 1B supply.
       getAllLaunchpadTokens().then(ts => ts.map((t): Coin => ({
         address: t.address.toLowerCase(), symbol: t.symbol, name: t.name, image: t.metadata?.image ?? null,
-        priceUsd: t.priceUsd, volume24h: 0, launchpad: true,
+        priceUsd: t.priceUsd, volume24h: 0, launchpad: true, listed: t.priceUsd * 1e9 >= LISTING.minMarketCapUsd,
       }))).catch(() => [] as Coin[]),
     ]).then(([market, curve]) => {
       if (cancelled) return
@@ -67,12 +76,12 @@ export default function Swap({ navigate }: Props) {
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
     const rest = coins.filter(c => c.address !== COIN_LC)
-    const list = q ? rest.filter(c => c.symbol.toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || c.address === q) : rest
+    const list = q ? rest.filter(c => c.symbol.toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || c.address === q) : rest.filter(c => c.listed)
     const top = [...list].sort((a, b) => b.volume24h - a.volume24h).slice(0, q ? 20 : 10)
     const coinFits = !q || 'arcdex arcd'.includes(q) || q === COIN_LC
     return coinFits ? [{ ...coinPick, priceUsd: coinQ?.priceUsd ?? coins.find(c => c.address === COIN_LC)?.priceUsd ?? 0 }, ...top] : top
   }, [coins, query, coinQ]) // eslint-disable-line react-hooks/exhaustive-deps
-  const popular = useMemo(() => [...coins].filter(c => c.address !== COIN_LC && !copycatOf(c.symbol, c.address)).sort((a, b) => b.volume24h - a.volume24h).slice(0, 5), [coins])
+  const popular = useMemo(() => [...coins].filter(c => c.address !== COIN_LC && c.listed && !copycatOf(c.symbol, c.address)).sort((a, b) => b.volume24h - a.volume24h).slice(0, 5), [coins])
 
   return (
     <div className="xs-page">
@@ -134,7 +143,6 @@ export default function Swap({ navigate }: Props) {
               </>
             )}
           </div>
-          <p className="xs-fine">{T("Trades go through ARCDEX's swap router (launchpad coins on their bonding curve). Every trade is simulated first, and approvals are for the exact amount only.")}</p>
         </div>
 
         <aside className="xs-side">

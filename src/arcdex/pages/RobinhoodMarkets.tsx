@@ -10,7 +10,8 @@ import { ChainSwitch, RhLogo, StockTag } from '../components/Robinhood'
 import SafetyBadge from '../components/SafetyBadge'
 import CoinBoard, { type BoardCoin } from '../components/CoinBoard'
 import { rhStage, rhStageInput, type Stage } from '../lib/coinStage'
-import { LISTING, meetsStandard, rhSafety, SAFETY_COLOR, SAFETY_ICON, type SafetyView } from '../lib/safety'
+import { isListable, isRugged, LISTING, meetsStandard, rhSafety, SAFETY_COLOR, SAFETY_ICON, type SafetyView } from '../lib/safety'
+import { markDupes } from '../lib/dupes'
 import { rhAddress, stockCompany } from '../lib/robinhood'
 import { useIsMobile } from '../lib/useMobile'
 import { t as T, N_ } from '../lib/i18n'
@@ -85,14 +86,17 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
   const rated = useMemo(() => new Map(rows.map(c => [c.address, rhSafety(c)])), [rows])
   const safetyOf = (c: RhCoin): SafetyView => rated.get(c.address) ?? rhSafety(c)
   const standardOn = !showRisky && !q
+  // Listed at all (owner, 2026-10-04): $15K or more of market cap and not rugged. A search looks at every coin.
+  const listable = (c: RhCoin) => isListable({ official: false, marketCapUsd: c.marketCap, rugged: isRugged({ change24h: c.change24h, liquidityUsd: c.liquidity, onCurve: rhStageInput(c).onCurve }) })
   const passes = (c: RhCoin) => meetsStandard({ level: safetyOf(c).level, stage: rhStage(c), onCurve: rhStageInput(c).onCurve, liquidityUsd: c.liquidity, holders: null })
-  const hiddenCount = useMemo(() => (standardOn ? rows.filter(c => !passes(c)).length : 0),
+  const hiddenCount = useMemo(() => (standardOn ? rows.filter(c => listable(c) && !passes(c)).length : 0),
   // eslint-disable-next-line react-hooks/exhaustive-deps
     [rows, standardOn, rated])
 
   const list = useMemo(() => {
     const now = Date.now()
     let l = showRisky ? rows.slice() : rows.filter(c => !isWashPool(c, now) || (q && c.address === q))
+    if (!q) l = l.filter(listable)
     if (standardOn) l = l.filter(passes)
     // The board has its own columns: the tabs only filter the list.
     if (view === 'list') {
@@ -110,6 +114,15 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
     return l.slice().sort((a, b) => by(b) - by(a))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, tab, sort, q, view, showRisky, standardOn, rated])
+
+  // Same-ticker coins (lib/dupes.ts): the earliest launched is the OG, the rest duplicates. Robinhood Chain's market data
+  // doesn't name creators, so a duplicate there can't say it's the OG's creator's.
+  const dupes = useMemo(() => markDupes(list, { key: c => c.address, symbol: c => c.symbol, launchedAt: c => c.createdAt, creator: () => null }), [list])
+  const dupTags = (c: RhCoin) => {
+    const d = dupes.get(c.address)
+    return d?.og ? <span className="mk-tag mk-og" title={T('The first coin launched with this ticker; the others are duplicates.')}>OG</span>
+      : d?.dup ? <span className="mk-tag" title={T('A later coin using the OG’s ticker: not the original.')} style={{ color: 'var(--amber)', borderColor: '#f0b90b55' }}>{T('⚠ DUPLICATE')}</span> : null
+  }
 
   // A name or address the list doesn't have: asked of GeckoTerminal (debounced).
   useEffect(() => {
@@ -209,7 +222,8 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
           coins={list.map((c): BoardCoin => ({
             key: c.address, symbol: c.symbol, name: name(c), logo: c.image, launchpad: c.stock ? T('Stock') : c.launchpad,
             ageMs: c.createdAt > 0 ? Math.max(0, Date.now() - c.createdAt) : 0, marketCap: c.marketCap, liquidity: c.liquidity, volume24h: c.volume24h,
-            change24h: c.change24h, holders: null, traders24h: c.traders24h, progress: null, stage: rhStage(c), safety: safetyOf(c),
+            change24h: c.change24h, holders: null, traders24h: c.traders24h, progress: rhStageInput(c).progress, stage: rhStage(c), safety: safetyOf(c),
+            og: dupes.get(c.address)?.og, dup: dupes.get(c.address)?.dup,
           }))} />
       )}
 
@@ -251,6 +265,7 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
                           <span className="mk-quote">/{c.quoteSymbol || '—'}</span>
                           {c.stock && <StockTag />}
                           {!c.stock && c.launchpad && <span className="mk-tag rh-lp-tag">{c.launchpad}</span>}
+                          {dupTags(c)}
                         </div>
                         <div className="mk-sub">
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name(c)}</span>
@@ -283,7 +298,7 @@ export default function RobinhoodMarkets({ navigate }: { navigate: (p: Page) => 
               <div key={c.address} className="token-card mk-row" onClick={() => navigate(rhPage(c))}>
                 <RhLogo src={c.image} symbol={c.symbol} size={30} />
                 <div className="mk-row-name">
-                  <div className="mk-row-sym"><b>{c.symbol}</b><span>/{c.quoteSymbol || '—'}</span>{c.stock && <StockTag />}{!c.stock && c.launchpad && <span className="mk-tag rh-lp-tag">{c.launchpad}</span>}</div>
+                  <div className="mk-row-sym"><b>{c.symbol}</b><span>/{c.quoteSymbol || '—'}</span>{c.stock && <StockTag />}{!c.stock && c.launchpad && <span className="mk-tag rh-lp-tag">{c.launchpad}</span>}{dupTags(c)}</div>
                   <div className="mk-row-meta"><span style={{ color: SAFETY_COLOR[safetyOf(c).level] }}>{SAFETY_ICON[safetyOf(c).level]}</span> {T('Vol')} {fmt(c.volume24h, '$')} · {T('MCap')} {fmt(c.marketCap, '$')}</div>
                 </div>
                 <div className="mk-row-price">{fmtPrice(c.priceUsd)}<small>{name(c).slice(0, 18)}</small></div>

@@ -32,6 +32,11 @@ export interface BoardCoin {
   safety: SafetyView
   /** Trades in the last 15 minutes, when it's one of the busiest. */
   hot?: number
+  /** ARCDEX's own coin: "Official", no safety rating. */
+  official?: boolean
+  /** The first coin launched with its ticker (lib/dupes.ts), or a later one. */
+  og?: boolean
+  dup?: boolean
 }
 
 type Col = 'new' | 'near' | 'graduated'
@@ -89,6 +94,9 @@ export default function CoinBoard({ coins, onOpen, mobile }: { coins: BoardCoin[
                   <div className="cb-main">
                     <div className="cb-top">
                       <b>{x.symbol}</b>
+                      {x.official && <span className="mk-official">{T('Official')}</span>}
+                      {x.og && <span className="cb-og" title={T('The first coin launched with this ticker; the others are duplicates.')}>OG</span>}
+                      {x.dup && <span className="cb-dup" title={T('A later coin using the OG’s ticker: not the original.')}>{T('Duplicate')}</span>}
                       {x.launchpad && <span className="cb-lp" style={x.launchpadColor ? { color: x.launchpadColor, borderColor: x.launchpadColor + '55' } : undefined}>{x.launchpad}</span>}
                       {x.hot ? <span className="cb-hot" title={T('{n} trades in the last 15 minutes', { n: x.hot })}>🔥 {x.hot}</span> : null}
                       <span className="cb-age">{age(x.ageMs)}</span>
@@ -106,7 +114,7 @@ export default function CoinBoard({ coins, onOpen, mobile }: { coins: BoardCoin[
                       </div>
                     )}
                   </div>
-                  <SafetyBadge view={x.safety} icon />
+                  {x.official ? <span /> : <SafetyBadge view={x.safety} icon />}
                 </button>
               ))}
             </div>

@@ -52,6 +52,7 @@ import { Tiers } from './bot/tiers'
 import { MemoryBotStore, PostgresBotStore } from './bot/store'
 import { PerpsService } from './perps/service'
 import { CoinProgram } from './coin/program'
+import { BondingBook } from './market/bonding'
 import { PostgresCandleStore } from './perps/store'
 import { MemoryCandleStore } from './perps/candles'
 import { LiveExecutor } from './trading/live'
@@ -261,6 +262,8 @@ async function main() {
     dataApi.coin = program
     void program.start().catch(e => log.error('coin program: did not start', { error: errMsg(e) }))
   }
+  // Every Argus coin on its launch curve and how close it is to graduating (market/bonding.ts), for the Near bond column.
+  if (dataApi) { const book = new BondingBook({ rpc, engine: eng }); dataApi.bonding = book; book.start() }
   botsHealth = () => ({ email: mailer.enabled, userLive: !!vault, ownerWallet: !!live, mode: botRef?.mode ?? null, bots: accounts?.count ?? 0, running: accounts?.running ?? 0 })
   // Tiers (bot/tiers.ts): what each account gets; everything, for everyone, until TIERS_ENFORCED.
   const tiers = new Tiers({ enforced: cfg.tiersEnforced, rpc, enforceAt: cfg.tiersEnforceAt })

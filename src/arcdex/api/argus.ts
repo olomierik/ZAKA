@@ -40,6 +40,16 @@ import { client } from './launchpad'
 import type { ArcToken } from './radardex'
 import { SWAP_TOPIC } from './arcRpc'
 
+/** Share of the graduation market cap, 0–100 (2026-10-04): the price moves 0.01% a tick, so a coin `toGo` ticks short
+ * of its bond tick is at 1.0001^-toGo of the cap it graduates at (api/_argusBonded.ts `progressOf`, the engine's
+ * market/bonding.ts). Null for a launch with no bond tick. */
+function mcProgress(tick: number, tickStart: number, tickBond: number): number | null {
+  const span = tickBond - tickStart
+  if (span === 0) return null
+  const toGo = (tickBond - tick) * Math.sign(span)
+  return toGo <= 0 ? 100 : Math.max(0, Math.min(100, 100 * Math.pow(1.0001, -toGo)))
+}
+
 export const PORTAL8_ADDRESS = '0xeed7559B8A6ABf64427dc41Cb5cc6400109C5D93' as Address
 export const PORTAL8_DEPLOY_BLOCK = 22_251_758n
 export const STATE_VIEW_ADDRESS = '0xF3334192D15450CdD385c8B70e03f9A6bD9E673b' as Address
@@ -396,10 +406,7 @@ async function getPortal8Tokens(): Promise<ArcToken[]> {
       priceUsd = priceFromSqrtPriceX96(slot0.sqrtPriceX96, tokenIsToken0, decimals, quoteMeta.decimals)
       // Display-only progress (integrate-markets: "guard a zero span,
       // clamp only for display, a tick retreat does not clear bonded").
-      const span = tickBond - tickStart
-      if (span !== 0) {
-        bondingProgress = Math.max(0, Math.min(100, ((slot0.tick - tickStart) / span) * 100))
-      }
+      bondingProgress = mcProgress(slot0.tick, tickStart, tickBond)
     }
 
     const result: ArcToken = {
@@ -601,8 +608,7 @@ async function getArgusLegacyTokens(): Promise<ArcToken[]> {
     let bondingProgress: number | null = null
     if (s.slot0 && hasPlausibleSupply(totalSupply)) {
       priceUsd = priceFromSqrtPriceX96(s.slot0[0], tokenIsToken0, decimals, 6) // legacy quote is always USDC (launchConstants), 6dp
-      const span = tickBond - tickStart
-      if (span !== 0) bondingProgress = Math.max(0, Math.min(100, ((s.slot0[1] - tickStart) / span) * 100))
+      bondingProgress = mcProgress(s.slot0[1], tickStart, tickBond)
     }
     const stats = tradeStats.get(pool.toLowerCase())
 

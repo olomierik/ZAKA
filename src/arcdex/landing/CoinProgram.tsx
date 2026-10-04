@@ -28,7 +28,7 @@ export default function CoinProgram({ engine }: { engine: string }) {
   return (
     <section className="ld-section" id="arcdex">
       <h2>{t('Where the fees go')}</h2>
-      <p className="ld-sub">{t('Of the fees ARCDEX collects, 30% buy back $ARCDEX and burn it, and 70% go to liquidity pools. Every number is read from the fee wallet on Arc.')}</p>
+      <p className="ld-sub">{t('Of the fees ARCDEX collects, 30% buy back $ARCDEX and burn it, and 70% go to liquidity pools. Every number is read from the fee wallet on-chain.')}</p>
       {v && !v.program.started && <p className="ld-muted">{t('The program starts {date}. From then on, every fee counts.', { date: new Date(v.program.since).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' }) })}</p>}
       <div className="ld-split">
         <div className="ld-card ld-split-card">

@@ -16,6 +16,7 @@
 //   GET /v1/signals?limit=50                    trading signals (engine/src/bot)
 //   GET /v1/safety/:token                       a coin's latest safety report
 //   GET /v1/safety?tokens=0x…,0x…               the coin board's safety for up to 120 coins (bot/boardSafety.ts)
+//   GET /v1/bonding?limit=200                   Argus coins on their curve, progress by market cap (market/bonding.ts)
 //   GET /v1/bot/stats                           paper and live trading results
 //   GET /v1/bot/positions?status=open|closed|all&limit=100
 //   GET /v1/bot/status                          mode, bot wallet, live limits and activity
@@ -58,6 +59,7 @@ import { quantApi, type QuantApiDeps } from '../quant/api'
 import type { SiteApi } from '../site/siteApi'
 import type { PerpsService } from '../perps/service'
 import type { CoinProgram } from '../coin/program'
+import type { BondingBook } from '../market/bonding'
 
 interface Conn { id: number; ip: string; subs: Set<string>; allowance: number; last: number }
 
@@ -84,6 +86,8 @@ export class DataApi {
   perps: PerpsService | null = null
   /** $ARCDEX buyback, burns and liquidity: the fee wallet's ledger (engine/src/coin/program.ts). */
   coin: CoinProgram | null = null
+  /** Argus coins on their launch curve, with their progress by market cap (market/bonding.ts). */
+  bonding: BondingBook | null = null
   attachBot(b: Bot, control: ControlVerifier | null = null, accounts: PaperAccounts | null = null, users: Users | null = null, tiers: Tiers | null = null) { this.bot = b; this.control = control; this.accounts = accounts; this.users = users; this.tiers = tiers }
 
   async tokenSnapshot(token: string, limit = 50): Promise<{ stats: TokenStats | null; trades: WireTrade[] }> {
@@ -279,6 +283,13 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
         if (!api.coin) return json(req, 503, { error: 'the program ledger is not running in this process' })
         return json(req, 200, api.coin.view(), 'public, max-age=15')
+      }
+      // Argus coins on their curve, closest to graduating first (market/bonding.ts).
+      if (url.pathname === '/v1/bonding') {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        if (!api.bonding) return json(req, 503, { error: 'bonding is not tracked in this process' })
+        const limit = Math.max(1, Math.min(400, Number(url.searchParams.get('limit')) || 200))
+        return json(req, 200, { at: api.bonding.at, coins: api.bonding.list(limit) }, 'public, max-age=15')
       }
       // Futures (perps/service.ts): status, prices, candles, the contract's state.
       if (url.pathname.startsWith('/v1/perps/')) {

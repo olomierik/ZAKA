@@ -1470,10 +1470,10 @@ Owner: "what feature should I add to attract more users and avoid buying rugs; s
   | **Established** | a day old, $10K+ of liquidity and 100+ holders (on Robinhood Chain, 50+ wallets trading in 24h stand in for holders) |
 
   - **Arc:** curve coins are ArcLaunchpad, Mercuri and SolonPad (their curve's progress), and Argus launches not yet bonded.
-    - **Argus progress (`api/_argusBonded.ts` `launchStatus`):** each launch's start and bond ticks, from its Portal record, plus the launch pool's current tick (a v3 pool's `slot0`, or v4's StateView `getSlot0` by the hook's `poolId`, cached). That's one more multicall a build; the market list carries it as `ArgusPool.progress`.
+    - **Argus progress (`api/_argusBonded.ts` `launchStatus`):** each launch's start and bond ticks, from its Portal record, plus the launch pool's current tick (a v3 pool's `slot0`, or v4's StateView `getSlot0` by the hook's `poolId`, cached). That's one more multicall a build; the market list carries it as `ArgusPool.progress`. Since the next round it's by market cap, and the engine reads every Argus coin on its curve (below).
     - Measured: 28 Argus coins in 2.5s, 20 bonded and 8 bonding (the top one 45%). Every bonded flag matched the stored copy.
     - Before, the site's Argus rows said `graduated: false` and no progress.
-  - **Robinhood Chain:** Pons's curve pools (`pons-v2`, `pons-dot-family`) are Bonding, with no progress to read. Every other launchpad launches straight into a pool. Robinhood's stock tokens are Established.
+  - **Robinhood Chain:** Pons's curve pools (`pons-v2`, `pons-dot-family`) are Bonding; since the next round, with Pons's own progress (below). Every other launchpad launches straight into a pool. Robinhood's stock tokens are Established.
 - **Safety rating (`lib/safety.ts`):** ✅ Safe, ⚠ Risky, ⛔ Danger or ◌ Checking, with the reasons in words.
   - **On Arc, from the engine's safety scan:** the sell test, contract, hook, creator and buyers (below), plus the launcher's record and the market data.
     - **Danger:** a failed sell test (a honeypot, or a heavy tax), hook, contract, proxy, self-destruct, creator (already sold most) or launchpad check. Also a fake ticker, or a launcher that dumped 2+ coins at a rate (dumps + 1) / (coins + 4) over 40%.
@@ -1505,6 +1505,54 @@ Owner: "what feature should I add to attract more users and avoid buying rugs; s
   - On-chain checks on Robinhood Chain (a sell test there needs the engine to read that chain).
   - Rug alerts to holders, and creator pages (suggested next).
   - The safety rating on coin pages, which still show their own risk score and Safety check panel.
+
+## Fewer, truer coins: $15K and not rugged, OGs and duplicates, near bond by market cap (2026-10-04)
+
+Owner: "stock coins don't show up; the platform shows our native coin as risky, remove it, only for our coin; if a coin has duplicates launched by the same creator, flag the duplicates and label the real one OG; near-bonding coins on Arc show only one, provide the correct data, you know the MC for bonding; coins that have rugged or are below $15K market cap on all chains, don't show them, except our native coin; no Robinhood button on the landing page, and the landing page shouldn't mention the chains: just the word ARCDEX", plus a list of sentences to remove.
+
+- **Listed at all (`lib/safety.ts` `isListable`, `isRugged`, `LISTING.minMarketCapUsd` 15,000):** a coin is shown only with $15K or more of market cap and not rugged; $ARCDEX always.
+  - **Rugged:** the scan's creator check failed (the creator sold most of their coins), down 90%+ in a day, or a pool (not a curve) drained under $500 of liquidity.
+  - **Where:** Arc's Markets (list, board, overview cards), Robinhood Chain's Markets, the Swap page's picker and quick picks, the spot screen's pair list, and the landing's live markets. A search still finds every coin, so a coin can always be looked up by name or address.
+  - This comes before the listing standard (Danger hidden, $2K liquidity and 20 holders for pool coins), which still applies on top.
+  - **What it means for curves:** Argus coins open at about $2,500 (5.5% of their curve), so they appear once they reach $15K (about a third of the way).
+- **$ARCDEX has no safety rating:** "Official" instead of a badge in the Markets list, cards, board and risk sort. Its coin page has no risk badge, Safety check panel or copycat banner (`ArgusTokenPage` `isCoin`).
+- **OG and duplicates (`lib/dupes.ts` `markDupes`):** among listed coins with the same ticker (compared without `$`, case or punctuation), the earliest launched is the **OG**, and leads its group. The rest are **⚠ DUPLICATE**, or **⚠ DUPLICATE · SAME CREATOR** when the OG's creator launched it too. An unknown launch time can't make a coin the OG.
+  - Creators come from the market list, or the engine's scan (`CoinSafety.creator`, new, from `boardView`).
+  - Shown in Arc's and Robinhood's lists, cards and board. A group's toggle reads "+N duplicates".
+  - On Robinhood Chain the creator isn't known, so duplicates there are never "same creator".
+- **Near bond on Arc, by market cap (`engine/src/market/bonding.ts` `BondingBook`, `GET /v1/bonding?limit=`):**
+  - **Why only one showed:** GeckoTerminal's list carries a few dozen Argus coins, and progress counted ticks. A coin at half its graduation cap read 90%+, a fresh one 0%.
+  - **Now:** every 30s the engine reads every Argus launch it tracks (Portal 7 and 8, under 48h old, traded in the last 6h, 400 at most): its Portal record once, then its hook's `bonded()` and the pool's tick from v4's StateView, in batches of 25.
+    - Progress is the share of the graduation market cap: 1.0001^-(ticks to go), since the price moves 0.01% a tick (`mcProgress`).
+    - A coin past its bond tick, or whose hook says bonded, is graduated and dropped for good.
+    - Each coin carries its market cap and the cap it graduates at (`BondingCoin` in `api/_marketProtocol.ts`).
+  - **Measured on mainnet (2026-10-04):** every Argus coin graduates at about **$45,080** of market cap, the same across 177 coins on their curve (24 more had graduated). The busiest was ONEIRA at $14.7K, 32.6%.
+  - **Near bond (70%) is about $31.5K.** Coins between $15K and that are listed as Bonding.
+  - **The site:**
+    - Terminal polls `/v1/bonding` every 30s. Its progress replaces the list's for coins the list has, and coins it lacks are added as rows (`bondingToArcToken`), subject to the same $15K rule.
+    - `api/_argusBonded.ts` `progressOf` and the browser's fallback reader (`api/argus.ts` `mcProgress`) use the same formula.
+- **Pons on Robinhood Chain (`api/rhmarket.ts` `ponsCurves`):** each Pons coin's own progress, Pons's measure: ETH raised over its graduation threshold (4.2 ETH for ETH-quoted launches).
+  - **`pons-dot-family`:** Pons's active factory `0xa5aa…1feb` answers `graduationStatus(token)` with (current, threshold, graduated).
+  - **`pons-v2`:** the pool GeckoTerminal lists is the curve itself (`realQuoteReserve()`, `graduationThreshold()`, `graduated()`, as SolonPad's on Arc).
+  - **Reading:** batches of at most 24 calls, 2 a refresh (the public RPC answers 77 with 429). A curve is read again after 60s; a graduated one never.
+  - **Rows:** they carry `curveProgress` and `graduated` (`RhCoin`). `rhStageInput` follows them: GeckoTerminal still lists graduated coins on the curve venues (DELTA, HMM and eight more did), and they were shown as Bonding.
+  - **Checked on mainnet:** 39 Pons coins read; HOODNIGHT at 3.28 of 4.2 ETH (78%) was near bond.
+- **Robinhood's stock tokens were missing** because the engine refreshed its Robinhood list only while someone was looking, and dropped pools not seen for an hour. After a quiet spell, stocks and whole launchpads aged out.
+  - The engine now reads the list itself every 40s (`siteApi.ts`, two GeckoTerminal calls a step, a round of 17 in about 6 minutes), and keeps pools for 6 hours (`RH_KEEP_MS`).
+  - The stock checks are one JSON-RPC batch (`stockChecks`), not 20 requests at once.
+  - **Checked locally:** NVDA, AVGO, SPY, META, INTC, CRCL and four more are listed, beside Bankr, Clanker, Clank.trade, Virtuals and Pons.
+- **The landing page names no chain:**
+  - **Headline and hero:** the headline is just "ARCDEX" (`.ld-h1-name`). The hero pill reads "Multichain DEX · spot & futures".
+  - **Removed:** the Robinhood links and button, the "Two chains. One exchange." section with its chain cards and the "Launchpad coins only" card, the "$ARCDEX contract on Arc · wallets show the symbol as ARCD" note, the burn section's subtitle and "Wallets show its symbol as ARCD."
+  - **Kept:** live markets stand on their own (`.ld-mkts-solo`).
+  - **Reworded:** the tiles, futures text, FAQ, page title and link previews (`index.html`) without chain names. The live feed says "Connecting…".
+- **Bridge:** the "Why bridge with ARCDEX" panel is gone. **Swap:** the "Trades go through ARCDEX's swap router…" line is gone.
+- **Tests:**
+  - `engine/test/bonding.test.ts`: the formula both ways; which coins it follows; a graduated coin dropped and its record read once; a dropped read asked again.
+  - `scripts/test-coin-board.ts`: the $15K and rugged rules, OG and duplicates, Pons stages and reads.
+  - `scripts/test-robinhood.ts`: its stand-in RPC now answers batches.
+  - The engine suite: 592 pass.
+- **Every new string is in all six dictionaries** (24).
 
 ## ARCSENSE: spot and futures first (2026-10-03)
 

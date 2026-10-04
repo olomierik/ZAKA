@@ -25,13 +25,13 @@ export const BOARD = {
 } as const
 
 /** A report as the site reads it: the hard and risk checks it failed, whether it sold back, its launcher's record. */
-export function boardView(r: SafetyReport | null, launcher: { coins: number; dumps: number } | null): CoinSafety {
-  if (!r) return { at: 0, fails: [], risks: [], sellable: null, launcher, deep: false }
+export function boardView(r: SafetyReport | null, launcher: { coins: number; dumps: number } | null, creator: string | null = null): CoinSafety {
+  if (!r) return { at: 0, fails: [], risks: [], sellable: null, launcher, deep: false, creator }
   const fails = r.checks.filter(c => c.hard && c.ok === false).map(c => ({ id: c.id, detail: c.detail }))
   const risks = r.checks.filter(c => c.risk && c.ok === false).map(c => ({ id: c.id, detail: c.detail }))
   // No sell test on a launchpad curve: the curve itself buys back.
   const hp = r.checks.find(c => c.id === 'honeypot')
   const sellable = hp ? hp.ok : true
   const deep = r.checks.some(c => c.id === 'holders' && c.ok !== null)
-  return { at: r.at, fails, risks, sellable, launcher, deep }
+  return { at: r.at, fails, risks, sellable, launcher, deep, creator }
 }

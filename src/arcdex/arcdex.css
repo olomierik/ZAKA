@@ -2359,3 +2359,8 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
   .cb-cols { grid-template-columns: minmax(0, 1fr); }
   .cb-list { max-height: none; }
 }
+
+/* OG and duplicate tags (lib/dupes.ts) */
+.mk-tag.mk-og, .cb-og { color: #0ecb81; border: 1px solid #0ecb8166; background: #0ecb811a; font-weight: 800; }
+.cb-og, .cb-dup { font-size: 0.6rem; border-radius: 3px; padding: 1px 4px; white-space: nowrap; }
+.cb-dup { color: var(--amber); border: 1px solid #f0b90b55; }

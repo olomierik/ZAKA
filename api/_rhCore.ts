@@ -75,6 +75,10 @@ export interface RhCoin {
   offMarket?: boolean
   /** The launchpad it came from (one of its pools is on a launchpad's venue), else null. */
   launchpad: string | null
+  /** Pons coins (rhmarket.ts `ponsCurves`): 0–100 of the way to graduating, as Pons counts it (ETH raised over its
+   * 4.2 ETH threshold), and whether it has. Absent until the chain has answered; other launchpads have no curve. */
+  curveProgress?: number | null
+  graduated?: boolean
 }
 
 // ── GeckoTerminal's shapes ───────────────────────────────────────────────

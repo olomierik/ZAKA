@@ -10,7 +10,7 @@ import { getArgusTokens } from '../api/argus'
 import { cachedArgusMarket, getArgusMarket, argusPoolToArcToken } from '../api/argusMarket'
 import { curveRowToArcToken, getCurveMarket } from '../api/curveMarket'
 import { engineApiUrl, engineEnabled, getNewTokens, marketStream, useEngineStatus } from '../api/marketStream'
-import type { ActiveToken, LaunchInfo } from '../../../api/_marketProtocol'
+import type { ActiveToken, BondingCoin, CoinSafety, LaunchInfo } from '../../../api/_marketProtocol'
 import { curateTokens, type CuratedGroup } from '../lib/curate'
 import { getHolderScans } from '../api/social'
 import { headBlock } from '../../../api/_arcLogs'
@@ -24,7 +24,8 @@ import SafetyBadge from '../components/SafetyBadge'
 import CoinBoard, { type BoardCoin } from '../components/CoinBoard'
 import { tokenRisk, type Risk } from '../lib/risk'
 import { arcStage, arcStageInput } from '../lib/coinStage'
-import { arcSafety, LISTING, meetsStandard, safetyRank, SAFETY_COLOR, SAFETY_ICON, SAFETY_LABEL, type SafetyView } from '../lib/safety'
+import { arcSafety, isListable, isRugged, LISTING, meetsStandard, safetyRank, SAFETY_COLOR, SAFETY_ICON, SAFETY_LABEL, type SafetyView } from '../lib/safety'
+import { markDupes, type DupInfo } from '../lib/dupes'
 import { useCoinSafety } from '../api/coinSafety'
 import { COIN_IMAGE, COIN_LC, COIN_POOL, fmtPct as fmtPctCoin, fmtSmallUsd, useCoin } from '../lib/coin'
 import { ChainSwitch } from '../components/Robinhood'
@@ -87,6 +88,17 @@ function activeToArcToken(a: ActiveToken): ArcToken | null {
     price: s.priceUsd ?? 0, priceChange5m: s.chg.m5 ?? 0, priceChange1h: s.chg.h1 ?? 0, priceChange24h: s.chg.h24 ?? 0,
     volume24h: s.vol24, marketCap: s.marketCapUsd ?? 0, liquidity: s.liquidityUsd ?? 0,
     txCount24h: s.trades24, buys24h: s.buys24, sells24h: s.sells24,
+  }
+}
+
+/** An Argus coin on its curve (GET /v1/bonding) that the list doesn't carry, as a row. */
+function bondingToArcToken(b: BondingCoin): ArcToken {
+  return {
+    address: b.token, symbol: b.symbol, name: b.name, decimals: 18, logoUrl: b.image ?? '',
+    price: b.priceUsd, priceChange5m: 0, priceChange1h: 0, priceChange24h: 0, volume24h: b.volume24h, marketCap: b.marketCapUsd,
+    liquidity: b.liquidityUsd ?? 0, ageMs: Math.max(0, Date.now() - b.createdAt), launchpad: 'Argus', poolAddress: b.pool,
+    txCount24h: b.buys24h + b.sells24h, holderCount: 0, buys24h: b.buys24h, sells24h: b.sells24h, verified: false,
+    graduated: false, bondingProgress: b.progress, spark: [], deployer: b.creator ?? undefined, quoteSymbol: 'USDC',
   }
 }
 
@@ -165,6 +177,10 @@ interface RowProps {
   isDuplicateRow?: boolean
   risk: Risk
   safety: SafetyView
+  /** OG or duplicate of its ticker (lib/dupes.ts). */
+  dup?: DupInfo
+  /** ARCDEX's own coin: no safety rating, "Official". */
+  official?: boolean
   flash?: Flash
   /** Trades in the last 15 minutes, when it's one of the most active coins right now. */
   hot?: number
@@ -178,7 +194,7 @@ function fmtPrice(p: number): string {
   if (p >= 1) return `$${p.toFixed(4)}`
   return `$${p.toPrecision(4)}`
 }
-function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onToggleExpand, isDuplicateRow = false, safety, flash, hot, pinned }: RowProps & { pinned?: boolean }) {
+function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onToggleExpand, isDuplicateRow = false, safety, flash, hot, pinned, dup, official }: RowProps & { pinned?: boolean }) {
   const lp      = token.launchpad
   const lpColor = getLaunchpadColor(lp)
   const ch24    = token.priceChange24h
@@ -199,16 +215,17 @@ function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onTogg
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
               <span className="mk-sym" style={{ color: isDuplicateRow ? 'var(--text-muted)' : undefined }}>{token.symbol}</span>
               <span className="mk-quote">/{token.quoteSymbol || 'USDC'}</span>
-              {pinned && <span className="mk-official">{T('Official')}</span>}
+              {(pinned || official) && <span className="mk-official">{T('Official')}</span>}
+              {dup?.og && <span className="mk-tag mk-og" title={T('The first coin launched with this ticker; the others are duplicates.')}>OG</span>}
               {hot ? <HotBadge n={hot} /> : null}
               {token.verified && <span className="mk-tag" style={{ color: '#6ea2ff', borderColor: '#2a6df455' }}>{T("✓ VERIFIED")}</span>}
               <span className="mk-tag" style={{ color: lpColor, borderColor: lpColor + '55' }}>{lp}</span>
               {isDuplicateRow && (
-                <span title={T("Another contract also uses this ticker — sorted below the highest-liquidity one.")} className="mk-tag" style={{ color: 'var(--amber)', borderColor: '#f0b90b55' }}>{T("⚠ SAME TICKER")}</span>
+                <span title={dup?.sameCreator ? T('Launched again by the creator of the OG coin with this ticker.') : T('A later coin using the OG’s ticker: not the original.')} className="mk-tag" style={{ color: 'var(--amber)', borderColor: '#f0b90b55' }}>{dup?.sameCreator ? T('⚠ DUPLICATE · SAME CREATOR') : T('⚠ DUPLICATE')}</span>
               )}
               {!isDuplicateRow && dupCount > 0 && (
                 <button onClick={e => { e.stopPropagation(); onToggleExpand?.() }} className="mk-tag mk-dup">
-                  {expanded ? '▾' : '▸'} +{dupCount}{' '}{T("same ticker")}</button>
+                  {expanded ? '▾' : '▸'} +{dupCount}{' '}{T('duplicates')}</button>
               )}
             </div>
             <div className="mk-sub">
@@ -233,14 +250,14 @@ function TokenRow({ token, rank, onClick, dupCount = 0, expanded = false, onTogg
         <div style={{ fontSize: '0.66rem' }}><span style={{ color: 'var(--green)' }}>{token.buys24h}</span>{' / '}<span style={{ color: 'var(--red)' }}>{token.sells24h}</span></div>
       </td>
       <td className="td-num">{token.holderCount > 0 ? token.holderCount.toLocaleString() : '—'}</td>
-      <td className="td-num"><SafetyBadge view={safety} /></td>
+      <td className="td-num">{official ? <span className="mk-official">{T('Official')}</span> : <SafetyBadge view={safety} />}</td>
       <td className="td-num td-trade"><button className="mk-trade" onClick={e => { e.stopPropagation(); onClick() }}>{T('Trade')}</button></td>
     </tr>
   )
 }
 
-interface CardProps { token: ArcToken; dupCount?: number; onClick: () => void; safety: SafetyView; flash?: Flash; hot?: number; pinned?: boolean }
-function TokenCard({ token, dupCount = 0, onClick, safety, flash, hot, pinned }: CardProps) {
+interface CardProps { token: ArcToken; dupCount?: number; onClick: () => void; safety: SafetyView; flash?: Flash; hot?: number; pinned?: boolean; dup?: DupInfo; official?: boolean }
+function TokenCard({ token, dupCount = 0, onClick, safety, flash, hot, pinned, dup, official }: CardProps) {
   const ch24 = token.priceChange24h
   return (
     <div className={`token-card mk-row${pinned ? ' pinned' : ''}${flashClass(flash)}`} onClick={onClick}>
@@ -248,12 +265,13 @@ function TokenCard({ token, dupCount = 0, onClick, safety, flash, hot, pinned }:
       <div className="mk-row-name">
         <div className="mk-row-sym">
           <b>{token.symbol}</b><span>/{token.quoteSymbol || 'USDC'}</span>
-          {pinned && <span className="mk-official">{T('Official')}</span>}
+          {(pinned || official) && <span className="mk-official">{T('Official')}</span>}
+          {dup?.og && <span className="mk-tag mk-og">OG</span>}
           {hot ? <HotBadge n={hot} /> : null}
         </div>
-        <div className="mk-row-meta"><span style={{ color: SAFETY_COLOR[safety.level] }}>{SAFETY_ICON[safety.level]}</span> {T("Vol")} {fmt(token.volume24h, '$')} · {T("MCap")} {fmt(token.marketCap, '$')}{dupCount > 0 ? ` · +${dupCount}` : ''}</div>
+        <div className="mk-row-meta">{!official && <span style={{ color: SAFETY_COLOR[safety.level] }}>{SAFETY_ICON[safety.level]}</span>} {T("Vol")} {fmt(token.volume24h, '$')} · {T("MCap")} {fmt(token.marketCap, '$')}{dupCount > 0 ? ` · +${dupCount}` : ''}</div>
       </div>
-      <div className="mk-row-price">{fmtPrice(token.price)}<small>{fmtAge(token.ageMs)} · {T(SAFETY_LABEL[safety.level])}</small></div>
+      <div className="mk-row-price">{fmtPrice(token.price)}<small>{fmtAge(token.ageMs)}{official ? '' : ` · ${T(SAFETY_LABEL[safety.level])}`}</small></div>
       <span className={`mk-row-chg ${ch24 > 0 ? 'up' : ch24 < 0 ? 'down' : 'flat'}`}>{ch24 > 0 ? '+' : ''}{ch24.toFixed(2)}%</span>
     </div>
   )
@@ -297,6 +315,9 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   const launchesRef = useRef(new Map<string, LaunchInfo>())
   // What's trading now (GET /v1/tokens/active, every 15s): each coin's activity score and its trades in 15 minutes.
   const activeRef = useRef(new Map<string, ActiveToken>())
+  // Every Argus coin on its curve, with its progress by market cap (GET /v1/bonding, every 30s): GeckoTerminal's list
+  // carries a few dozen of them, the engine every launch (2026-10-04, owner: "near-bonding coins on Arc show only one").
+  const bondingRef = useRef(new Map<string, BondingCoin>())
   // Trades seen live since the last poll: each one lifts its coin, so the ranking follows the market between polls.
   const liveTradesRef = useRef(new Map<string, number>())
   // The ranking is re-taken every 5 seconds (and after each poll), not on every trade: rows jumping on each flash
@@ -341,8 +362,15 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     const launched = [...launchesRef.current.values()].filter(l => !listed.has(l.token)).map(launchToArcToken)
     for (const t of launched) listed.add(t.address.toLowerCase())
     const busy = [...activeRef.current.values()].filter(a => !listed.has(a.token)).map(activeToArcToken).filter((t): t is ArcToken => t !== null)
+    for (const t of busy) listed.add(t.address.toLowerCase())
+    const onCurve = [...bondingRef.current.values()].filter(b => !listed.has(b.token)).map(bondingToArcToken)
+    // The engine's reading of an Argus curve is the freshest: it sets the progress of the rows the list already has.
+    const withCurve = (t: ArcToken): ArcToken => {
+      const b = bondingRef.current.get(t.address.toLowerCase())
+      return b && !t.graduated ? { ...t, graduated: false, bondingProgress: b.progress } : t
+    }
     // Launchpad coins only (owner, 2026-10-04): a coin from a contract no launchpad made isn't listed.
-    const data = [...oursRef.current, ...[...seen.values()].map(v => v.t), ...curves, ...launched, ...busy].filter(t => isLaunchpadCoin(t.launchpad)).map(withTick)
+    const data = [...oursRef.current, ...[...seen.values()].map(v => v.t), ...curves, ...launched, ...busy, ...onCurve].filter(t => isLaunchpadCoin(t.launchpad)).map(withCurve).map(withTick)
     setTokens(data)
     // Keep the loading state until there's something to show — the first
     // source to land may be an empty one.
@@ -490,6 +518,20 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     return () => { alive = false; clearInterval(id) }
   }, [publish, takeRank])
 
+  useEffect(() => {
+    if (!engineEnabled || !engineApiUrl) return
+    let alive = true
+    const load = () => void fetch(`${engineApiUrl}/v1/bonding?limit=400`, { signal: AbortSignal.timeout(10_000) })
+      .then(r => (r.ok ? r.json() : null)).then((j: { coins?: BondingCoin[] } | null) => {
+        if (!alive || !j?.coins) return
+        bondingRef.current = new Map(j.coins.map(b => [b.token.toLowerCase(), b]))
+        publish([])
+      }).catch(() => {})
+    load()
+    const id = setInterval(() => { if (!document.hidden) load() }, 30_000)
+    return () => { alive = false; clearInterval(id) }
+  }, [publish])
+
   // reset page on filter change
   useEffect(() => { setPage(1); setShown(PAGE_SIZE) }, [source, viewTab, search, sortCol, sortAsc, minMcap, maxMcap, minVol])
 
@@ -521,14 +563,46 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     ? tokens.map(t => { const h = indexedHolders.get(t.address.toLowerCase()); return h ? { ...t, holderCount: h } : t })
     : tokens, [tokens, indexedHolders])
 
+  // ── safety (lib/safety.ts): the engine's scan of the coins worth asking about (the young and on-curve ones, the
+  // busiest, the youngest graduates and $ARCDEX), with each coin's market data. Others are rated from market data. ──
+  const askTokens = useMemo(() => {
+    const young = withHolders.filter(t => { const st = arcStage(t); return st === 'new' || st === 'near' || st === 'bonding' }).sort((a, b) => a.ageMs - b.ageMs).slice(0, 120)
+    const busy = [...withHolders].sort((a, b) => b.volume24h - a.volume24h).slice(0, 150)
+    const grads = withHolders.filter(t => arcStage(t) === 'graduated').sort((a, b) => a.ageMs - b.ageMs).slice(0, 40)
+    return [...new Set([COIN_LC, ...[...young, ...busy, ...grads].map(t => t.address.toLowerCase())])]
+  }, [withHolders])
+  const asked = useMemo(() => new Set(askTokens), [askTokens])
+  const chainSafety = useCoinSafety(askTokens)
+  const chainOf = (t: ArcToken): CoinSafety | null | undefined => { const k = t.address.toLowerCase(); return asked.has(k) ? chainSafety.get(k) : null }
+  const isOfficial = (t: ArcToken) => t.address.toLowerCase() === COIN_LC
+  // Listed at all (owner, 2026-10-04): $15K or more of market cap and not rugged; $ARCDEX always. A search looks at
+  // every coin, so one too small or rugged to list is still found by its name or address.
+  const listable = useMemo(() => (search.trim() ? withHolders : withHolders.filter(t => isListable({
+    official: isOfficial(t), marketCapUsd: t.marketCap,
+    rugged: isRugged({ change24h: t.priceChange24h, liquidityUsd: t.liquidity, onCurve: arcStageInput(t).onCurve, chain: chainOf(t) }),
+  }))),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [withHolders, search, chainSafety, asked])
+
   // ── curate: fold ticker-squatting duplicates behind an expand toggle,
   // drop fully-dead placeholder entries — see lib/curate.ts ────────────
-  const curation = useMemo(() => curateTokens(withHolders), [withHolders])
+  const curation = useMemo(() => curateTokens(listable), [listable])
+  // Same-ticker coins (lib/dupes.ts): the earliest launched is the OG and leads its group; the rest are duplicates,
+  // marked when the OG's own creator launched them.
+  const dupes = useMemo(() => markDupes(curation.groups.flatMap(g => [g.primary, ...g.duplicates]), {
+    key: t => t.address, symbol: t => t.symbol, launchedAt: t => (t.ageMs > 0 ? Date.now() - t.ageMs : 0),
+    creator: t => t.deployer ?? chainSafety.get(t.address.toLowerCase())?.creator ?? null,
+  }), [curation, chainSafety])
+  const groups = useMemo(() => curation.groups.map(g => {
+    const members = [g.primary, ...g.duplicates]
+    const og = members.find(m => dupes.get(m.address)?.og)
+    return og && og !== g.primary ? { primary: og, duplicates: members.filter(m => m !== og) } : g
+  }), [curation, dupes])
   // Every coin's risk score, from its market data (lib/risk.ts). A smaller
   // coin reusing a bigger one's ticker scores higher.
   const riskBy = useMemo(() => {
     const m = new Map<string, Risk>()
-    for (const g of curation.groups) {
+    for (const g of groups) {
       m.set(g.primary.address, tokenRisk(g.primary))
       for (const d of g.duplicates) m.set(d.address, tokenRisk(d, { sameTicker: true }))
     }
@@ -538,7 +612,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
 
   const groupByPrimaryAddress = useMemo(() => {
     const m = new Map<string, CuratedGroup>()
-    for (const g of curation.groups) m.set(g.primary.address, g)
+    for (const g of groups) m.set(g.primary.address, g)
     return m
   }, [curation])
 
@@ -549,7 +623,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   // tokens. Sorted by how many tokens are actually behind each one.
   const sources = useMemo(() => {
     const counts = new Map<string, number>()
-    for (const g of curation.groups) counts.set(g.primary.launchpad, (counts.get(g.primary.launchpad) ?? 0) + 1)
+    for (const g of groups) counts.set(g.primary.launchpad, (counts.get(g.primary.launchpad) ?? 0) + 1)
     const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name)
     return ['All sources', ...sorted]
   }, [curation])
@@ -578,24 +652,10 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     return true
   }, [search, source, viewTab, minMcap, maxMcap, minVol, view])
 
-  // ── safety (lib/safety.ts): the engine's scan of the coins worth asking about (the young and on-curve ones, the
-  // busiest, the youngest graduates and $ARCDEX), with each coin's market data. Others are rated from market data. ──
-  const askTokens = useMemo(() => {
-    const prim = curation.groups.map(g => g.primary)
-    const young = prim.filter(t => { const st = arcStage(t); return st === 'new' || st === 'near' || st === 'bonding' }).sort((a, b) => a.ageMs - b.ageMs).slice(0, 120)
-    const busy = [...prim].sort((a, b) => b.volume24h - a.volume24h).slice(0, 150)
-    const grads = prim.filter(t => arcStage(t) === 'graduated').sort((a, b) => a.ageMs - b.ageMs).slice(0, 40)
-    return [...new Set([COIN_LC, ...young, ...busy, ...grads].map(t => (typeof t === 'string' ? t : t.address.toLowerCase())))]
-  }, [curation])
-  const asked = useMemo(() => new Set(askTokens), [askTokens])
-  const chainSafety = useCoinSafety(askTokens)
-  const safetyOf = (t: ArcToken): SafetyView => {
-    const k = t.address.toLowerCase()
-    return arcSafety(t, riskOfRow(t), asked.has(k) ? chainSafety.get(k) : null, arcStageInput(t).onCurve)
-  }
-  const passes = (t: ArcToken, v: SafetyView) => meetsStandard({ level: v.level, stage: arcStage(t), onCurve: arcStageInput(t).onCurve, liquidityUsd: t.liquidity, holders: t.holderCount > 0 ? t.holderCount : null })
+  const safetyOf = (t: ArcToken): SafetyView => arcSafety(t, riskOfRow(t), chainOf(t), arcStageInput(t).onCurve)
+  const passes = (t: ArcToken, v: SafetyView) => isOfficial(t) || meetsStandard({ level: v.level, stage: arcStage(t), onCurve: arcStageInput(t).onCurve, liquidityUsd: t.liquidity, holders: t.holderCount > 0 ? t.holderCount : null })
 
-  const matched = curation.groups.map(g => g.primary).filter(matchesFilters)
+  const matched = groups.map(g => g.primary).filter(matchesFilters)
   const rated = new Map(matched.map(t => [t.address, safetyOf(t)]))
   const ratedOf = (t: ArcToken) => rated.get(t.address) ?? safetyOf(t)
   // The listing standard (lib/safety.ts): danger, and pool coins under $2K of liquidity or 20 holders, stay out of the
@@ -625,7 +685,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
     if (sortCol === 'change')   diff = (b.priceChange24h??0) - (a.priceChange24h??0)
     if (sortCol === 'age')      diff = a.ageMs - b.ageMs
     // Safest first; tap again for the riskiest.
-    if (sortCol === 'risk')     diff = safetyRank(ratedOf(a).level) - safetyRank(ratedOf(b).level) || riskOfRow(a).score - riskOfRow(b).score
+    if (sortCol === 'risk')     diff = (isOfficial(a) ? -1 : safetyRank(ratedOf(a).level)) - (isOfficial(b) ? -1 : safetyRank(ratedOf(b).level)) || riskOfRow(a).score - riskOfRow(b).score
     if (sortCol === 'score') {
       const scoreOf = (t: ArcToken) =>
         Math.min(40, t.holderCount/25) + Math.min(40, Math.log10(t.volume24h+1)*8) + Math.min(20, t.txCount24h/50)
@@ -658,7 +718,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
 
   // Binance's market overview: the most active coins, the biggest gainers and the most traded, beside $ARCDEX.
   // The overview cards only pick coins that meet the listing standard.
-  const primaries = curation.groups.map(g => g.primary).filter(t => t.address.toLowerCase() !== COIN_LC && t.price > 0 && passes(t, ratedOf(t)))
+  const primaries = groups.map(g => g.primary).filter(t => t.address.toLowerCase() !== COIN_LC && t.price > 0 && passes(t, ratedOf(t)))
   const overview = {
     hot: [...primaries].sort((a, b) => activityOf(b) - activityOf(a) || b.volume24h - a.volume24h).slice(0, 3),
     gainers: primaries.filter(t => t.volume24h >= 500 && t.liquidity >= 1_000).sort((a, b) => b.priceChange24h - a.priceChange24h).slice(0, 3),
@@ -775,6 +835,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
               key: t.address, symbol: t.symbol, name: t.name, logo: t.logoUrl || null, launchpad: t.launchpad, launchpadColor: getLaunchpadColor(t.launchpad),
               ageMs: t.ageMs, marketCap: t.marketCap, liquidity: t.liquidity, volume24h: t.volume24h, change24h: t.priceChange24h,
               holders: t.holderCount > 0 ? t.holderCount : null, progress: inp.onCurve ? inp.progress : null, stage: arcStage(t), safety: ratedOf(t), hot: hotOf(t),
+              official: isOfficial(t), og: dupes.get(t.address)?.og, dup: dupes.get(t.address)?.dup,
             }
           })} />
       )}
@@ -801,7 +862,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
               </tr>
             </thead>
             <tbody>
-              {coinRow && <TokenRow token={coinRow} rank={0} pinned risk={riskOfRow(coinRow)} safety={safetyOf(coinRow)} flash={flash.get(COIN_LC)} hot={hotOf(coinRow)} onClick={() => navigate({ name: 'argus', address: COIN_LC, pool: coinRow.poolAddress || COIN_POOL })} />}
+              {coinRow && <TokenRow token={coinRow} rank={0} pinned official risk={riskOfRow(coinRow)} safety={safetyOf(coinRow)} flash={flash.get(COIN_LC)} hot={hotOf(coinRow)} onClick={() => navigate({ name: 'argus', address: COIN_LC, pool: coinRow.poolAddress || COIN_POOL })} />}
               {pageItems.filter(t => !coinRow || t.address.toLowerCase() !== COIN_LC).map((token, i) => {
                 const group = groupByPrimaryAddress.get(token.address)
                 const dupCount = group?.duplicates.length ?? 0
@@ -814,6 +875,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
                       rank={(page - 1) * PAGE_SIZE + i + 1}
                       risk={riskOfRow(token)}
                       safety={ratedOf(token)}
+                      dup={dupes.get(token.address)}
+                      official={isOfficial(token)}
                       flash={flash.get(token.address.toLowerCase())}
                       hot={hotOf(token)}
                       onClick={() => goTo(token)}
@@ -832,6 +895,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
                         rank={0}
                         risk={riskOfRow(dup)}
                         safety={safetyOf(dup)}
+                        dup={dupes.get(dup.address)}
                         flash={flash.get(dup.address.toLowerCase())}
                         isDuplicateRow
                         onClick={() => goTo(dup)}
@@ -868,7 +932,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
         {/* mobile card list — same data, CSS toggles which one is visible */}
         {!loading && (
           <div className="token-cards">
-            {coinRow && <TokenCard token={coinRow} pinned safety={safetyOf(coinRow)} flash={flash.get(COIN_LC)} hot={hotOf(coinRow)} onClick={() => navigate({ name: 'argus', address: COIN_LC, pool: coinRow.poolAddress || COIN_POOL })} />}
+            {coinRow && <TokenCard token={coinRow} pinned official safety={safetyOf(coinRow)} flash={flash.get(COIN_LC)} hot={hotOf(coinRow)} onClick={() => navigate({ name: 'argus', address: COIN_LC, pool: coinRow.poolAddress || COIN_POOL })} />}
             {sorted.filter(t => !coinRow || t.address.toLowerCase() !== COIN_LC).slice(0, shown).map(token => {
               const group = groupByPrimaryAddress.get(token.address)
               return (
@@ -876,6 +940,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
                   key={token.address}
                   token={token}
                   safety={ratedOf(token)}
+                  dup={dupes.get(token.address)}
+                  official={isOfficial(token)}
                   flash={flash.get(token.address.toLowerCase())}
                   hot={hotOf(token)}
                   dupCount={group?.duplicates.length ?? 0}

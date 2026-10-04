@@ -252,10 +252,14 @@ console.log('the engine’s list (api/rhmarket.ts): every launchpad, a little at
   const realFetch = globalThis.fetch
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     if (String(input).includes('chain.robinhood.com')) {
-      const body = JSON.parse(String(init?.body))
-      ok(body.params[1] === BEACON_SLOT, 'stock check reads the beacon slot')
-      const token = String(body.params[0])
-      return Response.json({ result: '0x' + (token === hex40(100) ? STOCK_BEACON.slice(2) : '0'.repeat(40)).padStart(64, '0') })
+      // One JSON-RPC batch for every stock check (and Pons's curves, which these pools aren't).
+      const body = JSON.parse(String(init?.body)) as { id: number; method: string; params: unknown[] }[]
+      return Response.json(body.map(c => {
+        if (c.method !== 'eth_getStorageAt') return { jsonrpc: '2.0', id: c.id, result: '0x' }
+        if (c.params[1] !== BEACON_SLOT) throw new Error('FAIL: stock check reads the beacon slot')
+        const token = String(c.params[0])
+        return { jsonrpc: '2.0', id: c.id, result: '0x' + (token === hex40(100) ? STOCK_BEACON.slice(2) : '0'.repeat(40)).padStart(64, '0') }
+      }))
     }
     return realFetch(input, init)
   }) as typeof fetch
@@ -281,7 +285,7 @@ console.log('the engine’s list (api/rhmarket.ts): every launchpad, a little at
 
   const old = { ...s, pools: s.pools.map(p => (p.launchpad === 'Pons' ? { ...p, seenAt: Date.now() - RH_KEEP_MS - 1 } : p)) }
   const later = await advanceRh(old, 0)
-  ok(!rhRows(later).some(r => r.launchpad === 'Pons') && rhRows(later).some(r => r.launchpad === 'Bankr'), 'a pool not read again for an hour drops out')
+  ok(!rhRows(later).some(r => r.launchpad === 'Pons') && rhRows(later).some(r => r.launchpad === 'Bankr'), 'a pool not read again for 6 hours drops out')
 
   // The route: a first list at once, the stored copy after, read further in the background.
   const kv = new Map<string, { value: unknown; updatedAt: number }>()

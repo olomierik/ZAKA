@@ -539,7 +539,8 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
     <>
       <PositionCard token={address} symbol={symbol} image={image} priceUsd={priceUsd} trader={trader} rows={rows}
         refreshKey={refreshKey} onPositionUsd={setPositionUsd} />
-      <SafetyPanel info={infoLive} chain={chain} liquidityUsd={active?.liquidityUsd ?? null} rows={rows} devPct={devPct} risk={risk} />
+      {/* ARCDEX's own coin carries no safety rating (owner, 2026-10-04). */}
+      {!isCoin && <SafetyPanel info={infoLive} chain={chain} liquidityUsd={active?.liquidityUsd ?? null} rows={rows} devPct={devPct} risk={risk} />}
       <AboutPanel address={address} symbol={symbol} info={infoLive} pool={active} chain={chain} rows={rows} supply={supply} profiles={profiles} navigate={navigate} />
     </>
   )
@@ -560,7 +561,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   )
   const notices = (
     <>
-      {copy && (
+      {copy && !isCoin && (
         <div className="spot-notice warn">{T("⚠ This is")}{' '}<b>{T("not")}</b>{' '}{T("the real")}{' '}{copy}{venue ? T(". It's a separate launch that reuses the") : T(". It's a separate Argus launch that reuses the")}{' '}{copy}{' '}{T("ticker — check the contract address before trading.")}</div>
       )}
       {liveCurve ? (
@@ -589,7 +590,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
               <span key={priceUsd} className={priceDir ? `price-tick ${priceDir}` : undefined} style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--text)', borderRadius: 4, padding: '0 2px' }}>{priceUsd ? fmtPrice(priceUsd) : '…'}</span>
               {active && <span style={{ fontWeight: 600, fontSize: '0.82rem', color: active.change.h24 >= 0 ? 'var(--green)' : 'var(--red)' }}>{pct(active.change.h24)}</span>}
               {badge}
-              {active && <RiskBadge risk={risk} />}
+              {active && !isCoin && <RiskBadge risk={risk} />}
             </div>
           </div>
         </div>
@@ -640,7 +641,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
           {stats.slice(3).map(([label, val, color]) => (
             <div key={label}><span>{label}</span><b style={{ color }}>{val}</b></div>
           ))}
-          {active && <div><span>{T('Risk')}</span><b><RiskBadge risk={risk} /></b></div>}
+          {active && !isCoin && <div><span>{T('Risk')}</span><b><RiskBadge risk={risk} /></b></div>}
         </div>
         {headActions}
       </div>
