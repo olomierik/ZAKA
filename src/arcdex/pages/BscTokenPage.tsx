@@ -1,10 +1,10 @@
-// A Solana coin (2026-10-04), on the spot screen's layout (RobinhoodTokenPage.tsx): the pair bar, market trades, the
-// chart, a buy form and a sell form side by side (components/SolanaTrade.tsx), the coin's pools, and every trade
+// A BNB Chain coin (2026-10-05), on Solana's coin page layout (SolanaTokenPage.tsx): the pair bar, market trades, the
+// chart, a buy form and a sell form side by side (components/BscTrade.tsx), the coin's pools, and every trade
 // underneath. Phones: chart, stats, trades and a Buy / Sell bar opening the trade sheet.
 //
-// GeckoTerminal (api/solanaMarket.ts) gives the candles, the coin's stats, its pools and its trades (polled every 4s
-// while the page is open, so new trades pop on the chart). The chain gives its launch curve (how far to graduating)
-// and what its mint allows, read when the page opens and every 30s.
+// GeckoTerminal (api/bscMarket.ts) gives the candles, the coin's stats, its pools and its trades (polled every 4s
+// while the page is open, so new trades pop on the chart). four.meme's contract says whether it launched the coin,
+// whether it's still on its curve and how far along, read when the page opens and every 30s.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Page } from '../App'
@@ -16,14 +16,13 @@ import { AgoText } from '../components/Ago'
 import { ChainIcon } from '../components/Chains'
 import { RhLogo } from '../components/Robinhood'
 import SafetyBadge from '../components/SafetyBadge'
-import SolanaTrade, { SolanaWalletBar, SOL_NOTE } from '../components/SolanaTrade'
-import { getSolCoin, getSolTrades, solChartSource, solCoinChain, solSeed, type MintFlags, type SolCoin } from '../api/solanaMarket'
-import type { SolCoinDetail } from '../api/solanaMarket'
-import { solAccount, solToken, solTx } from '../lib/solana'
-import { solSafety } from '../lib/safety'
+import BscTrade, { BSC_NOTE } from '../components/BscTrade'
+import { getBscCoin, getBscTrades, bscChartSource, bscCoinFour, bscSeed, withFour, type BscCoin, type BscCoinDetail, type FourInfo } from '../api/bscMarket'
+import { bscAddress, bscToken, bscTx } from '../lib/bsc'
+import { bscSafety } from '../lib/safety'
 import type { Tick } from '../lib/candles'
 import { useIsMobile } from '../lib/useMobile'
-import { useSolanaWallets } from '../lib/solanaWallet'
+import { useTrader } from '../lib/identity'
 import { t as T } from '../lib/i18n'
 
 function fmt(n: number | null | undefined, prefix = ''): string {
@@ -42,23 +41,24 @@ function fmtPrice(p: number): string {
 }
 const pct = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(2)}%`
 const color = (n: number) => (n > 0 ? 'var(--green)' : n < 0 ? 'var(--red)' : 'var(--text-muted)')
-const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`
+const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 
 interface Props { address: string; pool?: string; navigate: (p: Page) => void }
 type Row = TradeRow & { id: string; priceUsd: number }
 
-function seedCoin(mint: string, pool?: string): SolCoinDetail | null {
-  const r = solSeed(mint, pool)
+function seedCoin(token: string, pool?: string): BscCoinDetail | null {
+  const r = bscSeed(token, pool)
   return r ? { ...r, supply: null, pools: [r] } : null
 }
 
-export default function SolanaTokenPage({ address, pool: poolParam, navigate }: Props) {
+export default function BscTokenPage({ address, pool: poolParam, navigate }: Props) {
   const mobile = useIsMobile()
-  const sol = useSolanaWallets()
-  const mine = new Set([sol.trading, sol.external?.address].filter(Boolean) as string[])
-  const [coin, setCoin] = useState<SolCoinDetail | null>(() => seedCoin(address, poolParam))
+  const me = useTrader().address?.toLowerCase() ?? null
+  const mine = new Set(me ? [me] : [])
+  const [coin, setCoin] = useState<BscCoinDetail | null>(() => seedCoin(address, poolParam))
   const [loaded, setLoaded] = useState(false)
-  const [chain, setChain] = useState<{ curve: { progress: number; graduated: boolean } | null; mint: MintFlags | null } | null>(null)
+  // four.meme's word: undefined until it answers, null for a coin it didn't launch.
+  const [four, setFour] = useState<FourInfo | null | undefined>(() => seedCoin(address, poolParam)?.four)
   const [trades, setTrades] = useState<TradeRow[]>([])
   const [tradesLoaded, setTradesLoaded] = useState(false)
   const [sheet, setSheet] = useState<'buy' | 'sell' | null>(null)
@@ -67,7 +67,7 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
   useEffect(() => {
     let live = true
     setCoin(prev => (prev && prev.address === address ? prev : seedCoin(address, poolParam))); setLoaded(false)
-    const load = () => getSolCoin(address, poolParam).then(c => { if (live && c) setCoin(c) }).catch(() => {}).finally(() => { if (live) setLoaded(true) })
+    const load = () => getBscCoin(address, poolParam).then(c => { if (live && c) setCoin(c) }).catch(() => {}).finally(() => { if (live) setLoaded(true) })
     void load()
     const id = setInterval(() => { if (!document.hidden) void load() }, 60_000)
     return () => { live = false; clearInterval(id) }
@@ -76,15 +76,14 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
   const offLink = !!poolParam && !!coin?.pools.some(p => p.pool === poolParam && p.offMarket)
   const pool = (offLink ? coin?.pool : poolParam || coin?.pool) || ''
 
-  // The launch curve and the mint, from the chain: the curve is read from the coin's launchpad pool, whichever the page shows.
-  const curvePool = coin?.pools.find(p => p.launchpad && p.dex !== 'pumpswap')?.pool ?? (coin?.launchpad ? coin.pool : '') ?? ''
+  // four.meme's contract: whether it launched the coin, and its curve (re-read every 30s while it's on it).
   useEffect(() => {
     let live = true
-    const read = () => solCoinChain(address, curvePool || null).then(c => { if (live) setChain(c) }).catch(() => {})
+    const read = () => bscCoinFour(address).then(f => { if (live && f !== undefined) setFour(f) }).catch(() => {})
     void read()
     const id = setInterval(() => { if (!document.hidden) void read() }, 30_000)
     return () => { live = false; clearInterval(id) }
-  }, [address, curvePool])
+  }, [address])
 
   // Trades: GeckoTerminal's, every 4s while visible; ones that arrive after the page opened are live (they pop).
   const seen = useRef<Set<string> | null>(null)
@@ -93,7 +92,7 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
     let live = true
     seen.current = null
     setTrades([]); setTradesLoaded(false)
-    const load = () => getSolTrades(pool, address).then(list => {
+    const load = () => getBscTrades(pool, address).then(list => {
       if (!live) return
       const before = seen.current
       seen.current = new Set(list.map(r => r.txHash + r.kind))
@@ -117,40 +116,34 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
   // The trade form's price guard: a live trade's price only from a pool GeckoTerminal lists for the coin, not off-market.
   const guardPrice = (!!poolRow && !poolRow.offMarket && livePrice) || gtPrice
 
-  const withChain: SolCoin | null = coin ? {
-    ...coin,
-    ...(chain?.curve ? { curveProgress: chain.curve.graduated ? 100 : chain.curve.progress, graduated: chain.curve.graduated } : {}),
-    ...(chain?.mint ? { mint: chain.mint } : {}),
-  } : null
-  const safety = withChain ? solSafety(withChain) : null
-  const onCurve = chain?.curve ? !chain.curve.graduated : false
-  const progress = chain?.curve && !chain.curve.graduated ? chain.curve.progress : null
+  const withChain: BscCoin | null = coin ? withFour(coin, four ?? undefined) : null
+  const safety = withChain ? bscSafety(withChain) : null
+  const onCurve = !!four && !four.graduated
+  const progress = onCurve ? four!.progress : null
 
-  // Launchpad coins only (owner, 2026-10-04); and never a coin whose mint can freeze or inflate it.
-  const unlisted = !!coin && loaded && !coin.launchpad
-  const mintDanger = safety?.level === 'danger' && !!chain?.mint && (chain.mint.freezeAuthority || chain.mint.mintAuthority || chain.mint.danger.length > 0)
+  // Launchpad coins only (owner, 2026-10-04): four.meme's, and four.meme's contract must vouch for it.
+  const unlisted = (!!coin && loaded && !coin.launchpad) || four === null
   const buyBlocked = unlisted ? T('Not a launchpad coin: ARCDEX only lists and sells coins launched on a launchpad, because coins from unknown contracts can be malicious. You can still sell any you hold.')
-    : mintDanger ? T('This coin’s mint can still freeze or inflate it, so ARCDEX doesn’t offer it to buy. You can still sell any you hold.')
     : undefined
 
   useEffect(() => { document.title = `${priceUsd ? fmtPrice(priceUsd) + ' | ' : ''}${symbol} | ARCDEX` }, [priceUsd, symbol])
 
-  const source = useMemo(() => (pool ? solChartSource(pool, address) : undefined), [pool, address])
+  const source = useMemo(() => (pool ? bscChartSource(pool, address) : undefined), [pool, address])
   const ticks: Tick[] = useMemo(() => rows.filter(r => r.live && r.priceUsd > 0).map(r => ({ time: r.timestamp, priceUsd: r.priceUsd, usd: r.usd })), [rows])
   const chartTrades: ChartTrade[] = useMemo(() => rows.flatMap(r => {
     if (!r.priceUsd) return []
     const who = r.maker ? short(r.maker) : T('Someone')
     return [{
       id: r.id, time: r.timestamp, priceUsd: r.priceUsd, usd: r.usd, kind: r.kind, maker: r.maker, live: r.live,
-      mine: !!r.maker && mine.has(r.maker),
+      mine: !!r.maker && mine.has(r.maker.toLowerCase()),
       label: `${who} ${r.kind === 'buy' ? 'bought' : 'sold'} $${r.usd >= 1000 ? (r.usd / 1000).toFixed(1) + 'K' : r.usd.toFixed(2)}`,
     }]
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [rows, sol.trading, sol.external?.address])
+  }), [rows, me])
 
   const chart = source ? (
     <PriceChart poolAddress={null} source={source} ticks={ticks} live={rows.some(r => r.live)} trades={chartTrades} supply={coin?.supply ?? null}
-      symbol={symbol} height={mobile ? 300 : 420} liveTitle={T('Trades on Solana, from GeckoTerminal')} />
+      symbol={symbol} height={mobile ? 300 : 420} liveTitle={T('Trades on BNB Chain, from GeckoTerminal')} />
   ) : <div className="spot-empty" style={{ height: mobile ? 300 : 420, display: 'grid', placeItems: 'center' }}>{loaded ? T('No market for this coin on GeckoTerminal yet.') : T('Loading…')}</div>
 
   const stats: [string, string, string?][] = [
@@ -162,12 +155,12 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
     [T('24h trades'), coin ? (coin.buys24h + coin.sells24h).toLocaleString() : '—'],
   ]
 
-  const network = <span className="rh-net"><ChainIcon chain="Solana" size={14} /> Solana</span>
+  const network = <span className="rh-net"><ChainIcon chain="BNB" size={14} /> {T('BNB Chain')}</span>
   const headActions = (
     <div className="token-head-actions">
       {safety && <SafetyBadge view={safety} />}
       <button title={T('Copy contract address')} className="head-icon" onClick={() => { void navigator.clipboard?.writeText(address); setCopied(true); setTimeout(() => setCopied(false), 1200) }}>{copied ? '✓' : '⧉'}</button>
-      <a title={T('Explorer')} className="head-icon" href={solToken(address)} target="_blank" rel="noopener noreferrer">↗</a>
+      <a title={T('Explorer')} className="head-icon" href={bscToken(address)} target="_blank" rel="noopener noreferrer">↗</a>
       <a title={T('Search on X')} className="head-icon" href={`https://x.com/search?q=${encodeURIComponent(`${address} OR $${symbol}`)}&f=live`} target="_blank" rel="noopener noreferrer">🔍</a>
     </div>
   )
@@ -175,22 +168,21 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
     <>
       {loaded && !coin && <div className="spot-notice warn">{T('No market for this coin on GeckoTerminal yet.')}</div>}
       {unlisted && <div className="spot-notice warn">{T('⚠ This coin wasn’t launched on a launchpad, so ARCDEX doesn’t list it or offer it to buy. Coins from unknown contracts can be malicious.')}</div>}
-      {mintDanger && <div className="spot-notice warn">⚠ {safety!.reasons.slice(0, 2).join(' · ')}</div>}
       {onCurve && (
         <div className="spot-notice sol-curve">
-          <span>🚀 {T('On {pad}’s bonding curve', { pad: coin?.launchpad ?? T('its launchpad') })}{progress !== null ? `: ${progress.toFixed(1)}%` : ''}</span>
+          <span>🚀 {T('On {pad}’s bonding curve', { pad: 'four.meme' })}{progress !== null ? `: ${progress.toFixed(1)}%` : ''} · {T('traded on four.meme’s contract until it graduates to PancakeSwap')}</span>
           {progress !== null && <span className="sol-curve-bar"><i style={{ width: `${Math.min(100, progress)}%` }} /></span>}
         </div>
       )}
     </>
   )
   const trade = (side?: 'buy' | 'sell', compact?: boolean, initialMode?: 'buy' | 'sell') => (
-    <SolanaTrade key={`${side ?? initialMode ?? 'x'}`} mint={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked}
-      side={side} compact={compact} initialMode={initialMode} />
+    <BscTrade key={`${side ?? initialMode ?? 'x'}:${onCurve ? 'curve' : 'pool'}`} token={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked}
+      four={four} side={side} compact={compact} initialMode={initialMode} />
   )
   const tradesTable = (
     <div className="spot-panel rh-trades">
-      <div className="spot-panel-h"><span>{T('Trades')}</span>{pool && <a className="rh-gt" href={`https://www.geckoterminal.com/solana/pools/${pool}`} target="_blank" rel="noopener noreferrer">GeckoTerminal ↗</a>}</div>
+      <div className="spot-panel-h"><span>{T('Trades')}</span>{pool && <a className="rh-gt" href={`https://www.geckoterminal.com/bsc/pools/${pool}`} target="_blank" rel="noopener noreferrer">GeckoTerminal ↗</a>}</div>
       <div className="swaps-wrap" style={{ overflow: 'auto', maxHeight: 480 }}>
         <table className="swaps-table rh-swaps">
           <thead><tr><th>{T('Date')}</th><th className="sw-type">{T('Type')}</th><th>USD</th><th className="sw-tok">{symbol}</th><th className="sw-price">{T('Price')}</th><th>{T('Maker')}</th><th className="sw-tx" /></tr></thead>
@@ -200,14 +192,14 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
               const buy = r.kind === 'buy'
               const c = buy ? 'var(--green)' : 'var(--red)'
               return (
-                <tr key={r.id} className={`${r.live ? 'swap-row-new' : ''}${r.maker && mine.has(r.maker) ? ' rh-mine' : ''}`}>
+                <tr key={r.id} className={`${r.live ? 'swap-row-new' : ''}${r.maker && mine.has(r.maker.toLowerCase()) ? ' rh-mine' : ''}`}>
                   <td className="rh-muted"><AgoText ts={r.timestamp} /></td>
                   <td className="sw-type" style={{ color: c, fontWeight: 700 }}>{buy ? T('Buy') : T('Sell')}</td>
                   <td className="rh-mono" style={{ color: c }}>{r.usd < 0.01 ? '<$0.01' : fmt(r.usd, '$')}</td>
                   <td className="sw-tok rh-mono" style={{ color: c }}>{fmt(r.tokenAmount)}</td>
                   <td className="sw-price rh-mono" style={{ color: c }}>{r.priceUsd ? fmtPrice(r.priceUsd) : '—'}</td>
-                  <td>{r.maker ? <a className="rh-maker" href={solAccount(r.maker)} target="_blank" rel="noopener noreferrer">{short(r.maker)}</a> : '—'}</td>
-                  <td className="sw-tx"><a href={solTx(r.txHash)} target="_blank" rel="noopener noreferrer" title={T('Explorer')} className="rh-muted">↗</a></td>
+                  <td>{r.maker ? <a className="rh-maker" href={bscAddress(r.maker)} target="_blank" rel="noopener noreferrer">{short(r.maker)}</a> : '—'}</td>
+                  <td className="sw-tx"><a href={bscTx(r.txHash)} target="_blank" rel="noopener noreferrer" title={T('Explorer')} className="rh-muted">↗</a></td>
                 </tr>
               )
             })}
@@ -222,7 +214,7 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
       {coin.pools.slice(0, 6).map(p => (
         <button key={p.pool} className={`rh-pool${p.pool === pool ? ' on' : ''}${p.offMarket ? ' off' : ''}`} disabled={p.offMarket}
           title={p.offMarket ? T('Priced far off {symbol}’s market: a trap pool, not a market.', { symbol }) : undefined}
-          onClick={() => navigate({ name: 'sol-token', address, pool: p.pool })}>
+          onClick={() => navigate({ name: 'bsc-token', address, pool: p.pool })}>
           <span>{symbol}/{p.quoteSymbol || '?'}</span>
           <small>{p.offMarket ? T('⚠ Off-market pool') : (p.launchpad ?? p.dex.replace(/-/g, ' '))}</small>
           <b>{fmt(p.liquidity, '$')}</b>
@@ -232,7 +224,7 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
   )
 
   if (mobile) return (
-    <div className="token-page coin-mobile rh-token sol-token">
+    <div className="token-page coin-mobile rh-token sol-token bsc-token">
       <div className="token-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
           <RhLogo src={coin?.image ?? null} symbol={symbol} size={40} />
@@ -258,7 +250,7 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
       <div className="coin-mobile-body">
         {tradesTable}
         {pools}
-        <p className="swap-note" style={{ padding: '0 16px' }}>{SOL_NOTE()}</p>
+        <p className="swap-note" style={{ padding: '0 16px' }}>{BSC_NOTE()}</p>
         <TradeBar symbol={symbol} onTrade={setSheet} />
         <Sheet open={sheet !== null} onClose={() => setSheet(null)}>
           {sheet && trade(undefined, false, sheet)}
@@ -268,7 +260,7 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
   )
 
   return (
-    <div className="token-page spot-page rh-token sol-token">
+    <div className="token-page spot-page rh-token sol-token bsc-token">
       <div className="spot-bar">
         <div className="spot-bar-pair">
           <RhLogo src={coin?.image ?? null} symbol={symbol} size={32} />
@@ -299,19 +291,18 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
             <div className="spot-form-tabs">
               <span className="active">{T('Spot')}</span>
               <span className="spot-form-kind">{T('Market')}</span>
-              <span className="spot-form-hint">{T('Pay with SOL, USDC on Solana or USDC on Arc.')}</span>
+              <span className="spot-form-hint">{onCurve ? T('On four.meme’s curve: traded with BNB.') : T('Pay with USDC on Arc, BNB or USDT.')}</span>
             </div>
-            <SolanaWalletBar />
             <div className="spot-form-sides">
               {trade('buy', true)}
               {trade('sell', true)}
             </div>
-            <p className="spot-form-note">{SOL_NOTE()}</p>
+            <p className="spot-form-note">{BSC_NOTE()}</p>
           </div>
         </div>
         <div className="spot-side">
           <div className="spot-panel rh-back">
-            <button className="mk-trade" onClick={() => navigate({ name: 'solana' })}>‹ {T('Solana markets')}</button>
+            <button className="mk-trade" onClick={() => navigate({ name: 'bsc' })}>‹ {T('BNB Chain markets')}</button>
           </div>
           {pools}
         </div>

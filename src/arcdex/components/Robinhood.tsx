@@ -7,7 +7,7 @@ import { ChainIcon } from './Chains'
 import { t as T } from '../lib/i18n'
 
 /** Markets on Arc, Robinhood Chain or Solana. */
-export function ChainSwitch({ chain, navigate }: { chain: 'arc' | 'robinhood' | 'solana'; navigate: (p: Page) => void }) {
+export function ChainSwitch({ chain, navigate }: { chain: 'arc' | 'robinhood' | 'solana' | 'bsc'; navigate: (p: Page) => void }) {
   return (
     <div className="chain-switch" role="tablist" aria-label={T('Network')}>
       <button role="tab" aria-selected={chain === 'arc'} className={chain === 'arc' ? 'on' : ''} onClick={() => chain !== 'arc' && navigate({ name: 'terminal' })}>
@@ -18,6 +18,9 @@ export function ChainSwitch({ chain, navigate }: { chain: 'arc' | 'robinhood' | 
       </button>
       <button role="tab" aria-selected={chain === 'solana'} className={chain === 'solana' ? 'on' : ''} onClick={() => chain !== 'solana' && navigate({ name: 'solana' })}>
         <ChainIcon chain="Solana" size={16} /> Solana
+      </button>
+      <button role="tab" aria-selected={chain === 'bsc'} className={chain === 'bsc' ? 'on' : ''} onClick={() => chain !== 'bsc' && navigate({ name: 'bsc' })}>
+        <ChainIcon chain="BNB" size={16} /> <span className="cs-full">{T('BNB Chain')}</span><span className="cs-short">BNB</span>
       </button>
     </div>
   )

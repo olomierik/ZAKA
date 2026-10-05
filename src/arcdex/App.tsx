@@ -29,6 +29,9 @@ const RobinhoodTokenPage = lazy(() => import('./pages/RobinhoodTokenPage'))
 // Solana (2026-10-04): every launchpad's coins, bought with USDC on Arc and sold back to it (through Relay).
 const SolanaMarkets   = lazy(() => import('./pages/SolanaMarkets'))
 const SolanaTokenPage = lazy(() => import('./pages/SolanaTokenPage'))
+// BNB Chain (2026-10-05): four.meme's coins, curve and graduated.
+const BscMarkets      = lazy(() => import('./pages/BscMarkets'))
+const BscTokenPage    = lazy(() => import('./pages/BscTokenPage'))
 import TradingWalletPanel from './components/TradingWalletPanel'
 import DiscoveryPanel from './components/DiscoveryPanel'
 import { TickerBar } from './components/Rails'
@@ -78,11 +81,13 @@ export type Page =
   | { name: 'rh-token'; address: string; pool?: string }
   | { name: 'solana' }
   | { name: 'sol-token'; address: string; pool?: string }
+  | { name: 'bsc' }
+  | { name: 'bsc-token'; address: string; pool?: string }
 
 const fromUrl = (): Page => pathToPage(window.location.pathname, window.location.search) ?? { name: 'terminal' }
 
 const MOBILE_NAV: [Page, string, string][] = [
-  [{ name: 'terminal' }, '◈', N_('Markets')], [{ name: 'robinhood' }, '🏹', N_('Robinhood Chain')], [{ name: 'solana' }, '◎', 'Solana'], [COIN_PAGE, '◆', N_('Spot')], [{ name: 'futures' }, '📊', N_('Futures')], [{ name: 'swap' }, '⇄', N_('Swap')],
+  [{ name: 'terminal' }, '◈', N_('Markets')], [{ name: 'robinhood' }, '🏹', N_('Robinhood Chain')], [{ name: 'solana' }, '◎', 'Solana'], [{ name: 'bsc' }, '◆', N_('BNB Chain')], [COIN_PAGE, '◆', N_('Spot')], [{ name: 'futures' }, '📊', N_('Futures')], [{ name: 'swap' }, '⇄', N_('Swap')],
   [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'portfolio' }, '▤', N_('Portfolio')], [{ name: 'feed' }, '◉', N_('Feed')],
   [{ name: 'leaderboard' }, '♛', N_('Leaderboard')], [{ name: 'clans' }, '⚑', N_('Clans')], [{ name: 'rewards' }, '✦', N_('Rewards')],
   [{ name: 'signals' }, '⚡', N_('Autotrade')], [{ name: 'alerts' }, '🔔', N_('Alerts')], [{ name: 'transfers' }, '⇅', N_('Transfers')],
@@ -122,7 +127,7 @@ export default function App() {
   const lang = useLang()
   // Coin pages are "pushed" screens on phones: a back arrow up top, their
   // own Buy/Sell bar at the bottom instead of the tab bar.
-  const detail = page.name === 'argus' || page.name === 'token' || page.name === 'rh-token' || page.name === 'sol-token'
+  const detail = page.name === 'argus' || page.name === 'token' || page.name === 'rh-token' || page.name === 'sol-token' || page.name === 'bsc-token'
   const goBack = useCallback(() => {
     if (depth.current > 0) window.history.back()
     else navigate({ name: 'terminal' })
@@ -144,7 +149,7 @@ export default function App() {
     <div className={`app-shell${detail ? ' is-detail' : ''}`}>
       <NavBar page={page} navigate={navigate} onMenuClick={() => setNavOpen(o => !o)} onBack={detail ? goBack : undefined} />
       {/* The bridge switches the wallet to other chains on purpose, and Robinhood Chain sales are signed there. */}
-      <NetworkGuard hidden={page.name === 'bridge' || page.name === 'robinhood' || page.name === 'rh-token'} />
+      <NetworkGuard hidden={page.name === 'bridge' || page.name === 'robinhood' || page.name === 'rh-token' || page.name === 'bsc' || page.name === 'bsc-token'} />
 
       <div className="app-body" key={lang}>
         {navOpen && <div className="sidebar-backdrop" onClick={() => setNavOpen(false)} />}
@@ -188,6 +193,8 @@ export default function App() {
           {page.name === 'rh-token'    && <RobinhoodTokenPage key={page.address + (page.pool ?? '')} address={page.address} pool={page.pool} navigate={navigate} />}
           {page.name === 'solana'      && <SolanaMarkets navigate={navigate} />}
           {page.name === 'sol-token'   && <SolanaTokenPage key={page.address + (page.pool ?? '')} address={page.address} pool={page.pool} navigate={navigate} />}
+          {page.name === 'bsc'         && <BscMarkets navigate={navigate} />}
+          {page.name === 'bsc-token'   && <BscTokenPage key={page.address + (page.pool ?? '')} address={page.address} pool={page.pool} navigate={navigate} />}
           </Suspense>
         </main>
 

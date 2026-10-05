@@ -18,13 +18,14 @@ import { chainTransport, waitForAllowance } from './rpc'
 import { waitForReceipt } from './receipts'
 import { notifyBalances } from './balances'
 import { isContractCode, rememberRh, rhClient, RH_RPC, robinhood } from './robinhood'
+import { bscClient, bscWallet } from './bsc'
 import type { TraderKind } from './identity'
 import { AcrossError, ARC_ID, depositStatus, getAcrossQuote, QUOTE_LIMITS, RH_ID, type AcrossQuote, type FillStatus, type QuoteRequest } from './acrossQuote'
 import { t as T } from './i18n'
 
 export { AcrossError }
 
-const readerOf = (chainId: number) => (chainId === RH_ID ? rhClient : arcClient)
+const readerOf = (chainId: number) => (chainId === RH_ID ? rhClient : chainId === 56 ? bscClient : arcClient)
 
 /** Puts the connected external wallet on `chainId`, adding Robinhood Chain to it first if it doesn't know it. */
 async function ensureChain(chainId: number): Promise<void> {
@@ -38,9 +39,9 @@ async function ensureChain(chainId: number): Promise<void> {
 
 const rhWallet = () => getEmbeddedWalletClientOn(robinhood, recordBroadcasts(chainTransport(RH_RPC)))
 
-async function sendRaw(kind: TraderKind, chainId: number, tx: { to: Address; data: Hex; gas?: bigint }): Promise<Hash> {
-  const req = { to: tx.to, data: tx.data, value: 0n, ...(tx.gas ? { gas: tx.gas } : {}) }
-  if (kind === 'trading-wallet') return chainId === RH_ID ? rhWallet().sendTransaction(req) : getEmbeddedWalletClient().sendTransaction(req)
+async function sendRaw(kind: TraderKind, chainId: number, tx: { to: Address; data: Hex; gas?: bigint; value?: bigint }): Promise<Hash> {
+  const req = { to: tx.to, data: tx.data, value: tx.value ?? 0n, ...(tx.gas ? { gas: tx.gas } : {}) }
+  if (kind === 'trading-wallet') return chainId === RH_ID ? rhWallet().sendTransaction(req) : chainId === 56 ? bscWallet().sendTransaction(req) : getEmbeddedWalletClient().sendTransaction(req)
   await ensureChain(chainId)
   const prompted = await promptWallet()
   try { return await sendTransaction(wagmiConfig, { ...req, chainId: chainId as typeof arc.id }) }
@@ -49,7 +50,7 @@ async function sendRaw(kind: TraderKind, chainId: number, tx: { to: Address; dat
 
 async function approve(kind: TraderKind, chainId: number, token: Address, spender: Address, amount: bigint): Promise<Hash> {
   const call = { address: token, abi: erc20Abi, functionName: 'approve' as const, args: [spender, amount] as const }
-  if (kind === 'trading-wallet') return chainId === RH_ID ? rhWallet().writeContract(call) : getEmbeddedWalletClient().writeContract(call)
+  if (kind === 'trading-wallet') return chainId === RH_ID ? rhWallet().writeContract(call) : chainId === 56 ? bscWallet().writeContract(call) : getEmbeddedWalletClient().writeContract(call)
   await ensureChain(chainId)
   const prompted = await promptWallet()
   try { return await writeContract(wagmiConfig, { ...call, chainId: chainId as typeof arc.id }) }
@@ -59,7 +60,9 @@ async function approve(kind: TraderKind, chainId: number, token: Address, spende
 async function mined(chainId: number, hash: Hash): Promise<void> {
   const r = chainId === RH_ID
     ? await rhClient.waitForTransactionReceipt({ hash, pollingInterval: 250, timeout: 180_000 })
-    : await waitForReceipt(hash)
+    : chainId === 56
+      ? await bscClient.waitForTransactionReceipt({ hash, pollingInterval: 750, timeout: 180_000 })
+      : await waitForReceipt(hash)
   if (r.status !== 'success') throw new AcrossError(T('The transaction failed on-chain.'))
 }
 
@@ -169,4 +172,4 @@ export async function runAcross(kind: TraderKind, req: QuoteRequest, shown: Acro
 }
 
 /** Arc's side of a Solana trade (lib/relay.ts) is sent the same way: an exact approval, the transaction, its receipt. */
-export { approve as evmApprove, sendRaw as evmSend, mined as evmMined }
+export { approve as evmApprove, sendRaw as evmSend, mined as evmMined, readerOf as evmReader }

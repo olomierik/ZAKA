@@ -2259,6 +2259,12 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .rh-modes button.on.sell { background: var(--red); color: #fff; }
 .rh-field-head { display: flex; justify-content: space-between; gap: 8px; font-size: 0.72rem; color: var(--text-muted); margin-bottom: 6px; }
 .rh-field-head .link-btn { font-size: 0.72rem; text-decoration: none; }
+/* Pay with / Receive: USDC on Arc, SOL, USDC on Solana (Solana coins, 2026-10-05); BNB, USDT (BNB Chain). */
+.sol-routes { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 0.74rem; color: var(--text-muted); }
+.sol-routes > span { margin-right: 2px; }
+.sol-routes button { padding: 4px 10px; border-radius: 999px; font: 600 0.74rem var(--sans); background: var(--bg-2); border: 1px solid var(--adx-card-border); color: var(--text); cursor: pointer; }
+.sol-routes button.on { background: var(--accent-btn, #2a6df4); border-color: var(--accent-btn, #2a6df4); color: #fff; }
+.sol-routes button:disabled { opacity: 0.5; cursor: default; }
 .rh-chips { display: flex; gap: 6px; margin-top: 8px; }
 .rh-chips button { flex: 1; padding: 5px 0; border-radius: 6px; font: 600 0.74rem var(--sans); background: var(--bg-2); border: 1px solid var(--adx-card-border); color: var(--text); cursor: pointer; }
 .rh-chips button:disabled { opacity: 0.5; cursor: default; }

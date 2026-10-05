@@ -6,9 +6,10 @@
 import accounts from './fixtures/sol-accounts.json'
 import relayBuy from './fixtures/relay-buy.json'
 import relaySell from './fixtures/relay-sell.json'
+import relaySwap from './fixtures/relay-solswap.json'
 
 const core = await import('../api/_solCore')
-const { checkRelayQuote, relayValue, quoteVerdict, quoteBody, RELAY_ARC_DEPOSITORY, SOL_NATIVE, SOLANA_ID } = await import('../src/arcdex/lib/relayQuote')
+const { checkRelayQuote, relayValue, relayValueUsd, quoteVerdict, quoteBody, RELAY_ARC_DEPOSITORY, SOL_NATIVE, SOLANA_ID } = await import('../src/arcdex/lib/relayQuote')
 const { solStage, solStageInput } = await import('../src/arcdex/lib/coinStage')
 const { solSafety, isListable } = await import('../src/arcdex/lib/safety')
 const { pathToPage, pageToPath } = await import('../src/arcdex/lib/router')
@@ -93,7 +94,7 @@ const body = quoteBody(buyReq)
 ok(body.originChainId === 5042 && body.destinationChainId === SOLANA_ID && body.recipient === buyReq.sol && (body.appFees as { recipient: string; fee: string }[])[0].recipient === FEE_WALLET, 'the request: from Arc to Solana, to the buyer’s Solana address, ARCDEX’s fee to the fee wallet')
 ok(!('appFees' in quoteBody({ ...buyReq, side: 'gas' })) && quoteBody({ ...buyReq, side: 'gas' }).destinationCurrency === SOL_NATIVE, 'the SOL top-up: native SOL, no fee')
 const bq = checkRelayQuote(buyReq, relayBuy as never)
-ok(bq.evmTx?.deposit.to === RELAY_ARC_DEPOSITORY && bq.evmTx.approve && bq.appFeeUsd > 0, 'a real buy quote passes: an exact approval, then the deposit to Relay’s depository')
+ok(bq.evmTx?.call.to === RELAY_ARC_DEPOSITORY && bq.evmTx.approve && bq.appFeeUsd > 0, 'a real buy quote passes: an exact approval, then the deposit to Relay’s depository')
 const tamperBuy: [string, (j: any) => void, RegExp][] = [
   ['delivered to another Solana address', j => { j.details.recipient = 'Attacker1111111111111111111111111111111111' }, /another Solana address/],
   ['paid by someone else', j => { j.details.sender = '0x1111111111111111111111111111111111111111' }, /isn’t from you/],
@@ -120,8 +121,8 @@ const ins = (j: any) => j.steps[0].items[0].data.instructions
 const tamperSell: [string, (j: any) => void, RegExp][] = [
   ['paid to another Arc address', j => { j.details.recipient = '0x1111111111111111111111111111111111111111' }, /pays another address/],
   ['sold from another wallet', j => { j.details.sender = 'Attacker1111111111111111111111111111111111' }, /isn’t from your Solana wallet/],
-  ['another coin', j => { j.details.currencyIn.currency.address = 'QtherMint111111111111111111111111111111abc' }, /another coin/],
-  ['paid in something other than Arc USDC', j => { j.details.currencyOut.currency.chainId = 1 }, /USDC on Arc/],
+  ['another coin', j => { j.details.currencyIn.currency.address = 'QtherMint111111111111111111111111111111abc' }, /spends another token/],
+  ['paid in something other than Arc USDC', j => { j.details.currencyOut.currency.chainId = 1 }, /delivers another token/],
   ['a program ARCDEX doesn’t know', j => { ins(j)[1].programId = 'Evil1111111111111111111111111111111111111111' }, /program ARCDEX doesn’t know/],
   ['another signer', j => { ins(j)[1].keys[3] = { pubkey: 'Other11111111111111111111111111111111111111', isSigner: true, isWritable: true } }, /another signer/],
   ['no deposit with Relay', j => { j.steps[0].items[0].data.instructions = ins(j).filter((i: any) => !i.programId.startsWith('DPArt')) }, /deposited with Relay/],
@@ -129,6 +130,29 @@ const tamperSell: [string, (j: any) => void, RegExp][] = [
   ['no fee', j => { j.fees.app.amount = '0' }, /fee isn’t ARCDEX’s/],
 ]
 for (const [what, f, want] of tamperSell) { const j = clone(relaySell) as any; f(j); throws(() => checkRelayQuote(sellReq, j), `refused: ${what}`, want) }
+
+console.log('Relay: a swap on Solana alone (SOL → the coin, for a Solana wallet with no Arc wallet)')
+const SWARM = '4waqtABVsAD7u1rtg7hiX6jLuaikU39hBFDZktAHpump'
+const swapReq = { side: 'swap' as const, chain: 'solana' as const, mint: SWARM, inToken: SOL_NATIVE, outToken: SWARM, amount: 50_000_000n, evm: '', sol: 'MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa', feeBps: 200 }
+const swapBody = quoteBody(swapReq)
+ok(swapBody.originChainId === SOLANA_ID && swapBody.destinationChainId === SOLANA_ID && swapBody.user === swapReq.sol && swapBody.recipient === swapReq.sol && swapBody.originCurrency === SOL_NATIVE && swapBody.destinationCurrency === SWARM, 'the request: Solana to Solana, from and to the buyer’s own Solana wallet, SOL for the coin')
+const wq = checkRelayQuote(swapReq, relaySwap as never)
+ok(wq.solTx && !wq.evmTx && wq.signChain === SOLANA_ID && wq.outDecimals === 6, 'a real swap quote passes: one Solana transaction, nothing to sign on Arc')
+const sins = (j: any) => j.steps[0].items[0].data.instructions
+const tamperSwap: [string, (j: any) => void, RegExp][] = [
+  ['delivered to another wallet', j => { j.details.recipient = 'Attacker1111111111111111111111111111111111' }, /another Solana address|pays another address/],
+  ['another coin out', j => { j.details.currencyOut.currency.address = 'QtherMint111111111111111111111111111111abc' }, /delivers another token/],
+  ['something other than SOL in', j => { j.details.currencyIn.currency.address = core.SOL_USDC }, /spends another token/],
+  ['SOL sent to a stranger', j => { const t = sins(j).find((i: any) => i.programId.startsWith('1111')); t.keys[1].pubkey = 'Attacker1111111111111111111111111111111111' }, /sends SOL/],
+  ['more SOL to Relay’s solver than a fee', j => { const t = sins(j).find((i: any) => i.programId.startsWith('1111')); t.data = '02000000' + Buffer.from(new BigUint64Array([50_000_000n]).buffer).toString('hex') }, /more SOL than its fee/],
+  ['a program ARCDEX doesn’t know', j => { sins(j)[1].programId = 'Evil1111111111111111111111111111111111111111' }, /program ARCDEX doesn’t know/],
+  ['another signer', j => { sins(j)[1].keys[1] = { pubkey: 'Other11111111111111111111111111111111111111', isSigner: true, isWritable: true } }, /another signer/],
+  ['a deposit step instead of a swap', j => { j.steps[0].id = 'deposit' }, /unexpected step/],
+  ['no minimum received', j => { j.details.currencyOut.minimumAmount = '0' }, /minimum/],
+]
+for (const [what, f, want] of tamperSwap) { const j = clone(relaySwap) as any; f(j); throws(() => checkRelayQuote(swapReq, j), `refused: ${what}`, want) }
+const swapFair = relayValueUsd({ appFeeUsd: 0.12, relayFeeUsd: 0.01 }, 0.05 * 121.5, 303_161.542246 * 0.0000197)
+ok(swapFair && quoteVerdict(swapFair) === 'ok', `priced in dollars (SOL at $121.50): impact ${(swapFair!.impact * 100).toFixed(1)}%, ok`)
 
 console.log('the price guard')
 const fair = relayValue({ side: 'buy', expectedOut: 1_000_000_000n, outDecimals: 6, appFeeUsd: 0.2, relayFeeUsd: 0.3 }, 10, 0.0095)

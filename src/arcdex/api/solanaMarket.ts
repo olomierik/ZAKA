@@ -82,9 +82,12 @@ async function engineList(): Promise<SolCoin[] | null> {
 async function browserBuild(tell: (rows: SolCoin[]) => void): Promise<SolCoin[]> {
   const raw: SolCoin[] = []
   const before = built.length ? built : cachedSolMarket()
-  for (const path of solListPaths().slice(0, 5)) {
+  const paths = solListPaths().slice(0, 5)
+  let read = 0
+  for (const path of paths) {
     const ok = await gtDirect<GtPools>(path).then(d => { raw.push(...parseSolPools(d)); return true }, () => false)
     if (!ok) break
+    read++
     tell(listedSol(mergeSolCoins(raw)))
   }
   const rows = listedSol(mergeSolCoins(raw))
@@ -93,7 +96,11 @@ async function browserBuild(tell: (rows: SolCoin[]) => void): Promise<SolCoin[]>
     readCurves(rows.map(c => ({ address: c.address, pool: c.pool })), [SOL_RPC_BROWSER], new Map()).catch(() => new Map<string, CurveRead>()),
     readMints(rows.map(c => c.address), [SOL_RPC_BROWSER]).catch(() => new Map<string, MintFlags>()),
   ])
-  return rows.map(r => withChain(r, curves.get(r.address), mints.get(r.address)))
+  const fresh = rows.map(r => withChain(r, curves.get(r.address), mints.get(r.address)))
+  // A build GeckoTerminal cut short keeps the coins the last list had that it didn't reach.
+  if (read === paths.length) return fresh
+  const seen = new Set(fresh.map(r => r.address))
+  return [...fresh, ...before.filter(r => !seen.has(r.address))]
 }
 
 const withChain = (r: SolCoin, c?: CurveRead, m?: MintFlags): SolCoin => ({
@@ -218,4 +225,19 @@ export async function getSolCandles(pool: string, mint: string, res: ChartResolu
 
 export function solChartSource(pool: string, mint: string): ChartSource {
   return { id: `sol:${pool}:${mint}`, load: res => getSolCandles(pool, mint, res), refreshMs: 30_000, resolutions: SOL_RESOLUTIONS }
+}
+
+// ── SOL's price (the swap guard values SOL going in or out at it) ────────
+
+let solPrice: { at: number; usd: number } | null = null
+let solPricing: Promise<number> | null = null
+/** SOL in dollars (GeckoTerminal's wSOL price, kept a minute). */
+export function solUsd(): Promise<number> {
+  if (solPrice && Date.now() - solPrice.at < 60_000) return Promise.resolve(solPrice.usd)
+  if (solPricing) return solPricing
+  solPricing = gtDirect<{ data?: { attributes?: { token_prices?: Record<string, string | null> } } }>(`/simple/networks/${NET}/token_price/So11111111111111111111111111111111111111112`, {}, FIRST)
+    .then(d => { const v = Number(Object.values(d.data?.attributes?.token_prices ?? {})[0]); if (v > 0) solPrice = { at: Date.now(), usd: v }; return solPrice?.usd ?? 0 })
+    .catch(() => solPrice?.usd ?? 0)
+    .finally(() => { solPricing = null })
+  return solPricing
 }

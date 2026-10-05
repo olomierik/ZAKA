@@ -20,6 +20,7 @@ import type { ArcToken } from '../api/radardex'
 import type { RhCoin } from '../api/robinhoodMarket'
 import { isWashPool } from '../api/robinhoodMarket'
 import { isWashSol, type SolCoin } from '../../../api/_solCore'
+import { isWashBsc, type BscCoin } from '../../../api/_bscCore'
 import { copycatOf } from '../api/argusMarket'
 import { riskOf, riskReasons, type Risk } from './risk'
 import type { Stage } from './coinStage'
@@ -109,6 +110,14 @@ export function rhRisk(c: RhCoin): Risk {
 export function rhSafety(c: RhCoin, risk: Risk = rhRisk(c)): SafetyView {
   if (c.stock && !c.launchpad) return { level: 'safe', reasons: [T('A Robinhood stock token: issued by Robinhood')], source: 'market' }
   return fromMarket(risk, null, { danger: isWashPool(c) ? [T('Wash trading: a few wallets trade with themselves')] : [] })
+}
+
+/** A BNB Chain coin (2026-10-05): four.meme's contract vouches that four.meme launched it (with its own coin
+ * contract); the rest is its market data. */
+export function bscSafety(c: BscCoin, risk: Risk = rhRisk(c)): SafetyView {
+  if (isWashBsc(c)) return { level: 'danger', reasons: [T('Wash trading: a few wallets trade with themselves')], source: 'market' }
+  if (c.four && risk.level === 'low') return { level: 'safe', reasons: [T('Launched by four.meme: its contract vouches for this coin'), ...riskReasons(risk, 1)], source: 'chain' }
+  return fromMarket(risk, null)
 }
 
 const MINT_TEXT: Record<string, string> = {

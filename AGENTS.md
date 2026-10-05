@@ -1555,7 +1555,7 @@ Owner: "stock coins don't show up; the platform shows our native coin as risky, 
   - The engine suite: 592 pass.
 - **Every new string is in all six dictionaries** (24).
 
-## Solana: every launchpad's coins, bought with USDC on Arc (2026-10-04)
+## Solana: every launchpad's coins, bought with SOL, Solana USDC or USDC on Arc (2026-10-04)
 
 Owner: "time to bring Solana to the platform". Asked, the owner chose: the trading wallet gets its own Solana address, and Phantom (or Solflare, Backpack) can be connected too; every Solana launchpad is listed; the 2% fee goes to a Solana address the owner would give. Then Relay turned out to pay app fees in USDC to an EVM address, so the fee goes to the existing fee wallet `0x2742…86Bb` and no Solana address is needed (the owner can still give one if wanted).
 
@@ -1590,7 +1590,44 @@ Owner: "time to bring Solana to the platform". Asked, the owner chose: the tradi
   - In the browser (local dev, the browser's own build): the markets, the near-bond card, a coin page with its curve bar and Safe rating, a $5 quote (127K SWARM ≈ $4.65, Relay $0.29, total cost 7.1%), and a throwaway trading wallet's Solana address matching web3.js's from the same seed (deleted after).
   - `bun scripts/test-solana.ts`: parsing and launchpads, curves and mints from real accounts, real Relay quotes passing and 18 tampered ones refused, the price guard, stages, ratings and routes. Engine suite 592 pass.
 - **Every new string is in all six dictionaries** (64).
+- **Pay with SOL or Solana USDC (2026-10-05, owner: "users with Solana wallets can not buy the coins, make Solana trades work").** Buying needed USDC on Arc, so a Phantom-only visitor couldn't buy. The form now has **Pay with** / **Receive**: USDC on Arc, SOL, or USDC (Solana).
+  - **SOL and Solana USDC are a swap on Solana alone** (Relay's same-chain swap, `side: 'swap'`, `chain: 'solana'`): one transaction signed by the Solana wallet (Phantom/Solflare/Backpack, or the trading wallet's own Solana key). No Arc wallet and no bridge. The coin, or the SOL/USDC from a sale, lands in the same wallet in seconds. ARCDEX's 2% is Relay's app fee, taken in the currency going in or out (SOL or USDC); it accrues at Relay for the fee wallet `0x2742…86Bb` as before.
+  - A Solana wallet app opens on SOL; the trading wallet (or no wallet) on USDC on Arc. Without a wallet, a buy is quoted for a placeholder address (never sent to) so the price shows before connecting.
+  - **Checks for a swap (`checkSolSteps`):** one `swap` step; only known programs; the trader as the only signer; system transfers only to the trader or Relay's solvers (`RELAY_SOL_SOLVERS`), at most 5% of the SOL going in (or 0.01 SOL); the memo naming the quote; from and to the trader's own wallet, the coin and amount asked for, a minimum received. Before signing, the transaction is simulated and may cost the trader no more SOL than it puts in plus 0.01.
+  - **Price guard in dollars (`relayValueUsd`):** SOL at GeckoTerminal's wSOL price (asked again every 30s until it answers), else Relay's own dollar value for the SOL side. The coin is always valued at its market price, so a trap route is still caught.
+  - Tests: `scripts/test-solana.ts` adds a real swap quote (`fixtures/relay-solswap.json`) and 9 tampered ones refused.
+  - **Checked in the browser:** with no wallet connected, 0.05 SOL quoted 2.3K PEXRA at under 0.1% impact, 2% in all. One coin (Human) has no Relay route at any address: the form says so.
+- **Interrupted builds:** when GeckoTerminal throttles the browser's own list build, the coins the last list had that it didn't reach are kept (as Robinhood Chain's builder does), instead of the list shrinking to the first call's coins.
 - **Not done yet:** a real funded trade (the owner's first), live trades from Solana's chain (the coin page polls GeckoTerminal), Solana coins in the top-bar search, holders.
+
+## BNB Chain: four.meme's coins, curve and graduated (2026-10-05)
+
+Owner: "go for BNB Chain". four.meme is BNB Chain's launchpad; its coins are listed, rated and traded like Solana's, at the trader's same EVM address (the trading wallet signs there with its own key; gas is BNB).
+
+- **four.meme (checked on mainnet 2026-10-05):** TokenManager2 `0x5c95…762b` trades every coin on its curve; TokenManagerHelper3 `0xf251…e034` answers `getTokenInfo(token)` (version 0 for a coin four.meme didn't launch, else its quote, BNB or USDT, tokens left for sale, and whether liquidity was added: graduated) and quotes trades (`tryBuy`, `trySell`).
+  - Coin addresses end in `4444` (standard coins) or `ffff` (seen on its curve venue); `isFourAddress` takes both, and the contract must still vouch.
+  - Progress is tokens sold of the 800M for sale (`fourProgress`). At the end of the curve the coin graduates to PancakeSwap (XCS went from 84.7% to graduated in minutes while this was being checked).
+  - **four.meme refuses a sale in the block the tokens were bought in** (revert "GW"): a buy can't be flipped at once.
+- **The list (`api/_bscCore.ts`, engine route `api/bscmarket.ts` at `/api/bscmarket`, as Solana's):** GeckoTerminal's `four-meme` venue (the curves) and PancakeSwap's v2, v3 and Infinity pools (the graduates: only four.meme addresses are kept), and new pools, two calls at a time whenever the stored copy (`arcdex_kv` `bsc:market`) is over 40s old; the engine asks every 40s itself. four.meme's `getTokenInfo` is read for every coin (150 a multicall, BNB Chain's own RPC then publicnode): coins it disowns are dropped, curve coins are re-read after a minute, graduates never. Without the engine, the browser reads five calls and asks four.meme itself.
+  - **WBNB is `0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c`.** A first draft had two characters wrong, which GeckoTerminal answered with no price; checked against PancakeSwap's WBNB/USDT pair's `token1`.
+- **Trading (`components/BscTrade.tsx`):**
+  - **Graduated coins, through Relay** (`lib/relayQuote.ts` `chain: 'bsc'`, `lib/relay.ts` `runRelayEvm`). Pay with or receive **USDC on Arc** (one signature on Arc, the coin lands on BNB Chain in ~2s; a sale is signed on BNB Chain and the USDC lands on Arc), **BNB** or **USDT** (a swap on BNB Chain). ARCDEX's 2% is Relay's app fee.
+    - Checks: the trader as sender and recipient, the coin, currencies and amount; on Arc, the depository deposit word by word; on BNB Chain, native BNB only to Relay's router `0xb92f…ff4f` with exactly the amount, an ERC-20 only through its approval proxy `0xccc8…15be` after an approval of exactly the amount to it, the calldata naming the trader, no native value otherwise; a fee on every trade but the BNB top-up.
+    - The price guard in dollars: BNB from PancakeSwap's WBNB/USDT pair `0x16b9…0dae` read on-chain (GeckoTerminal as fallback), else Relay's own value for the BNB side; the coin at its market price.
+    - A contract wallet can't buy with Arc USDC (it may not exist at the same address on BNB Chain).
+  - **Coins on their curve, on four.meme's own contract** (`lib/fourMeme.ts`), with the coin's quote (BNB, or USDT for a USDT coin). **ARCDEX takes no fee there** (no router; a fee in a second transaction wouldn't be atomic); four.meme's own ~1% is shown.
+    - Buy: `tryBuy` quotes it; a USDT coin's USDT is approved exactly (`amountApproval`); `buyTokenAMAP(token, funds, minAmount)` with `amountMsgValue` as value. Sale: the tokens approved exactly to TokenManager2, then `sellToken(token, amount, minFunds)`. 5% slippage; the minimum comes from the quote shown, and a fresh quote that's worse refuses the trade. Each call is simulated from the trader before it's signed. A coin the helper names another manager for (four.meme's V1) isn't traded.
+  - **Gas:** "+$0.50 BNB" (Arc USDC → BNB at the same address through Relay, no fee) when a trade signed on BNB Chain needs gas; $5–$25 options to fund a BNB buy from Arc USDC.
+  - No passcode is asked: everything lands at the trading wallet's own address (bridging to itself), as the rule allows.
+- **Ratings and stages:** `bscSafety` (wash trading Danger; vouched for by four.meme with a low market risk Safe; else the market data), `bscStage` (four.meme's word; before it answers, its curve venue means Bonding). The $15K / not-rugged rule and the listing standard apply.
+- **Pages:** `/bnb` (also `/bsc`; `pages/BscMarkets.tsx`), `/bnb/token/<address>?pool=` (`pages/BscTokenPage.tsx`: the curve bar, trades every 4s, chart, buy and sell side by side, pools), Portfolio's "On BNB Chain" (`components/BscHoldings.tsx`: coins bought from this browser and the market list, one multicall, with Sell, and the BNB). Reached from the chain switch (Arc · Robinhood · Solana · BNB), More, the drawer and the phone's Markets tabs. The "Switch to Arc" bar is hidden there.
+- **Engine:** `engine/Dockerfile` copies `api/_bscCore.ts` and `api/bscmarket.ts`, and `railway.toml` watches them. Add both to the service's own Watch Paths on Railway, or an edit to them alone won't redeploy the engine.
+- **Tests:**
+  - `bun scripts/test-bsc.ts` (offline): rows and four.meme's vouching, progress, the engine's rows, stages and ratings. Also real Relay quotes for every route (`fixtures/relay-bsc.json`, recorded by `bun scripts/capture-relay-bsc.ts`, quotes only) passing and 21 tampered ones refused, four.meme's calls byte for byte, and routes.
+  - `bun scripts/sim-four.ts` (mainnet, nothing sent): a 0.01 BNB buy of a live curve coin from a throwaway address with the exact call; the same-block sale refused; a real holder's sale of half its tokens after an exact approval; each refused with a minimum of twice the quote.
+- **Checked in the browser (local dev, the browser's own list build):** the markets with real curve progress (78–90% near bond); 龙虾 (graduated) quoted $5 of Arc USDC → 113.4 (0.4% impact, 4.4% all in) and 0.01 BNB → 184.7 (under 0.1%, 2.0%); a curve coin quoted 0.01 BNB → 996.4K with four.meme's fee and 0% ARCDEX; 375px with no sideways scroll.
+- **Every new string is in all six dictionaries** (63 with the Solana ones).
+- **Not done yet:** a real funded trade (the owner's first), live trades from BNB Chain's RPC (the page polls GeckoTerminal), four.meme coins in the top-bar search, holders.
 
 ## ARCSENSE: spot and futures first (2026-10-03)
 

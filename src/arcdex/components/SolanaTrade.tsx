@@ -1,9 +1,11 @@
 // Buy or sell a Solana coin from ARCDEX (lib/relay.ts, 2026-10-04).
 //
-// Buy: pay USDC on Arc (signed on Arc: the trading wallet trades at once); the coin lands in the Solana wallet in about
-// a second, with Solana's fees paid by Relay. Sell: signed on Solana by the wallet holding the coin (the trading wallet's
-// own Solana key, or Phantom/Solflare/Backpack), a fraction of a cent of SOL in fees (added in one tap from Arc's USDC);
-// the USDC lands on Arc. ARCDEX's fee (the swap router's, 2%) is Relay's app fee, in USDC.
+// Pay with (or, selling, be paid in):
+//   • USDC on Arc: signed on Arc (the trading wallet trades at once); the coin lands in the Solana wallet in about a
+//     second, with Solana's fees paid by Relay. A sale is signed on Solana and its USDC lands on Arc.
+//   • SOL, or USDC on Solana (2026-10-05, owner: "users with Solana wallets can't buy"): a swap on Solana alone, signed
+//     by the Solana wallet (Phantom/Solflare/Backpack, or the trading wallet's own Solana key). No Arc wallet needed.
+// ARCDEX's fee (the swap router's, 2%) is Relay's app fee.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatUnits, parseUnits } from 'viem'
@@ -15,10 +17,11 @@ import { useRouterInfo, pct } from '../lib/routerInfo'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { onBalances } from '../lib/balances'
 import { ARC_EXPLORER, FEE_WALLET } from '../lib/platform'
-import { solBalance, solTokenBalance, solTx, solAccount, SELL_GAS_SOL, type SolHolding } from '../lib/solana'
+import { solBalance, solTokenBalance, solTx, solAccount, SELL_GAS_SOL, SOL_USDC, type SolHolding } from '../lib/solana'
 import { connectSolanaWallet, disconnectSolanaWallet, pickSolSigner, useSolanaWallets, type SolanaWallets, type SolSigner } from '../lib/solanaWallet'
-import { getRelayQuote, QUOTE_LIMITS, quoteVerdict, relayValue, type RelayQuote, type RelayRequest } from '../lib/relayQuote'
-import { relayErrorText, runRelayBuy, runRelaySell, type RelayProgress } from '../lib/relay'
+import { getRelayQuote, QUOTE_LIMITS, quoteVerdict, relayValue, relayValueUsd, SOL_NATIVE, type RelayQuote, type RelayRequest } from '../lib/relayQuote'
+import { relayErrorText, runRelayEvm, runRelaySolana, type RelayProgress } from '../lib/relay'
+import { solUsd } from '../api/solanaMarket'
 import { t as T } from '../lib/i18n'
 import { ed25519 } from '@noble/curves/ed25519'
 import { base58 } from '../../../api/_solCore'
@@ -53,6 +56,13 @@ const QUOTE_ONLY_SOL = base58(ed25519.getPublicKey(new Uint8Array(32).fill(7)))
 
 type Step = 'idle' | 'working' | 'done' | 'error'
 
+/** What a trade pays with (a buy) or is paid in (a sale): USDC on Arc, SOL, or USDC on Solana. */
+type Route = 'arc' | 'sol' | 'usdc'
+const ROUTE_LABEL: Record<Route, string> = { arc: 'USDC on Arc', sol: 'SOL', usdc: 'USDC (Solana)' }
+const SOL_PRESETS = [0.05, 0.1, 0.25, 0.5]
+/** SOL kept back when paying with SOL: a trade's fees and a token account. */
+const SOL_RESERVE = 0.01
+
 export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, initialMode, compact, buyBlocked, onTraded }: Props) {
   const trader = useTrader()
   const me = trader.address
@@ -62,11 +72,10 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
   const [mode, setMode] = useState<'buy' | 'sell'>(side ?? initialMode ?? 'buy')
   const signer = solSignerOf(sol, trader.kind)
   const solAddr = signer === 'trading' ? sol.trading : signer === 'external' ? sol.external?.address ?? null : null
-  // The trading wallet's passcode rule (lib/funding.ts): a buy or SOL top-up it pays for, delivered to a Solana wallet app
-  // rather than its own Solana address, is money leaving it, so it asks for the passcode (someone with the unlocked
-  // browser could otherwise connect their own wallet app and buy into it).
-  const elsewhere = trader.kind === 'trading-wallet' && signer === 'external'
-  const guard = useWithdrawGuard(trader, elsewhere ? solAddr ?? '' : '')
+  // A Solana wallet app trades with its own SOL by default (2026-10-05: its users had no way to buy without an Arc
+  // wallet); the trading wallet with USDC on Arc.
+  const [picked, setPicked] = useState<Route | null>(null)
+  const route: Route = picked ?? (signer === 'external' || !me ? 'sol' : 'arc')
   const [amount, setAmount] = useState('')
   const [quote, setQuote] = useState<RelayQuote | null>(null)
   const [quoting, setQuoting] = useState(false)
@@ -79,12 +88,28 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
   const [topUp, setTopUp] = useState(true)
   const { cash, refresh: refreshCash } = useCash(me)
   const [holding, setHolding] = useState<SolHolding | null>(null)
+  const [usdcSol, setUsdcSol] = useState<SolHolding | null>(null)
   const [solBal, setSolBal] = useState<number | null>(null)
+  const [solPrice, setSolPrice] = useState(0)
   const busy = step === 'working'
 
+  // SOL's dollar price, asked again every 30s until GeckoTerminal answers.
+  useEffect(() => {
+    if (solPrice > 0) return
+    void solUsd().then(setSolPrice)
+    const id = setInterval(() => { void solUsd().then(setSolPrice) }, 30_000)
+    return () => clearInterval(id)
+  }, [solPrice])
+
+  // The passcode rule (lib/funding.ts): a buy the trading wallet pays for on Arc, delivered to a Solana wallet app rather
+  // than its own Solana address, is money leaving it.
+  const elsewhere = route === 'arc' && trader.kind === 'trading-wallet' && signer === 'external'
+  const guard = useWithdrawGuard(trader, elsewhere ? solAddr ?? '' : '')
+
   const refreshSol = useCallback(() => {
-    if (!solAddr) { setHolding(null); setSolBal(null); return }
+    if (!solAddr) { setHolding(null); setSolBal(null); setUsdcSol(null); return }
     void solTokenBalance(solAddr, mint).then(setHolding).catch(() => {})
+    void solTokenBalance(solAddr, SOL_USDC).then(setUsdcSol).catch(() => {})
     void solBalance(solAddr).then(setSolBal).catch(() => {})
   }, [solAddr, mint])
   useEffect(() => {
@@ -96,29 +121,38 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
 
   const dec = holding?.decimals ?? decimals ?? 6
   const amountNum = Number(amount) || 0
+  const inDecimals = mode === 'sell' ? dec : route === 'sol' ? 9 : 6
   const amountIn = (() => {
     if (!(amountNum > 0)) return 0n
-    try { return parseUnits(amount, mode === 'buy' ? 6 : dec) } catch { return 0n }
+    try { return parseUnits(amount, inDecimals) } catch { return 0n }
   })()
   const needsGas = !!solAddr && solBal !== null && solBal < SELL_GAS_SOL
-  const willTopUp = mode === 'buy' && needsGas && topUp
+  const willTopUp = mode === 'buy' && route === 'arc' && needsGas && topUp && !!me
   const reserve = GAS_RESERVE + (willTopUp ? GAS_TOPUP : 0)
-  const maxBuy = cash !== null ? Math.max(0, cash - reserve) : null
-  const insufficient = mode === 'buy'
-    ? !!me && cash !== null && amountNum > 0 && amountNum + reserve > cash + 1e-9
-    : holding !== null && amountIn > holding.raw
+  const maxIn = mode === 'sell' ? (holding ? Number(formatUnits(holding.raw, holding.decimals)) : null)
+    : route === 'arc' ? (cash !== null ? Math.max(0, cash - reserve) : null)
+    : route === 'sol' ? (solBal !== null ? Math.max(0, solBal - SOL_RESERVE) : null)
+    : usdcSol ? usdcSol.amount : null
+  const insufficient = amountNum > 0 && (mode === 'sell'
+    ? holding !== null && amountIn > holding.raw
+    : route === 'arc' ? !!me && cash !== null && amountNum + reserve > cash + 1e-9
+    : route === 'sol' ? solBal !== null && amountNum + SOL_RESERVE > solBal + 1e-12
+    : usdcSol !== null && amountIn > usdcSol.raw)
 
-  const request = useCallback((): RelayRequest | null => (amountIn > 0n
-    // Without a wallet the quote is only shown: it's asked for the fee wallet and a placeholder Solana address, never sent.
-    ? { side: mode, mint, amount: amountIn, evm: me ?? FEE_WALLET, sol: solAddr ?? QUOTE_ONLY_SOL, feeBps }
-    : null), [amountIn, mode, mint, me, solAddr, feeBps])
+  const request = useCallback((): RelayRequest | null => {
+    if (!(amountIn > 0n)) return null
+    const base = { chain: 'solana' as const, mint, amount: amountIn, evm: me ?? FEE_WALLET, sol: solAddr ?? QUOTE_ONLY_SOL, feeBps }
+    if (route === 'arc') return { ...base, side: mode }
+    const other = route === 'sol' ? SOL_NATIVE : SOL_USDC
+    return mode === 'buy' ? { ...base, side: 'swap', inToken: other, outToken: mint } : { ...base, side: 'swap', inToken: mint, outToken: other }
+  }, [amountIn, mode, mint, me, solAddr, feeBps, route])
 
   const seq = useRef(0)
   useEffect(() => {
     if (busy) return
     setQuote(null); setQuoteErr(''); setCostOk(false)
     const r = request()
-    // A sale can only be quoted for the wallet that holds the coin.
+    // A sale needs the Solana wallet that holds the coin; a buy is quoted for a placeholder until one is connected.
     if (!r || (mode === 'sell' && !solAddr)) return
     const n = ++seq.current
     const ask = () => {
@@ -132,12 +166,20 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
     const again = setInterval(() => { if (!document.hidden) ask() }, 20_000)
     return () => { clearTimeout(first); clearInterval(again) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [amountIn, mode, mint, me, solAddr, feeBps, busy])
+  }, [amountIn, mode, mint, me, solAddr, feeBps, busy, route])
 
+  // What it delivers, and its worth at the market: the coin at its price, SOL at SOL's, USDC at $1.
   const outAmount = quote ? Number(formatUnits(quote.expectedOut, quote.outDecimals)) : 0
   const minAmount = quote ? Number(formatUnits(quote.minOut, quote.outDecimals)) : 0
-  const outUsd = mode === 'buy' ? outAmount * priceUsd : outAmount
-  const value = quote ? relayValue(quote, amountNum, priceUsd) : null
+  // Without GeckoTerminal's SOL price, Relay's own dollar value for the SOL side (the coin is still valued at its market
+  // price, so a trap route is still caught).
+  const solRef = solPrice || (quote && route === 'sol' ? (mode === 'buy' ? (amountNum > 0 ? quote.inUsd / amountNum : 0) : (outAmount > 0 ? quote.outUsdRelay / outAmount : 0)) : 0)
+  const unitUsd = (r: Route) => (r === 'sol' ? solRef : 1)
+  const outUsd = mode === 'buy' ? outAmount * priceUsd : outAmount * unitUsd(route)
+  const inputUsd = mode === 'buy' ? amountNum * unitUsd(route) : amountNum * priceUsd
+  const value = !quote ? null
+    : route === 'arc' ? relayValue(quote, amountNum, priceUsd)
+    : priceUsd > 0 && (route !== 'sol' || solRef > 0) ? relayValueUsd(quote, inputUsd, outUsd) : null
   const verdict = quote ? quoteVerdict(value) : null
   const refused = verdict === 'refuse' || verdict === 'off-market'
   const impactPct = value ? Math.max(0, value.impact * 100) : null
@@ -145,16 +187,17 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
   const needsCostTick = verdict === 'confirm' || verdict === 'unpriced'
 
   const noBuy = mode === 'buy' && !!buyBlocked
-  const sellNoGas = mode === 'sell' && solBal !== null && solBal < 0.0003
-  const missing = !me ? 'evm' : !solAddr ? 'sol' : null
-  const passcodeMissing = guard.needsPasscode && mode === 'buy' && !guard.passcode
-  const blocked = busy || !!missing || !quote || quoting || insufficient || refused || noBuy || (needsCostTick && !costOk) || sellNoGas || passcodeMissing
+  // Solana's fees are SOL whichever way it pays: a sale, a swap with USDC, all need some.
+  const noSolFees = (mode === 'sell' || route === 'usdc') && solBal !== null && solBal < 0.0003
+  const missing: 'evm' | 'sol' | null = route === 'arc' ? (!me ? 'evm' : !solAddr ? 'sol' : null) : !solAddr ? 'sol' : null
+  const passcodeMissing = guard.needsPasscode && route === 'arc' && mode === 'buy' && !guard.passcode
+  const blocked = busy || !!missing || !quote || quoting || insufficient || refused || noBuy || (needsCostTick && !costOk) || noSolFees || passcodeMissing
 
   const kind = trader.kind ?? 'wallet'
 
   async function topUpGas(): Promise<{ ok: boolean; text: string }> {
     if (!me || !solAddr) return { ok: false, text: '' }
-    const r = await runRelayBuy(kind, { side: 'gas', mint: '', amount: GAS_TOPUP_UNITS, evm: me, sol: solAddr, feeBps: 0 }, null, () => {})
+    const r = await runRelayEvm(kind, { side: 'gas', chain: 'solana', mint: '', amount: GAS_TOPUP_UNITS, evm: me, sol: solAddr, feeBps: 0 }, null, () => {})
     setLinks(l => [...l, { label: T('SOL transaction'), href: arcTx(r.tx) }])
     refreshSol(); refreshCash()
     return r.status === 'filled' ? { ok: true, text: T('SOL added: you can sell on Solana now.') }
@@ -170,27 +213,29 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
 
   async function submit() {
     const r = request()
-    if (!r || !me || !solAddr || !signer || !quote) return
+    if (!r || !solAddr || !signer || !quote || (route === 'arc' && !me)) return
     setStep('working'); setLinks([]); setProgress(null)
     const say = (p: RelayProgress) => {
       setProgress(p)
       setMsg(p.step === 'quote' ? T('Checking the trade…')
         : p.step === 'approve' ? T('Approving exactly {n} USDC…', { n: amount })
-        : p.step === 'sign' ? (signer === 'external' ? T('Confirm the sale in {wallet}…', { wallet: sol.external?.name ?? 'your wallet' }) : T('Signing…'))
+        : p.step === 'sign' ? (signer === 'external' ? T('Confirm the trade in {wallet}…', { wallet: sol.external?.name ?? 'your wallet' }) : T('Signing…'))
         : p.step === 'send' ? T('Sending…')
-        : p.step === 'deliver' ? (mode === 'buy' ? T('On its way to your Solana wallet…') : T('On its way to Arc…'))
+        : p.step === 'deliver' ? (mode === 'buy' ? T('On its way to your Solana wallet…') : route === 'arc' ? T('On its way to Arc…') : T('Settling…'))
         : T('Done'))
     }
     try {
-      if (mode === 'buy') await guard.confirm()
-      const res = mode === 'buy' ? await runRelayBuy(kind, r, quote, say) : await runRelaySell(signer, r, quote, say)
+      if (route === 'arc' && mode === 'buy') await guard.confirm()
+      const paidOnArc = route === 'arc' && mode === 'buy'
+      const res = paidOnArc ? await runRelayEvm(kind, r, quote, say) : await runRelaySolana(signer, r, quote, say)
       const got = Number(formatUnits(res.quote.expectedOut, res.quote.outDecimals))
-      const out = mode === 'buy' ? `${fmtTok(got)} ${symbol}` : fmtUsd(got)
-      const l = [{ label: mode === 'buy' ? T('Arc transaction') : T('Solana transaction'), href: mode === 'buy' ? arcTx(res.tx) : solTx(res.tx) }]
-      if (res.outTx) l.push({ label: T('Delivered'), href: mode === 'buy' ? solTx(res.outTx) : arcTx(res.outTx) })
+      const out = mode === 'buy' ? `${fmtTok(got)} ${symbol}` : route === 'sol' ? `${fmtTok(got)} SOL` : `${fmtUsd(got)} USDC`
+      const l = [{ label: paidOnArc ? T('Arc transaction') : T('Solana transaction'), href: paidOnArc ? arcTx(res.tx) : solTx(res.tx) }]
+      if (res.outTx && res.outTx !== res.tx) l.push({ label: T('Delivered'), href: mode === 'sell' && route === 'arc' ? arcTx(res.outTx) : solTx(res.outTx) })
       setLinks(l)
       if (res.status === 'filled') {
-        const done = mode === 'buy' ? T('Bought ≈{out}: it’s in your Solana wallet.', { out }) : T('Sold: ≈{out} USDC is back on Arc.', { out })
+        const done = mode === 'buy' ? T('Bought ≈{out}: it’s in your Solana wallet.', { out })
+          : route === 'arc' ? T('Sold: ≈{out} USDC is back on Arc.', { out }) : T('Sold for ≈{out}: it’s in your Solana wallet.', { out })
         setAmount('')
         onTraded?.()
         if (willTopUp) {
@@ -203,7 +248,7 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
         setStep('done'); setMsg(T('Still on its way: it lands by itself in a few minutes.'))
       } else {
         setStep('error')
-        setMsg(mode === 'buy' ? T('Relay couldn’t fill this buy: your USDC was refunded on Arc.') : T('Relay couldn’t fill this sale: it was refunded on Solana.'))
+        setMsg(paidOnArc ? T('Relay couldn’t fill this buy: your USDC was refunded on Arc.') : T('Relay couldn’t fill this trade: it was refunded on Solana.'))
       }
       refreshSol(); refreshCash()
     } catch (e) {
@@ -218,6 +263,11 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
     : busy ? (progress?.step === 'approve' ? T('Approving…') : progress?.step === 'deliver' ? T('Delivering…') : mode === 'buy' ? T('Buying…') : T('Selling…'))
     : quoting && !quote ? T('Getting a quote…')
     : T(mode === 'buy' ? 'Buy {symbol}' : 'Sell {symbol}', { symbol })
+  const balanceLabel = mode === 'sell' ? (holding !== null ? `${T('Holding')}: ${fmtTok(holding.amount)}` : null)
+    : route === 'arc' ? (me && cash !== null ? `${T('Cash')}: ${fmtUsd(cash)}` : null)
+    : route === 'sol' ? (solBal !== null ? `SOL: ${fmtTok(solBal)}` : null)
+    : usdcSol !== null ? `USDC: ${fmtUsd(usdcSol.amount)}` : null
+  const outText = (n: number) => (mode === 'buy' ? `${fmtTok(n)} ${symbol}` : route === 'sol' ? `${fmtTok(n)} SOL` : `${fmtUsd(n)} USDC`)
 
   return (
     <div className={`swap-box${side ? ` swap-side-${side}` : ''}`}>
@@ -231,32 +281,38 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
         </div>
       )}
 
+      <div className="sol-routes" role="group" aria-label={mode === 'buy' ? T('Pay with') : T('Receive')}>
+        <span>{mode === 'buy' ? T('Pay with') : T('Receive')}</span>
+        {(['arc', 'sol', 'usdc'] as const).map(r => (
+          <button key={r} className={route === r ? 'on' : ''} disabled={busy} onClick={() => { setPicked(r); setAmount('') }}>{T(ROUTE_LABEL[r])}</button>
+        ))}
+      </div>
+
       <div>
         <div className="rh-field-head">
-          <span>{mode === 'buy' ? T('You pay (USDC on Arc)') : T('You sell ({symbol})', { symbol })}</span>
-          {mode === 'buy'
-            ? me && cash !== null && <button className="link-btn" onClick={() => maxBuy !== null && setAmount(maxBuy > 0 ? maxBuy.toFixed(2) : '0')}>{T('Cash')}: {fmtUsd(cash)}</button>
-            : holding !== null && <button className="link-btn" onClick={() => setAmount(formatUnits(holding.raw, holding.decimals))}>{T('Holding')}: {fmtTok(holding.amount)}</button>}
+          <span>{mode === 'buy' ? T('You pay ({c})', { c: T(ROUTE_LABEL[route]) }) : T('You sell ({symbol})', { symbol })}</span>
+          {balanceLabel && <button className="link-btn" onClick={() => maxIn !== null && setAmount(mode === 'sell' && holding ? formatUnits(holding.raw, holding.decimals) : maxIn > 0 ? String(route === 'sol' ? Math.floor(maxIn * 1e6) / 1e6 : Math.floor(maxIn * 100) / 100) : '0')}>{balanceLabel}</button>}
         </div>
-        <input type="number" min="0" inputMode="decimal" placeholder={mode === 'buy' ? '$0' : '0'} value={amount} disabled={busy}
+        <input type="number" min="0" inputMode="decimal" placeholder={mode === 'buy' && route !== 'sol' ? '$0' : '0'} value={amount} disabled={busy}
           onChange={e => { setAmount(e.target.value); if (step !== 'working') { setStep('idle'); setMsg('') } }} className="swap-input" />
         <div className="rh-chips">
           {mode === 'buy'
-            ? BUY_PRESETS.map(v => <button key={v} disabled={busy} onClick={() => setAmount(String(v))}>${v}</button>)
+            ? (route === 'sol' ? SOL_PRESETS.map(v => <button key={v} disabled={busy} onClick={() => setAmount(String(v))}>{v} SOL</button>)
+              : BUY_PRESETS.map(v => <button key={v} disabled={busy} onClick={() => setAmount(String(v))}>${v}</button>))
             : SELL_PRESETS.map(p => <button key={p} disabled={busy || !holding} onClick={() => holding && setAmount(formatUnits((holding.raw * BigInt(p)) / 100n, holding.decimals))}>{p === 100 ? T('Max') : `${p}%`}</button>)}
         </div>
       </div>
 
       <div className="swap-info">
-        <Row label={T('You receive (est.)')} value={quote ? (mode === 'buy' ? `${fmtTok(outAmount)} ${symbol}` : `${fmtUsd(outAmount)} USDC`) : quoting ? '…' : '—'}
-          sub={quote && mode === 'buy' && priceUsd > 0 && verdict !== 'off-market' ? `≈ ${fmtUsd(outUsd)}` : undefined} />
-        <Row label={T('Minimum received')} value={quote ? (mode === 'buy' ? `${fmtTok(minAmount)} ${symbol}` : `${fmtUsd(minAmount)} USDC`) : '—'} />
-        <Row label={T('Platform fee')} value={T('{pct} (in USDC)', { pct: pct(feeBps) })} />
-        <Row label={T('Bridge & delivery (Relay)')} value={quote ? fmtUsd(quote.relayFeeUsd) : '—'} />
+        <Row label={T('You receive (est.)')} value={quote ? outText(outAmount) : quoting ? '…' : '—'}
+          sub={quote && outUsd > 0 && verdict !== 'off-market' && !(mode === 'sell' && route !== 'sol') ? `≈ ${fmtUsd(outUsd)}` : undefined} />
+        <Row label={T('Minimum received')} value={quote ? outText(minAmount) : '—'} />
+        <Row label={T('Platform fee')} value={route === 'sol' ? T('{pct} (in SOL)', { pct: pct(feeBps) }) : T('{pct} (in USDC)', { pct: pct(feeBps) })} />
+        <Row label={route === 'arc' ? T('Bridge & delivery (Relay)') : T('Swap (Relay)')} value={quote ? fmtUsd(quote.relayFeeUsd) : '—'} />
         {value && <Row label={T('Price impact')} value={verdict === 'off-market' ? T('{x}× the market price', { x: fmtTimes(value.rate) }) : impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`}
           color={refused || impactPct! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : impactPct! >= 5 ? 'var(--amber)' : 'var(--green)'} />}
         {value && !refused && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} color={cost! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : cost! >= 6 ? 'var(--amber)' : undefined} />}
-        <Row label={T('Arrives')} value={quote ? (mode === 'buy' ? T('on Solana in ~{s}s', { s: Math.max(2, quote.fillSeconds) }) : T('on Arc in ~{s}s', { s: Math.max(2, quote.fillSeconds) })) : '—'} />
+        <Row label={T('Arrives')} value={!quote ? '—' : route !== 'arc' ? T('in your Solana wallet in seconds') : mode === 'buy' ? T('on Solana in ~{s}s', { s: Math.max(2, quote.fillSeconds) }) : T('on Arc in ~{s}s', { s: Math.max(2, quote.fillSeconds) })} />
       </div>
 
       {quoteErr && !busy && <div className="rh-msg error">{quoteErr}</div>}
@@ -274,20 +330,21 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
         </label>
       )}
 
-      {mode === 'buy' && needsGas && (
+      {mode === 'buy' && route === 'arc' && needsGas && (
         <label className="rh-tick">
           <input type="checkbox" checked={topUp} disabled={busy} onChange={e => setTopUp(e.target.checked)} />
           {T('Also add ${n} of SOL for fees on Solana, so you can sell later.', { n: GAS_TOPUP.toFixed(2) })}
         </label>
       )}
-      {mode === 'sell' && needsGas && me && (
+      {(mode === 'sell' || route === 'usdc') && needsGas && (
         <div className="rh-gas">
-          <span>{T('Selling is signed on Solana, where fees are paid in SOL (a fraction of a cent a sale).')}</span>
-          <button className="mk-trade mk-trade-solid mk-trade-sm" disabled={busy} onClick={() => void addGas()}>{T('Add ${n} of SOL', { n: GAS_TOPUP.toFixed(2) })}</button>
+          <span>{T('Trades signed on Solana pay their fees in SOL (a fraction of a cent each).')}</span>
+          {me ? <button className="mk-trade mk-trade-solid mk-trade-sm" disabled={busy} onClick={() => void addGas()}>{T('Add ${n} of SOL', { n: GAS_TOPUP.toFixed(2) })}</button>
+            : <span>{T('Add a little SOL to this wallet first.')}</span>}
         </div>
       )}
       {noBuy && <div className="rh-msg error">{buyBlocked}</div>}
-      {guard.needsPasscode && (mode === 'buy' || needsGas) && <PasscodeField guard={guard} />}
+      {guard.needsPasscode && route === 'arc' && (mode === 'buy' || needsGas) && <PasscodeField guard={guard} />}
 
       {msg && (
         <div className={`rh-msg ${step === 'error' ? 'error' : step === 'done' ? 'done' : 'busy'}`}>
@@ -299,14 +356,18 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
       {missing === 'evm' ? (
         <>
           <button className="rh-btn" onClick={openConnectModal}>{T('Connect Wallet')}</button>
-          <Note>{T('Or unlock your')}{' '}<button className="link-btn" onClick={openTradingWallet}>{T('trading wallet')}</button>{' '}{T('for one-tap trades with no pop-ups. It has a Solana address too.')}</Note>
+          <Note>{T('Paying with USDC on Arc needs an Arc wallet. Or pay with SOL from your Solana wallet.')}{' '}<button className="link-btn" onClick={() => setPicked('sol')}>{T('Pay with SOL')}</button></Note>
         </>
       ) : missing === 'sol' ? (
         <>
-          <button className="rh-btn" onClick={openTradingWallet}>{T('Unlock your trading wallet')}</button>
-          {sol.available.length > 0 && (
-            <Note>{T('Or connect')}{' '}{sol.available.map((w, i) => <span key={w}>{i > 0 && ' · '}<button className="link-btn" onClick={() => void connectSolanaWallet(w).catch(e => { setStep('error'); setMsg(relayErrorText(e)) })}>{w}</button></span>)}</Note>
-          )}
+          {sol.available.length > 0
+            ? <button className="rh-btn" onClick={() => void connectSolanaWallet(sol.available[0]).then(() => pickSolSigner('external')).catch(e => { setStep('error'); setMsg(relayErrorText(e)) })}>{T('Connect {w}', { w: sol.available[0] })}</button>
+            : <button className="rh-btn" onClick={openTradingWallet}>{T('Unlock your trading wallet')}</button>}
+          <Note>
+            {sol.available.length > 0 ? <>{T('Or unlock your')}{' '}<button className="link-btn" onClick={openTradingWallet}>{T('trading wallet')}</button>{' '}{T('for one-tap trades with no pop-ups. It has a Solana address too.')}</>
+              : T('No Solana wallet app found in this browser: install Phantom, or use your trading wallet, which has a Solana address too.')}
+            {sol.available.length > 1 && <> {sol.available.slice(1).map(w => <span key={w}> · <button className="link-btn" onClick={() => void connectSolanaWallet(w).then(() => pickSolSigner('external')).catch(() => {})}>{w}</button></span>)}</>}
+          </Note>
         </>
       ) : (
         <button className={`rh-btn ${mode}`} onClick={() => void submit()} disabled={blocked} style={{ opacity: blocked ? 0.5 : 1 }}>{label}</button>
@@ -361,7 +422,7 @@ export function SolanaWalletBar({ solBal }: { solBal?: number | null }) {
 }
 
 /** The note under the trade forms. */
-export const SOL_NOTE = () => T('Bought with USDC on Arc and delivered to your Solana wallet by Relay; sales come back as USDC on Arc. Every trade is checked and simulated before it’s sent, and approvals are for the exact amount.')
+export const SOL_NOTE = () => T('Pay with SOL, USDC on Solana or USDC on Arc, and sell for any of them, through Relay. Every trade is checked and simulated before it’s sent, and approvals are for the exact amount.')
 
 function Row({ label, value, color, sub }: { label: string; value: string; color?: string; sub?: string }) {
   return (

@@ -62,5 +62,5 @@ ok(before - after < 10_000_000, `it costs the seller ${(before - after) / 1e9} S
 const buy: RelayRequest = { side: 'buy', mint, amount: 5_000_000n, evm: FEE_WALLET, sol: seller, feeBps: 200 }
 const b = await getJson<any>(`${RELAY_API}/quote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(quoteBody(buy)) })
 const bq = checkRelayQuote(buy, b)
-ok(bq.evmTx?.deposit, `a $5 buy passes the checks (deposit to Relay's depository, fee $${bq.appFeeUsd})`)
+ok(bq.evmTx?.call, `a $5 buy passes the checks (deposit to Relay's depository, fee $${bq.appFeeUsd})`)
 console.log('\nsale checks passed')

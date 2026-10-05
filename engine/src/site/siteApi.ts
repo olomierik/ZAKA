@@ -51,6 +51,7 @@ import launchpad from '../../../api/launchpad'
 import radar from '../../../api/radar'
 import rhmarket from '../../../api/rhmarket'
 import solmarket from '../../../api/solmarket'
+import bscmarket from '../../../api/bscmarket'
 import session from '../../../api/session'
 import social from '../../../api/social'
 import upload from '../../../api/upload'
@@ -247,7 +248,7 @@ export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number
   const holders = o.holders ?? (adminReady ? supabaseHolders : sql ? pgHolders(sql, ready) : memoryHolders())
   const handlers: Record<string, Handler> = o.handlers ?? {
     argus: (r, c) => argus(r, c), gecko: (r, c) => gecko(r, c), launchpad: (r, c) => launchpad(r, c),
-    radar: r => radar(r), dex: r => dex(r), holders: holdersHandler(holders), rhmarket: (r, c) => rhmarket(r, c), solmarket: (r, c) => solmarket(r, c),
+    radar: r => radar(r), dex: r => dex(r), holders: holdersHandler(holders), rhmarket: (r, c) => rhmarket(r, c), solmarket: (r, c) => solmarket(r, c), bscmarket: (r, c) => bscmarket(r, c),
     session: r => session(r), social: r => social(r), upload: r => upload(r), 'index-trades': () => indexTrades(),
   }
   const cache = new ResponseCache()
@@ -299,6 +300,11 @@ export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number
   if (o.warm !== false && handlers.solmarket) {
     const sol = handlers.solmarket
     setInterval(() => { Promise.resolve().then(() => sol(new Request('http://engine/api/solmarket'), ctx)).catch(e => log.debug('site api: solmarket', { error: errMsg(e) })) }, 40_000)
+  }
+  // BNB Chain's (api/bscmarket.ts, 2026-10-05): four.meme's coins, with its own contract's word on each.
+  if (o.warm !== false && handlers.bscmarket) {
+    const b = handlers.bscmarket
+    setInterval(() => { Promise.resolve().then(() => b(new Request('http://engine/api/bscmarket'), ctx)).catch(e => log.debug('site api: bscmarket', { error: errMsg(e) })) }, 40_000)
   }
 
   // Indexes that build in slices (the launchpad's, the curves'): kept going from the start, so the first visitors after a

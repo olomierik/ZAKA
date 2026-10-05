@@ -22,6 +22,7 @@ const TABS: { page: Page['name']; icon: string; label: string; to: Page; trade?:
 const MORE: { icon: string; label: string; to: Page }[] = [
   { icon: '🏹', label: N_('Robinhood Chain'), to: { name: 'robinhood' } },
   { icon: '◎', label: 'Solana', to: { name: 'solana' } },
+  { icon: '◆', label: N_('BNB Chain'), to: { name: 'bsc' } },
   { icon: '⇄', label: N_('Swap'), to: { name: 'swap' } },
   { icon: '◉', label: N_('Feed'), to: { name: 'feed' } },
   { icon: '◎', label: N_('Bridge'), to: { name: 'bridge' } },

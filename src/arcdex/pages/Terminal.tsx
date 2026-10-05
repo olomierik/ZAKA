@@ -776,6 +776,7 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
           {/* Phones have no header line: Robinhood Chain's markets are a tab away. */}
           {mobile && <button className="view-tab rh-tab" onClick={() => navigate({ name: 'robinhood' })}>🏹 {T('Robinhood Chain')}</button>}
           {mobile && <button className="view-tab rh-tab" onClick={() => navigate({ name: 'solana' })}>◎ Solana</button>}
+          {mobile && <button className="view-tab rh-tab" onClick={() => navigate({ name: 'bsc' })}>◆ BNB</button>}
         </div>
         <span className="live-badge" title={T("Every buy and sell on Arc, as its block lands")}>{T("● live")}{perMin > 0 && <> · {T('{n} trades/min', { n: perMin })}</>}</span>
         <div className="mk-tools">

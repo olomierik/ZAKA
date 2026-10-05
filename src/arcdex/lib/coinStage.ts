@@ -10,6 +10,7 @@
 import type { ArcToken } from '../api/radardex'
 import type { RhCoin } from '../api/robinhoodMarket'
 import { SOL_CURVE_DEXES, type SolCoin } from '../../../api/_solCore'
+import type { BscCoin } from '../../../api/_bscCore'
 import { N_ } from './i18n'
 
 export type Stage = 'new' | 'bonding' | 'near' | 'graduated' | 'established'
@@ -93,3 +94,19 @@ export function solStageInput(c: SolCoin): StageInput {
   }
 }
 export const solStage = (c: SolCoin): Stage => stageOf(solStageInput(c))
+
+/** A BNB Chain coin (2026-10-05): four.meme's contract says whether it's still on its curve and how far along (tokens
+ * sold of the 800M for sale); until it has answered, a coin on four.meme's venue is on its curve. */
+export function bscStageInput(c: BscCoin): StageInput {
+  const read = c.four !== undefined
+  const onCurve = read ? !c.four!.graduated : c.dex === 'four-meme'
+  return {
+    ageMs: c.createdAt > 0 ? Math.max(0, Date.now() - c.createdAt) : 0,
+    onCurve,
+    progress: onCurve && read ? c.four!.progress : null,
+    liquidityUsd: c.liquidity,
+    holders: null,
+    traders24h: c.traders24h,
+  }
+}
+export const bscStage = (c: BscCoin): Stage => stageOf(bscStageInput(c))

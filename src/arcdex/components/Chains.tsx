@@ -20,11 +20,13 @@ const LOOK: Record<string, { bg: string; fg?: string; mark: string }> = {
   Sonic: { bg: '#0a1a33', fg: '#fe9a4d', mark: 'S' },
   Solana: { bg: 'linear-gradient(135deg, #9945ff, #14f195)', mark: 'S' },
   Robinhood: { bg: '#ccff00', fg: '#0b0e11', mark: 'R' },
+  BNB: { bg: '#f0b90b', fg: '#0b0e11', mark: 'B' },
 }
 
 export function chainLabel(chain: string): string {
   if (chain === 'Arc') return 'Arc'
   if (chain === 'Robinhood') return 'Robinhood Chain'
+  if (chain === 'BNB') return 'BNB Chain'
   return BRIDGE_CHAINS.find(c => c.chain === chain)?.label ?? chain
 }
 
