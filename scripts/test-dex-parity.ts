@@ -9,7 +9,8 @@
 import { ESTABLISHED, isEstablishedCoin, isLaunchpadCoin } from '../api/_launchpads'
 import { dedupe, type ArgusPool } from '../api/_argusCore'
 import { arcRows, rankTrending, totalsOf, type TrendRow } from '../api/trending'
-import { coinHead, coinOf, rewriteHead, usd } from '../netlify/edge-functions/coin-meta'
+import { readFileSync } from 'node:fs'
+import { coinHead, coinOf, isCrawler, rewriteHead, usd } from '../netlify/edge-functions/coin-meta'
 import { pagePath } from '../netlify/edge-functions/sitemap'
 import { logoSrc } from '../src/arcdex/lib/logo'
 
@@ -81,6 +82,23 @@ ok((out.match(/<title>/g) ?? []).length === 1 && (out.match(/og:title/g) ?? []).
 ok(out.includes('Ev&lt;il&gt; &quot;Coin&quot; &amp; co') && !out.includes('<il>'), 'names are escaped')
 ok(out.includes('<link rel="canonical" href="https://arcsense.site/token/0xece5" />'), 'a canonical link')
 ok(usd(0.000005251) === '$0.000005251' && usd(85_385.1) === '$85.4K' && usd(null) === '—', 'prices and caps in words')
+const UA = {
+  google: 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+  x: 'Twitterbot/1.0', telegram: 'TelegramBot (like TwitterBot)', discord: 'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)',
+  fb: 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)', whatsapp: 'WhatsApp/2.23.20.0',
+  chrome: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+  iphone: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+  phantom: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Mobile Safari/537.36 Phantom',
+}
+ok([UA.google, UA.x, UA.telegram, UA.discord, UA.fb, UA.whatsapp].every(isCrawler), 'search engines and link previews get the coin\'s head')
+ok(![UA.chrome, UA.iphone, UA.phantom, null].some(isCrawler), 'people\'s browsers get the page straight away')
+
+console.log('page code loads with the app')
+const mainSrc = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8')
+ok(!/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(mainSrc), 'no stray control characters (a backspace once stood in for \\b and the route never matched)')
+const coinRoute = /\[(\/\^.*?\/), \(\) => Promise\.all\(\[import\('\.\/arcdex\/pages\/CoinPage'\)/.exec(mainSrc)?.[1]
+const coinRe = coinRoute ? new Function(`return ${coinRoute}`)() as RegExp : null
+ok(!!coinRe && coinRe.test('/token/0xece5ca8bf9220718e5727754026757512212cb3c') && coinRe.test('/spot') && !coinRe.test('/tokens') && !coinRe.test('/spotlight'), 'a coin page\'s path matches its prefetch')
 
 console.log('sitemap and logos')
 ok(pagePath({ chain: 'bsc', address: '0xabc', pool: '0xpool' }) === '/bnb/token/0xabc?pool=0xpool' && pagePath({ chain: 'arc', address: '0xabc', pool: null }) === '/token/0xabc', 'coin page paths')

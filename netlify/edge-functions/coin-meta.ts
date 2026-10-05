@@ -86,7 +86,14 @@ export function coinOf(pathname: string): { chain: Coin['chain']; address: strin
 
 interface Ctx { next: () => Promise<Response> }
 
-export default async (req: Request, context: Ctx): Promise<Response> => {
+/** Search engines and link previews read the page's head; people get the page straight away (asking the engine cost
+ * them ~0.3s, and the app sets the title itself). */
+export const CRAWLER = /bot|crawler|spider|slurp|facebookexternalhit|facebookcatalog|meta-externalagent|embedly|quora link preview|outbrain|pinterest|vkshare|whatsapp|telegram|discord|slack|skypeuripreview|linkedin|iframely|google-inspectiontool|googleother|mastodon|bluesky|viber|kakaotalk|snippet/i
+
+export const isCrawler = (ua: string | null): boolean => !!ua && CRAWLER.test(ua)
+
+export default async (req: Request, context: Ctx): Promise<Response | undefined> => {
+  if (!isCrawler(req.headers.get('user-agent'))) return undefined
   const res = await context.next()
   if (!(res.headers.get('content-type') ?? '').includes('text/html')) return res
   const u = new URL(req.url)

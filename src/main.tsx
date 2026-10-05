@@ -15,7 +15,7 @@ if (path === '/' || path === '/index.html') {
   // another (main → app → App → CoinPage → ArgusTokenPage → chart), ~9s on a fast connection. The app's lazy routes
   // then find these already loaded.
   const route: [RegExp, () => Promise<unknown>][] = [
-    [/^\/(token|spot)/, () => Promise.all([import('./arcdex/pages/CoinPage'), import('./arcdex/pages/ArgusTokenPage'), import('./arcdex/components/PriceChart')])],
+    [/^\/(token|spot)\b/, () => Promise.all([import('./arcdex/pages/CoinPage'), import('./arcdex/pages/ArgusTokenPage'), import('./arcdex/components/PriceChart')])],
     [/^\/solana\/token\//, () => import('./arcdex/pages/SolanaTokenPage')],
     [/^\/(bnb|bsc)\/token\//, () => import('./arcdex/pages/BscTokenPage')],
     [/^\/robinhood\/token\//, () => import('./arcdex/pages/RobinhoodTokenPage')],

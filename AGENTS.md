@@ -1760,7 +1760,9 @@ Owner: "we have no users; compare us with DexScreener on platform quality and ho
   - **Speed.**
     - **Logos** go through wsrv.nl (`lib/logo.ts` `logoSrc` / `useLogo`), a free Cloudflare image cache, resized to twice their drawn size. IPFS goes through dweb.link first; the original link is the fallback.
     - **Fonts** no longer block scripts (`index.html`: preload + `media="print"` swap). They had held every script back ~1.7s.
-    - **Page code** loads alongside the app shell (`src/main.tsx` route prefetch) instead of six files in a row.
+    - **Page code** loads alongside the app shell (`src/main.tsx` route prefetch) instead of six files in a row. In the local production build, a coin page's six files now start within 40ms of each other; the chart page used to start after 1.1s locally and ~7.8s live.
+      - The prefetch did nothing at first. The script that added it wrote `\b` as a backspace byte, so `/^\/(token|spot)␈/` never matched. The Bash tool turns `\\` into `\` inside heredocs, so write such code with the editor. `test-dex-parity.ts` now fails on control characters in `main.tsx` and checks the route.
+      - `CoinPage` also starts loading `ArgusTokenPage` while it asks whether the coin is a curve coin, for in-app navigation.
     - **Duplicate requests:** same-path GETs through `siteFetch` share one request (in flight and for 1.5s).
   - **Home page (`landing/Landing.tsx`), market first.**
     - Hero: "Find any coin, see whether it's safe, and buy it in one tap", with live counts (coins live, 24h volume, trades).
@@ -1772,9 +1774,11 @@ Owner: "we have no users; compare us with DexScreener on platform quality and ho
     - `netlify/edge-functions/coin-meta.ts` writes each coin page's title ("ARGUS $13.02M | Argus · ARGUS / USDC on Arc | ARCDEX"), description, logo, canonical link and Twitter card into the page before it leaves Netlify.
     - Paths: `/token`, `/solana/token`, `/bnb/token`, `/robinhood/token` and `/spot`.
     - The data comes from the engine's `/api/coinmeta` (`api/coinmeta.ts`, 1.5s at most). Without an answer, the page goes out unchanged.
+    - **Crawlers only** (`isCrawler`: search engines, X, Telegram, Discord, WhatsApp, Facebook and other link previews). People's browsers skip it: asking the engine added ~0.3s to their first byte, and the app sets the title itself.
     - Also `/sitemap.xml` (`sitemap.ts`, every listed coin, cached an hour) and `public/robots.txt`.
   - **Markets** shows its 24h totals beside the live badge (desktop).
 - **Engine:** `engine/Dockerfile` copies `api/trending.ts` and `api/coinmeta.ts`, and `railway.toml` watches them. **Add both to the service's own Watch Paths on Railway.**
+  - Railway's service doesn't watch `api/_argusCore.ts` or `api/trending.ts` either: 47862dd, which changed only those, never deployed (the engine stayed on 019452d). The next commit touched `engine/README.md` to ship it. Copy `railway.toml`'s `watchPatterns` into the service's Watch Paths.
 - **Not changed, for the owner (switching costs a screener user feels):**
   - **The 2% fee** is about twice what trading terminals charge (around 1%); Uniswap direct is only the pool's fee. The roadmap's Phase 1 already plans `setFeeBps(100)` on the swap router (owner key).
   - **The name:** the domain is arcsense.site and the brand ARCDEX. arcdex.online now points at Netlify, so making it the primary domain (Netlify → Domain management) would match.

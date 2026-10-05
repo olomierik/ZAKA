@@ -13,6 +13,8 @@ export default function CoinPage({ address, pool, navigate }: { address: string;
   const [curve, setCurve] = useState<boolean | null>(() => isLaunchpadCoinNow(address))
   useEffect(() => {
     if (curve !== null) return
+    // Most coins aren't curve coins: their page's code loads while the launchpad list is asked.
+    void import('./ArgusTokenPage').catch(() => {})
     let alive = true
     isLaunchpadCoin(address).then(c => { if (alive) setCurve(c) }).catch(() => { if (alive) setCurve(false) })
     return () => { alive = false }
