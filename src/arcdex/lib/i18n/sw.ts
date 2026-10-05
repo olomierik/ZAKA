@@ -2569,7 +2569,6 @@ const d: Record<string, string> = {
   "Everything to trade, in one place": "Kila kitu cha biashara, mahali pamoja",
   "Connecting…": "Inaunganisha…",
   "Arc CA": "CA ya Arc",
-  "Robinhood CA": "CA ya Robinhood",
   "How far along its launchpad’s curve, as the launchpad counts it": "Imefika wapi kwenye curve ya launchpad yake, kama launchpad inavyohesabu",
   "Selling is signed on Solana and costs a fraction of a cent in SOL: one tap adds some.": "Kuuza kunasainiwa kwenye Solana na hugharimu sehemu ya senti kwa SOL: mguso mmoja unaongeza.",
   "All launchpads": "Launchpad zote",

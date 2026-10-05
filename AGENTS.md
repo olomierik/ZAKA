@@ -1545,7 +1545,9 @@ Owner: "stock coins don't show up; the platform shows our native coin as risky, 
   - **Headline and hero:** the headline is just "ARCDEX" (`.ld-h1-name`). The hero pill reads "Multichain DEX · spot & futures".
   - **Removed:** the Robinhood links and button, the "Two chains. One exchange." section with its chain cards and the "Launchpad coins only" card, the "$ARCDEX contract on Arc · wallets show the symbol as ARCD" note, the burn section's subtitle and "Wallets show its symbol as ARCD."
   - **Kept:** live markets stand on their own (`.ld-mkts-solo`).
-  - **$ARCDEX's contract on each chain (owner, same day):** the hero shows the Arc CA (`COIN`) and, under it, the Robinhood CA `0xdf12A26048Be60079b5486Ae63Cbde713DbEc265` (`COIN_RH` in `lib/coin.ts`; on Robinhood Chain it reads ARCDEX / ARCD, 1B supply, 18 decimals), each labelled and with Copy (`.ld-cas`). These two labels are the only place the landing names a chain.
+  - **$ARCDEX's contract (owner):** the hero shows the Arc CA (`COIN`), labelled, with Copy (`.ld-cas`). That label is the only place the landing names a chain.
+    - From 2026-10-04 the Robinhood CA `0xdf12A26048Be60079b5486Ae63Cbde713DbEc265` (ARCDEX / ARCD on Robinhood Chain) sat under it.
+    - The owner had it removed on 2026-10-05, along with `COIN_RH`.
   - **Reworded:** the tiles, futures text, FAQ, page title and link previews (`index.html`) without chain names. The live feed says "Connecting…".
 - **Bridge:** the "Why bridge with ARCDEX" panel is gone. **Swap:** the "Trades go through ARCDEX's swap router…" line is gone.
 - **Tests:**

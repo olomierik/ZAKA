@@ -2569,7 +2569,6 @@ const d: Record<string, string> = {
   "Everything to trade, in one place": "Tout pour trader, au même endroit",
   "Connecting…": "Connexion…",
   "Arc CA": "CA Arc",
-  "Robinhood CA": "CA Robinhood",
   "How far along its launchpad’s curve, as the launchpad counts it": "Où il en est sur la courbe de son launchpad, selon le launchpad",
   "Selling is signed on Solana and costs a fraction of a cent in SOL: one tap adds some.": "La vente se signe sur Solana et coûte une fraction de centime en SOL : un clic en ajoute.",
   "All launchpads": "Tous les launchpads",

@@ -5,7 +5,7 @@ import TrafficCard from './TrafficCard'
 import CoinProgram from './CoinProgram'
 import { BurnChart, BurnList, BurnMeter, CoinFeed, CoinLiveCard, big, useCoinProgram } from './CoinLive'
 import { PHASES, phaseStatus } from './roadmap'
-import { ENGINE_API, COIN, COIN_RH, COIN_IMAGE, COIN_PATH, fmtPct, fmtSmallUsd, useCoin, useCoinBurned } from '../lib/coin'
+import { ENGINE_API, COIN, COIN_IMAGE, COIN_PATH, fmtPct, fmtSmallUsd, useCoin, useCoinBurned } from '../lib/coin'
 import { isLaunchpadCoin } from '../../../api/_launchpads'
 import './landing.css'
 
@@ -185,9 +185,9 @@ export default function Landing() {
             <div className="ld-laurel ld-hide-xs"><Laurel /><div><b>10×</b><span>{t('Futures on BTC, ETH and SOL')}</span></div><Laurel flip /></div>
           </div>
           <div className="ld-buybox">
-            {/* $ARCDEX's contract on each chain (owner, 2026-10-04: the Robinhood CA below the Arc one). */}
+            {/* $ARCDEX's contract (owner, 2026-10-05: the Robinhood CA removed, only the Arc CA shown). */}
             <div className="ld-cas">
-              {([[t('Arc CA'), COIN], [t('Robinhood CA'), COIN_RH]] as const).map(([label, ca]) => (
+              {([[t('Arc CA'), COIN]] as const).map(([label, ca]) => (
                 <div key={ca} className="ld-ca">
                   <img src={COIN_IMAGE} alt="" width={22} height={22} />
                   <span className="ld-ca-tag">{label}</span>

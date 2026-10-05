@@ -2569,7 +2569,6 @@ const d: Record<string, string> = {
   "Everything to trade, in one place": "交易所需的一切，尽在一处",
   "Connecting…": "连接中…",
   "Arc CA": "Arc 合约地址",
-  "Robinhood CA": "Robinhood 合约地址",
   "How far along its launchpad’s curve, as the launchpad counts it": "在其发射平台曲线上的进度（按发射平台的算法）",
   "Selling is signed on Solana and costs a fraction of a cent in SOL: one tap adds some.": "卖出需在 Solana 上签名，花费不到一分钱的 SOL：一键即可添加。",
   "All launchpads": "全部发射平台",
