@@ -57,6 +57,10 @@ ok(!syms.includes('TINY') && !syms.includes('RUG') && !syms.includes('EURC') && 
 const r = (chain: TrendRow['chain'], symbol: string, volume24h: number, txns24h: number): TrendRow => ({ chain, address: symbol, pool: '', symbol, name: symbol, image: null, launchpad: null, priceUsd: 1, change24h: 0, volume24h, marketCapUsd: 1e6, liquidityUsd: 1e5, txns24h })
 const ranked = rankTrending([r('arc', 'A', 1_000, 10), r('solana', 'B', 900_000, 5_000), r('bsc', 'C', 50_000, 800)])
 ok(ranked.map(x => x.symbol).join() === 'B,C,A', 'busiest first, across chains')
+const sol = (s: string, v: number) => r('solana', s, v, 100)
+const mixed = rankTrending([sol('S1', 9e6), sol('S2', 8e6), sol('S3', 7e6), sol('S4', 6e6), sol('S5', 5e6), r('arc', 'A1', 5_000, 50), { ...sol('S1', 1e3), address: 'copy', marketCapUsd: 5 }])
+ok(mixed.slice(0, 4).map(x => x.symbol).join() === 'S1,S2,S3,A1' && mixed.length === 6, 'at most 3 of the top from one chain, so every chain shows; one coin per ticker')
+ok(mixed[0].address === 'S1', '… the bigger coin of a ticker, not its copycat')
 const totals = totalsOf([r('arc', 'A', 1_000, 10), r('arc', 'D', 2_000, 20), r('solana', 'B', 900_000, 5_000)])
 ok(totals.find(t => t.chain === 'arc')?.coins === 2 && totals.find(t => t.chain === 'arc')?.volume24h === 3_000, 'each chain\'s totals')
 

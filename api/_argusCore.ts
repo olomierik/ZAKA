@@ -186,6 +186,11 @@ export async function buildMarket(gt: GtFetcher, onPartial?: (pools: ArgusPool[]
 
   await argusPage(1)
   emit()
+  // Arc's most-traded coins on every DEX, second (2026-10-05): the coins DexScreener lists first (TOLLY, ARCMAN,
+  // KAIRO…) trade on plain Uniswap pools, under no launchpad, and GeckoTerminal throttles a build long before its last
+  // calls. The site lists the established ones (isEstablishedCoin).
+  rows.push(...normalize(await gt(`/networks/arc/pools?page=1&sort=h24_volume_usd_desc&${INC}`)))
+  emit()
   await volumePage(1) // the top 20 by volume — the Terminal's first screen
   // Every other launchpad's top 20 by volume, so each shows up early.
   await inBatches(launchpads, opts.concurrency ?? 1, async d => {
@@ -198,9 +203,6 @@ export async function buildMarket(gt: GtFetcher, onPartial?: (pools: ArgusPool[]
   // the row objects in place, so rows already emitted pick it up too.)
   await fillCaps(argusRows, gt)
   emit()
-  // Arc's most-traded coins on every DEX (2026-10-05): the coins DexScreener lists first (TOLLY, ARCMAN, KAIRO…)
-  // trade on plain Uniswap pools, under no launchpad. The site lists the established ones (isEstablishedCoin).
-  rows.push(...normalize(await gt(`/networks/arc/pools?page=1&sort=h24_volume_usd_desc&${INC}`)))
   rows.push(...normalize(await gt(`/networks/arc/trending_pools?page=1&${INC}`)))
   emit()
   for (let page = 2; page <= VOLUME_PAGES; page++) await volumePage(page)

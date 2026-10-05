@@ -65,10 +65,26 @@ const fromCoin = (chain: TrendChain) => (c: RhCoin): TrendRow => ({
 })
 const listedOther = (r: TrendRow) => r.marketCapUsd >= MIN_MC && !STABLE.test(r.symbol) && !rugged(r.change24h, r.liquidityUsd)
 
-/** The busiest first: 24h volume, with recent trading lifting a coin (DexScreener's trending works on activity too). */
-export function rankTrending(rows: TrendRow[], limit = 30): TrendRow[] {
+/** The busiest first: 24h volume, with recent trading lifting a coin (DexScreener's trending works on activity too).
+ * One coin per ticker (the bigger: a copycat of a trending coin shouldn't sit beside it), and at most `perChain` of the
+ * first `head` from one chain, so the top of the list shows every chain. */
+export function rankTrending(rows: TrendRow[], limit = 30, head = 8, perChain = 3): TrendRow[] {
   const score = (r: TrendRow) => Math.log10(1 + r.volume24h) * 2 + Math.log10(1 + r.txns24h)
-  return [...rows].sort((a, b) => score(b) - score(a)).slice(0, limit)
+  const bySymbol = new Map<string, TrendRow>()
+  for (const r of rows) {
+    const k = r.symbol.trim().toUpperCase()
+    const cur = bySymbol.get(k)
+    if (!cur || r.marketCapUsd > cur.marketCapUsd) bySymbol.set(k, r)
+  }
+  const ranked = [...bySymbol.values()].sort((a, b) => score(b) - score(a))
+  const top: TrendRow[] = []
+  const rest: TrendRow[] = []
+  const count = new Map<TrendChain, number>()
+  for (const r of ranked) {
+    if (top.length < head && (count.get(r.chain) ?? 0) < perChain) { top.push(r); count.set(r.chain, (count.get(r.chain) ?? 0) + 1) }
+    else rest.push(r)
+  }
+  return [...top, ...rest].slice(0, limit)
 }
 
 export function totalsOf(rows: TrendRow[]): ChainTotals[] {

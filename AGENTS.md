@@ -1730,6 +1730,68 @@ Owner: "make it also a Solana [exchange]: people buy other chains' coins using S
 - **Every new string is in all six dictionaries** (45).
 - **Not done yet:** a real funded trade from a real Phantom (the owner's first).
 
+## DexScreener comparison: why there are no users, and what was fixed (2026-10-05)
+
+Owner: "we have no users; compare us with DexScreener on platform quality and how a user would feel switching; fix the shortcomings; top notch". Both sites were toured side by side in Chrome as a first-time visitor: DexScreener's screener, its Arc page, a coin page, New Pairs, Gainers and Multicharts, then ours.
+
+- **What a visitor from DexScreener found:**
+  - **Coverage.** DexScreener already lists Arc and Robinhood Chain, so our data alone isn't unique.
+    - Arc's most-traded coins weren't listed or searchable here: TOLLY (#1 there, $2.1M), ARCMAN ($19.9M), COOL, LONG, KAIRO, FAZE, AF, ASTOCK.
+    - They trade on plain Uniswap pools. The market list read only launchpad venues, and the launchpad-only rule dropped them.
+    - Searching "tolly" offered only $2.5K copycats.
+  - **Wrong numbers.** ARGUS showed −31.5% over 24h where DexScreener showed −4.4%.
+  - **Speed.**
+    - Markets took 5.6s to first show anything; a coin page took ~9s against DexScreener's ~2s.
+    - Coin logos from IPFS took 35–50s, so most never appeared.
+  - **First impression.**
+    - The home page opened on a $5.25K coin down 65% with $176 of volume.
+    - "Live markets" held one coin: the engine's activity feed carries no details for most coins, so every other row was dropped.
+    - "Fees collected $0".
+  - **No reach.** Every coin page had the same title and link preview, so Google and shared links showed nothing about the coin.
+- **Fixed:**
+  - **Arc coverage (`api/_argusCore.ts`, `api/_launchpads.ts`).** The market list also reads Arc's top pools on every DEX (`/networks/arc/pools`, `/trending_pools`).
+    - **Established coins** (`isEstablishedCoin`, `ESTABLISHED`) are listed beside launchpad coins: $25K+ liquidity, 3+ days old, $100K+ market cap, 25+ trades in 24h. Stablecoins never count.
+    - This relaxes the owner's launchpad-only rule of 2026-10-04 for proven coins only. The safety rating still keeps Danger out of the default lists.
+    - Applied in the Terminal, search (a search hit needs the depth and cap; its age isn't known), Swap, the spot pair list and the home page.
+    - A launchpad coin keeps its badge when its deepest pool is a plain DEX's (`dedupe`).
+  - **24h change (`engine/src/market/tokenState.ts`).** Each minute's close now remembers its pool, and changes compare the main pool with itself.
+    - The bug: when a coin's main pool changed, closes from the old one stayed in the ring.
+    - Slots saved before the change aren't compared (null for up to 24h after the deploy, rather than wrong).
+  - **Speed.**
+    - **Logos** go through wsrv.nl (`lib/logo.ts` `logoSrc` / `useLogo`), a free Cloudflare image cache, resized to twice their drawn size. IPFS goes through dweb.link first; the original link is the fallback.
+    - **Fonts** no longer block scripts (`index.html`: preload + `media="print"` swap). They had held every script back ~1.7s.
+    - **Page code** loads alongside the app shell (`src/main.tsx` route prefetch) instead of six files in a row.
+    - **Duplicate requests:** same-path GETs through `siteFetch` share one request (in flight and for 1.5s).
+  - **Home page (`landing/Landing.tsx`), market first.**
+    - Hero: "Find any coin, see whether it's safe, and buy it in one tap", with live counts (coins live, 24h volume, trades).
+    - The Arc CA and Buy $ARCDEX stay in the hero, beside a **Trending now** card: the busiest coins on every chain, with a small chain mark.
+    - Then Top gainers / New listing / Futures, then **More than a screener** (one-tap buys, safety ratings, pay from any wallet, rugs filtered).
+    - $ARCDEX's live card sits in the burn section. The traffic counter moved to the footer.
+    - Data: the engine's `/api/trending` (`api/trending.ts`): the markets' rules on all four chains' stored lists, the busiest first, and each chain's totals.
+  - **Coin pages in search and link previews.**
+    - `netlify/edge-functions/coin-meta.ts` writes each coin page's title ("ARGUS $13.02M | Argus · ARGUS / USDC on Arc | ARCDEX"), description, logo, canonical link and Twitter card into the page before it leaves Netlify.
+    - Paths: `/token`, `/solana/token`, `/bnb/token`, `/robinhood/token` and `/spot`.
+    - The data comes from the engine's `/api/coinmeta` (`api/coinmeta.ts`, 1.5s at most). Without an answer, the page goes out unchanged.
+    - Also `/sitemap.xml` (`sitemap.ts`, every listed coin, cached an hour) and `public/robots.txt`.
+  - **Markets** shows its 24h totals beside the live badge (desktop).
+- **Engine:** `engine/Dockerfile` copies `api/trending.ts` and `api/coinmeta.ts`, and `railway.toml` watches them. **Add both to the service's own Watch Paths on Railway.**
+- **Not changed, for the owner (switching costs a screener user feels):**
+  - **The 2% fee** is about twice what trading terminals charge (around 1%); Uniswap direct is only the pool's fee. The roadmap's Phase 1 already plans `setFeeBps(100)` on the swap router (owner key).
+  - **The name:** the domain is arcsense.site and the brand ARCDEX. arcdex.online now points at Netlify, so making it the primary domain (Netlify → Domain management) would match.
+  - **Phone wallets:** no WalletConnect project id (cloud.reown.com), so phone wallets can't connect by QR code.
+  - **Card deposits** aren't live (Circle key).
+  - **Distribution:** listing in Arc's ecosystem directories, DefiLlama and on X/Telegram, where DexScreener's traffic comes from.
+- **DexScreener features still missing here:**
+  - multicharts;
+  - community sentiment votes (🚀🔥💩🚩);
+  - liquidity providers and bubble maps;
+  - paid boosts and ads (DexScreener's revenue);
+  - a public API;
+  - a native mobile app (ARCDEX installs as a web app).
+- **Tests:**
+  - `bun scripts/test-dex-parity.ts`: established coins, badges kept through the pool merge, trending rules and totals, each coin page's head (escaping included), sitemap paths and logo links.
+  - `engine/test/market.test.ts`: the ARGUS case, across a restart and with slots saved the old way.
+
 ## ARCSENSE: spot and futures first (2026-10-03)
 
 Owner: "hide the autotrade marketplace and let the users see only COMING SOON; hide the launchpad; put futures and spot trading as our main features; rebrand the app to be the first on Arc".
