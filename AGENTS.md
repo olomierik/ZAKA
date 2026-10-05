@@ -1687,6 +1687,49 @@ Owner: "what else is missing", then "do it" to the top three: Solana and BNB Cha
   - A Solana page on the chain feed with GeckoTerminal's older trades underneath.
 - **Every new string is in all six dictionaries** (10).
 
+## Solana wallets trade every chain: SOL or Solana USDC in, any chain's coin out (2026-10-05)
+
+Owner: "make it also a Solana [exchange]: people buy other chains' coins using SOL and USDC on Solana, to attract Solana meme users; Solana wallets connect, transact, swap and bridge". Asked where a Phantom user's coins on Arc, BNB Chain and Robinhood Chain are held, the owner chose **an account from the Solana wallet** (no passcode, the same account on every device).
+
+- **The account (`lib/solAccount.ts`):** a Solana wallet can't sign on an EVM chain, so its coins there are held by an EVM account of its own.
+  - **The key:** the wallet signs one fixed message (`solAccountMessage`: it names the site, the wallet and says the signature is the key). The signature is checked against the wallet's own key (ed25519), then HKDF-SHA256 (salt "arcdex", info "arcdex:solana-account:secp256k1:v1") turns it into the account's key.
+  - Ed25519 signatures are deterministic, so the same wallet always opens the same account, on any device. Nothing is stored but the open account in this tab (sessionStorage `arcdex:sol-account`, cleared with the tab).
+  - **In the app:** it takes the trading wallet's unlocked slot (`openAccountKey`, `accountOwner` in `embeddedWallet.ts`), so every EVM trade form, Portfolio and the trading-wallet signers work with it. It has no Solana address of its own (the wallet itself trades there), and no export, passcode or passkey.
+  - **It closes** on Sign out, when the Solana wallet disconnects, or when that wallet switches to another account (`solanaWallet.ts`). Connecting another wallet closes one opened for a different wallet.
+  - **Sending money out:** to the Solana wallet it comes from, straight through. Anywhere else, the wallet signs a confirmation, checked against its key (`WithdrawGuard` `viaSolana`), where a trading wallet asks for its passcode.
+- **The trades (`lib/relayQuote.ts` `xin` / `xout`, `lib/relay.ts`, `components/SolanaCross.tsx`):** Relay, as for Solana coins.
+  - **Buy (`xin`):** SOL or USDC on Solana → the coin on Arc, BNB Chain or Robinhood Chain, delivered to the account in ~2s. One signature in the Solana wallet; Relay's v2 depository `99vQ…JSrN2`.
+  - **Gas on a first buy:** when the account has none on that chain (under 0.2 USDC on Arc, 0.0003 BNB, 0.00005 ETH), $0.50 of the chain's gas is added (`topupGas`), so the coin can be sold. Relay puts it inside its fee; the form and the price guard count it as delivered, not lost.
+  - **Sell (`xout`):** the coin → SOL or USDC in the Solana wallet. Signed by the account on its chain (one tap), through Relay's approval proxy after an approval of exactly the amount.
+  - **Deposit and withdraw:** SOL or Solana USDC → USDC on Arc, and back. Arc's USDC goes through Relay's depository on Arc.
+  - **Fees:** ARCDEX's fee is Relay's app fee for `0x2742…86Bb`: 2% on trades, 0.5% on deposits and withdrawals (the bridge's). It accrues at Relay with the other Relay fees; the owner claims it (`/burn` shows it).
+  - **Routes (checked 2026-10-05):** SOL to $ARCDEX, to BNB Chain coins and to Robinhood Chain's memecoins. Robinhood's stock tokens have no route, so their pages don't offer it.
+- **The checks (a quote is refused unless it's exactly the trade asked for):**
+  - **Both ways:** only SOL or Solana USDC on the Solana side; only Arc, BNB Chain or Robinhood Chain on the other; ARCDEX's fee present; no gas top-up that wasn't asked for, and none over 1.5× what was.
+  - **Solana side (`xin`):**
+    - a single v2 deposit whose amount is the amount asked for, and whose order id is Relay's order;
+    - the order pays only the account, in the coin asked for, with no calls, and refunds only to the buyer;
+    - only known programs, the buyer as the only signer, simulated before signing.
+  - **EVM side (`xout`):** the trader as sender, an approval of exactly the amount to Relay's approval proxy (or depository, for Arc USDC), no native value, and Relay's order paying only the Solana wallet.
+  - **The price guard:** in dollars, as for Solana coins (`relayValueUsd`): SOL at GeckoTerminal's price, the coin at its market price. Over 25% better than the market or 50%+ price impact is refused; 15%+ takes a tick box.
+- **Where:**
+  - **Connect Wallet:** an EVM group, a **Solana** group (Phantom, Solflare, Backpack; on a phone without one, "Open in Phantom" opens the page in Phantom's browser) and the trading wallet. With no EVM wallet in use, connecting signs once and opens the account.
+  - **Coin pages:** "◎ Pay with SOL or USDC on Solana" under the buy and sell forms (`SolanaPayCard`), on desktop and in the phone's trade sheet, on Arc, BNB Chain and Robinhood Chain coin pages and the Swap page. It opens by itself when a Solana wallet is in use.
+  - **Deposit:** "From your Solana wallet" (the default for a Solana account). **Withdraw:** "To an Arc address" or "◎ To a Solana wallet".
+  - **Bridge:** Solana is a source too (SOL or USDC in, through Relay). Arc → Solana offers "USDC · Circle CCTP" or "SOL or USDC · Relay".
+  - **Account:** the menu reads "◎ Solana account" with Sign out. The trading-wallet panel shows the account card: its Solana wallet, its EVM address, its USDC on Arc, Deposit, Withdraw and Portfolio.
+- **Tests:** `bun scripts/test-xsol.ts` (offline, on real quotes recorded by `scripts/capture-relay-xsol.ts`, nothing sent):
+  - requests built as recorded, and 11 real quotes passing;
+  - 22 tampered ones refused, plus a wrong chain and a wrong currency;
+  - the gas top-up inside Relay's fee, and the price guard;
+  - the account key: the same signature always gives the same key.
+- **Checked in the browser** (local dev, a throwaway in-page Solana wallet; nothing signed on any chain):
+  - Connect → account opened. The menu, the account card, Deposit (from Solana, $10 of Solana USDC → $9.93 on Arc, 0.7% in all), Withdraw (to a Solana wallet) and the Bridge both ways.
+  - Quotes: 0.1 SOL → 2.02M $ARCDEX (4.3% impact on its thin pool, 7.1% in all), 0.05 SOL → 123 龙虾 on BNB Chain (4.8%), 0.05 SOL → 47 AI on Robinhood Chain (4.0%), and 40 AI → 0.0365 SOL (2.5%).
+  - At 375px the card fits the trade sheet with no sideways scroll.
+- **Every new string is in all six dictionaries** (45).
+- **Not done yet:** a real funded trade from a real Phantom (the owner's first).
+
 ## ARCSENSE: spot and futures first (2026-10-03)
 
 Owner: "hide the autotrade marketplace and let the users see only COMING SOON; hide the launchpad; put futures and spot trading as our main features; rebrand the app to be the first on Arc".

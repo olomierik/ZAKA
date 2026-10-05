@@ -549,6 +549,7 @@ html body {
 .wallet-row:hover:not(:disabled) { border-color: var(--adx-accent); background: var(--bg-3); }
 .wallet-row:disabled { opacity: 0.6; cursor: wait; }
 .wallet-row-blank { width: 28px; height: 28px; border-radius: 7px; background: var(--bg-3); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.wallet-group { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin: 4px 2px 0; }
 @media (max-width: 420px) { .connect-btn { padding: 6px 10px; font-size: 0.74rem; } }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -2379,3 +2380,12 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .sol-wallet-line { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; }
 .sol-wallet-line a { color: var(--accent-text); }
 .spot-form .sol-wallet-line { padding: 0 12px 8px; margin: 0; }
+
+/* Pay with SOL or USDC on Solana, under a coin page's trade forms (components/SolanaCross.tsx, 2026-10-05). */
+.sol-pay { border: 1px solid var(--adx-card-border); border-radius: 10px; background: var(--bg-2); overflow: hidden; margin-top: 10px; }
+.sol-pay-h { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; background: none; border: none; color: var(--text); cursor: pointer; text-align: left; font: inherit; }
+.sol-pay-h b { display: block; font-size: 0.82rem; }
+.sol-pay-h small { display: block; font-size: 0.68rem; color: var(--text-muted); }
+.sol-pay-mark { width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #9945ff, #14f195); color: #fff; font-weight: 800; flex-shrink: 0; }
+.sol-pay-t { margin-left: auto; color: var(--text-muted); font-size: 1rem; }
+.sol-pay > .sol-cross { border: none; border-top: 1px solid var(--adx-card-border); border-radius: 0; margin: 0; }

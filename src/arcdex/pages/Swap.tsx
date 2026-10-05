@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { cachedArgusMarket, copycatOf, getArgusMarket, type ArgusPool } from '../api/argusMarket'
 import { getAllLaunchpadTokens } from '../api/launchpad'
 import TokenSwap from '../components/TokenSwap'
+import { SolanaPayCard } from '../components/SolanaCross'
+import { ARC_ID } from '../lib/relayQuote'
 import { ChainIcon, ChainStrip, UsdcIcon } from '../components/Chains'
 import { BRIDGE_NETWORKS } from '../lib/bridgeChains'
 import { COIN_IMAGE, COIN_LC, COIN_POOL, fmtPct, fmtSmallUsd, useCoin } from '../lib/coin'
@@ -139,6 +141,8 @@ export default function Swap({ navigate }: Props) {
                 </div>
                 <div className="xs-widget">
                   <TokenSwap address={picked.address} pool={picked.pool} fallback={{ symbol: picked.symbol, image: picked.image, priceUsd: picked.priceUsd }} />
+                  {/* Or straight from a Solana wallet, with SOL or USDC on Solana. */}
+                  <SolanaPayCard chainId={ARC_ID} token={picked.address} symbol={picked.symbol} priceUsd={picked.priceUsd} />
                 </div>
               </>
             )}

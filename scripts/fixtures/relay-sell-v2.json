@@ -1,0 +1,731 @@
+{
+ "req": {
+  "side": "sell",
+  "mint": "4waqtABVsAD7u1rtg7hiX6jLuaikU39hBFDZktAHpump",
+  "amount": "100000000000",
+  "evm": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+  "sol": "AgmLJBMDCqWynYnQiPCuj9ewsNNsBJXyzoUhD9LJzN51",
+  "feeBps": 200
+ },
+ "quote": {
+  "requestId": "0x17911944537184945846a8eaa36511d6414880cbeb081807eac72773fdebbfcf",
+  "steps": [
+   {
+    "id": "deposit",
+    "action": "Confirm transaction in your wallet",
+    "description": "Depositing funds to the relayer to execute the swap for USDC",
+    "kind": "transaction",
+    "items": [
+     {
+      "status": "incomplete",
+      "data": {
+       "instructions": [
+        {
+         "keys": [
+          {
+           "pubkey": "AgmLJBMDCqWynYnQiPCuj9ewsNNsBJXyzoUhD9LJzN51",
+           "isSigner": true,
+           "isWritable": true
+          },
+          {
+           "pubkey": "H2DG3qk1cRqBUmRNjJ2fsGrGs47NQk5VRBLt1AevW8m2",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "6GpvpHXBJA7pW8gP9KEXBJ2spNyydmbY5Q4nbdoo5TeT",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "11111111111111111111111111111111",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+           "isSigner": false,
+           "isWritable": false
+          }
+         ],
+         "programId": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+         "data": "01"
+        },
+        {
+         "keys": [
+          {
+           "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "11111111111111111111111111111111",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "AgmLJBMDCqWynYnQiPCuj9ewsNNsBJXyzoUhD9LJzN51",
+           "isSigner": true,
+           "isWritable": true
+          },
+          {
+           "pubkey": "H2DG3qk1cRqBUmRNjJ2fsGrGs47NQk5VRBLt1AevW8m2",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "8xeaWCsJYxRoudEZGJWURdfrtFhLYZz9b4iHJnW5tb3d",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "Sysvar1nstructions1111111111111111111111111",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "4waqtABVsAD7u1rtg7hiX6jLuaikU39hBFDZktAHpump",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "7hTckgnGnLQR6sdH7YkqFTAA7VwTfYFaZ6EhEsU3saCX",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "4waqtABVsAD7u1rtg7hiX6jLuaikU39hBFDZktAHpump",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "9w5fKJcoGeo6M42KnLD4UCgGhBmQVMvbbebsn1hoCH49",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "65SPv2gfktKNVoSX2F1hZPGHSYB2DHNtmjDfwm74D3GV",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "ANk4GQ5PSaexDcZHX8uF1PDd4Cef78av9h6SsrtMEbsL",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "AgmLJBMDCqWynYnQiPCuj9ewsNNsBJXyzoUhD9LJzN51",
+           "isSigner": true,
+           "isWritable": true
+          },
+          {
+           "pubkey": "4yh1gCC2HnZdajSKyQfpUyfz7LLB9MjYRb2oUh8UmM5y",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "AnAxJKMRxfBz9EN3MNbE15jTxemM1BhSiDEjTp1kjoTP",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "8Wf5TiAheLUqBrKXeYg2JtAFFMWtKdG2BSFgqUcPVwTt",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "8S9cRS6ZoqJa3P457UVUYLu6XxJCx855amVbw19WiR2n",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "So11111111111111111111111111111111111111112",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "5YxQFdt3Tr9zJLvkFccqXVUwhdTWJQc1fFg2YPbxvxeD",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "REALQqNEomY6cQGZJUGwywTBD2UmDT32rZcNnfxQ5N2",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "AgmLJBMDCqWynYnQiPCuj9ewsNNsBJXyzoUhD9LJzN51",
+           "isSigner": true,
+           "isWritable": false
+          },
+          {
+           "pubkey": "4E6xP73xzTs4aCvY92hbXRwWkYptNwvViPZmLcZEBUk4",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "9GTj99g9tbz9U6UYDsX6YeRTgUnkYG6GTnHv3qLa5aXq",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "AnAxJKMRxfBz9EN3MNbE15jTxemM1BhSiDEjTp1kjoTP",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "7VRD4eLZVU8qGwTUjfCRTCvkMTzAiTbSZ8CzU9zWBDU6",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "5BzogZvHNEuwstR4iwTWdd7jknFBZqJQWVjxPsDfEUD6",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "HL8turx8hJEEPVH4ivxzxwfdxVA1PH3LeYbSmh3hYfzz",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "3T6qNbQqWYDfSTew1ifsNedtoeDP8LRuCegmUH27ykEZ",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "So11111111111111111111111111111111111111112",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "GuDQwyNv6g6jtZg13VNcDnK9mb6q8pTj534BDehqvtzF",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "Hfi3S6QAF9spfibDKiAyy2bJ4JPgqAL3pLb3nX7BnMdj",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "F8Q4AuinoR4zd3g7dhqncySeJ2FZTJP7WJFu5Xtipt7C",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "CQEQa7e3t59wXur6g17HFHuytjQJEXhCdupPRc8EdAw9",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+           "isSigner": false,
+           "isWritable": false
+          }
+         ],
+         "programId": "DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH",
+         "data": "a8ac184dc59c87650400000025be324e508d128c055d56354075d94ad8e84d06a0fba51e481082ceeb3917cbd35f301e4c1c34186f352f014064edb8567a762f56de5d9f188bccb4cad33ea70d5791081b00007aa21c0000003102000000000000000000000006a9d1200700000000090900e87648170000000145fbe22d01000000000501e96424000000000034010000"
+        },
+        {
+         "keys": [
+          {
+           "pubkey": "AgmLJBMDCqWynYnQiPCuj9ewsNNsBJXyzoUhD9LJzN51",
+           "isSigner": true,
+           "isWritable": true
+          },
+          {
+           "pubkey": "AgmLJBMDCqWynYnQiPCuj9ewsNNsBJXyzoUhD9LJzN51",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "6GpvpHXBJA7pW8gP9KEXBJ2spNyydmbY5Q4nbdoo5TeT",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "Dodg2HifwU8rmaVVyMyUZDGTRbqAJTyVYxXPwcbNpBKc",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "7uTT8Xi5RWXzy7h9XL244GRgEycDYDhLjr3ZyNdXi8pZ",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "H2DG3qk1cRqBUmRNjJ2fsGrGs47NQk5VRBLt1AevW8m2",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "4nvJ5zWdVspxJiNZzB127U6amPH98SFFkBx2JZrAduia",
+           "isSigner": false,
+           "isWritable": true
+          },
+          {
+           "pubkey": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+           "isSigner": false,
+           "isWritable": false
+          },
+          {
+           "pubkey": "11111111111111111111111111111111",
+           "isSigner": false,
+           "isWritable": false
+          }
+         ],
+         "programId": "DPArtTLbEqa6EuXHfL5UFLBZhFjiEXWRudhvXDrjwXUr",
+         "data": "9d537021bf32ab25df4aba1d102e1f0e3ec50b0dd49617388c5ac5ef535a93df24491d15cc442979"
+        },
+        {
+         "keys": [],
+         "programId": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+         "data": "307831373931313934343533373138343934353834366138656161333635313164363431343838306362656230383138303765616337323737336664656262666366"
+        }
+       ],
+       "addressLookupTableAddresses": [
+        "9rVP9Ly5RC1nix3WDm5QgkoWJbxV7Kteth1KHtYk5hT9",
+        "CdASjXYwMVqf4PSq6j3uTrqDRKJoKEP6wtFLXhJYpUCi",
+        "Hm9fUgcn7qwDaiNTFiGh6pNtVATgnaRcmK6Bbx6EMZfP"
+       ]
+      },
+      "check": {
+       "endpoint": "/intents/status?requestId=0x17911944537184945846a8eaa36511d6414880cbeb081807eac72773fdebbfcf",
+       "method": "GET"
+      }
+     }
+    ],
+    "requestId": "0x17911944537184945846a8eaa36511d6414880cbeb081807eac72773fdebbfcf",
+    "depositAddress": ""
+   }
+  ],
+  "fees": {
+   "gas": {
+    "currency": {
+     "chainId": 792703809,
+     "address": "11111111111111111111111111111111",
+     "symbol": "SOL",
+     "name": "Solana",
+     "decimals": 9,
+     "metadata": {
+      "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+      "verified": true
+     }
+    },
+    "amount": "200000",
+    "amountFormatted": "0.0002",
+    "amountUsd": "0.024117",
+    "minimumAmount": "200000"
+   },
+   "relayer": {
+    "currency": {
+     "chainId": 792703809,
+     "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+     "symbol": "USDC",
+     "name": "USD Coin",
+     "decimals": 6,
+     "metadata": {
+      "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+      "verified": true
+     }
+    },
+    "amount": "25639",
+    "amountFormatted": "0.025639",
+    "amountUsd": "0.025635",
+    "minimumAmount": "25639"
+   },
+   "relayerGas": {
+    "currency": {
+     "chainId": 792703809,
+     "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+     "symbol": "USDC",
+     "name": "USD Coin",
+     "decimals": 6,
+     "metadata": {
+      "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+      "verified": true
+     }
+    },
+    "amount": "1488",
+    "amountFormatted": "0.001488",
+    "amountUsd": "0.001488",
+    "minimumAmount": "1488"
+   },
+   "relayerService": {
+    "currency": {
+     "chainId": 792703809,
+     "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+     "symbol": "USDC",
+     "name": "USD Coin",
+     "decimals": 6,
+     "metadata": {
+      "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+      "verified": true
+     }
+    },
+    "amount": "24151",
+    "amountFormatted": "0.024151",
+    "amountUsd": "0.024148",
+    "minimumAmount": "24151"
+   },
+   "app": {
+    "currency": {
+     "chainId": 792703809,
+     "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+     "symbol": "USDC",
+     "name": "USD Coin",
+     "decimals": 6,
+     "metadata": {
+      "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+      "verified": true
+     }
+    },
+    "amount": "47702",
+    "amountFormatted": "0.047702",
+    "amountUsd": "0.047695",
+    "minimumAmount": "47702"
+   },
+   "subsidized": {
+    "currency": {
+     "chainId": 792703809,
+     "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+     "symbol": "USDC",
+     "name": "USD Coin",
+     "decimals": 6,
+     "metadata": {
+      "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+      "verified": true
+     }
+    },
+    "amount": "0",
+    "amountFormatted": "0.0",
+    "amountUsd": "0",
+    "minimumAmount": "0"
+   }
+  },
+  "details": {
+   "operation": "swap",
+   "sender": "AgmLJBMDCqWynYnQiPCuj9ewsNNsBJXyzoUhD9LJzN51",
+   "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+   "currencyIn": {
+    "currency": {
+     "chainId": 792703809,
+     "address": "4waqtABVsAD7u1rtg7hiX6jLuaikU39hBFDZktAHpump",
+     "symbol": "SWARM",
+     "name": "Swarms AI",
+     "decimals": 6,
+     "metadata": {
+      "verified": false
+     }
+    },
+    "amount": "100000000000",
+    "amountFormatted": "100000.0",
+    "amountUsd": "2.419452",
+    "minimumAmount": "100000000000"
+   },
+   "currencyOut": {
+    "currency": {
+     "chainId": 5042,
+     "address": "0x3600000000000000000000000000000000000000",
+     "symbol": "USDC",
+     "name": "USD Coin",
+     "decimals": 6,
+     "metadata": {
+      "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+      "verified": true
+     }
+    },
+    "amount": "2309459",
+    "amountFormatted": "2.309459",
+    "amountUsd": "2.309138",
+    "minimumAmount": "2238327"
+   },
+   "refundCurrency": {
+    "currency": {
+     "chainId": 792703809,
+     "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+     "symbol": "USDC",
+     "name": "USD Coin",
+     "decimals": 6,
+     "metadata": {
+      "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+      "verified": true
+     }
+    },
+    "amount": "2385129",
+    "amountFormatted": "2.385129",
+    "amountUsd": "2.384797",
+    "minimumAmount": "2311668"
+   },
+   "totalImpact": {
+    "usd": "-0.110314",
+    "percent": "-4.56"
+   },
+   "swapImpact": {
+    "usd": "-0.036984",
+    "percent": "-1.53"
+   },
+   "expandedPriceImpact": {
+    "swap": {
+     "usd": "-0.037504"
+    },
+    "execution": {
+     "usd": "-0.021487"
+    },
+    "relay": {
+     "usd": "-0.003628"
+    },
+    "app": {
+     "usd": "-0.047695"
+    },
+    "sponsored": {
+     "usd": "0"
+    }
+   },
+   "rate": "0.00002309459",
+   "slippageTolerance": {
+    "total": "308",
+    "origin": {
+     "usd": "0.073213",
+     "value": "73461",
+     "percent": "3.07"
+    },
+    "destination": {
+     "usd": "0.071121",
+     "value": "71132",
+     "percent": "3.08"
+    }
+   },
+   "timeEstimate": 1,
+   "userBalance": "0",
+   "isFixedRate": false,
+   "route": {
+    "origin": {
+     "inputCurrency": {
+      "currency": {
+       "chainId": 792703809,
+       "address": "4waqtABVsAD7u1rtg7hiX6jLuaikU39hBFDZktAHpump",
+       "symbol": "SWARM",
+       "name": "Swarms AI",
+       "decimals": 6,
+       "metadata": {
+        "verified": false
+       }
+      },
+      "amount": "100000000000",
+      "amountFormatted": "100000.0",
+      "amountUsd": "2.419452",
+      "minimumAmount": "100000000000"
+     },
+     "outputCurrency": {
+      "currency": {
+       "chainId": 792703809,
+       "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+       "symbol": "USDC",
+       "name": "USD Coin",
+       "decimals": 6,
+       "metadata": {
+        "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+        "verified": true
+       }
+      },
+      "amount": "2385129",
+      "amountFormatted": "2.385129",
+      "amountUsd": "2.384797",
+      "minimumAmount": "2311668"
+     },
+     "router": "dflow"
+    },
+    "destination": {
+     "inputCurrency": {
+      "currency": {
+       "chainId": 5042,
+       "address": "0x3600000000000000000000000000000000000000",
+       "symbol": "USDC",
+       "name": "USD Coin",
+       "decimals": 6,
+       "metadata": {
+        "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+        "verified": true
+       }
+      },
+      "amount": "2309459",
+      "amountFormatted": "2.309459",
+      "amountUsd": "2.309138",
+      "minimumAmount": "2238327"
+     },
+     "outputCurrency": {
+      "currency": {
+       "chainId": 5042,
+       "address": "0x3600000000000000000000000000000000000000",
+       "symbol": "USDC",
+       "name": "USD Coin",
+       "decimals": 6,
+       "metadata": {
+        "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+        "verified": true
+       }
+      },
+      "amount": "2309459",
+      "amountFormatted": "2.309459",
+      "amountUsd": "2.309138",
+      "minimumAmount": "2238327"
+     },
+     "router": "relay"
+    }
+   }
+  },
+  "protocol": {
+   "v2": {
+    "orderId": "0xdf4aba1d102e1f0e3ec50b0dd49617388c5ac5ef535a93df24491d15cc442979",
+    "hubType": "onchain",
+    "orderData": {
+     "version": "v1",
+     "solverChainId": "base",
+     "solver": "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
+     "salt": "0x008718eca0687eb295daf3e3306f8274333056d081b338db9e2f00e36138e680",
+     "inputs": [
+      {
+       "payment": {
+        "chainId": "solana",
+        "currency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "amount": "2385129",
+        "weight": "1"
+       },
+       "refunds": [
+        {
+         "chainId": "solana",
+         "recipient": "AgmLJBMDCqWynYnQiPCuj9ewsNNsBJXyzoUhD9LJzN51",
+         "currency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+         "minimumAmount": "0",
+         "deadline": 1791799253,
+         "extraData": "0x"
+        },
+        {
+         "chainId": "arc",
+         "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+         "currency": "0x3600000000000000000000000000000000000000",
+         "minimumAmount": "0",
+         "deadline": 1791799253,
+         "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+        }
+       ]
+      }
+     ],
+     "output": {
+      "chainId": "arc",
+      "payments": [
+       {
+        "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+        "currency": "0x3600000000000000000000000000000000000000",
+        "minimumAmount": "2238327",
+        "expectedAmount": "2309459"
+       }
+      ],
+      "calls": [],
+      "deadline": 1791799253,
+      "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+     },
+     "fees": []
+    },
+    "paymentDetails": {
+     "chainId": "solana",
+     "depository": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+     "currency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+     "amount": "2385129"
+    }
+   }
+  }
+ }
+}

@@ -15,6 +15,11 @@
 // hot wallet for fast trading — not a place to store meaningful funds
 // long-term. The UI must say so.
 //
+// Or opened from a Solana wallet (2026-10-05, lib/solAccount.ts): the key is derived from the wallet's signature of one
+// message, never stored on disk, and kept for this tab only (sessionStorage) so a reload doesn't ask again. It takes the
+// unlocked slot, so every one-tap path (Arc, BNB Chain, Robinhood Chain) works the same; a passcode wallet stored in
+// this browser is left as it is.
+//
 // Optional second factor (2FA): a passkey (Windows Hello, Touch ID / Face
 // ID, Android, or a hardware security key). With it on, the AES key is
 // derived from BOTH the passcode and a secret only the passkey can produce
@@ -89,6 +94,9 @@ interface EncryptedBlob {
 
 let unlockedAccount: PrivateKeyAccount | null = null
 let unlockedPrivateKey: Hex | null = null
+/** Set when the unlocked account is a Solana wallet's (its Solana address); null for the passcode wallet. */
+let solOwner: string | null = null
+const SOL_ACCOUNT_KEY = 'arcdex:sol-account'
 
 // ── encoding helpers ───────────────────────────────────────────────────
 function toB64(buf: ArrayBuffer): string {
@@ -258,11 +266,40 @@ export function lock(): void {
   unlockedPrivateKey = null
   unlockedAccount = null
   solanaSeedCache = null
+  if (solOwner) { try { sessionStorage.removeItem(SOL_ACCOUNT_KEY) } catch { /* blocked */ } }
+  solOwner = null
   changed()
 }
 
+// ── An account opened from a Solana wallet ────────────────────────────
+
+/** The unlocked account is a Solana wallet's ARCDEX account: that wallet's address. Null for the passcode wallet. */
+export function accountOwner(): string | null { return unlockedAccount ? solOwner : null }
+
+/** Opens the ARCDEX account derived from a Solana wallet's signature (lib/solAccount.ts) in this tab. */
+export function openAccountKey(pk: Hex, owner: string): `0x${string}` {
+  unlockedPrivateKey = pk
+  unlockedAccount = account(pk)
+  solOwner = owner
+  solanaSeedCache = null
+  try { sessionStorage.setItem(SOL_ACCOUNT_KEY, JSON.stringify({ owner, pk })) } catch { /* blocked: asked again after a reload */ }
+  changed()
+  return unlockedAccount.address
+}
+
+// A reload in the same tab keeps the Solana wallet's account open (the passcode wallet asks again, as before).
+try {
+  const saved = typeof sessionStorage !== 'undefined' ? JSON.parse(sessionStorage.getItem(SOL_ACCOUNT_KEY) ?? 'null') as { owner?: string; pk?: string } | null : null
+  if (saved?.owner && /^0x[0-9a-f]{64}$/.test(saved.pk ?? '')) {
+    unlockedPrivateKey = saved.pk as Hex
+    unlockedAccount = account(saved.pk as Hex)
+    solOwner = saved.owner
+  }
+} catch { /* nothing saved */ }
+
 /** Re-enter passcode (and passkey, if on) to reveal the raw key for export/backup. Never logged. */
 export async function exportPrivateKey(passcode: string): Promise<Hex> {
+  if (solOwner) throw new Error('This account comes from your Solana wallet: sign with it again to open it anywhere.')
   return decryptPrivateKey(storedBlob(), passcode)
 }
 
@@ -272,6 +309,7 @@ export async function exportPrivateKey(passcode: string): Promise<Hex> {
  * Throws "Wrong passcode" otherwise; the key isn't kept. */
 export async function verifyPasscode(passcode: string): Promise<void> {
   if (!unlockedAccount) throw new Error('Wallet is locked')
+  if (solOwner) throw new Error('This account is confirmed in your Solana wallet, not with a passcode')
   const pk = await decryptPrivateKey(storedBlob(), passcode)
   if (privateKeyToAccount(pk).address !== unlockedAccount.address) throw new Error('Wrong passcode')
 }
@@ -341,6 +379,8 @@ let solanaSeedCache: { from: Hex; seed: Uint8Array } | null = null
 /** The trading wallet's Solana ed25519 seed (32 bytes). Throws if locked. */
 export async function solanaSeed(): Promise<Uint8Array> {
   if (!unlockedPrivateKey) throw new Error('Wallet is locked')
+  // A Solana wallet's account trades on Solana with that wallet itself, not a derived key.
+  if (solOwner) throw new Error('This account trades on Solana with its own wallet')
   if (solanaSeedCache?.from === unlockedPrivateKey) return solanaSeedCache.seed
   const ikm = Uint8Array.from(unlockedPrivateKey.slice(2).match(/../g)!.map(h => parseInt(h, 16)))
   const key = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits'])

@@ -13,6 +13,9 @@ import { ChainIcon, ChainPicker, ChainStrip, UsdcIcon } from '../components/Chai
 import { COIN_PAGE } from '../components/NavBar'
 import type { Page } from '../App'
 import { hideWalletPrompt } from '../lib/walletPrompt'
+import SolanaCross from '../components/SolanaCross'
+import { ARC_ID } from '../lib/relayQuote'
+import { ARC_USDC } from '../lib/acrossQuote'
 
 type Dir = 'out' | 'in'
 type Adapter = Awaited<ReturnType<typeof getBridgeAdapter>> | ReturnType<typeof tradingWalletAdapter>
@@ -42,9 +45,11 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
   const adapterRef = useRef<Adapter | null>(null)
 
   const otherDef = BRIDGE_CHAINS.find(c => c.chain === other) ?? BRIDGE_CHAINS[0]
-  // Solana can only receive: bringing USDC in from it needs a Solana wallet.
-  const choices = dir === 'out' ? BRIDGE_CHAINS : BRIDGE_CHAINS.filter(c => c.evm)
-  useEffect(() => { if (dir === 'in' && !otherDef.evm) setOther('Base' as BridgeChain) }, [dir, otherDef.evm])
+  // Solana both ways (2026-10-05): into Arc from a Solana wallet through Relay (SOL or USDC, SolanaCross); out of Arc
+  // as USDC through Circle, or as SOL or USDC through Relay.
+  const choices = BRIDGE_CHAINS
+  const solIn = dir === 'in' && !otherDef.evm
+  const [solRoute, setSolRoute] = useState<'cctp' | 'relay'>('cctp')
 
   const from = dir === 'out' ? 'Arc' : other
   const to = dir === 'out' ? other : 'Arc'
@@ -66,7 +71,8 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
   const quoteSeq = useRef(0)
   useEffect(() => {
     setQuote(null)
-    if (!(n > 0)) { setQuoting(false); return }
+    // Solana into Arc is Relay's (SolanaCross quotes it), not Circle's.
+    if (!(n > 0) || solIn) { setQuoting(false); return }
     const seq = ++quoteSeq.current
     setQuoting(true)
     const id = setTimeout(() => {
@@ -76,7 +82,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
         .finally(() => { if (seq === quoteSeq.current) setQuoting(false) })
     }, 450)
     return () => clearTimeout(id)
-  }, [from, to, amount, n])
+  }, [from, to, amount, n, solIn])
 
   function flip() {
     setDir(d => (d === 'out' ? 'in' : 'out'))
@@ -161,7 +167,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
   const busy = status === 'switching' || status === 'bridging'
   const needsWallet = !sender
   const tooSmall = quote !== null && quote.receiveUsdc <= 0
-  const passcodeMissing = fromTrading && guard.needsPasscode && !guard.passcode
+  const passcodeMissing = fromTrading && guard.missing
   const STEPS = ['approve', 'burn', 'fetchAttestation', 'mint']
   const stepState = (name: string) => {
     const r = result?.steps.find(x => x.name === name)
@@ -180,7 +186,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
       <div className="xs-head">
         <h1>{T("Bridge")}</h1>
         <p>{T('Native USDC between Arc and {n} networks, with Circle’s CCTP: no wrapped tokens, no third-party bridge, usually under a minute.', { n: BRIDGE_CHAINS.length })}</p>
-        <ChainStrip size={24} onPick={c => { if (dir === 'in' && !BRIDGE_CHAINS.find(x => x.chain === c)?.evm) return; pickOther(c) }} />
+        <ChainStrip size={24} onPick={pickOther} />
       </div>
 
       <div className="xs-grid">
@@ -192,6 +198,32 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
               ))}
             </div>
 
+            {solIn ? (
+              <>
+                <div className="xs-box">
+                  <div className="xs-box-h">
+                    <span>{T('From')}</span>
+                    <ChainPicker value={from} options={otherOptions} onChange={pickOther} />
+                  </div>
+                  <div className="xs-box-f">{T('SOL or USDC from your Solana wallet (Phantom, Solflare, Backpack), through Relay: USDC on Arc in seconds.')}</div>
+                </div>
+                <SolanaCross chainId={ARC_ID} token={ARC_USDC} symbol="USDC" decimals={6} priceUsd={1} modes={['deposit']} />
+              </>
+            ) : toSolana && solRoute === 'relay' ? (
+              <>
+                <div className="xs-box">
+                  <div className="xs-box-h">
+                    <span>{T('To')}</span>
+                    <ChainPicker value={to} options={otherOptions} onChange={pickOther} />
+                  </div>
+                  <div className="xs-seg">
+                    <button onClick={() => setSolRoute('cctp')}>{T('USDC · Circle CCTP')}</button>
+                    <button className="active">{T('SOL or USDC · Relay')}</button>
+                  </div>
+                </div>
+                <SolanaCross chainId={ARC_ID} token={ARC_USDC} symbol="USDC" decimals={6} priceUsd={1} modes={['withdraw']} />
+              </>
+            ) : (<>
             <div className="xs-box">
               <div className="xs-box-h">
                 <span>{T('From')}</span>
@@ -217,6 +249,13 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
               </div>
               <div className="xs-box-f">{T('You receive')} · {T('about a minute')}</div>
             </div>
+
+            {toSolana && (
+              <div className="xs-seg">
+                <button className="active">{T('USDC · Circle CCTP')}</button>
+                <button onClick={() => setSolRoute('relay')}>{T('SOL or USDC · Relay')}</button>
+              </div>
+            )}
 
             {dir === 'out' && tradingAddr && address && (
               <div className="xs-seg">
@@ -296,6 +335,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
                 ? T("You sign on {chain} (approve + burn). Circle's relayer then mints your USDC on Arc automatically — no Arc gas, usually under a minute.", { chain: otherDef.label })
                 : T("You sign on Arc (approve + burn). Circle's relayer then mints your USDC on {chain} automatically — no network switch, usually under a minute.", { chain: otherDef.label })}
             </p>
+            </>)}
           </div>
         </div>
 
@@ -304,9 +344,8 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
             <b>{T('Supported networks')}</b>
             <div className="xs-nets">
               {BRIDGE_CHAINS.map(c => {
-                const usable = dir === 'out' || c.evm
                 return (
-                  <button key={c.chain} className={`xs-net-item${c.chain === other ? ' active' : ''}`} disabled={!usable} onClick={() => pickOther(c.chain)} title={usable ? c.label : T('Solana can receive USDC from Arc; sending from it needs a Solana wallet.')}>
+                  <button key={c.chain} className={`xs-net-item${c.chain === other ? ' active' : ''}`} onClick={() => pickOther(c.chain)} title={c.label}>
                     <ChainIcon chain={c.chain} size={22} /><span>{c.label}</span>
                   </button>
                 )

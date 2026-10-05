@@ -1,0 +1,4646 @@
+{
+ "at": "2026-10-05T10:01:12.357Z",
+ "rhMeme": "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18",
+ "sol-arc": {
+  "body": {
+   "user": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+   "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+   "originChainId": 792703809,
+   "destinationChainId": 5042,
+   "originCurrency": "11111111111111111111111111111111",
+   "destinationCurrency": "0x4b93446882d29e094181b2fae14b126577a2676c",
+   "amount": "50000000",
+   "tradeType": "EXACT_INPUT",
+   "appFees": [
+    {
+     "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+     "fee": "200"
+    }
+   ]
+  },
+  "quote": {
+   "requestId": "0x1791194472881b422a41d8923a5a1e9fff786f2a8a384a15e3967f534f04653a",
+   "steps": [
+    {
+     "id": "deposit",
+     "action": "Confirm transaction in your wallet",
+     "description": "Depositing funds to the relayer to execute the swap for ARCD",
+     "kind": "transaction",
+     "items": [
+      {
+       "status": "incomplete",
+       "data": {
+        "instructions": [
+         {
+          "keys": [
+           {
+            "pubkey": "Dodg2HifwU8rmaVVyMyUZDGTRbqAJTyVYxXPwcbNpBKc",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+            "isSigner": true,
+            "isWritable": true
+           },
+           {
+            "pubkey": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "7uTT8Xi5RWXzy7h9XL244GRgEycDYDhLjr3ZyNdXi8pZ",
+            "isSigner": false,
+            "isWritable": true
+           },
+           {
+            "pubkey": "11111111111111111111111111111111",
+            "isSigner": false,
+            "isWritable": false
+           }
+          ],
+          "programId": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+          "data": "0d9e0ddf5fd51c0680f0fa02000000005daca80d9f07d9bd0854df1b17dc6ba636267bc36b238458c1b5c4008d6a7832"
+         }
+        ],
+        "addressLookupTableAddresses": [
+         "Hm9fUgcn7qwDaiNTFiGh6pNtVATgnaRcmK6Bbx6EMZfP"
+        ]
+       },
+       "check": {
+        "endpoint": "/intents/status?requestId=0x1791194472881b422a41d8923a5a1e9fff786f2a8a384a15e3967f534f04653a",
+        "method": "GET"
+       }
+      }
+     ],
+     "requestId": "0x1791194472881b422a41d8923a5a1e9fff786f2a8a384a15e3967f534f04653a",
+     "depositAddress": ""
+    }
+   ],
+   "fees": {
+    "gas": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "372",
+     "amountFormatted": "0.000000372",
+     "amountUsd": "0.000045",
+     "minimumAmount": "372"
+    },
+    "relayer": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "471073",
+     "amountFormatted": "0.000471073",
+     "amountUsd": "0.056805",
+     "minimumAmount": "471073"
+    },
+    "relayerGas": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "105282",
+     "amountFormatted": "0.000105282",
+     "amountUsd": "0.012696",
+     "minimumAmount": "105282"
+    },
+    "relayerService": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "365791",
+     "amountFormatted": "0.000365791",
+     "amountUsd": "0.044109",
+     "minimumAmount": "365791"
+    },
+    "app": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "1000000",
+     "amountFormatted": "0.001",
+     "amountUsd": "0.120586",
+     "minimumAmount": "1000000"
+    },
+    "subsidized": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "0",
+     "amountFormatted": "0.0",
+     "amountUsd": "0",
+     "minimumAmount": "0"
+    }
+   },
+   "details": {
+    "operation": "swap",
+    "sender": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+    "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+    "currencyIn": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "50000000",
+     "amountFormatted": "0.05",
+     "amountUsd": "6.029312",
+     "minimumAmount": "50000000"
+    },
+    "currencyOut": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x4b93446882d29e094181b2fae14b126577a2676c",
+      "symbol": "ARCD",
+      "name": "ARCDEX",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "",
+       "verified": false
+      }
+     },
+     "amount": "1054800911353577215476783",
+     "amountFormatted": "1054800.911353577215476783",
+     "amountUsd": "5.597892",
+     "minimumAmount": "1033704893126505671167247"
+    },
+    "refundCurrency": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "50000000",
+     "amountFormatted": "0.05",
+     "amountUsd": "6.029312",
+     "minimumAmount": "50000000"
+    },
+    "totalImpact": {
+     "usd": "-0.431420",
+     "percent": "-7.16"
+    },
+    "swapImpact": {
+     "usd": "-0.254029",
+     "percent": "-4.21"
+    },
+    "expandedPriceImpact": {
+     "swap": {
+      "usd": "-0.269079"
+     },
+     "execution": {
+      "usd": "-0.032707"
+     },
+     "relay": {
+      "usd": "-0.009048"
+     },
+     "app": {
+      "usd": "-0.120586"
+     },
+     "sponsored": {
+      "usd": "0"
+     }
+    },
+    "rate": "21096018.227071542",
+    "slippageTolerance": {
+     "total": "200",
+     "origin": {
+      "usd": "0.000000",
+      "value": "0",
+      "percent": "0.00"
+     },
+     "destination": {
+      "usd": "0.111958",
+      "value": "21096018227071544309536",
+      "percent": "2.00"
+     }
+    },
+    "timeEstimate": 1,
+    "userBalance": "0",
+    "isFixedRate": false,
+    "route": {
+     "origin": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "11111111111111111111111111111111",
+        "symbol": "SOL",
+        "name": "Solana",
+        "decimals": 9,
+        "metadata": {
+         "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+         "verified": true
+        }
+       },
+       "amount": "50000000",
+       "amountFormatted": "0.05",
+       "amountUsd": "6.029312",
+       "minimumAmount": "50000000"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "11111111111111111111111111111111",
+        "symbol": "SOL",
+        "name": "Solana",
+        "decimals": 9,
+        "metadata": {
+         "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+         "verified": true
+        }
+       },
+       "amount": "50000000",
+       "amountFormatted": "0.05",
+       "amountUsd": "6.029312",
+       "minimumAmount": "50000000"
+      },
+      "router": "relay"
+     },
+     "destination": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 5042,
+        "address": "0x3600000000000000000000000000000000000000",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+         "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+         "verified": true
+        }
+       },
+       "amount": "5840270",
+       "amountFormatted": "5.84027",
+       "amountUsd": "5.839458",
+       "minimumAmount": "5840270"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 5042,
+        "address": "0x4b93446882d29e094181b2fae14b126577a2676c",
+        "symbol": "ARCD",
+        "name": "ARCDEX",
+        "decimals": 18,
+        "metadata": {
+         "logoURI": "",
+         "verified": false
+        }
+       },
+       "amount": "1054800911353577215476783",
+       "amountFormatted": "1054800.911353577215476783",
+       "amountUsd": "5.597892",
+       "minimumAmount": "1033704893126505671167247"
+      },
+      "router": "0x"
+     }
+    }
+   },
+   "protocol": {
+    "v2": {
+     "orderId": "0x5daca80d9f07d9bd0854df1b17dc6ba636267bc36b238458c1b5c4008d6a7832",
+     "hubType": "onchain",
+     "orderData": {
+      "version": "v1",
+      "solverChainId": "base",
+      "solver": "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
+      "salt": "0x7b869ff2aa0c5ecf757d8f11011905094897be6eb86a2cedda8c14789ba85d03",
+      "inputs": [
+       {
+        "payment": {
+         "chainId": "solana",
+         "currency": "11111111111111111111111111111111",
+         "amount": "50000000",
+         "weight": "1"
+        },
+        "refunds": [
+         {
+          "chainId": "solana",
+          "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+          "currency": "11111111111111111111111111111111",
+          "minimumAmount": "0",
+          "deadline": 1791799273,
+          "extraData": "0x"
+         },
+         {
+          "chainId": "arc",
+          "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+          "currency": "0x3600000000000000000000000000000000000000",
+          "minimumAmount": "0",
+          "deadline": 1791799273,
+          "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+         }
+        ]
+       }
+      ],
+      "output": {
+       "chainId": "arc",
+       "payments": [
+        {
+         "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+         "currency": "0x4b93446882d29e094181b2fae14b126577a2676c",
+         "minimumAmount": "1033704893126505671167247",
+         "expectedAmount": "1054800911353577215476783"
+        }
+       ],
+       "calls": [],
+       "deadline": 1791799273,
+       "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+      },
+      "fees": []
+     },
+     "paymentDetails": {
+      "chainId": "solana",
+      "depository": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+      "currency": "11111111111111111111111111111111",
+      "amount": "50000000"
+     }
+    }
+   }
+  }
+ },
+ "usdc-arc": {
+  "body": {
+   "user": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+   "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+   "originChainId": 792703809,
+   "destinationChainId": 5042,
+   "originCurrency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "destinationCurrency": "0x4b93446882d29e094181b2fae14b126577a2676c",
+   "amount": "5000000",
+   "tradeType": "EXACT_INPUT",
+   "appFees": [
+    {
+     "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+     "fee": "200"
+    }
+   ]
+  },
+  "quote": {
+   "requestId": "0x17911944735fb1d45b68962a9a79dc335678b72cd01395db3183ff26e625a63a",
+   "steps": [
+    {
+     "id": "deposit",
+     "action": "Confirm transaction in your wallet",
+     "description": "Depositing funds to the relayer to execute the swap for ARCD",
+     "kind": "transaction",
+     "items": [
+      {
+       "status": "incomplete",
+       "data": {
+        "instructions": [
+         {
+          "keys": [
+           {
+            "pubkey": "Dodg2HifwU8rmaVVyMyUZDGTRbqAJTyVYxXPwcbNpBKc",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+            "isSigner": true,
+            "isWritable": true
+           },
+           {
+            "pubkey": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "7uTT8Xi5RWXzy7h9XL244GRgEycDYDhLjr3ZyNdXi8pZ",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "8VYWdU14V78rcDepwmNt54bb1aam5qVUMUpEtW8oCn1E",
+            "isSigner": false,
+            "isWritable": true
+           },
+           {
+            "pubkey": "4nvJ5zWdVspxJiNZzB127U6amPH98SFFkBx2JZrAduia",
+            "isSigner": false,
+            "isWritable": true
+           },
+           {
+            "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "11111111111111111111111111111111",
+            "isSigner": false,
+            "isWritable": false
+           }
+          ],
+          "programId": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+          "data": "0b9c60da27a3b413404b4c0000000000b50be69634e33516479dff1108e2877964937d23818c4c362a182f78afe98322"
+         }
+        ],
+        "addressLookupTableAddresses": [
+         "Hm9fUgcn7qwDaiNTFiGh6pNtVATgnaRcmK6Bbx6EMZfP"
+        ]
+       },
+       "check": {
+        "endpoint": "/intents/status?requestId=0x17911944735fb1d45b68962a9a79dc335678b72cd01395db3183ff26e625a63a",
+        "method": "GET"
+       }
+      }
+     ],
+     "requestId": "0x17911944735fb1d45b68962a9a79dc335678b72cd01395db3183ff26e625a63a",
+     "depositAddress": ""
+    }
+   ],
+   "fees": {
+    "gas": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "26096",
+     "amountFormatted": "0.000026096",
+     "amountUsd": "0.003145",
+     "minimumAmount": "26096"
+    },
+    "relayer": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+       "verified": true
+      }
+     },
+     "amount": "41316",
+     "amountFormatted": "0.041316",
+     "amountUsd": "0.041310",
+     "minimumAmount": "41316"
+    },
+    "relayerGas": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+       "verified": true
+      }
+     },
+     "amount": "12690",
+     "amountFormatted": "0.01269",
+     "amountUsd": "0.012688",
+     "minimumAmount": "12690"
+    },
+    "relayerService": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+       "verified": true
+      }
+     },
+     "amount": "28626",
+     "amountFormatted": "0.028626",
+     "amountUsd": "0.028622",
+     "minimumAmount": "28626"
+    },
+    "app": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+       "verified": true
+      }
+     },
+     "amount": "100000",
+     "amountFormatted": "0.1",
+     "amountUsd": "0.099986",
+     "minimumAmount": "100000"
+    },
+    "subsidized": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+       "verified": true
+      }
+     },
+     "amount": "0",
+     "amountFormatted": "0.0",
+     "amountUsd": "0",
+     "minimumAmount": "0"
+    }
+   },
+   "details": {
+    "operation": "swap",
+    "sender": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+    "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+    "currencyIn": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+       "verified": true
+      }
+     },
+     "amount": "5000000",
+     "amountFormatted": "5.0",
+     "amountUsd": "4.999305",
+     "minimumAmount": "5000000"
+    },
+    "currencyOut": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x4b93446882d29e094181b2fae14b126577a2676c",
+      "symbol": "ARCD",
+      "name": "ARCDEX",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "",
+       "verified": false
+      }
+     },
+     "amount": "877743356862560627262571",
+     "amountFormatted": "877743.356862560627262571",
+     "amountUsd": "4.658237",
+     "minimumAmount": "860188489725309414717320"
+    },
+    "refundCurrency": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+       "verified": true
+      }
+     },
+     "amount": "5000000",
+     "amountFormatted": "5.0",
+     "amountUsd": "4.999305",
+     "minimumAmount": "5000000"
+    },
+    "totalImpact": {
+     "usd": "-0.341068",
+     "percent": "-6.82"
+    },
+    "swapImpact": {
+     "usd": "-0.199772",
+     "percent": "-4.00"
+    },
+    "expandedPriceImpact": {
+     "swap": {
+      "usd": "-0.200897"
+     },
+     "execution": {
+      "usd": "-0.032687"
+     },
+     "relay": {
+      "usd": "-0.007498"
+     },
+     "app": {
+      "usd": "-0.099986"
+     },
+     "sponsored": {
+      "usd": "0"
+     }
+    },
+    "rate": "175548.67137251212",
+    "slippageTolerance": {
+     "total": "200",
+     "origin": {
+      "usd": "0.000000",
+      "value": "0",
+      "percent": "0.00"
+     },
+     "destination": {
+      "usd": "0.092699",
+      "value": "17554867137251212545251",
+      "percent": "1.99"
+     }
+    },
+    "timeEstimate": 1,
+    "userBalance": "0",
+    "isFixedRate": false,
+    "route": {
+     "origin": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+         "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+         "verified": true
+        }
+       },
+       "amount": "5000000",
+       "amountFormatted": "5.0",
+       "amountUsd": "4.999305",
+       "minimumAmount": "5000000"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+         "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+         "verified": true
+        }
+       },
+       "amount": "5000000",
+       "amountFormatted": "5.0",
+       "amountUsd": "4.999305",
+       "minimumAmount": "5000000"
+      },
+      "router": "relay"
+     },
+     "destination": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 5042,
+        "address": "0x3600000000000000000000000000000000000000",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+         "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+         "verified": true
+        }
+       },
+       "amount": "4858684",
+       "amountFormatted": "4.858684",
+       "amountUsd": "4.858009",
+       "minimumAmount": "4858684"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 5042,
+        "address": "0x4b93446882d29e094181b2fae14b126577a2676c",
+        "symbol": "ARCD",
+        "name": "ARCDEX",
+        "decimals": 18,
+        "metadata": {
+         "logoURI": "",
+         "verified": false
+        }
+       },
+       "amount": "877743356862560627262571",
+       "amountFormatted": "877743.356862560627262571",
+       "amountUsd": "4.658237",
+       "minimumAmount": "860188489725309414717320"
+      },
+      "router": "0x"
+     }
+    }
+   },
+   "protocol": {
+    "v2": {
+     "orderId": "0xb50be69634e33516479dff1108e2877964937d23818c4c362a182f78afe98322",
+     "hubType": "onchain",
+     "orderData": {
+      "version": "v1",
+      "solverChainId": "base",
+      "solver": "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
+      "salt": "0x8fbaf8659813c27c4a47682a61301e7954c88d44fe1b8b2571e4b6ed4da60007",
+      "inputs": [
+       {
+        "payment": {
+         "chainId": "solana",
+         "currency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+         "amount": "5000000",
+         "weight": "1"
+        },
+        "refunds": [
+         {
+          "chainId": "solana",
+          "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+          "currency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "minimumAmount": "0",
+          "deadline": 1791799273,
+          "extraData": "0x"
+         },
+         {
+          "chainId": "arc",
+          "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+          "currency": "0x3600000000000000000000000000000000000000",
+          "minimumAmount": "0",
+          "deadline": 1791799273,
+          "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+         }
+        ]
+       }
+      ],
+      "output": {
+       "chainId": "arc",
+       "payments": [
+        {
+         "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+         "currency": "0x4b93446882d29e094181b2fae14b126577a2676c",
+         "minimumAmount": "860188489725309414717320",
+         "expectedAmount": "877743356862560627262571"
+        }
+       ],
+       "calls": [],
+       "deadline": 1791799273,
+       "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+      },
+      "fees": []
+     },
+     "paymentDetails": {
+      "chainId": "solana",
+      "depository": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+      "currency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "amount": "5000000"
+     }
+    }
+   }
+  }
+ },
+ "sol-arc-gas": {
+  "body": {
+   "user": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+   "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+   "originChainId": 792703809,
+   "destinationChainId": 5042,
+   "originCurrency": "11111111111111111111111111111111",
+   "destinationCurrency": "0x4b93446882d29e094181b2fae14b126577a2676c",
+   "amount": "50000000",
+   "tradeType": "EXACT_INPUT",
+   "appFees": [
+    {
+     "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+     "fee": "200"
+    }
+   ],
+   "topupGas": true,
+   "topupGasAmount": "500000"
+  },
+  "quote": {
+   "requestId": "0x17911944742e71b04ab3db50147cac207b0b88709eb9499845b6a1946fa18ccc",
+   "steps": [
+    {
+     "id": "deposit",
+     "action": "Confirm transaction in your wallet",
+     "description": "Depositing funds to the relayer to execute the swap for ARCD",
+     "kind": "transaction",
+     "items": [
+      {
+       "status": "incomplete",
+       "data": {
+        "instructions": [
+         {
+          "keys": [
+           {
+            "pubkey": "Dodg2HifwU8rmaVVyMyUZDGTRbqAJTyVYxXPwcbNpBKc",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+            "isSigner": true,
+            "isWritable": true
+           },
+           {
+            "pubkey": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "7uTT8Xi5RWXzy7h9XL244GRgEycDYDhLjr3ZyNdXi8pZ",
+            "isSigner": false,
+            "isWritable": true
+           },
+           {
+            "pubkey": "11111111111111111111111111111111",
+            "isSigner": false,
+            "isWritable": false
+           }
+          ],
+          "programId": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+          "data": "0d9e0ddf5fd51c0680f0fa0200000000642fba3ab2e2b34f6abfdb5a121682369274d8acf90a27324916fc4d5f211ca4"
+         }
+        ],
+        "addressLookupTableAddresses": [
+         "Hm9fUgcn7qwDaiNTFiGh6pNtVATgnaRcmK6Bbx6EMZfP"
+        ]
+       },
+       "check": {
+        "endpoint": "/intents/status?requestId=0x17911944742e71b04ab3db50147cac207b0b88709eb9499845b6a1946fa18ccc",
+        "method": "GET"
+       }
+      }
+     ],
+     "requestId": "0x17911944742e71b04ab3db50147cac207b0b88709eb9499845b6a1946fa18ccc",
+     "depositAddress": ""
+    }
+   ],
+   "fees": {
+    "gas": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "368",
+     "amountFormatted": "0.000000368",
+     "amountUsd": "0.000044",
+     "minimumAmount": "368"
+    },
+    "relayer": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "4619900",
+     "amountFormatted": "0.0046199",
+     "amountUsd": "0.556771",
+     "minimumAmount": "4619900"
+    },
+    "relayerGas": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "4254117",
+     "amountFormatted": "0.004254117",
+     "amountUsd": "0.512688",
+     "minimumAmount": "4254117"
+    },
+    "relayerService": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "365783",
+     "amountFormatted": "0.000365783",
+     "amountUsd": "0.044083",
+     "minimumAmount": "365783"
+    },
+    "app": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "1000000",
+     "amountFormatted": "0.001",
+     "amountUsd": "0.120516",
+     "minimumAmount": "1000000"
+    },
+    "subsidized": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "0",
+     "amountFormatted": "0.0",
+     "amountUsd": "0",
+     "minimumAmount": "0"
+    }
+   },
+   "details": {
+    "operation": "swap",
+    "sender": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+    "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+    "currencyIn": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "50000000",
+     "amountFormatted": "0.05",
+     "amountUsd": "6.025787",
+     "minimumAmount": "50000000"
+    },
+    "currencyOut": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x4b93446882d29e094181b2fae14b126577a2676c",
+      "symbol": "ARCD",
+      "name": "ARCDEX",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "",
+       "verified": false
+      }
+     },
+     "amount": "964733432545071677646648",
+     "amountFormatted": "964733.432545071677646648",
+     "amountUsd": "5.119899",
+     "minimumAmount": "945438763894170244093715"
+    },
+    "refundCurrency": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "50000000",
+     "amountFormatted": "0.05",
+     "amountUsd": "6.025787",
+     "minimumAmount": "50000000"
+    },
+    "currencyGasTopup": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x0000000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin (Gas Currency)",
+      "decimals": 18,
+      "metadata": {}
+     },
+     "amount": "500069509661842996",
+     "amountFormatted": "0.500069509661842996",
+     "amountUsd": "0.500000",
+     "minimumAmount": "500069509661842996"
+    },
+    "totalImpact": {
+     "usd": "-0.405888",
+     "percent": "-6.74"
+    },
+    "swapImpact": {
+     "usd": "-0.228601",
+     "percent": "-3.79"
+    },
+    "expandedPriceImpact": {
+     "swap": {
+      "usd": "-0.243646"
+     },
+     "execution": {
+      "usd": "-0.532688"
+     },
+     "relay": {
+      "usd": "-0.009038"
+     },
+     "app": {
+      "usd": "-0.120516"
+     },
+     "sponsored": {
+      "usd": "0"
+     }
+    },
+    "rate": "26831797.274298668",
+    "slippageTolerance": {
+     "total": "200",
+     "origin": {
+      "usd": "0.000000",
+      "value": "0",
+      "percent": "0.00"
+     },
+     "destination": {
+      "usd": "0.102398",
+      "value": "19294668650901433552933",
+      "percent": "2.00"
+     }
+    },
+    "timeEstimate": 1,
+    "userBalance": "0",
+    "isFixedRate": false,
+    "route": {
+     "origin": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "11111111111111111111111111111111",
+        "symbol": "SOL",
+        "name": "Solana",
+        "decimals": 9,
+        "metadata": {
+         "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+         "verified": true
+        }
+       },
+       "amount": "50000000",
+       "amountFormatted": "0.05",
+       "amountUsd": "6.025787",
+       "minimumAmount": "50000000"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "11111111111111111111111111111111",
+        "symbol": "SOL",
+        "name": "Solana",
+        "decimals": 9,
+        "metadata": {
+         "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+         "verified": true
+        }
+       },
+       "amount": "50000000",
+       "amountFormatted": "0.05",
+       "amountUsd": "6.025787",
+       "minimumAmount": "50000000"
+      },
+      "router": "relay"
+     },
+     "destination": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 5042,
+        "address": "0x3600000000000000000000000000000000000000",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+         "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+         "verified": true
+        }
+       },
+       "amount": "5341582",
+       "amountFormatted": "5.341582",
+       "amountUsd": "5.340840",
+       "minimumAmount": "5341582"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 5042,
+        "address": "0x4b93446882d29e094181b2fae14b126577a2676c",
+        "symbol": "ARCD",
+        "name": "ARCDEX",
+        "decimals": 18,
+        "metadata": {
+         "logoURI": "",
+         "verified": false
+        }
+       },
+       "amount": "964733432545071677646648",
+       "amountFormatted": "964733.432545071677646648",
+       "amountUsd": "5.119899",
+       "minimumAmount": "945438763894170244093715"
+      },
+      "router": "0x"
+     }
+    }
+   },
+   "protocol": {
+    "v2": {
+     "orderId": "0x642fba3ab2e2b34f6abfdb5a121682369274d8acf90a27324916fc4d5f211ca4",
+     "hubType": "onchain",
+     "orderData": {
+      "version": "v1",
+      "solverChainId": "base",
+      "solver": "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
+      "salt": "0xb4fafcf96639dc35bbb9330449e75f65e78a322f57357b97c447ea4704d76899",
+      "inputs": [
+       {
+        "payment": {
+         "chainId": "solana",
+         "currency": "11111111111111111111111111111111",
+         "amount": "50000000",
+         "weight": "1"
+        },
+        "refunds": [
+         {
+          "chainId": "solana",
+          "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+          "currency": "11111111111111111111111111111111",
+          "minimumAmount": "0",
+          "deadline": 1791799274,
+          "extraData": "0x"
+         },
+         {
+          "chainId": "arc",
+          "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+          "currency": "0x3600000000000000000000000000000000000000",
+          "minimumAmount": "0",
+          "deadline": 1791799274,
+          "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+         }
+        ]
+       }
+      ],
+      "output": {
+       "chainId": "arc",
+       "payments": [
+        {
+         "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+         "currency": "0x4b93446882d29e094181b2fae14b126577a2676c",
+         "minimumAmount": "945438763894170244093715",
+         "expectedAmount": "964733432545071677646648"
+        }
+       ],
+       "calls": [],
+       "deadline": 1791799274,
+       "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+      },
+      "fees": []
+     },
+     "paymentDetails": {
+      "chainId": "solana",
+      "depository": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+      "currency": "11111111111111111111111111111111",
+      "amount": "50000000"
+     }
+    }
+   }
+  }
+ },
+ "sol-bsc": {
+  "body": {
+   "user": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+   "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+   "originChainId": 792703809,
+   "destinationChainId": 56,
+   "originCurrency": "11111111111111111111111111111111",
+   "destinationCurrency": "0xeccbb861c0dda7efd964010085488b69317e4444",
+   "amount": "50000000",
+   "tradeType": "EXACT_INPUT",
+   "appFees": [
+    {
+     "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+     "fee": "200"
+    }
+   ]
+  },
+  "quote": {
+   "requestId": "0x179119447524a1ee667722bfaff138168e16a72fb2277cdf232afdb93062a46c",
+   "steps": [
+    {
+     "id": "deposit",
+     "action": "Confirm transaction in your wallet",
+     "description": "Depositing funds to the relayer to execute the swap for 龙虾",
+     "kind": "transaction",
+     "items": [
+      {
+       "status": "incomplete",
+       "data": {
+        "instructions": [
+         {
+          "keys": [
+           {
+            "pubkey": "Dodg2HifwU8rmaVVyMyUZDGTRbqAJTyVYxXPwcbNpBKc",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+            "isSigner": true,
+            "isWritable": true
+           },
+           {
+            "pubkey": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "7uTT8Xi5RWXzy7h9XL244GRgEycDYDhLjr3ZyNdXi8pZ",
+            "isSigner": false,
+            "isWritable": true
+           },
+           {
+            "pubkey": "11111111111111111111111111111111",
+            "isSigner": false,
+            "isWritable": false
+           }
+          ],
+          "programId": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+          "data": "0d9e0ddf5fd51c0680f0fa020000000024d6d04ac0caa732629e25e3f9d5016ca1935c1190ab169aa1dda15a89728a82"
+         }
+        ],
+        "addressLookupTableAddresses": [
+         "Hm9fUgcn7qwDaiNTFiGh6pNtVATgnaRcmK6Bbx6EMZfP"
+        ]
+       },
+       "check": {
+        "endpoint": "/intents/status?requestId=0x179119447524a1ee667722bfaff138168e16a72fb2277cdf232afdb93062a46c",
+        "method": "GET"
+       }
+      }
+     ],
+     "requestId": "0x179119447524a1ee667722bfaff138168e16a72fb2277cdf232afdb93062a46c",
+     "depositAddress": ""
+    }
+   ],
+   "fees": {
+    "gas": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "347",
+     "amountFormatted": "0.000000347",
+     "amountUsd": "0.000042",
+     "minimumAmount": "347"
+    },
+    "relayer": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "869850",
+     "amountFormatted": "0.00086985",
+     "amountUsd": "0.104831",
+     "minimumAmount": "869850"
+    },
+    "relayerGas": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "354255",
+     "amountFormatted": "0.000354255",
+     "amountUsd": "0.042693",
+     "minimumAmount": "354255"
+    },
+    "relayerService": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "515595",
+     "amountFormatted": "0.000515595",
+     "amountUsd": "0.062137",
+     "minimumAmount": "515595"
+    },
+    "app": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "1000000",
+     "amountFormatted": "0.001",
+     "amountUsd": "0.120516",
+     "minimumAmount": "1000000"
+    },
+    "subsidized": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "0",
+     "amountFormatted": "0.0",
+     "amountUsd": "0",
+     "minimumAmount": "0"
+    }
+   },
+   "details": {
+    "operation": "swap",
+    "sender": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+    "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+    "currencyIn": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "50000000",
+     "amountFormatted": "0.05",
+     "amountUsd": "6.025787",
+     "minimumAmount": "50000000"
+    },
+    "currencyOut": {
+     "currency": {
+      "chainId": 56,
+      "address": "0xeccbb861c0dda7efd964010085488b69317e4444",
+      "symbol": "龙虾",
+      "name": "龙虾",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/102172215/large/bvnt2zqtx33e6at5pm5marta4070.?1772252895",
+       "verified": false
+      }
+     },
+     "amount": "136256090163371526220",
+     "amountFormatted": "136.25609016337152622",
+     "amountUsd": "5.779711",
+     "minimumAmount": "133530968360104095695"
+    },
+    "refundCurrency": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "50000000",
+     "amountFormatted": "0.05",
+     "amountUsd": "6.025787",
+     "minimumAmount": "50000000"
+    },
+    "totalImpact": {
+     "usd": "-0.246076",
+     "percent": "-4.08"
+    },
+    "swapImpact": {
+     "usd": "-0.020729",
+     "percent": "-0.34"
+    },
+    "expandedPriceImpact": {
+     "swap": {
+      "usd": "-0.053828"
+     },
+     "execution": {
+      "usd": "-0.062693"
+     },
+     "relay": {
+      "usd": "-0.009038"
+     },
+     "app": {
+      "usd": "-0.120516"
+     },
+     "sponsored": {
+      "usd": "0"
+     }
+    },
+    "rate": "2725.1218032674306",
+    "slippageTolerance": {
+     "total": "200",
+     "origin": {
+      "usd": "0.000000",
+      "value": "0",
+      "percent": "0.00"
+     },
+     "destination": {
+      "usd": "0.115594",
+      "value": "2725121803267430525",
+      "percent": "2.00"
+     }
+    },
+    "timeEstimate": 1,
+    "userBalance": "0",
+    "isFixedRate": false,
+    "route": {
+     "origin": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "11111111111111111111111111111111",
+        "symbol": "SOL",
+        "name": "Solana",
+        "decimals": 9,
+        "metadata": {
+         "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+         "verified": true
+        }
+       },
+       "amount": "50000000",
+       "amountFormatted": "0.05",
+       "amountUsd": "6.025787",
+       "minimumAmount": "50000000"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "11111111111111111111111111111111",
+        "symbol": "SOL",
+        "name": "Solana",
+        "decimals": 9,
+        "metadata": {
+         "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+         "verified": true
+        }
+       },
+       "amount": "50000000",
+       "amountFormatted": "0.05",
+       "amountUsd": "6.025787",
+       "minimumAmount": "50000000"
+      },
+      "router": "relay"
+     },
+     "destination": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 56,
+        "address": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+        "symbol": "USDC",
+        "name": "USDCoin",
+        "decimals": 18,
+        "metadata": {
+         "logoURI": "https://ethereum-optimism.github.io/data/USDC/logo.png",
+         "verified": true
+        }
+       },
+       "amount": "5793829081720053803",
+       "amountFormatted": "5.793829081720053803",
+       "amountUsd": "5.793528",
+       "minimumAmount": "5793829081720053803"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 56,
+        "address": "0xeccbb861c0dda7efd964010085488b69317e4444",
+        "symbol": "龙虾",
+        "name": "龙虾",
+        "decimals": 18,
+        "metadata": {
+         "logoURI": "https://coin-images.coingecko.com/coins/images/102172215/large/bvnt2zqtx33e6at5pm5marta4070.?1772252895",
+         "verified": false
+        }
+       },
+       "amount": "136256090163371526220",
+       "amountFormatted": "136.25609016337152622",
+       "amountUsd": "5.779711",
+       "minimumAmount": "133530968360104095695"
+      },
+      "router": "fynd-hosted"
+     }
+    }
+   },
+   "protocol": {
+    "v2": {
+     "orderId": "0x24d6d04ac0caa732629e25e3f9d5016ca1935c1190ab169aa1dda15a89728a82",
+     "hubType": "onchain",
+     "orderData": {
+      "version": "v1",
+      "solverChainId": "base",
+      "solver": "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
+      "salt": "0xdae6feda2ea2cbb618884aa1d42202732e6d56fad89c0992af9d2d0a235b35a8",
+      "inputs": [
+       {
+        "payment": {
+         "chainId": "solana",
+         "currency": "11111111111111111111111111111111",
+         "amount": "50000000",
+         "weight": "1"
+        },
+        "refunds": [
+         {
+          "chainId": "solana",
+          "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+          "currency": "11111111111111111111111111111111",
+          "minimumAmount": "0",
+          "deadline": 1791799275,
+          "extraData": "0x"
+         },
+         {
+          "chainId": "bnb",
+          "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+          "currency": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+          "minimumAmount": "0",
+          "deadline": 1791799275,
+          "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+         }
+        ]
+       }
+      ],
+      "output": {
+       "chainId": "bnb",
+       "payments": [
+        {
+         "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+         "currency": "0xeccbb861c0dda7efd964010085488b69317e4444",
+         "minimumAmount": "133530968360104095695",
+         "expectedAmount": "136256090163371526220"
+        }
+       ],
+       "calls": [],
+       "deadline": 1791799275,
+       "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+      },
+      "fees": []
+     },
+     "paymentDetails": {
+      "chainId": "solana",
+      "depository": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+      "currency": "11111111111111111111111111111111",
+      "amount": "50000000"
+     }
+    }
+   }
+  }
+ },
+ "sol-bsc-gas": {
+  "body": {
+   "user": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+   "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+   "originChainId": 792703809,
+   "destinationChainId": 56,
+   "originCurrency": "11111111111111111111111111111111",
+   "destinationCurrency": "0xeccbb861c0dda7efd964010085488b69317e4444",
+   "amount": "50000000",
+   "tradeType": "EXACT_INPUT",
+   "appFees": [
+    {
+     "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+     "fee": "200"
+    }
+   ],
+   "topupGas": true,
+   "topupGasAmount": "500000"
+  },
+  "quote": {
+   "requestId": "0x17911944768a1b1b8c61d7d3aebf725a1d72f7fddeaf7dea9a417f6d5d71bc6f",
+   "steps": [
+    {
+     "id": "deposit",
+     "action": "Confirm transaction in your wallet",
+     "description": "Depositing funds to the relayer to execute the swap for 龙虾",
+     "kind": "transaction",
+     "items": [
+      {
+       "status": "incomplete",
+       "data": {
+        "instructions": [
+         {
+          "keys": [
+           {
+            "pubkey": "Dodg2HifwU8rmaVVyMyUZDGTRbqAJTyVYxXPwcbNpBKc",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+            "isSigner": true,
+            "isWritable": true
+           },
+           {
+            "pubkey": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "7uTT8Xi5RWXzy7h9XL244GRgEycDYDhLjr3ZyNdXi8pZ",
+            "isSigner": false,
+            "isWritable": true
+           },
+           {
+            "pubkey": "11111111111111111111111111111111",
+            "isSigner": false,
+            "isWritable": false
+           }
+          ],
+          "programId": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+          "data": "0d9e0ddf5fd51c0680f0fa02000000000e428c1c5eb3f9eecc510272effeac19d526d16455485da52b63a22680a8f895"
+         }
+        ],
+        "addressLookupTableAddresses": [
+         "Hm9fUgcn7qwDaiNTFiGh6pNtVATgnaRcmK6Bbx6EMZfP"
+        ]
+       },
+       "check": {
+        "endpoint": "/intents/status?requestId=0x17911944768a1b1b8c61d7d3aebf725a1d72f7fddeaf7dea9a417f6d5d71bc6f",
+        "method": "GET"
+       }
+      }
+     ],
+     "requestId": "0x17911944768a1b1b8c61d7d3aebf725a1d72f7fddeaf7dea9a417f6d5d71bc6f",
+     "depositAddress": ""
+    }
+   ],
+   "fees": {
+    "gas": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "354",
+     "amountFormatted": "0.000000354",
+     "amountUsd": "0.000043",
+     "minimumAmount": "354"
+    },
+    "relayer": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "5030747",
+     "amountFormatted": "0.005030747",
+     "amountUsd": "0.606284",
+     "minimumAmount": "5030747"
+    },
+    "relayerGas": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "4515152",
+     "amountFormatted": "0.004515152",
+     "amountUsd": "0.544147",
+     "minimumAmount": "4515152"
+    },
+    "relayerService": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "515595",
+     "amountFormatted": "0.000515595",
+     "amountUsd": "0.062137",
+     "minimumAmount": "515595"
+    },
+    "app": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "1000000",
+     "amountFormatted": "0.001",
+     "amountUsd": "0.120516",
+     "minimumAmount": "1000000"
+    },
+    "subsidized": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "0",
+     "amountFormatted": "0.0",
+     "amountUsd": "0",
+     "minimumAmount": "0"
+    }
+   },
+   "details": {
+    "operation": "swap",
+    "sender": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+    "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+    "currencyIn": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "50000000",
+     "amountFormatted": "0.05",
+     "amountUsd": "6.025787",
+     "minimumAmount": "50000000"
+    },
+    "currencyOut": {
+     "currency": {
+      "chainId": 56,
+      "address": "0xeccbb861c0dda7efd964010085488b69317e4444",
+      "symbol": "龙虾",
+      "name": "龙虾",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/102172215/large/bvnt2zqtx33e6at5pm5marta4070.?1772252895",
+       "verified": false
+      }
+     },
+     "amount": "124460095976929049278",
+     "amountFormatted": "124.460095976929049278",
+     "amountUsd": "5.279348",
+     "minimumAmount": "121970894057390468292"
+    },
+    "refundCurrency": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "50000000",
+     "amountFormatted": "0.05",
+     "amountUsd": "6.025787",
+     "minimumAmount": "50000000"
+    },
+    "currencyGasTopup": {
+     "currency": {
+      "chainId": 56,
+      "address": "0x0000000000000000000000000000000000000000",
+      "symbol": "BNB",
+      "name": "Binance Coin",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/currencies/bnb.png",
+       "verified": true
+      }
+     },
+     "amount": "635148282550088",
+     "amountFormatted": "0.000635148282550088",
+     "amountUsd": "0.500000",
+     "minimumAmount": "635148282550088"
+    },
+    "totalImpact": {
+     "usd": "-0.246439",
+     "percent": "-4.09"
+    },
+    "swapImpact": {
+     "usd": "-0.019639",
+     "percent": "-0.33"
+    },
+    "expandedPriceImpact": {
+     "swap": {
+      "usd": "-0.052738"
+     },
+     "execution": {
+      "usd": "-0.564147"
+     },
+     "relay": {
+      "usd": "-0.009038"
+     },
+     "app": {
+      "usd": "-0.120516"
+     },
+     "sponsored": {
+      "usd": "0"
+     }
+    },
+    "rate": "3432.197880228644",
+    "slippageTolerance": {
+     "total": "200",
+     "origin": {
+      "usd": "0.000000",
+      "value": "0",
+      "percent": "0.00"
+     },
+     "destination": {
+      "usd": "0.105587",
+      "value": "2489201919538580986",
+      "percent": "2.00"
+     }
+    },
+    "timeEstimate": 1,
+    "userBalance": "0",
+    "isFixedRate": false,
+    "route": {
+     "origin": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "11111111111111111111111111111111",
+        "symbol": "SOL",
+        "name": "Solana",
+        "decimals": 9,
+        "metadata": {
+         "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+         "verified": true
+        }
+       },
+       "amount": "50000000",
+       "amountFormatted": "0.05",
+       "amountUsd": "6.025787",
+       "minimumAmount": "50000000"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "11111111111111111111111111111111",
+        "symbol": "SOL",
+        "name": "Solana",
+        "decimals": 9,
+        "metadata": {
+         "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+         "verified": true
+        }
+       },
+       "amount": "50000000",
+       "amountFormatted": "0.05",
+       "amountUsd": "6.025787",
+       "minimumAmount": "50000000"
+      },
+      "router": "relay"
+     },
+     "destination": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 56,
+        "address": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+        "symbol": "USDC",
+        "name": "USDCoin",
+        "decimals": 18,
+        "metadata": {
+         "logoURI": "https://ethereum-optimism.github.io/data/USDC/logo.png",
+         "verified": true
+        }
+       },
+       "amount": "5292274079821086560",
+       "amountFormatted": "5.29227407982108656",
+       "amountUsd": "5.291999",
+       "minimumAmount": "5292274079821086560"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 56,
+        "address": "0xeccbb861c0dda7efd964010085488b69317e4444",
+        "symbol": "龙虾",
+        "name": "龙虾",
+        "decimals": 18,
+        "metadata": {
+         "logoURI": "https://coin-images.coingecko.com/coins/images/102172215/large/bvnt2zqtx33e6at5pm5marta4070.?1772252895",
+         "verified": false
+        }
+       },
+       "amount": "124460095976929049278",
+       "amountFormatted": "124.460095976929049278",
+       "amountUsd": "5.279348",
+       "minimumAmount": "121970894057390468292"
+      },
+      "router": "0x"
+     }
+    }
+   },
+   "protocol": {
+    "v2": {
+     "orderId": "0x0e428c1c5eb3f9eecc510272effeac19d526d16455485da52b63a22680a8f895",
+     "hubType": "onchain",
+     "orderData": {
+      "version": "v1",
+      "solverChainId": "base",
+      "solver": "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
+      "salt": "0x864fc6a03b21aea879bd81670a0b5c3b99edc8db5e873e38e9ff900967f09f75",
+      "inputs": [
+       {
+        "payment": {
+         "chainId": "solana",
+         "currency": "11111111111111111111111111111111",
+         "amount": "50000000",
+         "weight": "1"
+        },
+        "refunds": [
+         {
+          "chainId": "solana",
+          "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+          "currency": "11111111111111111111111111111111",
+          "minimumAmount": "0",
+          "deadline": 1791799276,
+          "extraData": "0x"
+         },
+         {
+          "chainId": "bnb",
+          "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+          "currency": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+          "minimumAmount": "0",
+          "deadline": 1791799276,
+          "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+         }
+        ]
+       }
+      ],
+      "output": {
+       "chainId": "bnb",
+       "payments": [
+        {
+         "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+         "currency": "0xeccbb861c0dda7efd964010085488b69317e4444",
+         "minimumAmount": "121970894057390468292",
+         "expectedAmount": "124460095976929049278"
+        }
+       ],
+       "calls": [],
+       "deadline": 1791799276,
+       "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+      },
+      "fees": []
+     },
+     "paymentDetails": {
+      "chainId": "solana",
+      "depository": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+      "currency": "11111111111111111111111111111111",
+      "amount": "50000000"
+     }
+    }
+   }
+  }
+ },
+ "sol-rh": {
+  "body": {
+   "user": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+   "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+   "originChainId": 792703809,
+   "destinationChainId": 4663,
+   "originCurrency": "11111111111111111111111111111111",
+   "destinationCurrency": "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18",
+   "amount": "50000000",
+   "tradeType": "EXACT_INPUT",
+   "appFees": [
+    {
+     "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+     "fee": "200"
+    }
+   ]
+  },
+  "quote": {
+   "requestId": "0x1791194476c3ec24d84332822e85068a65c54ebc120256b8792322c57f9b2779",
+   "steps": [
+    {
+     "id": "deposit",
+     "action": "Confirm transaction in your wallet",
+     "description": "Depositing funds to the relayer to execute the swap for AI",
+     "kind": "transaction",
+     "items": [
+      {
+       "status": "incomplete",
+       "data": {
+        "instructions": [
+         {
+          "keys": [
+           {
+            "pubkey": "Dodg2HifwU8rmaVVyMyUZDGTRbqAJTyVYxXPwcbNpBKc",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+            "isSigner": true,
+            "isWritable": true
+           },
+           {
+            "pubkey": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "7uTT8Xi5RWXzy7h9XL244GRgEycDYDhLjr3ZyNdXi8pZ",
+            "isSigner": false,
+            "isWritable": true
+           },
+           {
+            "pubkey": "11111111111111111111111111111111",
+            "isSigner": false,
+            "isWritable": false
+           }
+          ],
+          "programId": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+          "data": "0d9e0ddf5fd51c0680f0fa0200000000a6d6055fca051fb4d526193cd650cfde8798cfb24325a268edcf3dea8e072401"
+         }
+        ],
+        "addressLookupTableAddresses": [
+         "Hm9fUgcn7qwDaiNTFiGh6pNtVATgnaRcmK6Bbx6EMZfP"
+        ]
+       },
+       "check": {
+        "endpoint": "/intents/status?requestId=0x1791194476c3ec24d84332822e85068a65c54ebc120256b8792322c57f9b2779",
+        "method": "GET"
+       }
+      }
+     ],
+     "requestId": "0x1791194476c3ec24d84332822e85068a65c54ebc120256b8792322c57f9b2779",
+     "depositAddress": ""
+    }
+   ],
+   "fees": {
+    "gas": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "342",
+     "amountFormatted": "0.000000342",
+     "amountUsd": "0.000041",
+     "minimumAmount": "342"
+    },
+    "relayer": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "872104",
+     "amountFormatted": "0.000872104",
+     "amountUsd": "0.105102",
+     "minimumAmount": "872104"
+    },
+    "relayerGas": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "506325",
+     "amountFormatted": "0.000506325",
+     "amountUsd": "0.061020",
+     "minimumAmount": "506325"
+    },
+    "relayerService": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "365779",
+     "amountFormatted": "0.000365779",
+     "amountUsd": "0.044082",
+     "minimumAmount": "365779"
+    },
+    "app": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "1000000",
+     "amountFormatted": "0.001",
+     "amountUsd": "0.120516",
+     "minimumAmount": "1000000"
+    },
+    "subsidized": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "0",
+     "amountFormatted": "0.0",
+     "amountUsd": "0",
+     "minimumAmount": "0"
+    }
+   },
+   "details": {
+    "operation": "swap",
+    "sender": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+    "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+    "currencyIn": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "50000000",
+     "amountFormatted": "0.05",
+     "amountUsd": "6.025787",
+     "minimumAmount": "50000000"
+    },
+    "currencyOut": {
+     "currency": {
+      "chainId": 4663,
+      "address": "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18",
+      "symbol": "AI",
+      "name": "Artificial Inu",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "https://assets.geckoterminal.com/byuw84qv9ez2sp99h8q3vzcws5iq",
+       "verified": false
+      }
+     },
+     "amount": "52065859073426213596",
+     "amountFormatted": "52.065859073426213596",
+     "amountUsd": "5.789515",
+     "minimumAmount": "51024541891957689323"
+    },
+    "refundCurrency": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "50000000",
+     "amountFormatted": "0.05",
+     "amountUsd": "6.025787",
+     "minimumAmount": "50000000"
+    },
+    "totalImpact": {
+     "usd": "-0.236272",
+     "percent": "-3.92"
+    },
+    "swapImpact": {
+     "usd": "-0.010654",
+     "percent": "-0.18"
+    },
+    "expandedPriceImpact": {
+     "swap": {
+      "usd": "-0.025698"
+     },
+     "execution": {
+      "usd": "-0.08102"
+     },
+     "relay": {
+      "usd": "-0.009038"
+     },
+     "app": {
+      "usd": "-0.120516"
+     },
+     "sponsored": {
+      "usd": "0"
+     }
+    },
+    "rate": "1041.317181468524",
+    "slippageTolerance": {
+     "total": "200",
+     "origin": {
+      "usd": "0.000000",
+      "value": "0",
+      "percent": "0.00"
+     },
+     "destination": {
+      "usd": "0.115790",
+      "value": "1041317181468524273",
+      "percent": "2.00"
+     }
+    },
+    "timeEstimate": 1,
+    "userBalance": "0",
+    "isFixedRate": false,
+    "route": {
+     "origin": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "11111111111111111111111111111111",
+        "symbol": "SOL",
+        "name": "Solana",
+        "decimals": 9,
+        "metadata": {
+         "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+         "verified": true
+        }
+       },
+       "amount": "50000000",
+       "amountFormatted": "0.05",
+       "amountUsd": "6.025787",
+       "minimumAmount": "50000000"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "11111111111111111111111111111111",
+        "symbol": "SOL",
+        "name": "Solana",
+        "decimals": 9,
+        "metadata": {
+         "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+         "verified": true
+        }
+       },
+       "amount": "50000000",
+       "amountFormatted": "0.05",
+       "amountUsd": "6.025787",
+       "minimumAmount": "50000000"
+      },
+      "router": "relay"
+     },
+     "destination": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 4663,
+        "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+        "symbol": "USDG",
+        "name": "Global Dollar",
+        "decimals": 6,
+        "metadata": {
+         "logoURI": "https://assets.coingecko.com/coins/images/51281/standard/GDN_USDG_Token_200x200.png",
+         "verified": true
+        }
+       },
+       "amount": "5792689",
+       "amountFormatted": "5.792689",
+       "amountUsd": "5.792272",
+       "minimumAmount": "5792689"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 4663,
+        "address": "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18",
+        "symbol": "AI",
+        "name": "Artificial Inu",
+        "decimals": 18,
+        "metadata": {
+         "logoURI": "https://assets.geckoterminal.com/byuw84qv9ez2sp99h8q3vzcws5iq",
+         "verified": false
+        }
+       },
+       "amount": "52065859073426213596",
+       "amountFormatted": "52.065859073426213596",
+       "amountUsd": "5.789515",
+       "minimumAmount": "51024541891957689323"
+      },
+      "router": "fynd-hosted"
+     }
+    }
+   },
+   "protocol": {
+    "v2": {
+     "orderId": "0xa6d6055fca051fb4d526193cd650cfde8798cfb24325a268edcf3dea8e072401",
+     "hubType": "onchain",
+     "orderData": {
+      "version": "v1",
+      "solverChainId": "base",
+      "solver": "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
+      "salt": "0xd91bfb8b8c81568cd34e483db11d748714623a2613ed3f58841a4fd199c2dbab",
+      "inputs": [
+       {
+        "payment": {
+         "chainId": "solana",
+         "currency": "11111111111111111111111111111111",
+         "amount": "50000000",
+         "weight": "1"
+        },
+        "refunds": [
+         {
+          "chainId": "solana",
+          "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+          "currency": "11111111111111111111111111111111",
+          "minimumAmount": "0",
+          "deadline": 1791799277,
+          "extraData": "0x"
+         },
+         {
+          "chainId": "robinhood",
+          "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+          "currency": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "minimumAmount": "0",
+          "deadline": 1791799277,
+          "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+         }
+        ]
+       }
+      ],
+      "output": {
+       "chainId": "robinhood",
+       "payments": [
+        {
+         "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+         "currency": "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18",
+         "minimumAmount": "51024541891957689323",
+         "expectedAmount": "52065859073426213596"
+        }
+       ],
+       "calls": [],
+       "deadline": 1791799277,
+       "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+      },
+      "fees": []
+     },
+     "paymentDetails": {
+      "chainId": "solana",
+      "depository": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+      "currency": "11111111111111111111111111111111",
+      "amount": "50000000"
+     }
+    }
+   }
+  }
+ },
+ "arc-sol": {
+  "body": {
+   "user": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+   "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+   "originChainId": 5042,
+   "destinationChainId": 792703809,
+   "originCurrency": "0x4b93446882d29e094181b2fae14b126577a2676c",
+   "destinationCurrency": "11111111111111111111111111111111",
+   "amount": "1000000000000000000000000",
+   "tradeType": "EXACT_INPUT",
+   "appFees": [
+    {
+     "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+     "fee": "200"
+    }
+   ]
+  },
+  "quote": {
+   "requestId": "0x1791194477ff4d64803fbb70a080aafe33cf5a822acdf594951d2e70d75a69cb",
+   "steps": [
+    {
+     "id": "approve",
+     "action": "Confirm transaction in your wallet",
+     "description": "Sign an approval for ARCD",
+     "kind": "transaction",
+     "items": [
+      {
+       "status": "incomplete",
+       "data": {
+        "from": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+        "to": "0x4b93446882d29e094181b2fae14b126577a2676c",
+        "data": "0x095ea7b3000000000000000000000000ccc88a9d1b4ed6b0eaba998850414b24f1c315be00000000000000000000000000000000000000000000d3c21bcecceda1000000",
+        "value": "0",
+        "chainId": 5042,
+        "gas": "60820",
+        "maxFeePerGas": "22907563651",
+        "maxPriorityFeePerGas": "907563651"
+       }
+      }
+     ],
+     "requestId": "0x1791194477ff4d64803fbb70a080aafe33cf5a822acdf594951d2e70d75a69cb"
+    },
+    {
+     "id": "deposit",
+     "action": "Confirm transaction in your wallet",
+     "description": "Depositing funds to the relayer to execute the swap for SOL",
+     "kind": "transaction",
+     "items": [
+      {
+       "status": "incomplete",
+       "data": {
+        "from": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+        "to": "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be",
+        "data": "0xf9e4bab400000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000140000000000000000000000000f70da97812cb96acdf810712aa562db8dfa3dbef000000000000000000000000f70da97812cb96acdf810712aa562db8dfa3dbef0000000000000000000000000000000000000000000000000000000000000b4000000000000000000000000000000000000000000000000000000000000000010000000000000000000000004b93446882d29e094181b2fae14b126577a2676c000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000d3c21bcecceda100000000000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000007000000000000000000000000004b93446882d29e094181b2fae14b126577a2676c0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000044095ea7b30000000000000000000000000000000000001ff3684f28c67538d4d072c2273400000000000000000000000000000000000000000000d3c21bcecceda1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001ff3684f28c67538d4d072c2273400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000004e42213bc0b000000000000000000000000b6a575ed3bb629a44b9ad24a4b0a2147f32c54240000000000000000000000004b93446882d29e094181b2fae14b126577a2676c00000000000000000000000000000000000000000000d3c21bcecceda1000000000000000000000000000000b6a575ed3bb629a44b9ad24a4b0a2147f32c542400000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000004041fff991f000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f000000000000000000000000360000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004c153f00000000000000000000000000000000000000000000000000000000000000a0b39dac5693b812195e17d2240af43c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000002800000000000000000000000000000000000000000000000000000000000000204931997d3000000000000000000000000b6a575ed3bb629a44b9ad24a4b0a2147f32c54240000000000000000000000004b93446882d29e094181b2fae14b126577a2676c00000000000000000000000000000000000000000000d3c21bcecceda10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006ac3769900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000ffffffffffffffc5000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000001e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000490f4240fffd8963efd1fc6a506488495d951d5263988d250136000000000000000000000000000000000000008000000000c8ab4bf1629a94c75c0546d3409e8c8f47f8c820cc0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008434ee90ca000000000000000000000000f5c4f3dc02c3fb9279495a8fef7b0741da956157000000000000000000000000360000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004da48b00000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000022473b7bb2f000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001e00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000360000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000004cd00e387622c35bddb9b4c962c136462338bc310000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000645a1ee3ac000000000000000000000000274262a0321a0701b0a46a3576e07ae881c286bb000000000000000000000000360000000000000000000000000000000000000049cd34e9d8c8b440428b934e90d6d37721c87f2ebc5c0ab3df7c1db9e141e51d0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000021bc96a57d07e2d159495fdca228a5fc33efaa080a07bbf30846d4ff7744911971000000000000000000000000000000000000000000000000000000000000000049cd34e9d8c8b440428b934e90d6d37721c87f2ebc5c0ab3df7c1db9e141e51d",
+        "value": "0",
+        "chainId": 5042,
+        "gas": "613143",
+        "maxFeePerGas": "22907563651",
+        "maxPriorityFeePerGas": "907563651"
+       },
+       "check": {
+        "endpoint": "/intents/status?requestId=0x1791194477ff4d64803fbb70a080aafe33cf5a822acdf594951d2e70d75a69cb",
+        "method": "GET"
+       }
+      }
+     ],
+     "requestId": "0x1791194477ff4d64803fbb70a080aafe33cf5a822acdf594951d2e70d75a69cb",
+     "depositAddress": ""
+    }
+   ],
+   "fees": {
+    "gas": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x0000000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin (Gas Currency)",
+      "decimals": 18,
+      "metadata": {}
+     },
+     "amount": "14045612299665093",
+     "amountFormatted": "0.014045612299665093",
+     "amountUsd": "0.014044",
+     "minimumAmount": "14045612299665093"
+    },
+    "relayer": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x3600000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+       "verified": true
+      }
+     },
+     "amount": "30554",
+     "amountFormatted": "0.030554",
+     "amountUsd": "0.030550",
+     "minimumAmount": "30554"
+    },
+    "relayerGas": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x3600000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+       "verified": true
+      }
+     },
+     "amount": "104",
+     "amountFormatted": "0.000104",
+     "amountUsd": "0.000104",
+     "minimumAmount": "104"
+    },
+    "relayerService": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x3600000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+       "verified": true
+      }
+     },
+     "amount": "30450",
+     "amountFormatted": "0.03045",
+     "amountUsd": "0.030446",
+     "minimumAmount": "30450"
+    },
+    "app": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x3600000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+       "verified": true
+      }
+     },
+     "amount": "101758",
+     "amountFormatted": "0.101758",
+     "amountUsd": "0.101744",
+     "minimumAmount": "101758"
+    },
+    "subsidized": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x3600000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+       "verified": true
+      }
+     },
+     "amount": "0",
+     "amountFormatted": "0.0",
+     "amountUsd": "0",
+     "minimumAmount": "0"
+    }
+   },
+   "details": {
+    "operation": "swap",
+    "sender": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+    "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+    "currencyIn": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x4b93446882d29e094181b2fae14b126577a2676c",
+      "symbol": "ARCD",
+      "name": "ARCDEX",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "",
+       "verified": false
+      }
+     },
+     "amount": "1000000000000000000000000",
+     "amountFormatted": "1000000.0",
+     "amountUsd": "5.307061",
+     "minimumAmount": "1000000000000000000000000"
+    },
+    "currencyOut": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "40998076",
+     "amountFormatted": "0.040998076",
+     "amountUsd": "4.940913",
+     "minimumAmount": "40178114"
+    },
+    "refundCurrency": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x3600000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+       "verified": true
+      }
+     },
+     "amount": "5087933",
+     "amountFormatted": "5.087933",
+     "amountUsd": "5.087226",
+     "minimumAmount": "4986175"
+    },
+    "totalImpact": {
+     "usd": "-0.366148",
+     "percent": "-6.90"
+    },
+    "swapImpact": {
+     "usd": "-0.233854",
+     "percent": "-4.41"
+    },
+    "expandedPriceImpact": {
+     "swap": {
+      "usd": "-0.236341"
+     },
+     "execution": {
+      "usd": "-0.020103"
+     },
+     "relay": {
+      "usd": "-0.00796"
+     },
+     "app": {
+      "usd": "-0.101744"
+     },
+     "sponsored": {
+      "usd": "0"
+     }
+    },
+    "rate": "4.0998076e-8",
+    "slippageTolerance": {
+     "total": "200",
+     "origin": {
+      "usd": "0.101236",
+      "value": "101758",
+      "percent": "1.99"
+     },
+     "destination": {
+      "usd": "0.098818",
+      "value": "819962",
+      "percent": "2.00"
+     }
+    },
+    "timeEstimate": 1,
+    "userBalance": "0",
+    "isFixedRate": false,
+    "route": {
+     "origin": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 5042,
+        "address": "0x4b93446882d29e094181b2fae14b126577a2676c",
+        "symbol": "ARCD",
+        "name": "ARCDEX",
+        "decimals": 18,
+        "metadata": {
+         "logoURI": "",
+         "verified": false
+        }
+       },
+       "amount": "1000000000000000000000000",
+       "amountFormatted": "1000000.0",
+       "amountUsd": "5.307061",
+       "minimumAmount": "1000000000000000000000000"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 5042,
+        "address": "0x3600000000000000000000000000000000000000",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+         "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+         "verified": true
+        }
+       },
+       "amount": "5087933",
+       "amountFormatted": "5.087933",
+       "amountUsd": "5.087226",
+       "minimumAmount": "4986175"
+      },
+      "router": "0x"
+     },
+     "destination": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "11111111111111111111111111111111",
+        "symbol": "SOL",
+        "name": "Solana",
+        "decimals": 9,
+        "metadata": {
+         "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+         "verified": true
+        }
+       },
+       "amount": "40998076",
+       "amountFormatted": "0.040998076",
+       "amountUsd": "4.940913",
+       "minimumAmount": "40178114"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "11111111111111111111111111111111",
+        "symbol": "SOL",
+        "name": "Solana",
+        "decimals": 9,
+        "metadata": {
+         "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+         "verified": true
+        }
+       },
+       "amount": "40998076",
+       "amountFormatted": "0.040998076",
+       "amountUsd": "4.940913",
+       "minimumAmount": "40178114"
+      },
+      "router": "relay"
+     }
+    }
+   },
+   "protocol": {
+    "v2": {
+     "orderId": "0x49cd34e9d8c8b440428b934e90d6d37721c87f2ebc5c0ab3df7c1db9e141e51d",
+     "hubType": "onchain",
+     "orderData": {
+      "version": "v1",
+      "solverChainId": "base",
+      "solver": "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
+      "salt": "0x306de93b24d27d5d4bb12f5af972544f02dbacaf34f85d3edcab185fc3c78b13",
+      "inputs": [
+       {
+        "payment": {
+         "chainId": "arc",
+         "currency": "0x3600000000000000000000000000000000000000",
+         "amount": "5087933",
+         "weight": "1"
+        },
+        "refunds": [
+         {
+          "chainId": "arc",
+          "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+          "currency": "0x3600000000000000000000000000000000000000",
+          "minimumAmount": "0",
+          "deadline": 1791799278,
+          "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+         },
+         {
+          "chainId": "solana",
+          "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+          "currency": "11111111111111111111111111111111",
+          "minimumAmount": "0",
+          "deadline": 1791799278,
+          "extraData": "0x"
+         }
+        ]
+       }
+      ],
+      "output": {
+       "chainId": "solana",
+       "payments": [
+        {
+         "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+         "currency": "11111111111111111111111111111111",
+         "minimumAmount": "40178114",
+         "expectedAmount": "40998076"
+        }
+       ],
+       "calls": [],
+       "deadline": 1791799278,
+       "extraData": "0x"
+      },
+      "fees": []
+     },
+     "paymentDetails": {
+      "chainId": "arc",
+      "depository": "0x4cD00E387622C35bDDB9b4c962C136462338BC31",
+      "currency": "0x3600000000000000000000000000000000000000",
+      "amount": "5087933"
+     }
+    }
+   }
+  }
+ },
+ "bsc-sol": {
+  "body": {
+   "user": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+   "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+   "originChainId": 56,
+   "destinationChainId": 792703809,
+   "originCurrency": "0xeccbb861c0dda7efd964010085488b69317e4444",
+   "destinationCurrency": "11111111111111111111111111111111",
+   "amount": "100000000000000000000",
+   "tradeType": "EXACT_INPUT",
+   "appFees": [
+    {
+     "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+     "fee": "200"
+    }
+   ]
+  },
+  "quote": {
+   "requestId": "0x1791194478547fc937e9083b00359205859bae5d2b3f9b43c84a4a9215656b3e",
+   "steps": [
+    {
+     "id": "approve",
+     "action": "Confirm transaction in your wallet",
+     "description": "Sign an approval for 龙虾",
+     "kind": "transaction",
+     "items": [
+      {
+       "status": "incomplete",
+       "data": {
+        "from": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+        "to": "0xeccbb861c0dda7efd964010085488b69317e4444",
+        "data": "0x095ea7b3000000000000000000000000ccc88a9d1b4ed6b0eaba998850414b24f1c315be0000000000000000000000000000000000000000000000056bc75e2d63100000",
+        "value": "0",
+        "chainId": 56,
+        "gas": "60676",
+        "maxFeePerGas": "71500000",
+        "maxPriorityFeePerGas": "71500000"
+       }
+      }
+     ],
+     "requestId": "0x1791194478547fc937e9083b00359205859bae5d2b3f9b43c84a4a9215656b3e"
+    },
+    {
+     "id": "deposit",
+     "action": "Confirm transaction in your wallet",
+     "description": "Depositing funds to the relayer to execute the swap for SOL",
+     "kind": "transaction",
+     "items": [
+      {
+       "status": "incomplete",
+       "data": {
+        "from": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+        "to": "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be",
+        "data": "0xf9e4bab400000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000140000000000000000000000000f70da97812cb96acdf810712aa562db8dfa3dbef000000000000000000000000f70da97812cb96acdf810712aa562db8dfa3dbef0000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000eccbb861c0dda7efd964010085488b69317e444400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000056bc75e2d6310000000000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000009c0000000000000000000000000eccbb861c0dda7efd964010085488b69317e44440000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000044095ea7b30000000000000000000000000000000000001ff3684f28c67538d4d072c227340000000000000000000000000000000000000000000000056bc75e2d63100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001ff3684f28c67538d4d072c2273400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000007a42213bc0b0000000000000000000000002d9d6e538bd3f22323932782aaf89446cacaf9d3000000000000000000000000eccbb861c0dda7efd964010085488b69317e44440000000000000000000000000000000000000000000000056bc75e2d631000000000000000000000000000002d9d6e538bd3f22323932782aaf89446cacaf9d300000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000006c41fff991f000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f0000000000000000000000008ac76a51cc950d9822d68b83fe1ad97b32cd580d000000000000000000000000000000000000000000000000398cb3bba1e6c27800000000000000000000000000000000000000000000000000000000000000a0c4e02895f583f23df2e1ade90af43c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000001a00000000000000000000000000000000000000000000000000000000000000380000000000000000000000000000000000000000000000000000000000000054000000000000000000000000000000000000000000000000000000000000000e4c1fb425e0000000000000000000000002d9d6e538bd3f22323932782aaf89446cacaf9d3000000000000000000000000eccbb861c0dda7efd964010085488b69317e44440000000000000000000000000000000000000000000000056bc75e2d631000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006ac3769a00000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001a4d92aadfb0000000000000000000000002d9d6e538bd3f22323932782aaf89446cacaf9d300000000000000000000000055d398326f99059ff775485246999027b31979550000000000000000000000000000000000000000000000003ad19e4ad0c9c47f0abd3dcea04126fed3a0c07bf3656769d5531c5615dae64bbfa4c54cfcb1adf5000000000000000000000000000000000000000000000000000000006ac375aa0000000000000000000000009e229b12cc9081d6a510b29ccbd6311743e277ed0000000000000000000000000000000000000000000000000000000000000120000000000000000000000000eccbb861c0dda7efd964010085488b69317e44440000000000000000000000000000000000000000000000056bc75e2d631000000000000000000000000000000000000000000000000000000000000000000041224254722a9641bc4dc5467f48b2e5b0bbfaccd761b3f11c2f2c4e03eb32b0021035e90ab2545f373a95684be630cbbcc18c14edb885c272e56d82c232aae4331b00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000184af72634f0000000000000000000000002d9d6e538bd3f22323932782aaf89446cacaf9d300000000000000000000000055d398326f99059ff775485246999027b319795500000000000000000000000000000000000000000000000000000000000f424000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000ffffffffffffffc50000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000490f424000000000000000000000000000000001000276a4018ac76a51cc950d9822d68b83fe1ad97b32cd580d0000010000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008434ee90ca000000000000000000000000f5c4f3dc02c3fb9279495a8fef7b0741da9561570000000000000000000000008ac76a51cc950d9822d68b83fe1ad97b32cd580d0000000000000000000000000000000000000000000000003ad04c41dcb90d9500000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000022473b7bb2f000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001e000000000000000000000000000000000000000000000000000000000000000010000000000000000000000008ac76a51cc950d9822d68b83fe1ad97b32cd580d00000000000000000000000000000000000000000000000000000000000000010000000000000000000000004cd00e387622c35bddb9b4c962c136462338bc310000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000645a1ee3ac000000000000000000000000274262a0321a0701b0a46a3576e07ae881c286bb0000000000000000000000008ac76a51cc950d9822d68b83fe1ad97b32cd580db736e084c41edff58044b970f897505766bff1d0612852b34ca61fb5a176a98b0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000021e3b6565129a4a48c34b9f3b2d5eab95850295300b3809e739cf74587449119710000000000000000000000000000000000000000000000000000000000000000b736e084c41edff58044b970f897505766bff1d0612852b34ca61fb5a176a98b",
+        "value": "0",
+        "chainId": 56,
+        "gas": "652652",
+        "maxFeePerGas": "71500000",
+        "maxPriorityFeePerGas": "71500000"
+       },
+       "check": {
+        "endpoint": "/intents/status?requestId=0x1791194478547fc937e9083b00359205859bae5d2b3f9b43c84a4a9215656b3e",
+        "method": "GET"
+       }
+      }
+     ],
+     "requestId": "0x1791194478547fc937e9083b00359205859bae5d2b3f9b43c84a4a9215656b3e",
+     "depositAddress": ""
+    }
+   ],
+   "fees": {
+    "gas": {
+     "currency": {
+      "chainId": 56,
+      "address": "0x0000000000000000000000000000000000000000",
+      "symbol": "BNB",
+      "name": "Binance Coin",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/currencies/bnb.png",
+       "verified": true
+      }
+     },
+     "amount": "46664618000000",
+     "amountFormatted": "0.000046664618",
+     "amountUsd": "0.036735",
+     "minimumAmount": "46664618000000"
+    },
+    "relayer": {
+     "currency": {
+      "chainId": 56,
+      "address": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+      "symbol": "USDC",
+      "name": "USDCoin",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "https://ethereum-optimism.github.io/data/USDC/logo.png",
+       "verified": true
+      }
+     },
+     "amount": "34744666041165640",
+     "amountFormatted": "0.03474466604116564",
+     "amountUsd": "0.034743",
+     "minimumAmount": "34744666041165640"
+    },
+    "relayerGas": {
+     "currency": {
+      "chainId": 56,
+      "address": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+      "symbol": "USDC",
+      "name": "USDCoin",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "https://ethereum-optimism.github.io/data/USDC/logo.png",
+       "verified": true
+      }
+     },
+     "amount": "105591879246822",
+     "amountFormatted": "0.000105591879246822",
+     "amountUsd": "0.000106",
+     "minimumAmount": "105591879246822"
+    },
+    "relayerService": {
+     "currency": {
+      "chainId": 56,
+      "address": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+      "symbol": "USDC",
+      "name": "USDCoin",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "https://ethereum-optimism.github.io/data/USDC/logo.png",
+       "verified": true
+      }
+     },
+     "amount": "34639074161918818",
+     "amountFormatted": "0.034639074161918818",
+     "amountUsd": "0.034637",
+     "minimumAmount": "34639074161918818"
+    },
+    "app": {
+     "currency": {
+      "chainId": 56,
+      "address": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+      "symbol": "USDC",
+      "name": "USDCoin",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "https://ethereum-optimism.github.io/data/USDC/logo.png",
+       "verified": true
+      }
+     },
+     "amount": "84751419892865221",
+     "amountFormatted": "0.084751419892865221",
+     "amountUsd": "0.084747",
+     "minimumAmount": "84751419892865221"
+    },
+    "subsidized": {
+     "currency": {
+      "chainId": 56,
+      "address": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+      "symbol": "USDC",
+      "name": "USDCoin",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "https://ethereum-optimism.github.io/data/USDC/logo.png",
+       "verified": true
+      }
+     },
+     "amount": "0",
+     "amountFormatted": "0.0",
+     "amountUsd": "0",
+     "minimumAmount": "0"
+    }
+   },
+   "details": {
+    "operation": "swap",
+    "sender": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+    "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+    "currencyIn": {
+     "currency": {
+      "chainId": 56,
+      "address": "0xeccbb861c0dda7efd964010085488b69317e4444",
+      "symbol": "龙虾",
+      "name": "龙虾",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/102172215/large/bvnt2zqtx33e6at5pm5marta4070.?1772252895",
+       "verified": false
+      }
+     },
+     "amount": "100000000000000000000",
+     "amountFormatted": "100.0",
+     "amountUsd": "4.241800",
+     "minimumAmount": "100000000000000000000"
+    },
+    "currencyOut": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "34065789",
+     "amountFormatted": "0.034065789",
+     "amountUsd": "4.105463",
+     "minimumAmount": "33336781"
+    },
+    "refundCurrency": {
+     "currency": {
+      "chainId": 56,
+      "address": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+      "symbol": "USDC",
+      "name": "USDCoin",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "https://ethereum-optimism.github.io/data/USDC/logo.png",
+       "verified": true
+      }
+     },
+     "amount": "4237570994643261075",
+     "amountFormatted": "4.237570994643261075",
+     "amountUsd": "4.237351",
+     "minimumAmount": "4146886975357895288"
+    },
+    "totalImpact": {
+     "usd": "-0.136337",
+     "percent": "-3.21"
+    },
+    "swapImpact": {
+     "usd": "-0.016847",
+     "percent": "-0.40"
+    },
+    "expandedPriceImpact": {
+     "swap": {
+      "usd": "-0.025122"
+     },
+     "execution": {
+      "usd": "-0.020106"
+     },
+     "relay": {
+      "usd": "-0.006362"
+     },
+     "app": {
+      "usd": "-0.084747"
+     },
+     "sponsored": {
+      "usd": "0"
+     }
+    },
+    "rate": "0.00034065789",
+    "slippageTolerance": {
+     "total": "214",
+     "origin": {
+      "usd": "0.090256",
+      "value": "90684019285365787",
+      "percent": "2.13"
+     },
+     "destination": {
+      "usd": "0.087857",
+      "value": "729008",
+      "percent": "2.14"
+     }
+    },
+    "timeEstimate": 1,
+    "userBalance": "0",
+    "isFixedRate": false,
+    "route": {
+     "origin": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 56,
+        "address": "0xeccbb861c0dda7efd964010085488b69317e4444",
+        "symbol": "龙虾",
+        "name": "龙虾",
+        "decimals": 18,
+        "metadata": {
+         "logoURI": "https://coin-images.coingecko.com/coins/images/102172215/large/bvnt2zqtx33e6at5pm5marta4070.?1772252895",
+         "verified": false
+        }
+       },
+       "amount": "100000000000000000000",
+       "amountFormatted": "100.0",
+       "amountUsd": "4.241800",
+       "minimumAmount": "100000000000000000000"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 56,
+        "address": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+        "symbol": "USDC",
+        "name": "USDCoin",
+        "decimals": 18,
+        "metadata": {
+         "logoURI": "https://ethereum-optimism.github.io/data/USDC/logo.png",
+         "verified": true
+        }
+       },
+       "amount": "4237570994643261075",
+       "amountFormatted": "4.237570994643261075",
+       "amountUsd": "4.237351",
+       "minimumAmount": "4146886975357895288"
+      },
+      "router": "0x"
+     },
+     "destination": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "11111111111111111111111111111111",
+        "symbol": "SOL",
+        "name": "Solana",
+        "decimals": 9,
+        "metadata": {
+         "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+         "verified": true
+        }
+       },
+       "amount": "34065789",
+       "amountFormatted": "0.034065789",
+       "amountUsd": "4.105463",
+       "minimumAmount": "33336781"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "11111111111111111111111111111111",
+        "symbol": "SOL",
+        "name": "Solana",
+        "decimals": 9,
+        "metadata": {
+         "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+         "verified": true
+        }
+       },
+       "amount": "34065789",
+       "amountFormatted": "0.034065789",
+       "amountUsd": "4.105463",
+       "minimumAmount": "33336781"
+      },
+      "router": "relay"
+     }
+    }
+   },
+   "protocol": {
+    "v2": {
+     "orderId": "0xb736e084c41edff58044b970f897505766bff1d0612852b34ca61fb5a176a98b",
+     "hubType": "onchain",
+     "orderData": {
+      "version": "v1",
+      "solverChainId": "base",
+      "solver": "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
+      "salt": "0xcbe9a8a47aef2a142cd0e4bbe4cd34d892257d743186b1751bf1400d7c064896",
+      "inputs": [
+       {
+        "payment": {
+         "chainId": "bnb",
+         "currency": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+         "amount": "4237570994643261075",
+         "weight": "1"
+        },
+        "refunds": [
+         {
+          "chainId": "bnb",
+          "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+          "currency": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+          "minimumAmount": "0",
+          "deadline": 1791799281,
+          "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+         },
+         {
+          "chainId": "solana",
+          "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+          "currency": "11111111111111111111111111111111",
+          "minimumAmount": "0",
+          "deadline": 1791799281,
+          "extraData": "0x"
+         }
+        ]
+       }
+      ],
+      "output": {
+       "chainId": "solana",
+       "payments": [
+        {
+         "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+         "currency": "11111111111111111111111111111111",
+         "minimumAmount": "33336781",
+         "expectedAmount": "34065789"
+        }
+       ],
+       "calls": [],
+       "deadline": 1791799281,
+       "extraData": "0x"
+      },
+      "fees": []
+     },
+     "paymentDetails": {
+      "chainId": "bnb",
+      "depository": "0x4cd00e387622c35bddb9b4c962c136462338bc31",
+      "currency": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+      "amount": "4237570994643261075"
+     }
+    }
+   }
+  }
+ },
+ "rh-sol": {
+  "body": {
+   "user": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+   "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+   "originChainId": 4663,
+   "destinationChainId": 792703809,
+   "originCurrency": "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18",
+   "destinationCurrency": "11111111111111111111111111111111",
+   "amount": "10000000000000000000",
+   "tradeType": "EXACT_INPUT",
+   "appFees": [
+    {
+     "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+     "fee": "200"
+    }
+   ]
+  },
+  "quote": {
+   "requestId": "0x1791194482380f908102433876a05edf4bb77d037323b12f2b0b31fad6c83bde",
+   "steps": [
+    {
+     "id": "approve",
+     "action": "Confirm transaction in your wallet",
+     "description": "Sign an approval for AI",
+     "kind": "transaction",
+     "items": [
+      {
+       "status": "incomplete",
+       "data": {
+        "from": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+        "to": "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18",
+        "data": "0x095ea7b3000000000000000000000000ccc88a9d1b4ed6b0eaba998850414b24f1c315be0000000000000000000000000000000000000000000000008ac7230489e80000",
+        "value": "0",
+        "chainId": 4663,
+        "gas": "64894",
+        "maxFeePerGas": "28000000",
+        "maxPriorityFeePerGas": "0"
+       }
+      }
+     ],
+     "requestId": "0x1791194482380f908102433876a05edf4bb77d037323b12f2b0b31fad6c83bde"
+    },
+    {
+     "id": "deposit",
+     "action": "Confirm transaction in your wallet",
+     "description": "Depositing funds to the relayer to execute the swap for SOL",
+     "kind": "transaction",
+     "items": [
+      {
+       "status": "incomplete",
+       "data": {
+        "from": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+        "to": "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be",
+        "data": "0xf9e4bab400000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000140000000000000000000000000f70da97812cb96acdf810712aa562db8dfa3dbef000000000000000000000000f70da97812cb96acdf810712aa562db8dfa3dbef000000000000000000000000000000000000000000000000000000000000070000000000000000000000000000000000000000000000000000000000000000010000000000000000000000002e8c31162b855a2ffa90f6f8634643ad6f111e1800000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000008ac7230489e8000000000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000002c00000000000000000000000002e8c31162b855a2ffa90f6f8634643ad6f111e180000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000603206d6105217dd972e4ab30676a220ca3933460000000000000000000000000000000000000000000000008ac7230489e8000000000000000000000000000000000000000000000000000000000000000000000000000000000000603206d6105217dd972e4ab30676a220ca39334600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c03f0bde250fbbec9aa0a6c2372131a0502aba6188269ab52cacb500000000000000008ac7230489e8000000000000000000000000000000104b4806ec9aa0a6c2372131a0502aba6188269ab52cacb5b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f2e8c31162b855a2ffa90f6f8634643ad6f111e185fc5360d0400a0fd4f2af552add042d716f1d16848a097df16c7844a33b1c3d11ab353457846e13f153cd4cdaaa208c30cffa65a8ca168c72ea3f4df47050204f90010f915900301ff000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000022473b7bb2f000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001e000000000000000000000000000000000000000000000000000000000000000010000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000000000010000000000000000000000004cd00e387622c35bddb9b4c962c136462338bc310000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000645a1ee3ac000000000000000000000000274262a0321a0701b0a46a3576e07ae881c286bb0000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d168a9e8cf5a39da27370b3e9674138d0edb219a8f2eb37edb856789df7b3e278a460000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000021edb38c6daf13b0b2f21b323730d77bb4fde50a678334201809f08328449119710000000000000000000000000000000000000000000000000000000000000000a9e8cf5a39da27370b3e9674138d0edb219a8f2eb37edb856789df7b3e278a46",
+        "value": "0",
+        "chainId": 4663,
+        "gas": "553043",
+        "maxFeePerGas": "28000000",
+        "maxPriorityFeePerGas": "0"
+       },
+       "check": {
+        "endpoint": "/intents/status?requestId=0x1791194482380f908102433876a05edf4bb77d037323b12f2b0b31fad6c83bde",
+        "method": "GET"
+       }
+      }
+     ],
+     "requestId": "0x1791194482380f908102433876a05edf4bb77d037323b12f2b0b31fad6c83bde",
+     "depositAddress": ""
+    }
+   ],
+   "fees": {
+    "gas": {
+     "currency": {
+      "chainId": 4663,
+      "address": "0x0000000000000000000000000000000000000000",
+      "symbol": "ETH",
+      "name": "Ether",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/1/light.png",
+       "verified": true
+      }
+     },
+     "amount": "15485204000000",
+     "amountFormatted": "0.000015485204",
+     "amountUsd": "0.042039",
+     "minimumAmount": "15485204000000"
+    },
+    "relayer": {
+     "currency": {
+      "chainId": 4663,
+      "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "symbol": "USDG",
+      "name": "Global Dollar",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.coingecko.com/coins/images/51281/standard/GDN_USDG_Token_200x200.png",
+       "verified": true
+      }
+     },
+     "amount": "21985",
+     "amountFormatted": "0.021985",
+     "amountUsd": "0.021983",
+     "minimumAmount": "21985"
+    },
+    "relayerGas": {
+     "currency": {
+      "chainId": 4663,
+      "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "symbol": "USDG",
+      "name": "Global Dollar",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.coingecko.com/coins/images/51281/standard/GDN_USDG_Token_200x200.png",
+       "verified": true
+      }
+     },
+     "amount": "105",
+     "amountFormatted": "0.000105",
+     "amountUsd": "0.000105",
+     "minimumAmount": "105"
+    },
+    "relayerService": {
+     "currency": {
+      "chainId": 4663,
+      "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "symbol": "USDG",
+      "name": "Global Dollar",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.coingecko.com/coins/images/51281/standard/GDN_USDG_Token_200x200.png",
+       "verified": true
+      }
+     },
+     "amount": "21880",
+     "amountFormatted": "0.02188",
+     "amountUsd": "0.021878",
+     "minimumAmount": "21880"
+    },
+    "app": {
+     "currency": {
+      "chainId": 4663,
+      "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "symbol": "USDG",
+      "name": "Global Dollar",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.coingecko.com/coins/images/51281/standard/GDN_USDG_Token_200x200.png",
+       "verified": true
+      }
+     },
+     "amount": "22246",
+     "amountFormatted": "0.022246",
+     "amountUsd": "0.022244",
+     "minimumAmount": "22246"
+    },
+    "subsidized": {
+     "currency": {
+      "chainId": 4663,
+      "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "symbol": "USDG",
+      "name": "Global Dollar",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.coingecko.com/coins/images/51281/standard/GDN_USDG_Token_200x200.png",
+       "verified": true
+      }
+     },
+     "amount": "0",
+     "amountFormatted": "0.0",
+     "amountUsd": "0",
+     "minimumAmount": "0"
+    }
+   },
+   "details": {
+    "operation": "swap",
+    "sender": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+    "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+    "currencyIn": {
+     "currency": {
+      "chainId": 4663,
+      "address": "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18",
+      "symbol": "AI",
+      "name": "Artificial Inu",
+      "decimals": 18,
+      "metadata": {
+       "logoURI": "https://assets.geckoterminal.com/byuw84qv9ez2sp99h8q3vzcws5iq",
+       "verified": false
+      }
+     },
+     "amount": "10000000000000000000",
+     "amountFormatted": "10.0",
+     "amountUsd": "1.111110",
+     "minimumAmount": "10000000000000000000"
+    },
+    "currencyOut": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "8825223",
+     "amountFormatted": "0.008825223",
+     "amountUsd": "1.063578",
+     "minimumAmount": "8472214"
+    },
+    "refundCurrency": {
+     "currency": {
+      "chainId": 4663,
+      "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "symbol": "USDG",
+      "name": "Global Dollar",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.coingecko.com/coins/images/51281/standard/GDN_USDG_Token_200x200.png",
+       "verified": true
+      }
+     },
+     "amount": "1112341",
+     "amountFormatted": "1.112341",
+     "amountUsd": "1.112261",
+     "minimumAmount": "1067847"
+    },
+    "totalImpact": {
+     "usd": "-0.047532",
+     "percent": "-4.28"
+    },
+    "swapImpact": {
+     "usd": "-0.003305",
+     "percent": "-0.30"
+    },
+    "expandedPriceImpact": {
+     "swap": {
+      "usd": "-0.003518"
+     },
+     "execution": {
+      "usd": "-0.020105"
+     },
+     "relay": {
+      "usd": "-0.001666"
+     },
+     "app": {
+      "usd": "-0.022244"
+     },
+     "sponsored": {
+      "usd": "0"
+     }
+    },
+    "rate": "0.0008825223",
+    "slippageTolerance": {
+     "total": "400",
+     "origin": {
+      "usd": "0.044490",
+      "value": "44494",
+      "percent": "4.00"
+     },
+     "destination": {
+      "usd": "0.042543",
+      "value": "353009",
+      "percent": "4.00"
+     }
+    },
+    "timeEstimate": 1,
+    "userBalance": "0",
+    "isFixedRate": false,
+    "route": {
+     "origin": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 4663,
+        "address": "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18",
+        "symbol": "AI",
+        "name": "Artificial Inu",
+        "decimals": 18,
+        "metadata": {
+         "logoURI": "https://assets.geckoterminal.com/byuw84qv9ez2sp99h8q3vzcws5iq",
+         "verified": false
+        }
+       },
+       "amount": "10000000000000000000",
+       "amountFormatted": "10.0",
+       "amountUsd": "1.111110",
+       "minimumAmount": "10000000000000000000"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 4663,
+        "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+        "symbol": "USDG",
+        "name": "Global Dollar",
+        "decimals": 6,
+        "metadata": {
+         "logoURI": "https://assets.coingecko.com/coins/images/51281/standard/GDN_USDG_Token_200x200.png",
+         "verified": true
+        }
+       },
+       "amount": "1112341",
+       "amountFormatted": "1.112341",
+       "amountUsd": "1.112261",
+       "minimumAmount": "1067847"
+      },
+      "router": "nordstern"
+     },
+     "destination": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "11111111111111111111111111111111",
+        "symbol": "SOL",
+        "name": "Solana",
+        "decimals": 9,
+        "metadata": {
+         "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+         "verified": true
+        }
+       },
+       "amount": "8825223",
+       "amountFormatted": "0.008825223",
+       "amountUsd": "1.063578",
+       "minimumAmount": "8472214"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "11111111111111111111111111111111",
+        "symbol": "SOL",
+        "name": "Solana",
+        "decimals": 9,
+        "metadata": {
+         "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+         "verified": true
+        }
+       },
+       "amount": "8825223",
+       "amountFormatted": "0.008825223",
+       "amountUsd": "1.063578",
+       "minimumAmount": "8472214"
+      },
+      "router": "relay"
+     }
+    }
+   },
+   "protocol": {
+    "v2": {
+     "orderId": "0xa9e8cf5a39da27370b3e9674138d0edb219a8f2eb37edb856789df7b3e278a46",
+     "hubType": "onchain",
+     "orderData": {
+      "version": "v1",
+      "solverChainId": "base",
+      "solver": "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
+      "salt": "0x3abf9ae700b068efcd95bc6e1eb963d01ef334c868da077fbbed36a23a35ee4b",
+      "inputs": [
+       {
+        "payment": {
+         "chainId": "robinhood",
+         "currency": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+         "amount": "1112341",
+         "weight": "1"
+        },
+        "refunds": [
+         {
+          "chainId": "robinhood",
+          "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+          "currency": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "minimumAmount": "0",
+          "deadline": 1791799283,
+          "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+         },
+         {
+          "chainId": "solana",
+          "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+          "currency": "11111111111111111111111111111111",
+          "minimumAmount": "0",
+          "deadline": 1791799283,
+          "extraData": "0x"
+         }
+        ]
+       }
+      ],
+      "output": {
+       "chainId": "solana",
+       "payments": [
+        {
+         "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+         "currency": "11111111111111111111111111111111",
+         "minimumAmount": "8472214",
+         "expectedAmount": "8825223"
+        }
+       ],
+       "calls": [],
+       "deadline": 1791799283,
+       "extraData": "0x"
+      },
+      "fees": []
+     },
+     "paymentDetails": {
+      "chainId": "robinhood",
+      "depository": "0x4cd00e387622c35bddb9b4c962c136462338bc31",
+      "currency": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "amount": "1112341"
+     }
+    }
+   }
+  }
+ },
+ "bridge-in": {
+  "body": {
+   "user": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+   "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+   "originChainId": 792703809,
+   "destinationChainId": 5042,
+   "originCurrency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "destinationCurrency": "0x3600000000000000000000000000000000000000",
+   "amount": "10000000",
+   "tradeType": "EXACT_INPUT",
+   "appFees": [
+    {
+     "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+     "fee": "50"
+    }
+   ]
+  },
+  "quote": {
+   "requestId": "0x17911944835dd77e1dc422f900f6f13d9f5d29934b43592c22082b6fa7c5b78e",
+   "steps": [
+    {
+     "id": "deposit",
+     "action": "Confirm transaction in your wallet",
+     "description": "Depositing funds to the relayer to execute the swap for USDC",
+     "kind": "transaction",
+     "items": [
+      {
+       "status": "incomplete",
+       "data": {
+        "instructions": [
+         {
+          "keys": [
+           {
+            "pubkey": "Dodg2HifwU8rmaVVyMyUZDGTRbqAJTyVYxXPwcbNpBKc",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+            "isSigner": true,
+            "isWritable": true
+           },
+           {
+            "pubkey": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "7uTT8Xi5RWXzy7h9XL244GRgEycDYDhLjr3ZyNdXi8pZ",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "8VYWdU14V78rcDepwmNt54bb1aam5qVUMUpEtW8oCn1E",
+            "isSigner": false,
+            "isWritable": true
+           },
+           {
+            "pubkey": "4nvJ5zWdVspxJiNZzB127U6amPH98SFFkBx2JZrAduia",
+            "isSigner": false,
+            "isWritable": true
+           },
+           {
+            "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+            "isSigner": false,
+            "isWritable": false
+           },
+           {
+            "pubkey": "11111111111111111111111111111111",
+            "isSigner": false,
+            "isWritable": false
+           }
+          ],
+          "programId": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+          "data": "0b9c60da27a3b41380969800000000006dc3ae343cb6646648ad72186c7798cdd87eff9f0cbc182b3b5efabd6572ea9d"
+         }
+        ],
+        "addressLookupTableAddresses": [
+         "Hm9fUgcn7qwDaiNTFiGh6pNtVATgnaRcmK6Bbx6EMZfP"
+        ]
+       },
+       "check": {
+        "endpoint": "/intents/status?requestId=0x17911944835dd77e1dc422f900f6f13d9f5d29934b43592c22082b6fa7c5b78e",
+        "method": "GET"
+       }
+      }
+     ],
+     "requestId": "0x17911944835dd77e1dc422f900f6f13d9f5d29934b43592c22082b6fa7c5b78e",
+     "depositAddress": ""
+    }
+   ],
+   "fees": {
+    "gas": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "metadata": {
+       "logoURI": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+       "verified": true
+      }
+     },
+     "amount": "26096",
+     "amountFormatted": "0.000026096",
+     "amountUsd": "0.003145",
+     "minimumAmount": "26096"
+    },
+    "relayer": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+       "verified": true
+      }
+     },
+     "amount": "23740",
+     "amountFormatted": "0.02374",
+     "amountUsd": "0.023737",
+     "minimumAmount": "23740"
+    },
+    "relayerGas": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+       "verified": true
+      }
+     },
+     "amount": "1488",
+     "amountFormatted": "0.001488",
+     "amountUsd": "0.001488",
+     "minimumAmount": "1488"
+    },
+    "relayerService": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+       "verified": true
+      }
+     },
+     "amount": "22252",
+     "amountFormatted": "0.022252",
+     "amountUsd": "0.022249",
+     "minimumAmount": "22252"
+    },
+    "app": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+       "verified": true
+      }
+     },
+     "amount": "50000",
+     "amountFormatted": "0.05",
+     "amountUsd": "0.049993",
+     "minimumAmount": "50000"
+    },
+    "subsidized": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+       "verified": true
+      }
+     },
+     "amount": "0",
+     "amountFormatted": "0.0",
+     "amountUsd": "0",
+     "minimumAmount": "0"
+    }
+   },
+   "details": {
+    "operation": "swap",
+    "sender": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+    "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+    "currencyIn": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+       "verified": true
+      }
+     },
+     "amount": "10000000",
+     "amountFormatted": "10.0",
+     "amountUsd": "9.998610",
+     "minimumAmount": "10000000"
+    },
+    "currencyOut": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x3600000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+       "verified": true
+      }
+     },
+     "amount": "9926260",
+     "amountFormatted": "9.92626",
+     "amountUsd": "9.924880",
+     "minimumAmount": "9727735"
+    },
+    "refundCurrency": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+       "verified": true
+      }
+     },
+     "amount": "10000000",
+     "amountFormatted": "10.0",
+     "amountUsd": "9.998610",
+     "minimumAmount": "10000000"
+    },
+    "totalImpact": {
+     "usd": "-0.073730",
+     "percent": "-0.74"
+    },
+    "swapImpact": {
+     "usd": "0.000000",
+     "percent": "0.00"
+    },
+    "expandedPriceImpact": {
+     "swap": {
+      "usd": "-0.002250"
+     },
+     "execution": {
+      "usd": "-0.021487"
+     },
+     "relay": {
+      "usd": "0"
+     },
+     "app": {
+      "usd": "-0.049993"
+     },
+     "sponsored": {
+      "usd": "0"
+     }
+    },
+    "rate": "0.9926259999999999",
+    "slippageTolerance": {
+     "total": "200",
+     "origin": {
+      "usd": "0.000000",
+      "value": "0",
+      "percent": "0.00"
+     },
+     "destination": {
+      "usd": "0.197505",
+      "value": "198525",
+      "percent": "1.99"
+     }
+    },
+    "timeEstimate": 1,
+    "userBalance": "0",
+    "isFixedRate": false,
+    "route": {
+     "origin": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+         "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+         "verified": true
+        }
+       },
+       "amount": "10000000",
+       "amountFormatted": "10.0",
+       "amountUsd": "9.998610",
+       "minimumAmount": "10000000"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+         "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+         "verified": true
+        }
+       },
+       "amount": "10000000",
+       "amountFormatted": "10.0",
+       "amountUsd": "9.998610",
+       "minimumAmount": "10000000"
+      },
+      "router": "relay"
+     },
+     "destination": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 5042,
+        "address": "0x3600000000000000000000000000000000000000",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+         "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+         "verified": true
+        }
+       },
+       "amount": "9926260",
+       "amountFormatted": "9.92626",
+       "amountUsd": "9.924880",
+       "minimumAmount": "9727735"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 5042,
+        "address": "0x3600000000000000000000000000000000000000",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+         "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+         "verified": true
+        }
+       },
+       "amount": "9926260",
+       "amountFormatted": "9.92626",
+       "amountUsd": "9.924880",
+       "minimumAmount": "9727735"
+      },
+      "router": "relay"
+     }
+    }
+   },
+   "protocol": {
+    "v2": {
+     "orderId": "0x6dc3ae343cb6646648ad72186c7798cdd87eff9f0cbc182b3b5efabd6572ea9d",
+     "hubType": "onchain",
+     "orderData": {
+      "version": "v1",
+      "solverChainId": "base",
+      "solver": "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
+      "salt": "0x20f2258db92b5f437444c99b673cecb06e9769eaa8a8d33babb466a919d53b79",
+      "inputs": [
+       {
+        "payment": {
+         "chainId": "solana",
+         "currency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+         "amount": "10000000",
+         "weight": "1"
+        },
+        "refunds": [
+         {
+          "chainId": "solana",
+          "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+          "currency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "minimumAmount": "0",
+          "deadline": 1791799283,
+          "extraData": "0x"
+         },
+         {
+          "chainId": "arc",
+          "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+          "currency": "0x3600000000000000000000000000000000000000",
+          "minimumAmount": "0",
+          "deadline": 1791799283,
+          "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+         }
+        ]
+       }
+      ],
+      "output": {
+       "chainId": "arc",
+       "payments": [
+        {
+         "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+         "currency": "0x3600000000000000000000000000000000000000",
+         "minimumAmount": "9727735",
+         "expectedAmount": "9926260"
+        }
+       ],
+       "calls": [],
+       "deadline": 1791799283,
+       "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+      },
+      "fees": []
+     },
+     "paymentDetails": {
+      "chainId": "solana",
+      "depository": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+      "currency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "amount": "10000000"
+     }
+    }
+   }
+  }
+ },
+ "bridge-out": {
+  "body": {
+   "user": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+   "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+   "originChainId": 5042,
+   "destinationChainId": 792703809,
+   "originCurrency": "0x3600000000000000000000000000000000000000",
+   "destinationCurrency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "amount": "10000000",
+   "tradeType": "EXACT_INPUT",
+   "appFees": [
+    {
+     "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+     "fee": "50"
+    }
+   ]
+  },
+  "quote": {
+   "requestId": "0x17911944840e220f6bc01324cb7829707eb8393d742c4d49311401fbe9f71038",
+   "steps": [
+    {
+     "id": "approve",
+     "action": "Confirm transaction in your wallet",
+     "description": "Sign an approval for USDC",
+     "kind": "transaction",
+     "items": [
+      {
+       "status": "incomplete",
+       "data": {
+        "from": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+        "to": "0x3600000000000000000000000000000000000000",
+        "data": "0x095ea7b30000000000000000000000004cd00e387622c35bddb9b4c962c136462338bc310000000000000000000000000000000000000000000000000000000000989680",
+        "value": "0",
+        "chainId": 5042,
+        "gas": "73113",
+        "maxFeePerGas": "22054522179",
+        "maxPriorityFeePerGas": "54522179"
+       }
+      }
+     ],
+     "requestId": "0x17911944840e220f6bc01324cb7829707eb8393d742c4d49311401fbe9f71038"
+    },
+    {
+     "id": "deposit",
+     "action": "Confirm transaction in your wallet",
+     "description": "Depositing funds to the relayer to execute the swap for USDC",
+     "kind": "transaction",
+     "items": [
+      {
+       "status": "incomplete",
+       "data": {
+        "from": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+        "to": "0x4cD00E387622C35bDDB9b4c962C136462338BC31",
+        "data": "0xe8017952000000000000000000000000274262a0321a0701b0a46a3576e07ae881c286bb00000000000000000000000036000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000989680016309bd0bb7cf8392b5bbff638eb5d6baaed34e565af9af4ab04420a7794ffb",
+        "value": "0",
+        "chainId": 5042,
+        "gas": "78419",
+        "maxFeePerGas": "22054522179",
+        "maxPriorityFeePerGas": "54522179"
+       },
+       "check": {
+        "endpoint": "/intents/status?requestId=0x17911944840e220f6bc01324cb7829707eb8393d742c4d49311401fbe9f71038",
+        "method": "GET"
+       }
+      }
+     ],
+     "requestId": "0x17911944840e220f6bc01324cb7829707eb8393d742c4d49311401fbe9f71038",
+     "depositAddress": ""
+    }
+   ],
+   "fees": {
+    "gas": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x0000000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin (Gas Currency)",
+      "decimals": 18,
+      "metadata": {}
+     },
+     "amount": "1729493574755001",
+     "amountFormatted": "0.001729493574755001",
+     "amountUsd": "0.001729",
+     "minimumAmount": "1729493574755001"
+    },
+    "relayer": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x3600000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+       "verified": true
+      }
+     },
+     "amount": "27002",
+     "amountFormatted": "0.027002",
+     "amountUsd": "0.026998",
+     "minimumAmount": "27002"
+    },
+    "relayerGas": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x3600000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+       "verified": true
+      }
+     },
+     "amount": "0",
+     "amountFormatted": "0.0",
+     "amountUsd": "0",
+     "minimumAmount": "0"
+    },
+    "relayerService": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x3600000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+       "verified": true
+      }
+     },
+     "amount": "27002",
+     "amountFormatted": "0.027002",
+     "amountUsd": "0.026998",
+     "minimumAmount": "27002"
+    },
+    "app": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x3600000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+       "verified": true
+      }
+     },
+     "amount": "50000",
+     "amountFormatted": "0.05",
+     "amountUsd": "0.049993",
+     "minimumAmount": "50000"
+    },
+    "subsidized": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x3600000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+       "verified": true
+      }
+     },
+     "amount": "0",
+     "amountFormatted": "0.0",
+     "amountUsd": "0",
+     "minimumAmount": "0"
+    }
+   },
+   "details": {
+    "operation": "swap",
+    "sender": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+    "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+    "currencyIn": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x3600000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+       "verified": true
+      }
+     },
+     "amount": "10000000",
+     "amountFormatted": "10.0",
+     "amountUsd": "9.998610",
+     "minimumAmount": "10000000"
+    },
+    "currencyOut": {
+     "currency": {
+      "chainId": 792703809,
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+       "verified": true
+      }
+     },
+     "amount": "9922998",
+     "amountFormatted": "9.922998",
+     "amountUsd": "9.921619",
+     "minimumAmount": "9724539"
+    },
+    "refundCurrency": {
+     "currency": {
+      "chainId": 5042,
+      "address": "0x3600000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "metadata": {
+       "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+       "verified": true
+      }
+     },
+     "amount": "10000000",
+     "amountFormatted": "10.0",
+     "amountUsd": "9.998610",
+     "minimumAmount": "10000000"
+    },
+    "totalImpact": {
+     "usd": "-0.076991",
+     "percent": "-0.77"
+    },
+    "swapImpact": {
+     "usd": "0.000000",
+     "percent": "0.00"
+    },
+    "expandedPriceImpact": {
+     "swap": {
+      "usd": "-0.006999"
+     },
+     "execution": {
+      "usd": "-0.019999"
+     },
+     "relay": {
+      "usd": "0"
+     },
+     "app": {
+      "usd": "-0.049993"
+     },
+     "sponsored": {
+      "usd": "0"
+     }
+    },
+    "rate": "0.9922998",
+    "slippageTolerance": {
+     "total": "200",
+     "origin": {
+      "usd": "0.000000",
+      "value": "0",
+      "percent": "0.00"
+     },
+     "destination": {
+      "usd": "0.197440",
+      "value": "198459",
+      "percent": "1.99"
+     }
+    },
+    "timeEstimate": 1,
+    "userBalance": "0",
+    "isFixedRate": false,
+    "route": {
+     "origin": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 5042,
+        "address": "0x3600000000000000000000000000000000000000",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+         "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+         "verified": true
+        }
+       },
+       "amount": "10000000",
+       "amountFormatted": "10.0",
+       "amountUsd": "9.998610",
+       "minimumAmount": "10000000"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 5042,
+        "address": "0x3600000000000000000000000000000000000000",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+         "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+         "verified": true
+        }
+       },
+       "amount": "10000000",
+       "amountFormatted": "10.0",
+       "amountUsd": "9.998610",
+       "minimumAmount": "10000000"
+      },
+      "router": "relay"
+     },
+     "destination": {
+      "inputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+         "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+         "verified": true
+        }
+       },
+       "amount": "9922998",
+       "amountFormatted": "9.922998",
+       "amountUsd": "9.921619",
+       "minimumAmount": "9724539"
+      },
+      "outputCurrency": {
+       "currency": {
+        "chainId": 792703809,
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+         "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+         "verified": true
+        }
+       },
+       "amount": "9922998",
+       "amountFormatted": "9.922998",
+       "amountUsd": "9.921619",
+       "minimumAmount": "9724539"
+      },
+      "router": "relay"
+     }
+    }
+   },
+   "protocol": {
+    "v2": {
+     "orderId": "0x016309bd0bb7cf8392b5bbff638eb5d6baaed34e565af9af4ab04420a7794ffb",
+     "hubType": "onchain",
+     "orderData": {
+      "version": "v1",
+      "solverChainId": "base",
+      "solver": "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
+      "salt": "0xa777a319523cb26450b7e8ffbb712a03625bd2acd2c42492cee471ef6257f464",
+      "inputs": [
+       {
+        "payment": {
+         "chainId": "arc",
+         "currency": "0x3600000000000000000000000000000000000000",
+         "amount": "10000000",
+         "weight": "1"
+        },
+        "refunds": [
+         {
+          "chainId": "arc",
+          "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+          "currency": "0x3600000000000000000000000000000000000000",
+          "minimumAmount": "0",
+          "deadline": 1791799284,
+          "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+         },
+         {
+          "chainId": "solana",
+          "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+          "currency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "minimumAmount": "0",
+          "deadline": 1791799284,
+          "extraData": "0x"
+         }
+        ]
+       }
+      ],
+      "output": {
+       "chainId": "solana",
+       "payments": [
+        {
+         "recipient": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+         "currency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+         "minimumAmount": "9724539",
+         "expectedAmount": "9922998"
+        }
+       ],
+       "calls": [],
+       "deadline": 1791799284,
+       "extraData": "0x"
+      },
+      "fees": []
+     },
+     "paymentDetails": {
+      "chainId": "arc",
+      "depository": "0x4cD00E387622C35bDDB9b4c962C136462338BC31",
+      "currency": "0x3600000000000000000000000000000000000000",
+      "amount": "10000000"
+     }
+    }
+   }
+  }
+ }
+}

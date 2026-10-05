@@ -190,7 +190,7 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
   // Solana's fees are SOL whichever way it pays: a sale, a swap with USDC, all need some.
   const noSolFees = (mode === 'sell' || route === 'usdc') && solBal !== null && solBal < 0.0003
   const missing: 'evm' | 'sol' | null = route === 'arc' ? (!me ? 'evm' : !solAddr ? 'sol' : null) : !solAddr ? 'sol' : null
-  const passcodeMissing = guard.needsPasscode && route === 'arc' && mode === 'buy' && !guard.passcode
+  const passcodeMissing = guard.missing && route === 'arc' && mode === 'buy'
   const blocked = busy || !!missing || !quote || quoting || insufficient || refused || noBuy || (needsCostTick && !costOk) || noSolFees || passcodeMissing
 
   const kind = trader.kind ?? 'wallet'

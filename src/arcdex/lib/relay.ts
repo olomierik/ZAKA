@@ -7,6 +7,10 @@
 // Signed on BNB Chain (a sale to Arc, or a swap there; 2026-10-05): the same, on BNB Chain, with Relay's router or its
 // approval proxy (an ERC-20 is approved for exactly the amount, to the proxy), BNB paying the gas.
 //
+// From a Solana wallet to Arc, BNB Chain or Robinhood Chain (`xin`, 2026-10-05): signed on Solana like a sale, the coin
+// delivered to the trader's EVM account. Back (`xout`): signed by that account on its chain, like a BNB Chain sale, SOL
+// or USDC paid to the Solana wallet.
+//
 // Signed on Solana (a sale to Arc, or a swap there): a fresh checked quote → its instructions built into one Solana
 // transaction (with Relay's lookup tables and a recent blockhash) → simulated: it must succeed and cost the trader no
 // more SOL than it puts in plus a trade's fees → signed by the trading wallet's Solana key or the Solana wallet app →
@@ -20,12 +24,13 @@ import { evmApprove, evmMined, evmReader, evmSend } from './across'
 import { waitForAllowance } from './rpc'
 import { notifyBalances } from './balances'
 import type { TraderKind } from './identity'
-import { getRelayQuote, relayStatus, RelayError, RELAY_ARC_DEPOSITORY, RELAY_BSC, ARC_ID, BSC_ID, SOL_NATIVE, EVM_NATIVE, QUOTE_LIMITS, type RelayQuote, type RelayRequest, type RelayStatus } from './relayQuote'
+import { getRelayQuote, relayStatus, RelayError, ARC_ID, BSC_ID, RH_ID, SOL_NATIVE, QUOTE_LIMITS, type RelayQuote, type RelayRequest, type RelayStatus } from './relayQuote'
 import { signSolana, type SolSigner } from './solanaWallet'
 import { solBalance, waitSolTx, rememberSol } from './solana'
 import { rememberBsc } from './bsc'
+import { rememberHolding } from './held'
+import { rememberRh } from './robinhood'
 import { SOL_RPC_BROWSER } from '../../../api/_solCore'
-import { ARC_USDC } from './acrossQuote'
 import { t as T } from './i18n'
 
 export { RelayError }
@@ -44,7 +49,7 @@ export function relayErrorText(e: unknown): string {
   const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
   if (/User rejected|rejected the request|denied|cancel/i.test(m)) return T('You cancelled the transaction.')
   if (/insufficient lamports|Attempt to debit an account but found no record of a prior credit|insufficient funds for fee/i.test(m)) return T('Not enough SOL for fees on Solana: add SOL first.')
-  if (/insufficient funds|exceeds the balance|gas required exceeds/i.test(m)) return T('Not enough BNB for gas on BNB Chain: add BNB first.')
+  if (/insufficient funds|exceeds the balance|gas required exceeds/i.test(m)) return T('Not enough gas for this trade on its chain (USDC on Arc, BNB on BNB Chain, ETH on Robinhood Chain): add some first.')
   return m.slice(0, 220)
 }
 
@@ -70,25 +75,25 @@ async function follow(q: RelayQuote, tx: string, onStep: (p: RelayProgress) => v
   }
 }
 
-/** A trade signed on an EVM chain: paid on Arc (a buy or gas top-up), or on BNB Chain (a sale to Arc, or a swap there). */
+/** A trade signed on an EVM chain: paid on Arc (a buy or gas top-up), on BNB Chain (a sale to Arc, or a swap there), or
+ * from the trader's account on Arc, BNB Chain or Robinhood Chain to a Solana wallet (xout). */
 export async function runRelayEvm(kind: TraderKind, req: RelayRequest, shown: RelayQuote | null, onStep: (p: RelayProgress) => void): Promise<RelayResult> {
   const trader = req.evm as Address
   onStep({ step: 'quote' })
   let q = await freshQuote(req, shown)
   const chainId = q.signChain
-  if (chainId !== ARC_ID && chainId !== BSC_ID) throw new RelayError(T('An unexpected chain to sign on.'))
+  if (chainId !== ARC_ID && chainId !== BSC_ID && chainId !== RH_ID) throw new RelayError(T('An unexpected chain to sign on.'))
   const reader = evmReader(chainId)
-  // What goes in, and who must be allowed to take it: Relay's depository on Arc; on BNB Chain, its approval proxy for an
-  // ERC-20 (native BNB is sent with the call).
-  const token = (chainId === ARC_ID ? ARC_USDC : req.side === 'swap' ? req.inToken! : req.mint).toLowerCase()
-  const spender = (chainId === ARC_ID ? RELAY_ARC_DEPOSITORY : RELAY_BSC.approvalProxy) as Address
-  if (token !== EVM_NATIVE) {
-    const allowance = await reader.readContract({ address: token as Address, abi: erc20Abi, functionName: 'allowance', args: [trader, spender] }).catch(() => 0n)
-    if (allowance < req.amount) {
-      const approveTx = await evmApprove(kind, chainId, token as Address, spender, req.amount)
+  // What goes in, and who must be allowed to take it, as the checked quote says (Relay's depository for Arc's USDC, its
+  // approval proxy for any other token; native coins go with the call, no approval).
+  const need = q.evmTx?.approve
+  if (need) {
+    const allowance = await reader.readContract({ address: need.token as Address, abi: erc20Abi, functionName: 'allowance', args: [trader, need.spender as Address] }).catch(() => 0n)
+    if (allowance < need.amount) {
+      const approveTx = await evmApprove(kind, chainId, need.token as Address, need.spender as Address, need.amount)
       onStep({ step: 'approve', tx: approveTx })
       await evmMined(chainId, approveTx)
-      await waitForAllowance(reader, token as Address, trader, spender, req.amount)
+      await waitForAllowance(reader, need.token as Address, trader, need.spender as Address, need.amount)
       q = await freshQuote(req, shown)
     }
   }
@@ -139,9 +144,10 @@ async function simulateSolana(tx: VersionedTransaction, trader: string, maxSol: 
   if (before !== null && typeof after === 'number' && before - after / 1e9 > maxSol) throw new RelayError(T('This trade would cost more SOL than it should, so ARCDEX won’t send it.'))
 }
 
-/** A trade signed on Solana by `signer` (the trading wallet or the Solana wallet app): a sale to Arc, or a swap there. */
+/** A trade signed on Solana by `signer` (the trading wallet or the Solana wallet app): a sale to Arc, a swap there, or
+ * SOL or USDC into another chain's coin (xin). */
 export async function runRelaySolana(signer: SolSigner, req: RelayRequest, shown: RelayQuote | null, onStep: (p: RelayProgress) => void): Promise<RelayResult> {
-  const solIn = req.side === 'swap' && req.inToken === SOL_NATIVE ? Number(req.amount) / 1e9 : 0
+  const solIn = (req.side === 'swap' || req.side === 'xin') && req.inToken === SOL_NATIVE ? Number(req.amount) / 1e9 : 0
   const sol = await solBalance(req.sol).catch(() => null)
   if (sol !== null && sol < solIn + 0.0003) throw new RelayError(T('Not enough SOL for this trade and its fees.'))
   onStep({ step: 'quote' })
@@ -157,6 +163,12 @@ export async function runRelaySolana(signer: SolSigner, req: RelayRequest, shown
   const s = await waitSolTx(sig)
   if (s === 'failed') throw new RelayError(T('The transaction failed on-chain.'))
   if (req.side === 'swap' && req.outToken && req.outToken !== SOL_NATIVE) rememberSol(req.sol, req.outToken)
+  // A coin bought on another chain: Portfolio checks it first.
+  if (req.side === 'xin') {
+    if (req.evmChain === BSC_ID) rememberBsc(req.evm, req.mint)
+    else if (req.evmChain === RH_ID) rememberRh(req.evm, req.mint)
+    else rememberHolding(req.evm, req.mint)
+  }
   return follow(q, sig, onStep)
 }
 

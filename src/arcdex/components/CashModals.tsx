@@ -11,6 +11,15 @@ import { FunderChips, PasscodeField, useWithdrawGuard } from './WithdrawGuard'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
+import { openConnectModal } from './ConnectWallet'
+import SolanaCross from './SolanaCross'
+import { accountOwner } from '../lib/embeddedWallet'
+import { ARC_ID } from '../lib/relayQuote'
+
+// SOL or USDC on Solana in, USDC on Solana or SOL out (2026-10-05): Relay, through SolanaCross.
+const solUsdc = (mode: 'deposit' | 'withdraw', onDone: () => void) => (
+  <SolanaCross chainId={ARC_ID} token={USDC} symbol="USDC" decimals={6} priceUsd={1} modes={[mode]} compact onDone={onDone} />
+)
 
 // fomo-style cash flows: Deposit (USDC on Arc, or bridge from another
 // chain), Withdraw (to any Arc address; a coin too, from Portfolio) and Send
@@ -32,8 +41,9 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   )
 }
 
-export function DepositModal({ trader, navigate, onClose, initial = 'crypto' }: { trader: Trader; navigate: (p: Page) => void; onClose: () => void; initial?: 'crypto' | 'bridge' | 'card' }) {
-  const [mode, setMode] = useState<'crypto' | 'bridge' | 'card'>(initial)
+export function DepositModal({ trader, navigate, onClose, initial }: { trader: Trader; navigate: (p: Page) => void; onClose: () => void; initial?: 'crypto' | 'solana' | 'bridge' | 'card' }) {
+  // An account opened from a Solana wallet deposits from that wallet first.
+  const [mode, setMode] = useState<'crypto' | 'solana' | 'bridge' | 'card'>(initial ?? (accountOwner() ? 'solana' : 'crypto'))
   const { refresh } = useCash(trader.address)
   const [qr, setQr] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -53,10 +63,13 @@ export function DepositModal({ trader, navigate, onClose, initial = 'crypto' }: 
         <div style={{ fontSize: '0.84rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {T("Connect a wallet or create a trading wallet first.")}
           <button className="btn-primary" onClick={() => { onClose(); openTradingWallet() }}>{T("Open trading wallet")}</button>
+          <button className="btn-ghost" onClick={() => { onClose(); openConnectModal() }}>{T("Connect a wallet (Phantom, MetaMask…)")}</button>
         </div>
       ) : (
         <>
           {opt('crypto', T('Crypto'), T('Send USDC on Arc from any wallet or exchange'), '⎘')}
+          {opt('solana', T('From your Solana wallet'), T('SOL or USDC on Solana, here in seconds'), '◎')}
+          {mode === 'solana' && solUsdc('deposit', refresh)}
           {opt('bridge', T('From another chain'), T('Move USDC to Arc with Circle CCTP (Ethereum, Base, …)'), '⇄')}
           {opt('card', T('Card, Apple Pay, Google Pay'), T('Buy USDC straight to Arc'), '💳')}
           {mode === 'crypto' && (
@@ -97,6 +110,14 @@ export function WithdrawModal({ trader, onClose, asset, onSent }: { trader: Trad
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   // Anywhere but back to the wallet that funded it needs the passcode.
   const guard = useWithdrawGuard(trader, to)
+  // USDC to an Arc address, or to a Solana wallet as SOL or USDC (an account from a Solana wallet starts there).
+  const [dest, setDest] = useState<'arc' | 'sol'>(accountOwner() ? 'sol' : 'arc')
+  const destTabs = (
+    <div className="rh-modes">
+      <button className={dest === 'arc' ? 'on buy' : ''} onClick={() => setDest('arc')}>{T("To an Arc address")}</button>
+      <button className={dest === 'sol' ? 'on buy' : ''} onClick={() => setDest('sol')}>◎ {T("To a Solana wallet")}</button>
+    </div>
+  )
 
   async function go() {
     if (busy) return
@@ -118,10 +139,17 @@ export function WithdrawModal({ trader, onClose, asset, onSent }: { trader: Trad
     if (coin) { if (coinBal !== null) setAmount(formatUnits(coinBal, coin.decimals)) }
     else if (cash !== null) setAmount(Math.max(0, cash - 0.05).toFixed(2))
   }
-  const blocked = busy || !to || !amount || (guard.needsPasscode && !guard.passcode)
+  const blocked = busy || !to || !amount || guard.missing
 
+  if (!coin && dest === 'sol') return (
+    <Modal title={T("Withdraw USDC")} onClose={onClose}>
+      {destTabs}
+      {solUsdc('withdraw', () => { refresh(); onSent?.() })}
+    </Modal>
+  )
   return (
     <Modal title={coin ? T('Send {symbol}', { symbol: coin.symbol }) : T("Withdraw USDC")} onClose={onClose}>
+      {!coin && destTabs}
       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{T("Available:")}{' '}<b className="sensitive" style={{ color: 'var(--text)' }}>{available}</b></div>
       <FunderChips guard={guard} onPick={a => setTo(a)} />
       <input className="field" placeholder={T("Arc address 0x…")} value={to} onChange={e => setTo(e.target.value.trim())} />
@@ -159,7 +187,7 @@ export function SendCashModal({ trader, to, toName, onClose }: { trader: Trader;
       setMsg({ ok: false, text: txErrorText(e) })
     } finally { setBusy(false) }
   }
-  const blocked = busy || !amount || !trader.address || (guard.needsPasscode && !guard.passcode)
+  const blocked = busy || !amount || !trader.address || guard.missing
 
   return (
     <Modal title={T('Send cash to {name}', { name: toName })} onClose={onClose}>

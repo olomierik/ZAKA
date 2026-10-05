@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react'
 import type { VersionedTransaction } from '@solana/web3.js'
 import { base58 } from '../../../api/_solCore'
-import { isUnlocked, solanaSeed, WALLET_EVENT } from './embeddedWallet'
+import { accountOwner, isUnlocked, lock, solanaSeed, WALLET_EVENT } from './embeddedWallet'
 
 export type SolSigner = 'trading' | 'external'
 
@@ -18,6 +18,8 @@ interface InjectedProvider {
   connect(opts?: { onlyIfTrusted?: boolean }): Promise<{ publicKey?: { toString(): string } } | void>
   disconnect(): Promise<void>
   signTransaction<T>(tx: T): Promise<T>
+  /** Phantom answers { signature }; Solflare and Backpack the bytes, or { signature } too. */
+  signMessage?(message: Uint8Array, display?: 'utf8' | 'hex'): Promise<Uint8Array | { signature: Uint8Array }>
   on?(event: string, cb: (...a: unknown[]) => void): void
 }
 
@@ -48,7 +50,8 @@ const tell = () => { try { window.dispatchEvent(new Event(EVENT)) } catch { /* n
 /** The trading wallet's Solana address (null while it's locked). */
 async function refreshTrading() {
   // ed25519 is loaded only when there's a key to derive from, so the app's first load doesn't carry it.
-  const next = isUnlocked() ? base58((await import('@noble/curves/ed25519')).ed25519.getPublicKey(await solanaSeed())) : null
+  // A Solana wallet's own ARCDEX account has no derived Solana address: the wallet itself trades there.
+  const next = isUnlocked() && !accountOwner() ? base58((await import('@noble/curves/ed25519')).ed25519.getPublicKey(await solanaSeed())) : null
   if (next !== tradingAddress) { tradingAddress = next; tell() }
 }
 
@@ -73,19 +76,35 @@ export async function connectSolanaWallet(name: string, silent = false): Promise
   const address = key?.toString()
   if (!address) throw new Error(`${name} didn't share an address`)
   external = { name, address, provider: p.provider }
+  // An ARCDEX account open for another Solana wallet closes: it's that wallet's, not this one's.
+  if (accountOwner() && accountOwner() !== address) lock()
   try { localStorage.setItem(PICK_KEY, name) } catch { /* blocked */ }
   p.provider.on?.('accountChanged', (k: unknown) => {
     const a = (k as { toString(): string } | null)?.toString()
     if (external?.provider === p.provider) { external = a ? { ...external, address: a } : null; tell() }
+    // Another wallet in the app: the ARCDEX account of the one before closes.
+    if (accountOwner() && accountOwner() !== a) lock()
   })
-  p.provider.on?.('disconnect', () => { if (external?.provider === p.provider) { external = null; tell() } })
+  p.provider.on?.('disconnect', () => {
+    if (external?.provider === p.provider) { external = null; tell() }
+    if (accountOwner()) lock()
+  })
   tell()
   return address
+}
+
+/** Where to get Phantom: on a phone, this page opened inside Phantom's own browser (which has the wallet); else its site. */
+export function phantomLink(): string {
+  if (typeof window === 'undefined') return 'https://phantom.app'
+  if (!/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) return 'https://phantom.app/download'
+  return `https://phantom.app/ul/browse/${encodeURIComponent(window.location.href)}?ref=${encodeURIComponent(window.location.origin)}`
 }
 
 export async function disconnectSolanaWallet(): Promise<void> {
   const e = external
   external = null
+  // Its ARCDEX account closes with it.
+  if (accountOwner()) lock()
   try { localStorage.removeItem(PICK_KEY) } catch { /* blocked */ }
   tell()
   await e?.provider.disconnect().catch(() => {})
@@ -117,6 +136,16 @@ export function useSolanaWallets(): SolanaWallets {
 
 /** The address a signer trades from. */
 export const signerAddress = (who: SolSigner): string | null => (who === 'trading' ? tradingAddress : external?.address ?? null)
+
+/** The connected Solana wallet app signs a message (its owner confirms in the app). */
+export async function signSolanaMessage(message: Uint8Array): Promise<Uint8Array> {
+  if (!external) throw new Error('Connect a Solana wallet first')
+  if (!external.provider.signMessage) throw new Error(`${external.name} can't sign messages`)
+  const res = await external.provider.signMessage(message, 'utf8')
+  const sig = res instanceof Uint8Array ? res : res?.signature
+  if (!(sig instanceof Uint8Array) && !Array.isArray(sig)) throw new Error(`${external.name} didn't sign`)
+  return Uint8Array.from(sig as ArrayLike<number>)
+}
 
 /** Signs a transaction as `who`: the trading wallet signs here; a wallet app asks its owner. */
 export async function signSolana(who: SolSigner, tx: VersionedTransaction): Promise<VersionedTransaction> {

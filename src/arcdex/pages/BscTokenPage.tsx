@@ -13,6 +13,8 @@ import type { Page } from '../App'
 import PriceChart, { type ChartTrade } from '../components/PriceChart'
 import { MarketTrades } from '../components/SpotPanels'
 import Sheet, { TradeBar } from '../components/Sheet'
+import { SolanaPayCard } from '../components/SolanaCross'
+import { BSC_ID } from '../lib/relayQuote'
 import { AgoText } from '../components/Ago'
 import { ChainIcon } from '../components/Chains'
 import { RhLogo } from '../components/Robinhood'
@@ -257,6 +259,7 @@ export default function BscTokenPage({ address, pool: poolParam, navigate }: Pro
         <TradeBar symbol={symbol} onTrade={setSheet} />
         <Sheet open={sheet !== null} onClose={() => setSheet(null)}>
           {sheet && trade(undefined, false, sheet)}
+          {sheet && <div style={{ padding: '0 14px 14px' }}><SolanaPayCard chainId={BSC_ID} token={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked} initialMode={sheet} /></div>}
         </Sheet>
       </div>
     </div>
@@ -301,6 +304,7 @@ export default function BscTokenPage({ address, pool: poolParam, navigate }: Pro
               {trade('sell', true)}
             </div>
             <p className="spot-form-note">{BSC_NOTE()}</p>
+            <SolanaPayCard chainId={BSC_ID} token={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked} />
           </div>
         </div>
         <div className="spot-side">

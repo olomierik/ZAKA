@@ -3,6 +3,9 @@ import { useAccount, useConnect, type Connector } from 'wagmi'
 import { arc } from '../wagmi'
 import { t as T } from '../lib/i18n'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
+import { isUnlocked } from '../lib/embeddedWallet'
+import { connectSolanaWallet, phantomLink, pickSolSigner, useSolanaWallets } from '../lib/solanaWallet'
+import { openSolAccount } from '../lib/solAccount'
 
 // "Connect wallet" for the whole app — a small modal over wagmi's own
 // connectors, in place of ConnectKit (which, with its Aave account kit,
@@ -11,6 +14,11 @@ import { openTradingWallet } from '../lib/tradingWalletSheet'
 // its own icon; WalletConnect opens its QR code / mobile wallet list;
 // Coinbase Wallet opens its own flow. Open it from anywhere with
 // openConnectModal().
+//
+// Solana wallets (2026-10-05): Phantom, Solflare or Backpack connect here too.
+// With no EVM wallet, the Solana wallet then signs once to open its ARCDEX
+// account (lib/solAccount.ts), which holds what it buys on Arc, BNB Chain and
+// Robinhood Chain.
 
 let isOpen = false
 const subs = new Set<() => void>()
@@ -24,6 +32,13 @@ export function ConnectButton({ label, style }: { label?: string; style?: React.
 const WC_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="10" fill="#3B99FC"/><path d="M12.3 15.6c4.3-4.2 11.2-4.2 15.4 0l.5.5c.2.2.2.6 0 .8l-1.8 1.7c-.1.1-.3.1-.4 0l-.7-.7c-3-2.9-7.8-2.9-10.8 0l-.8.7c-.1.1-.3.1-.4 0l-1.8-1.7c-.2-.2-.2-.6 0-.8l.8-.5zm19 3.5 1.6 1.6c.2.2.2.6 0 .8l-7.2 7c-.2.2-.6.2-.8 0l-5.1-5c-.1-.1-.1-.1-.2 0l-5.1 5c-.2.2-.6.2-.8 0l-7.2-7c-.2-.2-.2-.6 0-.8l1.6-1.6c.2-.2.6-.2.8 0l5.1 5c.1.1.1.1.2 0l5.1-5c.2-.2.6-.2.8 0l5.1 5c.1.1.1.1.2 0l5.1-5c.2-.2.6-.2.8 0z" fill="#fff"/></svg>')
 const CB_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="10" fill="#0052FF"/><circle cx="20" cy="20" r="11" fill="#fff"/><rect x="16" y="16" width="8" height="8" rx="1.5" fill="#0052FF"/></svg>')
 const MM_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="10" fill="#F6851B"/><path d="M29 11l-7.4 5.5 1.4-3.2L29 11zM11 11l7.3 5.6-1.3-3.3L11 11zm15.4 12.8-2 3 4.2 1.2 1.2-4.1-3.4-.1zm-16.4.1 1.2 4.1 4.2-1.2-2-3-3.4.1zm5.2-5.2-1.2 1.8 4.2.2-.1-4.5-2.9 2.5zm8.8 0-2.9-2.6-.1 4.6 4.2-.2-1.2-1.8zm-8.6 8.1 2.5-1.2-2.2-1.7-.3 2.9zm5.8-1.2 2.5 1.2-.3-2.9-2.2 1.7z" fill="#fff"/></svg>')
+
+const svg = (s: string) => 'data:image/svg+xml;utf8,' + encodeURIComponent(s)
+const SOL_ICON: Record<string, string> = {
+  Phantom: svg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="10" fill="#AB9FF2"/><path d="M9 25.5C9 17 15 11 21.5 11S32 16 32 21.5c0 6-4.3 7.5-6 7.5-1.4 0-1.6-1.6-2.4-1.6-.9 0-1.4 2.1-3.4 2.1-1.8 0-1.9-2-2.8-2-1 0-1.4 1.5-3 1.5C11.6 29 9 28.4 9 25.5z" fill="#fff"/><circle cx="20" cy="20" r="1.8" fill="#AB9FF2"/><circle cx="25.5" cy="20" r="1.8" fill="#AB9FF2"/></svg>'),
+  Solflare: svg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="10" fill="#FC7227"/><circle cx="20" cy="20" r="6" fill="#FFEF46"/><path d="M20 7v6M20 27v6M7 20h6M27 20h6M11 11l4 4M25 25l4 4M29 11l-4 4M15 25l-4 4" stroke="#FFEF46" stroke-width="2.4" stroke-linecap="round"/></svg>'),
+  Backpack: svg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="10" fill="#E33E3F"/><rect x="12" y="13" width="16" height="17" rx="4" fill="#fff"/><rect x="16" y="9" width="8" height="5" rx="2.5" fill="none" stroke="#fff" stroke-width="2"/><rect x="15" y="22" width="10" height="3" rx="1.5" fill="#E33E3F"/></svg>'),
+}
 
 const isMobile = () => typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
 
@@ -39,6 +54,7 @@ export function ConnectModalHost() {
   const open = useSyncExternalStore(cb => { subs.add(cb); return () => { subs.delete(cb) } }, () => isOpen)
   const { connectors, connectAsync } = useConnect()
   const { isConnected } = useAccount()
+  const sol = useSolanaWallets()
   const [pending, setPending] = useState<string | null>(null)
   const [err, setErr] = useState('')
   // Which injected connectors actually have a wallet behind them.
@@ -85,6 +101,20 @@ export function ConnectModalHost() {
     } finally { setPending(null) }
   }
 
+  // A Solana wallet: connected, then (with no EVM wallet or trading wallet in use) its ARCDEX account opened.
+  async function pickSol(name: string) {
+    setErr(''); setPending(`sol:${name}`)
+    try {
+      await connectSolanaWallet(name)
+      pickSolSigner('external')
+      if (!isConnected && !isUnlocked()) await openSolAccount()
+      setOpen(false)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ''
+      if (!/reject|closed|denied|cancel/i.test(msg)) setErr(msg || T("Could not connect — try again"))
+    } finally { setPending(null) }
+  }
+
   const here = typeof window !== 'undefined' ? window.location.host + window.location.pathname : 'arcsense.site/app'
   return (
     <div className="modal-back" onClick={() => setOpen(false)}>
@@ -94,6 +124,7 @@ export function ConnectModalHost() {
           <button onClick={() => setOpen(false)} aria-label={T("Close")} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer' }}>×</button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div className="wallet-group">{T("EVM · Arc, BNB Chain, Robinhood Chain")}</div>
           {rows.map(c => {
             const l = label(c)
             return (
@@ -116,6 +147,27 @@ export function ConnectModalHost() {
               </span>
             </a>
           )}
+          <div className="wallet-group">{T("Solana")}</div>
+          {sol.available.map(name => (
+            <button key={name} className="wallet-row" onClick={() => void pickSol(name)} disabled={!!pending}>
+              <img src={SOL_ICON[name]} alt="" width={28} height={28} style={{ borderRadius: 7 }} />
+              <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
+                <span style={{ fontWeight: 700 }}>{name}</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T("Buy any chain’s coins with SOL or USDC")}</span>
+              </span>
+              <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)' }}>{pending === `sol:${name}` ? T("Check your wallet…") : sol.external?.name === name ? '✓' : ''}</span>
+            </button>
+          ))}
+          {sol.available.length === 0 && (
+            <a className="wallet-row" href={phantomLink()} target={isMobile() ? undefined : '_blank'} rel="noopener noreferrer">
+              <img src={SOL_ICON.Phantom} alt="" width={28} height={28} style={{ borderRadius: 7 }} />
+              <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                <span style={{ fontWeight: 700 }}>{isMobile() ? T("Open in Phantom") : T("Get Phantom")}</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{isMobile() ? T("Uses the Phantom app’s browser") : T("Buy any chain’s coins with SOL or USDC")}</span>
+              </span>
+            </a>
+          )}
+          <div className="wallet-group">{T("No app")}</div>
           {/* Most phone users have no wallet app in this browser: the trading wallet needs none. */}
           <button className="wallet-row" onClick={() => { setOpen(false); openTradingWallet() }}>
             <span className="wallet-row-blank" style={{ color: 'var(--amber)' }}>⚡</span>

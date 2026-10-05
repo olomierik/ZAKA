@@ -24,6 +24,8 @@ import { pushRecent, toggleWatch, usePrefs } from '../lib/prefs'
 import { useTrader } from '../lib/identity'
 import { useIsMobile } from '../lib/useMobile'
 import Sheet, { TradeBar } from '../components/Sheet'
+import { SolanaPayCard } from '../components/SolanaCross'
+import { ARC_ID } from '../lib/relayQuote'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 import { getLaunchpadColor } from '../api/radardex'
@@ -614,6 +616,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         <TradeBar symbol={symbol} onTrade={setTradeSheet} />
         <Sheet open={tradeSheet !== null} onClose={() => setTradeSheet(null)}>
           {tradeSheet && swapWidget(tradeSheet)}
+          {tradeSheet && <div style={{ padding: '0 14px 14px' }}><SolanaPayCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} initialMode={tradeSheet} /></div>}
         </Sheet>
       </div>
     </div>
@@ -674,6 +677,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
                 : null}
               {T("Every trade is simulated before it's sent.")}
             </p>
+            <SolanaPayCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} />
           </div>
         </div>
         <div className="spot-side">

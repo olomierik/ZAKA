@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useSolanaWallets } from '../lib/solanaWallet'
+import { disconnectSolanaWallet, useSolanaWallets } from '../lib/solanaWallet'
+import { useCash } from '../lib/usdc'
 import { createPublicClient, http, parseAbi, formatUnits } from 'viem'
 import { arc } from '../wagmi'
 import {
-  hasStoredWallet, isUnlocked, currentAddress, createWallet, unlock, lock,
+  hasStoredWallet, isUnlocked, currentAddress, createWallet, unlock, lock, accountOwner,
   exportPrivateKey, deleteWallet, hasPasskey, enablePasskey, disablePasskey, passkeySupport,
 } from '../lib/embeddedWallet'
 import { t as T } from '../lib/i18n'
@@ -110,6 +111,10 @@ export default function TradingWalletPanel({ navigate }: { navigate?: (p: Page) 
     padding: '9px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 700,
     background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%',
   }
+
+  // An account opened from a Solana wallet (lib/solAccount.ts): no passcode, key or passkey to manage here.
+  const owner = trader.kind === 'trading-wallet' ? accountOwner() : null
+  if (owner && trader.address) return <SolAccountCard owner={owner} address={trader.address} walletName={sol.external?.name ?? null} navigate={navigate} btnStyle={btnStyle} />
 
   return (
     <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 14, marginBottom: 12 }}>
@@ -229,6 +234,51 @@ export default function TradingWalletPanel({ navigate }: { navigate?: (p: Page) 
 
       {cashModal === 'deposit' && trader.address && <DepositModal trader={trader} navigate={p => { setCashModal(null); navigate?.(p) }} onClose={() => { setCashModal(null); if (address) refreshBalance(address) }} />}
       {cashModal === 'withdraw' && trader.address && <WithdrawModal trader={trader} onClose={() => setCashModal(null)} onSent={() => { if (address) refreshBalance(address) }} />}
+    </div>
+  )
+}
+
+/** The ARCDEX account of a Solana wallet: its EVM address on Arc, BNB Chain and Robinhood Chain, its USDC on Arc, and
+ * the Solana wallet it comes from. Signing out closes it in this tab; the same wallet opens it again anywhere. */
+function SolAccountCard({ owner, address, walletName, navigate, btnStyle }: { owner: string; address: string; walletName: string | null; navigate?: (p: Page) => void; btnStyle: React.CSSProperties }) {
+  const trader = useTrader()
+  const { cash, refresh } = useCash(address)
+  const [cashModal, setCashModal] = useState<'deposit' | 'withdraw' | null>(null)
+  const [copied, setCopied] = useState<'evm' | 'sol' | null>(null)
+  useEffect(() => onBalances(refresh), [refresh])
+  const copy = (what: 'evm' | 'sol', v: string) => { void navigator.clipboard.writeText(v); setCopied(what); setTimeout(() => setCopied(null), 1500) }
+  const link: React.CSSProperties = { background: 'none', border: 'none', color: 'var(--adx-accent)', cursor: 'pointer', fontSize: '0.68rem' }
+  return (
+    <div style={{ background: 'var(--adx-card-bg)', border: '1px solid var(--adx-card-border)', borderRadius: 12, padding: 14, marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <span style={{ fontWeight: 700, fontSize: '0.82rem' }}>◎ {T('Your ARCDEX account')}</span>
+        <button onClick={() => lock()} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.68rem' }}>{T('Sign out')}</button>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 6 }}>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T('Solana wallet')} · {walletName ?? 'Solana'} {short(owner)}</span>
+        <button onClick={() => copy('sol', owner)} style={link}>{copied === 'sol' ? T('Copied') : T('Copy')}</button>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 6 }} title={T('Coins you buy on Arc, BNB Chain and Robinhood Chain are held at this address.')}>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T('Arc · BNB · Robinhood')} {short(address)}</span>
+        <button onClick={() => copy('evm', address)} style={link}>{copied === 'evm' ? T('Copied') : T('Copy')}</button>
+      </div>
+      <div style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: 6 }}>
+        ${cash !== null ? cash.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}
+        <span style={{ fontSize: '0.65rem', fontWeight: 500, color: 'var(--text-muted)', marginLeft: 4 }}>{T('USDC on Arc')}</span>
+      </div>
+      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.5 }}>{T('Opened by your Solana wallet’s signature: no passcode, and the same wallet opens it on any device. Pay with SOL or USDC on Solana on any coin page.')}</div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        <button onClick={() => setCashModal('deposit')} style={btnStyle}>{T('Deposit')}</button>
+        <button onClick={() => setCashModal('withdraw')} style={{ ...btnStyle, background: 'var(--bg-2)', color: 'var(--text)', border: '1px solid var(--adx-card-border)' }}>{T('Withdraw')}</button>
+      </div>
+      {navigate && (
+        <button onClick={() => navigate({ name: 'portfolio' })} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 8, padding: '8px 10px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', cursor: 'pointer', fontSize: '0.72rem' }}>
+          <span>{T('▤ Your coins')}</span><b style={{ color: 'var(--adx-accent)' }}>{T('Portfolio →')}</b>
+        </button>
+      )}
+      <button onClick={() => void disconnectSolanaWallet()} style={{ ...link, fontSize: '0.66rem', color: 'var(--text-muted)' }}>{T('Disconnect {w}', { w: walletName ?? 'Solana wallet' })}</button>
+      {cashModal === 'deposit' && <DepositModal trader={trader} navigate={p => { setCashModal(null); navigate?.(p) }} onClose={() => { setCashModal(null); refresh() }} />}
+      {cashModal === 'withdraw' && <WithdrawModal trader={trader} onClose={() => setCashModal(null)} onSent={refresh} />}
     </div>
   )
 }

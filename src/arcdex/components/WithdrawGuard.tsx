@@ -2,10 +2,12 @@
 // the rule): back to a wallet that funded it, or to the trading wallet's own
 // address on another chain, goes straight through; anywhere else asks for the
 // passcode (and the passkey with 2FA on). An external wallet confirms every
-// transfer itself, so it's never asked.
+// transfer itself, so it's never asked. An account opened from a Solana wallet
+// (2026-10-05, lib/solAccount.ts) has no passcode: that wallet signs a
+// confirmation instead, and sending to that wallet itself is never asked.
 
 import { useCallback, useState } from 'react'
-import { hasPasskey, verifyPasscode } from '../lib/embeddedWallet'
+import { accountOwner, hasPasskey, verifyPasscode } from '../lib/embeddedWallet'
 import { passcodeRule, useFundingWallets } from '../lib/funding'
 import { shortAddr, type Trader } from '../lib/identity'
 import { t as T } from '../lib/i18n'
@@ -17,6 +19,10 @@ export interface WithdrawGuard {
   loadingFunders: boolean
   isFunder: boolean
   needsPasscode: boolean
+  /** Confirmed in the Solana wallet the account comes from, not with a passcode. */
+  viaSolana: boolean
+  /** A passcode is needed and hasn't been typed: the send waits for it. */
+  missing: boolean
   passcode: string
   setPasscode: (s: string) => void
   /** Throws "Wrong passcode" when one is needed and doesn't open the wallet. */
@@ -27,16 +33,31 @@ export function useWithdrawGuard(trader: Pick<Trader, 'address' | 'kind'>, to: s
   const guarded = trader.kind === 'trading-wallet' && !!trader.address
   const { wallets, loading } = useFundingWallets(trader.address, guarded)
   const [passcode, setPasscode] = useState('')
-  const { isFunder, needsPasscode } = passcodeRule(guarded, trader.address, to, wallets)
+  const rule = passcodeRule(guarded, trader.address, to, wallets)
+  const owner = guarded ? accountOwner() : null
+  const isFunder = rule.isFunder
+  // A Solana wallet's account sending to that wallet itself is its own money going home.
+  const needsPasscode = rule.needsPasscode && !(owner && to === owner)
+  const viaSolana = !!owner
   const confirm = useCallback(async () => {
     if (!needsPasscode) return
+    if (viaSolana) {
+      // The Solana wallet signs that this send is its owner's; the signature is checked against that wallet.
+      const { signSolanaMessage } = await import('../lib/solanaWallet')
+      const { base58Decode } = await import('../lib/solAccount')
+      const { ed25519 } = await import('@noble/curves/ed25519')
+      const msg = new TextEncoder().encode(`Approve sending from your ARCDEX account to ${to}.\n\nOnly approve this on arcsense.site.\n\n${new Date().toISOString()}`)
+      const sig = await signSolanaMessage(msg)
+      if (!owner || !ed25519.verify(sig, msg, base58Decode(owner))) throw new Error(T('Confirm in the Solana wallet this account comes from.'))
+      return
+    }
     if (!passcode) throw new Error(T('Enter your passcode to send to this address.'))
     try { await verifyPasscode(passcode) } catch (e) {
       const m = e instanceof Error ? e.message : ''
       throw new Error(/cancel|timed out|passkey/i.test(m) ? m : T('Wrong passcode'))
     }
-  }, [needsPasscode, passcode])
-  return { guarded, funders: wallets, loadingFunders: loading, isFunder, needsPasscode, passcode, setPasscode, confirm }
+  }, [needsPasscode, passcode, viaSolana, owner, to])
+  return { guarded, funders: wallets, loadingFunders: loading, isFunder, needsPasscode, viaSolana, missing: needsPasscode && !viaSolana && !passcode, passcode, setPasscode, confirm }
 }
 
 /** One tap to fill in a wallet that funded the trading wallet. */
@@ -64,6 +85,9 @@ export function PasscodeField({ guard, onEnter }: { guard: WithdrawGuard; onEnte
     return <div style={{ fontSize: '0.72rem', color: '#86efac' }}>{T('✓ This wallet funded your trading wallet — no passcode needed.')}</div>
   }
   if (!guard.needsPasscode) return null
+  if (guard.viaSolana) {
+    return <div style={{ fontSize: '0.72rem', color: '#fcd34d', padding: 10, borderRadius: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)', lineHeight: 1.45 }}>{T('This address didn’t fund your account. Your Solana wallet will ask you to confirm it’s you.')}</div>
+  }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)' }}>
       <div style={{ fontSize: '0.72rem', color: '#fcd34d', lineHeight: 1.45 }}>

@@ -18,6 +18,8 @@ import PriceChart, { type ChartTrade } from '../components/PriceChart'
 import { MarketTrades } from '../components/SpotPanels'
 import type { TradeRow } from '../components/TokenSocialTabs'
 import Sheet, { TradeBar } from '../components/Sheet'
+import { SolanaPayCard } from '../components/SolanaCross'
+import { RH_ID } from '../lib/relayQuote'
 import { AgoText } from '../components/Ago'
 import { ChainIcon } from '../components/Chains'
 import { RhLogo, StockTag } from '../components/Robinhood'
@@ -105,6 +107,8 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate 
   const stockName = isStockName(fullName)
   // The chain decides. Until it answers, a stock name counts as a stock (the buy side stays gated).
   const stock = stockOnChain ?? stockName
+  // Paying from a Solana wallet goes through Relay, which routes Robinhood Chain's coins but not its stock tokens.
+  const solPay = !stock && !notToken
   const impostor = stockName && stockOnChain === false
   // Launchpad coins and Robinhood's stock tokens only (owner, 2026-10-04): anything else can't be bought here,
   // and says why; selling is never blocked.
@@ -358,6 +362,7 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate 
         {!notToken && <TradeBar symbol={symbol} onTrade={setSheet} />}
         <Sheet open={sheet !== null} onClose={() => setSheet(null)}>
           {sheet && trade(undefined, false, sheet)}
+          {sheet && solPay && <div style={{ padding: '0 14px 14px' }}><SolanaPayCard chainId={RH_ID} token={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked} initialMode={sheet} /></div>}
         </Sheet>
       </div>
     </div>
@@ -402,6 +407,7 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate 
               {trade('sell', true)}
             </div>
             <p className="spot-form-note">{RH_NOTE()}</p>
+            {solPay && <SolanaPayCard chainId={RH_ID} token={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked} />}
           </div>
         </div>
         <div className="spot-side">

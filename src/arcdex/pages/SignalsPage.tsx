@@ -1102,7 +1102,7 @@ function FundLive({ wallet, minUsd, onDone, onClose }: { wallet: string; minUsd:
       guard.setPasscode(''); refresh(); notifyBalances(); onDone()
     } catch (e) { setMsg({ ok: false, text: txErrorText(e) }) } finally { setBusy(false) }
   }
-  const blocked = busy || !(n > 0) || (cash !== null && n > cash) || (guard.needsPasscode && !guard.passcode)
+  const blocked = busy || !(n > 0) || (cash !== null && n > cash) || guard.missing
   return (
     <div className="at-fundbox">
       <div className="at-golive-h">{T('Fund the live wallet')}<button className="link-btn" onClick={onClose} aria-label={T('Close')}>✕</button></div>

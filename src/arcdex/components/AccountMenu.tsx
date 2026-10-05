@@ -6,7 +6,7 @@ import { DepositModal, WithdrawModal } from './CashModals'
 import SupportModal from './SupportModal'
 import { enableAlertNotifications } from './DiscoveryPanel'
 import { getProfile, signOutEverywhere, type Profile } from '../api/social'
-import { hasPasskey, lock } from '../lib/embeddedWallet'
+import { accountOwner, hasPasskey, lock } from '../lib/embeddedWallet'
 import { shortAddr, useTrader } from '../lib/identity'
 import { DEFAULT_PREFS, setPrefs, usePrefs } from '../lib/prefs'
 import { LANGS, setLang, t, useLang, type Lang } from '../lib/i18n'
@@ -21,6 +21,8 @@ type SettingsTab = 'trading' | 'account' | 'notifications' | 'language'
 
 export default function AccountMenu({ navigate }: { navigate: (p: Page) => void }) {
   const trader = useTrader()
+  // An account opened from a Solana wallet (lib/solAccount.ts): signed out, not locked.
+  const solOwner = trader.kind === 'trading-wallet' ? accountOwner() : null
   const prefs = usePrefs()
   const lang = useLang()
   const { cash } = useCash(trader.address)
@@ -60,13 +62,13 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
         <span style={{ fontSize: '0.64rem', color: 'var(--adx-accent)', fontWeight: 700 }}>{t('Deposit')}</span>
       </button>
       <button onClick={() => setOpen(o => !o)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }} title={shortAddr(trader.address)}>
-        <Avatar address={trader.address} url={profile?.avatar_url} size={30} ring={trader.kind === 'trading-wallet' ? '#facc15' : undefined} />
+        <Avatar address={trader.address} url={profile?.avatar_url} size={30} ring={solOwner ? '#ab9ff2' : trader.kind === 'trading-wallet' ? '#facc15' : undefined} />
       </button>
 
       {open && (
         <div className="menu-pop" style={{ top: 40, right: 0 }}>
           <div style={{ padding: '6px 10px 8px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-            {profile?.username ? `@${profile.username}` : shortAddr(trader.address)} · {trader.kind === 'trading-wallet' ? `⚡ ${t('trading wallet')}` : t('wallet')}
+            {profile?.username ? `@${profile.username}` : shortAddr(trader.address)} · {solOwner ? `◎ ${t('Solana account')}` : trader.kind === 'trading-wallet' ? `⚡ ${t('trading wallet')}` : t('wallet')}
           </div>
           {item('☺', t('Your profile'), () => go({ name: 'trader', address: trader.address! }))}
           {item('👤', t('Manage account'), () => { setOpen(false); setSettings('account') })}
@@ -80,7 +82,9 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
           {item('🌐', t('Language'), () => { setOpen(false); setSettings('language') }, <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{LANGS.find(l => l.code === lang)?.name}</span>)}
           {item('✉', t('Contact support'), () => { setOpen(false); setSupport(true) })}
           <div style={{ borderTop: '1px solid var(--adx-card-border)', margin: '6px 0' }} />
-          {trader.kind === 'trading-wallet'
+          {solOwner
+            ? item('⏻', t('Sign out'), () => { setOpen(false); lock() })
+            : trader.kind === 'trading-wallet'
             ? item('🔒', t('Lock trading wallet'), () => { setOpen(false); lock() })
             : item('⏻', t('Disconnect wallet'), () => { setOpen(false); disconnect() })}
         </div>
@@ -175,7 +179,7 @@ export function SettingsModal({ onClose, initial = 'trading', onSupport }: { onC
             <div style={{ fontSize: '0.84rem' }}><b>{t('Account and addresses')}</b>
               <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.7 }}>
                 {t('Trading as')}: <span style={{ fontFamily: 'var(--mono)', color: 'var(--text)', wordBreak: 'break-all' }}>{trader.address ?? t('not connected')}</span><br />
-                {t('Type')}: {trader.kind === 'trading-wallet' ? `⚡ ${t('One-tap trading wallet (self-custody, encrypted in this browser)')}` : trader.kind === 'wallet' ? t('Connected wallet') : '—'}
+                {t('Type')}: {trader.kind === 'trading-wallet' && accountOwner() ? `◎ ${t('ARCDEX account of your Solana wallet {w}', { w: shortAddr(accountOwner()!) })}` : trader.kind === 'trading-wallet' ? `⚡ ${t('One-tap trading wallet (self-custody, encrypted in this browser)')}` : trader.kind === 'wallet' ? t('Connected wallet') : '—'}
               </div>
             </div>
             <div style={{ fontSize: '0.84rem' }}><b>{t('Security')}</b>

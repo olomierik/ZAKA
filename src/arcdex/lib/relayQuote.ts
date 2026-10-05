@@ -14,6 +14,13 @@
 // BNB Chain (`chain: 'bsc'`, 2026-10-05), at the trader's same EVM address:
 //  • buy / sell / gas as above, with BNB Chain in Solana's place (sales and swaps signed on BNB Chain, BNB pays gas).
 //  • swap: on BNB Chain alone: BNB or USDT → the coin, or back.
+// From a Solana wallet to the EVM chains (2026-10-05, owner: "Solana wallets connect, transact, swap and bridge, and buy
+// other chains' coins with SOL and USDC on Solana"), `evmChain` naming Arc, BNB Chain or Robinhood Chain:
+//  • xin:  SOL or USDC on Solana → a coin (or USDC) on the EVM chain, signed in the Solana wallet, delivered to the
+//          trader's EVM address (their ARCDEX account), with an optional gas top-up there.
+//  • xout: a coin (or USDC) on the EVM chain → SOL or USDC on Solana, signed by that EVM account, paid to the Solana wallet.
+// Relay's newer orders (`protocol.v2`) describe the order a deposit funds: its id is in the Solana deposit's data, and
+// its payments, refunds and calls are checked against the request.
 //
 // ARCDEX's fee is Relay's app fee: 2% (the swap router's feeBps) of what goes in, accrued for the fee wallet
 // 0x2742…86Bb as a USDC balance at Relay and claimed from there (Relay pays app fees out on a claim, signed by that
@@ -37,6 +44,8 @@ export const SOLANA_ID = 792703809
 export const BSC_ID = 56
 /** Relay's name for native SOL. */
 export const SOL_NATIVE = '11111111111111111111111111111111'
+/** USDC on Solana. */
+export const SOL_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 /** Relay's name for an EVM chain's native coin (BNB). */
 export const EVM_NATIVE = '0x0000000000000000000000000000000000000000'
 /** Relay's depository on Arc (and BNB Chain): takes buys' USDC (Relay's /chains, checked 2026-10-04). */
@@ -56,6 +65,7 @@ export const SOL_PROGRAMS = new Set([
   'DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH', // DFlow
   'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4', // Jupiter v6
   'DPArtTLbEqa6EuXHfL5UFLBZhFjiEXWRudhvXDrjwXUr', // Relay's depository on Solana
+  '99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2', // Relay's depository on Solana for its v2 orders (2026-10-05)
   'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr', // memo
   'ComputeBudget111111111111111111111111111111',
   '11111111111111111111111111111111',
@@ -63,10 +73,17 @@ export const SOL_PROGRAMS = new Set([
   'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb',
 ])
 export const RELAY_SOL_DEPOSITORY = 'DPArtTLbEqa6EuXHfL5UFLBZhFjiEXWRudhvXDrjwXUr'
+/** Relay's Solana depository for its v2 orders: deposit(amount u64, order id [32]) after an 8-byte selector. */
+export const RELAY_SOL_DEPOSITORY_V2 = '99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2'
+export const RH_ID = 4663
+/** The EVM chains a Solana wallet trades with: Arc, BNB Chain, Robinhood Chain. */
+export const XSOL_CHAINS = [ARC_ID, BSC_ID, RH_ID] as const
+/** Relay's router and approval proxy have the same addresses on Arc, BNB Chain and Robinhood Chain (its quotes, 2026-10-05). */
+export const RELAY_EVM = RELAY_BSC
 const MEMO = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'
 const SYSTEM = '11111111111111111111111111111111'
 
-export type RelaySide = 'buy' | 'sell' | 'gas' | 'swap'
+export type RelaySide = 'buy' | 'sell' | 'gas' | 'swap' | 'xin' | 'xout'
 export type RelayChain = 'solana' | 'bsc'
 
 export interface RelayRequest {
@@ -83,9 +100,14 @@ export interface RelayRequest {
   sol: string
   /** ARCDEX's fee in basis points (200); 0 for gas. */
   feeBps: number
-  /** A swap's currencies on the other chain (native SOL/BNB, a stablecoin, or the coin). */
+  /** A swap's currencies on the other chain (native SOL/BNB, a stablecoin, or the coin); xin's SOL or USDC going in,
+   * xout's coming out. */
   inToken?: string
   outToken?: string
+  /** xin / xout: the EVM chain (Arc, BNB Chain or Robinhood Chain); `mint` is the token there. */
+  evmChain?: number
+  /** xin: dollars of the EVM chain's gas coin delivered with the trade (so the coin can be sold later). */
+  gasUsd?: number
 }
 
 export interface SolInstruction { programId: string; keys: { pubkey: string; isSigner: boolean; isWritable: boolean }[]; data: string }
@@ -108,6 +130,8 @@ export interface RelayQuote {
   /** ARCDEX's fee and Relay's own (its relayer and the other chain's gas), in dollars. */
   appFeeUsd: number
   relayFeeUsd: number
+  /** Gas Relay adds on the coin's chain (xin with `gasUsd`), in dollars: inside `relayFeeUsd`, and delivered, not lost. */
+  gasTopupUsd: number
   /** Relay's own dollar values of what goes in and comes out (for the swap guard's input side). */
   inUsd: number
   outUsdRelay: number
@@ -137,6 +161,8 @@ function shape(r: RelayRequest) {
     case 'gas': return { user: r.evm, recipient: me, origin: ARC_ID, dest: other, inCur: ARC_USDC, outCur: c === 'bsc' ? EVM_NATIVE : SOL_NATIVE }
     case 'sell': return { user: me, recipient: r.evm, origin: other, dest: ARC_ID, inCur: r.mint, outCur: ARC_USDC }
     case 'swap': return { user: me, recipient: me, origin: other, dest: other, inCur: r.inToken ?? '', outCur: r.outToken ?? '' }
+    case 'xin': return { user: r.sol, recipient: r.evm, origin: SOLANA_ID, dest: r.evmChain ?? 0, inCur: r.inToken ?? '', outCur: r.mint }
+    case 'xout': return { user: r.evm, recipient: r.sol, origin: r.evmChain ?? 0, dest: SOLANA_ID, inCur: r.mint, outCur: r.outToken ?? '' }
   }
 }
 
@@ -153,15 +179,26 @@ export function quoteBody(r: RelayRequest): Record<string, unknown> {
     amount: r.amount.toString(),
     tradeType: 'EXACT_INPUT',
     ...(r.side !== 'gas' && r.feeBps > 0 ? { appFees: [{ recipient: FEE_WALLET, fee: String(r.feeBps) }] } : {}),
+    ...(r.side === 'xin' && r.gasUsd ? { topupGas: true, topupGasAmount: String(Math.round(r.gasUsd * 1e6)) } : {}),
   }
 }
 
 interface ApiCurrency { currency?: { chainId?: number; address?: string; decimals?: number; symbol?: string }; amount?: string; amountUsd?: string; minimumAmount?: string }
 interface ApiStep { id?: string; kind?: string; requestId?: string; items?: { data?: Record<string, unknown> }[] }
+/** Relay's v2 order: what a deposit funds. */
+interface ApiOrder {
+  orderId?: string
+  orderData?: {
+    inputs?: { payment?: { currency?: string; amount?: string }; refunds?: { recipient?: string }[] }[]
+    output?: { payments?: { recipient?: string; currency?: string; minimumAmount?: string }[]; calls?: unknown[] }
+  }
+  paymentDetails?: { depository?: string; currency?: string; amount?: string }
+}
 interface ApiQuote {
+  protocol?: { v2?: ApiOrder }
   steps?: ApiStep[]
   fees?: Record<string, ApiCurrency | undefined>
-  details?: { sender?: string; recipient?: string; currencyIn?: ApiCurrency; currencyOut?: ApiCurrency; timeEstimate?: number }
+  details?: { sender?: string; recipient?: string; currencyIn?: ApiCurrency; currencyOut?: ApiCurrency; currencyGasTopup?: ApiCurrency; timeEstimate?: number }
   message?: string
   errorCode?: string
 }
@@ -180,6 +217,9 @@ export function checkRelayQuote(r: RelayRequest, j: ApiQuote): RelayQuote {
   const steps = j.steps ?? []
   if (!d || !cin?.currency || !cout?.currency || !steps.length) fail('Relay sent no trade')
   if (r.side === 'swap' && (!r.inToken || !r.outToken || r.inToken === r.outToken)) fail('a swap needs two currencies')
+  if ((r.side === 'xin' || r.side === 'xout') && !(XSOL_CHAINS as readonly number[]).includes(r.evmChain ?? 0)) fail('a chain ARCDEX doesn’t trade with Solana')
+  if (r.side === 'xin' && r.inToken !== SOL_NATIVE && r.inToken !== SOL_USDC) fail('only SOL or USDC go in from Solana')
+  if (r.side === 'xout' && r.outToken !== SOL_NATIVE && r.outToken !== SOL_USDC) fail('only SOL or USDC come out on Solana')
   // Who pays and who's paid: addresses on Solana are case-sensitive, on EVM chains not.
   const addrOk = (chain: number, a: string | undefined, b: string) => (chain === SOLANA_ID ? a === b : lc(a) === lc(b))
   if (!addrOk(s.origin, d.sender, s.user)) fail(s.origin === SOLANA_ID ? 'the trade isn’t from your Solana wallet' : 'the trade isn’t from you')
@@ -198,15 +238,20 @@ export function checkRelayQuote(r: RelayRequest, j: ApiQuote): RelayQuote {
     const want = (r.amount * BigInt(r.feeBps)) / 10_000n
     if (Number(app?.currency?.chainId) !== ARC_ID || appFee < want - 1n || appFee > want + 1n) fail('the fee isn’t ARCDEX’s')
   }
-  if ((r.side === 'sell' || r.side === 'swap') && r.feeBps > 0 && appFee <= 0n) fail('the fee isn’t ARCDEX’s')
+  if ((r.side === 'sell' || r.side === 'swap' || r.side === 'xin' || r.side === 'xout') && r.feeBps > 0 && appFee <= 0n) fail('the fee isn’t ARCDEX’s')
+  if (r.side === 'xin' && !r.gasUsd && d.currencyGasTopup) fail('gas that wasn’t asked for')
+  const topupUsd = parseFloat(String(d.currencyGasTopup?.amountUsd ?? '0')) || 0
+  if (r.side === 'xin' && r.gasUsd && topupUsd > r.gasUsd * 1.5) fail('more gas than was asked for')
 
   const ids = new Set(steps.map(x => x.requestId).filter(Boolean))
   if (ids.size !== 1) fail('the quote names no single request')
   const id = String([...ids][0])
 
   let evmTx: RelayQuote['evmTx'] = null, solTx: RelayQuote['solTx'] = null
-  if (s.origin === SOLANA_ID) solTx = checkSolSteps(r, steps, id, c)
+  if (s.origin === SOLANA_ID) solTx = checkSolSteps(r, steps, id, c, j.protocol?.v2, s)
   else evmTx = checkEvmSteps(r, steps, s.origin, s.user, s.inCur)
+  // Relay's v2 order, where it gives one for an EVM-side trade to Solana: it pays only the trader, makes no calls.
+  if (r.side === 'xout' && j.protocol?.v2?.orderData) checkOrderOutput(j.protocol.v2, s)
 
   const usd = (k: string) => parseFloat(String(j.fees?.[k]?.amountUsd ?? '0')) || 0
   return {
@@ -216,6 +261,7 @@ export function checkRelayQuote(r: RelayRequest, j: ApiQuote): RelayQuote {
     outSymbol: String(cout.currency.symbol ?? ''),
     appFeeUsd: usd('app'),
     relayFeeUsd: usd('relayer'),
+    gasTopupUsd: topupUsd,
     inUsd: parseFloat(String(cin.amountUsd ?? '0')) || 0,
     outUsdRelay: parseFloat(String(cout.amountUsd ?? '0')) || 0,
     fillSeconds: Number(d.timeEstimate ?? 0) || 0,
@@ -227,6 +273,8 @@ export function checkRelayQuote(r: RelayRequest, j: ApiQuote): RelayQuote {
  * approval, if any, is for exactly the amount, to the contract that then takes it. */
 function checkEvmSteps(r: RelayRequest, steps: ApiStep[], chainId: number, user: string, inCur: string): NonNullable<RelayQuote['evmTx']> {
   const native = lc(inCur) === EVM_NATIVE
+  // Arc's USDC goes into Relay's depository (depositErc20); any other token, on any chain, through the approval proxy.
+  const viaDepository = chainId === ARC_ID && lc(inCur) === ARC_USDC
   let approve: { token: Hex; spender: Hex; amount: bigint } | null = null, call: { to: Hex; data: Hex; value: bigint } | null = null
   for (const st of steps) {
     if (st.id !== 'approve' && st.id !== 'deposit' && st.id !== 'swap') fail(`an unexpected step (${st.id ?? '?'})`)
@@ -241,13 +289,13 @@ function checkEvmSteps(r: RelayRequest, steps: ApiStep[], chainId: number, user:
       const a = (() => { try { return decodeFunctionData({ abi: erc20Abi, data }) } catch { return null } })()
       if (!a || a.functionName !== 'approve') fail('an unexpected approval')
       const [spender, amount] = a.args as readonly [string, bigint]
-      const want = chainId === ARC_ID ? RELAY_ARC_DEPOSITORY : RELAY_BSC.approvalProxy
+      const want = viaDepository ? RELAY_ARC_DEPOSITORY : RELAY_EVM.approvalProxy
       if (lc(spender) !== want) fail('the approval is for a contract ARCDEX doesn’t know')
       if (amount !== r.amount) fail('the approval isn’t for exactly the amount')
       approve = { token: to, spender: lc(spender) as Hex, amount }
     } else {
-      if (chainId === ARC_ID) {
-        // Arc: Relay's depository, word by word.
+      if (viaDepository) {
+        // Arc's USDC: Relay's depository, word by word.
         if (to !== RELAY_ARC_DEPOSITORY) fail('the deposit goes to a contract ARCDEX doesn’t know')
         if (value !== 0n) fail('the transaction would send native funds')
         if (!data.startsWith(DEPOSIT_SELECTOR) || data.length !== 10 + 64 * 4) fail('an unexpected deposit')
@@ -255,8 +303,9 @@ function checkEvmSteps(r: RelayRequest, steps: ApiStep[], chainId: number, user:
         if (`0x${word(data, 1).slice(24)}` !== ARC_USDC) fail('the deposit isn’t USDC')
         if (BigInt(`0x${word(data, 2)}`) !== r.amount) fail('the deposit isn’t the amount asked for')
       } else {
-        // BNB Chain: native BNB goes to Relay's router with exactly the amount; an ERC-20 through its approval proxy.
-        if (native ? to !== RELAY_BSC.router : to !== RELAY_BSC.approvalProxy) fail('the trade goes to a contract ARCDEX doesn’t know')
+        // Native gas coin to Relay's router with exactly the amount; an ERC-20 through its approval proxy (BNB Chain,
+        // Robinhood Chain, and Arc tokens other than USDC).
+        if (native ? to !== RELAY_EVM.router : to !== RELAY_EVM.approvalProxy) fail('the trade goes to a contract ARCDEX doesn’t know')
         if (native ? value !== r.amount : value !== 0n) fail(native ? 'the trade sends another amount of BNB' : 'the transaction would send native funds')
         if (!data.includes(lc(user).slice(2))) fail('the trade’s instructions don’t name you')
       }
@@ -267,10 +316,24 @@ function checkEvmSteps(r: RelayRequest, steps: ApiStep[], chainId: number, user:
   return { approve, call }
 }
 
+/** Relay's v2 order: it pays only the trader (the coin asked for, at least once), refunds only to the trader's own
+ * addresses, and makes no calls of its own. */
+function checkOrderOutput(order: ApiOrder, s: ReturnType<typeof shape>) {
+  const out = order.orderData?.output
+  const same = (chain: number, a: string | undefined, b: string) => (chain === SOLANA_ID ? a === b : lc(a) === lc(b))
+  if (!out?.payments?.length) fail('an order that pays no one')
+  for (const p of out.payments) if (!same(s.dest, p.recipient, s.recipient)) fail('the order pays another address')
+  if (!out.payments.some(p => same(s.dest, p.currency, s.outCur))) fail('the order delivers another token')
+  if ((out.calls ?? []).length) fail('the order makes calls ARCDEX doesn’t know')
+  for (const i of order.orderData?.inputs ?? []) for (const f of i.refunds ?? []) {
+    if (!same(s.origin, f.recipient, s.user) && !same(s.dest, f.recipient, s.recipient)) fail('the order refunds another address')
+  }
+}
+
 /** A Solana side (a sale, or a swap): only the programs a trade uses, signed by the trader alone, SOL sent only to
  * Relay's solvers (a swap's fee, at most 5% of SOL going in, else 0.01 SOL), and Relay's memo naming the quote. A
  * sale (to Arc) deposits with Relay. */
-function checkSolSteps(r: RelayRequest, steps: ApiStep[], id: string, _c: RelayChain): NonNullable<RelayQuote['solTx']> {
+function checkSolSteps(r: RelayRequest, steps: ApiStep[], id: string, _c: RelayChain, order: ApiOrder | undefined, s: ReturnType<typeof shape>): NonNullable<RelayQuote['solTx']> {
   const want = r.side === 'swap' ? 'swap' : 'deposit'
   if (steps.length !== 1 || steps[0].id !== want || steps[0].kind !== 'transaction' || (steps[0].items?.length ?? 0) !== 1) fail('an unexpected step')
   const x = steps[0].items![0].data as { instructions?: SolInstruction[]; addressLookupTableAddresses?: string[] }
@@ -291,9 +354,23 @@ function checkSolSteps(r: RelayRequest, steps: ApiStep[], id: string, _c: RelayC
   }
   const cap = r.side === 'swap' && r.inToken === SOL_NATIVE ? (r.amount * 5n) / 100n : 10_000_000n
   if (toSolvers > (cap > 10_000_000n ? cap : 10_000_000n)) fail('the trade sends Relay more SOL than its fee')
-  if (r.side === 'sell' && !ins.some(i => i.programId === RELAY_SOL_DEPOSITORY)) fail('the sale isn’t deposited with Relay')
-  const memo = ins.find(i => i.programId === MEMO)
-  if (lc(memo ? decodeHexAscii(memo.data) : '') !== lc(id)) fail('the trade’s memo names another request')
+  const v2 = ins.filter(i => i.programId === RELAY_SOL_DEPOSITORY_V2)
+  if ((r.side === 'sell' || r.side === 'xin') && !v2.length && !ins.some(i => i.programId === RELAY_SOL_DEPOSITORY)) fail('the trade isn’t deposited with Relay')
+  if (v2.length) {
+    // A v2 deposit: one, funding the order the quote describes.
+    if (v2.length !== 1 || !order?.orderId) fail('a deposit for no order')
+    const data = v2[0].data.toLowerCase()
+    if (data.length !== 96) fail('a deposit ARCDEX can’t read')
+    const amount = BigInt('0x' + (data.slice(16, 32).match(/../g) ?? []).reverse().join(''))
+    if (`0x${data.slice(32)}` !== lc(order.orderId)) fail('the deposit funds another order')
+    if (String(amount) !== String(order.paymentDetails?.amount ?? '')) fail('the deposit isn’t the order’s amount')
+    // Straight from SOL or USDC (xin), it's exactly what the trader puts in.
+    if (r.side === 'xin' && amount !== r.amount) fail('the deposit isn’t the amount asked for')
+    checkOrderOutput(order, s)
+  } else {
+    const memo = ins.find(i => i.programId === MEMO)
+    if (lc(memo ? decodeHexAscii(memo.data) : '') !== lc(id)) fail('the trade’s memo names another request')
+  }
   return { instructions: ins, lookupTables: (x.addressLookupTableAddresses ?? []).filter(a => typeof a === 'string') }
 }
 
@@ -308,7 +385,7 @@ function decodeHexAscii(h: string): string {
 /** A buy or sale through Arc, valued at the coin's market price. `input` is what's paid: dollars for a buy, coins for a
  * sale. */
 export function relayValue(q: Pick<RelayQuote, 'side' | 'expectedOut' | 'outDecimals' | 'appFeeUsd' | 'relayFeeUsd'>, input: number, priceUsd: number): QuoteValue | null {
-  if (q.side === 'gas' || q.side === 'swap' || !(priceUsd > 0) || !(input > 0)) return null
+  if (q.side === 'gas' || q.side === 'swap' || q.side === 'xin' || q.side === 'xout' || !(priceUsd > 0) || !(input > 0)) return null
   const out = Number(formatUnits(q.expectedOut, q.outDecimals))
   if (q.side === 'buy') {
     const swapIn = input - q.appFeeUsd - q.relayFeeUsd
