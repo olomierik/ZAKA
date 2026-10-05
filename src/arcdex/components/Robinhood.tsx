@@ -5,6 +5,7 @@ import { useState } from 'react'
 import type { Page } from '../App'
 import { ChainIcon } from './Chains'
 import { t as T } from '../lib/i18n'
+import { useLogo } from '../lib/logo'
 
 /** Markets on Arc, Robinhood Chain or Solana. */
 export function ChainSwitch({ chain, navigate }: { chain: 'arc' | 'robinhood' | 'solana' | 'bsc'; navigate: (p: Page) => void }) {
@@ -27,8 +28,8 @@ export function ChainSwitch({ chain, navigate }: { chain: 'arc' | 'robinhood' | 
 }
 
 export function RhLogo({ src, symbol, size = 28 }: { src: string | null; symbol: string; size?: number }) {
-  const [err, setErr] = useState(false)
-  if (!src || err) {
+  const { url, onError } = useLogo(src, size)
+  if (!url) {
     const bg = `hsl(${(symbol.charCodeAt(0) * 17 + 90) % 360},55%,26%)`
     return (
       <span className="rh-logo" style={{ width: size, height: size, background: bg, fontSize: size * 0.35 }}>
@@ -36,7 +37,7 @@ export function RhLogo({ src, symbol, size = 28 }: { src: string | null; symbol:
       </span>
     )
   }
-  return <img className="rh-logo" src={src} alt={symbol} width={size} height={size} style={{ width: size, height: size }} onError={() => setErr(true)} />
+  return <img className="rh-logo" src={url} alt={symbol} width={size} height={size} style={{ width: size, height: size }} onError={onError} />
 }
 
 /** Marks one of Robinhood's stock tokens. */

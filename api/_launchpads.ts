@@ -94,6 +94,20 @@ export function isLaunchpadCoin(launchpad: string | null | undefined): boolean {
   return lp.toUpperCase() === OWN_LAUNCHPAD || isLaunchpadDex(lp, lp)
 }
 
+/** An established coin from a plain DEX (2026-10-05, owner: "find what's missing against DexScreener"): Arc's
+ * most-traded coins (TOLLY, ARCMAN, KAIRO, COOL…) trade on plain Uniswap pools, and the launchpad-only rule kept every
+ * one of them out of the lists and search. A coin from any venue is listed once it has proven itself: real liquidity,
+ * three days of trading, a real market cap and steady trades. Launchpad coins are listed as before; stablecoins aren't
+ * markets to trade. The safety rating still hides a Danger coin from the default lists. */
+export const ESTABLISHED = { minLiquidityUsd: 25_000, minAgeMs: 3 * 86_400_000, minMarketCapUsd: 100_000, minTxns24h: 25 }
+const STABLE = /^(usdc|usdt|eurc|usyc|dai|usdg|pyusd|usde|fdusd|tusd|usds|usd)$/i
+
+export function isEstablishedCoin(o: { symbol: string; liquidityUsd: number; ageMs: number; marketCapUsd: number; txns24h: number }): boolean {
+  if (STABLE.test(o.symbol.trim())) return false
+  return o.liquidityUsd >= ESTABLISHED.minLiquidityUsd && o.ageMs >= ESTABLISHED.minAgeMs
+    && o.marketCapUsd >= ESTABLISHED.minMarketCapUsd && o.txns24h >= ESTABLISHED.minTxns24h
+}
+
 /** A market row's badge: the launchpad's name, else GeckoTerminal's name for the dex. */
 export function launchpadLabel(dexId: string, dexName = ''): string {
   return launchpadOf(dexId, dexName)?.name ?? (dexName.replace(/\s*\(arc\)\s*$/i, '').trim() || dexId)

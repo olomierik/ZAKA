@@ -2,14 +2,22 @@
 // by re-querying history. 24h stats use a ring of 1,440 one-minute buckets:
 // adding a trade touches one bucket, and minutes falling out of the 24h
 // window are subtracted as time moves on (amortised O(1)).
+//
+// Each minute's close remembers its pool (2026-10-05). A coin's main pool can
+// change (a deeper pool appears, or the first pool seen was a thin side pool),
+// and closes from the old one made the 24h change compare two pools: ARGUS read
+// −31.5% over 24h while its main pool had moved −4%. Changes now compare the
+// main pool with itself only.
 
 import type { TokenStats, Trade } from '../../../api/_marketProtocol'
 
 const MIN_MS = 60_000
 const SLOTS = 1_440
 // per-slot fields
-const F_MIN = 0, F_VOL = 1, F_BVOL = 2, F_SVOL = 3, F_BUYS = 4, F_SELLS = 5, F_CLOSE = 6, F_ORD = 7
-const W = 8
+const F_MIN = 0, F_VOL = 1, F_BVOL = 2, F_SVOL = 3, F_BUYS = 4, F_SELLS = 5, F_CLOSE = 6, F_ORD = 7, F_POOL = 8
+const W = 9
+/** Slots saved before closes remembered their pool (8 fields): their closes are left out. */
+const W_LEGACY = 8
 
 export class TokenState {
   priceUsd: number | null = null
@@ -22,7 +30,11 @@ export class TokenState {
   latestTs = 0
   lastOrd = -1
   firstPriceUsd: number | null = null
+  /** The pool `firstPriceUsd` came from. */
+  firstPool: string | null = null
   lastTradeAt = 0
+  /** Pools seen, by index (a slot's F_POOL). */
+  private pools: string[] = []
 
   vol24 = 0; buyVol24 = 0; sellVol24 = 0; buys24 = 0; sells24 = 0
   private ring = new Float64Array(SLOTS * W).fill(-1)
@@ -53,7 +65,7 @@ export class TokenState {
       this.latestBlock = t.blockNumber
       this.latestTs = t.timestamp
     }
-    if (this.firstPriceUsd === null && t.priceUsd !== null && latest) this.firstPriceUsd = t.priceUsd
+    if (t.priceUsd !== null && latest && (this.firstPriceUsd === null || this.firstPool !== this.mainPool)) { this.firstPriceUsd = t.priceUsd; this.firstPool = t.pool }
     this.lastTradeAt = now
     const m = Math.floor(t.timestamp / MIN_MS)
     const nowMin = Math.floor(now / MIN_MS)
@@ -64,8 +76,21 @@ export class TokenState {
     this.ring[base + F_VOL] += usd; this.vol24 += usd
     if (t.side === 'BUY') { this.ring[base + F_BVOL] += usd; this.buyVol24 += usd; this.ring[base + F_BUYS]++; this.buys24++ }
     else if (t.side === 'SELL') { this.ring[base + F_SVOL] += usd; this.sellVol24 += usd; this.ring[base + F_SELLS]++; this.sells24++ }
-    if (t.priceUsd !== null && (this.mainPool === null || t.pool === this.mainPool) && ord > this.ring[base + F_ORD]) { this.ring[base + F_CLOSE] = t.priceUsd; this.ring[base + F_ORD] = ord }
+    if (t.priceUsd !== null && (this.mainPool === null || t.pool === this.mainPool) && ord > this.ring[base + F_ORD]) { this.ring[base + F_CLOSE] = t.priceUsd; this.ring[base + F_ORD] = ord; this.ring[base + F_POOL] = this.poolIx(t.pool) }
     return latest
+  }
+
+  private poolIx(pool: string): number {
+    const i = this.pools.indexOf(pool)
+    if (i >= 0) return i
+    this.pools.push(pool)
+    return this.pools.length - 1
+  }
+
+  /** The main pool's index, or -2 (matches no slot) when there's none yet. */
+  private mainIx(): number {
+    const i = this.mainPool === null ? -1 : this.pools.indexOf(this.mainPool)
+    return i >= 0 ? i : -2
   }
 
   private resetSlot(base: number, minute: number) {
@@ -75,6 +100,7 @@ export class TokenState {
     this.ring[base + F_MIN] = minute
     this.ring[base + F_CLOSE] = -1
     this.ring[base + F_ORD] = -1
+    this.ring[base + F_POOL] = -1
   }
 
   private subtract(base: number) {
@@ -110,20 +136,33 @@ export class TokenState {
     return { trades: buys + sells, buys, sells, vol }
   }
 
-  /** Close price at (or before) `minutesAgo`, within the window. */
+  /** The main pool's close at (or before) `minutesAgo`, within the window. */
   private priceAgo(minutesAgo: number, now: number): number | null {
+    const main = this.mainIx()
     const target = Math.floor(now / MIN_MS) - minutesAgo
     for (let m = target; m > target - 90 && m > Math.floor(now / MIN_MS) - SLOTS; m--) {
       const base = (((m % SLOTS) + SLOTS) % SLOTS) * W
-      if (this.ring[base + F_MIN] === m && this.ring[base + F_CLOSE] > 0) return this.ring[base + F_CLOSE]
+      if (this.ring[base + F_MIN] === m && this.ring[base + F_CLOSE] > 0 && this.ring[base + F_POOL] === main) return this.ring[base + F_CLOSE]
+    }
+    return null
+  }
+
+  /** The main pool's earliest close after `minutesAgo` (a coin younger than the period, or quiet before it). */
+  private firstCloseSince(minutesAgo: number, now: number): number | null {
+    const main = this.mainIx()
+    const nowMin = Math.floor(now / MIN_MS)
+    for (let m = nowMin - Math.min(minutesAgo, SLOTS - 1); m <= nowMin; m++) {
+      const base = (((m % SLOTS) + SLOTS) % SLOTS) * W
+      if (this.ring[base + F_MIN] === m && this.ring[base + F_CLOSE] > 0 && this.ring[base + F_POOL] === main) return this.ring[base + F_CLOSE]
     }
     return null
   }
 
   private chg(minutes: number, now: number): number | null {
     if (this.priceUsd === null) return null
-    // Younger than the period (or quiet before it): measure from the first trade seen.
-    const then = this.priceAgo(minutes, now) ?? this.firstPriceUsd
+    // Younger than the period (or quiet before it): measure from the main pool's first price seen.
+    const first = this.firstPool !== null && this.firstPool === this.mainPool ? this.firstPriceUsd : null
+    const then = this.priceAgo(minutes, now) ?? this.firstCloseSince(minutes, now) ?? first
     return then && then > 0 ? (this.priceUsd / then - 1) * 100 : null
   }
 
@@ -153,8 +192,8 @@ export class TokenState {
     }
     return {
       p: this.priceUsd, pq: this.price, q: this.quote, mp: this.mainPool, lq: this.liquidityUsd, s: this.supply,
-      b: this.latestBlock, ts: this.latestTs, o: this.lastOrd, f: this.firstPriceUsd, at: this.lastTradeAt,
-      r, rt: this.rolledTo,
+      b: this.latestBlock, ts: this.latestTs, o: this.lastOrd, f: this.firstPriceUsd, fp: this.firstPool, at: this.lastTradeAt,
+      r, rt: this.rolledTo, pi: this.pools,
     }
   }
 
@@ -162,10 +201,15 @@ export class TokenState {
     const s = new TokenState(token)
     s.priceUsd = d.p; s.price = d.pq; s.quote = d.q; s.mainPool = d.mp; s.liquidityUsd = d.lq; s.supply = d.s
     s.latestBlock = d.b; s.latestTs = d.ts; s.lastOrd = d.o; s.firstPriceUsd = d.f; s.lastTradeAt = d.at
+    // Saved before first prices remembered their pool: unknown, so not used.
+    s.firstPool = typeof d.fp === 'string' ? d.fp : null
+    s.pools = Array.isArray(d.pi) ? d.pi.filter((x): x is string => typeof x === 'string') : []
     s.rolledTo = d.rt ?? 0
     const oldest = Math.floor(Date.now() / MIN_MS) - SLOTS + 1
-    for (const slot of Array.isArray(d.r) ? d.r : []) {
-      if (!Array.isArray(slot) || slot.length !== W || !(slot[F_MIN] >= oldest)) continue // gone from the window while down
+    for (const raw of Array.isArray(d.r) ? d.r : []) {
+      if (!Array.isArray(raw) || (raw.length !== W && raw.length !== W_LEGACY) || !(raw[F_MIN] >= oldest)) continue // gone from the window while down
+      // A legacy slot's close has no pool: it's kept for volume and counts, not compared.
+      const slot = raw.length === W ? raw : [...raw, -1]
       const base = (slot[F_MIN] % SLOTS) * W
       s.ring.set(slot, base)
       s.vol24 += slot[F_VOL]; s.buyVol24 += slot[F_BVOL]; s.sellVol24 += slot[F_SVOL]

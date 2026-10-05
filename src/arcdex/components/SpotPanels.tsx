@@ -2,7 +2,7 @@
 // market trades (Arc coins trade against pools, so the trades are the book), with the buy/sell
 // balance underneath; on the right, the pair list ($ARCDEX first) to switch coins in one click.
 
-import { isLaunchpadCoin } from '../../../api/_launchpads'
+import { ESTABLISHED, isLaunchpadCoin } from '../../../api/_launchpads'
 import { isListable, isRugged } from '../lib/safety'
 import { useEffect, useMemo, useState } from 'react'
 import type { TradeRow } from './TokenSocialTabs'
@@ -14,6 +14,7 @@ import { engineApiUrl } from '../api/marketStream'
 import { toggleWatch, usePrefs } from '../lib/prefs'
 import { t as T } from '../lib/i18n'
 import { COIN_IMAGE, COIN_LC, COIN_POOL, fmtSmallUsd, useCoin } from '../lib/coin'
+import { useLogo } from '../lib/logo'
 
 const fmtAmt = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(2)}K` : n.toFixed(2)
 const fmtPrice = (p: number) => !p || !Number.isFinite(p) ? '—' : p >= 1 ? p.toFixed(4) : p.toPrecision(4)
@@ -77,8 +78,9 @@ function usePairs(): PairRow[] {
       .then(r => (r.ok ? r.json() : null))
       .then((j: { tokens?: ActiveToken[] } | null) => {
         if (!alive || !j?.tokens?.length) return
-        // Launchpad coins only (owner, 2026-10-04).
-        const fresh = j.tokens.filter(a => isLaunchpadCoin(a.meta?.launchpad) && isListable({ official: false, marketCapUsd: a.stats.marketCapUsd ?? 0, rugged: (a.stats.chg.h24 ?? 0) <= -90 })).flatMap(a => (a.meta?.pool && a.stats.priceUsd ? [{
+        // Launchpad coins (owner, 2026-10-04) and established coins (2026-10-05: real liquidity and market cap).
+        const established = (a: ActiveToken) => (a.stats.liquidityUsd ?? 0) >= ESTABLISHED.minLiquidityUsd && (a.stats.marketCapUsd ?? 0) >= ESTABLISHED.minMarketCapUsd
+        const fresh = j.tokens.filter(a => (isLaunchpadCoin(a.meta?.launchpad) || established(a)) && isListable({ official: false, marketCapUsd: a.stats.marketCapUsd ?? 0, rugged: (a.stats.chg.h24 ?? 0) <= -90 })).flatMap(a => (a.meta?.pool && a.stats.priceUsd ? [{
           address: a.token, pool: a.meta.pool, symbol: a.meta.symbol, image: a.meta.image ?? null, priceUsd: a.stats.priceUsd,
           change24h: a.stats.chg.h24 ?? 0, volume: a.stats.vol24,
         }] : []))
@@ -92,9 +94,9 @@ function usePairs(): PairRow[] {
 }
 
 function PairLogo({ src, symbol }: { src: string | null; symbol: string }) {
-  const [err, setErr] = useState(false)
-  if (!src || err) return <span className="spot-pair-logo blank">{symbol.slice(0, 2)}</span>
-  return <img className="spot-pair-logo" src={src} alt="" onError={() => setErr(true)} />
+  const { url, onError } = useLogo(src, 22)
+  if (!url) return <span className="spot-pair-logo blank">{symbol.slice(0, 2)}</span>
+  return <img className="spot-pair-logo" src={url} alt="" onError={onError} />
 }
 
 export function PairList({ current, navigate }: { current: string; navigate: (p: Page) => void }) {

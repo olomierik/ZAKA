@@ -605,3 +605,33 @@ body { font-family: 'IBM Plex Sans', 'DM Sans', system-ui, sans-serif; font-vari
 .ld-buybox .ld-cas .ld-ca { flex: none; }
 .ld-buybox > .ld-buy { align-self: flex-start; }
 .ld-ca-tag { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--ld-muted); white-space: nowrap; }
+
+/* ── market-first hero (2026-10-05): the busiest coins on every chain, and why trade here ── */
+.ld-trend { padding: 16px 18px 8px; }
+.ld-trend-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.ld-trend-h b { display: inline-flex; align-items: center; gap: 8px; font-size: 0.95rem; }
+.ld-trend-h a { color: var(--ld-muted); font-size: 0.8rem; }
+.ld-trend-h a:hover { color: var(--ld-blue-text); }
+.ld-trend-cols, .ld-trend-row { display: grid; grid-template-columns: minmax(0, 1fr) 96px 70px 70px; align-items: center; gap: 10px; }
+.ld-trend-cols { color: var(--ld-muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; padding: 4px 0 6px; border-bottom: 1px solid var(--ld-line, #2b3139); }
+.ld-trend-cols span:not(:first-child) { text-align: right; }
+.ld-trend-row { padding: 9px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); }
+.ld-trend-row:last-child { border-bottom: none; }
+.ld-trend-row:hover .ld-mkts-name b { color: var(--ld-blue-text); }
+.ld-trend-coin { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ld-trend-logo { position: relative; flex-shrink: 0; width: 28px; height: 28px; }
+.ld-trend-vol { text-align: right; color: var(--ld-muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.ld-chain { position: absolute; right: -4px; bottom: -3px; width: 14px; height: 14px; border-radius: 50%; color: #fff; font-size: 0.5rem; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; border: 2px solid var(--ld-card, #181a20); }
+.ld-btn-blue-ghost { background: rgba(42, 109, 244, 0.14); color: var(--ld-blue-text); border: 1px solid rgba(42, 109, 244, 0.45); }
+.ld-btn-blue-ghost:hover { background: rgba(42, 109, 244, 0.24); }
+.ld-why { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+.ld-why-card { padding: 18px; }
+.ld-why-card h3 { font-size: 0.98rem; margin: 10px 0 6px; }
+.ld-why-card p { color: var(--ld-muted); font-size: 0.86rem; line-height: 1.5; margin: 0; }
+.ld-burngrid > .ld-coin { margin: 0; }
+.ld-footer .ld-traffic, .ld-footer > div:has(.ld-traffic-n) { margin: 10px 0; }
+@media (max-width: 1060px) { .ld-why { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) {
+  .ld-why { grid-template-columns: 1fr; }
+  .ld-trend-cols, .ld-trend-row { grid-template-columns: minmax(0, 1fr) 88px 64px; }
+}

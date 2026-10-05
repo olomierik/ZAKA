@@ -8,6 +8,7 @@ import { useCoinFinder } from '../lib/coinFinder'
 import { shortAddr } from '../lib/identity'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import { logoSrc } from '../lib/logo'
 
 const money = (n: number | null) => n == null ? '—' : `$${n >= 1e9 ? (n / 1e9).toFixed(2) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : n.toFixed(2)}`
 const NONE: never[] = []
@@ -24,7 +25,7 @@ export default function FoundOnArc({ query, shown, navigate }: { query: string; 
       {notLaunchpad && <div className="found-arc-note">{T('This token wasn’t launched on a launchpad, so ARCDEX doesn’t list it: coins from unknown contracts can be malicious.')}</div>}
       {extra.map(c => (
         <button key={c.address} className="found-arc-row" onClick={() => navigate({ name: 'argus', address: c.address, pool: c.pool ?? '' })}>
-          {c.image ? <img src={c.image} alt="" width={28} height={28} style={{ borderRadius: '50%', flexShrink: 0 }} /> : <Avatar address={c.address} size={28} />}
+          {c.image ? <img src={logoSrc(c.image, 28) ?? c.image} alt="" width={28} height={28} style={{ borderRadius: '50%', flexShrink: 0 }} /> : <Avatar address={c.address} size={28} />}
           <span className="found-arc-name">
             <b>{c.symbol}</b> <span>{c.name !== c.symbol ? c.name : ''}</span>
             <small>{shortAddr(c.address)}{c.launchpad ? ` · ${c.launchpad}` : ''}</small>

@@ -11,6 +11,7 @@ import { useIsMobile } from '../lib/useMobile'
 import CurveTokenPage from './CurveTokenPage'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import { useLogo } from '../lib/logo'
 
 // DexScreener's /tokens/{address} endpoint returns every pool for a token
 // (often across multiple launchpads). Pick the deepest pool as "the" pair —
@@ -32,15 +33,15 @@ function fmt(n: number | null | undefined, prefix = '') {
 }
 
 function TokenImage({ src, symbol }: { src?: string; symbol: string }) {
-  const [err, setErr] = useState(false)
-  if (!src || err) return (
+  const { url, onError } = useLogo(src, 44)
+  if (!url) return (
     <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg,#1e3a5f,#0f1e30)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: '0.7rem', fontWeight: 700, color: '#3b82f6' }}>
       {symbol.slice(0, 3)}
     </div>
   )
-  return <img src={src} alt={symbol} style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover' }} onError={() => setErr(true)} />
+  return <img src={url} alt={symbol} style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover' }} onError={onError} />
 }
 
 export default function TokenPage({ address, navigate }: Props) {

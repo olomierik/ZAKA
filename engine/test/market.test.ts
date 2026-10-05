@@ -104,6 +104,29 @@ describe('TokenState', () => {
     expect(s.stats(now).priceUsd).toBe(1.1)
   })
 
+  test('the 24h change compares the main pool with itself, not with a pool it replaced', () => {
+    // Seen on mainnet (2026-10-05): ARGUS read −31.5% over 24h while its main pool had moved −4%, because
+    // its first closes came from another pool at another price.
+    const s = new TokenState(T)
+    const now = Date.now()
+    const ago = (min: number) => now - min * 60_000
+    s.add(trade({ pool: 'thin', priceUsd: 0.0205, liquidity: 4_000, timestamp: ago(1_400) }), 1, now)
+    s.add(trade({ pool: 'deep', priceUsd: 0.0146, liquidity: 700_000, timestamp: ago(1_390) }), 2, now)
+    s.add(trade({ pool: 'deep', priceUsd: 0.0144, liquidity: 700_000, timestamp: ago(300) }), 3, now)
+    s.add(trade({ pool: 'deep', priceUsd: 0.0140, liquidity: 700_000, timestamp: ago(1) }), 4, now)
+    const st = s.stats(now)
+    expect(s.mainPool).toBe('deep')
+    expect(Math.round(st.chg.h24! * 10) / 10).toBe(-4.1) // 0.0146 → 0.0140, not 0.0205 → 0.0140
+    expect(Math.round(st.chg.h6! * 10) / 10).toBe(-2.8)
+    // Kept across a restart; a slot saved before closes had pools isn't compared.
+    const saved = JSON.parse(JSON.stringify(s.serialize()))
+    expect(Math.round(TokenState.restore(T, saved).stats(now).chg.h24! * 10) / 10).toBe(-4.1)
+    const legacy = { ...saved, r: saved.r.map((slot: number[]) => slot.slice(0, 8)), pi: undefined, fp: undefined }
+    const old = TokenState.restore(T, legacy).stats(now)
+    expect(old.chg.h24).toBeNull()
+    expect(old.vol24).toBe(st.vol24)
+  })
+
   test('trades roll out of the 24h window', () => {
     const s = new TokenState(T)
     const t0 = Date.now()

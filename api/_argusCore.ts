@@ -133,13 +133,18 @@ async function fillCaps(pools: ArgusPool[], gt: GtFetcher) {
 }
 
 /** One row per token: its deepest pool (the one a buy routes through),
- * sorted by 24h volume. */
+ * sorted by 24h volume. A coin keeps its launchpad's badge when its deepest
+ * pool is a plain DEX's (a graduated launch, or one listed through Arc's top
+ * pools as well as its launchpad's). */
 export function dedupe(all: ArgusPool[]): ArgusPool[] {
   const hasCaps = (x: ArgusPool) => x.fdvUsd != null || x.marketCapUsd != null
+  const isPad = (x: ArgusPool) => !!x.launchpad && isLaunchpadDex(x.launchpad, x.launchpad)
   const best = new Map<string, ArgusPool>()
   for (const p of all) {
     const cur = best.get(p.token.address)
-    if (!cur || p.liquidityUsd > cur.liquidityUsd || (p.liquidityUsd === cur.liquidityUsd && hasCaps(p) && !hasCaps(cur))) best.set(p.token.address, p)
+    if (!cur || p.liquidityUsd > cur.liquidityUsd || (p.liquidityUsd === cur.liquidityUsd && hasCaps(p) && !hasCaps(cur))) {
+      best.set(p.token.address, cur && isPad(cur) && !isPad(p) ? { ...p, launchpad: cur.launchpad, bonded: p.bonded ?? cur.bonded, progress: p.progress ?? cur.progress } : p)
+    } else if (isPad(p) && !isPad(cur)) best.set(p.token.address, { ...cur, launchpad: p.launchpad })
   }
   return [...best.values()].sort((a, b) => b.volume24h - a.volume24h)
 }
@@ -192,6 +197,11 @@ export async function buildMarket(gt: GtFetcher, onPartial?: (pools: ArgusPool[]
   // GeckoTerminal reported for ARGUS instead of the coin itself. (Mutates
   // the row objects in place, so rows already emitted pick it up too.)
   await fillCaps(argusRows, gt)
+  emit()
+  // Arc's most-traded coins on every DEX (2026-10-05): the coins DexScreener lists first (TOLLY, ARCMAN, KAIRO…)
+  // trade on plain Uniswap pools, under no launchpad. The site lists the established ones (isEstablishedCoin).
+  rows.push(...normalize(await gt(`/networks/arc/pools?page=1&sort=h24_volume_usd_desc&${INC}`)))
+  rows.push(...normalize(await gt(`/networks/arc/trending_pools?page=1&${INC}`)))
   emit()
   for (let page = 2; page <= VOLUME_PAGES; page++) await volumePage(page)
   // New pools on any listed launchpad.

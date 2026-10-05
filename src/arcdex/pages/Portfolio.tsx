@@ -14,6 +14,7 @@ import { useCash } from '../lib/usdc'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 import { onBalances } from '../lib/balances'
+import { logoSrc } from '../lib/logo'
 
 // Your wallet on Arc: USDC cash and every coin you hold, valued live, with
 // Sell (to USDC) and Send on each coin and Deposit / Withdraw for cash.
@@ -128,7 +129,7 @@ export default function Portfolio({ navigate }: Props) {
           <button onClick={() => navigate({ name: 'argus', address: h.address, pool: h.pool ?? '' })}
             style={{ display: 'flex', alignItems: 'center', gap: 12, flex: '1 1 220px', minWidth: 0, background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
             {h.image ? (
-              <img src={h.image} width={34} height={34} style={{ borderRadius: '50%', flexShrink: 0, objectFit: 'cover' }} alt=""
+              <img src={logoSrc(h.image, 34) ?? h.image} width={34} height={34} style={{ borderRadius: '50%', flexShrink: 0, objectFit: 'cover' }} alt=""
                 onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden' }} />
             ) : (
               <div style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, background: `hsl(${parseInt(h.address.slice(2, 4), 16) * 1.4}deg 60% 40%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: '#fff', fontSize: '0.85rem' }}>{h.symbol.slice(0, 2)}</div>

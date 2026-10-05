@@ -32,6 +32,7 @@ import { getLaunchpadColor } from '../api/radardex'
 import { launchpadLabel, launchpadNamed } from '../../../api/_launchpads'
 import { MarketTrades, PairList } from '../components/SpotPanels'
 import { COIN_IMAGE, COIN_LC, COIN_POOL, fmtPct as fmtPctCoin, fmtSmallUsd, useCoin } from '../lib/coin'
+import { useLogo } from '../lib/logo'
 
 // Full page for one Argus launch. What moves is read straight from the
 // chain: every swap in the pool (history from the logs, then each new one
@@ -74,13 +75,13 @@ function fmtPrice(p: number) {
 function pct(n: number) { return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%` }
 
 function TokenImage({ src, symbol, size = 44 }: { src: string | null; symbol: string; size?: number }) {
-  const [err, setErr] = useState(false)
-  if (!src || err) return (
+  const { url, onError } = useLogo(src, size)
+  if (!url) return (
     <div style={{ width: size, height: size, borderRadius: '50%', background: 'linear-gradient(135deg,#2b3139,#1e2329)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.28, fontWeight: 700, color: '#6ea2ff', flexShrink: 0 }}>
       {symbol.slice(0, 3)}
     </div>
   )
-  return <img src={src} alt={symbol} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} onError={() => setErr(true)} />
+  return <img src={url} alt={symbol} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} onError={onError} />
 }
 
 /** On every other coin's page: $ARCDEX, one line, with the way to it. */

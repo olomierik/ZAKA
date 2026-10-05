@@ -9,6 +9,7 @@ import { setPrefs, usePrefs } from '../lib/prefs'
 import { useCoinFinder, type CoinChain, type FoundCoin } from '../lib/coinFinder'
 import type { Page } from '../App'
 import { t as T, N_ } from '../lib/i18n'
+import { logoSrc } from '../lib/logo'
 
 // fomo-style search: recently viewed coins when empty; otherwise coins,
 // traders and clans (All / Tokens / Users / Clans), with Follow inline.
@@ -95,7 +96,7 @@ export default function SearchBox({ navigate, mobileOpen = false }: { navigate: 
 
   const tokenRow = (t: { address: string; symbol: string; name?: string; image: string | null; pool: string | null; launchpad?: string | null; marketCapUsd?: number | null; change24h?: number | null; chain?: CoinChain }) => (
     <button key={`${t.chain ?? 'arc'}:${t.address}`} className="menu-item" onClick={() => openToken(t)}>
-      {t.image ? <img src={t.image} alt="" style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0 }} /> : <Avatar address={t.address} size={26} />}
+      {t.image ? <img src={logoSrc(t.image, 26) ?? t.image} alt="" style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0 }} /> : <Avatar address={t.address} size={26} />}
       <span style={{ minWidth: 0, flex: 1, textAlign: 'left' }}>
         <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.chain && t.chain !== 'arc' && <span style={{ marginRight: 5, verticalAlign: '-2px' }}><ChainIcon chain={CHAIN_ICON[t.chain]} size={14} /></span>}<b>{t.symbol}</b>{t.name && t.name !== t.symbol ? <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}> {t.name}</span> : null}</span>
         <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem', fontFamily: 'var(--mono)' }}>{shortAddr(t.address)}{t.launchpad ? ` · ${t.launchpad}` : ''}</span>

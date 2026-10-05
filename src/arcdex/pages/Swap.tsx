@@ -1,4 +1,4 @@
-import { isLaunchpadCoin } from '../../../api/_launchpads'
+import { isEstablishedCoin, isLaunchpadCoin } from '../../../api/_launchpads'
 import { isListable, isRugged, LISTING } from '../lib/safety'
 import { useEffect, useMemo, useState } from 'react'
 import { cachedArgusMarket, copycatOf, getArgusMarket, type ArgusPool } from '../api/argusMarket'
@@ -11,6 +11,7 @@ import { BRIDGE_NETWORKS } from '../lib/bridgeChains'
 import { COIN_IMAGE, COIN_LC, COIN_POOL, fmtPct, fmtSmallUsd, useCoin } from '../lib/coin'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import { useLogo } from '../lib/logo'
 
 // /swap: Binance's Convert, for Arc. USDC on Arc in, any coin out (or back), in one card; beside it,
 // the way in for anyone whose USDC is on another chain (11 networks, Circle's CCTP), and $ARCDEX.
@@ -23,8 +24,11 @@ interface Coin { address: string; symbol: string; name: string; image: string | 
 
 const fromMarket = (list: ArgusPool[]): Coin[] => {
   const best = new Map<string, ArgusPool>()
-  // Launchpad coins only (owner, 2026-10-04).
-  for (const p of list.filter(x => isLaunchpadCoin(x.launchpad ?? 'Argus'))) {
+  // Launchpad coins (owner, 2026-10-04) and established coins from any DEX (2026-10-05).
+  const now = Date.now()
+  const established = (x: ArgusPool) => isEstablishedCoin({ symbol: x.token.symbol, liquidityUsd: x.liquidityUsd, ageMs: x.createdAt ? now - Date.parse(x.createdAt) : 0,
+    marketCapUsd: x.marketCapUsd ?? x.fdvUsd ?? 0, txns24h: x.txns24h.buys + x.txns24h.sells })
+  for (const p of list.filter(x => isLaunchpadCoin(x.launchpad ?? 'Argus') || established(x))) {
     const k = p.token.address.toLowerCase()
     const cur = best.get(k)
     if (!cur || p.liquidityUsd > cur.liquidityUsd) best.set(k, p)
@@ -42,9 +46,9 @@ const fromMarket = (list: ArgusPool[]): Coin[] => {
 const price = (n: number) => !n ? '—' : n < 0.0001 ? `$${n.toPrecision(3)}` : n < 1 ? `$${n.toPrecision(3)}` : `$${n.toFixed(2)}`
 
 function CoinLogo({ coin, size = 30 }: { coin: Pick<Coin, 'image' | 'symbol'>; size?: number }) {
-  const [err, setErr] = useState(false)
-  if (!coin.image || err) return <span className="xs-logo blank" style={{ width: size, height: size }}>{coin.symbol.slice(0, 2).toUpperCase()}</span>
-  return <img className="xs-logo" src={coin.image} alt="" width={size} height={size} onError={() => setErr(true)} />
+  const { url, onError } = useLogo(coin.image, size)
+  if (!url) return <span className="xs-logo blank" style={{ width: size, height: size }}>{coin.symbol.slice(0, 2).toUpperCase()}</span>
+  return <img className="xs-logo" src={url} alt="" width={size} height={size} onError={onError} />
 }
 
 export default function Swap({ navigate }: Props) {

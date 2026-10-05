@@ -1,4 +1,4 @@
-import { isLaunchpadCoin } from '../../../api/_launchpads'
+import { isEstablishedCoin, isLaunchpadCoin } from '../../../api/_launchpads'
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react'
 import {
   getLaunchpadColor,
@@ -29,6 +29,7 @@ import { markDupes, type DupInfo } from '../lib/dupes'
 import { useCoinSafety } from '../api/coinSafety'
 import { COIN_IMAGE, COIN_LC, COIN_POOL, fmtPct as fmtPctCoin, fmtSmallUsd, useCoin } from '../lib/coin'
 import { ChainSwitch } from '../components/Robinhood'
+import { useLogo } from '../lib/logo'
 
 interface Props {
   navigate: (p: Page) => void
@@ -103,6 +104,10 @@ function bondingToArcToken(b: BondingCoin): ArcToken {
 }
 
 /** Trades in the last 15 minutes from which a coin wears the 🔥 (most active right now). */
+/** Listed on Arc: a launchpad's coin, or an established coin from any DEX. */
+const listedArc = (t: ArcToken) => isLaunchpadCoin(t.launchpad)
+  || isEstablishedCoin({ symbol: t.symbol, liquidityUsd: t.liquidity, ageMs: t.ageMs, marketCapUsd: t.marketCap, txns24h: t.txCount24h })
+
 const HOT_TRADES = 5
 
 function fmtAge(ms: number): string {
@@ -151,9 +156,9 @@ function SortTh({ col, label, sortCol, sortAsc, onSort }: { col: SortCol; label:
 }
 
 function TokenLogo({ src, symbol, size = 28 }: { src?: string; symbol: string; size?: number }) {
-  const [err, setErr] = useState(false)
+  const { url, onError } = useLogo(src, size)
   const bg = `hsl(${(symbol.charCodeAt(0) * 17 + 180) % 360},60%,25%)`
-  if (!src || err) {
+  if (!url) {
     return (
       <div style={{
         width: size, height: size, borderRadius: '50%', background: bg,
@@ -166,8 +171,8 @@ function TokenLogo({ src, symbol, size = 28 }: { src?: string; symbol: string; s
     )
   }
   return (
-    <img src={src} alt={symbol} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
-      onError={() => setErr(true)} />
+    <img src={url} alt={symbol} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+      onError={onError} />
   )
 }
 
@@ -369,8 +374,9 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
       const b = bondingRef.current.get(t.address.toLowerCase())
       return b && !t.graduated ? { ...t, graduated: false, bondingProgress: b.progress } : t
     }
-    // Launchpad coins only (owner, 2026-10-04): a coin from a contract no launchpad made isn't listed.
-    const data = [...oursRef.current, ...[...seen.values()].map(v => v.t), ...curves, ...launched, ...busy, ...onCurve].filter(t => isLaunchpadCoin(t.launchpad)).map(withCurve).map(withTick)
+    // Launchpad coins (owner, 2026-10-04), and established coins from any DEX (2026-10-05: Arc's most-traded coins,
+    // TOLLY, ARCMAN, KAIRO…, trade on plain Uniswap pools and were missing; api/_launchpads.ts isEstablishedCoin).
+    const data = [...oursRef.current, ...[...seen.values()].map(v => v.t), ...curves, ...launched, ...busy, ...onCurve].filter(listedArc).map(withCurve).map(withTick)
     setTokens(data)
     // Keep the loading state until there's something to show — the first
     // source to land may be an empty one.
@@ -663,6 +669,8 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
   const standardOn = !showRisky && !search.trim()
   const filtered = standardOn ? matched.filter(t => passes(t, ratedOf(t))) : matched
   const hiddenCount = matched.length - filtered.length
+  // The market's totals, as DexScreener heads its lists with them (2026-10-05): what's listed here, traded in 24h.
+  const totals = filtered.reduce((a, t) => ({ vol: a.vol + (t.volume24h || 0), trades: a.trades + (t.txCount24h || 0) }), { vol: 0, trades: 0 })
   const shownAddresses = useMemo(() => new Set(filtered.map(t => t.address.toLowerCase())), [filtered])
 
   // ── sort ──────────────────────────────────────────────────────────
@@ -779,6 +787,11 @@ export default function Terminal({ navigate, registerFeedTokens }: Props) {
           {mobile && <button className="view-tab rh-tab" onClick={() => navigate({ name: 'bsc' })}>◆ BNB</button>}
         </div>
         <span className="live-badge" title={T("Every buy and sell on Arc, as its block lands")}>{T("● live")}{perMin > 0 && <> · {T('{n} trades/min', { n: perMin })}</>}</span>
+        {!mobile && filtered.length > 0 && (
+          <span className="mk-totals" title={T('The coins listed here, over the last 24 hours')}>
+            {T('24h volume')} <b>{fmt(totals.vol, '$')}</b> · {T('Trades')} <b>{totals.trades.toLocaleString()}</b> · {T('Coins')} <b>{filtered.length}</b>
+          </span>
+        )}
         <div className="mk-tools">
           <div className="mk-view-switch" role="group" aria-label={T('View')}>
             <button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}>☰ {T('List')}</button>

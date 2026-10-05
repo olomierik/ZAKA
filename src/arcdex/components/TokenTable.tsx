@@ -3,6 +3,7 @@ import type { ArcToken } from '../api/radardex'
 import { getLaunchpadColor } from '../api/radardex'
 import type { Page } from '../App'
 import { t as T, N_ } from '../lib/i18n'
+import { logoSrc } from '../lib/logo'
 
 type SortKey = 'marketCap' | 'price' | 'priceChange24h' | 'volume24h' | 'liquidity' | 'ageMs'
 
@@ -116,7 +117,7 @@ export default function TokenTable({ tokens, loading, navigate, filter, launchpa
                 <td style={{ padding: '12px 8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     {t.logoUrl ? (
-                      <img src={t.logoUrl} alt="" width={28} height={28}
+                      <img src={logoSrc(t.logoUrl, 28) ?? t.logoUrl} alt="" width={28} height={28}
                         style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
                         onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
                       />

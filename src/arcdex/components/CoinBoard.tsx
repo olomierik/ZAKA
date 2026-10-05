@@ -9,6 +9,7 @@ import SafetyBadge from './SafetyBadge'
 import { STAGE, type Stage } from '../lib/coinStage'
 import type { SafetyView } from '../lib/safety'
 import { t as T } from '../lib/i18n'
+import { useLogo } from '../lib/logo'
 
 export interface BoardCoin {
   key: string
@@ -47,11 +48,11 @@ const age = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); retu
 
 /** The coin's image, else its ticker's first letters on a colour of its own. */
 function Logo({ src, symbol, size }: { src: string | null; symbol: string; size: number }) {
-  const [err, setErr] = useState(false)
-  if (!src || err) {
+  const { url, onError } = useLogo(src, size)
+  if (!url) {
     return <span className="cb-logo" style={{ width: size, height: size, fontSize: size * 0.35, background: `hsl(${(symbol.charCodeAt(0) * 17 + 180) % 360},60%,25%)` }}>{symbol.slice(0, 2).toUpperCase()}</span>
   }
-  return <img className="cb-logo" src={src} alt="" style={{ width: size, height: size }} onError={() => setErr(true)} loading="lazy" />
+  return <img className="cb-logo" src={url} alt="" style={{ width: size, height: size }} onError={onError} loading="lazy" />
 }
 
 export default function CoinBoard({ coins, onOpen, mobile }: { coins: BoardCoin[]; onOpen: (c: BoardCoin) => void; mobile: boolean }) {

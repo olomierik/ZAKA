@@ -10,7 +10,7 @@
 // Everything is merged by chain and address and ranked with the Launchpad's matcher
 // (exact ticker or address, then prefixes, then contains; bigger coins first).
 
-import { isLaunchpadCoin } from '../../../api/_launchpads'
+import { ESTABLISHED, isLaunchpadCoin } from '../../../api/_launchpads'
 import { useEffect, useMemo, useState } from 'react'
 import { erc20Abi, type Address } from 'viem'
 import { searchScore, type SearchHit } from '../../../api/_marketProtocol'
@@ -103,6 +103,9 @@ export async function findCoinsRemote(q: string): Promise<FoundCoin[]> {
   return coins
 }
 
+/** A search hit with an established coin's depth and size (its age and trades aren't in a search answer). */
+const establishedHit = (c: FoundCoin) => (c.liquidityUsd ?? 0) >= ESTABLISHED.minLiquidityUsd && (c.marketCapUsd ?? 0) >= ESTABLISHED.minMarketCapUsd
+
 /** Merges and ranks: best match first, then the bigger coin. */
 export function rankCoins(coins: FoundCoin[], q: string, limit = 15): FoundCoin[] {
   const byAddr = new Map<string, FoundCoin>()
@@ -112,9 +115,10 @@ export function rankCoins(coins: FoundCoin[], q: string, limit = 15): FoundCoin[
     byAddr.set(keyOf(c), prev ? { ...c, ...Object.fromEntries(Object.entries(prev).filter(([, v]) => v !== null && v !== undefined)) } as FoundCoin : c)
   }
   return [...byAddr.values()]
-    // Launchpad coins only (owner, 2026-10-04): an address no launchpad made isn't offered. The blue
-    // chips (Circle's own tokens and the like) are trusted, and the other chains' lists hold listed coins only.
-    .filter(c => c.trusted || (c.chain && c.chain !== 'arc') || isLaunchpadCoin(c.launchpad))
+    // Launchpad coins (owner, 2026-10-04), and since 2026-10-05 established coins from any DEX (real liquidity and market
+    // cap: Arc's most-traded coins trade on plain Uniswap pools). The blue chips (Circle's own tokens and the like) are
+    // trusted, and the other chains' lists hold listed coins only.
+    .filter(c => c.trusted || (c.chain && c.chain !== 'arc') || isLaunchpadCoin(c.launchpad) || establishedHit(c))
     .map(c => ({ c, s: searchScore({ symbol: c.symbol, name: c.name, address: c.address }, q) || (c.address === q ? 6 : 0) }))
     .filter(x => x.s > 0)
     .sort((a, b) => b.s - a.s || (b.c.marketCapUsd ?? b.c.liquidityUsd ?? 0) - (a.c.marketCapUsd ?? a.c.liquidityUsd ?? 0))
@@ -144,6 +148,6 @@ export function useCoinFinder(query: string, local: FoundCoin[], limit = 15): { 
   }, [q, local, remote, limit])
 
   // A full address that is a token, but not a launchpad's: said so, never listed.
-  const notLaunchpad = isAddress(q) && remote?.q === q && results.length === 0 && remote.coins.some(c => c.address === q && !isLaunchpadCoin(c.launchpad))
+  const notLaunchpad = isAddress(q) && remote?.q === q && results.length === 0 && remote.coins.some(c => c.address === q && !isLaunchpadCoin(c.launchpad) && !establishedHit(c))
   return { results, searching, noToken: isAddress(q) && !searching && remote?.q === q && results.length === 0 && !notLaunchpad, notLaunchpad }
 }
