@@ -2,26 +2,28 @@
 // chart, a buy form and a sell form side by side (components/SolanaTrade.tsx), the coin's pools, and every trade
 // underneath. Phones: chart, stats, trades and a Buy / Sell bar opening the trade sheet.
 //
-// GeckoTerminal (api/solanaMarket.ts) gives the candles, the coin's stats, its pools and its trades (polled every 4s
-// while the page is open, so new trades pop on the chart). The chain gives its launch curve (how far to graduating)
+// Trades come straight from the chain (api/solSwaps.ts, lib/useChainTrades.ts, 2026-10-05): the pool's newest
+// transactions, a second or two after they land, so they move the price and pop on the chart. GeckoTerminal
+// (api/solanaMarket.ts) gives the candles, the coin's stats, its pools and the older trades. The chain gives its launch curve (how far to graduating)
 // and what its mint allows, read when the page opens and every 30s.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Page } from '../App'
 import PriceChart, { type ChartTrade } from '../components/PriceChart'
 import { MarketTrades } from '../components/SpotPanels'
-import type { TradeRow } from '../components/TokenSocialTabs'
 import Sheet, { TradeBar } from '../components/Sheet'
 import { AgoText } from '../components/Ago'
 import { ChainIcon } from '../components/Chains'
 import { RhLogo } from '../components/Robinhood'
 import SafetyBadge from '../components/SafetyBadge'
 import SolanaTrade, { SolanaWalletBar, SOL_NOTE } from '../components/SolanaTrade'
-import { getSolCoin, getSolTrades, solChartSource, solCoinChain, solSeed, type MintFlags, type SolCoin } from '../api/solanaMarket'
+import { getSolCoin, getSolTrades, solChartSource, solCoinChain, solSeed, solUsd, type MintFlags, type SolCoin } from '../api/solanaMarket'
+import { solFeed, SOL_QUOTES, type SolPoolMeta } from '../api/solSwaps'
+import { useChainTrades } from '../lib/useChainTrades'
+import { WSOL } from '../../../api/_solCore'
 import type { SolCoinDetail } from '../api/solanaMarket'
 import { solAccount, solToken, solTx } from '../lib/solana'
 import { solSafety } from '../lib/safety'
-import type { Tick } from '../lib/candles'
 import { useIsMobile } from '../lib/useMobile'
 import { useSolanaWallets } from '../lib/solanaWallet'
 import { t as T } from '../lib/i18n'
@@ -45,7 +47,6 @@ const color = (n: number) => (n > 0 ? 'var(--green)' : n < 0 ? 'var(--red)' : 'v
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`
 
 interface Props { address: string; pool?: string; navigate: (p: Page) => void }
-type Row = TradeRow & { id: string; priceUsd: number }
 
 function seedCoin(mint: string, pool?: string): SolCoinDetail | null {
   const r = solSeed(mint, pool)
@@ -59,8 +60,6 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
   const [coin, setCoin] = useState<SolCoinDetail | null>(() => seedCoin(address, poolParam))
   const [loaded, setLoaded] = useState(false)
   const [chain, setChain] = useState<{ curve: { progress: number; graduated: boolean } | null; mint: MintFlags | null } | null>(null)
-  const [trades, setTrades] = useState<TradeRow[]>([])
-  const [tradesLoaded, setTradesLoaded] = useState(false)
   const [sheet, setSheet] = useState<'buy' | 'sell' | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -86,34 +85,31 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
     return () => { live = false; clearInterval(id) }
   }, [address, curvePool])
 
-  // Trades: GeckoTerminal's, every 4s while visible; ones that arrive after the page opened are live (they pop).
-  const seen = useRef<Set<string> | null>(null)
-  useEffect(() => {
-    if (!pool) return
-    let live = true
-    seen.current = null
-    setTrades([]); setTradesLoaded(false)
-    const load = () => getSolTrades(pool, address).then(list => {
-      if (!live) return
-      const before = seen.current
-      seen.current = new Set(list.map(r => r.txHash + r.kind))
-      setTrades(prev => {
-        const wasLive = new Set(prev.filter(r => r.live).map(r => r.txHash + r.kind))
-        return list.map(r => ({ ...r, live: wasLive.has(r.txHash + r.kind) || (before !== null && !before.has(r.txHash + r.kind)) }))
-      })
-    }).catch(() => {}).finally(() => { if (live) setTradesLoaded(true) })
-    void load()
-    const id = setInterval(() => { if (!document.hidden) void load() }, 4_000)
-    return () => { live = false; clearInterval(id) }
-  }, [pool, address])
-
-  const rows: Row[] = useMemo(() => trades.map((r, i) => ({ ...r, id: `${r.txHash}:${r.kind}:${i}`, priceUsd: r.tokenAmount > 0 ? r.usd / r.tokenAmount : 0 })), [trades])
   const symbol = coin?.symbol ?? (loaded ? '?' : '…')
   const decimals = coin?.decimals ?? null
   const gtPrice = coin?.priceUsd ?? 0
-  const livePrice = rows[0]?.live ? rows[0].priceUsd : 0
-  const priceUsd = livePrice || gtPrice
   const poolRow = coin ? coin.pools.find(p => p.pool === pool) : undefined
+
+  // The pool's trades from the chain (pools quoted in SOL or USDC), GeckoTerminal's for older ones.
+  const quoteMint = poolRow?.quote ?? ''
+  const meta = useMemo<SolPoolMeta | null>(() => (pool && SOL_QUOTES.has(quoteMint) ? { pool, mint: address, quoteMint } : null), [pool, address, quoteMint])
+  const feed = useMemo(() => (meta ? solFeed(meta) : null), [meta])
+  const isSol = quoteMint === WSOL
+  const [solPrice, setSolPrice] = useState(0)
+  useEffect(() => {
+    if (!isSol) return
+    let live = true
+    const read = () => solUsd().then(v => { if (live && v > 0) setSolPrice(v) })
+    void read()
+    const id = setInterval(() => { if (!document.hidden) void read() }, 30_000)
+    return () => { live = false; clearInterval(id) }
+  }, [isSol])
+  const quoteUsd = isSol ? (solPrice || null) : meta ? 1 : null
+  const { rows, ticks, chainOn, tradesLoaded, chainPrice } = useChainTrades({
+    feed, gtKey: pool, gtLoad: pool ? () => getSolTrades(pool, address) : null, quoteUsd, gtPrice, norm: x => x,
+  })
+  const livePrice = chainPrice || (!chainOn && rows[0]?.live ? rows[0].priceUsd : 0)
+  const priceUsd = livePrice || gtPrice
   // The trade form's price guard: a live trade's price only from a pool GeckoTerminal lists for the coin, not off-market.
   const guardPrice = (!!poolRow && !poolRow.offMarket && livePrice) || gtPrice
 
@@ -135,8 +131,7 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
 
   useEffect(() => { document.title = `${priceUsd ? fmtPrice(priceUsd) + ' | ' : ''}${symbol} | ARCDEX` }, [priceUsd, symbol])
 
-  const source = useMemo(() => (pool ? solChartSource(pool, address) : undefined), [pool, address])
-  const ticks: Tick[] = useMemo(() => rows.filter(r => r.live && r.priceUsd > 0).map(r => ({ time: r.timestamp, priceUsd: r.priceUsd, usd: r.usd })), [rows])
+  const source = useMemo(() => (pool ? solChartSource(pool, address, chainOn) : undefined), [pool, address, chainOn])
   const chartTrades: ChartTrade[] = useMemo(() => rows.flatMap(r => {
     if (!r.priceUsd) return []
     const who = r.maker ? short(r.maker) : T('Someone')
@@ -149,8 +144,8 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
   }), [rows, sol.trading, sol.external?.address])
 
   const chart = source ? (
-    <PriceChart poolAddress={null} source={source} ticks={ticks} live={rows.some(r => r.live)} trades={chartTrades} supply={coin?.supply ?? null}
-      symbol={symbol} height={mobile ? 300 : 420} liveTitle={T('Trades on Solana, from GeckoTerminal')} />
+    <PriceChart poolAddress={null} source={source} ticks={ticks} live={chainOn || rows.some(r => r.live)} trades={chartTrades} supply={coin?.supply ?? null}
+      symbol={symbol} height={mobile ? 300 : 420} liveTitle={chainOn ? T('Every trade appears seconds after it lands on Solana') : T('Trades on Solana, from GeckoTerminal')} />
   ) : <div className="spot-empty" style={{ height: mobile ? 300 : 420, display: 'grid', placeItems: 'center' }}>{loaded ? T('No market for this coin on GeckoTerminal yet.') : T('Loading…')}</div>
 
   const stats: [string, string, string?][] = [

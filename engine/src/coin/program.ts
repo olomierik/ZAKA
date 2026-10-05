@@ -7,6 +7,14 @@
 //            the swap routers, the curve router, the launchpad, and the Universal Router (trades
 //            in native-USDC pools) (FEE_SOURCES; COIN_FEE_SOURCES adds more, e.g. the futures
 //            contract on mainnet). Anything else that arrives (a person's transfer) isn't a fee.
+//            Since 2026-10-05 also Across's handler on Arc: a Robinhood Chain sale's 2%, paid in USDC on
+//            Arc when the sale fills.
+//   relay    the 2% on Solana and BNB Chain trades (Relay's app fee, 2026-10-04/05): Relay keeps it for the fee
+//            wallet until the owner claims it, so it's read from Relay's balance for the wallet
+//            (api.relay.link/app-fees/{wallet}/balances): what each currency's balance grew by is a fee, at
+//            Relay's dollar value; a balance that drops was claimed. The claim's arrival on-chain isn't a fee
+//            again (it comes from Relay's solver, not one of the contracts above).
+//            Not counted yet: a Robinhood Chain buy's fee, which arrives as the coin on Robinhood Chain.
 //   buyback  a transaction the fee wallet sent that brought it $ARCDEX (outside a liquidity
 //            add): what it paid for it, in USD
 //   burn     $ARCDEX the fee wallet sent to 0x…dEaD
@@ -52,7 +60,36 @@ export const FEE_SOURCES = [
   '0xef6a8fdaf0181e19cc2c7575ada4b9c279809a67', // ArcLaunchpad
   '0x8702463e73f74d0b6765abceb314ef07acb92650', // Universal Router 2.1.2 (native-USDC pools)
   '0x4fca4a51ab4f23a7447b3284fbd7d73289a89fb1', // Universal Router 2.1.1
+  '0xa07480456c4ebad7626e4fdf4a180709e238547b', // Across's MulticallHandler on Arc: Robinhood Chain sales (2026-10-05)
 ]
+
+/** Relay's app-fee balance for the fee wallet, one row per currency. */
+export interface RelayBalance { key: string; symbol: string; amount: number; usd: number }
+export const RELAY = { every: 120_000, api: 'https://api.relay.link' }
+
+/** Reads Relay's balance for `wallet` (its app fees not yet claimed). */
+export async function fetchRelayBalances(wallet: string, api = RELAY.api): Promise<RelayBalance[]> {
+  const res = await fetch(`${api}/app-fees/${wallet}/balances`, { signal: AbortSignal.timeout(10_000) })
+  if (!res.ok) throw new Error(`relay ${res.status}`)
+  const j = await res.json() as { balances?: { currency?: { chainId?: number; address?: string; symbol?: string; decimals?: number }; amount?: string; amountFormatted?: string; amountUsd?: string }[] }
+  return (j.balances ?? []).map(b => {
+    const dec = b.currency?.decimals ?? 0
+    const amount = b.amountFormatted !== undefined ? Number(b.amountFormatted) : Number(b.amount ?? 0) / 10 ** dec
+    return { key: `${b.currency?.chainId ?? 0}:${(b.currency?.address ?? '').toLowerCase()}`, symbol: b.currency?.symbol ?? '?', amount, usd: Number(b.amountUsd ?? 0) }
+  }).filter(b => Number.isFinite(b.amount))
+}
+
+/** What Relay's balance grew by since the last read: each currency's increase, at its dollar value now. */
+export function relayAccrued(prev: Record<string, number>, now: RelayBalance[]): { usd: number; next: Record<string, number> } {
+  let usd = 0
+  const next: Record<string, number> = {}
+  for (const b of now) {
+    next[b.key] = b.amount
+    const grew = b.amount - (prev[b.key] ?? 0)
+    if (grew > 1e-12 && b.amount > 0) usd += grew * (b.usd / b.amount)
+  }
+  return { usd: r2(usd), next }
+}
 
 export const PROGRAM = {
   /** The program counts from 2026-10-04 00:00:00 UTC: the first block at or after it (found once the chain reaches it). */
@@ -122,6 +159,11 @@ export interface ProgramState {
   burnCount: number
   burnDays: Record<string, number>
   burns: Burn[]
+  /** Relay's app fees: each currency's balance at the last read, all that accrued (counted in feesUsd), and the
+   * balance's dollar value now (not yet claimed). Missing in states saved before 2026-10-05. */
+  relayBal?: Record<string, number>
+  relayUsd?: number
+  relayUnclaimedUsd?: number
 }
 
 export const emptyState = (): ProgramState => ({
@@ -319,6 +361,7 @@ export function view(s: ProgramState, deadBalance: number | null, now = Date.now
       deadBalance,
     },
     pending: { buybackUsd: Math.max(0, r2(buybackOwed - s.buybackUsd)), liquidityUsd: Math.max(0, r2(liquidityOwed - liquidityNet)) },
+    relay: { accruedUsd: s.relayUsd ?? 0, unclaimedUsd: s.relayUnclaimedUsd ?? 0 },
     feeDays: Object.entries(s.feeDays).sort(([a], [b]) => a.localeCompare(b)).slice(-30).map(([day, usd]) => ({ day, usd })),
     actions: s.actions.slice(0, 50),
     fees: s.fees.slice(0, 20),
@@ -359,7 +402,9 @@ export class CoinProgram {
 
   private burnLogs: BurnLogReader
 
-  constructor(private o: { rpc: Rpc; settings: Settings; priceOf: (token: string) => number | null; feeSources?: string[]; liquidityTargets?: string[]; since?: string; burnLogs?: BurnLogReader }) {
+  private relayAt = 0
+
+  constructor(private o: { rpc: Rpc; settings: Settings; priceOf: (token: string) => number | null; feeSources?: string[]; liquidityTargets?: string[]; since?: string; burnLogs?: BurnLogReader; relayBalances?: (wallet: string) => Promise<RelayBalance[]> }) {
     this.burnLogs = o.burnLogs ?? scanBurnLogs
     this.ctx = {
       feeWallet: FEE_WALLET, coin: COIN,
@@ -429,12 +474,30 @@ export class CoinProgram {
       }
       const bal = await rpc.call<string>('eth_call', [{ to: COIN, data: `0x70a08231${DEAD.slice(2).padStart(64, '0')}` }, 'latest']).catch(() => null)
       if (bal) this.deadBalance = Number(BigInt(bal)) / 1e18
+      await this.readRelay().catch(e => log.debug('coin program: relay balance not read', { error: errMsg(e) }))
       await this.scanBurns(head, deadline + 15_000)
     } catch (e) {
       log.warn('coin program: scan failed', { error: errMsg(e) })
     } finally {
       this.busy = false
     }
+  }
+
+  /** Relay's app fees for the fee wallet (Solana and BNB Chain trades), every two minutes once the program has
+   * started: what accrued since the last read is a fee. */
+  async readRelay(now = Date.now()) {
+    if (!this.state.startBlock || now - this.relayAt < RELAY.every) return
+    this.relayAt = now
+    const balances = await (this.o.relayBalances ?? fetchRelayBalances)(FEE_WALLET)
+    const { usd, next } = relayAccrued(this.state.relayBal ?? {}, balances)
+    let s: ProgramState = { ...this.state, relayBal: next, relayUnclaimedUsd: r2(balances.reduce((t, b) => t + b.usd, 0)) }
+    if (usd > 0) {
+      s = apply(s, [{ kind: 'fee', tx: '', block: 0, at: now, usd, via: 'relay' }])
+      s.relayUsd = r2((s.relayUsd ?? 0) + usd)
+      log.info('coin program: Relay fees accrued', { usd })
+    }
+    this.state = s
+    await this.o.settings.setSetting(KEY, JSON.stringify(this.state)).catch(() => {})
   }
 
   /** Every transfer of $ARCDEX to the dead address, from the coin's creation: the history takes a few

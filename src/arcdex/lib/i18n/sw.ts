@@ -1396,7 +1396,6 @@ const d: Record<string, string> = {
   "Try Autotrade free": "Jaribu Autotrade bure",
   "Paper trading uses virtual USDC: no money moves. Results are measured, never promised, and most new coins go to zero. Not financial advice.": "Biashara ya majaribio hutumia USDC ya mtandaoni: hakuna pesa inayohamishwa. Matokeo hupimwa, hayaahidiwi, na sarafu nyingi mpya hushuka hadi sifuri. Si ushauri wa kifedha.",
   "Searching all of Arc…": "Inatafuta Arc yote…",
-  "No token at this address on Arc. It may be a wallet: see it below.": "Hakuna tokeni kwenye anwani hii kwenye Arc. Huenda ni pochi: iangalie hapa chini.",
   "More on Arc": "Zaidi kwenye Arc",
   "coins not in this list": "sarafu zisizo kwenye orodha hii",
   "No token at this address on Arc.": "Hakuna tokeni kwenye anwani hii kwenye Arc.",
@@ -2266,7 +2265,6 @@ const d: Record<string, string> = {
   // $ARCDEX program: start date and fee definition (2026-10-03)
   "since {date}": "tangu {date}",
   "The program starts {date}. From then on, every fee counts.": "Mpango unaanza {date}. Kuanzia hapo, kila ada inahesabiwa.",
-  "How it’s counted: fees are the USDC ARCDEX’s trading contracts pay the fee wallet (the swap routers, the curve router, the launchpad and the Universal Router). A buyback is a fee-wallet transaction that brought $ARCDEX in; a burn is $ARCDEX it sent to 0x…dEaD; liquidity is value it put into a pool. Burning reduces supply; it doesn’t promise any price.": "Jinsi inavyohesabiwa: ada ni USDC ambayo mikataba ya biashara ya ARCDEX inalipa pochi ya ada (router za swap, router ya curve, launchpad na Universal Router). Kununua tena ni muamala wa pochi ya ada ulioleta $ARCDEX; kuteketeza ni $ARCDEX iliyotumwa kwa 0x…dEaD; ukwasi ni thamani iliyowekwa kwenye pool. Kuteketeza kunapunguza ugavi; hakuahidi bei yoyote.",
   // Futures chart (2026-10-03)
   "Oracle prices, signed every 10 seconds": "Bei za oracle, zilizosainiwa kila sekunde 10",
   // Binance-style redesign (2026-10-04)
@@ -2697,5 +2695,15 @@ const d: Record<string, string> = {
   "{pct} (in SOL)": "{pct} (kwa SOL)",
   "{pct} (in {c})": "{pct} (kwa {c})",
   "USDC (Solana)": "USDC (Solana)",
+  "Claim Relay’s fees": "Dai ada zilizo Relay",
+  "Claim at relay.link": "Dai kwenye relay.link",
+  "Every trade appears seconds after it lands on Solana": "Kila biashara inaonekana sekunde chache baada ya kufika kwenye Solana",
+  "How it’s counted: fees are the USDC ARCDEX’s trading contracts pay the fee wallet (the swap routers, the curve router, the launchpad, the Universal Router and Across’s handler), and the fees Relay holds for it, counted as they accrue. A buyback is a fee-wallet transaction that brought $ARCDEX in; a burn is $ARCDEX it sent to 0x…dEaD; liquidity is value it put into a pool. Burning reduces supply; it doesn’t promise any price.": "Jinsi inavyohesabiwa: ada ni USDC ambazo mikataba ya biashara ya ARCDEX hulipa pochi ya ada (ruta za kubadilisha, ruta ya mkunjo, launchpad, Universal Router na handler ya Across), pamoja na ada ambazo Relay inazishikilia kwa ajili yake, zinazohesabiwa zinapoongezeka. Kununua tena ni muamala wa pochi ya ada ulioleta $ARCDEX; kuchoma ni $ARCDEX zilizotumwa kwa 0x…dEaD; ukwasi ni thamani iliyowekwa kwenye pool. Kuchoma hupunguza ugavi; hakuahidi bei yoyote.",
+  "No listed coin at this address on any chain. It may be a wallet: see it below.": "Hakuna sarafu iliyoorodheshwa kwenye anwani hii kwenye mnyororo wowote. Huenda ni pochi: iangalie hapa chini.",
+  "Open {a} on Solana": "Fungua {a} kwenye Solana",
+  "Relay": "Relay",
+  "Searching every chain…": "Inatafuta kwenye kila mnyororo…",
+  "{usd} of fees from trades through Relay are held there for this wallet.": "{usd} za ada kutoka biashara kupitia Relay zimeshikiliwa huko kwa ajili ya pochi hii.",
+  "{usd} of it held at Relay, to claim": "kati yake {usd} ziko Relay, za kudai",
 }
 export default d

@@ -5,7 +5,9 @@
 //   the market engine's search  every launch it has seen, on every launchpad (/v1/search)
 //   GeckoTerminal's search      every pool it lists on Arc, by name or token address
 //   the chain itself            for a full address nobody lists: the token's own symbol() and name()
-// Everything is merged by address and ranked with the Launchpad's matcher
+//   the other chains          Robinhood Chain, Solana and BNB Chain, from the lists the engine keeps for their
+//                             markets (/api/chainsearch, 2026-10-05): no GeckoTerminal call
+// Everything is merged by chain and address and ranked with the Launchpad's matcher
 // (exact ticker or address, then prefixes, then contains; bigger coins first).
 
 import { isLaunchpadCoin } from '../../../api/_launchpads'
@@ -15,6 +17,8 @@ import { searchScore, type SearchHit } from '../../../api/_marketProtocol'
 import { searchPools } from '../api/gecko'
 import { client } from '../api/launchpad'
 import { engineEnabled, engineSearch } from '../api/marketStream'
+import { siteFetch } from '../api/siteFetch'
+import type { ChainHit } from '../../../api/chainsearch'
 import { normQuery } from './coinSearch'
 
 export interface FoundCoin {
@@ -32,6 +36,22 @@ export interface FoundCoin {
   change24h: number | null
   /** Where it was found: only the chain means no list has it (yet). */
   source: 'local' | 'engine' | 'gecko' | 'chain'
+  /** The chain it's on; Arc when not set. */
+  chain?: CoinChain
+}
+
+export type CoinChain = 'arc' | 'robinhood' | 'solana' | 'bsc'
+const keyOf = (c: FoundCoin) => `${c.chain ?? 'arc'}:${c.address}`
+
+/** Listed coins on the other chains, from the engine's stored lists. */
+async function chainSearch(q: string): Promise<FoundCoin[]> {
+  const res = await siteFetch(`/api/chainsearch?q=${encodeURIComponent(q)}`, { signal: AbortSignal.timeout(5_000) })
+  if (!res.ok) return []
+  const j = await res.json() as { hits?: ChainHit[] }
+  return (j.hits ?? []).map(h => ({
+    address: h.address, symbol: h.symbol, name: h.name, image: h.image, pool: h.pool || null, launchpad: h.launchpad, chain: h.chain,
+    priceUsd: h.priceUsd || null, marketCapUsd: h.marketCapUsd || null, liquidityUsd: h.liquidityUsd || null, change24h: h.change24h, source: 'engine',
+  }))
 }
 
 const isAddress = (q: string) => /^0x[0-9a-f]{40}$/.test(q)
@@ -57,10 +77,11 @@ export async function findCoinsRemote(q: string): Promise<FoundCoin[]> {
   const hit = cache.get(q)
   if (hit && Date.now() - hit.at < TTL) return hit.coins
   const addr = isAddress(q)
-  const [engine, gecko, chain] = await Promise.allSettled([
+  const [engine, gecko, chain, chains] = await Promise.allSettled([
     within(engineEnabled ? engineSearch(q, 20) : Promise.resolve([] as SearchHit[])),
     within(searchPools(q)),
     within(addr ? readToken(q) : Promise.resolve(null)),
+    within(chainSearch(q)),
   ])
   const out = new Map<string, FoundCoin>()
   if (engine.status === 'fulfilled') for (const h of engine.value) out.set(h.token.toLowerCase(), fromHit(h))
@@ -76,7 +97,7 @@ export async function findCoinsRemote(q: string): Promise<FoundCoin[]> {
     }
   }
   if (chain.status === 'fulfilled' && chain.value && !out.has(q)) out.set(q, chain.value)
-  const coins = [...out.values()]
+  const coins = [...out.values(), ...(chains.status === 'fulfilled' ? chains.value : [])]
   cache.set(q, { at: Date.now(), coins })
   if (cache.size > 200) cache.clear()
   return coins
@@ -86,14 +107,14 @@ export async function findCoinsRemote(q: string): Promise<FoundCoin[]> {
 export function rankCoins(coins: FoundCoin[], q: string, limit = 15): FoundCoin[] {
   const byAddr = new Map<string, FoundCoin>()
   for (const c of coins) {
-    const prev = byAddr.get(c.address)
+    const prev = byAddr.get(keyOf(c))
     // What the page knows (live price, image) wins; remote fills the gaps.
-    byAddr.set(c.address, prev ? { ...c, ...Object.fromEntries(Object.entries(prev).filter(([, v]) => v !== null && v !== undefined)) } as FoundCoin : c)
+    byAddr.set(keyOf(c), prev ? { ...c, ...Object.fromEntries(Object.entries(prev).filter(([, v]) => v !== null && v !== undefined)) } as FoundCoin : c)
   }
   return [...byAddr.values()]
     // Launchpad coins only (owner, 2026-10-04): an address no launchpad made isn't offered. The blue
-    // chips (Circle's own tokens and the like) are trusted.
-    .filter(c => c.trusted || isLaunchpadCoin(c.launchpad))
+    // chips (Circle's own tokens and the like) are trusted, and the other chains' lists hold listed coins only.
+    .filter(c => c.trusted || (c.chain && c.chain !== 'arc') || isLaunchpadCoin(c.launchpad))
     .map(c => ({ c, s: searchScore({ symbol: c.symbol, name: c.name, address: c.address }, q) || (c.address === q ? 6 : 0) }))
     .filter(x => x.s > 0)
     .sort((a, b) => b.s - a.s || (b.c.marketCapUsd ?? b.c.liquidityUsd ?? 0) - (a.c.marketCapUsd ?? a.c.liquidityUsd ?? 0))

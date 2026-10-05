@@ -1396,7 +1396,6 @@ const d: Record<string, string> = {
   "Try Autotrade free": "Prueba Autotrade gratis",
   "Paper trading uses virtual USDC: no money moves. Results are measured, never promised, and most new coins go to zero. Not financial advice.": "El trading simulado usa USDC virtual: no se mueve dinero. Los resultados se miden, nunca se prometen, y la mayoría de monedas nuevas acaban en cero. No es asesoramiento financiero.",
   "Searching all of Arc…": "Buscando en todo Arc…",
-  "No token at this address on Arc. It may be a wallet: see it below.": "No hay ningún token en esta dirección en Arc. Puede ser una billetera: mírala abajo.",
   "More on Arc": "Más en Arc",
   "coins not in this list": "monedas que no están en esta lista",
   "No token at this address on Arc.": "No hay ningún token en esta dirección en Arc.",
@@ -2266,7 +2265,6 @@ const d: Record<string, string> = {
   // $ARCDEX program: start date and fee definition (2026-10-03)
   "since {date}": "desde el {date}",
   "The program starts {date}. From then on, every fee counts.": "El programa empieza el {date}. Desde entonces, cuenta cada comisión.",
-  "How it’s counted: fees are the USDC ARCDEX’s trading contracts pay the fee wallet (the swap routers, the curve router, the launchpad and the Universal Router). A buyback is a fee-wallet transaction that brought $ARCDEX in; a burn is $ARCDEX it sent to 0x…dEaD; liquidity is value it put into a pool. Burning reduces supply; it doesn’t promise any price.": "Cómo se cuenta: las comisiones son el USDC que los contratos de trading de ARCDEX pagan a la billetera de comisiones (los routers de swap, el router de curvas, el launchpad y el Universal Router). Una recompra es una transacción de la billetera de comisiones que trajo $ARCDEX; una quema, $ARCDEX enviado a 0x…dEaD; la liquidez, el valor puesto en un pool. Quemar reduce la oferta; no promete ningún precio.",
   // Futures chart (2026-10-03)
   "Oracle prices, signed every 10 seconds": "Precios del oráculo, firmados cada 10 segundos",
   // Binance-style redesign (2026-10-04)
@@ -2697,5 +2695,15 @@ const d: Record<string, string> = {
   "{pct} (in SOL)": "{pct} (en SOL)",
   "{pct} (in {c})": "{pct} (en {c})",
   "USDC (Solana)": "USDC (Solana)",
+  "Claim Relay’s fees": "Reclamar las comisiones en Relay",
+  "Claim at relay.link": "Reclamar en relay.link",
+  "Every trade appears seconds after it lands on Solana": "Cada operación aparece segundos después de llegar a Solana",
+  "How it’s counted: fees are the USDC ARCDEX’s trading contracts pay the fee wallet (the swap routers, the curve router, the launchpad, the Universal Router and Across’s handler), and the fees Relay holds for it, counted as they accrue. A buyback is a fee-wallet transaction that brought $ARCDEX in; a burn is $ARCDEX it sent to 0x…dEaD; liquidity is value it put into a pool. Burning reduces supply; it doesn’t promise any price.": "Cómo se cuenta: las comisiones son los USDC que los contratos de trading de ARCDEX pagan a la billetera de comisiones (los routers de swap, el router de curva, el launchpad, el Universal Router y el handler de Across), más las comisiones que Relay guarda para ella, contadas a medida que se acumulan. Una recompra es una transacción de la billetera de comisiones que trajo $ARCDEX; una quema, $ARCDEX enviados a 0x…dEaD; la liquidez, el valor puesto en un pool. Quemar reduce la oferta; no promete ningún precio.",
+  "No listed coin at this address on any chain. It may be a wallet: see it below.": "No hay ninguna moneda listada en esta dirección en ninguna cadena. Puede ser una billetera: mírala abajo.",
+  "Open {a} on Solana": "Abrir {a} en Solana",
+  "Relay": "Relay",
+  "Searching every chain…": "Buscando en todas las cadenas…",
+  "{usd} of fees from trades through Relay are held there for this wallet.": "{usd} en comisiones de operaciones a través de Relay se guardan allí para esta billetera.",
+  "{usd} of it held at Relay, to claim": "de ello, {usd} en Relay, por reclamar",
 }
 export default d

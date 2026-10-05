@@ -223,8 +223,10 @@ export async function getSolCandles(pool: string, mint: string, res: ChartResolu
     .sort((a, b) => a.time - b.time)
 }
 
-export function solChartSource(pool: string, mint: string): ChartSource {
-  return { id: `sol:${pool}:${mint}`, load: res => getSolCandles(pool, mint, res), refreshMs: 30_000, resolutions: SOL_RESOLUTIONS }
+/** `fromChain`: the page reads the pool's trades from the chain, so 15s candles are drawn from them (GeckoTerminal has
+ * nothing under a minute). */
+export function solChartSource(pool: string, mint: string, fromChain = false): ChartSource {
+  return { id: `sol:${pool}:${mint}`, load: res => getSolCandles(pool, mint, res), refreshMs: 30_000, resolutions: fromChain ? ['15s', ...SOL_RESOLUTIONS] : SOL_RESOLUTIONS }
 }
 
 // ── SOL's price (the swap guard values SOL going in or out at it) ────────

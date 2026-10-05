@@ -220,8 +220,10 @@ export async function getBscCandles(pool: string, token: string, res: ChartResol
     .sort((a, b) => a.time - b.time)
 }
 
-export function bscChartSource(pool: string, token: string): ChartSource {
-  return { id: `bsc:${pool}:${token}`, load: res => getBscCandles(pool, token, res), refreshMs: 30_000, resolutions: BSC_RESOLUTIONS }
+/** `fromChain`: the page reads the pool's swaps from the chain, so 15s candles are drawn from them (GeckoTerminal has
+ * nothing under a minute). */
+export function bscChartSource(pool: string, token: string, fromChain = false): ChartSource {
+  return { id: `bsc:${pool}:${token}`, load: res => getBscCandles(pool, token, res), refreshMs: 30_000, resolutions: fromChain ? ['15s', ...BSC_RESOLUTIONS] : BSC_RESOLUTIONS }
 }
 
 // ── BNB's price (the guard values BNB going in or out at it) ─────────────

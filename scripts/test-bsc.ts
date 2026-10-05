@@ -4,6 +4,7 @@
 // Run: bun scripts/test-bsc.ts   (live: bun scripts/sim-four.ts simulates four.meme's buy and sale on mainnet)
 
 import relay from './fixtures/relay-bsc.json'
+import swapsFx from './fixtures/bsc-swaps.json'
 import { decodeFunctionData, parseAbi, toFunctionSelector, type Hex } from 'viem'
 
 const core = await import('../api/_bscCore')
@@ -13,6 +14,7 @@ const { fourBuyCall, fourSellCall, fourMinOut } = await import('../src/arcdex/li
 const { bscStage, bscStageInput } = await import('../src/arcdex/lib/coinStage')
 const { bscSafety } = await import('../src/arcdex/lib/safety')
 const { pathToPage, pageToPath } = await import('../src/arcdex/lib/router')
+const { decodeBscSwap, bscPoolKind, filterOf, FOUR_PURCHASE, FOUR_SALE } = await import('../src/arcdex/api/bscSwaps')
 const { FEE_WALLET } = await import('../src/arcdex/lib/platform')
 import type { GtPools } from '../api/_rhCore'
 
@@ -148,6 +150,27 @@ const sell = fourSellCall(sq, fourMinOut(sq, 500))
 const ds = decodeFunctionData({ abi: MANAGER, data: sell.data as Hex })
 ok(sell.to === core.FOUR.manager && sell.value === 0n && ds.functionName === 'sellToken' && ds.args[1] === sq.amount && ds.args[2] === (sq.funds * 95n) / 100n,
   'a sale: sellToken(coin, amount, minimum), no value sent')
+
+console.log('live trades from the chain (real logs, scripts/fixtures/bsc-swaps.json)')
+ok(bscPoolKind('four-meme') === 'four' && bscPoolKind('pancakeswap_v2') === 'v2' && bscPoolKind('pancakeswap-v3-bsc') === 'v3' && bscPoolKind('pancakeswap-infinity-clmm') === null, 'four.meme’s curve, PancakeSwap v2 and v3 are read on the chain; other venues stay on GeckoTerminal')
+const fourCoin = swapsFx.four.coin!
+const fourMeta = { pool: core.FOUR.manager, kind: 'four' as const, coin: fourCoin, quote: core.BNB_NATIVE, coinDecimals: 18, quoteDecimals: 18 }
+const fl = filterOf(fourMeta)
+ok(fl.address === core.FOUR.manager && JSON.stringify(fl.topics) === JSON.stringify([[FOUR_PURCHASE, FOUR_SALE]]), 'a curve coin: four.meme’s manager, its purchase and sale events')
+const fourSwaps = swapsFx.four.logs.map(l => decodeBscSwap(l as never, fourMeta)).filter(Boolean)
+const others = swapsFx.four.logs.filter(l => `0x${l.data.slice(26, 66)}` !== fourCoin)
+ok(fourSwaps.length > 0 && fourSwaps.length === swapsFx.four.logs.length - others.length, `the coin’s own trades only (${fourSwaps.length} of ${swapsFx.four.logs.length} four.meme trades)`)
+const f0 = fourSwaps[0]!
+ok(/^0x[0-9a-f]{40}$/.test(f0.maker ?? '') && f0.tokenAmount > 0 && f0.quoteAmount > 0 && Math.abs(f0.price - f0.quoteAmount / f0.tokenAmount) < 1e-18 && f0.time > Date.parse('2026-10-01'), 'each names its trader, amounts, price and the block’s time')
+ok(fourSwaps.every(s => s!.kind === 'buy' || s!.kind === 'sell'), 'buys and sells by their event')
+ok(decodeBscSwap({ ...swapsFx.four.logs[0], address: '0x1111111111111111111111111111111111111111' } as never, fourMeta) === null, 'the same event from another contract: ignored')
+const v2Meta = { pool: swapsFx.v2.pair, kind: 'v2' as const, coin: swapsFx.v2.coin, quote: swapsFx.v2.quote, coinDecimals: 18, quoteDecimals: 18 }
+const v2Swaps = swapsFx.v2.logs.map(l => decodeBscSwap(l as never, v2Meta)).filter((x): x is NonNullable<typeof x> => !!x)
+const prices = v2Swaps.map(s => s.price).sort((a, b) => a - b)
+const median = prices[Math.floor(prices.length / 2)]
+ok(v2Swaps.length === swapsFx.v2.logs.length && prices.every(p => p > median * 0.8 && p < median * 1.25), `a PancakeSwap v2 pair: every swap decoded, prices together (${v2Swaps.length}, median ${median.toExponential(3)} BNB)`)
+ok(v2Swaps.some(s => s.kind === 'buy') && v2Swaps.every(s => !s.maker), 'buys and sells; the maker is looked up (the pair names the router)')
+ok(decodeBscSwap({ ...swapsFx.v2.logs[0], address: '0x1111111111111111111111111111111111111111' } as never, v2Meta) === null, 'another pair’s swap: ignored')
 
 console.log('routes')
 const p = pathToPage(`/bnb/token/${COIN.toUpperCase().replace('0X', '0x')}`, '?pool=0xABCDEF0000000000000000000000000000000001')

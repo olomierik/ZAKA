@@ -38,10 +38,12 @@ export function MarketTrades({ rows, priceUsd, change24h, symbol, buys24h, sells
       </div>
       <div className="spot-trades-list">
         {list.length === 0 && <div className="spot-empty">{loaded ? T('No trades yet') : T('Loading trades…')}</div>}
-        {list.map(r => {
+        {list.map((r, i) => {
           const price = r.tokenAmount > 0 ? r.usd / r.tokenAmount : 0
+          // A row's own id where it has one (a transaction can hold two identical swaps).
+          const id = (r as { id?: string }).id ?? `${r.txHash}${r.kind}${r.tokenAmount}:${i}`
           return (
-            <div key={r.txHash + r.kind + r.tokenAmount} className={`spot-trade${r.live ? ' live' : ''}`}>
+            <div key={id} className={`spot-trade${r.live ? ' live' : ''}`}>
               <span className={r.kind === 'buy' ? 'up-txt' : 'down-txt'}>{fmtPrice(price)}</span>
               <span>{fmtAmt(r.tokenAmount)}</span>
               <span className="spot-time"><Ago ts={r.timestamp} /></span>

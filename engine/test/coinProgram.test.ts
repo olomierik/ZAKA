@@ -4,7 +4,7 @@ import { describe, expect, test } from 'bun:test'
 import { pad, toHex } from 'viem'
 import type { RawLog } from '../../api/_arcLogs'
 import type { Rpc } from '../src/chain/http'
-import { apply, applyBurns, classify, COIN, COIN_CREATED_BLOCK, CoinProgram, DEAD, emptyState, FEE_WALLET, FEE_SOURCES, flowsOf, rpcBurnLogs, view, type ClassifyCtx } from '../src/coin/program'
+import { apply, applyBurns, classify, COIN, COIN_CREATED_BLOCK, CoinProgram, DEAD, emptyState, FEE_WALLET, FEE_SOURCES, flowsOf, relayAccrued, RELAY, rpcBurnLogs, view, type ClassifyCtx, type RelayBalance } from '../src/coin/program'
 import { setLogLevel } from '../src/log'
 
 setLogLevel('error')
@@ -56,9 +56,9 @@ describe('reading the fee wallet', () => {
     expect(classify(OWNER, usdc(OWNER, FEE_WALLET, 500), ctx)).toEqual([])
     // A plain native transfer from someone's wallet (as on 2026-10-03: $11.95 from 0x90a9…7799).
     expect(classify(someone, [t(LOGGER, someone, FEE_WALLET, 1195n * 10n ** 16n)], ctx)).toEqual([])
-    // The real fee contracts: the swap routers, the curve router, the launchpad and the Universal Router.
+    // The real fee contracts: the swap routers, the curve router, the launchpad, the Universal Router and Across's handler.
     expect(FEE_SOURCES).toContain('0xd07583f7db671521aacfda2b4612ad187aa2924e')
-    expect(FEE_SOURCES.length).toBe(6)
+    expect(FEE_SOURCES.length).toBe(7)
     // A native-only payment (the curve router pays in native USDC): the logger alone.
     expect(classify(someone, [t(LOGGER, ROUTER, FEE_WALLET, 3n * 10n ** 18n)], ctx)).toEqual([{ kind: 'fee', usd: 3 }])
     // Liquidity coming back from the futures pool isn't a fee.
@@ -191,5 +191,53 @@ describe('the burn history', () => {
     // Before the dead address's balance is read, the burns logged stand in for the total.
     expect(view(s, null, now).burned.total).toBe(32_761_511)
     expect(view(s, null, now).program).toMatchObject({ coin: COIN, supply: 1_000_000_000 })
+  })
+})
+
+describe('fees on the other chains', () => {
+  test('a Robinhood Chain sale: its 2% arrives as USDC on Arc from Across’s handler, in a relayer’s fill', () => {
+    const HANDLER = '0xa07480456c4ebad7626e4fdf4a180709e238547b'
+    const real = { ...ctx, feeSources: new Set(FEE_SOURCES) }
+    expect(FEE_SOURCES).toContain(HANDLER)
+    expect(classify(someone, usdc(HANDLER, FEE_WALLET, 0.42), real)).toEqual([{ kind: 'fee', usd: 0.42 }])
+  })
+
+  test('Relay’s balance: what each currency grew by is a fee, at its dollar value; a claim (a drop) isn’t', () => {
+    const b = (key: string, amount: number, usd: number): RelayBalance => ({ key, symbol: key, amount, usd })
+    const first = relayAccrued({}, [b('42161:usdc', 5, 5), b('792703809:sol', 0.02, 2.4)])
+    expect(first.usd).toBe(7.4)
+    expect(first.next).toEqual({ '42161:usdc': 5, '792703809:sol': 0.02 })
+    // SOL's price moved, the amount didn't: nothing new.
+    expect(relayAccrued(first.next, [b('42161:usdc', 5, 5), b('792703809:sol', 0.02, 3)]).usd).toBe(0)
+    // Claimed (down to 0), then 1.5 more accrued.
+    const claimed = relayAccrued(first.next, [b('42161:usdc', 0, 0)])
+    expect(claimed.usd).toBe(0)
+    expect(relayAccrued(claimed.next, [b('42161:usdc', 1.5, 1.5)]).usd).toBe(1.5)
+  })
+
+  test('the ledger reads Relay every two minutes once started, counts what accrued as fees, and shows what’s to claim', async () => {
+    let balances: RelayBalance[] = [{ key: '56:usdt', symbol: 'USDT', amount: 3, usd: 3 }]
+    const saved = new Map<string, string>()
+    const settings = { getSetting: async (k: string) => saved.get(k) ?? null, setSetting: async (k: string, v: string) => { saved.set(k, v) } }
+    const p = new CoinProgram({ rpc: {} as Rpc, settings: settings as never, priceOf: () => null, relayBalances: async () => balances })
+    const t0 = Date.parse('2026-10-05T10:00:00Z')
+    await p.readRelay(t0)
+    expect(p.state.feesUsd).toBe(0) // not started yet
+    p.state = { ...emptyState(), startBlock: START, scannedTo: START }
+    await p.readRelay(t0)
+    expect(p.state.feesUsd).toBe(3)
+    expect(p.state.fees[0]).toMatchObject({ kind: 'fee', usd: 3, via: 'relay', tx: '' })
+    expect(p.view().relay).toEqual({ accruedUsd: 3, unclaimedUsd: 3 })
+    expect(p.view().pending.buybackUsd).toBe(0.9)
+    balances = [{ key: '56:usdt', symbol: 'USDT', amount: 5, usd: 5 }]
+    await p.readRelay(t0 + 30_000) // too soon
+    expect(p.state.feesUsd).toBe(3)
+    await p.readRelay(t0 + RELAY.every)
+    expect(p.state.feesUsd).toBe(5)
+    balances = [] // claimed
+    await p.readRelay(t0 + 2 * RELAY.every)
+    expect(p.view().relay).toEqual({ accruedUsd: 5, unclaimedUsd: 0 })
+    expect(p.state.feesUsd).toBe(5)
+    expect(JSON.parse(saved.values().next().value!).relayUsd).toBe(5)
   })
 })

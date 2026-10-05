@@ -1598,7 +1598,7 @@ Owner: "time to bring Solana to the platform". Asked, the owner chose: the tradi
   - Tests: `scripts/test-solana.ts` adds a real swap quote (`fixtures/relay-solswap.json`) and 9 tampered ones refused.
   - **Checked in the browser:** with no wallet connected, 0.05 SOL quoted 2.3K PEXRA at under 0.1% impact, 2% in all. One coin (Human) has no Relay route at any address: the form says so.
 - **Interrupted builds:** when GeckoTerminal throttles the browser's own list build, the coins the last list had that it didn't reach are kept (as Robinhood Chain's builder does), instead of the list shrinking to the first call's coins.
-- **Not done yet:** a real funded trade (the owner's first), live trades from Solana's chain (the coin page polls GeckoTerminal), Solana coins in the top-bar search, holders.
+- **Not done yet:** a real funded trade (the owner's first), holders. Live trades from the chain and search came on 2026-10-05 ("Live trades, search and fees on every chain").
 
 ## BNB Chain: four.meme's coins, curve and graduated (2026-10-05)
 
@@ -1627,7 +1627,63 @@ Owner: "go for BNB Chain". four.meme is BNB Chain's launchpad; its coins are lis
   - `bun scripts/sim-four.ts` (mainnet, nothing sent): a 0.01 BNB buy of a live curve coin from a throwaway address with the exact call; the same-block sale refused; a real holder's sale of half its tokens after an exact approval; each refused with a minimum of twice the quote.
 - **Checked in the browser (local dev, the browser's own list build):** the markets with real curve progress (78–90% near bond); 龙虾 (graduated) quoted $5 of Arc USDC → 113.4 (0.4% impact, 4.4% all in) and 0.01 BNB → 184.7 (under 0.1%, 2.0%); a curve coin quoted 0.01 BNB → 996.4K with four.meme's fee and 0% ARCDEX; 375px with no sideways scroll.
 - **Every new string is in all six dictionaries** (63 with the Solana ones).
-- **Not done yet:** a real funded trade (the owner's first), live trades from BNB Chain's RPC (the page polls GeckoTerminal), four.meme coins in the top-bar search, holders.
+- **Not done yet:** a real funded trade (the owner's first), holders. Live trades from the chain and search came the same day ("Live trades, search and fees on every chain").
+
+## Live trades, search and fees on every chain (2026-10-05)
+
+Owner: "what else is missing", then "do it" to the top three: Solana and BNB Chain coin pages as live as Arc's, search across every chain, and the 30/70 fee ledger counting every chain's fees.
+
+- **Live trades from the chain (`lib/useChainTrades.ts`):** one hook for the Solana and BNB Chain coin pages, after Robinhood Chain's page.
+  - The chain's swaps come first. They set the price, the chart's live end (`ticks`) and the pops, and add a 15s timeframe (`solChartSource` / `bscChartSource` with `fromChain`).
+  - GeckoTerminal fills in older trades and makers: every 60s while the chain feeds the page, every 4s (as before) when it can't.
+  - A quote with no dollar price is priced once from GeckoTerminal's coin price.
+- **BNB Chain (`api/bscSwaps.ts`):**
+  - **What's read:**
+    - A coin on four.meme's curve: TokenManager2's `TokenPurchase` / `TokenSale` events. These aren't indexed by coin, so every four.meme trade is read (a few a block) and the coin's own are kept. Each names its trader.
+    - PancakeSwap v2: `Swap` on the pair.
+    - PancakeSwap v3: its `Swap`, Uniswap v3's plus two protocol-fee words.
+    - Infinity pools stay on GeckoTerminal.
+  - **How:** history in 4,000-block slices, newest first; then a `getLogs` every second while the tab is visible. Makers of PancakeSwap swaps are the transaction's sender, 20 to a batch request.
+  - **RPC (publicnode, measured):**
+    - Blocks every 0.45s; logs carry `blockTimestamp`; batches accepted.
+    - A `getLogs` may span 5,000 blocks; only the last ~2 hours are served without a key.
+  - **Measured:** a live PancakeSwap pair over 25s gave 21 swaps, a median 1.6s after their block (block times are whole seconds). The chain read two swaps GeckoTerminal didn't have yet.
+- **Solana (`api/solSwaps.ts`):**
+  - **What's read:** the pool account's newest transactions (`getSignaturesForAddress`, "confirmed"), each read once (`getTransaction`, jsonParsed). The trader is the signer.
+  - **A transaction becomes a trade** from the pool's side: the coin and quote held by accounts the pool owns (pump.fun's curve and PumpSwap pools), plus the curve's own lamports. That's exact whoever routed it.
+    - Otherwise (LaunchLab, Meteora, Raydium keep vaults under an authority), from the signer's side, with the transaction fee and token-account rent set aside.
+    - A transaction moving no coin for either (bots' arbitrage legs, liquidity) isn't a trade.
+  - **RPC (publicnode):**
+    - A batch request may hold only one `getTransaction`, so they go four at a time in parallel, the newest six a poll (every 1.5s).
+    - A busy pool's oldest unread ones are left to GeckoTerminal.
+  - **Measured:** 8 trades in 25s on HIGGS, a median 2.7s after they landed.
+  - Pools quoted in SOL or USDC only.
+- **Search across every chain:**
+  - **The engine route (`api/chainsearch.ts`, `/api/chainsearch?q=`):** searches the lists the engine keeps for Robinhood Chain, Solana and BNB Chain (`rh:market`, `sol:market`, `bsc:market`, read at most every 20s), with no GeckoTerminal call.
+    - Listed coins only, ranked as the Launchpad ranks: exact ticker or address, then prefixes, then contains; bigger coins first.
+  - **The finder (`lib/coinFinder.ts`):** adds those hits, tagged with their chain and kept apart by chain and address.
+  - **The top bar (`SearchBox.tsx`):**
+    - Shows each chain's mark and opens the right coin page.
+    - A pasted Solana address offers "Open on Solana".
+  - Engine: `engine/Dockerfile` copies `api/chainsearch.ts`, and `railway.toml` watches it. **Add it to the service's own Watch Paths on Railway too.**
+- **The fee ledger (`engine/src/coin/program.ts`) counts every chain's fees:**
+  - **Robinhood Chain sales:** their 2% arrives as USDC on Arc from Across's handler `0xa074…547b` in the relayer's fill. It's now a fee source.
+  - **Solana and BNB Chain trades (Relay):**
+    - Relay keeps the 2% for the fee wallet until it's claimed. Every two minutes the ledger reads Relay's balance for the fee wallet (`api.relay.link/app-fees/{wallet}/balances`).
+    - What each currency's balance grew by is a fee, at Relay's dollar value; a drop is a claim. Price moves alone add nothing.
+    - These fee entries carry `via: 'relay'` and no transaction.
+    - `GET /v1/coin/program` adds `relay` (accrued, still to claim). The claim's arrival on Arc isn't counted again, since it comes from Relay's solver.
+  - `/burn` shows what's held at Relay. With the fee wallet connected, it shows a "Claim at relay.link" step.
+  - **Not counted yet:** a Robinhood Chain buy's fee, which arrives as the coin on Robinhood Chain.
+- **Tests:**
+  - `scripts/test-bsc.ts`: real four.meme and PancakeSwap logs (`fixtures/bsc-swaps.json`, recorded by `scripts/capture-bsc-swaps.ts`).
+  - `scripts/test-solana.ts`: real PumpSwap and pump.fun transactions (`fixtures/sol-swaps.json`, recorded by `scripts/capture-sol-swaps.ts`).
+  - `scripts/test-search.ts`: ranking, Solana addresses in any case, and how often the lists are read.
+  - `engine/test/coinProgram.test.ts`: the Across handler, Relay accruals, claims and price moves, and the two-minute read.
+- **Checked in the browser:**
+  - A BNB Chain page on the chain feed: trades seconds old, real traders and the 15s timeframe.
+  - A Solana page on the chain feed with GeckoTerminal's older trades underneath.
+- **Every new string is in all six dictionaries** (10).
 
 ## ARCSENSE: spot and futures first (2026-10-03)
 

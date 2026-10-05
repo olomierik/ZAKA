@@ -1396,7 +1396,6 @@ const d: Record<string, string> = {
   "Try Autotrade free": "免费试用自动交易",
   "Paper trading uses virtual USDC: no money moves. Results are measured, never promised, and most new coins go to zero. Not financial advice.": "模拟交易使用虚拟 USDC：不动用资金。结果是实测的，从不承诺，大多数新币最终归零。不构成投资建议。",
   "Searching all of Arc…": "正在搜索整个 Arc…",
-  "No token at this address on Arc. It may be a wallet: see it below.": "Arc 上此地址没有代币。它可能是一个钱包：见下方。",
   "More on Arc": "Arc 上的更多",
   "coins not in this list": "不在此列表中的币",
   "No token at this address on Arc.": "Arc 上此地址没有代币。",
@@ -2266,7 +2265,6 @@ const d: Record<string, string> = {
   // $ARCDEX program: start date and fee definition (2026-10-03)
   "since {date}": "自 {date} 起",
   "The program starts {date}. From then on, every fee counts.": "计划于 {date} 开始。从那时起，每一笔手续费都计入。",
-  "How it’s counted: fees are the USDC ARCDEX’s trading contracts pay the fee wallet (the swap routers, the curve router, the launchpad and the Universal Router). A buyback is a fee-wallet transaction that brought $ARCDEX in; a burn is $ARCDEX it sent to 0x…dEaD; liquidity is value it put into a pool. Burning reduces supply; it doesn’t promise any price.": "计算方式：手续费是 ARCDEX 的交易合约（兑换路由、曲线路由、发射台和 Universal Router）支付给手续费钱包的 USDC。回购是手续费钱包发起并换入 $ARCDEX 的交易；销毁是它发送到 0x…dEaD 的 $ARCDEX；流动性是它投入池中的价值。销毁会减少供应量，但不承诺任何价格。",
   // Futures chart (2026-10-03)
   "Oracle prices, signed every 10 seconds": "预言机价格，每 10 秒签名一次",
   // Binance-style redesign (2026-10-04)
@@ -2697,5 +2695,15 @@ const d: Record<string, string> = {
   "{pct} (in SOL)": "{pct}（以 SOL 计）",
   "{pct} (in {c})": "{pct}（以 {c} 计）",
   "USDC (Solana)": "USDC（Solana）",
+  "Claim Relay’s fees": "领取 Relay 处的费用",
+  "Claim at relay.link": "在 relay.link 领取",
+  "Every trade appears seconds after it lands on Solana": "每笔交易在 Solana 上链后几秒内显示",
+  "How it’s counted: fees are the USDC ARCDEX’s trading contracts pay the fee wallet (the swap routers, the curve router, the launchpad, the Universal Router and Across’s handler), and the fees Relay holds for it, counted as they accrue. A buyback is a fee-wallet transaction that brought $ARCDEX in; a burn is $ARCDEX it sent to 0x…dEaD; liquidity is value it put into a pool. Burning reduces supply; it doesn’t promise any price.": "计算方式：费用是 ARCDEX 的交易合约支付给费用钱包的 USDC（兑换路由、曲线路由、launchpad、Universal Router 以及 Across 的 handler），加上 Relay 为其保管的费用，随产生随计入。回购是费用钱包换入 $ARCDEX 的交易；销毁是其发送到 0x…dEaD 的 $ARCDEX；流动性是其投入资金池的价值。销毁会减少供应，但不承诺任何价格。",
+  "No listed coin at this address on any chain. It may be a wallet: see it below.": "任何链上此地址都没有已上架的币。它可能是一个钱包：见下方。",
+  "Open {a} on Solana": "在 Solana 上打开 {a}",
+  "Relay": "Relay",
+  "Searching every chain…": "正在搜索所有链…",
+  "{usd} of fees from trades through Relay are held there for this wallet.": "通过 Relay 交易产生的 {usd} 费用正由其为此钱包保管。",
+  "{usd} of it held at Relay, to claim": "其中 {usd} 存于 Relay，待领取",
 }
 export default d

@@ -2,25 +2,28 @@
 // chart, a buy form and a sell form side by side (components/BscTrade.tsx), the coin's pools, and every trade
 // underneath. Phones: chart, stats, trades and a Buy / Sell bar opening the trade sheet.
 //
-// GeckoTerminal (api/bscMarket.ts) gives the candles, the coin's stats, its pools and its trades (polled every 4s
-// while the page is open, so new trades pop on the chart). four.meme's contract says whether it launched the coin,
-// whether it's still on its curve and how far along, read when the page opens and every 30s.
+// Trades come straight from the chain (api/bscSwaps.ts, lib/useChainTrades.ts, 2026-10-05): four.meme's own events
+// while the coin is on its curve, else its PancakeSwap pool's, each about a second after its block, so they move the
+// price and pop on the chart. GeckoTerminal (api/bscMarket.ts) gives the candles, the coin's stats, its pools and the
+// older trades. four.meme's contract says whether it launched the coin, whether it's still on its curve and how far
+// along, read when the page opens and every 30s.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Page } from '../App'
 import PriceChart, { type ChartTrade } from '../components/PriceChart'
 import { MarketTrades } from '../components/SpotPanels'
-import type { TradeRow } from '../components/TokenSocialTabs'
 import Sheet, { TradeBar } from '../components/Sheet'
 import { AgoText } from '../components/Ago'
 import { ChainIcon } from '../components/Chains'
 import { RhLogo } from '../components/Robinhood'
 import SafetyBadge from '../components/SafetyBadge'
 import BscTrade, { BSC_NOTE } from '../components/BscTrade'
-import { getBscCoin, getBscTrades, bscChartSource, bscCoinFour, bscSeed, withFour, type BscCoin, type BscCoinDetail, type FourInfo } from '../api/bscMarket'
+import { getBscCoin, getBscTrades, bscChartSource, bscCoinFour, bscSeed, bnbUsd, withFour, BNB_NATIVE, FOUR, WBNB, type BscCoin, type BscCoinDetail, type FourInfo } from '../api/bscMarket'
+import { bscFeed, bscMaker, bscPoolKind, resolveBscMakers, type BscPoolMeta } from '../api/bscSwaps'
+import { useChainTrades } from '../lib/useChainTrades'
+import { BSC_QUOTE_SYMBOLS } from '../../../api/_bscCore'
 import { bscAddress, bscToken, bscTx } from '../lib/bsc'
 import { bscSafety } from '../lib/safety'
-import type { Tick } from '../lib/candles'
 import { useIsMobile } from '../lib/useMobile'
 import { useTrader } from '../lib/identity'
 import { t as T } from '../lib/i18n'
@@ -44,7 +47,6 @@ const color = (n: number) => (n > 0 ? 'var(--green)' : n < 0 ? 'var(--red)' : 'v
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 
 interface Props { address: string; pool?: string; navigate: (p: Page) => void }
-type Row = TradeRow & { id: string; priceUsd: number }
 
 function seedCoin(token: string, pool?: string): BscCoinDetail | null {
   const r = bscSeed(token, pool)
@@ -59,8 +61,6 @@ export default function BscTokenPage({ address, pool: poolParam, navigate }: Pro
   const [loaded, setLoaded] = useState(false)
   // four.meme's word: undefined until it answers, null for a coin it didn't launch.
   const [four, setFour] = useState<FourInfo | null | undefined>(() => seedCoin(address, poolParam)?.four)
-  const [trades, setTrades] = useState<TradeRow[]>([])
-  const [tradesLoaded, setTradesLoaded] = useState(false)
   const [sheet, setSheet] = useState<'buy' | 'sell' | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -85,40 +85,44 @@ export default function BscTokenPage({ address, pool: poolParam, navigate }: Pro
     return () => { live = false; clearInterval(id) }
   }, [address])
 
-  // Trades: GeckoTerminal's, every 4s while visible; ones that arrive after the page opened are live (they pop).
-  const seen = useRef<Set<string> | null>(null)
-  useEffect(() => {
-    if (!pool) return
-    let live = true
-    seen.current = null
-    setTrades([]); setTradesLoaded(false)
-    const load = () => getBscTrades(pool, address).then(list => {
-      if (!live) return
-      const before = seen.current
-      seen.current = new Set(list.map(r => r.txHash + r.kind))
-      setTrades(prev => {
-        const wasLive = new Set(prev.filter(r => r.live).map(r => r.txHash + r.kind))
-        return list.map(r => ({ ...r, live: wasLive.has(r.txHash + r.kind) || (before !== null && !before.has(r.txHash + r.kind)) }))
-      })
-    }).catch(() => {}).finally(() => { if (live) setTradesLoaded(true) })
-    void load()
-    const id = setInterval(() => { if (!document.hidden) void load() }, 4_000)
-    return () => { live = false; clearInterval(id) }
-  }, [pool, address])
-
-  const rows: Row[] = useMemo(() => trades.map((r, i) => ({ ...r, id: `${r.txHash}:${r.kind}:${i}`, priceUsd: r.tokenAmount > 0 ? r.usd / r.tokenAmount : 0 })), [trades])
   const symbol = coin?.symbol ?? (loaded ? '?' : '…')
   const decimals = coin?.decimals ?? null
   const gtPrice = coin?.priceUsd ?? 0
-  const livePrice = rows[0]?.live ? rows[0].priceUsd : 0
-  const priceUsd = livePrice || gtPrice
   const poolRow = coin ? coin.pools.find(p => p.pool === pool) : undefined
+  const onCurve = !!four && !four.graduated
+
+  // The pool's swaps from the chain: four.meme's events while on its curve, else the PancakeSwap pool's.
+  const kind = onCurve ? 'four' : poolRow ? bscPoolKind(poolRow.dex) : null
+  const quote = (onCurve ? four!.quote : poolRow?.quote ?? '').toLowerCase()
+  const isBnb = quote === WBNB || quote === BNB_NATIVE
+  const knownQuote = !!quote && (isBnb || quote in BSC_QUOTE_SYMBOLS)
+  const coinDecimals = decimals ?? (onCurve ? 18 : null)
+  const meta = useMemo<BscPoolMeta | null>(() => (kind && knownQuote && coinDecimals !== null && (kind === 'four' || pool)
+    ? { pool: kind === 'four' ? FOUR.manager : pool.toLowerCase(), kind, coin: address.toLowerCase(), quote, coinDecimals, quoteDecimals: 18 }
+    : null), [kind, knownQuote, coinDecimals, pool, address, quote])
+  const feed = useMemo(() => (meta ? bscFeed(meta) : null), [meta])
+  // The quote in dollars: BNB from PancakeSwap's WBNB/USDT pair (every 30s), the stablecoins at $1.
+  const [bnbPrice, setBnbPrice] = useState(0)
+  useEffect(() => {
+    if (!isBnb) return
+    let live = true
+    const read = () => bnbUsd().then(v => { if (live && v > 0) setBnbPrice(v) })
+    void read()
+    const id = setInterval(() => { if (!document.hidden) void read() }, 30_000)
+    return () => { live = false; clearInterval(id) }
+  }, [isBnb])
+  const quoteUsd = isBnb ? (bnbPrice || null) : knownQuote ? 1 : null
+  const { rows, ticks, chainOn, tradesLoaded, chainPrice } = useChainTrades({
+    feed, gtKey: pool, gtLoad: pool ? () => getBscTrades(pool, address) : null, quoteUsd, gtPrice,
+    makerOf: bscMaker, resolveMakers: (txs, found) => void resolveBscMakers(txs, found),
+  })
+  const livePrice = chainPrice || (!chainOn && rows[0]?.live ? rows[0].priceUsd : 0)
+  const priceUsd = livePrice || gtPrice
   // The trade form's price guard: a live trade's price only from a pool GeckoTerminal lists for the coin, not off-market.
   const guardPrice = (!!poolRow && !poolRow.offMarket && livePrice) || gtPrice
 
   const withChain: BscCoin | null = coin ? withFour(coin, four ?? undefined) : null
   const safety = withChain ? bscSafety(withChain) : null
-  const onCurve = !!four && !four.graduated
   const progress = onCurve ? four!.progress : null
 
   // Launchpad coins only (owner, 2026-10-04): four.meme's, and four.meme's contract must vouch for it.
@@ -128,8 +132,7 @@ export default function BscTokenPage({ address, pool: poolParam, navigate }: Pro
 
   useEffect(() => { document.title = `${priceUsd ? fmtPrice(priceUsd) + ' | ' : ''}${symbol} | ARCDEX` }, [priceUsd, symbol])
 
-  const source = useMemo(() => (pool ? bscChartSource(pool, address) : undefined), [pool, address])
-  const ticks: Tick[] = useMemo(() => rows.filter(r => r.live && r.priceUsd > 0).map(r => ({ time: r.timestamp, priceUsd: r.priceUsd, usd: r.usd })), [rows])
+  const source = useMemo(() => (pool ? bscChartSource(pool, address, chainOn) : undefined), [pool, address, chainOn])
   const chartTrades: ChartTrade[] = useMemo(() => rows.flatMap(r => {
     if (!r.priceUsd) return []
     const who = r.maker ? short(r.maker) : T('Someone')
@@ -142,8 +145,8 @@ export default function BscTokenPage({ address, pool: poolParam, navigate }: Pro
   }), [rows, me])
 
   const chart = source ? (
-    <PriceChart poolAddress={null} source={source} ticks={ticks} live={rows.some(r => r.live)} trades={chartTrades} supply={coin?.supply ?? null}
-      symbol={symbol} height={mobile ? 300 : 420} liveTitle={T('Trades on BNB Chain, from GeckoTerminal')} />
+    <PriceChart poolAddress={null} source={source} ticks={ticks} live={chainOn || rows.some(r => r.live)} trades={chartTrades} supply={coin?.supply ?? null}
+      symbol={symbol} height={mobile ? 300 : 420} liveTitle={chainOn ? T('Every swap appears the moment its block lands') : T('Trades on BNB Chain, from GeckoTerminal')} />
   ) : <div className="spot-empty" style={{ height: mobile ? 300 : 420, display: 'grid', placeItems: 'center' }}>{loaded ? T('No market for this coin on GeckoTerminal yet.') : T('Loading…')}</div>
 
   const stats: [string, string, string?][] = [

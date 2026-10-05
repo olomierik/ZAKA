@@ -154,6 +154,7 @@ export default function ArcdexPage({ navigate }: { navigate: (p: Page) => void }
           <span>{T('Fees collected')}</span>
           <b>{usd(tt?.feesUsd)}</b>
           <small>{v ? T('since {date}', { date: new Date(v.program.since).toLocaleDateString() }) : ''}</small>
+          {!!v?.relay?.unclaimedUsd && <small>{T('{usd} of it held at Relay, to claim', { usd: usd(v.relay.unclaimedUsd) })}</small>}
         </div>
         <div className="arcdex-card">
           <span>{T('Bought back (30%)')}</span>
@@ -178,6 +179,13 @@ export default function ArcdexPage({ navigate }: { navigate: (p: Page) => void }
         <div className="arcdex-owner">
           <b>{T('Fee wallet connected')}</b>
           <div className="arcdex-steps">
+            {!!v?.relay?.unclaimedUsd && (
+              <div>
+                <span>0. {T('Claim Relay’s fees')}</span>
+                <small>{T('{usd} of fees from trades through Relay are held there for this wallet.', { usd: usd(v.relay.unclaimedUsd) })}</small>
+                <a className="btn-primary" href="https://relay.link" target="_blank" rel="noreferrer">{T('Claim at relay.link')} ↗</a>
+              </div>
+            )}
             <div>
               <span>1. {T('Buy back')}</span>
               <small>{v?.pending.buybackUsd ? `${usd(v.pending.buybackUsd)} ${T('to buy now')}` : T('Nothing owed right now')}</small>
@@ -236,7 +244,7 @@ export default function ArcdexPage({ navigate }: { navigate: (p: Page) => void }
           <table className="fx-table">
             <tbody>
               {v.fees.map(f => (
-                <tr key={f.tx}><td><small>{when(f.at)}</small></td><td>{usd(f.usd)}</td><td><a href={`${ARC_EXPLORER}/tx/${f.tx}`} target="_blank" rel="noreferrer">↗</a></td></tr>
+                <tr key={f.tx || `relay:${f.at}`}><td><small>{when(f.at)}</small></td><td>{usd(f.usd)}</td><td>{f.via === 'relay' ? <small>{T('Relay')}</small> : <a href={`${ARC_EXPLORER}/tx/${f.tx}`} target="_blank" rel="noreferrer">↗</a>}</td></tr>
               ))}
             </tbody>
           </table>
@@ -244,7 +252,7 @@ export default function ArcdexPage({ navigate }: { navigate: (p: Page) => void }
       ) : <div className="arcdex-note">{v ? T('No fees since the program started.') : T('Loading…')}</div>}
 
       <p className="arcdex-fine">
-        {T('How it’s counted: fees are the USDC ARCDEX’s trading contracts pay the fee wallet (the swap routers, the curve router, the launchpad and the Universal Router). A buyback is a fee-wallet transaction that brought $ARCDEX in; a burn is $ARCDEX it sent to 0x…dEaD; liquidity is value it put into a pool. Burning reduces supply; it doesn’t promise any price.')}{' '}
+        {T('How it’s counted: fees are the USDC ARCDEX’s trading contracts pay the fee wallet (the swap routers, the curve router, the launchpad, the Universal Router and Across’s handler), and the fees Relay holds for it, counted as they accrue. A buyback is a fee-wallet transaction that brought $ARCDEX in; a burn is $ARCDEX it sent to 0x…dEaD; liquidity is value it put into a pool. Burning reduces supply; it doesn’t promise any price.')}{' '}
         <a href={`${ARC_EXPLORER}/address/${FEE_WALLET}`} target="_blank" rel="noreferrer">{T('The fee wallet on the explorer')} ↗</a>
       </p>
     </div>

@@ -1396,7 +1396,6 @@ const d: Record<string, string> = {
   "Try Autotrade free": "Essaie Autotrade gratuitement",
   "Paper trading uses virtual USDC: no money moves. Results are measured, never promised, and most new coins go to zero. Not financial advice.": "Le trading fictif utilise des USDC virtuels : aucun argent ne bouge. Les résultats sont mesurés, jamais promis, et la plupart des nouveaux coins tombent à zéro. Ceci n'est pas un conseil financier.",
   "Searching all of Arc…": "Recherche sur tout Arc…",
-  "No token at this address on Arc. It may be a wallet: see it below.": "Aucun token à cette adresse sur Arc. C'est peut-être un portefeuille : voir ci-dessous.",
   "More on Arc": "Plus sur Arc",
   "coins not in this list": "coins absents de cette liste",
   "No token at this address on Arc.": "Aucun token à cette adresse sur Arc.",
@@ -2266,7 +2265,6 @@ const d: Record<string, string> = {
   // $ARCDEX program: start date and fee definition (2026-10-03)
   "since {date}": "depuis le {date}",
   "The program starts {date}. From then on, every fee counts.": "Le programme commence le {date}. À partir de là, chaque frais compte.",
-  "How it’s counted: fees are the USDC ARCDEX’s trading contracts pay the fee wallet (the swap routers, the curve router, the launchpad and the Universal Router). A buyback is a fee-wallet transaction that brought $ARCDEX in; a burn is $ARCDEX it sent to 0x…dEaD; liquidity is value it put into a pool. Burning reduces supply; it doesn’t promise any price.": "Comment c’est compté : les frais sont les USDC que les contrats de trading d’ARCDEX versent au portefeuille des frais (les routeurs de swap, le routeur des courbes, le launchpad et l’Universal Router). Un rachat est une transaction du portefeuille des frais qui a fait entrer du $ARCDEX ; un burn, du $ARCDEX envoyé à 0x…dEaD ; la liquidité, la valeur placée dans un pool. Brûler réduit l’offre ; cela ne promet aucun prix.",
   // Futures chart (2026-10-03)
   "Oracle prices, signed every 10 seconds": "Prix de l’oracle, signés toutes les 10 secondes",
   // Binance-style redesign (2026-10-04)
@@ -2697,5 +2695,15 @@ const d: Record<string, string> = {
   "{pct} (in SOL)": "{pct} (en SOL)",
   "{pct} (in {c})": "{pct} (en {c})",
   "USDC (Solana)": "USDC (Solana)",
+  "Claim Relay’s fees": "Réclamer les frais chez Relay",
+  "Claim at relay.link": "Réclamer sur relay.link",
+  "Every trade appears seconds after it lands on Solana": "Chaque trade apparaît quelques secondes après son arrivée sur Solana",
+  "How it’s counted: fees are the USDC ARCDEX’s trading contracts pay the fee wallet (the swap routers, the curve router, the launchpad, the Universal Router and Across’s handler), and the fees Relay holds for it, counted as they accrue. A buyback is a fee-wallet transaction that brought $ARCDEX in; a burn is $ARCDEX it sent to 0x…dEaD; liquidity is value it put into a pool. Burning reduces supply; it doesn’t promise any price.": "Comment c’est compté : les frais sont les USDC que les contrats de trading d’ARCDEX versent au portefeuille des frais (les routeurs de swap, le routeur de courbe, le launchpad, l’Universal Router et le handler d’Across), plus les frais que Relay garde pour lui, comptés au fur et à mesure. Un rachat est une transaction du portefeuille des frais qui a fait entrer des $ARCDEX ; un burn, des $ARCDEX envoyés à 0x…dEaD ; la liquidité, la valeur placée dans un pool. Brûler réduit l’offre ; cela ne promet aucun prix.",
+  "No listed coin at this address on any chain. It may be a wallet: see it below.": "Aucune pièce listée à cette adresse, sur aucune chaîne. C’est peut-être un portefeuille : voir ci-dessous.",
+  "Open {a} on Solana": "Ouvrir {a} sur Solana",
+  "Relay": "Relay",
+  "Searching every chain…": "Recherche sur toutes les chaînes…",
+  "{usd} of fees from trades through Relay are held there for this wallet.": "{usd} de frais des trades passés par Relay y sont gardés pour ce portefeuille.",
+  "{usd} of it held at Relay, to claim": "dont {usd} gardés chez Relay, à réclamer",
 }
 export default d

@@ -12,6 +12,8 @@ export interface CoinEntry {
   /** $ARCDEX bought or burned. */
   coin?: number
   from?: string
+  /** A fee read from Relay's balance (Solana and BNB Chain trades): no transaction of its own. */
+  via?: 'relay'
 }
 
 export interface CoinProgramView {
@@ -31,6 +33,9 @@ export interface CoinProgramView {
     deadBalance: number | null
   }
   pending: { buybackUsd: number; liquidityUsd: number }
+  /** Relay's app fees (Solana and BNB Chain trades): all that accrued (in the fees above) and what's still to claim.
+   * Missing from engines before 2026-10-05. */
+  relay?: { accruedUsd: number; unclaimedUsd: number }
   feeDays: { day: string; usd: number }[]
   actions: CoinEntry[]
   fees: CoinEntry[]

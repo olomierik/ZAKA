@@ -7,12 +7,14 @@ import accounts from './fixtures/sol-accounts.json'
 import relayBuy from './fixtures/relay-buy.json'
 import relaySell from './fixtures/relay-sell.json'
 import relaySwap from './fixtures/relay-solswap.json'
+import swapsFx from './fixtures/sol-swaps.json'
 
 const core = await import('../api/_solCore')
 const { checkRelayQuote, relayValue, relayValueUsd, quoteVerdict, quoteBody, RELAY_ARC_DEPOSITORY, SOL_NATIVE, SOLANA_ID } = await import('../src/arcdex/lib/relayQuote')
 const { solStage, solStageInput } = await import('../src/arcdex/lib/coinStage')
 const { solSafety, isListable } = await import('../src/arcdex/lib/safety')
 const { pathToPage, pageToPath } = await import('../src/arcdex/lib/router')
+const { parseSolSwap } = await import('../src/arcdex/api/solSwaps')
 const { FEE_WALLET } = await import('../src/arcdex/lib/platform')
 import type { GtPools } from '../api/_rhCore'
 
@@ -174,6 +176,20 @@ ok(solSafety(row({ mint: { ...safeMint, mintAuthority: true } })).level === 'dan
 ok(solSafety(row({ mint: { ...safeMint, risky: ['transfer-hook'] } })).level === 'risky', 'a transfer hook: Risky')
 ok(solSafety(row({ mint: safeMint, liquidity: 60_000, traders24h: 400, buys24h: 400, sells24h: 300, createdAt: Date.now() - 10 * 24 * H })).level === 'safe', 'everything renounced, a deep pool: Safe')
 ok(!isListable({ official: false, marketCapUsd: 14_000, rugged: false }), 'under $15K of market cap: not listed (on Solana too)')
+
+console.log('live trades from the chain (real transactions, scripts/fixtures/sol-swaps.json)')
+for (const p of swapsFx.pools as any[]) {
+  const meta = { pool: p.pool, mint: p.mint, quoteMint: p.quoteMint }
+  const trades = p.txs.map((t: any) => parseSolSwap(t, meta)).filter(Boolean) as NonNullable<ReturnType<typeof parseSolSwap>>[]
+  const prices = trades.map(t => t.price).sort((a, b) => a - b)
+  const median = prices[Math.floor(prices.length / 2)]
+  ok(trades.length > 0 && prices.every(x => x > median * 0.8 && x < median * 1.25), `${p.dex} (${p.symbol}): ${trades.length} trades read, prices together (median ${median.toExponential(3)} SOL)`)
+  const signerOf = new Map(p.txs.map((t: any) => [t.transaction.signatures[0], (k => (typeof k === 'string' ? k : k.pubkey))(t.transaction.message.accountKeys[0])]))
+  ok(trades.every(t => t.maker === signerOf.get(t.txHash) && t.id === t.txHash && t.time > Date.parse('2026-10-01')), 'each names its signer, its signature and its time')
+  const failed = { ...p.txs[0], meta: { ...p.txs[0].meta, err: { InstructionError: [0, 'Custom'] } } }
+  ok(parseSolSwap(failed, meta) === null, 'a failed transaction isn’t a trade')
+  ok(parseSolSwap(p.txs[0], { ...meta, mint: 'QtherMint111111111111111111111111111111abc' }) === null, 'another coin’s transaction isn’t this coin’s trade')
+}
 
 console.log('routes')
 const p = pathToPage(`/solana/token/${MEME}`, '?pool=PooLAddr1111111111111111111111111111111111')
