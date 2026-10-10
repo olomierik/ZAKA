@@ -32,6 +32,7 @@
 //   GET /v1/coin/program                        $ARCDEX buyback, burns and liquidity: fees in, bought, burned, added (coin/program.ts)
 //   GET /v1/perps/status|prices|candles|state   futures: deployment, keeper, signed prices, chart, contract state (perps/service.ts)
 //   /v1/quant/*                                 the signal engine: signals, radar, positions, wallets, validation, controls (quant/api.ts)
+//   /v1/algo/*                                  ARCDEX Algo, the futures agent: status, decisions, trades, reviews, controls (algo/api.ts)
 //   /api/argus|gecko|holders|launchpad|radar|dex|rhmarket|session|social|upload   the site's functions, moved off Vercel (site/siteApi.ts)
 //   GET /health           summary (200 ok/degraded, 503 down)
 //   GET /metrics          full metrics (Bearer METRICS_TOKEN when set)
@@ -56,6 +57,8 @@ import type { HistoryStore } from '../store/history'
 import type { HotStore } from '../store/hot'
 import type { Traffic } from '../traffic'
 import { quantApi, type QuantApiDeps } from '../quant/api'
+import { algoApi } from '../algo/api'
+import type { AlgoAgent } from '../algo/agent'
 import type { SiteApi } from '../site/siteApi'
 import type { PerpsService } from '../perps/service'
 import type { CoinProgram } from '../coin/program'
@@ -84,6 +87,9 @@ export class DataApi {
   site: SiteApi | null = null
   /** ARCSENSE futures: prices, chart, the testnet deployment and keeper (engine/src/perps). */
   perps: PerpsService | null = null
+  /** ARCDEX Algo, the futures agent (engine/src/algo), and who may control it. */
+  algo: AlgoAgent | null = null
+  algoControl: ControlVerifier | null = null
   /** $ARCDEX buyback, burns and liquidity: the fee wallet's ledger (engine/src/coin/program.ts). */
   coin: CoinProgram | null = null
   /** Argus coins on their launch curve, with their progress by market cap (market/bonding.ts). */
@@ -290,6 +296,13 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         if (!api.bonding) return json(req, 503, { error: 'bonding is not tracked in this process' })
         const limit = Math.max(1, Math.min(400, Number(url.searchParams.get('limit')) || 200))
         return json(req, 200, { at: api.bonding.at, coins: api.bonding.list(limit) }, 'public, max-age=15')
+      }
+      // ARCDEX Algo (algo/api.ts): its decisions, trades, reviews; the owner's signed controls.
+      if (url.pathname.startsWith('/v1/algo/')) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        if (!api.algo) return json(req, 503, { error: 'the algo agent is not running in this process' })
+        try { return await algoApi(req, url, api.algo, api.algoControl, (status, body, cache) => json(req, status, body, cache)) }
+        catch (e) { log.warn('algo api error', { path: url.pathname, error: errMsg(e) }); return json(req, 500, { error: 'internal error' }) }
       }
       // Futures (perps/service.ts): status, prices, candles, the contract's state.
       if (url.pathname.startsWith('/v1/perps/')) {

@@ -187,6 +187,12 @@ export class PerpsService {
     return o && isAddress(o) ? getAddress(o) : undefined
   }
 
+  /** What ARCDEX Algo's testnet executor borrows (engine/src/algo): the chain client, the keeper's
+   * wallet (it funds the agent: gas, and test USDC it mints) and the markets in id order. */
+  algoAccess(): { client: PublicClient; keeper: WalletClient<Transport, Chain, Account> | null; markets: () => string[] } | null {
+    return { client: this.client, keeper: this.wallet, markets: () => (this.keeper?.state?.markets ?? []).map(m => symbolOf(m.p.feedId)) }
+  }
+
   status(now = Date.now()): PerpsStatus {
     const last = this.feed.latest()
     return {

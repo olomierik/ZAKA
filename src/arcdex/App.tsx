@@ -10,7 +10,7 @@ const CoinPage        = lazy(() => import('./pages/CoinPage'))
 const Portfolio       = lazy(() => import('./pages/Portfolio'))
 const FuturesPage     = lazy(() => import('./pages/FuturesPage'))
 const ArcdexPage       = lazy(() => import('./pages/ArcdexPage'))
-const AutotradeSoon   = lazy(() => import('./pages/AutotradeSoon'))
+const AlgoPage        = lazy(() => import('./pages/AlgoPage'))
 const Swap            = lazy(() => import('./pages/Swap'))
 const Bridge          = lazy(() => import('./pages/Bridge'))
 const TraderPage      = lazy(() => import('./pages/TraderPage'))
@@ -187,8 +187,8 @@ export default function App() {
           {page.name === 'rewards'     && <RewardsPage navigate={navigate} />}
           {page.name === 'transfers'   && <TransfersPage navigate={navigate} />}
           {page.name === 'deploy-curve-router' && <DeployCurveRouter />}
-          {/* Autotrade is coming soon; owners still reach their bots to manage and withdraw (/autotrade/manage). */}
-          {page.name === 'signals'     && (page.view === 'manage' ? <SignalsPage navigate={navigate} manage /> : <AutotradeSoon navigate={navigate} />)}
+          {/* ARCDEX Algo, the futures agent (2026-10-10); owners of the old bots still reach them to manage and withdraw (/autotrade/manage). */}
+          {page.name === 'signals'     && (page.view === 'manage' ? <SignalsPage navigate={navigate} manage /> : <AlgoPage navigate={navigate} />)}
           {page.name === 'robinhood'   && <RobinhoodMarkets navigate={navigate} />}
           {page.name === 'rh-token'    && <RobinhoodTokenPage key={page.address + (page.pool ?? '')} address={page.address} pool={page.pool} navigate={navigate} />}
           {page.name === 'solana'      && <SolanaMarkets navigate={navigate} />}

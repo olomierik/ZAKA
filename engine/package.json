@@ -11,6 +11,8 @@
     "latency": "bun scripts/latency-check.ts"
   },
   "dependencies": {
-    "viem": "2.56.5"
+    "@anthropic-ai/sdk": "0.133.0",
+    "viem": "2.56.5",
+    "zod": "4.6.5"
   }
 }
