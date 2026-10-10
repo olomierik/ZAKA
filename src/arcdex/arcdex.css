@@ -2394,3 +2394,81 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .mk-totals { font-size: 0.74rem; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .mk-totals b { color: var(--text); font-weight: 600; }
 @media (max-width: 1280px) { .mk-totals { display: none; } }
+
+/* ARCDEX Algo, /autotrade (pages/AlgoPage.tsx, 2026-10-10): the futures agent, shown as it works. */
+.algo-page { --page-w: 1180px; padding-bottom: 40px; }
+.algo-hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
+.algo-hero .page-h { margin-bottom: 4px; }
+.algo-lead { margin: 0; color: var(--text-muted); font-size: 0.86rem; max-width: 620px; line-height: 1.5; }
+.algo-badges { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.algo-pill { display: inline-block; font-size: 0.66rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
+.algo-banner { margin-top: 12px; padding: 9px 12px; border-radius: 8px; font-size: 0.78rem; background: var(--accent-dim); border: 1px solid rgba(42,109,244,0.35); line-height: 1.45; }
+.algo-banner.bad { background: rgba(246,70,93,0.1); border-color: rgba(246,70,93,0.4); }
+.algo-muted { color: var(--text-muted); font-size: 0.74rem; line-height: 1.45; }
+.algo-empty { padding: 16px 4px; text-align: center; }
+.algo-stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.algo-stat { background: var(--adx-card-bg); border: 1px solid var(--adx-card-border); border-radius: 8px; padding: 9px 11px; min-width: 0; }
+.algo-stat-label { font-size: 0.68rem; color: var(--text-muted); }
+.algo-stat-value { font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.algo-stat-sub { font-size: 0.66rem; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.algo-markets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.algo-market { background: var(--adx-card-bg); border: 1px solid var(--adx-card-border); border-radius: 8px; padding: 11px 12px; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.algo-market-head { display: flex; justify-content: space-between; align-items: baseline; }
+.algo-market-head b { font-size: 0.95rem; }
+.algo-market-head b span { color: var(--text-muted); font-weight: 500; font-size: 0.78rem; }
+.algo-market-px { font-variant-numeric: tabular-nums; font-weight: 600; }
+.algo-market-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+.algo-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 0.74rem; color: var(--text-muted); }
+.algo-quality { display: inline-flex; gap: 3px; }
+.algo-quality i { width: 9px; height: 9px; border-radius: 2px; background: var(--bg-2); border: 1px solid var(--adx-card-border); }
+.algo-quality i.on { background: #2a6df4; border-color: #2a6df4; }
+.algo-conf { display: flex; align-items: center; gap: 8px; flex: 1; max-width: 190px; }
+.algo-conf b { font-size: 0.74rem; font-variant-numeric: tabular-nums; color: var(--text); min-width: 44px; text-align: right; }
+.algo-conf-track { position: relative; flex: 1; height: 6px; border-radius: 99px; background: var(--bg-2); }
+.algo-conf-track span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px; transition: width 0.4s ease; }
+.algo-conf-track i { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #f59e0b; border-radius: 1px; }
+.algo-verdict { font-size: 0.74rem; color: var(--text-muted); }
+.algo-verdict.go { color: #0ecb81; font-weight: 700; }
+.algo-why { margin: 0; padding-left: 16px; font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; }
+.algo-link { align-self: flex-start; background: none; border: none; padding: 0; color: var(--accent-text, #4f8cff); font-size: 0.72rem; cursor: pointer; }
+.algo-checks { list-style: none; margin: 0; padding: 0; font-size: 0.7rem; display: flex; flex-direction: column; gap: 3px; }
+.algo-checks li { display: flex; flex-direction: column; }
+.algo-checks li.ok span { color: #0ecb81; }
+.algo-checks li.bad span { color: #f6465d; }
+.algo-checks em { font-style: normal; color: var(--text-muted); padding-left: 14px; overflow-wrap: anywhere; }
+.algo-snap { font-family: var(--mono); font-size: 0.64rem; color: var(--text-muted); background: var(--bg-2); border-radius: 6px; padding: 6px 8px; overflow-wrap: anywhere; line-height: 1.5; }
+.algo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.algo-card { margin-top: 12px; background: var(--adx-card-bg); border: 1px solid var(--adx-card-border); border-radius: 8px; padding: 11px 13px; min-width: 0; }
+.algo-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.algo-card-title { font-size: 0.84rem; font-weight: 700; }
+.algo-card-sub { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; line-height: 1.45; }
+.algo-curve { width: 100%; height: 120px; display: block; }
+.algo-how { margin: 0; padding-left: 16px; font-size: 0.74rem; line-height: 1.55; color: var(--text-muted); }
+.algo-how b { color: var(--text); }
+.algo-table-wrap { overflow-x: auto; margin: 0 -4px; }
+.algo-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
+.algo-table th { text-align: left; font-weight: 600; color: var(--text-muted); padding: 5px 7px; white-space: nowrap; border-bottom: 1px solid var(--adx-card-border); }
+.algo-table td { padding: 5px 7px; white-space: nowrap; font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--adx-card-border); }
+.algo-table tr.go td { background: rgba(14,203,129,0.06); }
+.algo-table td.algo-reason { white-space: normal; min-width: 180px; color: var(--text-muted); }
+.algo-tx { margin-left: 4px; color: var(--text-muted); text-decoration: none; }
+.algo-cal { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.algo-rel { width: 160px; height: 160px; flex-shrink: 0; }
+.algo-cal dl, .algo-dl { display: grid; grid-template-columns: auto auto; gap: 4px 14px; margin: 0; font-size: 0.74rem; }
+.algo-cal dt, .algo-dl dt { color: var(--text-muted); }
+.algo-cal dd, .algo-dl dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+.algo-review { padding: 9px 0; border-bottom: 1px solid var(--adx-card-border); font-size: 0.76rem; }
+.algo-review:last-child { border-bottom: none; }
+.algo-review p { margin: 4px 0; line-height: 1.5; }
+.algo-review-head { display: flex; justify-content: space-between; gap: 8px; }
+.algo-proposal { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 5px; }
+.algo-proposal code { font-family: var(--mono); font-size: 0.7rem; }
+.algo-controls { display: flex; flex-direction: column; gap: 8px; }
+.algo-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.algo-btn { padding: 7px 14px; border-radius: 6px; border: 1px solid var(--adx-card-border); background: var(--bg-2); color: var(--text); font-weight: 600; font-size: 0.78rem; cursor: pointer; }
+.algo-btn.danger { border-color: rgba(246,70,93,0.5); color: #f6465d; }
+.algo-btn:disabled { opacity: 0.5; cursor: default; }
+.algo-foot { margin-top: 18px; font-size: 0.68rem; color: var(--text-muted); line-height: 1.5; }
+@media (max-width: 1100px) { .algo-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .algo-markets, .algo-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 480px) { .algo-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .algo-conf { max-width: none; } }

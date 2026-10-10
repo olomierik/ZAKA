@@ -58,6 +58,8 @@ import { MemoryCandleStore } from './perps/candles'
 import { LiveExecutor } from './trading/live'
 import { DataApi, startServer } from './ws/server'
 import { startSignalEngine, type QuantBoot } from './quant/boot'
+import { AlgoAgent } from './algo/agent'
+import { Brain } from './algo/brain'
 import { createSiteApi } from './site/siteApi'
 
 const cfg = loadConfig()
@@ -81,6 +83,7 @@ let engine: MarketEngine | null = null
 let botsHealth: (() => { email: boolean; userLive: boolean; ownerWallet: boolean; mode: string | null; bots: number; running: number }) | null = null
 let stream: ChainStream | null = null
 let quant: QuantBoot | null = null
+let algo: AlgoAgent | null = null
 let redisOk = hot.kind === 'memory'
 
 const health = () => {
@@ -112,6 +115,8 @@ const health = () => {
     bots: botsHealth?.() ?? null,
     // The signal engine (engine/src/quant): on, warm, the regime, signals kept, open paper positions.
     quant: quant?.health() ?? null,
+    // ARCDEX Algo (engine/src/algo): mode, running, open positions, kill switch, brain.
+    algo: algo?.health() ?? null,
   }
 }
 
@@ -243,9 +248,11 @@ async function main() {
   log.info('visitors\' bots', { email: mailer.enabled, live: !!vault })
   // ARCSENSE futures (perps/service.ts): RedStone's signed prices, the chart, and on Arc testnet
   // the contracts' deployment and keeper. PERPS=off stops it.
+  let perpsRef: PerpsService | null = null
   if (dataApi && !/^(0|off|false|no)$/i.test(process.env.PERPS?.trim() ?? '')) {
     const perps = new PerpsService({ settings: botStore, candleStore: cfg.databaseUrl ? new PostgresCandleStore(cfg.databaseUrl) : new MemoryCandleStore(), vault })
     dataApi.perps = perps
+    perpsRef = perps
     void perps.start().catch(e => log.error('perps: did not start', { error: errMsg(e) }))
   }
   // $ARCDEX buyback, burns and liquidity (coin/program.ts): the fee wallet's activity, 30% / 70% of
@@ -290,6 +297,16 @@ async function main() {
   }
   // The signal engine (engine/src/quant): its own scoring, strategies, paper book and validation; live orders only
   // behind its live gate (SIG_LIVE_ALLOWED, the owner's switch, walk-forward and paper records).
+  // ARCDEX Algo (algo/agent.ts): the 24/7 futures agent on BTC, ETH and SOL, paper or Arc testnet,
+  // on the futures' signed prices. ALGO=off stops it; ANTHROPIC_API_KEY connects its brain.
+  if (dataApi && perpsRef && !/^(0|off|false|no)$/i.test(process.env.ALGO?.trim() ?? '')) {
+    const agent = new AlgoAgent({ perps: perpsRef, settings: botStore, vault, brain: new Brain(process.env.ANTHROPIC_API_KEY?.trim() || null) })
+    algo = agent
+    dataApi.algo = agent
+    dataApi.algoControl = cfg.botOwner ? control : null
+    // After the candles have loaded (perps.start), so the warm-up replay has history.
+    setTimeout(() => void agent.start().catch(e => log.error('algo: did not start', { error: errMsg(e) })), 20_000)
+  }
   quant = await startSignalEngine({ eng, pools, bot, exec, databaseUrl: cfg.databaseUrl, control: cfg.botOwner ? control : null, metricsToken: cfg.metricsToken })
   if (quant && dataApi) dataApi.quant = quant.api
   // The site's read functions, moved off Vercel (2026-10-02: Vercel paused arcdex.online for CPU use): SITE_API=off stops them.

@@ -1929,6 +1929,38 @@ Owner: the platform becomes ARCSENSE (spot and futures trading), and "the auto t
 - **Site:** `GET /v1/bot/stats` `routing.autotradePaused`; the Autotrade page shows "⏸ Autotrade is paused" (all seven languages).
 - Tests: `engine/test/autotradePause.test.ts`.
 
+## ARCDEX Algo: the 24/7 futures agent (2026-10-10)
+
+Owner: "Algo trade in this app is what will make this app have more users; let's introduce it again", with a brief for a 24/7 agent. The brief: a slow BRAIN (Claude Opus 5.5) and a fast REFLEX, a typed decision on every candle, a deterministic state engine, a hard risk layer, and a nightly self-review. Full design, measurements, market read and "What could I be wrong about?": **`engine/ALGO_AGENT.md`**.
+
+- **What:** `engine/src/algo`. It trades BTC, ETH and SOL perpetuals on ARCDEX's futures contract at RedStone's signed prices, in paper mode (the default) or on Arc testnet with test USDC. Never real money.
+- **Every candle:** the state engine (`state.ts`) builds one causal snapshot of about 55 tokens. The reflex (`reflex.ts`) returns regime, direction, toxic flow and setup quality 0–3. The calibration (`calibration.ts`, `labels.ts`) gives the confidence: isotonic, on triple-barrier labels thinned to one per 15 minutes.
+- **Gates (`policy.ts`):** quality ≥ 2, confidence > 0.80, risk state safe, no toxic flow or crisis, calibrated, and positive expectation after fees. Size is quarter Kelly, capped at 2% risk, at most 3× leverage.
+- **Risk (`risk.ts`, code only):** a 15% drawdown trips the kill switch and closes everything; a 5% daily loss stops new trades until the next UTC day; at most 3 positions, one per market; no order on a price older than 45 seconds.
+- **Crises and escalations:** a crisis closes by code. A confidence under 0.60, a flipped direction or a volatility spike escalates to the brain (`brain.ts`), which can only hold or close; without it, the code closes.
+- **Nightly review (`review.ts`, 04:30 UTC):** fills, misses, out-of-sample Brier and ECE. The brain may propose bounded tuning changes; each ships only if a replay (`replay.ts`) shows it does better. Gates and limits never change there.
+- **Testnet execution (`executor.ts`):** exact approvals and `requestOpen` with the take-profit and stop on-chain. The keeper fills it; the contract's own P&L is booked. The keeper wallet funds the agent wallet (gas, and minted tUSDC).
+- **Start-up:** it replays the stored candles (up to 3 days) through the same core. That calibrates the reflex at once, and the page shows the replay as a measurement.
+- **Not done as briefed:**
+  - **AgenKit isn't installed:** it couldn't be found, and it would get the repo and keys.
+  - **Jev isn't called:** no docs or key. The `Reflex` interface and `DECISION_JSON_SCHEMA` (`GET /v1/algo/schema`) are ready for it.
+  - **No self-modifying code:** only bounded, replay-tested tuning.
+  - **No automated fundamental or macro research:** there's no licensed data source, and the venue trades only BTC, ETH and SOL.
+- **API:** `GET /v1/algo/status|decisions|trades|reviews|schema`. `POST /v1/algo/control` takes the owner's signed kill switch, re-arm, paper/testnet mode, reset, and gate changes within `GATE_BOUNDS` (`algoControlMessage` in `api/_algoProtocol.ts`).
+- **Settings (Railway, arcdex-engine):**
+  - `ALGO=off` stops it.
+  - `ANTHROPIC_API_KEY` connects the brain: about a review a day and at most 24 escalations a day, with `fallbacks: "default"`.
+  - The Dockerfile copies `api/_algoProtocol.ts`, and `railway.toml` watches it. **Add it to the service's own Watch Paths on Railway.**
+- **Site:** `/autotrade` is now ARCDEX Algo (`pages/AlgoPage.tsx`; `AutotradeSoon.tsx` is gone).
+  - It shows each market's live decision (regime, direction, quality, confidence against the 0.80 line, and every gate check with the snapshot), equity, trades with testnet transaction links, every decision, the reliability diagram, the replay, the nightly reviews and the owner's signed controls.
+  - Owners of the old Autotrade bots keep "Manage and withdraw". Every new string is in all six dictionaries.
+- **Measured:**
+  - A random walk gets 0 trades over 7 and 14 days (no false edge).
+  - Synthetic 6-hour trends end in profit after fees.
+  - Real markets aren't measured yet: Arc and RedStone were out of the sandbox's reach. Expect few trades.
+- **Tests:** `bun test engine/test/algoCore.test.ts engine/test/algoAgent.test.ts`, 34 tests; each of 8 planted bugs failed one.
+- **Checked in a browser** against a stand-in engine running the real agent on synthetic markets: 1280px and 375px, no errors, no sideways scroll.
+
 ## The signal engine — `engine/src/quant` (2026-10-02)
 
 A 100-point meme-coin signal engine built into the market engine, beside the existing bot (which it doesn't change). Full design, formulas, strategies, risk controls, measurements, environment and the steps before live: **`engine/SIGNAL_ENGINE.md`**.
