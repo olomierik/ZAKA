@@ -13,6 +13,7 @@ const FuturesPage     = lazy(() => import('./pages/FuturesPage'))
 const PerpsPage       = lazy(() => import('./pages/PerpsPage'))
 const PredictPage     = lazy(() => import('./pages/PredictPage'))
 const HlTraderPage    = lazy(() => import('./pages/HlTraderPage'))
+const RoutesPage      = lazy(() => import('./pages/RoutesPage'))
 const ArcdexPage       = lazy(() => import('./pages/ArcdexPage'))
 const AutotradeSoon   = lazy(() => import('./pages/AutotradeSoon'))
 const Swap            = lazy(() => import('./pages/Swap'))
@@ -83,6 +84,7 @@ export type Page =
   | { name: 'perps'; coin?: string }
   | { name: 'predict' }
   | { name: 'hl-trader'; address: string }
+  | { name: 'routes' }
   | { name: 'coin' }
   | { name: 'robinhood' }
   | { name: 'rh-token'; address: string; pool?: string }
@@ -98,7 +100,7 @@ const MOBILE_NAV: [Page, string, string][] = [
   [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'portfolio' }, '▤', N_('Portfolio')], [{ name: 'feed' }, '◉', N_('Feed')],
   [{ name: 'leaderboard' }, '♛', N_('Leaderboard')], [{ name: 'clans' }, '⚑', N_('Clans')], [{ name: 'rewards' }, '✦', N_('Rewards')],
   [{ name: 'signals' }, '⚡', N_('Autotrade')], [{ name: 'alerts' }, '🔔', N_('Alerts')], [{ name: 'transfers' }, '⇅', N_('Transfers')],
-  [{ name: 'coin' }, '🔥', N_('$ARCDEX burn')],
+  [{ name: 'coin' }, '🔥', N_('$ARCDEX burn')], [{ name: 'routes' }, '🧭', N_('Supported routes')],
 ]
 
 export default function App() {
@@ -185,6 +187,7 @@ export default function App() {
           {page.name === 'perps'       && <PerpsPage navigate={navigate} coin={page.coin} />}
           {page.name === 'predict'     && <PredictPage navigate={navigate} />}
           {page.name === 'hl-trader'   && <HlTraderPage key={page.address} address={page.address} navigate={navigate} />}
+          {page.name === 'routes'      && <RoutesPage navigate={navigate} />}
           {page.name === 'coin'       && <ArcdexPage navigate={navigate} />}
           {page.name === 'swap'        && <Swap navigate={navigate} />}
           {page.name === 'bridge'      && <Bridge key={page.dir ?? 'out'} initialDir={page.dir ?? 'out'} navigate={navigate} />}

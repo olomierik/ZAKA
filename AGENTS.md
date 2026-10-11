@@ -1852,6 +1852,11 @@ Owner: "READ THE FILES [the ArcSense Upgrade Build Pack] and improve everything;
   - Linked from the futures page ("Top futures traders").
   - Tests: `engine/test/hlleaders.test.ts` (what's kept, names, the first answer, a slow first build, a failed refresh keeping the last copy). Checked in the browser against the real leaderboard through a local copy of the route: the board, a trader's page and its trades, and a 375px phone.
   - Railway: the Dockerfile copies `api/hlleaders.ts` and `railway.toml` watches it; add it to the service's own Watch Paths.
+- **Supported routes (`/routes`, `pages/RoutesPage.tsx`, the registry in `lib/routes.ts`):** the build pack's "transparent supported-route registry".
+  - Every way to trade or move money on ARCDEX, in four groups (spot on Arc, cross-chain trades, bridge, futures and predictions): what goes in and out, the provider, ARCDEX's fee, the usual time, the limits, and whether it's live, switched off or testnet. Then what isn't supported (other tokens through the bridge, coins on the bridge networks, Starknet, Hyperliquid's spot tokens and vaults).
+  - Each provider's health, checked from the visitor's own browser: Arc, the engine, Hyperliquid, Relay, Across, Circle CCTP, Robinhood Chain, Solana and BNB Chain, three calls each (never from the browser's cache), the middle time shown, with block heights where a chain answers.
+  - Keep `lib/routes.ts` in step when a route changes. In More, the drawer and the sitemap.
+  - Tests: `bun scripts/test-routes.ts` (every route complete, its providers checked on the page, its page one the app has, Hyperliquid's routes off while trading is).
 - **Funding through Relay:** Arc USDC → the Hyperliquid perps balance (an exact approval to Relay's depository, then its deposit), and back to Arc (Relay's authorization, then a Hyperliquid `sendAsset` to Relay's depository there). No ARCDEX fee on either.
   - A quote is refused unless it's exactly what was asked: the same account on both sides, the currencies and amount, Relay's own contracts, an approval of exactly the amount, Relay's order paying only the account and refunding only to it, with no calls, and at least 97% of the money arriving.
   - Measured on 2026-10-11: $25 in, $24.97 out; $25 back, $24.97.
@@ -1873,7 +1878,7 @@ Owner: "READ THE FILES [the ArcSense Upgrade Build Pack] and improve everything;
   - Phones at 375px: no sideways scroll, and the order sheet.
   - The switched-off state.
 - **Not checked:** a real order, deposit or withdrawal; they need funds and the switch.
-- **Every new string is in all six dictionaries** (157).
+- **Every new string is in all six dictionaries** (236).
 - **Owner steps:**
   1. When ready, set `VITE_HL_TRADING=on` in Netlify (`arcsense-app` → environment variables) and redeploy. Try it with a small amount first.
   2. Send 100+ USDC to the fee wallet `0x2742…86Bb`'s Hyperliquid perps account and keep it in standard mode; from then on orders carry ARCDEX's fee.
