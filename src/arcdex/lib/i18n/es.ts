@@ -2767,5 +2767,16 @@ const d: Record<string, string> = {
   "Rugs filtered out": "Rugs filtrados",
   "The coins listed here, over the last 24 hours": "Las monedas listadas aquí, en las últimas 24 horas",
   "Trending now": "En tendencia",
+  "Community sentiment": "Sentimiento de la comunidad",
+  "1 vote": "1 voto",
+  "{n} votes": "{n} votos",
+  "To the moon": "A la luna",
+  "Hot": "Caliente",
+  "Bad": "Malo",
+  "Red flag": "Señal de alerta",
+  "Pick again to take your vote back": "Elígelo de nuevo para retirar tu voto",
+  "Too many votes from here, try again later": "Demasiados votos desde aquí, inténtalo más tarde",
+  "Couldn’t save your vote. Try again.": "No se pudo guardar tu voto. Inténtalo de nuevo.",
+  "{pct}% of votes are 🚀 or 🔥": "El {pct}% de los votos son 🚀 o 🔥",
 }
 export default d

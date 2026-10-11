@@ -9,7 +9,7 @@
 
 import { kvGet } from './_supabaseAdmin'
 import { isEstablishedCoin, isLaunchpadCoin } from './_launchpads'
-import type { ArgusPool } from './_argusCore'
+import { withArcExtra, type ArgusPool } from './_argusCore'
 import { rhRows, type RhSnapshot } from './rhmarket'
 import { solRows, type SolSnapshot } from './solmarket'
 import { bscRows, type BscSnapshot } from './bscmarket'
@@ -109,7 +109,7 @@ export async function trending(read: typeof kvGet = kvGet, now = Date.now()): Pr
     read<BscSnapshot>('bsc:market').catch(() => null),
   ])
   const all = [
-    ...(arc?.value?.pools ? arcRows(arc.value.pools, now) : []),
+    ...arcRows(withArcExtra(arc?.value?.pools ?? []), now),
     ...(rh?.value ? rhRows(rh.value).map(fromCoin('robinhood')).filter(listedOther) : []),
     // A mint someone can still freeze or inflate (or with an extension that can take holders' coins) is Danger.
     ...(sol?.value ? solRows(sol.value).filter(c => !c.mint || (!c.mint.freezeAuthority && !c.mint.mintAuthority && c.mint.danger.length === 0)).map(fromCoin('solana')).filter(listedOther) : []),

@@ -9,7 +9,7 @@
 // Served by the engine; read from the stored lists (no GeckoTerminal call), at most every 30 seconds.
 
 import { kvGet } from './_supabaseAdmin'
-import type { ArgusPool } from './_argusCore'
+import { withArcExtra, type ArgusPool } from './_argusCore'
 import { trending, type TrendChain } from './trending'
 import { rhRows, type RhSnapshot } from './rhmarket'
 import { solRows, type SolSnapshot } from './solmarket'
@@ -62,7 +62,7 @@ export async function coinBook(read: typeof kvGet = kvGet, now = Date.now()): Pr
     const cur = coins.get(k)
     if (!cur || (m.liquidityUsd ?? 0) > (cur.liquidityUsd ?? 0)) coins.set(k, m)
   }
-  for (const p of arc?.value?.pools ?? []) add(fromArc(p))
+  for (const p of withArcExtra(arc?.value?.pools ?? [])) add(fromArc(p))
   if (rh?.value) for (const c of rhRows(rh.value)) add(fromCoin('robinhood')(c))
   if (sol?.value) for (const c of solRows(sol.value)) add(fromCoin('solana')(c))
   if (bsc?.value) for (const c of bscRows(bsc.value)) add(fromCoin('bsc')(c))

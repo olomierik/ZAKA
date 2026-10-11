@@ -27,6 +27,7 @@ import { solSafety } from '../lib/safety'
 import { useIsMobile } from '../lib/useMobile'
 import { useSolanaWallets } from '../lib/solanaWallet'
 import { t as T } from '../lib/i18n'
+import CoinVotes from '../components/CoinVotes'
 
 function fmt(n: number | null | undefined, prefix = ''): string {
   if (!n || !Number.isFinite(n)) return '—'
@@ -252,6 +253,7 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
       {notices}
       <div className="coin-mobile-body">
         {tradesTable}
+        <CoinVotes chain="solana" address={address} />
         {pools}
         <p className="swap-note" style={{ padding: '0 16px' }}>{SOL_NOTE()}</p>
         <TradeBar symbol={symbol} onTrade={setSheet} />
@@ -308,6 +310,7 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
           <div className="spot-panel rh-back">
             <button className="mk-trade" onClick={() => navigate({ name: 'solana' })}>‹ {T('Solana markets')}</button>
           </div>
+          <CoinVotes chain="solana" address={address} />
           {pools}
         </div>
         <div className="spot-bottom">{tradesTable}</div>

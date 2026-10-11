@@ -7,10 +7,11 @@ import { log, errMsg } from '../log'
 import type { Position } from '../trading/paper'
 import type { PaperAccount, PaperAccountStore } from './paperAccounts'
 import type { VisitorStore } from '../traffic'
+import { MemoryVoteStore, emptyCounts, isVoteKind, type VoteKind, type VoteStore } from '../votes'
 import type { Signal } from './types'
 import type { User, UserStore } from './users'
 
-export interface BotStore extends PaperAccountStore, UserStore, VisitorStore {
+export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore {
   readonly kind: 'memory' | 'postgres'
   saveSignal(s: Signal): void
   savePosition(p: Position): void
@@ -50,6 +51,9 @@ export class MemoryBotStore implements BotStore {
   private visitors = new Map<string, { first: number; last: number }>()
   visitorSeen(id: string, at: number) { const v = this.visitors.get(id); this.visitors.set(id, { first: v?.first ?? at, last: at }) }
   async visitorCounts(dayStart: number) { return { total: this.visitors.size, today: [...this.visitors.values()].filter(v => v.last >= dayStart).length } }
+  private votes = new MemoryVoteStore()
+  voteSet(chain: string, address: string, voter: string, kind: VoteKind | null, at: number) { return this.votes.voteSet(chain, address, voter, kind) }
+  voteCounts(chain: string, address: string) { return this.votes.voteCounts(chain, address) }
   async paperTrades(accountId: string, limit: number, before?: number) {
     return [...(this.trades.get(accountId)?.values() ?? [])].filter(p => before === undefined || (p.closedAt ?? 0) < before)
       .sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)).slice(0, limit).map(p => structuredClone(p))
@@ -73,6 +77,7 @@ create index if not exists arcdex_paper_trades_account on arcdex_paper_trades (a
 create table if not exists arcdex_bot_users (id text primary key, email text not null unique, data jsonb not null, updated_at timestamptz not null default now());
 create table if not exists arcdex_visitors (id text primary key, first_seen timestamptz not null, last_seen timestamptz not null);
 create index if not exists arcdex_visitors_last on arcdex_visitors (last_seen);
+create table if not exists arcdex_coin_votes (chain text not null, address text not null, voter text not null, kind text not null, at timestamptz not null, primary key (chain, address, voter));
 `
 
 export class PostgresBotStore implements BotStore {
@@ -138,6 +143,22 @@ export class PostgresBotStore implements BotStore {
   visitorSeen(id: string, at: number) {
     this.write('visitor', () => this.sql`insert into arcdex_visitors (id, first_seen, last_seen) values (${id}, ${new Date(at)}, ${new Date(at)})
       on conflict (id) do update set last_seen = excluded.last_seen`)
+  }
+  async voteSet(chain: string, address: string, voter: string, kind: VoteKind | null, at: number) {
+    await this.ready
+    if (kind) {
+      await this.sql`insert into arcdex_coin_votes (chain, address, voter, kind, at) values (${chain}, ${address}, ${voter}, ${kind}, ${new Date(at)})
+        on conflict (chain, address, voter) do update set kind = excluded.kind, at = excluded.at`
+    } else {
+      await this.sql`delete from arcdex_coin_votes where chain = ${chain} and address = ${address} and voter = ${voter}`
+    }
+  }
+  async voteCounts(chain: string, address: string) {
+    await this.ready
+    const rows = await this.sql`select kind, count(*)::int as n from arcdex_coin_votes where chain = ${chain} and address = ${address} group by kind`
+    const c = emptyCounts()
+    for (const r of rows as { kind: string; n: number }[]) if (isVoteKind(r.kind)) c[r.kind] = Number(r.n)
+    return c
   }
   async visitorCounts(dayStart: number) {
     await this.ready

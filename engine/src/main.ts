@@ -14,6 +14,7 @@
 //   bun engine/src/main.ts          (see engine/README.md)
 
 import { Traffic } from './traffic'
+import { Votes } from './votes'
 import { DOLLAR_PLAN } from './bot/dollarPlan'
 import { every, keepAliveOnUnhandled, startWithRetry } from './lifecycle'
 import { randomBytes } from 'node:crypto'
@@ -59,6 +60,8 @@ import { LiveExecutor } from './trading/live'
 import { DataApi, startServer } from './ws/server'
 import { startSignalEngine, type QuantBoot } from './quant/boot'
 import { createSiteApi } from './site/siteApi'
+import { EstablishedBook } from './market/established'
+import { setArcExtra } from '../../api/_argusCore'
 
 const cfg = loadConfig()
 setLogLevel(cfg.logLevel)
@@ -223,6 +226,8 @@ async function main() {
   const botStore = cfg.databaseUrl ? new PostgresBotStore(cfg.databaseUrl) : new MemoryBotStore()
   // The site's traffic counter (traffic.ts): online now, visitors today and ever, kept with the bots' data.
   if (dataApi) dataApi.traffic = new Traffic(botStore)
+  // Community sentiment on each coin (votes.ts), kept beside it.
+  if (dataApi) dataApi.votes = new Votes(botStore)
   // Visitors' bots live on: accounts (email + passcode, Resend for email), and
   // live trading from each bot's own wallet once BOT_WALLET_SECRET is set.
   // Secrets are read here only and never logged.
@@ -302,6 +307,14 @@ async function main() {
       hotTokens: () => eng.active(30).map(r => ({ token: r.token, createdSec: r.meta ? Math.floor(r.meta.timestamp / 1000) : undefined })),
     })
     log.info('site api: serving', { functions: dataApi.site.names })
+    // Arc's established coins from the engine's own trades, named and dated on-chain once (market/established.ts):
+    // the list, trending and coin titles add those GeckoTerminal's throttled builds miss.
+    const established = new EstablishedBook({
+      tokens: eng.tokens, hasMeta: t => eng.metas.has(t), pool: p => pools.get(p), rpc,
+      load: () => botStore.getSetting('arc-established'), save: j => botStore.setSetting('arc-established', j),
+    })
+    setArcExtra({ rows: () => established.rows(), capOf: t => established.capOf(t) })
+    every(20_000, 'established coins', () => { void established.refresh().catch(e => log.debug('established: round failed', { error: errMsg(e) })) })
   }
   await eng.warmStart()
   // The scanner lists every launch of the last 48h at once, not only coins that trade after a restart.

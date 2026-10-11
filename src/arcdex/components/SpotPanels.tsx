@@ -2,14 +2,15 @@
 // market trades (Arc coins trade against pools, so the trades are the book), with the buy/sell
 // balance underneath; on the right, the pair list ($ARCDEX first) to switch coins in one click.
 
-import { ESTABLISHED, isLaunchpadCoin } from '../../../api/_launchpads'
+import { ESTABLISHED, isEstablishedCoin, isLaunchpadCoin } from '../../../api/_launchpads'
+import type { ArgusPool } from '../../../api/_argusCore'
 import { isListable, isRugged } from '../lib/safety'
 import { useEffect, useMemo, useState } from 'react'
 import type { TradeRow } from './TokenSocialTabs'
 import Ago from './Ago'
 import type { Page } from '../App'
 import type { ActiveToken } from '../../../api/_marketProtocol'
-import { cachedArgusMarket } from '../api/argusMarket'
+import { cachedArgusMarket, copycatOf } from '../api/argusMarket'
 import { engineApiUrl } from '../api/marketStream'
 import { toggleWatch, usePrefs } from '../lib/prefs'
 import { t as T } from '../lib/i18n'
@@ -63,14 +64,21 @@ export function MarketTrades({ rows, priceUsd, change24h, symbol, buys24h, sells
 
 interface PairRow { address: string; pool: string; symbol: string; image: string | null; priceUsd: number; change24h: number; volume: number }
 
-/** Coins to switch to: what's trading now on the engine (else the last market list), $ARCDEX first. */
+/** A market-list row Markets would show: a launchpad coin or an established one (the Terminal's listedArc), with $15K
+ * or more of market cap and not rugged (lib/safety.ts isListable; owner, 2026-10-04). A copy wash-traded in a deep
+ * pool (5 trades a day for $381K, seen 2026-10-06 under TOLLY's name) fails the trade count. */
+const listedPool = (p: ArgusPool, now = Date.now()) =>
+  (isLaunchpadCoin(p.launchpad) || isEstablishedCoin({ symbol: p.token.symbol, liquidityUsd: p.liquidityUsd, ageMs: p.createdAt ? now - Date.parse(p.createdAt) : 0, marketCapUsd: p.marketCapUsd ?? p.fdvUsd ?? 0, txns24h: p.txns24h.buys + p.txns24h.sells }))
+  && isListable({ official: false, marketCapUsd: p.marketCapUsd ?? p.fdvUsd ?? 0, rugged: isRugged({ change24h: p.change.h24, liquidityUsd: p.liquidityUsd, onCurve: p.bonded === false }) })
+
+// Coins using a stablecoin's or a bigger coin's ticker (copycatOf) are left out, as Swap's quick picks leave them out.
+const marketPairs = (): PairRow[] => (cachedArgusMarket() ?? []).filter(p => listedPool(p) && !copycatOf(p.token.symbol, p.token.address)).slice(0, 80).map(p => ({
+  address: p.token.address, pool: p.pool, symbol: p.token.symbol, image: p.token.image, priceUsd: p.priceUsd, change24h: p.change.h24, volume: p.volume24h,
+}))
+
+/** Coins to switch to: what's trading now on the engine, then the market list's other listed coins, $ARCDEX first. */
 function usePairs(): PairRow[] {
-  // Listed coins only (lib/safety.ts isListable: $15K or more of market cap, not rugged; owner, 2026-10-04).
-  const [rows, setRows] = useState<PairRow[]>(() => (cachedArgusMarket() ?? [])
-    .filter(p => isListable({ official: false, marketCapUsd: p.marketCapUsd ?? p.fdvUsd ?? 0, rugged: isRugged({ change24h: p.change.h24, liquidityUsd: p.liquidityUsd, onCurve: p.bonded === false }) }))
-    .slice(0, 80).map(p => ({
-    address: p.token.address, pool: p.pool, symbol: p.token.symbol, image: p.token.image, priceUsd: p.priceUsd, change24h: p.change.h24, volume: p.volume24h,
-  })))
+  const [rows, setRows] = useState<PairRow[]>(marketPairs)
   useEffect(() => {
     if (!engineApiUrl) return
     let alive = true
@@ -79,12 +87,14 @@ function usePairs(): PairRow[] {
       .then((j: { tokens?: ActiveToken[] } | null) => {
         if (!alive || !j?.tokens?.length) return
         // Launchpad coins (owner, 2026-10-04) and established coins (2026-10-05: real liquidity and market cap).
-        const established = (a: ActiveToken) => (a.stats.liquidityUsd ?? 0) >= ESTABLISHED.minLiquidityUsd && (a.stats.marketCapUsd ?? 0) >= ESTABLISHED.minMarketCapUsd
+        const established = (a: ActiveToken) => (a.stats.liquidityUsd ?? 0) >= ESTABLISHED.minLiquidityUsd && (a.stats.marketCapUsd ?? 0) >= ESTABLISHED.minMarketCapUsd && a.stats.trades24 >= ESTABLISHED.minTxns24h
         const fresh = j.tokens.filter(a => (isLaunchpadCoin(a.meta?.launchpad) || established(a)) && isListable({ official: false, marketCapUsd: a.stats.marketCapUsd ?? 0, rugged: (a.stats.chg.h24 ?? 0) <= -90 })).flatMap(a => (a.meta?.pool && a.stats.priceUsd ? [{
           address: a.token, pool: a.meta.pool, symbol: a.meta.symbol, image: a.meta.image ?? null, priceUsd: a.stats.priceUsd,
           change24h: a.stats.chg.h24 ?? 0, volume: a.stats.vol24,
         }] : []))
-        if (fresh.length) setRows(fresh)
+        // Established coins the engine has no launch record for come from the market list (it carries them, named).
+        const have = new Set(fresh.map(r => r.address))
+        if (fresh.length) setRows([...fresh.filter(r => !copycatOf(r.symbol, r.address)), ...marketPairs().filter(r => !have.has(r.address))].slice(0, 80))
       }).catch(() => {})
     load()
     const id = setInterval(() => { if (!document.hidden) load() }, 20_000)

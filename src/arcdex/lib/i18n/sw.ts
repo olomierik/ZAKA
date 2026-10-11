@@ -2767,5 +2767,16 @@ const d: Record<string, string> = {
   "Rugs filtered out": "Rug zimechujwa",
   "The coins listed here, over the last 24 hours": "Sarafu zilizoorodheshwa hapa, katika saa 24 zilizopita",
   "Trending now": "Zinazovuma sasa",
+  "Community sentiment": "Maoni ya jamii",
+  "1 vote": "Kura 1",
+  "{n} votes": "Kura {n}",
+  "To the moon": "Mpaka mwezini",
+  "Hot": "Moto",
+  "Bad": "Mbaya",
+  "Red flag": "Bendera nyekundu",
+  "Pick again to take your vote back": "Chagua tena ili kuondoa kura yako",
+  "Too many votes from here, try again later": "Kura nyingi mno kutoka hapa, jaribu tena baadaye",
+  "Couldn’t save your vote. Try again.": "Imeshindwa kuhifadhi kura yako. Jaribu tena.",
+  "{pct}% of votes are 🚀 or 🔥": "{pct}% ya kura ni 🚀 au 🔥",
 }
 export default d

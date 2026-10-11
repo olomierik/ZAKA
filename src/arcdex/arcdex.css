@@ -2394,3 +2394,21 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .mk-totals { font-size: 0.74rem; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .mk-totals b { color: var(--text); font-weight: 600; }
 @media (max-width: 1280px) { .mk-totals { display: none; } }
+
+/* Community sentiment on a coin (components/CoinVotes.tsx, 2026-10-06): DexScreener's four reactions. */
+.coin-votes { padding-bottom: 12px; }
+.coin-votes .cv-total { color: var(--text-muted); font-weight: 400; font-size: 0.74rem; }
+.cv-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 0 14px; }
+.cv-btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 4px; border-radius: 8px; border: 1px solid var(--adx-card-border); background: var(--bg-3); color: var(--text); font: inherit; font-size: 0.82rem; cursor: pointer; transition: border-color .15s, background .15s, transform .1s; }
+.cv-btn:hover:not(:disabled) { border-color: var(--border-hi); }
+.cv-btn:active:not(:disabled) { transform: scale(0.96); }
+.cv-btn:disabled { cursor: wait; }
+.cv-btn.on { border-color: var(--accent-btn); background: var(--accent-dim); }
+.cv-btn .cv-emoji { font-size: 1rem; line-height: 1; }
+.cv-btn .cv-n { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.cv-btn.on .cv-n { color: var(--text); }
+.cv-bar { margin: 10px 14px 0; height: 4px; border-radius: 2px; background: var(--red); overflow: hidden; }
+.cv-bar i { display: block; height: 100%; background: var(--green); }
+.cv-err { display: block; margin: 8px 14px 0; color: var(--red); font-size: 0.74rem; }
+/* On a phone's coin page it sits among cards with a frame and a gap. */
+.coin-mobile-body > .coin-votes { border: 1px solid var(--adx-card-border); border-radius: 12px; margin-top: 16px; }

@@ -2767,5 +2767,16 @@ const d: Record<string, string> = {
   "Rugs filtered out": "过滤跑路币",
   "The coins listed here, over the last 24 hours": "此处列出的币，过去24小时",
   "Trending now": "当前热门",
+  "Community sentiment": "社区情绪",
+  "1 vote": "1 票",
+  "{n} votes": "{n} 票",
+  "To the moon": "冲上月球",
+  "Hot": "火热",
+  "Bad": "糟糕",
+  "Red flag": "危险信号",
+  "Pick again to take your vote back": "再次点击即可撤回投票",
+  "Too many votes from here, try again later": "此处投票过多，请稍后再试",
+  "Couldn’t save your vote. Try again.": "无法保存你的投票，请重试。",
+  "{pct}% of votes are 🚀 or 🔥": "{pct}% 的投票是 🚀 或 🔥",
 }
 export default d

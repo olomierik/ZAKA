@@ -33,6 +33,7 @@ import { launchpadLabel, launchpadNamed } from '../../../api/_launchpads'
 import { MarketTrades, PairList } from '../components/SpotPanels'
 import { COIN_IMAGE, COIN_LC, COIN_POOL, fmtPct as fmtPctCoin, fmtSmallUsd, useCoin } from '../lib/coin'
 import { useLogo } from '../lib/logo'
+import CoinVotes from '../components/CoinVotes'
 
 // Full page for one Argus launch. What moves is read straight from the
 // chain: every swap in the pool (history from the logs, then each new one
@@ -544,6 +545,8 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         refreshKey={refreshKey} onPositionUsd={setPositionUsd} />
       {/* ARCDEX's own coin carries no safety rating (owner, 2026-10-04). */}
       {!isCoin && <SafetyPanel info={infoLive} chain={chain} liquidityUsd={active?.liquidityUsd ?? null} rows={rows} devPct={devPct} risk={risk} />}
+      {/* …nor community votes on it. */}
+      {!isCoin && <CoinVotes chain="arc" address={address} />}
       <AboutPanel address={address} symbol={symbol} info={infoLive} pool={active} chain={chain} rows={rows} supply={supply} profiles={profiles} navigate={navigate} />
     </>
   )

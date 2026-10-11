@@ -55,6 +55,7 @@ import type { MarketEngine, Publisher } from '../market/engine'
 import type { HistoryStore } from '../store/history'
 import type { HotStore } from '../store/hot'
 import type { Traffic } from '../traffic'
+import type { Votes } from '../votes'
 import { quantApi, type QuantApiDeps } from '../quant/api'
 import type { SiteApi } from '../site/siteApi'
 import type { PerpsService } from '../perps/service'
@@ -78,6 +79,8 @@ export class DataApi {
   tiers: Tiers | null = null
   /** The site's traffic counter (traffic.ts). */
   traffic: Traffic | null = null
+  /** Community sentiment on each coin (votes.ts). */
+  votes: Votes | null = null
   /** The signal engine (engine/src/quant), when this process runs it. */
   quant: QuantApiDeps | null = null
   /** The site's read functions (engine/src/site/siteApi.ts), served here instead of on Vercel. */
@@ -261,6 +264,29 @@ export function startServer({ cfg, api, health }: ServerDeps) {
           return json(req, 200, await traffic.counts(), 'no-store')
         }
         if (req.method === 'GET') return json(req, 200, await traffic.counts(), 'public, max-age=5')
+        return json(req, 405, { error: 'method not allowed' })
+      }
+      // Community sentiment on each coin (votes.ts): the counts, and a visitor's vote.
+      if (url.pathname === '/v1/votes') {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        const votes = api.votes
+        if (!votes) return json(req, 503, { error: 'no votes here' })
+        if (req.method === 'GET') {
+          const counts = await votes.counts(url.searchParams.get('chain'), url.searchParams.get('address'))
+          return counts ? json(req, 200, { counts }, 'public, max-age=10') : json(req, 400, { error: 'unknown coin' })
+        }
+        if (req.method === 'POST') {
+          if (Number(req.headers.get('content-length') ?? 0) > 1024) return json(req, 413, { error: 'too large' })
+          // Sent as text/plain (no preflight), from the site's own pages only.
+          const origin = req.headers.get('origin')
+          if (!origin || !cfg.allowedOrigins.includes(origin)) return json(req, 403, { error: 'votes come from the site' })
+          const body = await req.text().then(t => JSON.parse(t) as Record<string, unknown>, () => null).catch(() => null)
+          if (!body) return json(req, 400, { error: 'bad request' })
+          const r = await votes.vote(body.chain, body.address, body.id, body.vote ?? null, ip)
+          if ('error' in r) return json(req, r.error.startsWith('too many') ? 429 : 400, r)
+          metrics.inc('coin_votes')
+          return json(req, 200, r, 'no-store')
+        }
         return json(req, 405, { error: 'method not allowed' })
       }
       // The site's read functions (site/siteApi.ts): /api/argus, /api/gecko, /api/holders, /api/launchpad, …

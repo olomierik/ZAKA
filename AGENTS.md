@@ -1785,9 +1785,22 @@ Owner: "we have no users; compare us with DexScreener on platform quality and ho
   - **Phone wallets:** no WalletConnect project id (cloud.reown.com), so phone wallets can't connect by QR code.
   - **Card deposits** aren't live (Circle key).
   - **Distribution:** listing in Arc's ecosystem directories, DefiLlama and on X/Telegram, where DexScreener's traffic comes from.
+- **Arc's established coins from the engine's own trades (2026-10-06, `engine/src/market/established.ts`):**
+  - **Why:** GeckoTerminal answered nearly every call from the engine's IP with 429, so the Arc list's builds were cut short and its top coins came and went. In one build 17 of 19 calls failed.
+  - **What:** the engine already sees every Arc swap. `EstablishedBook` keeps the coins with no launch record that meet the established rule on its own numbers (liquidity, market cap, 24h trades).
+    - It reads each one's `name()`/`symbol()` and the block its contract was created in (`creationBlock`, a binary search on `getCode`), once, three coins a round every 20s. The results are kept in the bot settings (`arc-established`).
+    - `api/_argusCore.ts` `setArcExtra` / `withArcExtra` add the coins the stored list lacks to `/api/argus`, trending and coin titles, and fill a market cap GeckoTerminal left out. GeckoTerminal's row wins wherever it has one (it has the logo).
+  - **The trade count matters:** some deep pools are wash-traded copies. One "TOLLY" (`0xf1ee…`) showed $9.5M of liquidity and $381K of volume from 5 trades a day; the real coin trades thousands of times. The engine's chain count agrees with GeckoTerminal's, and the 25-trades rule keeps such copies out.
+  - **The spot pair list** now applies the same rule as Markets (launchpad or established, `$15K`, not rugged), leaves copycat tickers out as Swap does, and keeps established coins when the engine's activity list (launch records only) arrives. Before, its first paint showed the wash-traded copies and a stablecoin.
+  - Tests: `engine/test/established.test.ts` (which coins are read, the rows, old coins, nothing read twice after a restart, the merge).
+- **Community sentiment, as DexScreener shows it (2026-10-06, `engine/src/votes.ts`, `components/CoinVotes.tsx`):** 🚀 🔥 💩 🚩 on every coin page on every chain (not on $ARCDEX's, which carries no rating).
+  - One vote per visitor per coin: pick another to switch, the same again to take it back. The visitor is the traffic counter's random browser id (`lib/traffic.ts` `visitorId`); this browser remembers its own picks (`arcdex:votes`).
+  - **Engine:** `GET /v1/votes?chain=&address=`, `POST /v1/votes` (text/plain, the site's own origins only). One IP gets 30 votes an hour; counts are read at most every 15s per coin. Stored in `arcdex_coin_votes` (one row per chain, coin and voter).
+  - It's a sentiment signal, not a vote anyone can rely on: a script can make new ids.
+  - **Checked** in the local production build against a stand-in running the engine's `Votes`: vote, switch, take back, the bar, the pick lit up after a reload, and a 375px phone with no sideways scroll. A tab opened in the background reads the counts at once (the first draft waited for it to be visible).
+  - Tests: `engine/test/votes.test.ts` (one vote each, switching and taking back, bad input, 30 an hour, the 15s cache, the route refusing other sites).
 - **DexScreener features still missing here:**
   - multicharts;
-  - community sentiment votes (🚀🔥💩🚩);
   - liquidity providers and bubble maps;
   - paid boosts and ads (DexScreener's revenue);
   - a public API;

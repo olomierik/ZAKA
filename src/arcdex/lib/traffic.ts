@@ -16,7 +16,7 @@ function newId(): string {
 }
 
 /** This browser's visitor id; a fresh one per page load where storage is blocked. */
-function visitorId(): string {
+export function visitorId(): string {
   try {
     const have = localStorage.getItem(KEY)
     if (have && ID.test(have)) return have

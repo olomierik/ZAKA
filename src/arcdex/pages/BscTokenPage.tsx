@@ -29,6 +29,7 @@ import { bscSafety } from '../lib/safety'
 import { useIsMobile } from '../lib/useMobile'
 import { useTrader } from '../lib/identity'
 import { t as T } from '../lib/i18n'
+import CoinVotes from '../components/CoinVotes'
 
 function fmt(n: number | null | undefined, prefix = ''): string {
   if (!n || !Number.isFinite(n)) return '—'
@@ -254,6 +255,7 @@ export default function BscTokenPage({ address, pool: poolParam, navigate }: Pro
       {notices}
       <div className="coin-mobile-body">
         {tradesTable}
+        <CoinVotes chain="bsc" address={address} />
         {pools}
         <p className="swap-note" style={{ padding: '0 16px' }}>{BSC_NOTE()}</p>
         <TradeBar symbol={symbol} onTrade={setSheet} />
@@ -311,6 +313,7 @@ export default function BscTokenPage({ address, pool: poolParam, navigate }: Pro
           <div className="spot-panel rh-back">
             <button className="mk-trade" onClick={() => navigate({ name: 'bsc' })}>‹ {T('BNB Chain markets')}</button>
           </div>
+          <CoinVotes chain="bsc" address={address} />
           {pools}
         </div>
         <div className="spot-bottom">{tradesTable}</div>
