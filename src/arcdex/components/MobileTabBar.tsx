@@ -14,12 +14,13 @@ import { t as T, N_ } from '../lib/i18n'
 // on its own pair), Portfolio, More.
 const TABS: { page: Page['name']; icon: string; label: string; to: Page; trade?: boolean }[] = [
   { page: 'terminal', icon: '◈', label: N_('Markets'), to: { name: 'terminal' } },
-  { page: 'futures', icon: '📊', label: N_('Futures'), to: { name: 'futures' } },
+  { page: 'perps', icon: '📊', label: N_('Futures'), to: { name: 'perps' } },
   { page: 'argus', icon: '⇄', label: N_('Trade'), to: COIN_PAGE, trade: true },
   { page: 'portfolio', icon: '▤', label: N_('Portfolio'), to: { name: 'portfolio' } },
 ]
 
 const MORE: { icon: string; label: string; to: Page }[] = [
+  { icon: '🎯', label: N_('Predict'), to: { name: 'predict' } },
   { icon: '🏹', label: N_('Robinhood Chain'), to: { name: 'robinhood' } },
   { icon: '◎', label: 'Solana', to: { name: 'solana' } },
   { icon: '◆', label: N_('BNB Chain'), to: { name: 'bsc' } },

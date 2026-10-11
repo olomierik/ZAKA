@@ -25,7 +25,10 @@ export function pageToPath(p: Page): string {
     case 'bridge':      return p.dir === 'in' ? '/bridge?dir=in' : '/bridge'
     case 'deploy-curve-router': return '/deploy/curve-router'
     case 'signals':     return p.bot ? `/bots/${encodeURIComponent(p.bot)}` : p.view === 'market' ? '/bots' : p.view === 'manage' ? '/autotrade/manage' : '/autotrade'
-    case 'futures':     return '/futures'
+    // Hyperliquid's futures are /futures (BTC) and /futures/<coin>; ARCDEX's own testnet futures moved to /futures/testnet.
+    case 'perps':       return `/futures${p.coin && p.coin !== 'BTC' ? `/${p.coin}` : ''}`
+    case 'futures':     return '/futures/testnet'
+    case 'predict':     return '/predict'
     case 'coin':        return '/burn'
     case 'robinhood':   return '/robinhood'
     case 'rh-token':    return `/robinhood/token/${p.address}${p.pool ? `?pool=${p.pool}` : ''}`
@@ -69,7 +72,10 @@ export function pathToPage(pathname: string, search: string): Page | null {
     case 'signals':
     case 'autotrade':   return b === 'manage' ? { name: 'signals', view: 'manage' } : { name: 'signals' }
     case 'futures':
-    case 'perps':       return { name: 'futures' }
+    case 'perps':
+    case 'trade':       return b === 'testnet' ? { name: 'futures' } : b ? { name: 'perps', coin: b } : { name: 'perps' }
+    case 'predict':
+    case 'predictions': return { name: 'predict' }
     // $ARCDEX: its burns, buybacks and the fee ledger (/sense was $SENSE's, before 2026-10-04).
     case 'sense':
     case 'burn':        return { name: 'coin' }

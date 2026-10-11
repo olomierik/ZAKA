@@ -30,7 +30,8 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
   const navLinks: { label: string; page: Page; active: boolean; cls?: string; badge?: string }[] = [
     { label: T('Markets'),   page: { name: 'terminal' }, active: page.name === 'terminal' || page.name === 'launchpad' || page.name === 'robinhood' || page.name === 'rh-token' || page.name === 'solana' || page.name === 'sol-token' || page.name === 'bsc' || page.name === 'bsc-token' },
     { label: T('Spot'),      page: COIN_PAGE, active: onSpot },
-    { label: T('Futures'),   page: { name: 'futures' }, active: page.name === 'futures', badge: T('Testnet') },
+    { label: T('Futures'),   page: { name: 'perps' }, active: page.name === 'perps' || page.name === 'futures' },
+    { label: T('Predict'),   page: { name: 'predict' }, active: page.name === 'predict', badge: T('New') },
     { label: T('Swap'),      page: { name: 'swap' }, active: page.name === 'swap', cls: 'nav-l1' },
     { label: T('Portfolio'), page: { name: 'portfolio' }, active: page.name === 'portfolio', cls: 'nav-l2' },
     { label: T('Bridge'),    page: { name: 'bridge' }, active: page.name === 'bridge', cls: 'nav-l3' },

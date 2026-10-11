@@ -6,6 +6,7 @@ import TokenSwap from '../components/TokenSwap'
 import RobinhoodHoldings from '../components/RobinhoodHoldings'
 import SolanaHoldings from '../components/SolanaHoldings'
 import BscHoldings from '../components/BscHoldings'
+import HlHoldings from '../components/HlHoldings'
 import { hasStoredWallet } from '../lib/embeddedWallet'
 import { shortAddr, useTrader } from '../lib/identity'
 import { loadHoldings, type Holding } from '../lib/portfolio'
@@ -47,6 +48,8 @@ export default function Portfolio({ navigate }: Props) {
   const [solValue, setSolValue] = useState(0)
   // And on BNB Chain, at the same address (components/BscHoldings.tsx, 2026-10-05).
   const [bscValue, setBscValue] = useState(0)
+  // And the Hyperliquid account: futures margin, positions and predictions (components/HlHoldings.tsx, 2026-10-11).
+  const [hlValue, setHlValue] = useState(0)
   const seq = useRef(0)
 
   const load = useCallback(() => {
@@ -84,7 +87,7 @@ export default function Portfolio({ navigate }: Props) {
   }
 
   const coinsValue = (holdings ?? []).reduce((s, h) => s + h.valueUsd, 0)
-  const total = (cash ?? 0) + coinsValue + rhValue + solValue + bscValue
+  const total = (cash ?? 0) + coinsValue + rhValue + solValue + bscValue + hlValue
   const visible = (holdings ?? []).filter(h => showDust || h.valueUsd >= DUST_USD || h.priceUsd === 0)
   const dust = (holdings ?? []).length - visible.length
 
@@ -161,6 +164,7 @@ export default function Portfolio({ navigate }: Props) {
       <RobinhoodHoldings owner={me} navigate={navigate} onValue={setRhValue} />
       <SolanaHoldings navigate={navigate} onValue={setSolValue} />
       <BscHoldings owner={me} navigate={navigate} onValue={setBscValue} />
+      <HlHoldings owner={me} navigate={navigate} onValue={setHlValue} />
 
       <Sheet open={!!sell} onClose={() => setSell(null)} title={sell ? T('Sell {symbol}', { symbol: sell.symbol }) : undefined}>
         {sell && <TokenSwap key={sell.address} address={sell.address} pool={sell.pool ?? undefined} initialMode="sell"

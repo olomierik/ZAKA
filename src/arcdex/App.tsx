@@ -9,6 +9,9 @@ const TokenPage       = lazy(() => import('./pages/TokenPage'))
 const CoinPage        = lazy(() => import('./pages/CoinPage'))
 const Portfolio       = lazy(() => import('./pages/Portfolio'))
 const FuturesPage     = lazy(() => import('./pages/FuturesPage'))
+// Hyperliquid (2026-10-11): perpetual futures on every market it lists, and its prediction markets.
+const PerpsPage       = lazy(() => import('./pages/PerpsPage'))
+const PredictPage     = lazy(() => import('./pages/PredictPage'))
 const ArcdexPage       = lazy(() => import('./pages/ArcdexPage'))
 const AutotradeSoon   = lazy(() => import('./pages/AutotradeSoon'))
 const Swap            = lazy(() => import('./pages/Swap'))
@@ -76,6 +79,8 @@ export type Page =
   | { name: 'deploy-curve-router' }
   | { name: 'signals'; view?: 'market' | 'manage'; bot?: string }
   | { name: 'futures' }
+  | { name: 'perps'; coin?: string }
+  | { name: 'predict' }
   | { name: 'coin' }
   | { name: 'robinhood' }
   | { name: 'rh-token'; address: string; pool?: string }
@@ -87,7 +92,7 @@ export type Page =
 const fromUrl = (): Page => pathToPage(window.location.pathname, window.location.search) ?? { name: 'terminal' }
 
 const MOBILE_NAV: [Page, string, string][] = [
-  [{ name: 'terminal' }, '◈', N_('Markets')], [{ name: 'robinhood' }, '🏹', N_('Robinhood Chain')], [{ name: 'solana' }, '◎', 'Solana'], [{ name: 'bsc' }, '◆', N_('BNB Chain')], [COIN_PAGE, '◆', N_('Spot')], [{ name: 'futures' }, '📊', N_('Futures')], [{ name: 'swap' }, '⇄', N_('Swap')],
+  [{ name: 'terminal' }, '◈', N_('Markets')], [{ name: 'robinhood' }, '🏹', N_('Robinhood Chain')], [{ name: 'solana' }, '◎', 'Solana'], [{ name: 'bsc' }, '◆', N_('BNB Chain')], [COIN_PAGE, '◆', N_('Spot')], [{ name: 'perps' }, '📊', N_('Futures')], [{ name: 'predict' }, '🎯', N_('Predict')], [{ name: 'swap' }, '⇄', N_('Swap')],
   [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'portfolio' }, '▤', N_('Portfolio')], [{ name: 'feed' }, '◉', N_('Feed')],
   [{ name: 'leaderboard' }, '♛', N_('Leaderboard')], [{ name: 'clans' }, '⚑', N_('Clans')], [{ name: 'rewards' }, '✦', N_('Rewards')],
   [{ name: 'signals' }, '⚡', N_('Autotrade')], [{ name: 'alerts' }, '🔔', N_('Alerts')], [{ name: 'transfers' }, '⇅', N_('Transfers')],
@@ -175,6 +180,8 @@ export default function App() {
           {/* The launchpad is hidden (owner, 2026-10-03): its address shows the spot terminal. */}
           {page.name === 'launchpad'   && <Terminal navigate={navigate} registerFeedTokens={registerFeedTokens} />}
           {page.name === 'futures'     && <FuturesPage navigate={navigate} />}
+          {page.name === 'perps'       && <PerpsPage navigate={navigate} coin={page.coin} />}
+          {page.name === 'predict'     && <PredictPage navigate={navigate} />}
           {page.name === 'coin'       && <ArcdexPage navigate={navigate} />}
           {page.name === 'swap'        && <Swap navigate={navigate} />}
           {page.name === 'bridge'      && <Bridge key={page.dir ?? 'out'} initialDir={page.dir ?? 'out'} navigate={navigate} />}

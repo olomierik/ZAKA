@@ -1809,6 +1809,67 @@ Owner: "we have no users; compare us with DexScreener on platform quality and ho
   - `bun scripts/test-dex-parity.ts`: established coins, badges kept through the pool merge, trending rules and totals, each coin page's head (escaping included), sitemap paths and logo links.
   - `engine/test/market.test.ts`: the ARGUS case, across a restart and with slots saved the old way.
 
+## Hyperliquid: futures on every market, and predictions (2026-10-11)
+
+Owner: "READ THE FILES [the ArcSense Upgrade Build Pack] and improve everything; take a look at liquid.trade … WE WANT TO COMPETE WITH THEM". Liquid is a front end to Hyperliquid: perpetuals on crypto, stocks, commodities, indices and FX (Hyperliquid's builder dexes), and Hyperliquid's prediction markets (HIP-4). ARCDEX now offers both, from the browser, with nothing new on the engine: Hyperliquid's API allows any origin and rate-limits by the visitor's own IP. The audit, the Liquid comparison and the plan: `docs/UPGRADE-2026-10.md`.
+
+- **Trading is off until the owner switches it on (`VITE_HL_TRADING=on`).** The build pack says "no live trading or mainnet execution by default until explicit enablement" and "do not deploy live trading … without my explicit approval".
+  - Off, every market, price, book, chart, prediction and account shows. Nothing reaches Hyperliquid's `/exchange` (`hlExchange` refuses) and no money moves: no orders, closes, cancels, approvals, deposits or withdrawals.
+  - "Trading opens soon" stands where the order buttons are. The money buttons are hidden.
+- **Code (`src/arcdex/hl/`):**
+  - `client.ts`: `/info` (retried on 429 and 5xx), `/exchange` (never retried), and one shared WebSocket routed by channel and coin, user, dex or interval.
+  - `signing.ts`, `msgpack.ts`, `wire.ts`: written from the official Python SDK and checked against its own test vectors.
+    - L1 actions: msgpack(action) ‖ nonce ‖ vault ‖ expiry, hashed into a phantom agent signed with the Exchange domain (chain 1337).
+    - User-signed actions: the HyperliquidSignTransaction domain; the wallet's current chain as `signatureChainId`.
+    - Order wires and rounding: prices to 5 significant figures and the decimals rule; sizes floored to the lot.
+    - Asset ids: core perps by index; builder dexes 100000 + dex × 10000 + index; outcome sides 100000000 + 10 × outcome + side.
+  - `markets.ts`: the core dex and the USDC-settled builder dexes `xyz` and `io` (301 markets on 2026-10-11: 178 crypto, 114 on xyz, 9 on io), their categories, and outcome markets with readable titles from their templates.
+  - `access.ts`: who signs, what the account still needs (a deposit, unified mode, the builder fee, an agent), "Enable trading", and the location gate.
+    - The trading wallet, or a Solana wallet's ARCDEX account, signs everything itself: no pop-ups.
+    - An external wallet approves an agent key once. The key is made and kept in the browser; Hyperliquid lets it trade but never withdraw. Withdrawals are signed by the wallet itself.
+  - `account.ts`: the account across every dex, spot USDC, outcome holdings, open orders and fills, kept up to date by the account's own streams.
+  - `exec.ts`: every order carries a client id; when an answer is lost, each order is looked up by its id and reported as the venue has it, never re-sent and never assumed filled.
+  - `live.ts`: the shared market list (30s, kept in the browser), mids for every dex, a coin's live numbers, its book, trades and candles, and what the account can trade.
+  - `funding.ts`, `fundingQuote.ts`: Arc USDC ↔ the Hyperliquid account through Relay.
+- **Futures (`/futures`, a market at `/futures/<coin>` such as `/futures/xyz:NVDA`; `pages/PerpsPage.tsx`):** Liquid's layout in ARCDEX's colours.
+  - A strip of the busiest markets (one per ticker: four stocks trade on both xyz and io), and the pair bar: price, mark, oracle, 24h change and volume, open interest, funding with the countdown to the hour, max leverage.
+  - The market picker: All, Favourites, Crypto, Stocks, Pre-IPO, Indices, Commodities and FX, with search and sorting by volume, 24h change, funding or open interest.
+  - The chart (`PriceChart` with Hyperliquid's candles and candle stream; the last bar moves with every trade; large trades and your own fills pop), the order book (price grouping, coin or USD, a click fills the limit price) and trades.
+  - The order panel: Cross or Isolated (isolated only where the market says so), leverage up to the market's maximum, starting at 3× unless a position is open there (`DEFAULT_LEVERAGE`). Market (IOC, 1/3/5% price cap) or Limit (post-only option), size in USD with a share-of-balance slider, reduce-only, TP/SL, the estimated liquidation price for isolated, the margin, and the fees (Hyperliquid's rate for the account plus ARCDEX's). $10 at the least.
+  - Underneath: positions (P&L and ROE, liquidation price, funding, TP/SL editing, Close), open orders (Cancel, Cancel all), trade history and balances.
+  - Phones: chart, book and trades, the account, and a Buy / Long · Sell / Short bar that opens the order panel in a sheet.
+- **Predictions (`/predict`, `pages/PredictPage.tsx`):** 218 markets on 2026-10-11, in Crypto, Stocks, Indices, Commodities, FX, Sports, Economics, Companies and Culture.
+  - Each card: the question, the odds bar, both sides' prices (named as the market names them: Yes/No, the teams, Over/Under), the countdown, and the underlying's price for price markets. A question with several outcomes lists its leaders.
+  - A market's full view: every outcome, the underlying's chart, and how it settles (the market's own terms).
+  - Trading: buy or sell either side, market or limit (in cents), whole contracts, $10 at the least, "Pays if right" shown. Settlement is Hyperliquid's own.
+  - Your predictions: contracts, average price, value and P&L, Sell; and open orders with Cancel.
+- **Funding through Relay:** Arc USDC → the Hyperliquid perps balance (an exact approval to Relay's depository, then its deposit), and back to Arc (Relay's authorization, then a Hyperliquid `sendAsset` to Relay's depository there). No ARCDEX fee on either.
+  - A quote is refused unless it's exactly what was asked: the same account on both sides, the currencies and amount, Relay's own contracts, an approval of exactly the amount, Relay's order paying only the account and refunding only to it, with no calls, and at least 97% of the money arriving.
+  - Measured on 2026-10-11: $25 in, $24.97 out; $25 back, $24.97.
+- **ARCDEX's fee is a Hyperliquid builder fee:** 0.05% on futures orders and 0.1% on prediction sells (Hyperliquid charges builder fees on outcome sells only), approved by the trader once, up to 0.1%.
+  - Hyperliquid pays a builder only while it has 100+ USDC in its perps account. The fee wallet has none, so until the owner funds it orders go out without ARCDEX's fee and nobody is asked to approve one (checked live, `builderReady`).
+- **Location gate (`hlEligibility`):** Hyperliquid's terms exclude US persons, Ontario and sanctioned territories (Cuba, Iran, North Korea, Syria, Russia, Belarus, Crimea, Donetsk, Luhansk). Opening positions and depositing are off there, and wherever the country can't be told; closing, cancelling and withdrawing never are. The edge's `/geo` now also returns the subdivision (`?geo=XX-YY` in local dev).
+- **Elsewhere:**
+  - The testnet futures moved to `/futures/testnet`, linked from the futures page.
+  - Top bar: Futures and Predict. Phones: Futures in the tab bar, Predict in More. The drawer has both.
+  - Portfolio: "On Hyperliquid" (`components/HlHoldings.tsx`): the account's value, counted in the total, its positions and its predictions.
+  - Landing: the futures cards are Hyperliquid's (BTC, ETH, SOL, then the busiest xyz markets, each with its maximum leverage), and the nav, tiles, questions and footer name futures and predictions as they now are.
+  - The sitemap lists `/futures`, `/predict` and the busiest markets' pages.
+- **Tests:**
+  - `bun scripts/test-hyperliquid.ts` (offline): msgpack, every SDK signing vector, wire numbers, rounding and asset ids; real Relay quotes passing and 21 tampered ones refused; 224 recorded outcome markets with readable titles; orders built from the panel's inputs; the builder-fee rules.
+  - `VITE_HL_TRADING=on bun scripts/check-hyperliquid.ts` (live, nothing at stake): a throwaway key's order, cancel and builder approval are refused because the account doesn't exist, and the venue's error names the address it recovered, the key's. Also the WebSocket's message shapes.
+- **Checked in the browser** (local dev, live Hyperliquid data):
+  - BTC and xyz:NVDA: chart, book, trades, the picker and its categories, the strip.
+  - Predict: the cards, and the trade dialog's numbers ($25 at 59¢ buys 42 contracts for $24.74 and pays $42).
+  - Phones at 375px: no sideways scroll, and the order sheet.
+  - The switched-off state.
+- **Not checked:** a real order, deposit or withdrawal; they need funds and the switch.
+- **Every new string is in all six dictionaries** (145).
+- **Owner steps:**
+  1. When ready, set `VITE_HL_TRADING=on` in Netlify (`arcsense-app` → environment variables) and redeploy. Try it with a small amount first.
+  2. Send 100+ USDC to the fee wallet `0x2742…86Bb`'s Hyperliquid perps account and keep it in standard mode; from then on orders carry ARCDEX's fee.
+  3. Take legal advice on offering leveraged perpetuals and prediction markets: the location gate is a minimum, not clearance.
+
 ## ARCSENSE: spot and futures first (2026-10-03)
 
 Owner: "hide the autotrade marketplace and let the users see only COMING SOON; hide the launchpad; put futures and spot trading as our main features; rebrand the app to be the first on Arc".

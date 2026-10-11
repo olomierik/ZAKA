@@ -22,7 +22,9 @@ if (path === '/' || path === '/index.html') {
     [/^\/solana\/?$/, () => import('./arcdex/pages/SolanaMarkets')],
     [/^\/(bnb|bsc)\/?$/, () => import('./arcdex/pages/BscMarkets')],
     [/^\/robinhood\/?$/, () => import('./arcdex/pages/RobinhoodMarkets')],
-    [/^\/futures/, () => import('./arcdex/pages/FuturesPage')],
+    [/^\/futures\/testnet/, () => import('./arcdex/pages/FuturesPage')],
+    [/^\/(futures|perps|trade)\b/, () => Promise.all([import('./arcdex/pages/PerpsPage'), import('./arcdex/components/PriceChart')])],
+    [/^\/predict/, () => import('./arcdex/pages/PredictPage')],
     [/^\/swap/, () => import('./arcdex/pages/Swap')],
     [/^\/portfolio/, () => import('./arcdex/pages/Portfolio')],
   ]
