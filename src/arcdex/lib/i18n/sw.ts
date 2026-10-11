@@ -2924,5 +2924,17 @@ const d: Record<string, string> = {
   "Trading opens soon": "Biashara itafunguliwa hivi karibuni",
   "Markets, prices and order books are live. Placing orders opens once trading is switched on.": "Masoko, bei na vitabu vya oda viko moja kwa moja. Kuweka oda kutafunguliwa biashara itakapowashwa.",
   "Deposits and withdrawals open with trading.": "Kuweka na kutoa pesa kutafunguliwa pamoja na biashara.",
+  "The futures leaderboard isn’t available right now.": "Orodha ya washindi wa futures haipatikani kwa sasa.",
+  "Return": "Faida (%)",
+  "From Hyperliquid’s own leaderboard of {n} traders, updated every 10 minutes. Ranked by P&L; accounts worth $10K or more.": "Kutoka orodha ya Hyperliquid yenyewe ya wafanyabiashara {n}, husasishwa kila dakika 10. Imepangwa kwa faida/hasara; akaunti za $10K au zaidi.",
+  "No history in this window.": "Hakuna historia katika kipindi hiki.",
+  "Futures trader": "Mfanyabiashara wa futures",
+  "Hyperliquid explorer": "Kivinjari cha Hyperliquid",
+  "Unrealized P&L": "Faida/hasara isiyotimizwa",
+  "Trade {sym}": "Fanya biashara ya {sym}",
+  "Latest trades": "Biashara za hivi karibuni",
+  "Public data from Hyperliquid. ARCDEX never copies a trade for you: open a market to place your own.": "Data ya umma kutoka Hyperliquid. ARCDEX haiigi biashara kwa niaba yako kamwe: fungua soko ili uweke yako.",
+  "Hyperliquid’s most profitable futures traders. Open one to see their positions and trades.": "Wafanyabiashara wa futures wenye faida kubwa zaidi kwenye Hyperliquid. Fungua mmoja uone nafasi na biashara zake.",
+  "Top futures traders": "Wafanyabiashara bora wa futures",
 }
 export default d

@@ -2924,5 +2924,17 @@ const d: Record<string, string> = {
   "Trading opens soon": "Le trading ouvre bientôt",
   "Markets, prices and order books are live. Placing orders opens once trading is switched on.": "Les marchés, les prix et les carnets d’ordres sont en direct. Le passage d’ordres ouvrira dès que le trading sera activé.",
   "Deposits and withdrawals open with trading.": "Les dépôts et retraits ouvrent avec le trading.",
+  "The futures leaderboard isn’t available right now.": "Le classement des futures n’est pas disponible pour le moment.",
+  "Return": "Rendement",
+  "From Hyperliquid’s own leaderboard of {n} traders, updated every 10 minutes. Ranked by P&L; accounts worth $10K or more.": "D’après le classement de Hyperliquid ({n} traders), mis à jour toutes les 10 minutes. Classé par P&L ; comptes de 10 000 $ ou plus.",
+  "No history in this window.": "Pas d’historique sur cette période.",
+  "Futures trader": "Trader de futures",
+  "Hyperliquid explorer": "Explorateur Hyperliquid",
+  "Unrealized P&L": "P&L latent",
+  "Trade {sym}": "Trader {sym}",
+  "Latest trades": "Dernières transactions",
+  "Public data from Hyperliquid. ARCDEX never copies a trade for you: open a market to place your own.": "Données publiques de Hyperliquid. ARCDEX ne copie jamais une transaction à votre place : ouvrez un marché pour passer la vôtre.",
+  "Hyperliquid’s most profitable futures traders. Open one to see their positions and trades.": "Les traders de futures les plus rentables de Hyperliquid. Ouvrez-en un pour voir ses positions et ses transactions.",
+  "Top futures traders": "Meilleurs traders de futures",
 }
 export default d

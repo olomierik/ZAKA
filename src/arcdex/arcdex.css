@@ -2603,3 +2603,22 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
   .pm-grid { grid-template-columns: 1fr; }
   .pm-rules dl > div { grid-template-columns: 1fr; gap: 0; }
 }
+
+/* a Hyperliquid trader's track record (pages/HlTraderPage.tsx) */
+.hl-trader { display: flex; flex-direction: column; gap: 12px; }
+.hl-trader-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.hl-trader-id { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.hl-trader-avatar { width: 44px; height: 44px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #2a6df4, #6d5cf6); color: #fff; font-weight: 700; flex-shrink: 0; }
+.hl-trader-addr { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 0.76rem; color: var(--text-muted); margin-top: 2px; }
+.hl-trader-addr code { font-family: var(--code); }
+.hl-trader-addr a { color: var(--accent-text); text-decoration: none; }
+.hl-trader-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.hl-trader-stats > div { background: var(--bg-2); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; }
+.hl-trader-stats span { font-size: 0.72rem; color: var(--text-muted); }
+.hl-trader-stats b { font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.hl-trader-chart { padding: 0; overflow: hidden; }
+.hl-trader-chart-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; flex-wrap: wrap; }
+.hl-trader-windows { display: flex; gap: 4px; }
+.hl-trader-windows button { background: none; border: 1px solid var(--adx-border); color: var(--text-muted); border-radius: 6px; padding: 3px 10px; font: inherit; font-size: 0.74rem; cursor: pointer; }
+.hl-trader-windows button.active { color: #fff; background: var(--accent-btn); border-color: var(--accent-btn); }
+.hl-lb td b { font-weight: 600; }

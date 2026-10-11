@@ -12,6 +12,7 @@ const FuturesPage     = lazy(() => import('./pages/FuturesPage'))
 // Hyperliquid (2026-10-11): perpetual futures on every market it lists, and its prediction markets.
 const PerpsPage       = lazy(() => import('./pages/PerpsPage'))
 const PredictPage     = lazy(() => import('./pages/PredictPage'))
+const HlTraderPage    = lazy(() => import('./pages/HlTraderPage'))
 const ArcdexPage       = lazy(() => import('./pages/ArcdexPage'))
 const AutotradeSoon   = lazy(() => import('./pages/AutotradeSoon'))
 const Swap            = lazy(() => import('./pages/Swap'))
@@ -67,7 +68,7 @@ export type Page =
   | { name: 'trader'; address: string }
   | { name: 'clan'; slug: string }
   | { name: 'clans' }
-  | { name: 'leaderboard' }
+  | { name: 'leaderboard'; tab?: 'futures' }
   | { name: 'feed' }
   | { name: 'alerts' }
   | { name: 'rewards' }
@@ -81,6 +82,7 @@ export type Page =
   | { name: 'futures' }
   | { name: 'perps'; coin?: string }
   | { name: 'predict' }
+  | { name: 'hl-trader'; address: string }
   | { name: 'coin' }
   | { name: 'robinhood' }
   | { name: 'rh-token'; address: string; pool?: string }
@@ -182,13 +184,14 @@ export default function App() {
           {page.name === 'futures'     && <FuturesPage navigate={navigate} />}
           {page.name === 'perps'       && <PerpsPage navigate={navigate} coin={page.coin} />}
           {page.name === 'predict'     && <PredictPage navigate={navigate} />}
+          {page.name === 'hl-trader'   && <HlTraderPage key={page.address} address={page.address} navigate={navigate} />}
           {page.name === 'coin'       && <ArcdexPage navigate={navigate} />}
           {page.name === 'swap'        && <Swap navigate={navigate} />}
           {page.name === 'bridge'      && <Bridge key={page.dir ?? 'out'} initialDir={page.dir ?? 'out'} navigate={navigate} />}
           {page.name === 'trader'      && <TraderPage key={page.address} address={page.address} navigate={navigate} />}
           {page.name === 'clans'       && <ClansPage navigate={navigate} />}
           {page.name === 'clan'        && <ClanPage key={page.slug} slug={page.slug} navigate={navigate} />}
-          {page.name === 'leaderboard' && <LeaderboardPage navigate={navigate} />}
+          {page.name === 'leaderboard' && <LeaderboardPage key={page.tab ?? ''} navigate={navigate} initialKind={page.tab === 'futures' ? 'futures' : undefined} />}
           {page.name === 'feed'        && <FeedPage navigate={navigate} />}
           {page.name === 'alerts'      && <AlertsPage navigate={navigate} />}
           {page.name === 'rewards'     && <RewardsPage navigate={navigate} />}

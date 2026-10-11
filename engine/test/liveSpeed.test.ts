@@ -128,7 +128,11 @@ describe('the gate', () => {
     const rec = bot.liveSpeed.record('snipe/snipe', now)
     expect(rec.trades).toBe(12)
     expect(rec.wins).toBe(9)
-    expect(bot.stats().liveSpeed).toEqual([rec])
+    // stats() reads the clock: held at the test's day, or the 7-day record is empty once that day is a week past
+    // (it was, from 2026-10-07).
+    const realNow = Date.now
+    Date.now = () => now
+    try { expect(bot.stats().liveSpeed).toEqual([rec]) } finally { Date.now = realNow }
   })
 })
 

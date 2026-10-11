@@ -7,6 +7,8 @@ import { tweetUrl } from '../lib/shareCard'
 import { PointsBoard } from '../components/PointsPanel'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import HlLeaderBoard from '../components/HlLeaderBoard'
+import type { HlWindow } from '../hl/leaders'
 
 // Top traders on ARCDEX by realized PnL — the competition that keeps
 // traders coming back (and trading through our router).
@@ -14,12 +16,15 @@ import { t as T } from '../lib/i18n'
 const money = (n: number) => `${n < 0 ? '-' : n > 0 ? '+' : ''}$${Math.abs(n) >= 1e6 ? (Math.abs(n) / 1e6).toFixed(2) + 'M' : Math.abs(n) >= 1e3 ? (Math.abs(n) / 1e3).toFixed(1) + 'K' : Math.abs(n).toFixed(2)}`
 const plain = (n: number) => `$${n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : n.toFixed(2)}`
 
-export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => void }) {
+/** The board's periods as Hyperliquid's windows (the Futures tab). */
+const HL_WINDOW: Record<Period, HlWindow> = { '24h': 'day', '7d': 'week', '30d': 'month', all: 'allTime' }
+
+export default function LeaderboardPage({ navigate, initialKind }: { navigate: (p: Page) => void; initialKind?: 'futures' }) {
   const me = useTrader().address?.toLowerCase() ?? null
   const [period, setPeriod] = useState<Period>('7d')
   const [rows, setRows] = useState<LeaderRow[] | null>(null)
   const [profiles, setProfiles] = useState<Map<string, Profile>>(new Map())
-  const [kind, setKind] = useState<'traders' | 'clans' | 'points'>('traders')
+  const [kind, setKind] = useState<'traders' | 'futures' | 'clans' | 'points'>(initialKind ?? 'traders')
   const [clans, setClans] = useState<ClanRank[] | null>(null)
 
   useEffect(() => {
@@ -62,15 +67,16 @@ export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => v
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <div style={{ display: 'flex', gap: 14, alignItems: 'baseline' }}>
-            {(['traders', 'clans', 'points'] as const).map(k => (
-              <button key={k} onClick={() => setKind(k)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: kind === k ? '1.4rem' : '1.05rem', fontWeight: 800, color: kind === k ? 'var(--text)' : 'var(--text-muted)' }}>{k === 'traders' ? T("Traders") : k === 'clans' ? T("Clans") : T("★ Points")}</button>
+            {(['traders', 'futures', 'clans', 'points'] as const).map(k => (
+              <button key={k} onClick={() => setKind(k)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: kind === k ? '1.4rem' : '1.05rem', fontWeight: 800, color: kind === k ? 'var(--text)' : 'var(--text-muted)' }}>{k === 'traders' ? T("Traders") : k === 'futures' ? T('Futures') : k === 'clans' ? T("Clans") : T("★ Points")}</button>
             ))}
           </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>{T("Realized profit from trades made on ARCDEX. Trade here to climb it.")}</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>{kind === 'futures' ? T('Hyperliquid’s most profitable futures traders. Open one to see their positions and trades.') : T("Realized profit from trades made on ARCDEX. Trade here to climb it.")}</div>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>{tab('24h', '24H')}{tab('7d', '7D')}{tab('30d', '30D')}{tab('all', T('All'))}</div>
       </div>
 
+      {kind === 'futures' && <HlLeaderBoard window={HL_WINDOW[period]} navigate={navigate} />}
       {kind === 'clans' && <ClanBoard clans={clans} navigate={navigate} />}
       {kind === 'points' && <PointsBoard me={me} navigate={navigate} />}
 

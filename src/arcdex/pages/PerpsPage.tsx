@@ -24,30 +24,12 @@ import { useHlAccount, type HlAccountState, type HlFill, type HlOpenOrder, type 
 import { buildPerpOrders, cancelOrders, DEFAULT_SLIPPAGE, estLiquidation, MIN_ORDER_USD, NeedsEnable, perpBuilder, placeOrders, setLeverage, type OrderOutcome } from '../hl/exec'
 import { marketPrice, roundPrice, roundSize, type OrderRequest } from '../hl/wire'
 import { HL_EXPLORER, HL_TRADING } from '../hl/client'
+import { compactUsd, fmtNum, fmtPx, pxDp } from '../hl/format'
 import { BUILDER } from '../hl/access'
 import { EnableTradingModal, HlAccountBox, HlFundingModal, TradingSoon, errText, money, regionNote, useHlGate, type HlGate } from '../components/HlShared'
 
 // ── numbers ──────────────────────────────────────────────────────────────
 
-export function pxDp(px: number): number {
-  if (!(px > 0)) return 2
-  if (px >= 10_000) return 0
-  if (px >= 1_000) return 1
-  if (px >= 100) return 2
-  if (px >= 10) return 3
-  if (px >= 1) return 4
-  return Math.min(8, 4 - Math.floor(Math.log10(px)))
-}
-export const fmtPx = (px: number | null | undefined) => px == null || !(px > 0) ? '—' : px.toLocaleString(undefined, { minimumFractionDigits: pxDp(px), maximumFractionDigits: pxDp(px) })
-export const fmtNum = (n: number | null | undefined, dp: number) => n == null || !Number.isFinite(n) ? '—' : n.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })
-export function compactUsd(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return '—'
-  const a = Math.abs(n)
-  if (a >= 1e9) return `$${(n / 1e9).toFixed(2)}B`
-  if (a >= 1e6) return `$${(n / 1e6).toFixed(2)}M`
-  if (a >= 1e3) return `$${(n / 1e3).toFixed(1)}K`
-  return `$${n.toFixed(2)}`
-}
 const pct = (n: number | null | undefined, dp = 2) => n == null || !Number.isFinite(n) ? '—' : `${n >= 0 ? '+' : ''}${n.toFixed(dp)}%`
 const signedUsd = (n: number) => `${n >= 0 ? '+' : '−'}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const upDown = (n: number | null | undefined) => (n == null ? '' : n >= 0 ? 'fx-up' : 'fx-down')
@@ -782,6 +764,8 @@ export default function PerpsPage({ navigate, coin: coinProp }: { navigate: (p: 
   const byCoin = useMemo(() => new Map((markets ?? []).map(m => [m.coin, m])), [markets])
   const pick = (c: string) => { setPicker(false); if (c !== coin) navigate({ name: 'perps', coin: c }) }
 
+  // The tab's title follows the price; leaving the page puts back the one it found.
+  useEffect(() => { const base = document.title; return () => { document.title = base } }, [])
   useEffect(() => {
     if (market && px) document.title = `${fmtPx(px)} | ${market.symbol}-USD | ARCDEX`
   }, [market, px])
@@ -889,6 +873,7 @@ export default function PerpsPage({ navigate, coin: coinProp }: { navigate: (p: 
       <div className="hl-foot fx-fine">
         {T('Markets, prices and orders are Hyperliquid’s: orders are signed in your browser and go straight to it. ARCDEX never holds your money.')}{' '}
         {BUILDER.perpF > 0 && T('ARCDEX’s fee is a Hyperliquid builder fee you approve once.')}{' '}
+        <button className="link-btn" onClick={() => navigate({ name: 'leaderboard', tab: 'futures' })}>🏆 {T('Top futures traders')}</button>{' · '}
         <button className="link-btn" onClick={() => navigate({ name: 'futures' })}>{T('ARCDEX futures on Arc testnet')}</button>
       </div>
 

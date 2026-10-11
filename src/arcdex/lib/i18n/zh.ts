@@ -2924,5 +2924,17 @@ const d: Record<string, string> = {
   "Trading opens soon": "交易即将开放",
   "Markets, prices and order books are live. Placing orders opens once trading is switched on.": "市场、价格和订单簿均为实时数据。交易开启后即可下单。",
   "Deposits and withdrawals open with trading.": "充值和提现将与交易一同开放。",
+  "The futures leaderboard isn’t available right now.": "合约排行榜暂时不可用。",
+  "Return": "收益率",
+  "From Hyperliquid’s own leaderboard of {n} traders, updated every 10 minutes. Ranked by P&L; accounts worth $10K or more.": "来自 Hyperliquid 官方排行榜（{n} 位交易者），每 10 分钟更新。按盈亏排序；账户价值 1 万美元及以上。",
+  "No history in this window.": "此时间段内没有记录。",
+  "Futures trader": "合约交易者",
+  "Hyperliquid explorer": "Hyperliquid 浏览器",
+  "Unrealized P&L": "未实现盈亏",
+  "Trade {sym}": "交易 {sym}",
+  "Latest trades": "最近成交",
+  "Public data from Hyperliquid. ARCDEX never copies a trade for you: open a market to place your own.": "Hyperliquid 公开数据。ARCDEX 绝不会替你跟单：打开市场自行下单。",
+  "Hyperliquid’s most profitable futures traders. Open one to see their positions and trades.": "Hyperliquid 上最赚钱的合约交易者。点开查看其持仓和成交。",
+  "Top futures traders": "顶级合约交易者",
 }
 export default d

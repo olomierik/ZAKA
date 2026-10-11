@@ -14,7 +14,7 @@ export function pageToPath(p: Page): string {
     case 'trader':      return `/profile/${p.address}`
     case 'clan':        return `/clans/${p.slug}`
     case 'clans':       return '/clans'
-    case 'leaderboard': return '/leaderboard'
+    case 'leaderboard': return p.tab === 'futures' ? '/leaderboard/futures' : '/leaderboard'
     case 'feed':        return '/feed'
     case 'alerts':      return '/alerts'
     case 'rewards':     return '/rewards'
@@ -29,6 +29,7 @@ export function pageToPath(p: Page): string {
     case 'perps':       return `/futures${p.coin && p.coin !== 'BTC' ? `/${p.coin}` : ''}`
     case 'futures':     return '/futures/testnet'
     case 'predict':     return '/predict'
+    case 'hl-trader':   return `/futures/trader/${p.address}`
     case 'coin':        return '/burn'
     case 'robinhood':   return '/robinhood'
     case 'rh-token':    return `/robinhood/token/${p.address}${p.pool ? `?pool=${p.pool}` : ''}`
@@ -59,7 +60,7 @@ export function pathToPage(pathname: string, search: string): Page | null {
     case 'markets':     return { name: 'terminal' }
     // Spot opens on $ARCDEX/USDC, as Binance's opens on its own pair.
     case 'spot':        return { name: 'argus', address: COIN_LC, pool: COIN_POOL }
-    case 'leaderboard': return { name: 'leaderboard' }
+    case 'leaderboard': return b === 'futures' ? { name: 'leaderboard', tab: 'futures' } : { name: 'leaderboard' }
     case 'feed':        return { name: 'feed' }
     case 'alerts':      return { name: 'alerts' }
     case 'rewards':
@@ -73,7 +74,9 @@ export function pathToPage(pathname: string, search: string): Page | null {
     case 'autotrade':   return b === 'manage' ? { name: 'signals', view: 'manage' } : { name: 'signals' }
     case 'futures':
     case 'perps':
-    case 'trade':       return b === 'testnet' ? { name: 'futures' } : b ? { name: 'perps', coin: b } : { name: 'perps' }
+    case 'trade':
+      if (b === 'trader' && parts[2] && /^0x[0-9a-fA-F]{40}$/.test(parts[2])) return { name: 'hl-trader', address: parts[2].toLowerCase() }
+      return b === 'testnet' ? { name: 'futures' } : b ? { name: 'perps', coin: b } : { name: 'perps' }
     case 'predict':
     case 'predictions': return { name: 'predict' }
     // $ARCDEX: its burns, buybacks and the fee ledger (/sense was $SENSE's, before 2026-10-04).

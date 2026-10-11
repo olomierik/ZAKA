@@ -369,7 +369,7 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
   const [funding, setFunding] = useState<'deposit' | 'withdraw' | null>(null)
   const [enabling, setEnabling] = useState(false)
 
-  useEffect(() => { document.title = `${T('Predictions')} | ARCDEX` }, [])
+  useEffect(() => { const base = document.title; document.title = `${T('Predictions')} | ARCDEX`; return () => { document.title = base } }, [])
 
   const byOutcome = useMemo(() => {
     const m = new Map<number, { group: OutcomeGroup; member: OutcomeMarket }>()

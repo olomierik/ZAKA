@@ -1843,6 +1843,15 @@ Owner: "READ THE FILES [the ArcSense Upgrade Build Pack] and improve everything;
   - A market's full view: every outcome, the underlying's chart, and how it settles (the market's own terms).
   - Trading: buy or sell either side, market or limit (in cents), whole contracts, $10 at the least, "Pays if right" shown. Settlement is Hyperliquid's own.
   - Your predictions: contracts, average price, value and P&L, Sell; and open orders with Cancel.
+- **Top traders (Leaderboard → Futures, `/leaderboard/futures`; a trader at `/futures/trader/0x…`):** Liquid's leaderboard and trader profiles.
+  - Hyperliquid publishes its whole leaderboard as one file: 47,349 traders and 39 MB on 2026-10-11, too big for a browser. The engine's `/api/hlleaders` (`api/hlleaders.ts`) reads it at most every 10 minutes while someone is looking, keeps the top 100 of each window (24H, 7D, 30D, all time) by P&L among accounts worth $10K or more, and serves ~51 KB (`arcdex_kv` `hl:leaders:v1` keeps the last good copy).
+  - Ranked by P&L only, as Hyperliquid's own board is. Its return figure is measured against what an account started the window with, so accounts that grew from small deposits read millions of percent: the return is a column, shown capped at ">1,000%".
+  - Display names are Hyperliquid's own, except anything that looks like an email address or a link, which shows as the address.
+  - The first build downloads the whole file, longer than the engine lets a request wait (10 seconds). The first answer waits at most 8 seconds and then says "loading" (503, `Retry-After`), the page asks again every 10 seconds, and the engine warms the board when it starts.
+  - A trader's page (`pages/HlTraderPage.tsx`, `hl/leaders.ts`): account value, unrealized P&L, P&L for each window and its chart (Hyperliquid's `portfolio`), open positions with a Trade button for each market, and the latest 60 trades. All public venue data; ARCDEX never copies a trade by itself.
+  - Linked from the futures page ("Top futures traders").
+  - Tests: `engine/test/hlleaders.test.ts` (what's kept, names, the first answer, a slow first build, a failed refresh keeping the last copy). Checked in the browser against the real leaderboard through a local copy of the route: the board, a trader's page and its trades, and a 375px phone.
+  - Railway: the Dockerfile copies `api/hlleaders.ts` and `railway.toml` watches it; add it to the service's own Watch Paths.
 - **Funding through Relay:** Arc USDC → the Hyperliquid perps balance (an exact approval to Relay's depository, then its deposit), and back to Arc (Relay's authorization, then a Hyperliquid `sendAsset` to Relay's depository there). No ARCDEX fee on either.
   - A quote is refused unless it's exactly what was asked: the same account on both sides, the currencies and amount, Relay's own contracts, an approval of exactly the amount, Relay's order paying only the account and refunding only to it, with no calls, and at least 97% of the money arriving.
   - Measured on 2026-10-11: $25 in, $24.97 out; $25 back, $24.97.
@@ -1864,7 +1873,7 @@ Owner: "READ THE FILES [the ArcSense Upgrade Build Pack] and improve everything;
   - Phones at 375px: no sideways scroll, and the order sheet.
   - The switched-off state.
 - **Not checked:** a real order, deposit or withdrawal; they need funds and the switch.
-- **Every new string is in all six dictionaries** (145).
+- **Every new string is in all six dictionaries** (157).
 - **Owner steps:**
   1. When ready, set `VITE_HL_TRADING=on` in Netlify (`arcsense-app` → environment variables) and redeploy. Try it with a small amount first.
   2. Send 100+ USDC to the fee wallet `0x2742…86Bb`'s Hyperliquid perps account and keep it in standard mode; from then on orders carry ARCDEX's fee.
