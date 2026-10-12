@@ -6,11 +6,12 @@
 import { N_ } from './i18n'
 import { HL_TRADING } from '../hl/client'
 import { BRIDGE_NETWORKS } from './bridgeChains'
+import { SN_FEE, STARKNET_SWAPS } from '../starknet/net'
 import type { Page } from '../App'
 
-export type RouteGroup = 'spot' | 'cross' | 'bridge' | 'futures'
+export type RouteGroup = 'spot' | 'starknet' | 'cross' | 'bridge' | 'futures'
 export type RouteStatus = 'live' | 'off' | 'testnet'
-export type ProviderId = 'arc' | 'relay' | 'across' | 'circle' | 'hyperliquid' | 'robinhood' | 'solana' | 'bsc' | 'engine'
+export type ProviderId = 'arc' | 'relay' | 'across' | 'circle' | 'hyperliquid' | 'robinhood' | 'solana' | 'bsc' | 'engine' | 'avnu' | 'starknet'
 
 export interface SupportedRoute {
   id: string
@@ -29,6 +30,7 @@ export interface SupportedRoute {
 
 export const GROUP_LABEL: Record<RouteGroup, string> = {
   spot: N_('Spot on Arc'),
+  starknet: N_('Starknet'),
   cross: N_('Cross-chain trades'),
   bridge: N_('Bridge'),
   futures: N_('Futures and predictions'),
@@ -42,6 +44,7 @@ export const ROUTES: SupportedRoute[] = [
   { id: 'arc-spot', group: 'spot', from: N_('USDC on Arc'), to: N_('Launchpad and established coins on Arc'), provider: N_('ARCDEX swap router (Uniswap v4 and v3)'), fee: '2%', time: SECONDS, notes: N_('Exact approvals; every trade is simulated before you sign it.'), status: 'live', page: { name: 'terminal' }, providers: ['arc'] },
   { id: 'arc-curves', group: 'spot', from: N_('USDC on Arc'), to: N_('Mercuri and SolonPad coins on their curve'), provider: N_('ARCDEX curve router'), fee: '2%', time: SECONDS, notes: N_('Until the coin graduates to its pool.'), status: 'live', page: { name: 'terminal' }, providers: ['arc'] },
   { id: 'arc-native', group: 'spot', from: N_('USDC on Arc'), to: N_('Coins in native-USDC pools (Minara, SolonPad instant)'), provider: N_('Uniswap Universal Router'), fee: '2%', time: SECONDS, notes: N_('The fee is taken in the same transaction.'), status: 'live', page: { name: 'terminal' }, providers: ['arc'] },
+  { id: 'starknet', group: 'starknet', from: N_('Starknet tokens'), to: N_('Starknet tokens (AVNU’s verified list)'), provider: 'AVNU', fee: SN_FEE ? `${SN_FEE.bps / 100}%` : '0%', time: SECONDS, notes: N_('Signed by your Starknet wallet; AVNU’s own 0.1% applies. A 0 STRK test transaction checks a wallet on Sepolia.'), status: STARKNET_SWAPS ? 'live' : 'off', page: { name: 'starknet' }, providers: ['avnu', 'starknet'] },
   { id: 'rh', group: 'cross', from: N_('USDC on Arc'), to: N_('Robinhood Chain coins and stock tokens, and back'), provider: 'Across', fee: '2%', time: ABOUT_2S, notes: N_('Stock tokens can’t be bought from restricted countries. Selling is signed on Robinhood Chain and needs a little ETH there.'), status: 'live', page: { name: 'robinhood' }, providers: ['across', 'robinhood'] },
   { id: 'sol', group: 'cross', from: N_('USDC on Arc, SOL or Solana USDC'), to: N_('Solana launchpad coins, and back'), provider: 'Relay', fee: '2%', time: ABOUT_2S, notes: N_('Sales are signed on Solana.'), status: 'live', page: { name: 'solana' }, providers: ['relay', 'solana'] },
   { id: 'bsc', group: 'cross', from: N_('USDC on Arc, BNB or USDT'), to: N_('BNB Chain coins that left four.meme’s curve, and back'), provider: 'Relay', fee: '2%', time: ABOUT_2S, notes: N_('Sales are signed on BNB Chain and need a little BNB there.'), status: 'live', page: { name: 'bsc' }, providers: ['relay', 'bsc'] },
@@ -60,6 +63,6 @@ export const ROUTES: SupportedRoute[] = [
 export const NOT_SUPPORTED: string[] = [
   N_('Tokens other than USDC through the bridge'),
   N_('Coins on Base, Ethereum and the other bridge networks: only their USDC moves'),
-  N_('Starknet'),
+  N_('Moving money to or from Starknet: Starknet swaps use tokens already there'),
   N_('Hyperliquid’s spot tokens and vaults'),
 ]

@@ -1,0 +1,265 @@
+{
+ "taker": "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde",
+ "recipient": "0x0777777777777777777777777777777777777777777777777777777777777777",
+ "at": "2026-10-12T00:56:58.715Z",
+ "plain": {
+  "quoteId": "ea2ad5b1-b20c-422c-a077-8995bd72371e",
+  "sellTokenAddress": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+  "sellAmount": "0x8ac7230489e80000",
+  "sellAmountInUsd": 1.19645,
+  "buyTokenAddress": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+  "buyAmount": "0x1ab28b51e608c",
+  "buyAmountInUsd": 1.193957,
+  "fee": {
+   "feeToken": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+   "avnuFees": "0x6d7650c049",
+   "avnuFeesInUsd": 0.001195,
+   "avnuFeesBps": "0xa",
+   "integratorFees": "0x0",
+   "integratorFeesInUsd": 0,
+   "integratorFeesBps": "0x0"
+  },
+  "chainId": "0x534e5f4d41494e",
+  "blockNumber": "0xf7f33e",
+  "expiry": null,
+  "routes": [
+   {
+    "name": "Ekubo",
+    "address": "0x5dd3d2f4429af886cd1a3b08289dbcea99a294197e9eb43b0e0325b4b",
+    "percent": 1,
+    "sellTokenAddress": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+    "buyTokenAddress": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+    "routeInfo": {
+     "poolAddress": "0x316eb42a44a40a7c3573b6320f72e34777e6b13ac9a13d50c5deb8a713c0e1d",
+     "token0": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+     "token1": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+     "fee": "0x20c49ba5e353f80000000000000000",
+     "tickSpacing": "0x3e8",
+     "extension": "0x0"
+    },
+    "routes": [],
+    "alternativeSwapCount": 0
+   }
+  ],
+  "gasFees": "0x2f9191e7070",
+  "gasFeesInUsd": 0,
+  "priceImpact": -20.836641731790223,
+  "sellTokenPriceInUsd": 0.11939569999999998,
+  "buyTokenPriceInUsd": 2547.4480261851977,
+  "exactTokenTo": false,
+  "estimatedSlippage": 0.0029999999999999996
+ },
+ "plainBuild": {
+  "chainId": "0x534e5f4d41494e",
+  "calls": [
+   {
+    "contractAddress": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+    "entrypoint": "approve",
+    "calldata": [
+     "0x4270219d365d6b017231b52e92b3fb5d7c8378b05e9abc97724537a80e93b0f",
+     "0x8ac7230489e80000",
+     "0x0"
+    ]
+   },
+   {
+    "contractAddress": "0x4270219d365d6b017231b52e92b3fb5d7c8378b05e9abc97724537a80e93b0f",
+    "entrypoint": "multi_route_swap",
+    "calldata": [
+     "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+     "0x8ac7230489e80000",
+     "0x0",
+     "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+     "0x1ab28b51e608c",
+     "0x0",
+     "0x1a6e32e2ffe4d",
+     "0x0",
+     "0x123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde",
+     "0x0",
+     "0x0",
+     "0x1",
+     "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+     "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+     "0x5dd3d2f4429af886cd1a3b08289dbcea99a294197e9eb43b0e0325b4b",
+     "0xe8d4a51000",
+     "0x6",
+     "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+     "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+     "0x20c49ba5e353f80000000000000000",
+     "0x3e8",
+     "0x0",
+     "0xd7e617666ac00000000000000000"
+    ]
+   }
+  ],
+  "executorAddress": null
+ },
+ "withFee": {
+  "quoteId": "0ba22607-3ac3-48f8-9cea-1da9b8e8f537",
+  "sellTokenAddress": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+  "sellAmount": "0x8ac7230489e80000",
+  "sellAmountInUsd": 1.19645,
+  "buyTokenAddress": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+  "buyAmount": "0x1a6e215f6dda9",
+  "buyAmountInUsd": 1.182006,
+  "fee": {
+   "feeToken": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+   "avnuFees": "0x6d7650c049",
+   "avnuFeesInUsd": 0.001195,
+   "avnuFeesBps": "0xa",
+   "integratorFees": "0x4469f2782e3",
+   "integratorFeesInUsd": 0.011952,
+   "integratorFeesBps": "0x64"
+  },
+  "chainId": "0x534e5f4d41494e",
+  "blockNumber": "0xf7f33f",
+  "expiry": null,
+  "routes": [
+   {
+    "name": "Ekubo",
+    "address": "0x5dd3d2f4429af886cd1a3b08289dbcea99a294197e9eb43b0e0325b4b",
+    "percent": 1,
+    "sellTokenAddress": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+    "buyTokenAddress": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+    "routeInfo": {
+     "poolAddress": "0x316eb42a44a40a7c3573b6320f72e34777e6b13ac9a13d50c5deb8a713c0e1d",
+     "token0": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+     "token1": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+     "fee": "0x20c49ba5e353f80000000000000000",
+     "tickSpacing": "0x3e8",
+     "extension": "0x0"
+    },
+    "routes": [],
+    "alternativeSwapCount": 0
+   }
+  ],
+  "gasFees": "0x2f9191e7070",
+  "gasFeesInUsd": 0,
+  "priceImpact": -120.72380793179946,
+  "sellTokenPriceInUsd": 0.11820059999999998,
+  "buyTokenPriceInUsd": 2573.204707082705,
+  "exactTokenTo": false,
+  "estimatedSlippage": 0.0029999999999999996
+ },
+ "withFeeBuild": {
+  "chainId": "0x534e5f4d41494e",
+  "calls": [
+   {
+    "contractAddress": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+    "entrypoint": "approve",
+    "calldata": [
+     "0x4270219d365d6b017231b52e92b3fb5d7c8378b05e9abc97724537a80e93b0f",
+     "0x8ac7230489e80000",
+     "0x0"
+    ]
+   },
+   {
+    "contractAddress": "0x4270219d365d6b017231b52e92b3fb5d7c8378b05e9abc97724537a80e93b0f",
+    "entrypoint": "multi_route_swap",
+    "calldata": [
+     "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+     "0x8ac7230489e80000",
+     "0x0",
+     "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+     "0x1a6e215f6dda9",
+     "0x0",
+     "0x1a2a78143c1d7",
+     "0x0",
+     "0x123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde",
+     "0x64",
+     "0x777777777777777777777777777777777777777777777777777777777777777",
+     "0x1",
+     "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+     "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+     "0x5dd3d2f4429af886cd1a3b08289dbcea99a294197e9eb43b0e0325b4b",
+     "0xe8d4a51000",
+     "0x6",
+     "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+     "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+     "0x20c49ba5e353f80000000000000000",
+     "0x3e8",
+     "0x0",
+     "0xd7e617666ac00000000000000000"
+    ]
+   }
+  ],
+  "executorAddress": null
+ },
+ "multi": {
+  "quoteId": "b67f3fdd-8905-4dea-a45f-8e5d407f75ee",
+  "sellTokenAddress": "0x124aeb495b947201f5fac96fd1138e326ad86195b98df6dec9009158a533b49",
+  "sellAmount": "0x3635c9adc5dea00000",
+  "sellAmountInUsd": 5.63561,
+  "buyTokenAddress": "0x75afe6402ad5a5c20dd25e10ec3b3986acaa647b77e4ae24b0cbc9a54a27a87",
+  "buyAmount": "0x2043932114ac2800",
+  "buyAmountInUsd": 5.62617,
+  "fee": {
+   "feeToken": "0x75afe6402ad5a5c20dd25e10ec3b3986acaa647b77e4ae24b0cbc9a54a27a87",
+   "avnuFees": "0x844915495d373",
+   "avnuFeesInUsd": 0.005632,
+   "avnuFeesBps": "0xa",
+   "integratorFees": "0x0",
+   "integratorFeesInUsd": 0,
+   "integratorFeesBps": "0x0"
+  },
+  "chainId": "0x534e5f4d41494e",
+  "blockNumber": "0xf7f33f",
+  "expiry": null,
+  "routes": [
+   {
+    "name": "JediSwap",
+    "address": "0x41fd22b238fa21cfcf5dd45a8548974d8263b3a531a60388411c5e230f97023",
+    "percent": 1,
+    "sellTokenAddress": "0x124aeb495b947201f5fac96fd1138e326ad86195b98df6dec9009158a533b49",
+    "buyTokenAddress": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+    "routeInfo": {
+     "poolAddress": "0x2b3030c04e9c920bd66c6a8dc209717bbefa1ea5f8bc8ebabd639e5a4766502"
+    },
+    "routes": [
+     {
+      "name": "Ekubo",
+      "address": "0x5dd3d2f4429af886cd1a3b08289dbcea99a294197e9eb43b0e0325b4b",
+      "percent": 1,
+      "sellTokenAddress": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+      "buyTokenAddress": "0x33068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb",
+      "routeInfo": {
+       "poolAddress": "0x160f5d987caf56d8109427919172c1e45ef366ea1d7dcf105a3c5a5e794aea3",
+       "token0": "0x33068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb",
+       "token1": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+       "fee": "0x20c49ba5e353f80000000000000000",
+       "tickSpacing": "0x3e8",
+       "extension": "0x0"
+      },
+      "routes": [
+       {
+        "name": "Ekubo(Twamm)",
+        "address": "0x5dd3d2f4429af886cd1a3b08289dbcea99a294197e9eb43b0e0325b4b",
+        "percent": 1,
+        "sellTokenAddress": "0x33068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb",
+        "buyTokenAddress": "0x75afe6402ad5a5c20dd25e10ec3b3986acaa647b77e4ae24b0cbc9a54a27a87",
+        "routeInfo": {
+         "poolAddress": "0xac07e0ceccf6dc4a8fb5c26932864c249f7c92cb73452cb3791a5a6dd4b48",
+         "token0": "0x33068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb",
+         "token1": "0x75afe6402ad5a5c20dd25e10ec3b3986acaa647b77e4ae24b0cbc9a54a27a87",
+         "fee": "0xc49ba5e353f7d00000000000000000",
+         "tickSpacing": "0x56a4c",
+         "extension": "0x43e4f09c32d13d43a880e85f69f7de93ceda62d6cf2581a582c6db635548fdc"
+        },
+        "routes": [],
+        "alternativeSwapCount": 0
+       }
+      ],
+      "alternativeSwapCount": 0
+     }
+    ],
+    "alternativeSwapCount": 0
+   }
+  ],
+  "gasFees": "0x9671b3ad370",
+  "gasFeesInUsd": 0.000001,
+  "priceImpact": -16.750626817682132,
+  "sellTokenPriceInUsd": 0.005626170000000001,
+  "buyTokenPriceInUsd": 2.424060453203511,
+  "exactTokenTo": false,
+  "estimatedSlippage": 0.005
+ }
+}

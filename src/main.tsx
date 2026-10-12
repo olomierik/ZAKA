@@ -29,6 +29,7 @@ if (path === '/' || path === '/index.html') {
     [/^\/futures\/testnet/, () => import('./arcdex/pages/FuturesPage')],
     [/^\/(futures|perps|trade)\b/, () => Promise.all([import('./arcdex/pages/PerpsPage'), import('./arcdex/components/PriceChart')])],
     [/^\/predict/, () => import('./arcdex/pages/PredictPage')],
+    [/^\/starknet/, () => import('./arcdex/pages/StarknetPage')],
     [/^\/swap/, () => import('./arcdex/pages/Swap')],
     [/^\/portfolio/, () => import('./arcdex/pages/Portfolio')],
   ]

@@ -34,6 +34,7 @@ const MORE: { icon: string; label: string; to: Page }[] = [
   { icon: '🔔', label: N_('Alerts'), to: { name: 'alerts' } },
   { icon: '⇅', label: N_('Transfers'), to: { name: 'transfers' } },
   { icon: '⚡', label: N_('Autotrade'), to: { name: 'signals' } },
+  { icon: '◆', label: N_('Starknet'), to: { name: 'starknet' } },
   { icon: '🧭', label: N_('Supported routes'), to: { name: 'routes' } },
 ]
 

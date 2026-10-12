@@ -52,6 +52,7 @@ export default function NavBar({ page, navigate, onMenuClick, onBack }: Props) {
     { label: T('Alerts'),      icon: '🔔', page: { name: 'alerts' } },
     { label: T('Transfers'),   icon: '⇅', page: { name: 'transfers' } },
     { label: T('Autotrade'),   icon: '⚡', page: { name: 'signals' } },
+    { label: T('Starknet'), icon: '◆', page: { name: 'starknet' } },
     { label: T('Supported routes'), icon: '🧭', page: { name: 'routes' } },
   ]
   const chg = coinQ?.change24h ?? null

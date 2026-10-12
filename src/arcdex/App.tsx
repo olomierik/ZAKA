@@ -14,6 +14,7 @@ const PerpsPage       = lazy(() => import('./pages/PerpsPage'))
 const PredictPage     = lazy(() => import('./pages/PredictPage'))
 const HlTraderPage    = lazy(() => import('./pages/HlTraderPage'))
 const RoutesPage      = lazy(() => import('./pages/RoutesPage'))
+const StarknetPage    = lazy(() => import('./pages/StarknetPage'))
 const ArcdexPage       = lazy(() => import('./pages/ArcdexPage'))
 const AutotradeSoon   = lazy(() => import('./pages/AutotradeSoon'))
 const Swap            = lazy(() => import('./pages/Swap'))
@@ -89,6 +90,7 @@ export type Page =
   | { name: 'predict' }
   | { name: 'hl-trader'; address: string }
   | { name: 'routes' }
+  | { name: 'starknet' }
   | { name: 'coin' }
   | { name: 'robinhood' }
   | { name: 'rh-token'; address: string; pool?: string }
@@ -105,6 +107,7 @@ const MOBILE_NAV: [Page, string, string][] = [
   [{ name: 'leaderboard' }, '♛', N_('Leaderboard')], [{ name: 'clans' }, '⚑', N_('Clans')], [{ name: 'rewards' }, '✦', N_('Rewards')],
   [{ name: 'signals' }, '⚡', N_('Autotrade')], [{ name: 'alerts' }, '🔔', N_('Alerts')], [{ name: 'transfers' }, '⇅', N_('Transfers')],
   [{ name: 'coin' }, '🔥', N_('$ARCDEX burn')], [{ name: 'routes' }, '🧭', N_('Supported routes')],
+  [{ name: 'starknet' }, '◆', N_('Starknet')],
 ]
 
 export default function App() {
@@ -197,6 +200,7 @@ export default function App() {
           {page.name === 'predict'     && <PredictPage navigate={navigate} />}
           {page.name === 'hl-trader'   && <HlTraderPage key={page.address} address={page.address} navigate={navigate} />}
           {page.name === 'routes'      && <RoutesPage navigate={navigate} />}
+          {page.name === 'starknet'    && <StarknetPage navigate={navigate} />}
           {page.name === 'coin'       && <ArcdexPage navigate={navigate} />}
           {page.name === 'swap'        && <Swap navigate={navigate} />}
           {page.name === 'bridge'      && <Bridge key={page.dir ?? 'out'} initialDir={page.dir ?? 'out'} navigate={navigate} />}

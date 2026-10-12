@@ -42,6 +42,8 @@ const CHECKS: Check[] = [
   { id: 'robinhood', name: 'Robinhood Chain', use: N_('Robinhood coins'), run: rpc('https://rpc.mainnet.chain.robinhood.com', 'eth_blockNumber') },
   { id: 'solana', name: 'Solana', use: N_('Solana coins and wallets'), run: rpc('https://solana-rpc.publicnode.com', 'getSlot') },
   { id: 'bsc', name: 'BNB Chain', use: N_('BNB Chain coins'), run: rpc('https://bsc-rpc.publicnode.com', 'eth_blockNumber') },
+  { id: 'avnu', name: 'AVNU', use: N_('Starknet swaps'), run: reachable('https://starknet.api.avnu.fi/swap/v3/sources') },
+  { id: 'starknet', name: 'Starknet', use: N_('Starknet wallets and swaps'), run: rpc('https://starknet-rpc.publicnode.com', 'starknet_blockNumber') },
 ]
 
 interface Result { ok: boolean; ms: number | null; detail: string; at: number }
@@ -74,7 +76,7 @@ export default function RoutesPage({ navigate }: { navigate: (p: Page) => void }
   useEffect(() => { check() }, [check])
   useEffect(() => { const base = document.title; document.title = `${T('Supported routes')} | ARCDEX`; return () => { document.title = base } }, [])
 
-  const groups: RouteGroup[] = ['spot', 'cross', 'bridge', 'futures']
+  const groups: RouteGroup[] = ['spot', 'starknet', 'cross', 'bridge', 'futures']
   const dot = (ids: ProviderId[]) => {
     const rs = ids.map(id => health[id])
     if (rs.some(r => !r)) return 'pending'

@@ -2089,6 +2089,53 @@ A 100-point meme-coin signal engine built into the market engine, beside the exi
 - **Tests:** `engine/test/quantCore.test.ts`, `quantTrading.test.ts`, `quantEngine.test.ts` (55 tests). The store's SQL was run against PGlite (schema, batched upserts, the dataset join).
 - **Railway:** the Dockerfile copies `api/_quantProtocol.ts`, and `railway.toml` watches it. Railway's own service settings (Watch Paths) should get it too, or a change to that file alone won't redeploy the engine.
 
+## Starknet: swaps through AVNU (2026-10-12)
+
+The build pack's Phase 2, "Starknet native". `/starknet` (`pages/StarknetPage.tsx`, code in `src/arcdex/starknet/`), in More, the drawer and the sitemap.
+- **Verified first, as the pack asks** (docs.avnu.fi and live answers, 2026-10-12):
+  - **AVNU's API is v3:** quotes at `/swap/v3/quotes`, calls at `/swap/v3/build`.
+  - **The Exchange is `0x0427…3b0f`**, the only contract a swap may approve or call (`AVNU_EXCHANGE`).
+  - **The integrator fee must be sent in hex.** The live API refuses "100" ("integratorFees must start with 0x"), though its docs show "30".
+  - **The wallet API** (starknet-io/types-js `wallet-api`): `wallet_requestAccounts`, `wallet_requestChainId`, `wallet_switchStarknetChain`, `wallet_addInvokeTransaction`.
+- **Testnet first, where it can be:** AVNU's Sepolia API has no liquidity sources and no tokens (`/swap/v3/sources` and `/v1/starknet/tokens` both empty).
+  - So swaps are quoted on mainnet, and **sending them is off until the owner sets `VITE_STARKNET_SWAPS=on`**. Quotes, routes and balances still show.
+  - **"Check your wallet on testnet"** signs a 0 STRK transfer to yourself on Sepolia and follows it to its receipt: the pack's "signed testnet transaction". It works with the switch off.
+- **No starknet.js:** wallets are the injected `window.starknet_*` objects (Ready/Argent X, Braavos) speaking the wallet API.
+  - Reads are plain JSON-RPC (`starknet/rpc.ts`) to PublicNode, then dRPC, then ZAN (Lava, Blast and Nethermind's free RPC are discontinued). All three allow browser origins.
+  - Selectors are Starknet's keccak through viem (`starknet/felt.ts`), checked against their well-known values.
+- **Checked before the wallet sees anything (`starknet/avnu.ts`):**
+  - **The quote:** the chain, both tokens, the amount, the fee asked for, routes adding up to the whole amount.
+  - **The build:** at most two calls.
+    - The approval: exactly the amount, on the sell token, to the Exchange.
+    - Then the Exchange's `multi_route_swap`: the tokens and amounts as quoted, a minimum within the slippage chosen, the trader as beneficiary, the fee rate and recipient as configured.
+  - **Price impact** (AVNU's, in bps, negative a loss): 50%+ is refused and 15%+ needs a tick.
+  - **Right before signing:** a fresh quote. It stops if it pays 3% less than the one shown.
+  - **After signing:** the receipt is polled every 2 seconds for up to 3 minutes, with Voyager links.
+- **What the page shows:** amounts, rate, minimum received, price impact, slippage (0.5/1/2%), the route ("JediSwap → Ekubo 100%": a multi-hop route is its first hop with the next ones nested), AVNU's 0.1%, ARCDEX's fee, the network fee, the quote's age, the approval and both token addresses.
+- **Tokens:** AVNU's verified list (76), busiest first. A "verified" token whose ticker has control characters in it is left out.
+- **ARCDEX's fee:** none by default. ARCDEX's fee wallet is an EVM address, which Starknet can't pay.
+  - With `VITE_STARKNET_FEE_RECIPIENT` (a Starknet address) and `VITE_STARKNET_FEE_BPS` (1–200) set, it's AVNU's integrator fee, paid on-chain in the swap.
+- **`/routes`:** a Starknet group, with AVNU and Starknet's RPC in the health checks. "Starknet" left the not-supported list; moving money to or from Starknet replaced it.
+- **Tests:**
+  - `bun scripts/test-starknet.ts`, offline on real answers (`scripts/fixtures/avnu.json`, from `bun scripts/capture-avnu.ts`).
+    - It covers selectors and u256, quotes and builds passing, and 8 tampered quotes and 20 tampered builds refused, among them an extra call slipped in before the swap and a hidden fee rate.
+    - It also covers the price-impact rule and the wallet API calls. 16 of 16 planted bugs failed it.
+  - `bun scripts/check-avnu.ts`, live on mainnet with nothing sent:
+    - It finds an account holding STRK and quotes and builds 10 STRK → ETH for it, both through the checks.
+    - It simulates the exact transaction from that account (`starknet_simulateTransactions`, signature and fee skipped): it pays exactly 10 STRK and receives at least the minimum.
+    - A minimum the route can't meet is refused by AVNU's contract. It passed on a single-hop and a multi-hop route.
+- **Checked in the browser** (local dev):
+  - Live quotes and their details; the token picker; a 375px phone with no sideways scroll; `/routes`.
+  - With swaps switched on locally and a test wallet injected (it presents a real funded mainnet account and simulates instead of signing): connecting, on-chain balances, and Swap.
+    - Swap ran a fresh quote and the checked build, then `wallet_addInvokeTransaction` with the approval and the swap.
+    - The test wallet's mainnet simulation of exactly those calls succeeded.
+- **Not done:** a real signed transaction (the owner's first, with their wallet: the Sepolia check first); bridging to or from Starknet; AVNU's DCA and paymaster (the pack: only after review).
+- **Owner steps:**
+  1. With a Starknet wallet, run "Send a 0 STRK test transaction" on `/starknet` (Sepolia STRK from faucet.starknet.io).
+  2. When ready, set `VITE_STARKNET_SWAPS=on` in Netlify (`arcsense-app`) and redeploy. Try a small swap first.
+  3. Optionally, a Starknet address for ARCDEX's fee (`VITE_STARKNET_FEE_RECIPIENT`, `VITE_STARKNET_FEE_BPS`).
+- Every new string is in all six dictionaries (59).
+
 ## After a deploy: pages left open, and pages that fail (2026-10-12)
 
 The build pack's production-readiness phase.

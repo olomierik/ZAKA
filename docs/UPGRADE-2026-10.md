@@ -132,7 +132,10 @@ every market, and predictions".
    fees, funding and liquidations, and the candles replayed after a gap so nothing is missed while the page is closed.
    It runs in the browser and sends nothing. **Price alerts are done** too: set from the 🔔 on a market, watched on
    every page while ARCDEX is open, with the candles read after a gap so a level reached meanwhile still fires.
-7. **Starknet:** a Starknet wallet and AVNU swaps, once their current docs and SDKs are verified.
+7. **Starknet:** a Starknet wallet and AVNU swaps, once their current docs and SDKs are verified. **Done (2026-10-12)**,
+   `/starknet`: AVNU's v3 API and the Starknet wallet API verified first; every quote and transaction checked before
+   the wallet sees it; a 0 STRK test transaction on Sepolia. AVNU has no Sepolia liquidity, so swaps quote on mainnet
+   and sending them is off until the owner sets `VITE_STARKNET_SWAPS=on`.
 
 Each phase lands as its own commit with its tests run, and is recorded in AGENTS.md.
 

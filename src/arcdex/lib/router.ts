@@ -31,6 +31,7 @@ export function pageToPath(p: Page): string {
     case 'predict':     return '/predict'
     case 'hl-trader':   return `/futures/trader/${p.address}`
     case 'routes':      return '/routes'
+    case 'starknet':    return '/starknet'
     case 'coin':        return '/burn'
     case 'robinhood':   return '/robinhood'
     case 'rh-token':    return `/robinhood/token/${p.address}${p.pool ? `?pool=${p.pool}` : ''}`
@@ -81,6 +82,7 @@ export function pathToPage(pathname: string, search: string): Page | null {
     case 'predict':
     case 'predictions': return { name: 'predict' }
     case 'routes':      return { name: 'routes' }
+    case 'starknet':    return { name: 'starknet' }
     // $ARCDEX: its burns, buybacks and the fee ledger (/sense was $SENSE's, before 2026-10-04).
     case 'sense':
     case 'burn':        return { name: 'coin' }
