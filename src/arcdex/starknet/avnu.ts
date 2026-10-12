@@ -22,10 +22,20 @@ export async function avnuTokens(net: SnNetwork = 'mainnet'): Promise<SnToken[]>
     if (raw) { const c = JSON.parse(raw) as { at: number; net: string; list: SnToken[] }; if (c.net === net && Date.now() - c.at < 3_600_000 && c.list.length) return c.list }
   } catch { /* storage blocked */ }
   const out: SnToken[] = []
+  let whole = true
   for (let page = 0; page < 5; page++) {
-    const r = await fetch(`${SN[net].avnu}/v1/starknet/tokens?page=${page}&size=50&tag=Verified`, { signal: AbortSignal.timeout(10_000) })
-    if (!r.ok) throw new AvnuError(`AVNU answered ${r.status}`)
-    const j = (await r.json()) as { content?: { address: string; symbol: string; name: string; decimals: number; logoUri?: string | null; lastDailyVolumeUsd?: number }[]; totalPages?: number }
+    let j: { content?: { address: string; symbol: string; name: string; decimals: number; logoUri?: string | null; lastDailyVolumeUsd?: number }[]; totalPages?: number }
+    try {
+      const r = await fetch(`${SN[net].avnu}/v1/starknet/tokens?page=${page}&size=50&tag=Verified`, { signal: AbortSignal.timeout(10_000) })
+      if (!r.ok) throw new AvnuError(`AVNU answered ${r.status}`)
+      j = await r.json()
+      if (!Array.isArray(j.content)) throw new AvnuError('AVNU answered without a token list')
+    } catch (e) {
+      // A later page that fails (AVNU throttles) leaves the busiest tokens already read; the first one failing is an error.
+      if (!out.length) throw e
+      whole = false
+      break
+    }
     for (const t of j.content ?? []) {
       // A name or ticker with control characters in it (one "verified" token has one) isn't listed.
       if (!t.address || !t.symbol || !Number.isInteger(t.decimals) || CONTROL.test(t.symbol) || CONTROL.test(t.name ?? '')) continue
@@ -34,7 +44,8 @@ export async function avnuTokens(net: SnNetwork = 'mainnet'): Promise<SnToken[]>
     if (page + 1 >= (j.totalPages ?? 0)) break
   }
   out.sort((a, b) => b.volumeUsd - a.volumeUsd)
-  try { localStorage.setItem(TOKENS_KEY, JSON.stringify({ at: Date.now(), net, list: out })) } catch { /* storage blocked */ }
+  // A partial list is kept ten minutes, a whole one an hour.
+  try { localStorage.setItem(TOKENS_KEY, JSON.stringify({ at: whole ? Date.now() : Date.now() - 50 * 60_000, net, list: out })) } catch { /* storage blocked */ }
   return out
 }
 

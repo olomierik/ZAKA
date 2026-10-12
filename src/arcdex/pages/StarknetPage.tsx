@@ -19,10 +19,11 @@ import { AvnuError, avnuBuild, avnuQuote, avnuTokens, minReceived, routeNames, s
 import { connectWallet, iconOf, INSTALL, invoke, switchNetwork, useSnWallet } from '../starknet/wallet'
 
 const USDC = '0x033068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb'
+// The three to start with, with the logos AVNU's list gives them, until (or if) the list loads.
 const FALLBACK: SnToken[] = [
-  { address: STRK, symbol: 'STRK', name: 'Starknet', decimals: 18, logo: null, volumeUsd: 0 },
-  { address: USDC, symbol: 'USDC', name: 'USDC', decimals: 6, logo: null, volumeUsd: 0 },
-  { address: ETH, symbol: 'ETH', name: 'Ethereum', decimals: 18, logo: null, volumeUsd: 0 },
+  { address: STRK, symbol: 'STRK', name: 'Starknet', decimals: 18, logo: 'https://assets.coingecko.com/coins/images/26433/small/starknet.png', volumeUsd: 0 },
+  { address: USDC, symbol: 'USDC', name: 'USDC', decimals: 6, logo: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png', volumeUsd: 0 },
+  { address: ETH, symbol: 'ETH', name: 'Ethereum', decimals: 18, logo: 'https://imagedelivery.net/0xPAQaDtnQhBs8IzYRIlNg/e07829b7-0382-4e03-7ecd-a478c5aa9f00/logo', volumeUsd: 0 },
 ]
 /** Left in the wallet when selling all of its STRK: Starknet's fees are paid in STRK. */
 const STRK_RESERVE = 1n * 10n ** 18n
@@ -30,7 +31,7 @@ const STRK_RESERVE = 1n * 10n ** 18n
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 const num = (n: number, dp = 6) => (Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: dp }) : '—')
 /** Starknet's fees are often a few millionths of a STRK: shown to two significant digits. */
-const gasText = (n: number) => (n > 0 && n < 0.0001 ? n.toPrecision(2) : num(n, 4))
+const gasText = (n: number) => (n > 0 && n < 0.000001 ? '< 0.000001' : n > 0 && n < 0.0001 ? n.toPrecision(2) : num(n, 4))
 const usd = (n: number | undefined) => (n == null || !Number.isFinite(n) ? '' : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
 const errText = (e: unknown) => {
   const m = e instanceof Error ? e.message : String(e)
@@ -116,13 +117,16 @@ export default function StarknetPage({ navigate }: { navigate: (p: Page) => void
 
   useEffect(() => { document.title = 'Starknet swaps | ARCDEX' }, [])
   useEffect(() => {
-    void avnuTokens('mainnet').then(list => {
-      if (!list.length) return
+    let alive = true, timer: ReturnType<typeof setTimeout> | null = null
+    const load = () => void avnuTokens('mainnet').then(list => {
+      if (!alive || !list.length) return
       setTokens(list)
       // The two picked so far become AVNU's own entries (with their logos).
       const own = (t: SnToken) => list.find(x => sameFelt(x.address, t.address)) ?? t
       setSell(own); setBuy(own)
-    }).catch(() => {})
+    }).catch(() => { if (alive) timer = setTimeout(load, 30_000) })
+    load()
+    return () => { alive = false; if (timer) clearTimeout(timer) }
   }, [])
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1_000); return () => clearInterval(id) }, [])
 
