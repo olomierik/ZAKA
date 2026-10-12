@@ -1857,6 +1857,38 @@ Owner: "READ THE FILES [the ArcSense Upgrade Build Pack] and improve everything;
   - Each provider's health, checked from the visitor's own browser: Arc, the engine, Hyperliquid, Relay, Across, Circle CCTP, Robinhood Chain, Solana and BNB Chain, three calls each (never from the browser's cache), the middle time shown, with block heights where a chain answers.
   - Keep `lib/routes.ts` in step when a route changes. In More, the drawer and the sitemap.
   - Tests: `bun scripts/test-routes.ts` (every route complete, its providers checked on the page, its page one the app has, Hyperliquid's routes off while trading is).
+- **Paper trading (2026-10-12; `hl/paper.ts`, `components/HlPaper.tsx`):** a Live | Paper switch above the futures order panel. The build pack's Strategy Lab phase starts with "alerts and paper trading".
+  - **Who and what:** anyone, no wallet, on every Hyperliquid market, with virtual USDC: $10,000 to start, reset to $1K, $10K or $100K.
+  - **Where it starts:** while live trading is off, the page opens on Paper, and "Trading opens soon" offers it too.
+  - **Fills:** a market order fills against Hyperliquid's full-precision book (a fresh `l2Book`), level by level, within the 1/3/5% price cap.
+    - A limit that would cross fills the same way, whole or not at all; post-only ones are refused.
+    - The rest wait, holding back their margin and fee as Hyperliquid does, and fill at their own price once the price reaches it.
+  - **Fees:** what a real order through ARCDEX pays. Hyperliquid's base 0.045% taker / 0.015% maker, plus ARCDEX's 0.05% builder fee (`paperFees`).
+  - **Positions:**
+    - Isolated margin: a loss stops at the margin.
+    - Adding to a position uses its own leverage.
+    - Liquidation at the maintenance margin: half the initial margin at the market's maximum leverage.
+    - Take-profit and stop-loss close the whole position.
+  - **Funding:** Hyperliquid's own hourly rate for each market (`fundingHistory`), paid from the position's margin: size × price × rate, so longs pay a positive rate. An hour waits until every market held has its rate, 15 minutes at most.
+  - **The price path (`step`):** each pass moves a market's price from where it was to where it is, and fires what it crosses in the order the price reaches it. A buy at 97 fills before a stop at 95.
+    - Something already crossed (a gap) fires at the price after the gap; a resting limit fills at its own price.
+  - **Nothing is missed while away (`replay`):** the account remembers when it was last checked.
+    - After a gap of 15s or more (a closed page, a throttled background tab), Hyperliquid's candles in between are replayed, with funding in time order. They're the finest that fit one request: 1m for up to 3.3 days.
+    - Each candle runs open → the side against it → the other side → close.
+    - An order or position only meets candles that opened after it.
+    - One notice says what happened ("While you were away (18 min), from Hyperliquid’s candles: …").
+  - **In this browser:** the account is kept in localStorage (`arcdex:hl-paper:v1`). One tab drives it at a time (a 4-second lease) and the others follow it.
+  - **Notices:** a limit filled, a take-profit or stop-loss hit, a liquidation, an order cancelled.
+  - **Labelled PAPER everywhere:** the switch, the order panel's banner, the account box and tabs, the phone's sheet and bar, and every notice.
+    - The note under the panel says what's simulated, what isn't (your own orders' market impact, partial fills), and that nothing goes to Hyperliquid.
+  - **Tests:** `bun scripts/test-paper.ts`: fills, closes and flips, held-back margin, liquidation, limits and gaps, TP/SL, the price path, funding, the candle replay. 22 of 22 planted bugs failed it.
+  - **Checked in the browser** against live Hyperliquid data:
+    - A $1,000 ETH long filled at the book's price: margin $333.28, liquidation 1,726.3.
+    - A take-profit fired as the price crossed it.
+    - A resting buy filled at its own price, at the maker fee.
+    - With the stored account rewound 18 minutes, the reload replayed the real 1m candles and fired a stop at exactly its price, in the bar that dipped through it.
+    - A 375px phone.
+  - **Every new string is in all six dictionaries** (50).
 - **Funding through Relay:** Arc USDC → the Hyperliquid perps balance (an exact approval to Relay's depository, then its deposit), and back to Arc (Relay's authorization, then a Hyperliquid `sendAsset` to Relay's depository there). No ARCDEX fee on either.
   - A quote is refused unless it's exactly what was asked: the same account on both sides, the currencies and amount, Relay's own contracts, an approval of exactly the amount, Relay's order paying only the account and refunding only to it, with no calls, and at least 97% of the money arriving.
   - Measured on 2026-10-11: $25 in, $24.97 out; $25 back, $24.97.

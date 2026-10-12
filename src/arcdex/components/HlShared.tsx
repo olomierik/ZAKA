@@ -65,12 +65,32 @@ export function regionNote(g: HlGate): string | null {
   return T('Hyperliquid isn’t available to US persons, Ontario or sanctioned regions. Closing positions and withdrawing always work.')
 }
 
+/** Where a market's leverage starts (owner's plan, docs/UPGRADE-2026-10.md: "the default is low"). */
+export const DEFAULT_LEVERAGE = 3
+
+/** Adjust leverage: 1× up to the market's maximum. */
+export function LeverageModal({ lev, max, note, onChange, onClose }: { lev: number; max: number; note?: string; onChange: (v: number) => void; onClose: () => void }) {
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal-card fxb-lev" onClick={e => e.stopPropagation()}>
+        <div className="fxb-lev-h"><b>{T('Adjust leverage')}</b><button className="fxb-x" onClick={onClose} aria-label={T('Close')}>✕</button></div>
+        <div className="fxb-lev-val"><button onClick={() => onChange(Math.max(1, lev - 1))}>−</button><b>{lev}×</b><button onClick={() => onChange(Math.min(max, lev + 1))}>＋</button></div>
+        <input type="range" min={1} max={max} step={1} value={lev} onChange={e => onChange(+e.target.value)} />
+        <div className="fxb-ticks">{[1, 2, 3, 5, 10, 20, 25, 40, 50].filter(v => v <= max).map(v => <button key={v} className={lev === v ? 'on' : ''} onClick={() => onChange(v)}>{v}×</button>)}</div>
+        <p className="fx-fine">{T('Higher leverage means a bigger position for the same margin, and a liquidation price closer to the entry.')}{note ? ` ${note}` : ''}</p>
+        <button className="btn-primary" onClick={onClose}>{T('Confirm')}</button>
+      </div>
+    </div>
+  )
+}
+
 /** In place of the order buttons while trading isn't switched on (client.ts HL_TRADING). */
-export function TradingSoon() {
+export function TradingSoon({ onPaper }: { onPaper?: () => void } = {}) {
   return (
     <div className="hl-blocker">
       <button className="fx-go" disabled>{T('Trading opens soon')}</button>
       <div className="fx-fine">{T('Markets, prices and order books are live. Placing orders opens once trading is switched on.')}</div>
+      {onPaper && <button className="btn-ghost" onClick={onPaper}>{T('Practise with paper trading')}</button>}
     </div>
   )
 }

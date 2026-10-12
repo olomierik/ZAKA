@@ -8,6 +8,9 @@
 //
 // Where Hyperliquid's terms don't allow it (the US, Ontario, sanctioned regions; unknown counts as blocked), opening
 // positions and depositing are off. Closing, cancelling and withdrawing always work.
+//
+// Paper (components/HlPaper.tsx, hl/paper.ts): the same markets with virtual USDC, filled against the live book in the
+// browser, behind a Live | Paper switch. It's where a visitor starts while live trading is off.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import PriceChart, { type ChartTrade } from '../components/PriceChart'
@@ -24,16 +27,11 @@ import { useHlAccount, type HlAccountState, type HlFill, type HlOpenOrder, type 
 import { buildPerpOrders, cancelOrders, DEFAULT_SLIPPAGE, estLiquidation, MIN_ORDER_USD, NeedsEnable, perpBuilder, placeOrders, setLeverage, type OrderOutcome } from '../hl/exec'
 import { marketPrice, roundPrice, roundSize, type OrderRequest } from '../hl/wire'
 import { HL_EXPLORER, HL_TRADING } from '../hl/client'
-import { compactUsd, fmtNum, fmtPx, pxDp } from '../hl/format'
+import { compactUsd, fmtNum, fmtPx, pct, pxDp, sanitize, signedUsd, upDown } from '../hl/format'
 import { BUILDER } from '../hl/access'
-import { EnableTradingModal, HlAccountBox, HlFundingModal, TradingSoon, errText, money, regionNote, useHlGate, type HlGate } from '../components/HlShared'
-
-// ── numbers ──────────────────────────────────────────────────────────────
-
-const pct = (n: number | null | undefined, dp = 2) => n == null || !Number.isFinite(n) ? '—' : `${n >= 0 ? '+' : ''}${n.toFixed(dp)}%`
-const signedUsd = (n: number) => `${n >= 0 ? '+' : '−'}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-const upDown = (n: number | null | undefined) => (n == null ? '' : n >= 0 ? 'fx-up' : 'fx-down')
-const sanitize = (s: string) => s.replace(/,/g, '.').replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')
+import { DEFAULT_LEVERAGE, EnableTradingModal, HlAccountBox, HlFundingModal, LeverageModal, TradingSoon, errText, money, regionNote, useHlGate, type HlGate } from '../components/HlShared'
+import { ModeSwitch, noticeNotes, PaperAccountBox, PaperAccountTabs, PaperOrderPanel, PaperResetModal, PaperToasts, useTradeMode } from '../components/HlPaper'
+import { usePaper } from '../hl/paper'
 
 export const CATEGORY_LABEL: Record<HlCategory, string> = {
   crypto: 'Crypto', stocks: 'Stocks', preipo: 'Pre-IPO', indices: 'Indices', commodities: 'Commodities', fx: 'FX',
@@ -286,9 +284,6 @@ function BookAndTrades(props: { book: Book | null; trades: HlTrade[] | null; sym
 
 // ── the order panel ──────────────────────────────────────────────────────
 
-/** Where a market's leverage starts (owner's plan, docs/UPGRADE-2026-10.md: "the default is low"). */
-const DEFAULT_LEVERAGE = 3
-
 function outcomeText(o: OrderOutcome, symbol: string): { ok: boolean; text: string } {
   switch (o.kind) {
     case 'filled': return { ok: true, text: T('Filled {sz} {symbol} at {px}', { sz: fmtNum(o.totalSz, o.totalSz >= 1 ? 4 : 6), symbol, px: fmtPx(o.avgPx) }) }
@@ -299,10 +294,10 @@ function outcomeText(o: OrderOutcome, symbol: string): { ok: boolean; text: stri
   }
 }
 
-function OrderPanel({ market, px, gate, account, assetData, fees, prefill, onFund, onEnable, onDone }: {
+function OrderPanel({ market, px, gate, account, assetData, fees, prefill, onFund, onEnable, onDone, onPaper }: {
   market: HlMarket; px: number; gate: HlGate; account: HlAccountState | null; assetData: AssetData | null
   fees: { taker: number; maker: number }; prefill: { px: number; n: number } | null
-  onFund: (t: 'deposit' | 'withdraw') => void; onEnable: () => void; onDone: () => void
+  onFund: (t: 'deposit' | 'withdraw') => void; onEnable: () => void; onDone: () => void; onPaper: () => void
 }) {
   const [kind, setKind] = useState<'market' | 'limit'>('market')
   const [lev, setLev] = useState(Math.min(DEFAULT_LEVERAGE, market.maxLeverage))
@@ -385,7 +380,7 @@ function OrderPanel({ market, px, gate, account, assetData, fees, prefill, onFun
   }
 
   let blocker: JSX.Element | null = null
-  if (!HL_TRADING) blocker = <TradingSoon />
+  if (!HL_TRADING) blocker = <TradingSoon onPaper={onPaper} />
   else if (!gate.access) blocker = (
     <div className="hl-blocker">
       <button className="fx-go fx-go-primary" onClick={openConnectModal}>{T('Connect wallet to trade')}</button>
@@ -466,16 +461,10 @@ function OrderPanel({ market, px, gate, account, assetData, fees, prefill, onFun
       {cross && !market.onlyIsolated ? <div className="fx-fine">{T('Cross margin: the liquidation price depends on your whole account, and Hyperliquid shows it once the position is open.')}</div> : null}
 
       {levOpen && (
-        <div className="modal-back" onClick={() => setLevOpen(false)}>
-          <div className="modal-card fxb-lev" onClick={e => e.stopPropagation()}>
-            <div className="fxb-lev-h"><b>{T('Adjust leverage')}</b><button className="fxb-x" onClick={() => setLevOpen(false)} aria-label={T('Close')}>✕</button></div>
-            <div className="fxb-lev-val"><button onClick={() => { touched.current = true; setLev(l => Math.max(1, l - 1)) }}>−</button><b>{lev}×</b><button onClick={() => { touched.current = true; setLev(l => Math.min(market.maxLeverage, l + 1)) }}>＋</button></div>
-            <input type="range" min={1} max={market.maxLeverage} step={1} value={lev} onChange={e => { touched.current = true; setLev(+e.target.value) }} />
-            <div className="fxb-ticks">{[1, 2, 3, 5, 10, 20, 25, 40, 50].filter(v => v <= market.maxLeverage).map(v => <button key={v} className={lev === v ? 'on' : ''} onClick={() => { touched.current = true; setLev(v) }}>{v}×</button>)}</div>
-            <p className="fx-fine">{T('Higher leverage means a bigger position for the same margin, and a liquidation price closer to the entry.')} {T('It is set on Hyperliquid with your next order.')}</p>
-            <button className="btn-primary" onClick={() => setLevOpen(false)}>{T('Confirm')}</button>
-          </div>
-        </div>
+        <LeverageModal
+          lev={lev} max={market.maxLeverage} onClose={() => setLevOpen(false)} onChange={v => { touched.current = true; setLev(v) }}
+          note={T('It is set on Hyperliquid with your next order.')}
+        />
       )}
     </div>
   )
@@ -759,9 +748,25 @@ export default function PerpsPage({ navigate, coin: coinProp }: { navigate: (p: 
   const [prefill, setPrefill] = useState<{ px: number; n: number } | null>(null)
   const [sheet, setSheet] = useState(false)
   const [mTab, setMTab] = useState<'book' | 'trades'>('book')
+  const [mode, setMode] = useTradeMode()
+  const [resetting, setResetting] = useState(false)
+  const [toasts, setToasts] = useState<{ id: number; ok: boolean; text: string }[]>([])
+  const toastSeq = useRef(0)
+  const byCoinRef = useRef<Map<string, HlMarket>>(new Map())
+  // The paper account keeps working whichever mode is showing: its orders, stops and liquidations don't wait.
+  const paper = usePaper(mids, n => {
+    const notes = noticeNotes(n, byCoinRef.current)
+    if (notes.length) setToasts(t => [...t, ...notes.map(x => ({ ...x, id: ++toastSeq.current }))].slice(-5))
+  })
+  useEffect(() => {
+    if (!toasts.length) return
+    const id = setTimeout(() => setToasts(t => t.slice(1)), 7_000)
+    return () => clearTimeout(id)
+  }, [toasts])
 
   const px = market ? (mids[coin] ?? ctx?.midPx ?? market.midPx ?? market.markPx) : 0
   const byCoin = useMemo(() => new Map((markets ?? []).map(m => [m.coin, m])), [markets])
+  byCoinRef.current = byCoin
   const pick = (c: string) => { setPicker(false); if (c !== coin) navigate({ name: 'perps', coin: c }) }
 
   // The tab's title follows the price; leaving the page puts back the one it found.
@@ -773,12 +778,15 @@ export default function PerpsPage({ navigate, coin: coinProp }: { navigate: (p: 
   // The chart: the venue's candles, the last point following each trade; big trades and your own fills pop.
   const ticks = useMemo<Tick[]>(() => (trades ?? []).slice(0, 200).map(t => ({ time: t.time, priceUsd: t.px, usd: t.px * t.sz })).reverse(), [trades])
   const popMin = market ? Math.min(50_000, Math.max(500, market.volume24h / 20_000)) : 1e9
-  const myFills = useMemo(() => acct.fills.filter(f => f.coin === coin), [acct.fills, coin])
+  const myFills = useMemo(() => (mode === 'paper'
+    ? paper.state.fills.filter(f => f.coin === coin && f.dir !== 'Liquidation').map(f => ({ id: `p${f.tid}`, time: f.time, px: f.px, sz: f.sz, buy: f.isBuy }))
+    : acct.fills.filter(f => f.coin === coin).map(f => ({ id: `f${f.tid}`, time: f.time, px: f.px, sz: f.sz, buy: f.side === 'B' }))
+  ), [mode, paper.state.fills, acct.fills, coin])
   const loadedAt = useRef(Date.now())
   useEffect(() => { loadedAt.current = Date.now() }, [coin])
   const chartTrades = useMemo<ChartTrade[]>(() => [
     ...(trades ?? []).filter(t => t.px * t.sz >= popMin).map(t => ({ id: `t${t.tid}`, time: t.time, priceUsd: t.px, usd: t.px * t.sz, kind: t.side === 'B' ? 'buy' as const : 'sell' as const, maker: null, live: t.live })),
-    ...myFills.map(f => ({ id: `f${f.tid}`, time: f.time, priceUsd: f.px, usd: f.px * f.sz, kind: f.side === 'B' ? 'buy' as const : 'sell' as const, maker: null, mine: true, live: f.time > loadedAt.current })),
+    ...myFills.map(f => ({ id: f.id, time: f.time, priceUsd: f.px, usd: f.px * f.sz, kind: f.buy ? 'buy' as const : 'sell' as const, maker: null, mine: true, live: f.time > loadedAt.current })),
   ], [trades, myFills, popMin])
 
   const strip = useMemo(() => {
@@ -805,12 +813,22 @@ export default function PerpsPage({ navigate, coin: coinProp }: { navigate: (p: 
   }
 
   const pickerPop = picker ? <MarketPicker markets={markets} mids={mids} coin={coin} favs={favs} toggleFav={toggleFav} onPick={pick} onClose={() => setPicker(false)} /> : null
-  const panel = (
+  const modeSwitch = <ModeSwitch mode={mode} onChange={setMode} />
+  const panel = mode === 'paper' ? (
+    <PaperOrderPanel market={market} px={px} paper={paper} prefill={prefill} />
+  ) : (
     <OrderPanel
       market={market} px={px} gate={gate} account={acct.state} assetData={assetData} fees={fees} prefill={prefill}
       onFund={t => { setSheet(false); setFunding(t) }} onEnable={() => { setSheet(false); setEnabling(true) }} onDone={() => { acct.refresh() }}
+      onPaper={() => setMode('paper')}
     />
   )
+  const accountBox = mode === 'paper'
+    ? <PaperAccountBox paper={paper} onReset={() => setResetting(true)} />
+    : <HlAccountBox account={acct.state} gate={gate} onFund={setFunding} />
+  const accountTabs = mode === 'paper'
+    ? <PaperAccountTabs paper={paper} byCoin={byCoin} mids={mids} coin={coin} onSelect={pick} onReset={() => setResetting(true)} />
+    : <AccountTabs acct={acct} byCoin={byCoin} mids={mids} gate={gate} coin={coin} onSelect={pick} onFund={setFunding} navigate={navigate} />
   const chart = (
     <PriceChart
       poolAddress={null} source={source} ticks={ticks} live={socketUp} trades={chartTrades}
@@ -846,14 +864,15 @@ export default function PerpsPage({ navigate, coin: coinProp }: { navigate: (p: 
             </div>
             {mTab === 'book' ? <OrderBook {...bookProps} /> : <TradesList trades={trades} />}
           </div>
-          <HlAccountBox account={acct.state} gate={gate} onFund={setFunding} />
-          <div className="spot-panel"><AccountTabs acct={acct} byCoin={byCoin} mids={mids} gate={gate} coin={coin} onSelect={pick} onFund={setFunding} navigate={navigate} /></div>
-          <div className="hl-mbar">
+          <div className="hl-mode-m">{modeSwitch}</div>
+          {accountBox}
+          <div className="spot-panel">{accountTabs}</div>
+          <div className={`hl-mbar${mode === 'paper' ? ' paper' : ''}`}>
             <button className="trade-bar-buy" onClick={() => setSheet(true)}>{T('Buy / Long')}</button>
             <button className="trade-bar-sell" onClick={() => setSheet(true)}>{T('Sell / Short')}</button>
           </div>
-          <Sheet open={sheet} onClose={() => setSheet(false)} title={`${market.symbol}-USD · ${fmtPx(px)}`}>
-            <div className="fxb">{panel}</div>
+          <Sheet open={sheet} onClose={() => setSheet(false)} title={`${market.symbol}-USD · ${fmtPx(px)}${mode === 'paper' ? ` · ${T('PAPER')}` : ''}`}>
+            <div className="fxb">{modeSwitch}{panel}</div>
           </Sheet>
         </>
       ) : (
@@ -861,11 +880,12 @@ export default function PerpsPage({ navigate, coin: coinProp }: { navigate: (p: 
           <div className="fxb-chart spot-panel">{chart}</div>
           <div className="fxb-trades hl-bt-wrap"><BookAndTrades {...bookProps} /></div>
           <div className="fxb-order">
+            {modeSwitch}
             {panel}
-            <HlAccountBox account={acct.state} gate={gate} onFund={setFunding} />
+            {accountBox}
           </div>
           <div className="fxb-bottom spot-panel">
-            <AccountTabs acct={acct} byCoin={byCoin} mids={mids} gate={gate} coin={coin} onSelect={pick} onFund={setFunding} navigate={navigate} />
+            {accountTabs}
           </div>
         </div>
       )}
@@ -879,6 +899,8 @@ export default function PerpsPage({ navigate, coin: coinProp }: { navigate: (p: 
 
       {funding && <HlFundingModal gate={gate} account={acct.state} initial={funding} onClose={() => setFunding(null)} onDone={() => { acct.refresh(); gate.refresh() }} />}
       {enabling && <EnableTradingModal gate={gate} onClose={() => setEnabling(false)} onDone={() => { setEnabling(false); acct.refresh() }} />}
+      {resetting && <PaperResetModal onReset={a => paper.reset(a)} onClose={() => setResetting(false)} />}
+      <PaperToasts items={toasts} onDismiss={id => setToasts(t => t.filter(x => x.id !== id))} />
     </div>
   )
 }

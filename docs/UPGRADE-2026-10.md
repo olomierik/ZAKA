@@ -122,12 +122,15 @@ visitor's own IP, so no shared server quota can be exhausted (the problem GeckoT
 4. **Funding:** deposit Arc USDC into the Hyperliquid account and withdraw back to Arc through Relay, with checked
    quotes, both shown with their fees and time. **Done.**
 5. **Portfolio and navigation:** Hyperliquid in Portfolio; Futures and Predict in the top bar, the phone tabs and the
-   home page. **Done.** The "Supported routes" page is still to come.
+   home page. **Done**, with the "Supported routes" page (`/routes`).
 
 Trading ships switched off (`VITE_HL_TRADING`, the pack's "no mainnet execution by default"): the pages show every
 market, price and account, and send nothing until the owner turns it on. Details: AGENTS.md, "Hyperliquid: futures on
 every market, and predictions".
-6. **Strategy Lab:** price alerts and paper trading, server-side limits, off by default.
+6. **Strategy Lab:** price alerts and paper trading, server-side limits, off by default. **Paper trading is done**
+   (2026-10-12): a Live | Paper switch on `/futures`, virtual USDC filled against Hyperliquid's live book with its
+   fees, funding and liquidations, and the candles replayed after a gap so nothing is missed while the page is closed.
+   It runs in the browser and sends nothing. Price alerts are next.
 7. **Starknet:** a Starknet wallet and AVNU swaps, once their current docs and SDKs are verified.
 
 Each phase lands as its own commit with its tests run, and is recorded in AGENTS.md.

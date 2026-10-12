@@ -20,3 +20,8 @@ export function compactUsd(n: number | null | undefined): string {
   if (a >= 1e3) return `$${(n / 1e3).toFixed(1)}K`
   return `$${n.toFixed(2)}`
 }
+export const pct = (n: number | null | undefined, dp = 2) => n == null || !Number.isFinite(n) ? '—' : `${n >= 0 ? '+' : ''}${n.toFixed(dp)}%`
+export const signedUsd = (n: number) => `${n >= 0 ? '+' : '−'}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+export const upDown = (n: number | null | undefined) => (n == null ? '' : n >= 0 ? 'fx-up' : 'fx-down')
+/** What a number field keeps of what was typed: digits and one decimal point (a comma counts as one). */
+export const sanitize = (s: string) => s.replace(/,/g, '.').replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')
