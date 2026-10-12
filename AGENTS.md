@@ -2219,6 +2219,21 @@ Owner: "a trading terminal like motion.gift, with all the features that we have;
   - The older coin pages (`CurveTokenPage` for ARCDEX's own launchpad coins, `TokenPage`) keep the previous look.
   - Paper trading and price alerts still live in one browser.
 
+## Alchemy RPC, fastest node first, and Railway deploys (2026-10-12)
+
+Owner: "I have provided you with Alchemy endpoints for the chains we support, to be faster"; "Railway is not deploying".
+- **Alchemy through the site (`netlify/edge-functions/rpc.ts`, `/rpc/<chain>`):** Arc, Robinhood Chain, BNB Chain, Solana and Starknet (spec 0.10; Alchemy's 0.8 path answers 503).
+  - The key is a Netlify secret, `ALCHEMY_API_KEY`, never in the page or the repo. **Owner step:** add it in Netlify (`arcsense-app` → environment variables, secret) and redeploy. Until then the function answers 503 `x-arcdex-rpc: unconfigured` and pages read through the public nodes, as before.
+  - Only the site's own pages, and only read and simulation methods (plus Solana's `sendTransaction`). No EVM sends and no `eth_getLogs` (Alchemy's free plan serves 10-block ranges); the page skips Alchemy for those.
+  - Local dev: `ALCHEMY_API_KEY` and `VITE_ALCHEMY=on` in `.env.development.local` (gitignored); `vite.config.ts` proxies `/rpc`.
+- **Fastest first (`lib/rpcSettings.ts`):** each browser measures every node of a chain (a head read, every 2 minutes while the chain is in use) and reads through the fastest one that is up to date. A node that hasn't answered yet is never first, so Alchemy leads only once it has answered. Pinning, own nodes and failover are unchanged.
+  - The status bar shows the real time of reads through the node in use. Its block number never polls the paid nodes.
+  - Measured from the owner's region (2026-10-12, median of 7): Alchemy 175 ms vs 225 (Robinhood Chain), 155 vs 230 (BNB Chain), 159 vs 230 (Solana); on Arc, Arc's public RPC was faster (195 vs 239). Starknet's Alchemy node answered in 0.7–2 s, so it is Starknet's last fallback.
+  - Found by the new test and fixed: when every node was stepping aside, the one that answered stayed marked as failing.
+- **Railway:** the engine's last deploy was 2026-10-06. The service's Watch Paths held five file names joined by commas in one entry, plus `railway.tom`. Now `/engine/**`, `/api/**`, `/railway.toml`. The latest commit was deployed from the dashboard and is healthy.
+  - GitHub pushes still don't reach Railway (a test push created no deployment). **Owner step:** Railway → arcdex-engine → Settings → Source: disconnect the `main` branch and connect it again; or check GitHub → Settings → Applications → Railway App's repository access (it asks for your verification code). Until then use Deployments → Deploy latest commit after an engine change.
+- **Tests:** `bun scripts/test-rpc-settings.ts` (ordering, Alchemy's methods, unconfigured, failover, the edge function: same-origin, methods, batches, size, the key never echoed).
+
 ## Hosting — arcdex.online only
 
 **Every commit to `main` deploys to arcdex.online, and nowhere else** (owner decision, 2026-09-24).

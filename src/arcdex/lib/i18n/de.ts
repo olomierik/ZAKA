@@ -3278,5 +3278,8 @@ const d: Record<string, string> = {
   // Futures P&L cards (2026-10-12)
   "Share your {market} position": "Teile deine {market}-Position",
   "Share a P&L card of this position": "Eine P&L-Karte dieser Position teilen",
+  // Alchemy and fastest-first RPC (2026-10-12)
+  "These are the nodes ARCDEX reads {chain} through: balances, quotes, and the simulation every trade runs before you sign. This browser measures them every 2 minutes and reads through the fastest one that is up to date; a node that throttles or fails steps aside and the next answers. Pin another with Use first.": "Über diese Nodes liest ARCDEX {chain}: Guthaben, Kurse und die Simulation, die jeder Trade vor deiner Signatur durchläuft. Dieser Browser misst sie alle 2 Minuten und liest über den schnellsten, der aktuell ist; ein Node, der drosselt oder ausfällt, tritt zur Seite und der nächste antwortet. Mit „Zuerst nutzen“ fixierst du einen anderen.",
+  "ARCDEX’s Alchemy node": "Alchemy-Node von ARCDEX",
 }
 export default d

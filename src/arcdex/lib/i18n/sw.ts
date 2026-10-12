@@ -3278,5 +3278,8 @@ const d: Record<string, string> = {
   // Futures P&L cards (2026-10-12)
   "Share your {market} position": "Shiriki nafasi yako ya {market}",
   "Share a P&L card of this position": "Shiriki kadi ya P&L ya nafasi hii",
+  // Alchemy and fastest-first RPC (2026-10-12)
+  "These are the nodes ARCDEX reads {chain} through: balances, quotes, and the simulation every trade runs before you sign. This browser measures them every 2 minutes and reads through the fastest one that is up to date; a node that throttles or fails steps aside and the next answers. Pin another with Use first.": "Hizi ndizo nodi ambazo ARCDEX husoma {chain} kupitia: salio, bei, na uigaji ambao kila biashara hupitia kabla hujasaini. Kivinjari hiki huzipima kila dakika 2 na husoma kupitia ile yenye kasi zaidi iliyosasishwa; nodi inayopunguza kasi au kushindwa hukaa kando na inayofuata hujibu. Bandika nyingine kwa Tumia kwanza.",
+  "ARCDEX’s Alchemy node": "Nodi ya Alchemy ya ARCDEX",
 }
 export default d

@@ -1,9 +1,16 @@
 // Starknet JSON-RPC (spec 0.9–0.10), straight from the browser to public endpoints (they allow any origin). Each call
 // goes to the first endpoint and moves to the next on a network error, a throttle or a server error; a JSON-RPC error
-// (a revert, a bad call) is an answer and isn't retried elsewhere.
+// (a revert, a bad call) is an answer and isn't retried elsewhere. On mainnet ARCDEX's Alchemy node (through the
+// site's /rpc/starknet) comes last: measured 2026-10-12 it answered in 0.7–2s against PublicNode's 0.3–0.4s, so it's
+// the fallback, and until its key is set in Netlify it steps aside for 10 minutes.
 
 import { SN, type SnNetwork } from './net'
 import { SEL, fromU256 } from './felt'
+import { ALCHEMY_ON, alchemyUrl } from '../lib/rpcSettings'
+
+const asideUntil = new Map<string, number>()
+const nodesOf = (net: SnNetwork) => [...SN[net].rpcs, ...(net === 'mainnet' && ALCHEMY_ON ? [alchemyUrl('starknet')] : [])]
+  .filter(u => (asideUntil.get(u) ?? 0) <= Date.now())
 
 export class SnRpcError extends Error {
   constructor(message: string, readonly code?: number, readonly data?: unknown) { super(message) }
@@ -13,12 +20,13 @@ let seq = 0
 
 export async function snRpc<T>(net: SnNetwork, method: string, params: unknown, timeoutMs = 10_000): Promise<T> {
   let last: unknown = null
-  for (const url of SN[net].rpcs) {
+  for (const url of nodesOf(net)) {
     try {
       const r = await fetch(url, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: ++seq, method, params }), signal: AbortSignal.timeout(timeoutMs),
       })
+      if (r.headers.get('x-arcdex-rpc') === 'unconfigured') { asideUntil.set(url, Date.now() + 10 * 60_000); last = new SnRpcError('Alchemy is not set up'); continue }
       if (r.status === 429 || r.status >= 500) { last = new SnRpcError(`${url} answered ${r.status}`); continue }
       const j = (await r.json()) as { result?: T; error?: { code: number; message: string; data?: unknown } }
       if (j.error) {

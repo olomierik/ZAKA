@@ -3278,5 +3278,8 @@ const d: Record<string, string> = {
   // Futures P&L cards (2026-10-12)
   "Share your {market} position": "分享你的 {market} 仓位",
   "Share a P&L card of this position": "分享这个仓位的盈亏卡片",
+  // Alchemy and fastest-first RPC (2026-10-12)
+  "These are the nodes ARCDEX reads {chain} through: balances, quotes, and the simulation every trade runs before you sign. This browser measures them every 2 minutes and reads through the fastest one that is up to date; a node that throttles or fails steps aside and the next answers. Pin another with Use first.": "ARCDEX 通过这些节点读取 {chain}：余额、报价，以及每笔交易在你签名前运行的模拟。此浏览器每 2 分钟测量一次，并通过最快且最新的节点读取；限流或失败的节点会让开，由下一个节点应答。用“优先使用”可固定其他节点。",
+  "ARCDEX’s Alchemy node": "ARCDEX 的 Alchemy 节点",
 }
 export default d

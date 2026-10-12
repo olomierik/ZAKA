@@ -59,7 +59,7 @@ function RpcSettingsModal({ onClose }: { onClose: () => void }) {
           {RPC_CHAINS.map(c => <button key={c} className={chain === c ? 'on' : ''} onClick={() => setChain(c)}><ChainLogo chain={c} size={14} /> {CHAINS[c].short}</button>)}
         </div>
         <p className="rpc-why">
-          {T('These are the nodes ARCDEX reads {chain} through: balances, quotes, and the simulation every trade runs before you sign. The first one is used; a node that throttles or fails steps aside for 30 seconds and the next answers. Put a node first if it’s faster: the numbers below are measured from this browser, right now.', { chain: CHAINS[chain].name })}
+          {T('These are the nodes ARCDEX reads {chain} through: balances, quotes, and the simulation every trade runs before you sign. This browser measures them every 2 minutes and reads through the fastest one that is up to date; a node that throttles or fails steps aside and the next answers. Pin another with Use first.', { chain: CHAINS[chain].name })}
         </p>
         <div className="rpc-add">
           <input placeholder={chain === 'sol' ? 'https://mainnet.helius-rpc.com/?api-key=…' : 'https://…alchemy.com/v2/… or https://…quiknode.pro/…'} value={url} onChange={e => { setUrl(e.target.value); setErr(null) }} onKeyDown={e => { if (e.key === 'Enter') add() }} aria-label={T('Your node')} />
@@ -75,7 +75,7 @@ function RpcSettingsModal({ onClose }: { onClose: () => void }) {
               const lag = ok ? ok.head - best : null
               return (
                 <tr key={e.url} className={i === 0 ? 'first' : ''}>
-                  <td><b>{e.kind === 'own' ? T('Your node {n}', { n: e.name.slice(-1) }) : e.name}</b><small>{e.kind === 'arcdex' ? T('dedicated') : hostOf(e.url)}</small></td>
+                  <td><b>{e.kind === 'own' ? T('Your node {n}', { n: e.name.slice(-1) }) : e.name}</b><small>{e.kind === 'arcdex' ? T('dedicated') : e.kind === 'alchemy' ? T('ARCDEX’s Alchemy node') : hostOf(e.url)}</small></td>
                   <td className={ok ? (ok.latencyMs < 200 ? 'fast' : ok.latencyMs < 500 ? '' : 'slow') : ''}>{r === 'testing' ? '…' : ok ? ms(ok.latencyMs) : r ? '—' : ''}</td>
                   <td>{r === 'testing' ? '…' : ok ? ms(ok.callMs) : r ? '—' : ''}</td>
                   <td>{ok ? (lag === 0 ? T('head') : lag) : r && r !== 'testing' ? <span className="rpc-fail" title={(r as { error: string }).error}>{T('failed')}</span> : ''}</td>

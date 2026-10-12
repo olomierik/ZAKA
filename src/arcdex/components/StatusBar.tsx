@@ -8,7 +8,7 @@ import { trenchesPage } from './NavBar'
 import { useHlMarkets, useHlMids } from '../hl/live'
 import { COIN_LC, COIN_POOL, fmtPct, fmtSmallUsd, useCoin } from '../lib/coin'
 import { CHAINS, useChain } from '../lib/chains'
-import { OPEN_RPC_SETTINGS, useHead } from '../lib/rpcSettings'
+import { OPEN_RPC_SETTINGS, useHead, useReadSpeed } from '../lib/rpcSettings'
 import { setTrench, useTrench } from '../lib/trenches'
 import { t as T } from '../lib/i18n'
 import { IcBell, IcStar, IcSearch, IcGrid } from './TrIcons'
@@ -37,9 +37,13 @@ export default function StatusBar({ navigate, onAlerts }: { navigate: (p: Page) 
   const mids = useHlMids()
   const coinQ = useCoin()
   const head = useHead(chain)
+  // What reads actually take through the node in use (lib/rpcSettings.ts puts the fastest first), else the block poll's.
+  const read = useReadSpeed(chain)
+  const ms = read.ms ?? head?.ms ?? null
+  const node = read.ms !== null ? read.node : head?.node ?? read.node
   const fps = useFps()
   const s = useTrench()
-  const speed = head ? (head.ms < 250 ? 'fast' : head.ms < 600 ? 'ok' : 'slow') : 'wait'
+  const speed = ms !== null ? (ms < 250 ? 'fast' : ms < 600 ? 'ok' : 'slow') : 'wait'
   const speedLabel = { fast: T('Fast'), ok: T('OK'), slow: T('Slow'), wait: '…' }[speed]
 
   return (
@@ -68,8 +72,8 @@ export default function StatusBar({ navigate, onAlerts }: { navigate: (p: Page) 
         </button>
       </div>
 
-      <button className={`tm-st-speed ${speed}`} onClick={() => window.dispatchEvent(new Event(OPEN_RPC_SETTINGS))} title={head ? T('{chain} via {node}: answered in {ms} ms. Click for RPC settings.', { chain: CHAINS[chain].name, node: head.node, ms: Math.round(head.ms) }) : T('RPC settings')}>
-        <i />{speedLabel}{head ? ` ${Math.round(head.ms)} ms` : ''}
+      <button className={`tm-st-speed ${speed}`} onClick={() => window.dispatchEvent(new Event(OPEN_RPC_SETTINGS))} title={ms !== null ? T('{chain} via {node}: answered in {ms} ms. Click for RPC settings.', { chain: CHAINS[chain].name, node, ms: Math.round(ms) }) : T('RPC settings')}>
+        <i />{speedLabel}{ms !== null ? ` ${Math.round(ms)} ms` : ''}
       </button>
       {fps !== null && <span className="tm-st-fps">{fps} FPS</span>}
       <button className="tm-st-link" onClick={() => navigate({ name: 'routes' })}>{T('Routes')}</button>
