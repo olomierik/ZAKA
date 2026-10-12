@@ -2689,3 +2689,33 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
   .pp-toasts { left: 16px; right: 16px; width: auto; bottom: auto; top: calc(64px + env(safe-area-inset-top)); }
 }
 @media (prefers-reduced-motion: reduce) { .pp-toast { animation: none; } }
+
+/* price alerts (components/HlAlerts.tsx, components/PriceAlertWatcher.tsx) */
+.pa-bell { align-self: center; position: relative; display: inline-flex; align-items: center; gap: 4px; font: inherit; font-size: 0.95rem; line-height: 1; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--adx-border); background: var(--bg-3); color: var(--text); cursor: pointer; }
+.pa-bell:hover { background: var(--bg-4); }
+.pa-bell.on { border-color: rgba(240,185,11,0.55); }
+.pa-bell b { font-size: 0.68rem; font-weight: 700; color: var(--amber); }
+.pa-modal { display: flex; flex-direction: column; gap: 10px; }
+.pa-chips { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.pa-chips button { font: inherit; font-size: 0.72rem; font-weight: 600; padding: 6px 0; border-radius: 6px; border: 1px solid var(--adx-border); background: var(--bg-3); cursor: pointer; }
+.pa-chips button.up { color: var(--green); }
+.pa-chips button.down { color: var(--red); }
+.pa-chips button:disabled { opacity: 0.5; cursor: default; }
+.pa-mine { display: flex; flex-direction: column; border-top: 1px solid var(--adx-border); }
+.pa-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--adx-border); font-size: 0.8rem; }
+.pa-row small { color: var(--text-muted); font-size: 0.72rem; }
+.pa-row.fired span { color: var(--text-muted); }
+.pa-wait { color: var(--amber); }
+.pa-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.pa-toasts { position: fixed; right: 16px; top: 72px; z-index: 1150; display: flex; flex-direction: column; gap: 8px; width: min(360px, calc(100vw - 32px)); }
+.pa-toast { display: flex; align-items: flex-start; gap: 6px; background: var(--bg-3); border: 1px solid rgba(240,185,11,0.5); border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,0.4); animation: pp-in 0.18s ease-out; }
+.pa-toast-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; text-align: left; font: inherit; color: var(--text); background: none; border: none; padding: 10px 0 10px 12px; cursor: pointer; }
+.pa-toast-main b { font-size: 0.86rem; font-weight: 700; }
+.pa-toast-main small { font-size: 0.74rem; color: var(--text-muted); }
+.pa-toast-x { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; padding: 10px 10px 0 0; }
+@media (max-width: 767px) {
+  .pa-toasts { left: 16px; right: 16px; width: auto; top: calc(64px + env(safe-area-inset-top)); }
+  .pp-toasts { top: auto; bottom: calc(140px + env(safe-area-inset-bottom)); }
+  .pa-chips { grid-template-columns: repeat(4, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { .pa-toast { animation: none; } }

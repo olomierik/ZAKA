@@ -37,6 +37,8 @@ const SolanaTokenPage = lazy(() => import('./pages/SolanaTokenPage'))
 // BNB Chain (2026-10-05): four.meme's coins, curve and graduated.
 const BscMarkets      = lazy(() => import('./pages/BscMarkets'))
 const BscTokenPage    = lazy(() => import('./pages/BscTokenPage'))
+// Price alerts are watched on every page, but the watcher (Hyperliquid's live prices) loads only once one exists.
+const PriceAlertWatcher = lazy(() => import('./components/PriceAlertWatcher'))
 import TradingWalletPanel from './components/TradingWalletPanel'
 import DiscoveryPanel from './components/DiscoveryPanel'
 import { TickerBar } from './components/Rails'
@@ -54,6 +56,7 @@ import { OPEN_TRADING_WALLET } from './lib/tradingWalletSheet'
 import { useEmbeddedAddress } from './lib/identity'
 import { useFundingScan } from './lib/funding'
 import ProfitAlerts from './components/ProfitAlerts'
+import { activeAlerts, useAlerts } from './hl/alerts'
 import { engineApiUrl } from './api/marketStream'
 import { startTraffic } from './lib/traffic'
 
@@ -106,6 +109,10 @@ const MOBILE_NAV: [Page, string, string][] = [
 export default function App() {
   const [page, setPage]       = useState<Page>(fromUrl)
   const [navOpen, setNavOpen] = useState(false)
+  // Once an alert exists in this session the watcher stays, so a notice can outlive the last waiting alert.
+  const alerts = useAlerts()
+  const [watchAlerts, setWatchAlerts] = useState(false)
+  useEffect(() => { if (activeAlerts(alerts).length) setWatchAlerts(true) }, [alerts])
   // This page counts as a visitor online (the landing's traffic counter, lib/traffic.ts).
   useEffect(() => { startTraffic(engineApiUrl) }, [])
 
@@ -222,6 +229,7 @@ export default function App() {
       <WalletPromptHost />
       {/* A toast (and, when allowed, a system notification) for every profit the signed-in owner's bots take. */}
       <ProfitAlerts navigate={navigate} />
+      {watchAlerts && <Suspense fallback={null}><PriceAlertWatcher navigate={navigate} /></Suspense>}
     </div>
   )
 }

@@ -1889,6 +1889,25 @@ Owner: "READ THE FILES [the ArcSense Upgrade Build Pack] and improve everything;
     - With the stored account rewound 18 minutes, the reload replayed the real 1m candles and fired a stop at exactly its price, in the bar that dipped through it.
     - A 375px phone.
   - **Every new string is in all six dictionaries** (50).
+- **Price alerts (2026-10-12; `hl/alerts.ts`, `components/HlAlerts.tsx`, `components/PriceAlertWatcher.tsx`):** the other half of the Strategy Lab's start.
+  - **Setting one:** the 🔔 beside a market's price on `/futures` opens a dialog: a level (typed, or ±1/2/5/10% from now), the move it means, sound, and system notifications (asked for when ticked).
+    - An alert fires once, when the price gets to its level from where it was: up to a level above, down to one below.
+    - Up to 50 wait at a time; the newest 100 that fired are kept.
+  - **The list:** an Alerts tab under the chart, in Live and Paper alike (no wallet needed): level, price now, when and where it was set, waiting or reached, Set again, Delete, Clear reached.
+  - **Watched on every page:** the app loads the watcher (`PriceAlertWatcher`, its own small chunk) once an alert exists.
+    - While alerts wait, it follows Hyperliquid's mids over its WebSocket and checks once a second.
+    - One tab drives it (a 4-second lease); every open tab shows the notice.
+    - Notices sit top right (top on phones), and a click opens the market. The driving tab also plays the sound and sends the system notification.
+  - **Nothing is missed while away:** after a gap of 15s or more, the candles in between are read first. A level a candle reached fires with that candle's time ("While you were away, at 03:32 (from Hyperliquid’s candles)").
+    - Only candles that opened after the alert was set count.
+    - Live checks use the mid, while candles are made of trades, so a brief trade print past a level counts after a gap.
+  - **Kept in this browser** (`arcdex:hl-alerts:v1`). Nothing is sent anywhere, so with every ARCDEX tab closed there's no notification until the next visit (that needs web push).
+  - **Tests:** `bun scripts/test-alerts.ts`: direction, live firing, the candle replay, limits, the watch starting fresh. 13 of 13 planted bugs failed it.
+  - **Checked in the browser** against live data:
+    - An alert set from the dialog fired on the Markets page within seconds of BTC reaching it.
+    - With an alert rewound 20 minutes, the reload fired it at the candle that reached its level.
+    - Set again, the Alerts tab, and a 375px phone.
+  - **Every new string is in all six dictionaries** (29).
 - **Funding through Relay:** Arc USDC → the Hyperliquid perps balance (an exact approval to Relay's depository, then its deposit), and back to Arc (Relay's authorization, then a Hyperliquid `sendAsset` to Relay's depository there). No ARCDEX fee on either.
   - A quote is refused unless it's exactly what was asked: the same account on both sides, the currencies and amount, Relay's own contracts, an approval of exactly the amount, Relay's order paying only the account and refunding only to it, with no calls, and at least 97% of the money arriving.
   - Measured on 2026-10-11: $25 in, $24.97 out; $25 back, $24.97.

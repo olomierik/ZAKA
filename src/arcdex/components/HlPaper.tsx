@@ -16,6 +16,8 @@ import {
   type PaperApi, type PaperEvent, type PaperFill, type PaperNotice, type PaperOrder, type PaperPos,
 } from '../hl/paper'
 import { DEFAULT_LEVERAGE, LeverageModal, errText, money } from './HlShared'
+import { AlertsList } from './HlAlerts'
+import { activeAlerts, useAlerts } from '../hl/alerts'
 
 type Note = { ok: boolean; text: string }
 
@@ -390,7 +392,7 @@ function PaperAccount({ paper, onReset }: { paper: PaperApi; onReset: () => void
   )
 }
 
-type PaperTab = 'positions' | 'orders' | 'fills' | 'account'
+type PaperTab = 'positions' | 'orders' | 'fills' | 'account' | 'alerts'
 
 export function PaperAccountTabs({ paper, byCoin, mids, coin, onSelect, onReset }: {
   paper: PaperApi; byCoin: Map<string, HlMarket>; mids: Readonly<Record<string, number>>; coin: string; onSelect: (coin: string) => void; onReset: () => void
@@ -402,6 +404,7 @@ export function PaperAccountTabs({ paper, byCoin, mids, coin, onSelect, onReset 
   const positions = st.positions.filter(p => !onlyThis || p.coin === coin)
   const orders = st.orders.filter(o => !onlyThis || o.coin === coin)
   const fills = st.fills.filter(f => !onlyThis || f.coin === coin)
+  const waiting = activeAlerts(useAlerts()).length
   return (
     <div className="hl-acct pp-acct">
       <div className="fx-tabs hl-acct-tabs">
@@ -411,6 +414,7 @@ export function PaperAccountTabs({ paper, byCoin, mids, coin, onSelect, onReset 
           ['orders', `${T('Open orders')}${st.orders.length ? ` (${st.orders.length})` : ''}`],
           ['fills', T('Trade history')],
           ['account', T('Account')],
+          ['alerts', `${T('Alerts')}${waiting ? ` (${waiting})` : ''}`],
         ] as [PaperTab, string][]).map(([k, label]) => <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>{label}</button>)}
         <label className="fxb-check hl-only"><input type="checkbox" checked={onlyThis} onChange={e => setOnlyThis(e.target.checked)} /> {T('This market only')}</label>
       </div>
@@ -418,6 +422,7 @@ export function PaperAccountTabs({ paper, byCoin, mids, coin, onSelect, onReset 
       {tab === 'positions' ? <PaperPositions paper={paper} positions={positions} byCoin={byCoin} mids={mids} onSelect={onSelect} onNote={setNote} />
         : tab === 'orders' ? <PaperOrders paper={paper} orders={orders} byCoin={byCoin} onNote={setNote} />
         : tab === 'fills' ? <PaperFills fills={fills} byCoin={byCoin} />
+        : tab === 'alerts' ? <AlertsList coin={onlyThis ? coin : null} byCoin={byCoin} mids={mids} onSelect={onSelect} />
         : <PaperAccount paper={paper} onReset={onReset} />}
     </div>
   )

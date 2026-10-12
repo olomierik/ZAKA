@@ -130,7 +130,8 @@ every market, and predictions".
 6. **Strategy Lab:** price alerts and paper trading, server-side limits, off by default. **Paper trading is done**
    (2026-10-12): a Live | Paper switch on `/futures`, virtual USDC filled against Hyperliquid's live book with its
    fees, funding and liquidations, and the candles replayed after a gap so nothing is missed while the page is closed.
-   It runs in the browser and sends nothing. Price alerts are next.
+   It runs in the browser and sends nothing. **Price alerts are done** too: set from the 🔔 on a market, watched on
+   every page while ARCDEX is open, with the candles read after a gap so a level reached meanwhile still fires.
 7. **Starknet:** a Starknet wallet and AVNU swaps, once their current docs and SDKs are verified.
 
 Each phase lands as its own commit with its tests run, and is recorded in AGENTS.md.

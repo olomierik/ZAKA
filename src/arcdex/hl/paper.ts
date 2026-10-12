@@ -19,6 +19,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { N_ } from '../lib/i18n'
 import { hlInfo } from './client'
+import { barsFor, fundingFor, type Bar, type FundingEntry } from './history'
+
+export { intervalFor, type Bar, type FundingEntry } from './history'
 
 export const PAPER = {
   start: 10_000,
@@ -363,8 +366,6 @@ export function tick(s0: PaperState, mids: Readonly<Record<string, number>>, tim
   return { state: s, events }
 }
 
-export interface Bar { coin: string; t: number; ms: number; o: number; h: number; l: number; c: number }
-export interface FundingEntry { coin: string; time: number; rate: number }
 
 /** One hour's funding on a position: size × price × rate, from its margin (a long pays a positive rate, a short
  * receives it). Never more than the margin it has. */
@@ -432,34 +433,6 @@ export async function paperBook(coin: string): Promise<PaperBook & { mid: number
   const bids = side(r.levels?.[0]), asks = side(r.levels?.[1])
   const mid = bids.length && asks.length ? (bids[0].px + asks[0].px) / 2 : 0
   return { bids, asks, mid }
-}
-
-// ── history from Hyperliquid, for the catch-up ───────────────────────────
-
-const INTERVALS: [string, number][] = [['1m', 60e3], ['5m', 300e3], ['15m', 900e3], ['1h', HOUR], ['4h', 4 * HOUR], ['1d', 24 * HOUR]]
-/** The finest candles that cover a gap in one request (Hyperliquid answers up to 5,000). */
-export const intervalFor = (gapMs: number) => INTERVALS.find(([, ms]) => gapMs / ms <= 4_800) ?? INTERVALS[INTERVALS.length - 1]
-
-interface RawCandle { t: number; T: number; s: string; i: string; o: string; c: string; h: string; l: string }
-
-async function barsFor(coin: string, from: number, to: number): Promise<Bar[]> {
-  const [interval, ms] = intervalFor(to - from)
-  const raw = await hlInfo<RawCandle[]>({ type: 'candleSnapshot', req: { coin, interval, startTime: Math.floor(from / ms) * ms, endTime: to } })
-  return (Array.isArray(raw) ? raw : []).map(c => ({ coin, t: c.t, ms, o: Number(c.o), h: Number(c.h), l: Number(c.l), c: Number(c.c) }))
-}
-
-async function fundingFor(coin: string, from: number, to: number): Promise<FundingEntry[]> {
-  const out: FundingEntry[] = []
-  let start = from + 1
-  // 500 an answer; ten pages is over 200 days.
-  for (let page = 0; page < 10 && start <= to; page++) {
-    const raw = await hlInfo<{ coin: string; fundingRate: string; time: number }[]>({ type: 'fundingHistory', coin, startTime: start, endTime: to })
-    if (!Array.isArray(raw) || !raw.length) break
-    for (const r of raw) out.push({ coin, time: r.time, rate: Number(r.fundingRate) })
-    if (raw.length < 500) break
-    start = raw[raw.length - 1].time + 1
-  }
-  return out
 }
 
 /** The last hour whose funding is in for every market held: the latest each market has, or any hour over 15 minutes

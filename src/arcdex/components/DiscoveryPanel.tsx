@@ -12,6 +12,7 @@ import { setPrefs, toggleWatch, usePrefs } from '../lib/prefs'
 import { copycatOf } from '../api/argusMarket'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import { beep } from '../lib/beep'
 
 // The fomo-style discovery panel: Alerts · Tokens · Leaderboard · Feed on
 // the left of every page. Collapsible, and splittable into two columns.
@@ -205,17 +206,6 @@ function Board({ navigate }: { navigate: (p: Page) => void }) {
 // ── Alerts: moves by traders you follow ──────────────────────────────
 
 interface Alert { key: string; token: string; side: 'buy' | 'sell'; traders: string[]; usdc: number; tokenAmount: number; at: number }
-
-function beep() {
-  try {
-    const ctx = new AudioContext()
-    const o = ctx.createOscillator(), g = ctx.createGain()
-    o.frequency.value = 880; g.gain.value = 0.06
-    o.connect(g); g.connect(ctx.destination); o.start()
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25)
-    o.stop(ctx.currentTime + 0.26)
-  } catch { /* audio blocked */ }
-}
 
 /** Desktop notification (tab in the background). Needs permission first. */
 function notify(title: string, body: string, onClick: () => void) {

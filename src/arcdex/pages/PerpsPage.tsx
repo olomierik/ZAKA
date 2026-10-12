@@ -32,6 +32,8 @@ import { BUILDER } from '../hl/access'
 import { DEFAULT_LEVERAGE, EnableTradingModal, HlAccountBox, HlFundingModal, LeverageModal, TradingSoon, errText, money, regionNote, useHlGate, type HlGate } from '../components/HlShared'
 import { ModeSwitch, noticeNotes, PaperAccountBox, PaperAccountTabs, PaperOrderPanel, PaperResetModal, PaperToasts, useTradeMode } from '../components/HlPaper'
 import { usePaper } from '../hl/paper'
+import { AlertBell, AlertModal, AlertsList } from '../components/HlAlerts'
+import { activeAlerts, useAlerts } from '../hl/alerts'
 
 export const CATEGORY_LABEL: Record<HlCategory, string> = {
   crypto: 'Crypto', stocks: 'Stocks', preipo: 'Pre-IPO', indices: 'Indices', commodities: 'Commodities', fx: 'FX',
@@ -150,8 +152,8 @@ function MarketPicker({ markets, mids, coin, favs, toggleFav, onPick, onClose }:
 
 // ── the pair bar ─────────────────────────────────────────────────────────
 
-function PairBar({ market, px, ctx, onPick, picker }: {
-  market: HlMarket; px: number; ctx: ReturnType<typeof useAssetCtx>; onPick: () => void; picker: ReactNode
+function PairBar({ market, px, ctx, onPick, picker, extra }: {
+  market: HlMarket; px: number; ctx: ReturnType<typeof useAssetCtx>; onPick: () => void; picker: ReactNode; extra?: ReactNode
 }) {
   const now = useNow(1_000)
   const prev = ctx?.prevDayPx || market.prevDayPx
@@ -187,6 +189,7 @@ function PairBar({ market, px, ctx, onPick, picker }: {
         <b className={dir || upDown(ch)}>{fmtPx(px)}</b>
         <span>{T('Mark')} {fmtPx(mark)}</span>
       </div>
+      {extra}
       <div className="fxb-stats">
         <div><span>{T('24h change')}</span><b className={upDown(ch)}>{ch == null ? '—' : `${px && prev ? `${px - prev >= 0 ? '+' : ''}${fmtNum(px - prev, pxDp(px))} / ` : ''}${pct(ch)}`}</b></div>
         <div><span>{T('Oracle')}</span><b>{fmtPx(oracle)}</b></div>
@@ -672,7 +675,7 @@ function Balances({ account, onFund, navigate }: { account: HlAccountState; onFu
   )
 }
 
-type AcctTab = 'positions' | 'orders' | 'fills' | 'balances'
+type AcctTab = 'positions' | 'orders' | 'fills' | 'balances' | 'alerts'
 
 function AccountTabs({ acct, byCoin, mids, gate, coin, onSelect, onFund, navigate }: {
   acct: ReturnType<typeof useHlAccount>; byCoin: Map<string, HlMarket>; mids: Readonly<Record<string, number>>; gate: HlGate; coin: string
@@ -685,6 +688,7 @@ function AccountTabs({ acct, byCoin, mids, gate, coin, onSelect, onFund, navigat
   const positions = (s?.positions ?? []).filter(p => !onlyThis || p.coin === coin)
   const orders = (s?.orders ?? []).filter(o => !o.coin.startsWith('#') && (!onlyThis || o.coin === coin))
   const fills = acct.fills.filter(f => !f.coin.startsWith('#') && (!onlyThis || f.coin === coin))
+  const waiting = activeAlerts(useAlerts()).length
   const done = (n: { ok: boolean; text: string }) => { setNote(n); acct.refresh() }
   return (
     <div className="hl-acct">
@@ -694,11 +698,14 @@ function AccountTabs({ acct, byCoin, mids, gate, coin, onSelect, onFund, navigat
           ['orders', `${T('Open orders')}${orders.length ? ` (${orders.length})` : ''}`],
           ['fills', T('Trade history')],
           ['balances', T('Balances')],
+          ['alerts', `${T('Alerts')}${waiting ? ` (${waiting})` : ''}`],
         ] as [AcctTab, string][]).map(([k, label]) => <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>{label}</button>)}
         <label className="fxb-check hl-only"><input type="checkbox" checked={onlyThis} onChange={e => setOnlyThis(e.target.checked)} /> {T('This market only')}</label>
       </div>
       {note && <div className={`fx-note ${note.ok ? 'ok' : 'bad'}`}>{note.ok ? '✓' : '⚠'} {note.text}</div>}
-      {!gate.access ? (
+      {tab === 'alerts' ? (
+        <AlertsList coin={onlyThis ? coin : null} byCoin={byCoin} mids={mids} onSelect={onSelect} />
+      ) : !gate.access ? (
         <div className="fx-empty">
           {T('Connect a wallet or unlock your trading wallet to see your positions.')}{' '}
           <button className="link-btn" onClick={openConnectModal}>{T('Connect wallet')}</button> · <button className="link-btn" onClick={openTradingWallet}>{T('Trading wallet')}</button>
@@ -750,6 +757,7 @@ export default function PerpsPage({ navigate, coin: coinProp }: { navigate: (p: 
   const [mTab, setMTab] = useState<'book' | 'trades'>('book')
   const [mode, setMode] = useTradeMode()
   const [resetting, setResetting] = useState(false)
+  const [alerting, setAlerting] = useState(false)
   const [toasts, setToasts] = useState<{ id: number; ok: boolean; text: string }[]>([])
   const toastSeq = useRef(0)
   const byCoinRef = useRef<Map<string, HlMarket>>(new Map())
@@ -852,7 +860,7 @@ export default function PerpsPage({ navigate, coin: coinProp }: { navigate: (p: 
         </div>
       )}
 
-      <PairBar market={market} px={px} ctx={ctx} onPick={() => setPicker(o => !o)} picker={pickerPop} />
+      <PairBar market={market} px={px} ctx={ctx} onPick={() => setPicker(o => !o)} picker={pickerPop} extra={<AlertBell coin={coin} onOpen={() => setAlerting(true)} />} />
 
       {mobile ? (
         <>
@@ -900,6 +908,7 @@ export default function PerpsPage({ navigate, coin: coinProp }: { navigate: (p: 
       {funding && <HlFundingModal gate={gate} account={acct.state} initial={funding} onClose={() => setFunding(null)} onDone={() => { acct.refresh(); gate.refresh() }} />}
       {enabling && <EnableTradingModal gate={gate} onClose={() => setEnabling(false)} onDone={() => { setEnabling(false); acct.refresh() }} />}
       {resetting && <PaperResetModal onReset={a => paper.reset(a)} onClose={() => setResetting(false)} />}
+      {alerting && <AlertModal market={market} px={px} onClose={() => setAlerting(false)} />}
       <PaperToasts items={toasts} onDismiss={id => setToasts(t => t.filter(x => x.id !== id))} />
     </div>
   )
