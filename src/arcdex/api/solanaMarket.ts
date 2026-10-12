@@ -3,6 +3,7 @@
 // visitor's browser; a coin's page calls GeckoTerminal from the browser (gtDirect, its own quota and pace) and reads its
 // curve and mint from the chain. The list is kept in this browser for 30 minutes.
 
+import { endpoints } from '../lib/rpcSettings'
 import { gtDirect } from './gtClient'
 import { siteFetch } from './siteFetch'
 import type { Candle } from '../lib/candles'
@@ -10,7 +11,7 @@ import type { ChartResolution, ChartSource } from '../components/PriceChart'
 import type { TradeRow } from '../components/TokenSocialTabs'
 import { isImage as isImageUrl, markPools, num, type GtPool, type GtPools } from '../../../api/_rhCore'
 import {
-  SOL_NET as NET, SOL_INCLUDE, SOL_RPC_BROWSER, listedSol, mergeSolCoins, parseSolPools, poolToSolCoin, readCurves, readMints, solListPaths,
+  SOL_NET as NET, SOL_INCLUDE, listedSol, mergeSolCoins, parseSolPools, poolToSolCoin, readCurves, readMints, solListPaths,
   type CurveRead, type MintFlags, type SolCoin,
 } from '../../../api/_solCore'
 
@@ -93,8 +94,8 @@ async function browserBuild(tell: (rows: SolCoin[]) => void): Promise<SolCoin[]>
   const rows = listedSol(mergeSolCoins(raw))
   if (!rows.length) return before
   const [curves, mints] = await Promise.all([
-    readCurves(rows.map(c => ({ address: c.address, pool: c.pool })), [SOL_RPC_BROWSER], new Map()).catch(() => new Map<string, CurveRead>()),
-    readMints(rows.map(c => c.address), [SOL_RPC_BROWSER]).catch(() => new Map<string, MintFlags>()),
+    readCurves(rows.map(c => ({ address: c.address, pool: c.pool })), endpoints('sol').map(e => e.url), new Map()).catch(() => new Map<string, CurveRead>()),
+    readMints(rows.map(c => c.address), endpoints('sol').map(e => e.url)).catch(() => new Map<string, MintFlags>()),
   ])
   const fresh = rows.map(r => withChain(r, curves.get(r.address), mints.get(r.address)))
   // A build GeckoTerminal cut short keeps the coins the last list had that it didn't reach.
@@ -168,8 +169,8 @@ export async function getSolCoin(mint: string, pool?: string | null): Promise<So
 /** A coin's launch curve and mint, read from the chain now. */
 export async function solCoinChain(mint: string, pool: string | null): Promise<{ curve: CurveRead | null; mint: MintFlags | null }> {
   const [curves, mints] = await Promise.all([
-    pool ? readCurves([{ address: mint, pool }], [SOL_RPC_BROWSER], new Map()).catch(() => new Map<string, CurveRead>()) : Promise.resolve(new Map<string, CurveRead>()),
-    readMints([mint], [SOL_RPC_BROWSER]).catch(() => new Map<string, MintFlags>()),
+    pool ? readCurves([{ address: mint, pool }], endpoints('sol').map(e => e.url), new Map()).catch(() => new Map<string, CurveRead>()) : Promise.resolve(new Map<string, CurveRead>()),
+    readMints([mint], endpoints('sol').map(e => e.url)).catch(() => new Map<string, MintFlags>()),
   ])
   return { curve: curves.get(mint) ?? null, mint: mints.get(mint) ?? null }
 }

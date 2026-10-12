@@ -84,6 +84,10 @@ interface Props {
   side?: 'buy' | 'sell'
   /** Leave out the notes under the button (the spot screen shows them once, under both forms). */
   compact?: boolean
+  /** A quick buy from the Trenches: the form opens with this amount filled in. */
+  initialAmount?: number
+  /** …and this slippage (%). */
+  initialSlip?: number
 }
 
 type Step = 'idle' | 'approving' | 'quoting' | 'swapping' | 'done' | 'error'
@@ -91,14 +95,14 @@ type Step = 'idle' | 'approving' | 'quoting' | 'swapping' | 'done' | 'error'
 const fmtUsd = (n: number) => n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(2)}`
 const fmtTok = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toFixed(2)
 
-export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, marketCapUsd, route, routeLoading, buyTaxBps, sellTaxBps, onTraded, unverified, initialMode, venue, side, compact }: Props) {
+export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, marketCapUsd, route, routeLoading, buyTaxBps, sellTaxBps, onTraded, unverified, initialMode, venue, side, compact, initialAmount, initialSlip }: Props) {
   const trader = useTrader()
   const me = trader.address
   const info = useRouterInfo()
 
   const [mode, setMode] = useState<'buy' | 'sell'>(side ?? initialMode ?? 'buy')
-  const [amount, setAmount] = useState('')
-  const [slippage, setSlippage] = useState(3)
+  const [amount, setAmount] = useState(initialAmount && initialAmount > 0 ? String(initialAmount) : '')
+  const [slippage, setSlippage] = useState(initialSlip && initialSlip > 0 ? initialSlip : 3)
   const [step, setStep] = useState<Step>('idle')
   const [msg, setMsg] = useState('')
   const [balance, setBalance] = useState<bigint | null>(null)
@@ -434,7 +438,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
           <button key={m} onClick={() => { setMode(m); setAmount(''); setStep('idle'); setMsg(''); setEditing(null) }} style={{
             flex: 1, padding: 8, fontSize: '0.82rem', fontWeight: 700, border: 'none', cursor: 'pointer',
             background: mode === m ? (m === 'buy' ? 'var(--green)' : 'var(--red)') : 'transparent',
-            color: mode === m ? '#fff' : 'var(--text-muted)',
+            color: mode === m ? (m === 'buy' ? 'var(--on-accent)' : '#fff') : 'var(--text-muted)',
           }}>{m === 'buy' ? T("Buy") : T("Sell")} {symbol}</button>
         ))}
       </div>}
@@ -485,7 +489,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
           <span style={{ color: 'var(--text-muted)' }}>{T("Max slippage")}</span>
           <div style={{ display: 'flex', gap: 4 }}>
             {[1, 3, 5, 10].map(s => (
-              <button key={s} onClick={() => setSlippage(s)} style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.7rem', cursor: 'pointer', border: '1px solid var(--adx-card-border)', background: slippage === s ? 'var(--adx-accent)' : 'transparent', color: slippage === s ? '#fff' : 'var(--text-muted)' }}>{s}%</button>
+              <button key={s} onClick={() => setSlippage(s)} style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.7rem', cursor: 'pointer', border: '1px solid var(--adx-card-border)', background: slippage === s ? 'var(--adx-accent)' : 'transparent', color: slippage === s ? 'var(--on-accent)' : 'var(--text-muted)' }}>{s}%</button>
             ))}
           </div>
         </div>
@@ -506,7 +510,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
           border: `1px solid ${step === 'error' ? 'rgba(239,68,68,0.3)' : step === 'done' ? 'rgba(34,197,94,0.3)' : 'rgba(245,158,11,0.35)'}`,
           color: step === 'error' ? '#fca5a5' : step === 'done' ? '#86efac' : '#fcd34d', display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
           <span>{msg}</span>
-          {step === 'done' && lastTrade && <button onClick={() => void openShare()} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--green)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>{T("Share")}</button>}
+          {step === 'done' && lastTrade && <button onClick={() => void openShare()} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--green)', color: 'var(--on-accent)', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>{T("Share")}</button>}
         </div>
       )}
 
@@ -514,12 +518,12 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         <Note>{T("Trading opens once the ARCDEX swap router is deployed.")}</Note>
       ) : !me ? (
         <>
-          <button onClick={openConnectModal} style={btn('var(--adx-accent)')}>{T("Connect Wallet")}</button>
+          <button onClick={openConnectModal} style={btn('var(--adx-accent)', 'var(--on-accent)')}>{T("Connect Wallet")}</button>
           <Note>{T("Or unlock your")}{' '}<button className="link-btn" onClick={openTradingWallet}>{T("trading wallet")}</button>{' '}{T("for one-tap trades with no pop-ups.")}</Note>
         </>
       ) : (
         <button onClick={() => void submit()} disabled={blocked}
-          style={{ ...btn(needsApprove ? 'var(--amber)' : mode === 'buy' ? 'var(--green)' : 'var(--red)'), opacity: blocked ? 0.5 : 1 }}>
+          style={{ ...(needsApprove ? btn('var(--amber)', 'var(--on-amber)') : mode === 'buy' ? btn('var(--green)', 'var(--on-accent)') : btn('var(--red)', '#fff')), opacity: blocked ? 0.5 : 1 }}>
           {insufficient ? T("Insufficient balance")
             : step === 'approving' ? T("Approving…")
             : step === 'quoting' ? T("Checking trade…")
@@ -580,6 +584,7 @@ function Note({ children }: { children: React.ReactNode }) {
   return <div style={{ padding: 8, borderRadius: 8, fontSize: '0.74rem', background: 'var(--bg-2)', border: '1px dashed var(--adx-card-border)', color: 'var(--text-muted)', textAlign: 'center' }}>{children}</div>
 }
 
-function btn(bg: string): React.CSSProperties {
-  return { width: '100%', padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, background: bg, color: '#fff', border: 'none', cursor: 'pointer' }
+/** A full-width button with its own text colour, so it reads on the light and the dark theme. */
+function btn(bg: string, color: string): React.CSSProperties {
+  return { width: '100%', padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, background: bg, color, border: 'none', cursor: 'pointer' }
 }

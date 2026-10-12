@@ -59,7 +59,7 @@ export default function LeaderboardPage({ navigate, initialKind }: { navigate: (
 
   const myRank = rows && me ? rows.findIndex(r => r.trader === me) : -1
   const tab = (p: Period, label: string) => (
-    <button onClick={() => setPeriod(p)} style={{ padding: '5px 12px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', border: '1px solid var(--adx-card-border)', background: period === p ? 'var(--adx-accent)' : 'transparent', color: period === p ? '#fff' : 'var(--text-muted)' }}>{label}</button>
+    <button onClick={() => setPeriod(p)} style={{ padding: '5px 12px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', border: '1px solid var(--adx-card-border)', background: period === p ? 'var(--adx-accent)' : 'transparent', color: period === p ? 'var(--on-accent)' : 'var(--text-muted)' }}>{label}</button>
   )
 
   return (
@@ -85,7 +85,7 @@ export default function LeaderboardPage({ navigate, initialKind }: { navigate: (
           <span>{T("Your rank")}</span>
           <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <b>{myRank >= 0 ? `#${myRank + 1} · ${money(rows[myRank].realized_pnl)}` : T("Not ranked yet — make a trade")}</b>
-            {myRank >= 0 && <button onClick={() => void shareRank(myRank + 1, rows[myRank].realized_pnl)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--adx-accent)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>{T("Share")}</button>}
+            {myRank >= 0 && <button onClick={() => void shareRank(myRank + 1, rows[myRank].realized_pnl)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--adx-accent)', color: 'var(--on-accent)', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>{T("Share")}</button>}
           </span>
         </div>
       )}

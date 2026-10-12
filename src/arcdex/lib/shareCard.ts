@@ -218,3 +218,97 @@ export function botShareText(d: Pick<BotCardData, 'name' | 'mode' | 'pnlUsd' | '
   const streak = (d.streak ?? 0) >= 3 ? ` 🔥 ${d.streak} wins in a row.` : ''
   return `🤖 ${mine ? 'My bot' : 'The bot'} ${d.name} is ${usdText(d.pnlUsd)}${pct}${won}${d.mode === 'paper' ? ' (paper trading)' : ' trading real USDC'} on ARCDEX Autotrade.${streak} Self-improving trading bots for Arc.`
 }
+
+// ── A futures position's card (2026-10-12): market, side and leverage, ROE, entry and mark, and (unless hidden) the
+// P&L in dollars. Paper positions say so on the card.
+
+export interface FuturesCardData {
+  /** "BTC-USD" */
+  market: string
+  side: 'long' | 'short'
+  leverage: number
+  roePct: number
+  /** null hides the dollar amount. */
+  pnlUsd: number | null
+  entryPx: string
+  markPx: string
+  paper: boolean
+  link: string
+  at: number
+}
+
+/** Under half a hundredth reads as 0.00%, with no sign: a position just opened isn't "−0.00%". */
+const pctText = (n: number) => (Math.abs(n) < 0.005 ? '0.00%' : `${n > 0 ? '+' : '−'}${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`)
+
+export async function renderFuturesCard(d: FuturesCardData): Promise<Blob> {
+  const W = 1200, H = 630
+  const canvas = document.createElement('canvas')
+  canvas.width = W; canvas.height = H
+  const g = canvas.getContext('2d')!
+  const up = d.roePct > -0.005
+  const GREEN = '#00ec97', RED = '#ff5a6a', TEXT = '#e9efeb', MUTED = '#8a968f'
+  const accent = up ? GREEN : RED
+  const sideColor = d.side === 'long' ? GREEN : RED
+  const sans = 'Geist, "IBM Plex Sans", system-ui, sans-serif', mono = '"Geist Mono", "JetBrains Mono", ui-monospace, monospace'
+
+  const bg = g.createLinearGradient(0, 0, W, H)
+  bg.addColorStop(0, '#0a0f0c'); bg.addColorStop(1, '#13241b')
+  g.fillStyle = bg; g.fillRect(0, 0, W, H)
+  g.fillStyle = accent; g.globalAlpha = 0.1
+  g.beginPath(); g.arc(W - 140, 150, 340, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1
+
+  // Brand, and the paper mark.
+  g.fillStyle = TEXT; g.font = `700 36px ${sans}`
+  g.fillText('arcdex', 64, 88)
+  g.fillStyle = MUTED; g.font = `500 22px ${sans}`
+  g.fillText('Futures', 64, 122)
+  if (d.paper) {
+    const label = 'PAPER TRADING'
+    g.font = `700 22px ${sans}`
+    const w = g.measureText(label).width + 32
+    g.fillStyle = 'rgba(243,194,87,0.16)'; roundRect(g, W - 64 - w, 58, w, 42, 8); g.fill()
+    g.fillStyle = '#f3c257'; g.fillText(label, W - 64 - w + 16, 87)
+  }
+
+  // Market, side and leverage.
+  g.fillStyle = TEXT; g.font = `700 58px ${sans}`
+  g.fillText(d.market, 64, 222)
+  const mw = g.measureText(d.market).width
+  const chip = `${d.side === 'long' ? 'LONG' : 'SHORT'} ${d.leverage}×`
+  g.font = `700 26px ${sans}`
+  const cw = g.measureText(chip).width + 30
+  g.fillStyle = d.side === 'long' ? 'rgba(0,236,151,0.16)' : 'rgba(255,90,106,0.16)'; roundRect(g, 64 + mw + 24, 182, cw, 46, 8); g.fill()
+  g.fillStyle = sideColor; g.fillText(chip, 64 + mw + 24 + 15, 214)
+
+  // ROE.
+  g.fillStyle = accent; g.font = `800 140px ${sans}`
+  g.fillText(pctText(d.roePct), 58, 392)
+  g.fillStyle = MUTED; g.font = `600 26px ${sans}`
+  g.fillText('ROE', 64, 432)
+
+  // Entry, mark, P&L.
+  g.font = `500 30px ${mono}`
+  const rows: [string, string, string][] = [['Entry', d.entryPx, TEXT], ['Mark', d.markPx, TEXT]]
+  if (d.pnlUsd !== null) {
+    const cents = Math.abs(d.pnlUsd) < 0.005 ? 0 : d.pnlUsd
+    rows.push(['P&L', usdText(cents), cents >= 0 ? GREEN : RED])
+  }
+  rows.forEach(([k, v, c], i) => {
+    g.fillStyle = MUTED; g.fillText(k, 64, 492 + i * 42)
+    g.fillStyle = c; g.fillText(v, 220, 492 + i * 42)
+  })
+
+  // Where, and when.
+  g.textAlign = 'right'
+  g.fillStyle = GREEN; g.font = `500 24px ${mono}`
+  g.fillText(d.link.replace(/^https:\/\//, ''), W - 64, H - 92)
+  g.fillStyle = MUTED; g.font = `500 20px ${sans}`
+  g.fillText(`${d.paper ? 'Virtual USDC, Hyperliquid prices' : 'On Hyperliquid, through ARCDEX'} · ${new Date(d.at).toISOString().slice(0, 16).replace('T', ' ')} UTC`, W - 64, H - 58)
+  g.textAlign = 'left'
+
+  return new Promise((resolve, reject) => canvas.toBlob(b => (b ? resolve(b) : reject(new Error('Could not render card'))), 'image/png'))
+}
+
+export function futuresShareText(d: Pick<FuturesCardData, 'market' | 'side' | 'leverage' | 'roePct' | 'paper'>): string {
+  return `${d.side === 'long' ? 'Long' : 'Short'} ${d.market} ${d.leverage}× on ARCDEX: ${pctText(d.roePct)} ROE${d.paper ? ' (paper trading)' : ''} ${d.roePct >= 0 ? '📈' : '📉'}`
+}

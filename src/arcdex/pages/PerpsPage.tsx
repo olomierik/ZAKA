@@ -34,6 +34,7 @@ import { ModeSwitch, noticeNotes, PaperAccountBox, PaperAccountTabs, PaperOrderP
 import { usePaper } from '../hl/paper'
 import { AlertBell, AlertModal, AlertsList } from '../components/HlAlerts'
 import { activeAlerts, useAlerts } from '../hl/alerts'
+import { ShareFuturesButton } from '../components/FuturesShare'
 
 export const CATEGORY_LABEL: Record<HlCategory, string> = {
   crypto: 'Crypto', stocks: 'Stocks', preipo: 'Pre-IPO', indices: 'Indices', commodities: 'Commodities', fx: 'FX',
@@ -526,7 +527,10 @@ function Positions({ positions, orders, byCoin, mids, gate, onSelect, onDone }: 
                 <td>{money(p.marginUsed)}</td>
                 <td className={upDown(p.cumFunding == null ? null : -p.cumFunding)}>{p.cumFunding == null ? '—' : signedUsd(-p.cumFunding)}</td>
                 <td>{HL_TRADING ? <button className="link-btn" onClick={() => setEditing(p)}>{tpO?.triggerPx ? fmtPx(tpO.triggerPx) : '—'} / {slO?.triggerPx ? fmtPx(slO.triggerPx) : '—'} ✎</button> : <span>{tpO?.triggerPx ? fmtPx(tpO.triggerPx) : '—'} / {slO?.triggerPx ? fmtPx(slO.triggerPx) : '—'}</span>}</td>
-                <td>{HL_TRADING && <button className="btn-ghost" disabled={busy !== null || !gate.access} onClick={() => void close(p)}>{busy === p.coin ? T('Closing…') : T('Close')}</button>}</td>
+                <td className="fx-row-acts">
+                  <ShareFuturesButton p={{ coin: p.coin, market: sym, long: p.szi > 0, leverage: p.leverage.value, roePct: roe, pnlUsd: pnl, entryPx: fmtPx(p.entryPx), markPx: fmtPx(mark), paper: false }} />
+                  {HL_TRADING && <button className="btn-ghost" disabled={busy !== null || !gate.access} onClick={() => void close(p)}>{busy === p.coin ? T('Closing…') : T('Close')}</button>}
+                </td>
               </tr>
             )
           })}

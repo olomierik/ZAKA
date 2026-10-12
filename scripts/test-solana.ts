@@ -194,7 +194,7 @@ for (const p of swapsFx.pools as any[]) {
 console.log('routes')
 const p = pathToPage(`/solana/token/${MEME}`, '?pool=PooLAddr1111111111111111111111111111111111')
 ok(p?.name === 'sol-token' && p.address === MEME && p.pool === 'PooLAddr1111111111111111111111111111111111', 'a coin’s link keeps its mint’s case')
-ok(pageToPath(p!) === `/solana/token/${MEME}?pool=PooLAddr1111111111111111111111111111111111` && pathToPage('/solana', '')?.name === 'solana', 'and back; /solana is the markets')
-ok(pathToPage('/solana/token/0xnotsolana', '')?.name === 'solana', 'a malformed mint opens the markets')
+ok(pageToPath(p!) === `/solana/token/${MEME}?pool=PooLAddr1111111111111111111111111111111111` && JSON.stringify(pathToPage('/solana', '')) === JSON.stringify({ name: 'terminal', chain: 'sol' }) && pageToPath({ name: 'terminal', chain: 'sol' }) === '/solana', 'and back; /solana is its Trenches (2026-10-12)')
+ok(JSON.stringify(pathToPage('/solana/token/0xnotsolana', '')) === JSON.stringify({ name: 'terminal', chain: 'sol' }), 'a malformed mint opens its Trenches')
 
 console.log('\nall Solana checks passed')

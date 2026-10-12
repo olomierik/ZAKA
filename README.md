@@ -1,6 +1,6 @@
 # ARCDEX
 
-A multichain exchange at [arcsense.site](https://arcsense.site): spot on Arc, Robinhood Chain, Solana, BNB Chain and Starknet; futures and prediction markets on Hyperliquid; a bridge; paper trading and price alerts. Wallets sign in the browser; ARCDEX never holds a key.
+A multichain trading terminal at [arcsense.site](https://arcsense.site), laid out as motion.gift's: the Trenches (New, Almost bonded and Migrated coins, live) on Arc, Robinhood Chain, Solana and BNB Chain; spot on those and Starknet; futures and prediction markets on Hyperliquid; a bridge; paper trading and price alerts. Wallets sign in the browser; ARCDEX never holds a key.
 
 This file is the map. `AGENTS.md` is the detailed record: each feature, why it is the way it is, how it was checked, and what the owner still has to do.
 
@@ -23,7 +23,7 @@ Browser: React SPA (Vite). Wallets sign here: EVM (wagmi/viem), Solana, Starknet
 | Path | What |
 |---|---|
 | `src/arcdex/` | The app: `pages/`, `components/`, `lib/`, `api/` (client data), `hl/` (Hyperliquid), `starknet/` (Starknet) |
-| `src/arcdex/landing/` | The home page, a separate small bundle |
+| `src/arcdex/landing/` | The old home page, now at `/about` (`/` opens the Trenches), a separate small bundle |
 | `api/` | The site's functions, served by the engine at `/api/*` |
 | `engine/` | The market engine (its own `README.md`) |
 | `contracts/` | Solidity (Foundry): swap and curve routers, launchpad, testnet futures |
@@ -96,7 +96,7 @@ bun run engine:test
 forge test
 ```
 
-Offline tests run on recorded answers: `bun scripts/test-<name>.ts`. Among them are `test-paper`, `test-alerts`, `test-starknet`, `test-hyperliquid`, `test-routes`, `test-robinhood`, `test-solana`, `test-bsc`, `test-xsol`, `test-dex-parity`, `test-chunk-reload`, `test-withdraw-guard` and `test-wallet-2fa`.
+Offline tests run on recorded answers: `bun scripts/test-<name>.ts`. Among them are `test-trenches`, `test-rpc-settings`, `test-paper`, `test-alerts`, `test-starknet`, `test-hyperliquid`, `test-routes`, `test-robinhood`, `test-solana`, `test-bsc`, `test-xsol`, `test-dex-parity`, `test-chunk-reload`, `test-withdraw-guard` and `test-wallet-2fa`.
 
 Live checks touch real networks and send nothing. They use `eth_call` / `simulateTransactions` with state overrides, or quotes only:
 - `check-avnu`, `check-hyperliquid` (needs `VITE_HL_TRADING=on`), `check-rh-swaps`, `check-solana-sale`.
@@ -115,6 +115,7 @@ Live checks touch real networks and send nothing. They use `eth_call` / `simulat
 - **Engine:** Railway → Deployments → Redeploy the last one that worked (it rebuilds that commit).
 - **A feature:** turn its switch off (`VITE_HL_TRADING`, `VITE_STARKNET_SWAPS`, `AUTOTRADE_PAUSED`) and redeploy.
 - Pages left open across a deploy reload themselves to the new version (`lib/chunkReload.ts`).
+- **The terminal layout (2026-10-12):** it replaced the Markets pages and the Binance-style theme in one commit; `git revert` it to bring them back.
 
 ## Provider limits
 
@@ -125,7 +126,7 @@ Live checks touch real networks and send nothing. They use `eth_call` / `simulat
 | GeckoTerminal (free) | About 5 calls before 429 per IP; the engine meters its own to 25 a minute |
 | Across | Strict limits without `ACROSS_API_KEY` |
 | Relay, Circle CCTP | Public APIs; quotes are rechecked right before signing |
-| Public RPCs | PublicNode, dRPC, ZAN, Blockdaemon; each client falls back to the next on throttling |
+| Public RPCs | PublicNode, dRPC, ZAN, Blockdaemon, Beam; each chain's reads go through its nodes in order and the next answers when one throttles (`lib/rpcSettings.ts`; visitors can test them and put a faster one first) |
 | QuickNode (Arc) | Trial credits; when they run out the public endpoints answer |
 
 ## Known risks

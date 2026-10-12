@@ -18,6 +18,7 @@ import {
 import { DEFAULT_LEVERAGE, LeverageModal, errText, money } from './HlShared'
 import { AlertsList } from './HlAlerts'
 import { activeAlerts, useAlerts } from '../hl/alerts'
+import { ShareFuturesButton } from './FuturesShare'
 
 type Note = { ok: boolean; text: string }
 
@@ -297,7 +298,10 @@ function PaperPositions({ paper, positions, byCoin, mids, onSelect, onNote }: {
                 <td>{money(p.margin)}</td>
                 <td className={p.funding ? upDown(-p.funding) : ''}>{p.funding ? signedUsd(-p.funding) : '—'}</td>
                 <td><button className="link-btn" onClick={() => setEditing(p)}>{tpO ? fmtPx(tpO.px) : '—'} / {slO ? fmtPx(slO.px) : '—'} ✎</button></td>
-                <td><button className="btn-ghost" disabled={busy !== null} onClick={() => void close(p)}>{busy === p.coin ? T('Closing…') : T('Close')}</button></td>
+                <td className="fx-row-acts">
+                  <ShareFuturesButton p={{ coin: p.coin, market: symOf(p.coin, byCoin), long: p.szi > 0, leverage: p.lev, roePct: roe, pnlUsd: pnl, entryPx: fmtPx(p.entryPx), markPx: fmtPx(mark), paper: true }} />
+                  <button className="btn-ghost" disabled={busy !== null} onClick={() => void close(p)}>{busy === p.coin ? T('Closing…') : T('Close')}</button>
+                </td>
               </tr>
             )
           })}

@@ -37,6 +37,9 @@ interface Props {
   /** Why this coin can't be bought here (not from a launchpad, or its mint is dangerous); selling stays open. */
   buyBlocked?: string
   onTraded?: () => void
+  /** A quick buy from the Trenches: the form opens paying with this (SOL) and this amount filled in. */
+  initialRoute?: 'arc' | 'sol' | 'usdc'
+  initialAmount?: number
 }
 
 const GAS_RESERVE = 0.15
@@ -63,7 +66,7 @@ const SOL_PRESETS = [0.05, 0.1, 0.25, 0.5]
 /** SOL kept back when paying with SOL: a trade's fees and a token account. */
 const SOL_RESERVE = 0.01
 
-export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, initialMode, compact, buyBlocked, onTraded }: Props) {
+export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, initialMode, compact, buyBlocked, onTraded, initialRoute, initialAmount }: Props) {
   const trader = useTrader()
   const me = trader.address
   const sol = useSolanaWallets()
@@ -74,9 +77,9 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
   const solAddr = signer === 'trading' ? sol.trading : signer === 'external' ? sol.external?.address ?? null : null
   // A Solana wallet app trades with its own SOL by default (2026-10-05: its users had no way to buy without an Arc
   // wallet); the trading wallet with USDC on Arc.
-  const [picked, setPicked] = useState<Route | null>(null)
+  const [picked, setPicked] = useState<Route | null>(initialRoute ?? null)
   const route: Route = picked ?? (signer === 'external' || !me ? 'sol' : 'arc')
-  const [amount, setAmount] = useState('')
+  const [amount, setAmount] = useState(initialAmount && initialAmount > 0 && initialRoute ? String(initialAmount) : '')
   const [quote, setQuote] = useState<RelayQuote | null>(null)
   const [quoting, setQuoting] = useState(false)
   const [quoteErr, setQuoteErr] = useState('')

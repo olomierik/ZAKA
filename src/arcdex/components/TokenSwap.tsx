@@ -27,9 +27,12 @@ interface Props {
   fallback?: { symbol: string; image?: string | null; priceUsd?: number }
   onTraded?: () => void
   initialMode?: 'buy' | 'sell'
+  /** A quick buy from the Trenches: amount (USDC) and slippage filled in. */
+  initialAmount?: number
+  initialSlip?: number
 }
 
-export default function TokenSwap({ address, pool, fallback, onTraded, initialMode }: Props) {
+export default function TokenSwap({ address, pool, fallback, onTraded, initialMode, initialAmount, initialSlip }: Props) {
   const token = address.toLowerCase()
   const [curve, setCurve] = useState<LaunchpadToken | null | undefined>(undefined)
   const [row, setRow] = useState<ArgusPool | null | undefined>(undefined)
@@ -87,12 +90,13 @@ export default function TokenSwap({ address, pool, fallback, onTraded, initialMo
   }, [curve, token, poolId, row])
 
   if (curve === undefined || other === undefined) return <div className="loading-state" style={{ padding: 24 }}>{T("Loading…")}</div>
-  if (curve) return <CurveSwapWidget token={curve} onTraded={onTraded} initialMode={initialMode} />
+  if (curve) return <CurveSwapWidget token={curve} onTraded={onTraded} initialMode={initialMode} initialAmount={initialAmount} initialSlip={initialSlip} />
   if (onCurve && curveRoute) {
     return (
       <ArgusSwapWidget token={address as Address} symbol={row?.token.symbol ?? onCurve.symbol ?? fallback?.symbol ?? '…'} tokenImage={row?.token.image ?? fallback?.image ?? null}
         priceUsd={onCurve.priceUsd} marketCapUsd={onCurve.supply ? onCurve.supply * onCurve.priceUsd : null}
-        route={curveRoute} routeLoading={false} onTraded={onTraded} initialMode={initialMode} venue={{ name: onCurve.venue, site: launchpadNamed(onCurve.venue)?.site }} />
+        route={curveRoute} routeLoading={false} onTraded={onTraded} initialMode={initialMode} venue={{ name: onCurve.venue, site: launchpadNamed(onCurve.venue)?.site }}
+        initialAmount={initialAmount} initialSlip={initialSlip} />
     )
   }
 
@@ -109,6 +113,7 @@ export default function TokenSwap({ address, pool, fallback, onTraded, initialMo
   return (
     <ArgusSwapWidget token={address as Address} symbol={symbol} tokenImage={row?.token.image ?? fallback?.image ?? null}
       priceUsd={row?.priceUsd ?? fallback?.priceUsd ?? 0} marketCapUsd={row?.marketCapUsd ?? null}
-      route={route} routeLoading={routeLoading} buyTaxBps={tax.buy} sellTaxBps={tax.sell} onTraded={onTraded} initialMode={initialMode} venue={venue} />
+      route={route} routeLoading={routeLoading} buyTaxBps={tax.buy} sellTaxBps={tax.sell} onTraded={onTraded} initialMode={initialMode} venue={venue}
+      initialAmount={initialAmount} initialSlip={initialSlip} />
   )
 }

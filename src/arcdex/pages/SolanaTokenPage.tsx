@@ -8,9 +8,8 @@
 // and what its mint allows, read when the page opens and every 30s.
 
 import { useEffect, useMemo, useState } from 'react'
-import type { Page } from '../App'
+import type { BuyIntent, Page } from '../App'
 import PriceChart, { type ChartTrade } from '../components/PriceChart'
-import { MarketTrades } from '../components/SpotPanels'
 import Sheet, { TradeBar } from '../components/Sheet'
 import { AgoText } from '../components/Ago'
 import { ChainIcon } from '../components/Chains'
@@ -28,6 +27,8 @@ import { useIsMobile } from '../lib/useMobile'
 import { useSolanaWallets } from '../lib/solanaWallet'
 import { t as T } from '../lib/i18n'
 import CoinVotes from '../components/CoinVotes'
+import TokenLayout, { TkPanel } from '../components/TokenLayout'
+import { toggleWatch, usePrefs } from '../lib/prefs'
 
 function fmt(n: number | null | undefined, prefix = ''): string {
   if (!n || !Number.isFinite(n)) return '—'
@@ -47,14 +48,14 @@ const pct = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(2)}%`
 const color = (n: number) => (n > 0 ? 'var(--green)' : n < 0 ? 'var(--red)' : 'var(--text-muted)')
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`
 
-interface Props { address: string; pool?: string; navigate: (p: Page) => void }
+interface Props { address: string; pool?: string; navigate: (p: Page) => void; buy?: BuyIntent }
 
 function seedCoin(mint: string, pool?: string): SolCoinDetail | null {
   const r = solSeed(mint, pool)
   return r ? { ...r, supply: null, pools: [r] } : null
 }
 
-export default function SolanaTokenPage({ address, pool: poolParam, navigate }: Props) {
+export default function SolanaTokenPage({ address, pool: poolParam, navigate, buy }: Props) {
   const mobile = useIsMobile()
   const sol = useSolanaWallets()
   const mine = new Set([sol.trading, sol.external?.address].filter(Boolean) as string[])
@@ -63,6 +64,7 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
   const [chain, setChain] = useState<{ curve: { progress: number; graduated: boolean } | null; mint: MintFlags | null } | null>(null)
   const [sheet, setSheet] = useState<'buy' | 'sell' | null>(null)
   const [copied, setCopied] = useState(false)
+  const starred = usePrefs().watchlist.includes(address.toLowerCase())
 
   useEffect(() => {
     let live = true
@@ -180,9 +182,10 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
       )}
     </>
   )
+  // A quick buy from the Trenches opens the form paying with SOL, its amount filled in.
   const trade = (side?: 'buy' | 'sell', compact?: boolean, initialMode?: 'buy' | 'sell') => (
     <SolanaTrade key={`${side ?? initialMode ?? 'x'}`} mint={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked}
-      side={side} compact={compact} initialMode={initialMode} />
+      side={side} compact={compact} initialMode={initialMode} initialRoute={buy ? 'sol' : undefined} initialAmount={buy?.amount} />
   )
   const tradesTable = (
     <div className="spot-panel rh-trades">
@@ -264,57 +267,48 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate }: 
     </div>
   )
 
+  // Desktop: motion.gift's coin screen (components/TokenLayout.tsx).
   return (
-    <div className="token-page spot-page rh-token sol-token">
-      <div className="spot-bar">
-        <div className="spot-bar-pair">
-          <RhLogo src={coin?.image ?? null} symbol={symbol} size={32} />
-          <div style={{ minWidth: 0 }}>
-            <div className="spot-bar-sym">{symbol}<span>/{coin?.quoteSymbol || 'USD'}</span>{coin?.launchpad && <span className="mk-tag rh-lp-tag">{coin.launchpad}</span>}</div>
-            <div className="spot-bar-name">{coin?.name}{coin?.name && ' · '}{network}</div>
-          </div>
-        </div>
-        <div className="spot-bar-price">
-          <b className={(coin?.change24h ?? 0) >= 0 ? 'up-txt' : 'down-txt'}>{priceUsd ? fmtPrice(priceUsd) : '…'}</b>
-          <span>{coin?.marketCap ? T('MCap {v}', { v: fmt(coin.marketCap, '$') }) : ''}</span>
-        </div>
-        <div className="spot-bar-stats">
-          {stats.map(([label, val, c]) => <div key={label}><span>{label}</span><b style={{ color: c }}>{val}</b></div>)}
-        </div>
-        {headActions}
-      </div>
-      {notices}
-
-      <div className="spot-grid">
-        <div className="spot-book">
-          <MarketTrades rows={rows} priceUsd={priceUsd} change24h={coin?.change24h ?? null} symbol={symbol} loaded={tradesLoaded}
-            buys24h={coin?.buys24h ?? null} sells24h={coin?.sells24h ?? null} />
-        </div>
-        <div className="spot-main">
-          <div className="spot-panel spot-chart">{chart}</div>
-          <div className="spot-panel spot-form">
-            <div className="spot-form-tabs">
-              <span className="active">{T('Spot')}</span>
-              <span className="spot-form-kind">{T('Market')}</span>
-              <span className="spot-form-hint">{T('Pay with SOL, USDC on Solana or USDC on Arc.')}</span>
-            </div>
-            <SolanaWalletBar />
-            <div className="spot-form-sides">
-              {trade('buy', true)}
-              {trade('sell', true)}
-            </div>
-            <p className="spot-form-note">{SOL_NOTE()}</p>
-          </div>
-        </div>
-        <div className="spot-side">
-          <div className="spot-panel rh-back">
-            <button className="mk-trade" onClick={() => navigate({ name: 'solana' })}>‹ {T('Solana markets')}</button>
-          </div>
-          <CoinVotes chain="solana" address={address} />
-          {pools}
-        </div>
-        <div className="spot-bottom">{tradesTable}</div>
-      </div>
-    </div>
+    <TokenLayout
+      chain="sol" image={coin?.image ?? null} symbol={symbol} name={coin?.name ?? ''} mc={coin?.marketCap ?? null}
+      tags={<>
+        {coin?.quoteSymbol && <span className="tk-tag">{coin.quoteSymbol}</span>}
+        {coin?.launchpad && <span className="tk-tag lp">{coin.launchpad}</span>}
+        {onCurve && <span className="tk-tag bc">{progress !== null ? `BC ${progress.toFixed(1)}%` : T('Bonding')}</span>}
+        {chain?.curve?.graduated && <span className="tk-tag mig">{T('migrated')}</span>}
+        {safety && <SafetyBadge view={safety} />}
+      </>}
+      links={<span className="tk-links">
+        <button className="tk-link" title={T('Copy contract address')} onClick={() => { void navigator.clipboard?.writeText(address); setCopied(true); setTimeout(() => setCopied(false), 1200) }}>{copied ? '✓' : '⧉'}</button>
+        <button className={`tk-link${starred ? ' on' : ''}`} title={starred ? T('Remove from watchlist') : T('Add to watchlist')} onClick={() => toggleWatch(address)}>{starred ? '★' : '☆'}</button>
+        <a className="tk-link" title={T('Explorer')} href={solToken(address)} target="_blank" rel="noopener noreferrer">↗</a>
+        <a className="tk-link" title={T('Search on X')} href={`https://x.com/search?q=${encodeURIComponent(`${address} OR $${symbol}`)}&f=live`} target="_blank" rel="noopener noreferrer">𝕏</a>
+      </span>}
+      stats={[
+        { label: T('Price'), value: priceUsd ? fmtPrice(priceUsd) : '—' },
+        { label: T('Liquidity'), value: fmt(coin?.liquidity, '$') },
+        { label: T('24h vol'), value: fmt(coin?.volume24h, '$') },
+        { label: T('24h trades'), value: coin ? (coin.buys24h + coin.sells24h).toLocaleString() : '—' },
+        { label: T('Wallets 24h'), value: coin?.traders24h ? coin.traders24h.toLocaleString() : '—' },
+      ]}
+      pools={coin && coin.pools.length > 1 ? (
+        <select className="tk-pool-sel" value={pool} onChange={e => navigate({ name: 'sol-token', address, pool: e.target.value })} aria-label={T('Pools')}>
+          {coin.pools.slice(0, 8).map(p => <option key={p.pool} value={p.pool} disabled={p.offMarket}>{symbol}/{p.quoteSymbol || '?'} · {p.offMarket ? T('⚠ Off-market pool') : (p.launchpad ?? p.dex.replace(/-/g, ' '))} · {fmt(p.liquidity, '$')}</option>)}
+        </select>
+      ) : null}
+      notices={notices}
+      chart={chart}
+      tabs={[
+        { id: 'trades', label: T('Trades'), body: tradesTable },
+        ...(coin && coin.pools.length > 0 ? [{ id: 'pools', label: T('Pools'), count: coin.pools.length, body: pools }] : []),
+      ]}
+      changes={[{ label: '5M', pct: coin?.change5m ?? null }, { label: '1H', pct: coin?.change1h ?? null }, { label: '24H', pct: coin?.change24h ?? null }]}
+      flow={{ volume: coin?.volume24h ?? null, buys: coin?.buys24h ?? null, sells: coin?.sells24h ?? null }}
+      trade={<>
+        <SolanaWalletBar />
+        {trade(undefined, false, buy ? 'buy' : undefined)}
+      </>}
+      side={<TkPanel title={T('Community')}><CoinVotes chain="solana" address={address} /></TkPanel>}
+    />
   )
 }

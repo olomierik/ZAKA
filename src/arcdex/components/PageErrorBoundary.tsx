@@ -40,7 +40,7 @@ export default class PageErrorBoundary extends Component<Props, { error: Error |
         {!chunk && <code>{error.message.slice(0, 200)}</code>}
         <div className="page-error-btns">
           <button className="btn-primary" onClick={() => window.location.reload()}>{T('Reload')}</button>
-          {this.props.onHome && <button className="btn-ghost" onClick={() => { this.setState({ error: null }); this.props.onHome?.() }}>{T('Go to Markets')}</button>}
+          {this.props.onHome && <button className="btn-ghost" onClick={() => { this.setState({ error: null }); this.props.onHome?.() }}>{T('Go to Trenches')}</button>}
         </div>
       </div>
     )

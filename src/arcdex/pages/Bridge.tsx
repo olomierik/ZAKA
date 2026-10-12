@@ -356,7 +356,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
             <b>{T('On Arc? Start trading')}</b>
             <p>{T('USDC on Arc trades every coin on ARCDEX, spot and futures.')}</p>
             <div className="xs-row-btns">
-              <a className="btn-ghost" href="/app" onClick={e => { if (navigate) { e.preventDefault(); navigate({ name: 'terminal' }) } }}>{T('Markets')}</a>
+              <a className="btn-ghost" href="/app" onClick={e => { if (navigate) { e.preventDefault(); navigate({ name: 'terminal' }) } }}>{T('Trenches')}</a>
               <a className="btn-primary" href="/spot" onClick={e => { if (navigate) { e.preventDefault(); navigate(COIN_PAGE) } }}>{T('Buy $ARCDEX')}</a>
             </div>
           </div>

@@ -6,7 +6,7 @@
 
 import { createPublicClient, parseAbi, type Address } from 'viem'
 import { arc } from '../wagmi'
-import { arcReadTransport } from '../lib/rpc'
+import { readTransport } from '../lib/rpcSettings'
 import { headBlock, scanLogs, type RawLog } from '../../../api/_arcLogs'
 import { CURVE_TRADE, DEPLOY_BLOCKS, TOKEN_LAUNCHED, decodeLaunch, decodeTrade, priceAfter, resolveMeta, statsOf, type Launch, type LaunchStats, type TradeRow } from '../../../api/_launchpadCore'
 import { siteFetch } from './siteFetch'
@@ -58,7 +58,9 @@ export const BURN_ADDRESS = '0x000000000000000000000000000000000000dEaD' as cons
  * RPC node answering has seen it (lib/rpc.ts). */
 // Reads that start together (a page's balances, allowances, supplies) go out
 // as one Multicall3 call instead of one request each.
-export const client = createPublicClient({ chain: arc, transport: arcReadTransport(), batch: { multicall: true } })
+// Reads go through the nodes picked in RPC settings (lib/rpcSettings.ts): by default the dedicated node, Blockdaemon,
+// then Arc's public RPC, as before.
+export const client = createPublicClient({ chain: arc, transport: readTransport('arc'), batch: { multicall: true } })
 
 export interface CurveState {
   creator: Address
@@ -288,6 +290,7 @@ export async function getAllLaunchpadTokensAsArcTokens(): Promise<import('./rada
       marketCap: t.priceUsd * 1_000_000_000,
       liquidity: Number(t.curve.rUsdc) / 1e6,
       ageMs: Date.now() - t.curve.launchedAt * 1000,
+      createdAt: t.curve.launchedAt * 1000,
       launchpad: 'ARCDEX',
       poolAddress: '',
       txCount24h: s?.trades24 ?? 0,

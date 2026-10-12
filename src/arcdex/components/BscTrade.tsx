@@ -36,6 +36,10 @@ interface Props {
   compact?: boolean
   buyBlocked?: string
   onTraded?: () => void
+  /** A quick buy from the Trenches: the form opens paying with this (BNB) and this amount filled in, when the coin
+   * can be paid for that way (a curve quoted in USDT can't take BNB). */
+  initialRoute?: 'arc' | 'bnb' | 'usdt'
+  initialAmount?: number
 }
 
 type Route = 'arc' | 'bnb' | 'usdt'
@@ -60,7 +64,7 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 
 type Step = 'idle' | 'working' | 'done' | 'error'
 
-export default function BscTrade({ token, symbol, decimals, priceUsd, four, side, initialMode, compact, buyBlocked, onTraded }: Props) {
+export default function BscTrade({ token, symbol, decimals, priceUsd, four, side, initialMode, compact, buyBlocked, onTraded, initialRoute, initialAmount }: Props) {
   const trader = useTrader()
   const me = trader.address
   const kind = trader.kind ?? 'wallet'
@@ -69,9 +73,9 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
   const curve = !!four && !four.graduated
   const curveRoute: Route = four?.quote === BSC_USDT ? 'usdt' : 'bnb'
   const [mode, setMode] = useState<'buy' | 'sell'>(side ?? initialMode ?? 'buy')
-  const [picked, setPicked] = useState<Route | null>(null)
+  const [picked, setPicked] = useState<Route | null>(initialRoute ?? null)
   const route: Route = curve ? curveRoute : picked ?? 'arc'
-  const [amount, setAmount] = useState('')
+  const [amount, setAmount] = useState(initialAmount && initialAmount > 0 && initialRoute && (curve ? curveRoute === initialRoute : true) ? String(initialAmount) : '')
   const [quote, setQuote] = useState<RelayQuote | null>(null)
   const [fq, setFq] = useState<FourQuote | null>(null)
   const [quoting, setQuoting] = useState(false)

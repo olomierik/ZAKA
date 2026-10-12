@@ -55,11 +55,11 @@ export default function ShareCardModal(props: Props) {
           : <div style={{ aspectRatio: '1200 / 630', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', background: 'var(--bg-2)', borderRadius: 10 }}>{err || T("Rendering…")}</div>}
         <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
           {canNativeShare && (
-            <button onClick={() => void navigator.share({ files: [file!], text: `${text} ${link}` }).catch(() => {})} style={btn('var(--adx-accent)')}>{T("Share…")}</button>
+            <button onClick={() => void navigator.share({ files: [file!], text: `${text} ${link}` }).catch(() => {})} style={btn('var(--adx-accent)', 'var(--on-accent)')}>{T("Share…")}</button>
           )}
-          <a href={tweetUrl(text, link)} target="_blank" rel="noopener noreferrer" style={{ ...btn('#000'), textDecoration: 'none', border: '1px solid #333' }}>{T("Post on X")}</a>
-          <button onClick={download} disabled={!url} style={btn('var(--bg-2)')}>{T("Download image")}</button>
-          <button onClick={() => { void navigator.clipboard?.writeText(link); setCopied(true) }} style={btn('var(--bg-2)')}>{copied ? T("Link copied ✓") : props.card ? T("Copy my referral link") : T('Copy link')}</button>
+          <a href={tweetUrl(text, link)} target="_blank" rel="noopener noreferrer" style={{ ...btn('#000', '#fff'), textDecoration: 'none', border: '1px solid #333' }}>{T("Post on X")}</a>
+          <button onClick={download} disabled={!url} style={btn('var(--bg-2)', 'var(--text)')}>{T("Download image")}</button>
+          <button onClick={() => { void navigator.clipboard?.writeText(link); setCopied(true) }} style={btn('var(--bg-2)', 'var(--text)')}>{copied ? T("Link copied ✓") : props.card ? T("Copy my referral link") : T('Copy link')}</button>
         </div>
         {referralsLive && (
           <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '10px 0 0' }}>{T("Anyone who starts trading through your link earns you 15% of their trading fees in USDC — paid automatically on every trade.")}</p>
@@ -69,6 +69,7 @@ export default function ShareCardModal(props: Props) {
   )
 }
 
-function btn(bg: string): React.CSSProperties {
-  return { padding: '9px 14px', borderRadius: 8, border: '1px solid var(--adx-card-border)', background: bg, color: '#fff', fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer' }
+/** A button in the share bar: its own text colour, so it reads on the light and the dark theme. */
+function btn(bg: string, color: string): React.CSSProperties {
+  return { padding: '9px 14px', borderRadius: 8, border: '1px solid var(--adx-card-border)', background: bg, color, fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer' }
 }

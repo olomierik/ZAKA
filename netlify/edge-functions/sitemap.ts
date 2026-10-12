@@ -4,7 +4,7 @@
 const ENGINE = 'https://arcdex-engine-production.up.railway.app'
 const SITE = 'https://arcsense.site'
 // Futures on Hyperliquid: the market list and the busiest markets' own pages (2026-10-11).
-const PAGES = ['/', '/app', '/solana', '/bnb', '/robinhood', '/swap', '/bridge', '/futures', '/predict', '/routes', '/starknet', '/spot',
+const PAGES = ['/', '/arc', '/solana', '/bnb', '/robinhood', '/about', '/swap', '/bridge', '/futures', '/predict', '/routes', '/starknet', '/spot',
   '/futures/ETH', '/futures/SOL', '/futures/HYPE', '/futures/xyz:NVDA', '/futures/xyz:TSLA', '/futures/xyz:GOLD', '/futures/xyz:XYZ100']
 
 interface Page { chain: 'arc' | 'robinhood' | 'solana' | 'bsc'; address: string; pool: string | null }

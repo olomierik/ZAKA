@@ -33,16 +33,16 @@ const BUY_PRESETS = [10, 25, 50, 100]
 const SELL_PRESETS = [25, 50, 100]
 
 type Step = 'idle' | 'approving' | 'checking' | 'swapping' | 'done' | 'error'
-interface Props { token: LaunchpadToken; onTraded?: () => void; initialMode?: 'buy' | 'sell' }
+interface Props { token: LaunchpadToken; onTraded?: () => void; initialMode?: 'buy' | 'sell'; /** A quick buy: amount and slippage filled in. */ initialAmount?: number; initialSlip?: number }
 
 const fmtTok = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toFixed(2)
 
-export default function CurveSwapWidget({ token, onTraded, initialMode }: Props) {
+export default function CurveSwapWidget({ token, onTraded, initialMode, initialAmount, initialSlip }: Props) {
   const trader = useTrader()
   const me = trader.address
   const [mode, setMode] = useState<'buy' | 'sell'>(initialMode ?? 'buy')
-  const [amount, setAmount] = useState('')
-  const [slippage, setSlippage] = useState(3)
+  const [amount, setAmount] = useState(initialAmount && initialAmount > 0 ? String(initialAmount) : '')
+  const [slippage, setSlippage] = useState(initialSlip && initialSlip > 0 ? initialSlip : 3)
   const [step, setStep] = useState<Step>('idle')
   const [msg, setMsg] = useState('')
   const [balance, setBalance] = useState<bigint | null>(null)
@@ -156,7 +156,7 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
           <button key={m} onClick={() => { setMode(m); setAmount(''); setStep('idle'); setMsg('') }} style={{
             flex: 1, padding: 8, fontSize: '0.82rem', fontWeight: 700, border: 'none', cursor: 'pointer',
             background: mode === m ? (m === 'buy' ? 'var(--green)' : 'var(--red)') : 'transparent',
-            color: mode === m ? '#fff' : 'var(--text-muted)',
+            color: mode === m ? (m === 'buy' ? 'var(--on-accent)' : '#fff') : 'var(--text-muted)',
           }}>{m === 'buy' ? T("Buy") : T("Sell")} {token.symbol}</button>
         ))}
       </div>
@@ -210,11 +210,11 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
       )}
 
       {!me ? (
-        <button onClick={openConnectModal} style={{ padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>{T("Connect Wallet")}</button>
+        <button onClick={openConnectModal} style={{ padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, background: 'var(--adx-accent)', color: 'var(--on-accent)', border: 'none', cursor: 'pointer', width: '100%' }}>{T("Connect Wallet")}</button>
       ) : (
         <button onClick={() => void submit()} disabled={!configured || amountIn === 0n || insufficient || busy}
           style={{ padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, width: '100%', border: 'none', cursor: 'pointer',
-            background: needsApprove ? 'var(--orange)' : mode === 'buy' ? 'var(--green)' : 'var(--red)', color: '#fff',
+            background: needsApprove ? 'var(--orange)' : mode === 'buy' ? 'var(--green)' : 'var(--red)', color: needsApprove ? 'var(--on-amber)' : mode === 'buy' ? 'var(--on-accent)' : '#fff',
             opacity: amountIn === 0n || insufficient || busy ? 0.55 : 1 }}>
           {step === 'approving' ? T("Approving…") : step === 'checking' ? T("Checking…") : step === 'swapping' ? T("Swapping…")
             : insufficient ? T("Insufficient balance")

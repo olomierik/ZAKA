@@ -319,7 +319,7 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
                   style={{ width: '100%', resize: 'vertical', padding: 10, borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', fontSize: '0.85rem', fontFamily: 'inherit' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
                   <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{draft.length}/280{positionUsd ? ' · ' + T('shows your live {usd} position', { usd: '$' + fmt(positionUsd) }) : ''}</span>
-                  <button onClick={() => void post()} disabled={posting || !draft.trim()} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--adx-accent)', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: posting || !draft.trim() ? 0.5 : 1 }}>{posting ? T("Posting…") : T("Post")}</button>
+                  <button onClick={() => void post()} disabled={posting || !draft.trim()} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--adx-accent)', color: 'var(--on-accent)', fontWeight: 700, cursor: 'pointer', opacity: posting || !draft.trim() ? 0.5 : 1 }}>{posting ? T("Posting…") : T("Post")}</button>
                 </div>
               </div>
             </div>

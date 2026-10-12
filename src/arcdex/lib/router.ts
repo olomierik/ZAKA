@@ -1,14 +1,16 @@
-// Shareable URLs for every page (fomo-style): /token/0x…, /profile/name,
-// /clans/slug, /r/name (referral). The app keeps its page state object;
-// this maps it to and from the address bar. vercel.json already serves
-// the SPA for every path; / itself is the landing page (src/main.tsx).
+// Shareable URLs for every page: /token/0x…, /futures/BTC, /r/name (referral). The app keeps its page state
+// object; this maps it to and from the address bar. Netlify serves the SPA for every path. Since 2026-10-12 / is the
+// Trenches (the chain last picked), /arc, /robinhood, /solana and /bnb a chain's own, and /about the old landing page.
 
 import type { Page } from '../App'
 import { COIN_LC, COIN_POOL } from './coin'
+import type { TChain } from './chains'
+
+const TRENCH_PATH: Record<TChain, string> = { arc: '/arc', hood: '/robinhood', sol: '/solana', bnb: '/bnb' }
 
 export function pageToPath(p: Page): string {
   switch (p.name) {
-    case 'terminal':    return '/app'
+    case 'terminal':    return p.chain ? TRENCH_PATH[p.chain] : '/'
     case 'argus':       return `/token/${p.address}${p.pool ? `?pool=${p.pool}` : ''}`
     case 'token':       return `/token/${p.address}`
     case 'trader':      return `/profile/${p.address}`
@@ -59,7 +61,9 @@ export function pathToPage(pathname: string, search: string): Page | null {
     case 'profile':     return b ? { name: 'trader', address: b } : null
     case 'clans':       return b ? { name: 'clan', slug: b } : { name: 'clans' }
     case 'app':
-    case 'markets':     return { name: 'terminal' }
+    case 'markets':
+    case 'trenches':    return { name: 'terminal' }
+    case 'arc':         return { name: 'terminal', chain: 'arc' }
     // Spot opens on $ARCDEX/USDC, as Binance's opens on its own pair.
     case 'spot':        return { name: 'argus', address: COIN_LC, pool: COIN_POOL }
     case 'leaderboard': return b === 'futures' ? { name: 'leaderboard', tab: 'futures' } : { name: 'leaderboard' }
@@ -69,7 +73,7 @@ export function pathToPage(pathname: string, search: string): Page | null {
     case 'earn':        return { name: 'rewards' }
     case 'transfers':   return { name: 'transfers' }
     case 'portfolio':   return { name: 'portfolio' }
-    case 'launchpad':   return { name: 'launchpad' }
+    case 'launchpad':   return { name: 'terminal', chain: 'arc' }
     case 'swap':        return { name: 'swap' }
     case 'bridge':      return { name: 'bridge', dir: q.get('dir') === 'in' ? 'in' : 'out' }
     case 'signals':
@@ -94,14 +98,14 @@ export function pathToPage(pathname: string, search: string): Page | null {
         const pool = (q.get('pool') ?? '').toLowerCase()
         return { name: 'rh-token', address: parts[2].toLowerCase(), pool: /^0x([0-9a-f]{40}|[0-9a-f]{64})$/.test(pool) ? pool : '' }
       }
-      return { name: 'robinhood' }
+      return { name: 'terminal', chain: 'hood' }
     // Solana's markets, and one of its coins (base58 mints and pools: case kept).
     case 'solana':
       if (b === 'token' && parts[2] && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(parts[2])) {
         const pool = q.get('pool') ?? ''
         return { name: 'sol-token', address: parts[2], pool: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(pool) ? pool : '' }
       }
-      return { name: 'solana' }
+      return { name: 'terminal', chain: 'sol' }
     // BNB Chain's markets (four.meme), and one of its coins (/bsc works too).
     case 'bnb':
     case 'bsc':
@@ -109,7 +113,7 @@ export function pathToPage(pathname: string, search: string): Page | null {
         const pool = (q.get('pool') ?? '').toLowerCase()
         return { name: 'bsc-token', address: parts[2].toLowerCase(), pool: /^0x([0-9a-f]{40}|[0-9a-f]{64})$/.test(pool) ? pool : '' }
       }
-      return { name: 'bsc' }
+      return { name: 'terminal', chain: 'bnb' }
     // Not linked anywhere: the owner deploys ArcDexCurveRouter here.
     case 'deploy':      return b === 'curve-router' ? { name: 'deploy-curve-router' } : null
     default:            return null

@@ -30,7 +30,7 @@ import { solBalance, waitSolTx, rememberSol } from './solana'
 import { rememberBsc } from './bsc'
 import { rememberHolding } from './held'
 import { rememberRh } from './robinhood'
-import { SOL_RPC_BROWSER } from '../../../api/_solCore'
+import { primaryOf } from './rpcSettings'
 import { t as T } from './i18n'
 
 export { RelayError }
@@ -117,7 +117,7 @@ export const runRelayBuy = runRelayEvm
 /** Relay's instructions as one transaction, paid for by the trader. */
 async function buildSolana(q: RelayQuote): Promise<VersionedTransaction> {
   const { Connection, PublicKey, TransactionInstruction, TransactionMessage, VersionedTransaction } = await import('@solana/web3.js')
-  const conn = new Connection(SOL_RPC_BROWSER, 'confirmed')
+  const conn = new Connection(primaryOf('sol').url, 'confirmed')
   const tables = (await Promise.all(q.solTx!.lookupTables.map(a => conn.getAddressLookupTable(new PublicKey(a)).then(r => r.value))))
   if (tables.some(t => !t)) throw new RelayError(T('Relay’s transaction couldn’t be built: try again.'))
   const { blockhash } = await conn.getLatestBlockhash('confirmed')
@@ -133,7 +133,7 @@ async function buildSolana(q: RelayQuote): Promise<VersionedTransaction> {
 /** The trade run on Solana's node first: it must succeed, and cost the trader no more SOL than `maxSol`. */
 async function simulateSolana(tx: VersionedTransaction, trader: string, maxSol: number): Promise<void> {
   const { Connection } = await import('@solana/web3.js')
-  const conn = new Connection(SOL_RPC_BROWSER, 'confirmed')
+  const conn = new Connection(primaryOf('sol').url, 'confirmed')
   const before = await solBalance(trader).catch(() => null)
   const sim = await conn.simulateTransaction(tx, { sigVerify: false, replaceRecentBlockhash: true, commitment: 'confirmed', accounts: { encoding: 'base64', addresses: [trader] } })
   if (sim.value.err) {
@@ -157,7 +157,7 @@ export async function runRelaySolana(signer: SolSigner, req: RelayRequest, shown
   onStep({ step: 'sign' })
   const signed = await signSolana(signer, tx)
   const { Connection } = await import('@solana/web3.js')
-  const conn = new Connection(SOL_RPC_BROWSER, 'confirmed')
+  const conn = new Connection(primaryOf('sol').url, 'confirmed')
   const sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: true, maxRetries: 3 })
   onStep({ step: 'send', tx: sig })
   const s = await waitSolTx(sig)

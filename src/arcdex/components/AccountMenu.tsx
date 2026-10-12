@@ -46,7 +46,7 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
   if (!trader.address) return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <LangQuick />
-      <ConnectButton />
+      <ConnectButton label={t('Log in')} />
     </div>
   )
 

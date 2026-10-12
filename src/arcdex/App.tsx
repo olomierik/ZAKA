@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
-import NavBar, { COIN_PAGE } from './components/NavBar'
-import Terminal from './pages/Terminal'
+import NavBar, { trenchesPage } from './components/NavBar'
+// The Trenches (motion.gift's layout, 2026-10-12) are the home of the app, for every chain.
+import Trenches from './pages/Trenches'
 // Everything but the Terminal loads on first visit to that page — they
 // pull in heavy libraries (Circle Bridge Kit, charting, launchpad flows)
 // that would otherwise all have to download before the coin list shows.
@@ -30,23 +31,25 @@ const AlertsPage      = lazy(() => import('./pages/AlertsPage'))
 const DeployCurveRouter = lazy(() => import('./pages/DeployCurveRouter'))
 const SignalsPage     = lazy(() => import('./pages/SignalsPage'))
 // Robinhood Chain: its coins and stock tokens, bought with USDC on Arc (through Across).
-const RobinhoodMarkets   = lazy(() => import('./pages/RobinhoodMarkets'))
 const RobinhoodTokenPage = lazy(() => import('./pages/RobinhoodTokenPage'))
 // Solana (2026-10-04): every launchpad's coins, bought with USDC on Arc and sold back to it (through Relay).
-const SolanaMarkets   = lazy(() => import('./pages/SolanaMarkets'))
 const SolanaTokenPage = lazy(() => import('./pages/SolanaTokenPage'))
 // BNB Chain (2026-10-05): four.meme's coins, curve and graduated.
-const BscMarkets      = lazy(() => import('./pages/BscMarkets'))
 const BscTokenPage    = lazy(() => import('./pages/BscTokenPage'))
 // Price alerts are watched on every page, but the watcher (Hyperliquid's live prices) loads only once one exists.
 const PriceAlertWatcher = lazy(() => import('./components/PriceAlertWatcher'))
+// The bell's list of price alerts (Hyperliquid's live prices load with it).
+const AlertsPanel = lazy(() => import('./components/AlertsPanel'))
 import TradingWalletPanel from './components/TradingWalletPanel'
-import DiscoveryPanel from './components/DiscoveryPanel'
-import { TickerBar } from './components/Rails'
+import StatusBar from './components/StatusBar'
+import RpcSettingsHost from './components/RpcSettings'
+import { getChain, type TChain } from './lib/chains'
 import { captureReferral } from './lib/referral'
 import { loadLaunchpadCoins } from './lib/launchpadCoins'
 import { pageToPath, pathToPage } from './lib/router'
 import './arcdex.css'
+// The terminal's own styles (motion.gift's layout, 2026-10-12), after the base so they win.
+import './terminal.css'
 import { t as T, N_, useLang } from './lib/i18n'
 import { ConnectModalHost } from './components/ConnectWallet'
 import { NetworkGuard, WalletPromptHost } from './components/WalletPrompt'
@@ -67,10 +70,13 @@ captureReferral()
 // Launchpad coins open their own page from /token/0x… links (pages/CoinPage.tsx): know them early.
 void loadLaunchpadCoins().catch(() => {})
 
+/** A quick buy from the Trenches: the coin's trade form opens with this amount (and, on Arc, slippage) filled in. */
+export interface BuyIntent { amount: number; slip: number }
+
 export type Page =
-  | { name: 'terminal' }
-  | { name: 'token'; address: string; symbol?: string }
-  | { name: 'argus'; address: string; pool: string }
+  | { name: 'terminal'; chain?: TChain }
+  | { name: 'token'; address: string; symbol?: string; buy?: BuyIntent }
+  | { name: 'argus'; address: string; pool: string; buy?: BuyIntent }
   | { name: 'trader'; address: string }
   | { name: 'clan'; slug: string }
   | { name: 'clans' }
@@ -93,26 +99,29 @@ export type Page =
   | { name: 'starknet' }
   | { name: 'coin' }
   | { name: 'robinhood' }
-  | { name: 'rh-token'; address: string; pool?: string }
+  | { name: 'rh-token'; address: string; pool?: string; buy?: BuyIntent }
   | { name: 'solana' }
-  | { name: 'sol-token'; address: string; pool?: string }
+  | { name: 'sol-token'; address: string; pool?: string; buy?: BuyIntent }
   | { name: 'bsc' }
-  | { name: 'bsc-token'; address: string; pool?: string }
+  | { name: 'bsc-token'; address: string; pool?: string; buy?: BuyIntent }
 
 const fromUrl = (): Page => pathToPage(window.location.pathname, window.location.search) ?? { name: 'terminal' }
 
+// The drawer (the menu button on narrow screens): the terminal's pages. The social pages, the launchpad, Autotrade and
+// the old market list are no longer linked (owner, 2026-10-12: "remove the features that don't fit"); their links
+// still open.
 const MOBILE_NAV: [Page, string, string][] = [
-  [{ name: 'terminal' }, '◈', N_('Markets')], [{ name: 'robinhood' }, '🏹', N_('Robinhood Chain')], [{ name: 'solana' }, '◎', 'Solana'], [{ name: 'bsc' }, '◆', N_('BNB Chain')], [COIN_PAGE, '◆', N_('Spot')], [{ name: 'perps' }, '📊', N_('Futures')], [{ name: 'predict' }, '🎯', N_('Predict')], [{ name: 'swap' }, '⇄', N_('Swap')],
-  [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'portfolio' }, '▤', N_('Portfolio')], [{ name: 'feed' }, '◉', N_('Feed')],
-  [{ name: 'leaderboard' }, '♛', N_('Leaderboard')], [{ name: 'clans' }, '⚑', N_('Clans')], [{ name: 'rewards' }, '✦', N_('Rewards')],
-  [{ name: 'signals' }, '⚡', N_('Autotrade')], [{ name: 'alerts' }, '🔔', N_('Alerts')], [{ name: 'transfers' }, '⇅', N_('Transfers')],
-  [{ name: 'coin' }, '🔥', N_('$ARCDEX burn')], [{ name: 'routes' }, '🧭', N_('Supported routes')],
-  [{ name: 'starknet' }, '◆', N_('Starknet')],
+  [{ name: 'terminal', chain: 'arc' }, '◈', N_('Trenches · Arc')], [{ name: 'terminal', chain: 'hood' }, '🏹', N_('Trenches · Robinhood Chain')],
+  [{ name: 'terminal', chain: 'sol' }, '◎', N_('Trenches · Solana')], [{ name: 'terminal', chain: 'bnb' }, '◆', N_('Trenches · BNB Chain')],
+  [{ name: 'perps' }, '📊', N_('Futures')], [{ name: 'predict' }, '🎯', N_('Predict')], [{ name: 'portfolio' }, '▤', N_('Portfolio')],
+  [{ name: 'swap' }, '⇄', N_('Swap')], [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'starknet' }, '◆', N_('Starknet')],
+  [{ name: 'leaderboard', tab: 'futures' }, '♛', N_('Top futures traders')], [{ name: 'routes' }, '🧭', N_('Supported routes')],
 ]
 
 export default function App() {
   const [page, setPage]       = useState<Page>(fromUrl)
   const [navOpen, setNavOpen] = useState(false)
+  const [bell, setBell] = useState(false)
   // Once an alert exists in this session the watcher stays, so a notice can outlive the last waiting alert.
   const alerts = useAlerts()
   const [watchAlerts, setWatchAlerts] = useState(false)
@@ -139,10 +148,6 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
-  // Terminal still accepts this; nothing consumes it now that the raw Arc
-  // swap feed is gone. Stable identity so Terminal's loader doesn't rerun.
-  const registerFeedTokens = useCallback((_tokens: { address: string; symbol: string }[]) => {}, [])
-
   // Remount the content on a language change so every string re-renders.
   const lang = useLang()
   // Coin pages are "pushed" screens on phones: a back arrow up top, their
@@ -150,7 +155,7 @@ export default function App() {
   const detail = page.name === 'argus' || page.name === 'token' || page.name === 'rh-token' || page.name === 'sol-token' || page.name === 'bsc-token'
   const goBack = useCallback(() => {
     if (depth.current > 0) window.history.back()
-    else navigate({ name: 'terminal' })
+    else navigate(trenchesPage(getChain()))
   }, [navigate])
 
   // While the trading wallet is unlocked, record what funds it, so sending
@@ -167,9 +172,9 @@ export default function App() {
 
   return (
     <div className={`app-shell${detail ? ' is-detail' : ''}`}>
-      <NavBar page={page} navigate={navigate} onMenuClick={() => setNavOpen(o => !o)} onBack={detail ? goBack : undefined} />
-      {/* The bridge switches the wallet to other chains on purpose, and Robinhood Chain sales are signed there. */}
-      <NetworkGuard hidden={page.name === 'bridge' || page.name === 'robinhood' || page.name === 'rh-token' || page.name === 'bsc' || page.name === 'bsc-token'} />
+      <NavBar page={page} navigate={navigate} onMenuClick={() => setNavOpen(o => !o)} onBack={detail ? goBack : undefined} onBell={() => setBell(o => !o)} bellCount={activeAlerts(alerts).length} />
+      {/* The bridge switches the wallet to other chains on purpose, and Robinhood Chain and BNB Chain sales are signed there. */}
+      <NetworkGuard hidden={page.name === 'bridge' || page.name === 'robinhood' || page.name === 'rh-token' || page.name === 'bsc' || page.name === 'bsc-token' || (page.name === 'terminal' && (page.chain ?? getChain()) !== 'arc')} />
 
       <div className="app-body" key={lang}>
         {navOpen && <div className="sidebar-backdrop" onClick={() => setNavOpen(false)} />}
@@ -177,24 +182,24 @@ export default function App() {
             Desktop is edge to edge, as on Binance: the pages are in the top bar and its More menu. */}
         {navOpen && (
           <aside className="sidebar with-discovery sidebar-open">
-            <nav className="mobile-nav" style={{ flexWrap: 'wrap', gap: 4, padding: 8, borderBottom: '1px solid var(--adx-border)' }}>
+            <nav className="mobile-nav" style={{ flexWrap: 'wrap', gap: 4, padding: 8 }}>
               {MOBILE_NAV.map(([p, icon, label]) => (
-                <button key={label} className={`disc-sub${page.name === p.name ? ' active' : ''}`} onClick={() => navigate(p)}>{icon} {T(label)}</button>
+                <button key={label} className={`disc-sub${pageToPath(page) === pageToPath(p) ? ' active' : ''}`} onClick={() => navigate(p)}>{icon} {T(label)}</button>
               ))}
+              <a className="disc-sub" href="/about">ⓘ {T('About ARCDEX')}</a>
             </nav>
-            <DiscoveryPanel navigate={navigate} />
           </aside>
         )}
 
         <main className="main-content">
-          <PageErrorBoundary resetKey={pageToPath(page)} onHome={() => navigate({ name: 'terminal' })}>
+          <PageErrorBoundary resetKey={pageToPath(page)} onHome={() => navigate(trenchesPage(getChain()))}>
           <Suspense fallback={<div className="loading-state">{T("Loading…")}</div>}>
-          {page.name === 'terminal'    && <Terminal navigate={navigate} registerFeedTokens={registerFeedTokens} />}
+          {page.name === 'terminal'    && <Trenches chain={page.chain ?? getChain()} navigate={navigate} />}
           {page.name === 'token'       && <TokenPage address={page.address} navigate={navigate} />}
-          {page.name === 'argus'       && <CoinPage key={page.address} address={page.address} pool={page.pool} navigate={navigate} />}
+          {page.name === 'argus'       && <CoinPage key={page.address} address={page.address} pool={page.pool} navigate={navigate} buy={page.buy} />}
           {page.name === 'portfolio'   && <Portfolio navigate={navigate} />}
-          {/* The launchpad is hidden (owner, 2026-10-03): its address shows the spot terminal. */}
-          {page.name === 'launchpad'   && <Terminal navigate={navigate} registerFeedTokens={registerFeedTokens} />}
+          {/* The launchpad is hidden (owner, 2026-10-03): its address shows Arc's Trenches. */}
+          {page.name === 'launchpad'   && <Trenches chain="arc" navigate={navigate} />}
           {page.name === 'futures'     && <FuturesPage navigate={navigate} />}
           {page.name === 'perps'       && <PerpsPage navigate={navigate} coin={page.coin} />}
           {page.name === 'predict'     && <PredictPage navigate={navigate} />}
@@ -215,19 +220,21 @@ export default function App() {
           {page.name === 'deploy-curve-router' && <DeployCurveRouter />}
           {/* Autotrade is coming soon; owners still reach their bots to manage and withdraw (/autotrade/manage). */}
           {page.name === 'signals'     && (page.view === 'manage' ? <SignalsPage navigate={navigate} manage /> : <AutotradeSoon navigate={navigate} />)}
-          {page.name === 'robinhood'   && <RobinhoodMarkets navigate={navigate} />}
-          {page.name === 'rh-token'    && <RobinhoodTokenPage key={page.address + (page.pool ?? '')} address={page.address} pool={page.pool} navigate={navigate} />}
-          {page.name === 'solana'      && <SolanaMarkets navigate={navigate} />}
-          {page.name === 'sol-token'   && <SolanaTokenPage key={page.address + (page.pool ?? '')} address={page.address} pool={page.pool} navigate={navigate} />}
-          {page.name === 'bsc'         && <BscMarkets navigate={navigate} />}
-          {page.name === 'bsc-token'   && <BscTokenPage key={page.address + (page.pool ?? '')} address={page.address} pool={page.pool} navigate={navigate} />}
+          {page.name === 'robinhood'   && <Trenches chain="hood" navigate={navigate} />}
+          {page.name === 'rh-token'    && <RobinhoodTokenPage key={page.address + (page.pool ?? '')} address={page.address} pool={page.pool} navigate={navigate} buy={page.buy} />}
+          {page.name === 'solana'      && <Trenches chain="sol" navigate={navigate} />}
+          {page.name === 'sol-token'   && <SolanaTokenPage key={page.address + (page.pool ?? '')} address={page.address} pool={page.pool} navigate={navigate} buy={page.buy} />}
+          {page.name === 'bsc'         && <Trenches chain="bnb" navigate={navigate} />}
+          {page.name === 'bsc-token'   && <BscTokenPage key={page.address + (page.pool ?? '')} address={page.address} pool={page.pool} navigate={navigate} buy={page.buy} />}
           </Suspense>
           </PageErrorBoundary>
         </main>
 
       </div>
 
-      <TickerBar navigate={navigate} />
+      <StatusBar navigate={navigate} onAlerts={() => setBell(o => !o)} />
+      {bell && <PageErrorBoundary resetKey="bell" fallback={null}><Suspense fallback={null}><AlertsPanel navigate={navigate} onClose={() => setBell(false)} /></Suspense></PageErrorBoundary>}
+      <RpcSettingsHost />
       {!detail && <MobileTabBar page={page} navigate={navigate} onOpenLists={() => setNavOpen(true)} />}
       <Sheet open={walletSheet} onClose={() => setWalletSheet(false)}>
         <TradingWalletPanel navigate={p => { setWalletSheet(false); afterSheetClose(() => navigate(p)) }} />

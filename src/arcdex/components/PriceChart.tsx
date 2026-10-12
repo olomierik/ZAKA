@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createChart, type IChartApi, type ISeriesApi, type SeriesType, type CandlestickData, type MouseEventParams, LineSeries, HistogramSeries, PriceScaleMode } from 'lightweight-charts'
-import { addMainSeries, DEFAULT_CHART_STYLE, lineColors, onChartStyle, setChartStyle, type ChartStyle, type MainSeries } from '../lib/chartStyle'
+import { addMainSeries, chartTheme, DEFAULT_CHART_STYLE, lineColors, onChartStyle, setChartStyle, type ChartStyle, type MainSeries } from '../lib/chartStyle'
+import { getTheme, useTheme } from '../lib/theme'
 import { useIsMobile } from '../lib/useMobile'
 import { getPoolOhlcv } from '../api/gecko'
 import { candlesFromTicks, mergeCandles, type Candle, type Tick } from '../lib/candles'
@@ -266,6 +267,9 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
   const wrapRef      = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef     = useRef<IChartApi | null>(null)
+  // The page's theme (light or dark) repaints the chart.
+  const theme = useTheme()
+  useEffect(() => { chartRef.current?.applyOptions(chartTheme(theme)) }, [theme])
   const seriesRef    = useRef<MainSeries | null>(null)
   const volRef       = useRef<ISeriesApi<'Histogram'> | null>(null)
   const applied      = useRef<{ key: string; data: CandlestickData[] }>({ key: '', data: [] })
@@ -379,20 +383,18 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
 
   useEffect(() => {
     if (!containerRef.current) return
+    const th = chartTheme(getTheme())
     const chart = createChart(containerRef.current, {
-      layout: { background: { color: '#181a20' }, textColor: '#848e9c', fontFamily: "'IBM Plex Sans', system-ui, sans-serif" },
-      grid: { vertLines: { color: '#22262d' }, horzLines: { color: '#22262d' } },
-      crosshair: {
-        vertLine: { color: '#5e6673', labelBackgroundColor: '#474d57' },
-        horzLine: { color: '#5e6673', labelBackgroundColor: '#474d57' },
-      },
-      rightPriceScale: { borderColor: '#2b3139' },
+      layout: { ...th.layout, fontFamily: "'Geist', 'Inter', system-ui, sans-serif" },
+      grid: th.grid,
+      crosshair: th.crosshair,
+      rightPriceScale: th.rightPriceScale,
       // As on fomo (its TradingView chart, read 2026-10-04): the latest bar
       // sits RIGHT_OFFSET_BARS bars short of the price axis, and each new bar
       // slides the whole chart one bar to the left (the oldest scroll off),
       // so the line keeps moving while the axis re-fits to what's on screen.
       // A resize keeps the time range.
-      timeScale: { borderColor: '#2b3139', timeVisible: true, secondsVisible: true, rightOffset: RIGHT_OFFSET_BARS, shiftVisibleRangeOnNewBar: true, lockVisibleTimeRangeOnResize: true },
+      timeScale: { ...th.timeScale, timeVisible: true, secondsVisible: true, rightOffset: RIGHT_OFFSET_BARS, shiftVisibleRangeOnNewBar: true, lockVisibleTimeRangeOnResize: true },
       // The page has to scroll past the chart: a wheel or a vertical swipe
       // over it scrolls the page. Zoom with a pinch, a drag on the time
       // axis, or the wheel in fullscreen.
@@ -651,7 +653,7 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
   )
 
   return (
-    <div ref={wrapRef} className="price-chart" style={{ background: isFull ? '#181a20' : undefined, display: 'flex', flexDirection: 'column', height: isFull ? '100%' : undefined, padding: isFull ? 16 : 0 }}>
+    <div ref={wrapRef} className="price-chart" style={{ background: isFull ? 'var(--bg-2)' : undefined, display: 'flex', flexDirection: 'column', height: isFull ? '100%' : undefined, padding: isFull ? 16 : 0 }}>
     <div className="chart-controls" style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
       {RESOLUTIONS.filter(r => (source?.resolutions ? source.resolutions.includes(r.value) : (hasTicks || !onChainOnly(r.value)) && (r.value !== '5s' || engineMode))).map(r => (
         <button key={r.value} onClick={() => { picked.current = true; setRes(r.value) }} style={pill(res === r.value)}>{r.label}</button>
@@ -706,7 +708,7 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
       {!candles.length && (
         <div style={{ position: 'absolute', inset: 0, height: mobile ? 300 : height ?? 340,
           display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 16,
-          background: 'rgba(24,26,32,0.75)', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{loading ? T("Loading chart…") : onChainOnly(res) ? T("No trades in the last few hours — try a longer timeframe.") : T("No chart data yet.")}</div>
+          background: 'color-mix(in srgb, var(--bg-2) 75%, transparent)', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{loading ? T("Loading chart…") : onChainOnly(res) ? T("No trades in the last few hours — try a longer timeframe.") : T("No chart data yet.")}</div>
       )}
     </div>
     <div className="chart-footer">

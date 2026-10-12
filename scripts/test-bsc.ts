@@ -175,7 +175,7 @@ ok(decodeBscSwap({ ...swapsFx.v2.logs[0], address: '0x11111111111111111111111111
 console.log('routes')
 const p = pathToPage(`/bnb/token/${COIN.toUpperCase().replace('0X', '0x')}`, '?pool=0xABCDEF0000000000000000000000000000000001')
 ok(p?.name === 'bsc-token' && p.address === COIN && p.pool === '0xabcdef0000000000000000000000000000000001', 'a coin’s link: address and pool lowercased')
-ok(pageToPath(p!) === `/bnb/token/${COIN}?pool=0xabcdef0000000000000000000000000000000001` && pathToPage('/bsc', '')?.name === 'bsc' && pathToPage('/bnb', '')?.name === 'bsc', 'and back; /bnb and /bsc are the markets')
-ok(pathToPage('/bnb/token/notanaddress', '')?.name === 'bsc', 'a malformed address opens the markets')
+ok(pageToPath(p!) === `/bnb/token/${COIN}?pool=0xabcdef0000000000000000000000000000000001` && [pathToPage('/bsc', ''), pathToPage('/bnb', '')].every(x => JSON.stringify(x) === JSON.stringify({ name: 'terminal', chain: 'bnb' })) && pageToPath({ name: 'terminal', chain: 'bnb' }) === '/bnb', 'and back; /bnb and /bsc are its Trenches (2026-10-12)')
+ok(JSON.stringify(pathToPage('/bnb/token/notanaddress', '')) === JSON.stringify({ name: 'terminal', chain: 'bnb' }), 'a malformed address opens its Trenches')
 
 console.log('\nall BNB Chain checks passed')

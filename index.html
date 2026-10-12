@@ -8,11 +8,13 @@
     <!-- Installed (home screen): full screen, the app draws under the status bar (safe-area padding in arcdex.css). -->
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="ARCDEX" />
-    <meta name="theme-color" content="#0b0e11" />
+    <meta name="theme-color" content="#f3f4f0" />
+    <!-- Light or dark (lib/theme.ts), set before the stylesheets so the page never flashes the other theme. -->
+    <script>try{document.documentElement.setAttribute("data-adx",localStorage.getItem("arcdex:theme")==="dark"?"dark":"light")}catch(e){document.documentElement.setAttribute("data-adx","light")}</script>
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="generator" content="Arc Studio by Circle — https://studio.arc.io" />
-    <title>ARCDEX — Multichain DEX: Spot &amp; Futures</title>
-    <meta name="description" content="ARCDEX is the multichain decentralized exchange: launchpad coins and stock tokens in one tap, BTC, ETH and SOL perpetuals, and a USDC bridge. 30% of fees buy back and burn $ARCDEX." />
+    <title>ARCDEX — Trading terminal: memecoins, futures and predictions</title>
+    <meta name="description" content="ARCDEX is a multichain trading terminal: new launches, almost-bonded and migrated coins on Arc, Robinhood Chain, Solana and BNB Chain, live with safety checks; perpetual futures and prediction markets. 30% of fees buy back and burn $ARCDEX." />
     <meta property="og:title" content="ARCDEX — Multichain Decentralized Exchange" />
     <meta property="og:description" content="Spot and futures, launchpad coins only. 30% of every fee buys back and burns $ARCDEX." />
     <meta property="og:url" content="https://arcsense.site" />
@@ -24,9 +26,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- Fonts load without blocking the page (2026-10-05): as a render-blocking stylesheet they held every script
          back ~1.7s. Text shows in the fallback font until they arrive (display=swap). -->
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
-    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" /></noscript>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" /></noscript>
   </head>
   <body>
     <!-- Built with Arc Studio — https://studio.arc.io -->

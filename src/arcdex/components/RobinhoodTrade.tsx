@@ -40,6 +40,8 @@ interface Props {
   /** Why this coin can't be bought here (not from a launchpad); selling stays open. */
   buyBlocked?: string
   onTraded?: () => void
+  /** A quick buy from the Trenches: the form opens with this amount filled in. */
+  initialAmount?: number
 }
 
 /** USDC a buy at Cash (max) leaves on Arc for its own gas. */
@@ -61,13 +63,13 @@ function writeAttest(v: boolean) { try { if (v) localStorage.setItem(ATTEST_KEY,
 
 type Step = 'idle' | 'working' | 'done' | 'error'
 
-export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stock, side, initialMode, compact, buyBlocked, onTraded }: Props) {
+export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stock, side, initialMode, compact, buyBlocked, onTraded, initialAmount }: Props) {
   const trader = useTrader()
   const me = trader.address
   const info = useRouterInfo()
   const feeBps = info?.feeBps ?? 200
   const [mode, setMode] = useState<'buy' | 'sell'>(side ?? initialMode ?? 'buy')
-  const [amount, setAmount] = useState('')
+  const [amount, setAmount] = useState(initialAmount && initialAmount > 0 ? String(initialAmount) : '')
   const [quote, setQuote] = useState<AcrossQuote | null>(null)
   const [quoting, setQuoting] = useState(false)
   const [quoteErr, setQuoteErr] = useState('')

@@ -7,7 +7,7 @@
 
 import { createPublicClient, formatUnits, getAddress, parseAbi, type Address, type Hex } from 'viem'
 import { robinhood } from 'viem/chains'
-import { chainTransport } from './rpc'
+import { readTransport } from './rpcSettings'
 import { BEACON_SLOT, NATIVE, QUOTE_SYMBOLS, RH_QUOTES, STOCK_BEACON, USDG, WETH, isStockName } from '../../../api/_rhCore'
 
 export { robinhood }
@@ -21,8 +21,9 @@ export const rhAddress = (a: string) => `${RH_EXPLORER}/address/${a}`
 // USDG (Paxos's Global Dollar, 6 decimals), WETH and native ETH, the quotes; shared with the engine.
 export { NATIVE, QUOTE_SYMBOLS, RH_QUOTES, STOCK_BEACON, USDG, WETH, isStockName }
 
-/** Lag-tolerant reads on Robinhood Chain's public RPC, batched by multicall. */
-export const rhClient = createPublicClient({ chain: robinhood, transport: chainTransport(RH_RPC), batch: { multicall: true } })
+/** Lag-tolerant reads on Robinhood Chain, batched by multicall, through the nodes picked in RPC settings (its own RPC
+ * first by default). */
+export const rhClient = createPublicClient({ chain: robinhood, transport: readTransport('hood'), batch: { multicall: true } })
 
 const ERC20 = parseAbi([
   'function balanceOf(address) view returns (uint256)',

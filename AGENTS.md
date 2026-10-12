@@ -1222,6 +1222,8 @@ Owner: ARCDEX becomes **ARCSENSE**, spot and futures trading on Arc, at www.arcs
 
 ## ARCSENSE looks like Binance, in blue (2026-10-04)
 
+**Superseded on 2026-10-12** by motion.gift's layout ("The trading terminal, in motion.gift's layout" below): the top bar, Markets, the spot screen and the palette described here are gone.
+
 Owner: "the app should behave like Binance where we're in common, spot and futures included; layout and UX like Binance but blue; not everything; a site that makes people want to buy $SENSE; the landing page can go, but $SENSE must be visible". Binance's spot, futures and home pages were studied in Chrome (read-only).
 - **Theme (`arcdex.css` `:root`, `landing.css`):**
   - Binance's dark palette: page `#0b0e11`, panels `#181a20`, raised `#1e2329`, lines `#2b3139`, text `#eaecef`, muted `#848e9c`, green `#0ecb81`, red `#f6465d`.
@@ -2151,6 +2153,71 @@ The build pack's production-readiness phase.
   - With the file back, Reload opened the page.
 - **Tests:** `bun scripts/test-chunk-reload.ts`: each browser's wording of the failure, and ordinary errors left alone.
 - Every new string is in all six dictionaries (7).
+
+## The trading terminal, in motion.gift's layout (2026-10-12)
+
+Owner: "a trading terminal like motion.gift, with all the features that we have; remove the features that don't fit the new direction; the design and the UI resembling motion.gift, plus data and RPC fast for all chains and assets; motion has no prediction or futures market: that is our advantage." motion.gift was toured in Chrome (read-only) for its layout, palette and behaviour.
+
+- **Where things are now:**
+  - `/` opens the Trenches on the chain last picked; `/arc`, `/robinhood`, `/solana` and `/bnb` open a chain's (`lib/router.ts`). `/app`, `/markets` and `/trenches` open the last chain, and `/launchpad` opens Arc's. The old home page is at `/about` (`src/main.tsx`).
+  - **Removed:** the Markets pages (`pages/Terminal.tsx`, `RobinhoodMarkets.tsx`, `SolanaMarkets.tsx`, `BscMarkets.tsx`), `CoinBoard`, `MobileHome`, `FoundOnArc`, `Rails` (the side panels and ticker bar) and `SpotPanels`.
+  - **Out of the menus:** Feed, the spot leaderboard, Autotrade and the launchpad. Their pages still open by link, and the account menu keeps Profile, Transfers, Rewards and Clans.
+- **Theme (`lib/theme.ts`, the palettes at the top of `arcdex.css`, `terminal.css`):**
+  - motion's light palette by default (page `#f3f4f0`, white panels, ink `#0d1410`, green `#0a8f4f`) and its dark one (`#0a0f0c`, mint `#00ec97`), in Geist.
+  - The moon button switches. The choice is kept (`arcdex:theme`) and set before the page paints (inline script in `index.html`); charts follow (`lib/chartStyle.ts` `chartTheme`).
+  - Text on the accent is `--on-accent` (white on light, dark on mint), on amber `--on-amber`. White text on the dark theme's mint is unreadable, so buttons in the trade forms, share bars and leaderboard use them.
+- **Top bar (`components/NavBar.tsx`):** Trenches · Futures · Predict · Portfolio · Swap · Bridge, with Futures and Predict in green (what motion doesn't have). Then the search ("Search name or CA", `/` to focus), the chain menu (chains, Starknet, RPC settings with its speed test), the alerts bell and Log in.
+- **Status bar (`components/StatusBar.tsx`):** Positions, Alerts, Watchlist and Explorer, then BTC, ETH, SOL and BNB perpetuals and $ARCDEX, live. Then the chain's RPC: its answer time, Fast / OK / Slow, and the node in use (a click opens RPC settings). Then frames per second, Routes and About.
+- **The Trenches (`pages/Trenches.tsx`, `lib/trenches.ts`, `components/TrenchLane.tsx`, `TrenchRow.tsx`, `TrenchModals.tsx`):**
+  - The bar: chain tabs (ARC, HOOD, SOL, BNB), the quick-buy amount, Arc's slippage (1 / 3 / 5 / 10%), Watchlist, live status (trades a minute, block or slot), $ARCDEX's price, Customize, % MC and the count.
+  - **Lanes:** New (under an hour, newest first); Almost bonded (near bond closest first, then the rest on their curve); Migrated (off the curve or launched into a pool, youngest first). Each lane has its own quick-buy preset (P1–P3), a beep for new coins, and filters: keywords in and out, launchpads, market cap, liquidity, trades, age and bonding %, for one lane or all.
+  - **Rows, as motion's:**
+    - left: the picture in a ring that fills along the curve;
+    - middle: ticker, name, copy, star, then the tags (Official, OG, Duplicate, quote, BC %, migrated, launchpad), then age, X link and search;
+    - right: volume, market cap (or % of the curve), liquidity, trades and the buy/sell bar;
+    - underneath: holders (or wallets trading), the safety rating, the 1h and 24h moves, the launcher's record, and the quick-buy button.
+    - Rows flash on trades, and a lane holds still under the mouse.
+  - **Customize:** metrics size, image shape, bonding ring, button size, pause on hover, MC or % in Almost bonded, Arc's slippage, Fresh launches in New, and the listing rules (Hide them / Show everything).
+  - **Phones:** one lane at a time behind tabs, and a tab bar (Trenches, Futures, Predict, Portfolio, More).
+- **The listing rules still decide what shows (`shownInLanes` in `lib/trenches.ts`):** $15K of market cap and not rugged, then the safety standard; $ARCDEX always.
+  - **For the owner to confirm:** "Fresh launches in New" (on by default) shows coins under an hour old in New below $15K, unless rugged or rated Danger. Every launch starts under $15K, so without it New was empty. It's a switch in Customize.
+  - The note above the lanes counts every coin left out, which is exactly what "Show everything" brings back (269 on Arc when checked). Before, coins under $15K weren't counted, though the note named them.
+- **Quick buy:** a row's button opens the coin page with the form filled in (the amount, and on Arc the slippage). The trader still presses Buy, and every check runs as before: simulation, exact approvals, the price guard.
+  - motion's Fast / Turbo / Eco speeds aren't copied. Arc's blocks were measured about 2% full, so paying more gas buys no speed; the presets set slippage instead.
+- **Coin pages (`components/TokenLayout.tsx`):** every chain's coin page on desktop, in motion's layout.
+  - Left: the header (picture, ticker, tags, links, market cap, price, liquidity, 24h volume, holders, top 10, supply, pools), the chart, and the trades and holders tabs.
+  - Right: the 5M / 1H / 6H / 24H moves, the day's flow (volume, buys, sells, buy share), the trade form and the coin's checks.
+  - Phones keep each page's own layout.
+  - On Arc, when GeckoTerminal lists no pool for a coin, the engine's numbers fill the header, refreshed every 15s.
+- **RPC (`lib/rpcSettings.ts`, `components/RpcSettings.tsx`):** each chain's reads (balances, quotes, simulations) go through its nodes in order.
+  - **Nodes:**
+    - Arc: the dedicated node, Blockdaemon, Arc's public RPC, Beam, dRPC.
+    - Robinhood Chain: its own RPC, then PublicNode.
+    - Solana: PublicNode.
+    - BNB Chain: PublicNode, then BNB Chain's own.
+  - **Failover:** a node that throttles, errors or times out is skipped for 30 seconds and the next answers the same request. A revert is an answer and is never asked of another node. The dedicated Arc node keeps its own rules (`lib/rpc.ts`).
+  - **RPC settings (chain menu):** each node's latency, call time and distance from the head, measured from this browser (Test all), and Use first. Up to two nodes of your own: HTTPS, from a known provider only, because a node can lie about balances and simulations.
+  - **Not changed:** transactions are sent as before (a fallback could send one twice), and the live trade feeds keep their tested endpoints.
+  - The status bar reads the head every 3 seconds from the first node that isn't the dedicated one (paid by the call).
+- **Futures P&L cards (`components/FuturesShare.tsx`, `renderFuturesCard` in `lib/shareCard.ts`):** Share on every futures position, live or paper. The card shows the market, side, leverage, ROE, entry, mark and P&L, and PAPER TRADING on paper ones. The share bar reads on both themes.
+- **Tests:**
+  - `bun scripts/test-trenches.ts`: the listing rules, lanes, filters, settings and numbers. 14 of 14 planted bugs failed it.
+  - `bun scripts/test-rpc-settings.ts`: which nodes can be added, their order, failover (viem reads and plain JSON-RPC), reverts and the speed test. 12 of 12 planted bugs failed it.
+  - Updated for the new routes: `test-robinhood`, `test-solana`, `test-bsc`.
+  - `test-launchpads` now expects the list build's order since 2026-10-05 ("Arc's top coins read second"). It was already failing on the commit before this one.
+- **Checked in Chrome** (local dev against the live engine):
+  - Arc's and Solana's Trenches in both themes.
+  - A quick buy from Arc's Trenches, opening the form with $5 and 3%.
+  - Arc, Robinhood Chain and Solana coin pages.
+  - Futures, predictions, portfolio, swap and bridge in the light theme.
+  - A paper position's share card in both themes; the test position was closed and the paper account reset after.
+  - 375px phones with no sideways scroll.
+  - The production build loads.
+- **Every new string is in all six dictionaries** (111).
+- **Not done yet:**
+  - motion's wallet Tracker.
+  - The older coin pages (`CurveTokenPage` for ARCDEX's own launchpad coins, `TokenPage`) keep the previous look.
+  - Paper trading and price alerts still live in one browser.
 
 ## Hosting — arcdex.online only
 
