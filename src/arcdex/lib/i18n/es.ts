@@ -3096,5 +3096,13 @@ const d: Record<string, string> = {
   "Now {px}": "Ahora {px}",
   "That’s the price now: choose a level above or below it.": "Ese es el precio actual: elige un nivel por encima o por debajo.",
   "You have 50 alerts waiting: delete one first.": "Tienes 50 alertas en espera: borra una primero.",
+  // A page that couldn’t be shown (2026-10-12)
+  "ARCDEX was just updated": "ARCDEX se acaba de actualizar",
+  "This page couldn’t be shown": "No se pudo mostrar esta página",
+  "Loading the new version…": "Cargando la nueva versión…",
+  "Reload to get the new version of this page.": "Recarga para obtener la nueva versión de esta página.",
+  "Something went wrong while drawing it. Reloading usually fixes it; your wallet and orders aren’t affected.": "Algo falló al mostrarla. Recargar suele solucionarlo; tu billetera y tus órdenes no se ven afectadas.",
+  "Reload": "Recargar",
+  "Go to Markets": "Ir a Mercados",
 }
 export default d

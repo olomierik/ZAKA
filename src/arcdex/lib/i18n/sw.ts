@@ -3096,5 +3096,13 @@ const d: Record<string, string> = {
   "Now {px}": "Sasa {px}",
   "That’s the price now: choose a level above or below it.": "Hiyo ndiyo bei ya sasa: chagua kiwango juu au chini yake.",
   "You have 50 alerts waiting: delete one first.": "Una arifa 50 zinazosubiri: futa moja kwanza.",
+  // A page that couldn’t be shown (2026-10-12)
+  "ARCDEX was just updated": "ARCDEX imesasishwa sasa hivi",
+  "This page couldn’t be shown": "Ukurasa huu haukuweza kuonyeshwa",
+  "Loading the new version…": "Inapakia toleo jipya…",
+  "Reload to get the new version of this page.": "Pakia upya ili upate toleo jipya la ukurasa huu.",
+  "Something went wrong while drawing it. Reloading usually fixes it; your wallet and orders aren’t affected.": "Hitilafu imetokea wakati wa kuuonyesha. Kupakia upya kwa kawaida hurekebisha; pochi yako na oda zako haziathiriwi.",
+  "Reload": "Pakia upya",
+  "Go to Markets": "Nenda kwenye Masoko",
 }
 export default d

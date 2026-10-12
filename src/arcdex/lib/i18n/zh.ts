@@ -3096,5 +3096,13 @@ const d: Record<string, string> = {
   "Now {px}": "现价 {px}",
   "That’s the price now: choose a level above or below it.": "这就是当前价格：请选择高于或低于它的价格。",
   "You have 50 alerts waiting: delete one first.": "你已有 50 个等待中的提醒：请先删除一个。",
+  // A page that couldn’t be shown (2026-10-12)
+  "ARCDEX was just updated": "ARCDEX 刚刚更新",
+  "This page couldn’t be shown": "无法显示此页面",
+  "Loading the new version…": "正在加载新版本…",
+  "Reload to get the new version of this page.": "重新加载以获取此页面的新版本。",
+  "Something went wrong while drawing it. Reloading usually fixes it; your wallet and orders aren’t affected.": "显示时出了问题。重新加载通常可以解决；你的钱包和订单不受影响。",
+  "Reload": "重新加载",
+  "Go to Markets": "前往市场",
 }
 export default d

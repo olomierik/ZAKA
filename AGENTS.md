@@ -2089,6 +2089,22 @@ A 100-point meme-coin signal engine built into the market engine, beside the exi
 - **Tests:** `engine/test/quantCore.test.ts`, `quantTrading.test.ts`, `quantEngine.test.ts` (55 tests). The store's SQL was run against PGlite (schema, batched upserts, the dataset join).
 - **Railway:** the Dockerfile copies `api/_quantProtocol.ts`, and `railway.toml` watches it. Railway's own service settings (Watch Paths) should get it too, or a change to that file alone won't redeploy the engine.
 
+## After a deploy: pages left open, and pages that fail (2026-10-12)
+
+The build pack's production-readiness phase.
+- **Why:** Netlify deploys are atomic, so a new build's code files have new names and the old ones are gone. A page left open asked for the old name the first time someone opened a part of the app it hadn't loaded yet. Netlify's catch-all rewrite answers that with the HTML page, the import failed, and with no error boundary the whole app went blank.
+- **Now (`lib/chunkReload.ts`):** such a failure reloads the page once, which loads the new version.
+  - It's caught three ways: Vite's `vite:preloadError`, the entry imports in `main.tsx`, and the page boundary below.
+  - At most one reload in 30 seconds, so a file that's really missing can't loop.
+- **The page boundary (`components/PageErrorBoundary.tsx`):** wraps the app's pages (reset when the path changes) and the price-alert watcher (silently).
+  - A page that throws shows what happened, with Reload and Go to Markets; the rest of the app keeps working.
+  - A missing file within the 30 seconds says "ARCDEX was just updated".
+- **Checked** on the production build (`vite preview`, the `arcdex-build-preview` launch config, now run through bun):
+  - With the Routes page's file removed, opening Routes from Markets reloaded once, then showed the panel.
+  - With the file back, Reload opened the page.
+- **Tests:** `bun scripts/test-chunk-reload.ts`: each browser's wording of the failure, and ordinary errors left alone.
+- Every new string is in all six dictionaries (7).
+
 ## Hosting — arcdex.online only
 
 **Every commit to `main` deploys to arcdex.online, and nowhere else** (owner decision, 2026-09-24).

@@ -56,6 +56,7 @@ import { OPEN_TRADING_WALLET } from './lib/tradingWalletSheet'
 import { useEmbeddedAddress } from './lib/identity'
 import { useFundingScan } from './lib/funding'
 import ProfitAlerts from './components/ProfitAlerts'
+import PageErrorBoundary from './components/PageErrorBoundary'
 import { activeAlerts, useAlerts } from './hl/alerts'
 import { engineApiUrl } from './api/marketStream'
 import { startTraffic } from './lib/traffic'
@@ -183,6 +184,7 @@ export default function App() {
         )}
 
         <main className="main-content">
+          <PageErrorBoundary resetKey={pageToPath(page)} onHome={() => navigate({ name: 'terminal' })}>
           <Suspense fallback={<div className="loading-state">{T("Loading…")}</div>}>
           {page.name === 'terminal'    && <Terminal navigate={navigate} registerFeedTokens={registerFeedTokens} />}
           {page.name === 'token'       && <TokenPage address={page.address} navigate={navigate} />}
@@ -216,6 +218,7 @@ export default function App() {
           {page.name === 'bsc'         && <BscMarkets navigate={navigate} />}
           {page.name === 'bsc-token'   && <BscTokenPage key={page.address + (page.pool ?? '')} address={page.address} pool={page.pool} navigate={navigate} />}
           </Suspense>
+          </PageErrorBoundary>
         </main>
 
       </div>
@@ -229,7 +232,7 @@ export default function App() {
       <WalletPromptHost />
       {/* A toast (and, when allowed, a system notification) for every profit the signed-in owner's bots take. */}
       <ProfitAlerts navigate={navigate} />
-      {watchAlerts && <Suspense fallback={null}><PriceAlertWatcher navigate={navigate} /></Suspense>}
+      {watchAlerts && <PageErrorBoundary resetKey="alerts" fallback={null}><Suspense fallback={null}><PriceAlertWatcher navigate={navigate} /></Suspense></PageErrorBoundary>}
     </div>
   )
 }
