@@ -8,6 +8,7 @@
 //                     {"action":"subscribe","channel":"candles","token":"0x…","interval":"1m"}
 //                     {"action":"subscribe","channel":"new_tokens"}
 //                     {"action":"subscribe","channel":"signals"}   trading signals and the bot's positions
+//                     {"action":"subscribe","channel":"trench_sol"}  a chain's launches, trades and smart wallets (api/_trenchProtocol.ts)
 //                     {"action":"unsubscribe", …same fields}
 //                     {"action":"ping"}
 //   server → client   {"t":"TRADE","k":"0x…token","d":{…WireTrade}}
@@ -18,7 +19,9 @@
 // subscribe to one or the other, or events arrive twice. NEW_TOKEN goes to
 // `new_tokens`; `market` carries TICKS (all tokens, once a second).
 
-export const CHANNELS = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles', 'new_tokens', 'market', 'signals', 'scan'] as const
+import type { TrenchMessage } from './_trenchProtocol'
+
+export const CHANNELS = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles', 'new_tokens', 'market', 'signals', 'scan', 'trench_arc', 'trench_hood', 'trench_sol', 'trench_bnb'] as const
 export type Channel = (typeof CHANNELS)[number]
 /** Channels that need a token address. */
 export const TOKEN_CHANNELS: readonly Channel[] = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles']
@@ -62,7 +65,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | { error: strin
 
 /** The pub/sub topic a subscription maps to. */
 export function topicOf(m: { channel: Channel; token?: string; interval?: string }): string {
-  if (m.channel === 'new_tokens' || m.channel === 'market' || m.channel === 'signals' || m.channel === 'scan') return m.channel
+  if (m.channel === 'new_tokens' || m.channel === 'market' || m.channel === 'signals' || m.channel === 'scan' || m.channel.startsWith('trench_')) return m.channel
   if (m.channel === 'candles') return `candles:${m.token}:${m.interval}`
   return `${m.channel}:${m.token}`
 }
@@ -853,6 +856,8 @@ export type ServerMessage =
   | { t: 'BOT_POSITION'; d: BotPosition }
   /** market channel, once a second: [token, priceUsd, chg24 %, vol24 USD, mcap USD, trades24] for tokens that traded */
   | { t: 'TICKS'; d: [string, number | null, number | null, number, number | null, number][] }
+  /** trench_<chain> channels: launches, trades once a second, smart wallets' trades (api/_trenchProtocol.ts) */
+  | TrenchMessage
   | { t: 'SUBSCRIBED' | 'UNSUBSCRIBED'; c: string }
   | { t: 'PONG'; ts: number }
   | { t: 'ERROR'; d: { code: string; msg?: string } }

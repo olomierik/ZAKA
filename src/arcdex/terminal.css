@@ -124,14 +124,14 @@ html[data-adx="dark"] .tm-nav .connect-btn { color: #06110b; }
 .tr-note { flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 6px 12px; font-size: 12px; color: var(--text-2); background: var(--amber-bg); border-bottom: 1px solid var(--adx-border); }
 .tr-note button { background: none; border: none; color: var(--text); font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; padding: 0; }
 
-.tr-lanes { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.tr-lanes { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--tr-cols, repeat(4, minmax(0, 1fr))); gap: 5px; }
 .tr-lane { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--bg-2); border-left: 1px solid var(--adx-border); border-right: 1px solid var(--adx-border); }
 .tr-lane:first-child { border-left: none; }
 .tr-lane:last-child { border-right: none; }
 .tr-lane-h { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 12px; border-bottom: 1px solid var(--adx-border); background: var(--bg-2); }
 .tr-lane-h b { font-size: 15px; font-weight: 600; white-space: nowrap; }
 .tr-lane-ic { color: var(--text-muted); display: inline-flex; }
-.tr-count { font-size: 11.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--chip); color: var(--text-2); }
+.tr-count { font-size: 11.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--chip); color: var(--text-2); white-space: nowrap; }
 .tr-pctmc { font: inherit; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--green-line); color: var(--green-2); background: none; cursor: pointer; white-space: nowrap; }
 .tr-pctmc.on { background: var(--green-bg); }
 .tr-paused { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--amber-line); color: var(--amber); background: var(--amber-bg); white-space: nowrap; }
@@ -404,3 +404,124 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
 /* A futures position row's actions: Share (a P&L card) beside Close. */
 .fx-row-acts { white-space: nowrap; text-align: right; }
 .fx-row-acts .fx-share { margin-right: 10px; font-size: 12px; }
+
+/* ── 2026-10-12, round 2: $ARCDEX on top, compact lanes (four of them), trade pops, the smart lane, Buy's amount box ── */
+.tr-coinbar { flex-shrink: 0; height: 34px; display: flex; align-items: center; gap: 14px; padding: 0 12px; border-bottom: 1px solid var(--adx-border); background: linear-gradient(90deg, var(--green-bg), var(--bg-2) 45%); font-size: 12.5px; overflow: hidden; white-space: nowrap; }
+.tr-cb-coin { display: inline-flex; align-items: center; gap: 6px; background: none; border: none; padding: 0; color: var(--text); font: inherit; font-weight: 700; cursor: pointer; }
+.tr-cb-coin img { border-radius: 50%; }
+.tr-cb-ca { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border: 1px solid var(--adx-border); border-radius: 6px; background: var(--bg-2); color: var(--text-2); font: inherit; cursor: copy; min-width: 0; }
+.tr-cb-ca i { font-style: normal; font-size: 10.5px; font-weight: 700; color: var(--text-muted); }
+.tr-cb-ca code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--text); }
+.tr-cb-ca code.sh { display: none; }
+.tr-cb-ca span { display: inline-flex; color: var(--text-muted); font-size: 11px; }
+.tr-cb-ca:hover { border-color: var(--text-muted); }
+.tr-cb-kv { display: inline-flex; align-items: baseline; gap: 5px; color: var(--text-muted); }
+.tr-cb-kv b { color: var(--text); font-weight: 600; }
+.tr-cb-kv em { font-style: normal; font-size: 11.5px; font-weight: 600; }
+.tr-cb-kv em.up { color: var(--green-2); }
+.tr-cb-kv em.down { color: var(--red); }
+.tr-cb-burn { align-items: center; color: var(--orange); }
+.tr-cb-burn b { color: var(--orange); }
+.tr-cb-burn em { color: var(--text-muted); font-weight: 500; }
+.tr-cb-meter { width: 60px; height: 4px; border-radius: 2px; background: var(--chip); overflow: hidden; }
+.tr-cb-meter i { display: block; height: 100%; background: var(--orange); }
+.tr-cb-buy { margin-left: auto; height: 24px; padding: 0 12px; border-radius: 6px; border: none; background: var(--green); color: var(--on-accent); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; flex-shrink: 0; }
+.tr-cb-buy:hover { filter: brightness(1.08); }
+@media (max-width: 1280px) { .tr-cb-ca code:not(.sh) { display: none; } .tr-cb-ca code.sh { display: inline; } }
+@media (max-width: 767px) { .tr-coinbar { gap: 10px; padding: 0 8px; } .tr-cb-kv.hide-sm, .tr-cb-meter, .tr-cb-burn em, .tr-cb-coin b { display: none; } }
+
+.tr-meta-smart { display: inline-flex; align-items: center; gap: 4px; color: var(--green-2); }
+
+/* Compact rows: four lanes side by side (owner: "minimize New, Almost bonded and Migrated"). */
+@media (min-width: 768px) {
+  .tr-row { grid-template-columns: 50px minmax(0, 1fr) 116px; grid-template-rows: 46px 24px; column-gap: 8px; padding: 8px 10px; contain-intrinsic-size: auto 88px; }
+  .tr-row.small { grid-template-rows: 42px 22px; padding: 6px 10px; contain-intrinsic-size: auto 78px; }
+  .tr-tile { width: 46px; height: 46px; border-radius: 7px; }
+  .tr-pic { border-radius: 5px; }
+  .tr-ini { font-size: 14px; }
+  .tr-lpb { width: 16px; height: 16px; font-size: 8px; right: -4px; bottom: -4px; }
+  .tr-ca { display: none; }
+  .tr-mid { gap: 2px; }
+  .tr-l1 { height: 17px; }
+  .tr-tk { font-size: 13.5px; }
+  .tr-nm { font-size: 12px; }
+  .tr-l2 { height: 16px; }
+  .tr-pill { height: 16px; padding: 0 5px; font-size: 10.5px; }
+  .tr-l3 { height: 16px; }
+  .tr-age { font-size: 11.5px; }
+  .tr-xh { height: 16px; font-size: 11px; max-width: 110px; }
+  .tr-kv b { font-size: 13.5px; margin-right: 4px; }
+  .tr-row.small .tr-kv b { font-size: 12.5px; }
+  .tr-kv i, .tr-f i { font-size: 11px; }
+  .tr-f b { font-size: 11.5px; margin-right: 4px; }
+  .tr-rp { height: 20px; padding: 0 6px; font-size: 11px; border-radius: 5px; gap: 3px; }
+  .tr-buy { height: 26px; padding: 0 10px; font-size: 12px; }
+  .tr-buy.sm { height: 22px; padding: 0 8px; font-size: 11.5px; }
+  .tr-lane-h { height: 36px; padding: 0 6px 0 10px; }
+  .tr-lane-h b { font-size: 14px; }
+  .tr-sq { width: 26px; height: 26px; }
+  @media (max-width: 1360px) { .tr-row { grid-template-columns: 46px minmax(0, 1fr) 108px; padding: 8px; } .tr-tile { width: 42px; height: 42px; } }
+}
+
+/* Every trade blinks its row (a coloured edge, then the fade) and floats its dollars up. */
+@keyframes tr-fb0 { from { background: var(--green-bg); box-shadow: inset 3px 0 0 var(--green); } }
+@keyframes tr-fb1 { from { background: var(--green-bg); box-shadow: inset 3px 0 0 var(--green); } }
+@keyframes tr-fs0 { from { background: var(--red-bg); box-shadow: inset 3px 0 0 var(--red); } }
+@keyframes tr-fs1 { from { background: var(--red-bg); box-shadow: inset 3px 0 0 var(--red); } }
+.tr-pop { position: absolute; right: 12px; top: 6px; z-index: 2; font-size: 12px; font-weight: 700; pointer-events: none; animation: tr-pop-up 1.15s ease-out forwards; text-shadow: 0 0 6px var(--bg-2); }
+.tr-pop.buy { color: var(--green); }
+.tr-pop.sell { color: var(--red); }
+.tr-pop.big { font-size: 14px; }
+@keyframes tr-pop-up { 0% { opacity: 0; transform: translateY(8px) scale(0.9); } 15% { opacity: 1; transform: translateY(0) scale(1.05); } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-22px) scale(1); } }
+@keyframes tr-pop-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .tr-pop { animation: tr-pop-fade 1.1s ease-out forwards; } }
+
+/* A minimized lane: a slim strip with its name and count; a click opens it again. */
+.tr-lane-min { align-items: center; padding: 6px 0; gap: 10px; cursor: pointer; }
+.tr-lane-min:hover { background: var(--hover); }
+.tr-lane-vt { writing-mode: vertical-rl; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.tr-lane-vt i { font-style: normal; font-size: 11px; padding: 4px 1px; border-radius: 4px; background: var(--chip); }
+.tr-minb { margin-left: 2px; }
+
+/* The smart lane. */
+.tr-smart .tr-seg button { height: 22px; padding: 0 8px; font-size: 11.5px; }
+.tr-learn { display: flex; flex-direction: column; gap: 8px; text-align: left; line-height: 1.5; }
+.tr-learn b { color: var(--text); font-size: 13.5px; }
+.tr-learn small { font-size: 11.5px; color: var(--text-muted); }
+.tr-sm-buy { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 9px; align-items: center; padding: 9px 10px; border-bottom: 1px solid var(--hairline); cursor: pointer; animation: tr-in 0.5s ease-out; }
+.tr-sm-buy:hover, .tr-sm-tr:hover { background: var(--hover); }
+.tr-sm-pic { position: relative; display: block; width: 26px; height: 26px; border-radius: 6px; overflow: hidden; background: var(--bg-3); flex-shrink: 0; }
+.tr-sm-pic.lg { width: 42px; height: 42px; border-radius: 8px; box-shadow: 0 0 0 2px var(--green-line); }
+.tr-sm-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.2s; }
+.tr-sm-pic img.on { opacity: 1; }
+.tr-sm-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tr-sm-main b { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-sm-main b small, .tr-sm-main b em { font-style: normal; font-size: 11.5px; font-weight: 500; color: var(--text-muted); margin-left: 4px; }
+.tr-sm-who { display: flex; gap: 6px; align-items: center; font-size: 11.5px; flex-wrap: wrap; }
+.tr-sm-n { font-style: normal; font-weight: 700; color: var(--green-2); background: var(--green-bg); border-radius: 4px; padding: 1px 6px; }
+.tr-sm-who .up { color: var(--green-2); font-weight: 600; }
+.tr-sm-who .down { color: var(--red); }
+.tr-sm-when { font-size: 11px; color: var(--text-dim); }
+.tr-sm-tr { display: grid; grid-template-columns: 38px 26px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 7px 10px; border-bottom: 1px solid var(--hairline); cursor: pointer; animation: tr-in 0.5s ease-out; }
+.tr-sm-side { font-size: 10.5px; font-weight: 800; text-align: center; border-radius: 4px; padding: 2px 0; }
+.tr-sm-tr.b .tr-sm-side { color: var(--green-2); background: var(--green-bg); }
+.tr-sm-tr.s .tr-sm-side { color: var(--red); background: var(--red-bg); }
+.tr-sm-tr.b .tr-sm-main em { color: var(--green-2); font-weight: 700; }
+.tr-sm-tr.s .tr-sm-main em { color: var(--red); font-weight: 700; }
+.tr-sm-main a { font-size: 11px; color: var(--text-muted); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-sm-main a:hover { color: var(--text); text-decoration: underline; }
+.tr-sm-age { display: flex; flex-direction: column; align-items: flex-end; font-size: 11.5px; font-weight: 600; color: var(--text-2); }
+.tr-sm-age small { font-size: 10.5px; font-weight: 500; color: var(--text-dim); }
+.tr-sm-f { flex-shrink: 0; padding: 6px 10px; font-size: 10.5px; color: var(--text-dim); border-top: 1px solid var(--hairline); line-height: 1.4; }
+
+/* Buy's amount box. */
+.tr-bpop { position: fixed; z-index: 1290; width: 252px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; padding: 10px; border: 1px solid var(--adx-border); border-radius: 10px; background: var(--bg-2); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18); animation: tr-in 0.15s ease-out; }
+.tr-bpop label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--text-muted); min-width: 0; }
+.tr-bpop label > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-bpop-in { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 9px; border: 1px solid var(--adx-border); border-radius: 6px; background: var(--bg); }
+.tr-bpop-in:focus-within { border-color: var(--green); }
+.tr-bpop-in input { flex: 1; min-width: 0; border: none; background: none; outline: none; font: inherit; font-size: 14px; font-weight: 600; color: var(--text); padding: 0; }
+.tr-bpop-in small { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.tr-bpop .tr-buy { height: 32px; }
+.tr-bpop .tr-buy:disabled { opacity: 0.45; cursor: default; }
+.tr-bpop-note { grid-column: 1 / -1; font-size: 10.5px; color: var(--text-dim); line-height: 1.4; }

@@ -2,7 +2,8 @@
 // lanes as memecoin terminals show them. New (launched in the last hour, newest first), Almost bonded (closest to
 // graduating first, then the rest on their curve) and Migrated (off the curve, or launched into a pool; youngest
 // first). Each coin keeps its safety rating, OG/duplicate tags and the owner's listing rules (lib/safety.ts).
-// The display settings, quick-buy presets and lane filters are kept in this browser.
+// The display settings, minimized lanes and lane filters are kept in this browser. (Quick-buy presets are gone: a row's
+// Buy asks for the amount, owner's request of 2026-10-12; old settings keep their unused `presets`.)
 
 import { useSyncExternalStore } from 'react'
 import type { Page } from '../App'
@@ -137,6 +138,8 @@ export interface TrenchSettings {
   /** Beep when a coin enters a lane, per lane. */
   laneSound: Record<string, boolean>
   filters: Record<string, LaneFilter>
+  /** Lanes minimized to a slim strip, per chain and lane (the smart lane is `smart`). */
+  collapsed: Record<string, boolean>
 }
 
 const DEFAULTS: TrenchSettings = {
@@ -154,6 +157,7 @@ const DEFAULTS: TrenchSettings = {
   watchOnly: false,
   laneSound: {},
   filters: {},
+  collapsed: {},
 }
 
 const KEY = 'arcdex:trenches:v1'
@@ -186,7 +190,11 @@ export function useTrench(): TrenchSettings {
   return useSyncExternalStore(subscribe, getTrench, () => DEFAULTS)
 }
 
-export const laneKey = (chain: TChain, lane: LaneId) => `${chain}:${lane}`
+export const laneKey = (chain: TChain, lane: LaneId | 'smart') => `${chain}:${lane}`
+export const isCollapsed = (s: TrenchSettings, chain: TChain, lane: LaneId | 'smart') => !!s.collapsed?.[laneKey(chain, lane)]
+export function toggleCollapsed(chain: TChain, lane: LaneId | 'smart') {
+  setTrench(st => ({ collapsed: { ...(st.collapsed ?? {}), [laneKey(chain, lane)]: !st.collapsed?.[laneKey(chain, lane)] } }))
+}
 export const presetOf = (s: TrenchSettings, chain: TChain, lane: LaneId): PresetId => s.lanePreset[laneKey(chain, lane)] ?? 0
 export const filterOf = (s: TrenchSettings, chain: TChain, lane: LaneId): LaneFilter => s.filters[laneKey(chain, lane)] ?? EMPTY_FILTER
 export const filterOn = (f: LaneFilter) => JSON.stringify(f) !== JSON.stringify(EMPTY_FILTER)

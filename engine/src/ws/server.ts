@@ -17,6 +17,7 @@
 //   GET /v1/safety/:token                       a coin's latest safety report
 //   GET /v1/safety?tokens=0x…,0x…               the coin board's safety for up to 120 coins (bot/boardSafety.ts)
 //   GET /v1/bonding?limit=200                   Argus coins on their curve, progress by market cap (market/bonding.ts)
+//   GET /v1/trench/:chain                       a chain's latest launches and its smart wallets (trench/service.ts)
 //   GET /v1/bot/stats                           paper and live trading results
 //   GET /v1/bot/positions?status=open|closed|all&limit=100
 //   GET /v1/bot/status                          mode, bot wallet, live limits and activity
@@ -61,6 +62,8 @@ import type { SiteApi } from '../site/siteApi'
 import type { PerpsService } from '../perps/service'
 import type { CoinProgram } from '../coin/program'
 import type { BondingBook } from '../market/bonding'
+import type { TrenchService } from '../trench/service'
+import { isTrenchChain } from '../../../api/_trenchProtocol'
 
 interface Conn { id: number; ip: string; subs: Set<string>; allowance: number; last: number }
 
@@ -91,6 +94,8 @@ export class DataApi {
   coin: CoinProgram | null = null
   /** Argus coins on their launch curve, with their progress by market cap (market/bonding.ts). */
   bonding: BondingBook | null = null
+  /** The Trenches' live feed: every chain's launches, trades and smart wallets (trench/service.ts). */
+  trench: TrenchService | null = null
   attachBot(b: Bot, control: ControlVerifier | null = null, accounts: PaperAccounts | null = null, users: Users | null = null, tiers: Tiers | null = null) { this.bot = b; this.control = control; this.accounts = accounts; this.users = users; this.tiers = tiers }
 
   async tokenSnapshot(token: string, limit = 50): Promise<{ stats: TokenStats | null; trades: WireTrade[] }> {
@@ -316,6 +321,14 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         if (!api.bonding) return json(req, 503, { error: 'bonding is not tracked in this process' })
         const limit = Math.max(1, Math.min(400, Number(url.searchParams.get('limit')) || 200))
         return json(req, 200, { at: api.bonding.at, coins: api.bonding.list(limit) }, 'public, max-age=15')
+      }
+      // The Trenches' live feed (trench/service.ts): a chain's latest launches and its smart wallets.
+      const tm = /^\/v1\/trench\/([a-z]+)$/.exec(url.pathname)
+      if (tm) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        if (!isTrenchChain(tm[1])) return json(req, 404, { error: 'unknown chain', chains: ['arc', 'hood', 'sol', 'bnb'] })
+        if (!api.trench) return json(req, 503, { error: 'the trenches feed is not running in this process' })
+        return json(req, 200, api.trench.snapshot(tm[1]), 'public, max-age=2')
       }
       // Futures (perps/service.ts): status, prices, candles, the contract's state.
       if (url.pathname.startsWith('/v1/perps/')) {

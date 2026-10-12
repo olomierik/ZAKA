@@ -1,6 +1,7 @@
 // One coin in a Trenches lane, laid out as motion.gift's rows: the picture in a ring that fills as the coin bonds,
 // its ticker, name and tags, its age and socials; volume, market cap, liquidity and trades on the right; its
-// holders, safety and recent moves underneath, and the quick-buy button.
+// holders, safety and recent moves underneath, and Buy (which asks for the amount). Every live trade blinks the row
+// green or red and floats its dollars up from the market cap ("+$120"), so the busy coins show themselves.
 
 import { memo, useEffect, useState } from 'react'
 import type { TrenchCoin, TrenchSettings } from '../lib/trenches'
@@ -9,7 +10,6 @@ import { useLogo } from '../lib/logo'
 import { toggleWatch, usePrefs } from '../lib/prefs'
 import { t as T } from '../lib/i18n'
 import { SAFETY_LABEL } from '../lib/safety'
-import type { Flash } from '../lib/useArcMarket'
 import { IcBolt, IcCopy, IcPulse, IcRocket, IcSearch, IcShield, IcStar, IcUser, IcUsers, IcX } from './TrIcons'
 
 const short = (a: string) => (a.startsWith('0x') ? `${a.slice(0, 4)}…${a.slice(-3)}` : `${a.slice(0, 4)}…${a.slice(-4)}`)
@@ -33,18 +33,26 @@ export function TokenPic({ src, symbol, size }: { src: string | null; symbol: st
   )
 }
 
+/** A live trade on the row: its side, a counter that restarts the blink, and its dollars when known. */
+export interface RowFlash { side: 'buy' | 'sell'; n: number; usd?: number | null }
+
 interface Props {
   c: TrenchCoin
   s: TrenchSettings
-  buyLabel: string
-  flash?: Flash
+  flash?: RowFlash
   fresh?: boolean
   now: number
   onOpen: (c: TrenchCoin) => void
-  onBuy: (c: TrenchCoin) => void
+  onBuy: (c: TrenchCoin, anchor: HTMLElement) => void
 }
 
-function Row({ c, s, buyLabel, flash, fresh, now, onOpen, onBuy }: Props) {
+const popText = (f: RowFlash) => {
+  const u = f.usd ?? 0
+  const amt = u >= 1000 ? `$${(u / 1000).toFixed(1)}K` : u >= 10 ? `$${u.toFixed(0)}` : `$${u.toFixed(2)}`
+  return u > 0 ? `${f.side === 'buy' ? '+' : '−'}${amt}` : f.side === 'buy' ? T('Buy') : T('Sell')
+}
+
+function Row({ c, s, flash, fresh, now, onOpen, onBuy }: Props) {
   const starred = usePrefs().watchlist.includes(c.address.toLowerCase())
   const [copied, setCopied] = useState(false)
   const copy = (e: React.MouseEvent) => {
@@ -102,6 +110,7 @@ function Row({ c, s, buyLabel, flash, fresh, now, onOpen, onBuy }: Props) {
         </div>
       </div>
 
+      {flash && <span key={flash.n} className={`tr-pop ${flash.side}${(flash.usd ?? 0) >= 500 ? ' big' : ''}`} aria-hidden>{popText(flash)}</span>}
       <div className="tr-rgt">
         <span className="tr-kv"><i>V</i><b>{usd(c.volume24h)}</b><i>{showPct ? 'BC' : 'MC'}</i><b className={showPct ? 'mc' : mcClass(c.marketCap)}>{showPct ? `${c.progress!.toFixed(0)}%` : known(c.marketCap)}</b></span>
         <span className="tr-f">
@@ -124,8 +133,8 @@ function Row({ c, s, buyLabel, flash, fresh, now, onOpen, onBuy }: Props) {
       </div>
 
       <div className="tr-buyw">
-        <button className={`tr-buy${s.buttonSize === 'small' ? ' sm' : ''}`} onClick={e => { e.stopPropagation(); onBuy(c) }} title={T('Buy {sym}', { sym: c.symbol })}>
-          <IcBolt /><span>{buyLabel}</span>
+        <button className={`tr-buy${s.buttonSize === 'small' ? ' sm' : ''}`} onClick={e => { e.stopPropagation(); onBuy(c, e.currentTarget) }} title={T('Buy {sym}', { sym: c.symbol })}>
+          <IcBolt /><span>{T('Buy')}</span>
         </button>
       </div>
     </article>

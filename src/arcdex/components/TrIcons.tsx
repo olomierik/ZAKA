@@ -21,3 +21,7 @@ export const IcX = () => <svg width="11" height="11" viewBox="0 0 24 24" fill="c
 export const IcPause = () => <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
 export const IcGrid = () => <svg {...P} width={14} height={14}><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
 export const IcEyeOff = () => <svg {...P}><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6 0 9.5 7 9.5 7a17 17 0 0 1-3.2 4M6.6 6.6C3.9 8.4 2.5 12 2.5 12S6 19 12 19c1.6 0 3-.4 4.3-1" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /></svg>
+export const IcTarget = () => <svg {...P} width={14} height={14}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></svg>
+export const IcMin = () => <svg {...P} width={13} height={13}><path d="M15 5l-7 7 7 7" /></svg>
+export const IcMax = () => <svg {...P} width={13} height={13}><path d="M9 5l7 7-7 7" /></svg>
+export const IcFire = () => <svg {...P} width={13} height={13}><path d="M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5.5 1-8.5z" /></svg>

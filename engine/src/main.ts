@@ -62,6 +62,7 @@ import { startSignalEngine, type QuantBoot } from './quant/boot'
 import { createSiteApi } from './site/siteApi'
 import { EstablishedBook } from './market/established'
 import { setArcExtra } from '../../api/_argusCore'
+import { TrenchService } from './trench/service'
 
 const cfg = loadConfig()
 setLogLevel(cfg.logLevel)
@@ -84,6 +85,7 @@ let engine: MarketEngine | null = null
 let botsHealth: (() => { email: boolean; userLive: boolean; ownerWallet: boolean; mode: string | null; bots: number; running: number }) | null = null
 let stream: ChainStream | null = null
 let quant: QuantBoot | null = null
+let trench: TrenchService | null = null
 let redisOk = hot.kind === 'memory'
 
 const health = () => {
@@ -115,6 +117,8 @@ const health = () => {
     bots: botsHealth?.() ?? null,
     // The signal engine (engine/src/quant): on, warm, the regime, signals kept, open paper positions.
     quant: quant?.health() ?? null,
+    // The Trenches' live feed (trench/service.ts): each chain live or not, trades a minute, launches kept, smart wallets.
+    trench: trench?.health() ?? null,
   }
 }
 
@@ -315,6 +319,21 @@ async function main() {
     })
     setArcExtra({ rows: () => established.rows(), capOf: t => established.capOf(t) })
     every(20_000, 'established coins', () => { void established.refresh().catch(e => log.debug('established: round failed', { error: errMsg(e) })) })
+  }
+  // The Trenches' live feed (trench/service.ts): Solana's pump.fun and PumpSwap, BNB Chain's four.meme and PancakeSwap,
+  // Robinhood Chain's listed pools and Arc's own trades, with each chain's smart wallets. TRENCH=off stops it.
+  if (dataApi && !/^(0|off|false|no)$/i.test(process.env.TRENCH?.trim() ?? '')) {
+    const off = (name: string) => /^(0|off|false|no)$/i.test(process.env[name]?.trim() ?? '')
+    trench = new TrenchService({
+      publish: (topics, msg) => publisher.publish(topics, msg), wants: topic => publisher.wants(topic),
+      settings: botStore, listBase: `http://127.0.0.1:${cfg.port}`,
+      arcMeta: token => { const m = eng.metas.get(token); return m ? { symbol: m.symbol, name: m.name, image: m.image ?? null, launchedAt: m.timestamp } : null },
+      feeds: { sol: !off('TRENCH_SOL'), bnb: !off('TRENCH_BNB'), hood: !off('TRENCH_HOOD') },
+      solWss: (process.env.TRENCH_SOL_WSS ?? '').split(',').map(s => s.trim()).filter(s => /^wss:\/\//.test(s)),
+    })
+    dataApi.trench = trench
+    eng.observers.push(trench)
+    void trench.start().catch(e => log.error('trench: did not start', { error: errMsg(e) }))
   }
   await eng.warmStart()
   // The scanner lists every launch of the last 48h at once, not only coins that trade after a restart.

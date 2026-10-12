@@ -1,13 +1,13 @@
-// A Trenches lane (New, Almost bonded or Migrated): its header (count, the quick-buy amount and the preset it buys
-// with, a beep on new coins, filters), then its coins. While the mouse is over a lane it holds still ("Paused"), as
-// motion's do, so a coin can be clicked before the list moves; the numbers keep updating.
+// A Trenches lane (New, Almost bonded or Migrated): its header (count, a beep on new coins, filters, minimize), then its
+// coins. While the mouse is over a lane it holds still ("Paused"), as motion's do, so a coin can be clicked before the
+// list moves; the numbers keep updating. Minimized, a lane is a slim strip with its count (a click opens it again).
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import TrenchRow from './TrenchRow'
-import { IcBell, IcFilter, IcBolt, IcPause, IcSparkle, IcDrop, IcFlag } from './TrIcons'
-import { amountText, filterOf, filterOn, laneKey, MAX_ROWS, passesFilter, presetOf, setTrench, type LaneId, type TrenchCoin, type TrenchSettings } from '../lib/trenches'
-import { CHAINS, type TChain } from '../lib/chains'
-import type { Flash } from '../lib/useArcMarket'
+import { IcBell, IcFilter, IcMax, IcMin, IcPause, IcSparkle, IcDrop, IcFlag } from './TrIcons'
+import { filterOf, filterOn, laneKey, MAX_ROWS, passesFilter, setTrench, type LaneId, type TrenchCoin, type TrenchSettings } from '../lib/trenches'
+import type { TChain } from '../lib/chains'
+import type { RowFlash } from './TrenchRow'
 import { beep } from '../lib/beep'
 import { t as T, N_ } from '../lib/i18n'
 
@@ -19,18 +19,20 @@ interface Props {
   lane: LaneId
   coins: TrenchCoin[]
   s: TrenchSettings
-  flash?: Map<string, Flash>
+  flash?: Map<string, RowFlash>
   loading: boolean
   now: number
+  collapsed: boolean
+  onCollapse: () => void
   onOpen: (c: TrenchCoin) => void
-  onBuy: (c: TrenchCoin, amount: number) => void
+  onBuy: (c: TrenchCoin, anchor: HTMLElement) => void
   onFilter: (lane: LaneId) => void
 }
 
-export default function TrenchLane({ chain, lane, coins, s, flash, loading, now, onOpen, onBuy, onFilter }: Props) {
-  const info = CHAINS[chain]
-  const preset = presetOf(s, chain, lane)
-  const amount = s.presets[chain][preset]
+/** A coin's key in the live feeds: Solana's addresses keep their case. */
+const flashKey = (c: TrenchCoin) => (c.chain === 'sol' ? c.address : c.address.toLowerCase())
+
+export default function TrenchLane({ chain, lane, coins, s, flash, loading, now, collapsed, onCollapse, onOpen, onBuy, onFilter }: Props) {
   const filter = filterOf(s, chain, lane)
   const list = useMemo(() => coins.filter(c => passesFilter(c, filter, now)).slice(0, MAX_ROWS), [coins, filter, now])
 
@@ -57,18 +59,16 @@ export default function TrenchLane({ chain, lane, coins, s, flash, loading, now,
     const id = setTimeout(() => setFresh(new Set()), 2_500)
     return () => clearTimeout(id)
   }, [list, loading, soundOn])
-
-  const setAmount = (v: string) => {
-    const n = Number(v)
-    if (!Number.isFinite(n) || n < 0) return
-    setTrench(st => {
-      const p = [...st.presets[chain]] as [number, number, number]
-      p[preset] = n
-      return { presets: { ...st.presets, [chain]: p } }
-    })
-  }
   const Icon = LANE_ICON[lane]
-  const label = amountText(amount, info.quote)
+
+  if (collapsed) {
+    return (
+      <section className="tr-lane tr-lane-min" onClick={onCollapse} title={T('Show {lane}', { lane: T(LANE_TITLE[lane]) })}>
+        <button className="tr-sq" aria-label={T('Show {lane}', { lane: T(LANE_TITLE[lane]) })}><IcMax /></button>
+        <span className="tr-lane-vt"><Icon /> {T(LANE_TITLE[lane])} <i>{list.length}</i></span>
+      </section>
+    )
+  }
 
   return (
     <section className="tr-lane" onMouseEnter={() => { if (s.pauseOnHover) setHeld(list.map(c => c.key)) }} onMouseLeave={() => setHeld(null)}>
@@ -79,18 +79,9 @@ export default function TrenchLane({ chain, lane, coins, s, flash, loading, now,
         {lane === 'near' && <button className={`tr-pctmc${s.pctMc ? ' on' : ''}`} onClick={() => setTrench({ pctMc: !s.pctMc })} title={T('Show how far each coin is along its curve instead of its market cap')}>% MC</button>}
         {held && <span className="tr-paused"><IcPause /> {T('Paused')}</span>}
         <span className="tr-grow" />
-        <label className="tr-qin" title={T('Quick-buy amount for preset P{n}', { n: preset + 1 })}>
-          <IcBolt />
-          <input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} onClick={e => e.stopPropagation()} aria-label={T('Quick-buy amount')} />
-          <small>{info.quote}</small>
-        </label>
-        <div className="tr-seg tr-ps" role="group" aria-label={T('Quick-buy preset')}>
-          {([0, 1, 2] as const).map(i => (
-            <button key={i} className={preset === i ? 'on' : ''} onClick={() => setTrench(st => ({ lanePreset: { ...st.lanePreset, [laneKey(chain, lane)]: i } }))} title={`P${i + 1}: ${amountText(s.presets[chain][i], info.quote)}${info.quote === 'USDC' ? '' : ` ${info.quote}`}`}>P{i + 1}</button>
-          ))}
-        </div>
         <button className={`tr-sq${soundOn ? ' on' : ''}`} onClick={() => setTrench(st => ({ laneSound: { ...st.laneSound, [laneKey(chain, lane)]: !soundOn } }))} title={soundOn ? T('Beep on new coins: on') : T('Beep on new coins: off')}><IcBell on={soundOn} /></button>
         <button className={`tr-sq${filterOn(filter) ? ' on' : ''}`} onClick={() => onFilter(lane)} title={T('Filters')}><IcFilter /></button>
+        <button className="tr-sq tr-minb" onClick={onCollapse} title={T('Minimize')}><IcMin /></button>
       </header>
       <div className="tr-list">
         {shown.length === 0 && (
@@ -99,7 +90,7 @@ export default function TrenchLane({ chain, lane, coins, s, flash, loading, now,
           </div>
         )}
         {shown.map(c => (
-          <TrenchRow key={c.key} c={c} s={s} now={now} buyLabel={`${label}${info.quote === 'USDC' ? '' : ` ${info.quote}`}`} flash={flash?.get(c.address.toLowerCase())} fresh={fresh.has(c.key)} onOpen={onOpen} onBuy={x => onBuy(x, amount)} />
+          <TrenchRow key={c.key} c={c} s={s} now={now} flash={flash?.get(flashKey(c))} fresh={fresh.has(c.key)} onOpen={onOpen} onBuy={onBuy} />
         ))}
       </div>
     </section>

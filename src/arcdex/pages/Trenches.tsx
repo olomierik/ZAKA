@@ -1,22 +1,32 @@
 // The Trenches (2026-10-12, owner: "a trading terminal like motion.gift … with all the features we have"): the home of
-// the app. Pick a chain (Arc, Robinhood Chain, Solana, BNB Chain) and its coins stream into three lanes: New, Almost
-// bonded and Migrated. Each row has a quick-buy button with the lane's preset amount; it opens the coin's own trade
-// form with that amount filled in, where the coin's checks run before anything is signed.
+// the app. Pick a chain (Arc, Robinhood Chain, Solana, BNB Chain) and its coins stream into lanes: New, Almost bonded
+// and Migrated, and Smart money (the coins smart wallets are buying now and their trades). A row's Buy asks for the
+// amount, then opens the coin's own trade form with it, where the coin's checks run before anything is signed.
+// $ARCDEX's contract, price and burned amount sit on top. Each lane can be minimized to a slim strip.
 //
 // The data is each chain's own (Arc: the market engine and the chain; the others: their lists from the engine and
-// GeckoTerminal, read from the chain where curves are), with the owner's listing rules unless "Show everything" is on.
+// GeckoTerminal, plus the engine's live feed of their launchpads: launches within seconds, every trade's blink, prices
+// and progress; api/trenchFeed.ts), with the owner's listing rules unless "Show everything" is on.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Page } from '../App'
 import TrenchLane, { LANE_TITLE } from '../components/TrenchLane'
+import TrenchSmartLane from '../components/TrenchSmartLane'
+import TrenchCoinBar from '../components/TrenchCoinBar'
+import TrenchBuyPop from '../components/TrenchBuyPop'
+import type { RowFlash } from '../components/TrenchRow'
 import { CustomizeModal, FilterModal } from '../components/TrenchModals'
 import ChainLogo from '../components/ChainLogo'
-import { IcBolt, IcSliders, IcStar } from '../components/TrIcons'
+import { IcSliders, IcStar, IcTarget } from '../components/TrIcons'
 import { trenchesPage } from '../components/NavBar'
 import { CHAINS, CHAIN_LIST, setChain, type TChain } from '../lib/chains'
 import { useHead } from '../lib/rpcSettings'
-import { LANES, laneCoins, setTrench, shownInLanes, useTrench, SLIPS, type LaneId, type TrenchCoin, type TrenchSettings } from '../lib/trenches'
-import { useArcMarket, type Flash } from '../lib/useArcMarket'
+import { LANES, isCollapsed, laneCoins, setTrench, shownInLanes, toggleCollapsed, useTrench, SLIPS, type LaneId, type TrenchCoin, type TrenchSettings } from '../lib/trenches'
+import { useArcMarket } from '../lib/useArcMarket'
+import { keyOf, useTrenchFeed, type LiveTick, type TrenchFeed } from '../api/trenchFeed'
+import type { TrenchCoinWire } from '../../../api/_trenchProtocol'
+import { WSOL } from '../../../api/_solCore'
+import { BNB_NATIVE, BSC_USD1, BSC_USDT } from '../../../api/_bscCore'
 import { getLaunchpadColor, type ArcToken } from '../api/radardex'
 import { arcStage, arcStageInput, bscStage, bscStageInput, rhStage, rhStageInput, solStage, solStageInput } from '../lib/coinStage'
 import { bscSafety, isListable, isRugged, meetsStandard, rhSafety, solSafety, type SafetyView } from '../lib/safety'
@@ -25,7 +35,7 @@ import { cachedRhMarket, isWashPool, loadRhMarket, type RhCoin } from '../api/ro
 import { cachedSolMarket, isWashSol, loadSolMarket, type SolCoin } from '../api/solanaMarket'
 import { cachedBscMarket, isWashBsc, loadBscMarket, type BscCoin } from '../api/bscMarket'
 import { useHlMids } from '../hl/live'
-import { COIN_IMAGE, COIN_LC, COIN_POOL, fmtSmallUsd, useCoin } from '../lib/coin'
+import { COIN_IMAGE } from '../lib/coin'
 import { useIsMobile } from '../lib/useMobile'
 import { usePrefs } from '../lib/prefs'
 import { t as T } from '../lib/i18n'
@@ -39,7 +49,7 @@ function useNow(ms = 1_000): number {
   return now
 }
 
-interface ChainData { coins: TrenchCoin[]; loading: boolean; live: boolean; perMin?: number; flash?: Map<string, Flash>; hidden: number }
+interface ChainData { coins: TrenchCoin[]; loading: boolean; live: boolean; perMin?: number; flash?: Map<string, RowFlash>; hidden: number }
 
 // ── Arc ─────────────────────────────────────────────────────────────────
 
@@ -103,7 +113,23 @@ interface Kind<C extends RhCoin> {
   safety: (c: C) => SafetyView
   wash: (c: C, now: number) => boolean
   page: (c: C) => Page
+  /** A coin the live feed saw launch, before the list has it. */
+  fromWire: (w: TrenchCoinWire) => C
+  /** A listed coin with the feed's latest price, market cap and progress (its 24h counts stay the list's). */
+  patch: (c: C, t: LiveTick) => C
 }
+
+/** The feed's coin as a list row: its numbers since launch are its 24h numbers (it's under two hours old). */
+function wireBase(w: TrenchCoinWire, chain: 'hood' | 'sol' | 'bnb'): RhCoin {
+  const a = keyOf(chain, w.a)
+  return {
+    address: a, symbol: w.s || a.slice(0, 6), name: w.n || w.s || a, image: w.i, decimals: chain === 'sol' ? 6 : 18, stock: false,
+    pool: w.pool ?? a, dex: '', quote: '', quoteSymbol: w.q, priceUsd: w.p, change5m: 0, change1h: 0,
+    change24h: w.o > 0 && w.p > 0 ? (w.p / w.o - 1) * 100 : 0, volume24h: w.v, liquidity: w.l, marketCap: w.m,
+    buys24h: w.b, sells24h: w.x, traders24h: w.w, createdAt: w.c, feePct: null, launchpad: w.lp || null,
+  }
+}
+const priced = <C extends RhCoin>(c: C, t: LiveTick): C => ({ ...c, priceUsd: t.p || c.priceUsd, marketCap: t.m || c.marketCap })
 
 function toCoins<C extends RhCoin>(rows: C[], k: Kind<C>, showAll: boolean, freshNew: boolean): { coins: TrenchCoin[]; hidden: number } {
   const now = Date.now()
@@ -139,13 +165,52 @@ function toCoins<C extends RhCoin>(rows: C[], k: Kind<C>, showAll: boolean, fres
   return { coins, hidden }
 }
 
-const RH: Kind<RhCoin> = { chain: 'hood', stage: rhStage, input: rhStageInput, safety: c => rhSafety(c), wash: isWashPool, page: c => ({ name: 'rh-token', address: c.address, pool: c.pool }) }
-const SOL: Kind<SolCoin> = { chain: 'sol', stage: solStage, input: solStageInput, safety: c => solSafety(c), wash: isWashSol, page: c => ({ name: 'sol-token', address: c.address, pool: c.pool }) }
-const BSC: Kind<BscCoin> = { chain: 'bnb', stage: bscStage, input: bscStageInput, safety: c => bscSafety(c), wash: isWashBsc, page: c => ({ name: 'bsc-token', address: c.address, pool: c.pool }) }
+const RH: Kind<RhCoin> = {
+  chain: 'hood', stage: rhStage, input: rhStageInput, safety: c => rhSafety(c), wash: isWashPool, page: c => ({ name: 'rh-token', address: c.address, pool: c.pool }),
+  fromWire: w => wireBase(w, 'hood'), patch: priced,
+}
+const SOL: Kind<SolCoin> = {
+  chain: 'sol', stage: solStage, input: solStageInput, safety: c => solSafety(c), wash: isWashSol, page: c => ({ name: 'sol-token', address: c.address, pool: c.pool }),
+  fromWire: w => ({ ...wireBase(w, 'sol'), dex: w.gr ? 'pumpswap' : 'pump-fun', quote: WSOL, curveProgress: w.gr ? 100 : w.g, graduated: w.gr }),
+  // pump.fun's curves and PumpSwap pools tick with their progress (100 once in its pool).
+  patch: (c, t) => ({ ...priced(c, t), ...(t.g !== null && (c.dex === 'pump-fun' || c.dex === 'pumpswap') ? { curveProgress: t.g, graduated: t.g >= 100 || !!c.graduated } : {}) }),
+}
+const BSC: Kind<BscCoin> = {
+  chain: 'bnb', stage: bscStage, input: bscStageInput, safety: c => bscSafety(c), wash: isWashBsc, page: c => ({ name: 'bsc-token', address: c.address, pool: c.pool }),
+  fromWire: w => {
+    // four.meme vouched for every coin the feed launches (its quote comes from four.meme's own contract).
+    const quote = w.q === 'USDT' ? BSC_USDT : w.q === 'USD1' ? BSC_USD1 : BNB_NATIVE
+    return { ...wireBase(w, 'bnb'), pool: keyOf('bnb', w.a), dex: w.gr ? 'pancakeswap_v2' : 'four-meme', quote, four: { quote, graduated: w.gr, progress: w.g ?? 0 } }
+  },
+  patch: (c, t) => ({ ...priced(c, t), ...(c.four && t.g !== null ? { four: { ...c.four, progress: t.g, graduated: c.four.graduated || t.g >= 100 } } : {}) }),
+}
 
-function useListData<C extends RhCoin>(r: Rows<C>, k: Kind<C>, showAll: boolean, freshNew: boolean): ChainData {
-  const { coins, hidden } = useMemo(() => toCoins(r.rows, k, showAll, freshNew), [r.rows, k, showAll, freshNew])
-  return { coins, hidden, loading: r.loading, live: !r.loading }
+/** The list's rows with the feed's latest numbers, and the coins the feed saw launch that the list doesn't have yet. */
+function mergeFeed<C extends RhCoin>(rows: C[], feed: TrenchFeed, k: Kind<C>): C[] {
+  if (!feed.on && !feed.ticks.size) return rows
+  const seen = new Set<string>()
+  const out: C[] = rows.map(r => {
+    const key = keyOf(k.chain, r.address)
+    seen.add(key)
+    const t = feed.ticks.get(key)
+    return t ? k.patch(r, t) : r
+  })
+  for (const w of feed.launches) {
+    const key = keyOf(k.chain, w.a)
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(k.fromWire(w))
+  }
+  return out
+}
+
+function useListData<C extends RhCoin>(r: Rows<C>, k: Kind<C>, showAll: boolean, freshNew: boolean, feed: TrenchFeed): ChainData {
+  const merged = useMemo(() => mergeFeed(r.rows, feed, k), [r.rows, feed, k])
+  const { coins, hidden } = useMemo(() => toCoins(merged, k, showAll, freshNew), [merged, k, showAll, freshNew])
+  return {
+    coins, hidden, loading: r.loading && !feed.launches.length, live: feed.on ? feed.live : !r.loading,
+    perMin: feed.on ? feed.perMin : undefined, flash: feed.flash,
+  }
 }
 
 // ── the page ────────────────────────────────────────────────────────────
@@ -162,41 +227,43 @@ export default function Trenches({ chain, navigate }: Props) {
 }
 
 type ViewProps = { navigate: (p: Page) => void; s: TrenchSettings }
-function ArcView({ navigate, s }: ViewProps) { return <TrenchView chain="arc" data={useArcData(s.showAll, s.freshNew)} navigate={navigate} s={s} /> }
-function HoodView({ navigate, s }: ViewProps) { return <TrenchView chain="hood" data={useListData(useRows(cachedRhMarket, loadRhMarket, 60_000), RH, s.showAll, s.freshNew)} navigate={navigate} s={s} /> }
-function SolView({ navigate, s }: ViewProps) { return <TrenchView chain="sol" data={useListData(useRows(cachedSolMarket, loadSolMarket, 45_000), SOL, s.showAll, s.freshNew)} navigate={navigate} s={s} /> }
-function BscView({ navigate, s }: ViewProps) { return <TrenchView chain="bnb" data={useListData(useRows(cachedBscMarket, loadBscMarket, 45_000), BSC, s.showAll, s.freshNew)} navigate={navigate} s={s} /> }
+function ArcView({ navigate, s }: ViewProps) { const feed = useTrenchFeed('arc'); return <TrenchView chain="arc" data={useArcData(s.showAll, s.freshNew)} feed={feed} navigate={navigate} s={s} /> }
+function HoodView({ navigate, s }: ViewProps) { const feed = useTrenchFeed('hood'); return <TrenchView chain="hood" data={useListData(useRows(cachedRhMarket, loadRhMarket, 60_000), RH, s.showAll, s.freshNew, feed)} feed={feed} navigate={navigate} s={s} /> }
+function SolView({ navigate, s }: ViewProps) { const feed = useTrenchFeed('sol'); return <TrenchView chain="sol" data={useListData(useRows(cachedSolMarket, loadSolMarket, 45_000), SOL, s.showAll, s.freshNew, feed)} feed={feed} navigate={navigate} s={s} /> }
+function BscView({ navigate, s }: ViewProps) { const feed = useTrenchFeed('bnb'); return <TrenchView chain="bnb" data={useListData(useRows(cachedBscMarket, loadBscMarket, 45_000), BSC, s.showAll, s.freshNew, feed)} feed={feed} navigate={navigate} s={s} /> }
 
-function TrenchView({ chain, data, navigate, s }: { chain: TChain; data: ChainData; navigate: (p: Page) => void; s: TrenchSettings }) {
+type MLane = LaneId | 'smart'
+
+function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: ChainData; feed: TrenchFeed; navigate: (p: Page) => void; s: TrenchSettings }) {
   const mobile = useIsMobile()
   const now = useNow()
   const head = useHead(chain)
   const mids = useHlMids()
-  const coinQ = useCoin()
   const info = CHAINS[chain]
   const [customize, setCustomize] = useState(false)
   const [filterLane, setFilterLane] = useState<LaneId | null>(null)
-  const [mLane, setMLane] = useState<LaneId>('new')
+  const [mLane, setMLane] = useState<MLane>('new')
+  const [buyFor, setBuyFor] = useState<{ page: Page; symbol: string; anchor: HTMLElement } | null>(null)
 
   const watch = usePrefs().watchlist
   const coins = useMemo(() => (s.watchOnly ? data.coins.filter(c => watch.includes(c.address.toLowerCase())) : data.coins), [data.coins, s.watchOnly, watch])
   const lanes = useMemo(() => Object.fromEntries(LANES.map(l => [l, laneCoins(coins, l)])) as Record<LaneId, TrenchCoin[]>, [coins])
   const launchpads = useMemo(() => [...new Set(data.coins.map(c => c.launchpad).filter((x): x is string => !!x))].sort(), [data.coins])
+  const byKey = useMemo(() => new Map(data.coins.map(c => [keyOf(chain, c.address), c])), [data.coins, chain])
 
   const open = useCallback((c: TrenchCoin) => navigate(c.page), [navigate])
-  // A quick buy opens the coin's own trade form with the amount (and on Arc the slippage) filled in.
-  const buy = useCallback((c: TrenchCoin, amount: number) => navigate({ ...c.page, buy: { amount, slip: s.slip } } as Page), [navigate, s.slip])
-
-  const p1 = s.presets[chain][0]
-  const setP1 = (v: string) => {
-    const n = Number(v)
-    if (!Number.isFinite(n) || n < 0) return
-    setTrench(st => ({ presets: { ...st.presets, [chain]: [n, st.presets[chain][1], st.presets[chain][2]] as [number, number, number] } }))
-  }
+  // Buy asks for the amount; the coin's own trade form then opens with it (and on Arc the slippage), checks and all.
+  const askBuy = useCallback((c: TrenchCoin, anchor: HTMLElement) => setBuyFor({ page: c.page, symbol: c.symbol, anchor }), [])
+  const askBuyPage = useCallback((c: { page: Page; symbol: string }, anchor: HTMLElement) => setBuyFor({ ...c, anchor }), [])
   const native = info.nativeHl ? mids[info.nativeHl] : null
+  const coll = (l: MLane) => isCollapsed(s, chain, l)
+  // Minimized lanes take a slim strip; the smart lane is a little narrower than the coin lanes.
+  const columns = [...LANES.map(l => (coll(l) ? '44px' : 'minmax(0, 1fr)')), coll('smart') ? '44px' : 'minmax(0, 0.92fr)'].join(' ')
+  const perMin = data.perMin ?? (feed.on ? feed.perMin : undefined)
 
   return (
     <div className="tr-page">
+      <TrenchCoinBar navigate={navigate} />
       <div className="tr-bar">
         <span className="tr-bar-title"><IcSliders /> {T('Trenches')}</span>
         <div className="tr-chips-row">
@@ -206,20 +273,17 @@ function TrenchView({ chain, data, navigate, s }: { chain: TChain; data: ChainDa
             </button>
           ))}
         </div>
-        <label className="tr-qin tr-qin-bar" title={T('Default quick-buy amount (P1)')}>
-          <IcBolt /><input type="number" min="0" step="any" value={p1} onChange={e => setP1(e.target.value)} aria-label={T('Quick-buy amount')} /><small>{info.quote}</small>
-        </label>
         {chain === 'arc' && (
-          <div className="tr-seg" role="group" aria-label={T('Slippage')} title={T('Arc quick buys open the trade form with this slippage')}>
+          <div className="tr-seg" role="group" aria-label={T('Slippage')} title={T('Buy opens Arc’s trade form with this slippage')}>
             {SLIPS.map(v => <button key={v} className={s.slip === v ? 'on' : ''} onClick={() => setTrench({ slip: v })}>{v}%</button>)}
           </div>
         )}
         <button className={`tr-watch${s.watchOnly ? ' on' : ''}`} onClick={() => setTrench({ watchOnly: !s.watchOnly })} title={T('Only the coins on your watchlist')}><IcStar on={s.watchOnly} /> {T('Watchlist')}</button>
         <span className="tr-grow" />
-        <span className={`tr-live${data.live ? ' on' : ''}`}><i />{data.live ? T('Live') : T('Connecting…')}{data.perMin ? <small> · {T('{n} trades/min', { n: data.perMin })}</small> : null}</span>
+        <span className={`tr-live${data.live ? ' on' : ''}`}><i />{data.live ? T('Live') : T('Connecting…')}{perMin ? <small> · {T('{n} trades/min', { n: perMin })}</small> : null}</span>
         {head && <span className="tr-meta">{chain === 'sol' ? T('Slot') : T('Block')} <b>{head.head.toLocaleString()}</b></span>}
-        {native ? <span className="tr-meta">{info.native} <b>${native.toLocaleString(undefined, { maximumFractionDigits: native >= 100 ? 0 : 2 })}</b></span>
-          : chain === 'arc' && coinQ?.priceUsd ? <button className="tr-meta tr-meta-btn" onClick={() => navigate({ name: 'argus', address: COIN_LC, pool: COIN_POOL })}>ARCDEX <b>{fmtSmallUsd(coinQ.priceUsd)}</b></button> : null}
+        {native ? <span className="tr-meta">{info.native} <b>${native.toLocaleString(undefined, { maximumFractionDigits: native >= 100 ? 0 : 2 })}</b></span> : null}
+        {feed.smart && feed.smart.smart > 0 && <span className="tr-meta tr-meta-smart" title={T('Wallets with a winning record on this chain, measured by ARCDEX')}><IcTarget /> <b>{feed.smart.smart}</b> {T('smart wallets')}</span>}
         <button className="tr-meta-btn tr-cust" onClick={() => setCustomize(true)}><IcSliders /> {T('Customize')}</button>
         <label className="tr-switch" title={T('Show how far each coin is along its curve instead of its market cap')}>
           <input type="checkbox" checked={s.pctMc} onChange={e => setTrench({ pctMc: e.target.checked })} /><i /><span>% MC</span>
@@ -241,19 +305,31 @@ function TrenchView({ chain, data, navigate, s }: { chain: TChain; data: ChainDa
               {T(LANE_TITLE[l])} <span>{lanes[l].length}</span>
             </button>
           ))}
+          <button role="tab" aria-selected={mLane === 'smart'} className={mLane === 'smart' ? 'on' : ''} onClick={() => setMLane('smart')}>
+            {T('Smart')} <span>{feed.smart?.buying.length ?? 0}</span>
+          </button>
         </div>
       )}
 
-      <div className="tr-lanes">
-        {(mobile ? [mLane] : LANES).map(l => (
+      <div className="tr-lanes" style={mobile ? undefined : { ['--tr-cols' as string]: columns }}>
+        {(mobile ? (mLane === 'smart' ? [] : [mLane]) : LANES).map(l => (
           <TrenchLane key={l} chain={chain} lane={l} coins={lanes[l]} s={s} flash={data.flash} loading={data.loading} now={now}
-            onOpen={open} onBuy={buy} onFilter={setFilterLane} />
+            collapsed={!mobile && coll(l)} onCollapse={() => toggleCollapsed(chain, l)}
+            onOpen={open} onBuy={askBuy} onFilter={setFilterLane} />
         ))}
+        {(!mobile || mLane === 'smart') && (
+          <TrenchSmartLane chain={chain} feed={feed} coins={byKey} now={now} collapsed={!mobile && coll('smart')} onCollapse={() => toggleCollapsed(chain, 'smart')}
+            onOpen={navigate} onBuy={askBuyPage} />
+        )}
       </div>
 
+      {buyFor && (
+        <TrenchBuyPop anchor={buyFor.anchor} symbol={buyFor.symbol} unit={info.quote}
+          onBuy={amount => { setBuyFor(null); navigate({ ...buyFor.page, buy: { amount, slip: s.slip } } as Page) }}
+          onClose={() => setBuyFor(null)} />
+      )}
       {customize && <CustomizeModal onClose={() => setCustomize(false)} />}
       {filterLane && <FilterModal chain={chain} lane={filterLane} launchpads={launchpads} onClose={() => setFilterLane(null)} />}
     </div>
   )
 }
-

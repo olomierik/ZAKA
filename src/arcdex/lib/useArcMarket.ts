@@ -34,7 +34,7 @@ const QUOTE_BY_SYMBOL: Record<string, string> = {
 
 /** A live trade's flash on its coin: which side, and a counter whose parity alternates the CSS animation so
  * back-to-back trades each restart it. */
-export interface Flash { side: 'buy' | 'sell'; n: number }
+export interface Flash { side: 'buy' | 'sell'; n: number; usd?: number | null }
 
 /** A launch the market engine just detected, as a row: before its first trade. */
 export function launchToArcToken(l: LaunchInfo): ArcToken {
@@ -188,7 +188,7 @@ export function useArcMarket(): ArcMarket {
   // ── every buy and sell on Arc flashes its coin (api/marketPulse.ts) ──
   const [flash, setFlash] = useState<Map<string, Flash>>(new Map())
   const [perMin, setPerMin] = useState(0)
-  const pulseBuf = useRef<{ token: string; side: 'buy' | 'sell' }[]>([])
+  const pulseBuf = useRef<{ token: string; side: 'buy' | 'sell'; usd?: number | null }[]>([])
   const pulseTimes = useRef<number[]>([])
   const lastPulse = useRef(new Map<string, number>())
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -197,7 +197,7 @@ export function useArcMarket(): ArcMarket {
     pulseTimes.current = pulseTimes.current.filter(t => t > cutoff)
     setPerMin(pulseTimes.current.length)
   }, [])
-  const pulse = useCallback((p: { token: string; side: 'buy' | 'sell' }) => {
+  const pulse = useCallback((p: { token: string; side: 'buy' | 'sell'; usd?: number | null }) => {
     const now = Date.now()
     lastPulse.current.set(p.token, now)
     liveTradesRef.current.set(p.token, (liveTradesRef.current.get(p.token) ?? 0) + 1)
@@ -212,7 +212,7 @@ export function useArcMarket(): ArcMarket {
       if (document.hidden) return
       setFlash(prev => {
         const next = new Map(prev)
-        for (const x of batch) next.set(x.token, { side: x.side, n: (next.get(x.token)?.n ?? 0) + 1 })
+        for (const x of batch) next.set(x.token, { side: x.side, n: (next.get(x.token)?.n ?? 0) + 1, usd: x.usd ?? null })
         return next
       })
     }, 150)

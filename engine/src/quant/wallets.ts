@@ -241,4 +241,36 @@ export class WalletBook {
 
   /** Open positions of a wallet (the wallet_token_positions rows). */
   positionsOf(wallet: string): WalletPosition[] { return [...(this.wallets.get(wallet)?.positions.values() ?? [])] }
+
+  /** Records worth keeping across a restart (trench/book.ts): wallets with `minTrades`+ closed trades, the `max` with
+   * the most realized profit. Open positions aren't kept: a sale after a restart of a buy before it isn't measured. */
+  exportRecords(minTrades: number, max: number): SavedWallet[] {
+    const rows: SavedWallet[] = []
+    for (const [w, r] of this.wallets) {
+      if (r.trades < minTrades) continue
+      rows.push({
+        w, n: r.trades, won: r.wins, gp: r.grossProfit, gl: r.grossLoss, hold: r.holdMs, early: r.early, ew: r.earlyWins,
+        cost: r.costSum, cum: r.cumPnl, peak: r.peakPnl, dd: r.maxDd, coins: r.tokens.size, ret: r.returns.slice(-50), day: r.buysDay, last: r.lastAt,
+      })
+    }
+    return rows.sort((a, b) => (b.gp - b.gl) - (a.gp - a.gl)).slice(0, max)
+  }
+
+  /** Puts saved records back (a wallet already followed since the restart keeps what it has). */
+  importRecords(rows: SavedWallet[]) {
+    for (const s of rows) {
+      if (!s || typeof s.w !== 'string' || this.wallets.has(s.w)) continue
+      this.wallets.set(s.w, {
+        positions: new Map(), returns: Array.isArray(s.ret) ? s.ret.slice(-200) : [], trades: s.n, wins: s.won, grossProfit: s.gp, grossLoss: s.gl,
+        holdMs: s.hold, early: s.early, earlyWins: s.ew, costSum: s.cost, cumPnl: s.cum, peakPnl: s.peak, maxDd: s.dd,
+        tokens: new Set(Array.from({ length: Math.max(0, s.coins | 0) }, (_, i) => `#saved${i}`)), buysDay: Array.isArray(s.day) ? s.day : [], lastAt: s.last, stats: null,
+      })
+    }
+  }
+}
+
+/** A wallet's record as kept across a restart (WalletBook.exportRecords). */
+export interface SavedWallet {
+  w: string; n: number; won: number; gp: number; gl: number; hold: number; early: number; ew: number
+  cost: number; cum: number; peak: number; dd: number; coins: number; ret: number[]; day: number[]; last: number
 }
