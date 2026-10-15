@@ -63,3 +63,23 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Security headers (2026-10-15, docs/REPO_MAP.md finding 2; the build pack's 04 §3). The in-page trading wallet keeps an
+# encrypted key in this origin's storage, so the policy's job is to keep foreign scripts out:
+#   script-src   this site's files only, plus two hashed inline pieces of index.html: the theme script and the fonts'
+#                onload="this.media='all'" ('unsafe-hashes' allows that exact handler and nothing else).
+#                Edit either and its hash changes: `bun scripts/check-csp.ts` fails until this line is updated.
+#   connect-src  any https/wss host: the app talks to many chains' RPCs (and ones the user picks in RPC settings),
+#                Relay, Across, Hyperliquid, Supabase and the engine. Narrowing it is a later step.
+#   frame-src    https: wallet and on-ramp frames (WalletConnect, Coinbase, Circle).
+# No one may frame the site (frame-ancestors, X-Frame-Options); HSTS keeps it on https.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'sha256-UWp2Tu29+U0uKTgcujF8Z+eKD4Z5Tl6VW7eJo9mIvDU=' 'unsafe-hashes' 'sha256-MhtPZXr7+LpJUY5qtMutB+qWfQtMaPccfe7QXtCcEYc='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), usb=(), serial=(), hid=(), bluetooth=()"
+    Cross-Origin-Opener-Policy = "same-origin-allow-popups"

@@ -105,8 +105,12 @@ Ordered by severity. None is known to be exploited; each is a gap against the bu
 1. **High: key export through ARCDEX's own UI.** `exportPrivateKey` hands the raw key to the page (04 §1: provider-hosted
    export only). The key also lives in localStorage, encrypted: an XSS on any page of the origin could capture a
    passcode as it is typed. Fix: a provider-hosted wallet (D1), or at least step-up re-auth plus a strict CSP.
-2. **High: no Content-Security-Policy or security headers.** `netlify.toml` sets none (no CSP, HSTS, frame-ancestors,
+2. **High: no Content-Security-Policy or security headers.** `netlify.toml` set none (no CSP, HSTS, frame-ancestors,
    Referrer-Policy). With an in-page wallet key, a CSP is the main defence against injected scripts.
+   **Fixed 2026-10-15:** `netlify.toml` `[[headers]]`: scripts from the site only (two inline pieces allowed by hash),
+   no framing, HSTS, nosniff, Referrer-Policy, Permissions-Policy. Checked in Chromium on 17 pages with no violations;
+   injected inline scripts, foreign scripts and inline handlers are refused. `bun scripts/check-csp.ts` keeps the hashes
+   in step with the HTML. `connect-src` still allows any https/wss host (the app's many RPCs): narrowing it is next.
 3. **High: fees go to a single EOA.** `0x2742…86Bb` receives every fee and is the routers' `feeWallet` (04 §4:
    multisig). 05 also lists it as the admin address; it should not be both.
 4. **Medium: no global kill switch.** Pausing needs an owner transaction per router, and Relay/Across/Hyperliquid paths
@@ -114,6 +118,10 @@ Ordered by severity. None is known to be exploited; each is a gap against the bu
 5. **Medium: withdrawals have no limits, new-address delay or notification** (04 §1). The passcode rule stops a stolen
    phone from sending anywhere but the funding wallet, but nothing alerts the user.
 6. **Medium: no CI checks.** No tests, typecheck, dependency audit or secret scanning on pull requests (04 §3).
+   **Fixed 2026-10-15:** `.github/workflows/ci.yml` on every pull request and push to main: site typecheck and build,
+   the security-header check, engine typecheck and tests, and gitleaks (`.gitleaks.toml`) over the files and the new
+   commits. `bun run check` runs the same locally. gitleaks found no secrets in the files or the 201 commits this
+   checkout holds. Dependency audit: not yet.
 7. **Medium: no append-only audit or fee ledger** (04 §3). Owner actions (bot controls, signal settings) are verified but
    not recorded in an audit table.
 8. **Low: dependency surface.** Four Circle wallet SDKs ship as runtime dependencies but are used only by scripts; they
@@ -165,7 +173,17 @@ Phase 0 closes when these are approved. Each changes what Phase 1 builds.
 - **D5. Hosting and data.** Proposed: keep Netlify (site), Railway (engine: API, workers, Postgres, Redis) and Supabase
   (social). They match the spec's API + Postgres + Redis + worker shape; moving would cost time and buy nothing yet.
 
-## 6. Proposed order after approval
+## 6. Decisions (approved by the owner, 2026-10-15)
+
+| | Decision |
+|---|---|
+| D1 | **Privy** for sign-in and embedded EVM + Solana wallets, export hosted by Privy. Current trading-wallet users keep withdraw and export so they can move over. Arc support to be confirmed with Privy before it ships. |
+| D2 | **0.5% everywhere** on spot. The Arc routers change by an owner transaction (`setFeeBps(50)`); Relay and Across fees in code. |
+| D3 | **Keep every current chain and add Ethereum and Arbitrum spot.** |
+| D4 | **Keep `0x2742…86Bb` for now**, but the fee recipient and the admin allowlist move to environment variables, so a later move to a multisig is a configuration change. |
+| D5 | Hosting and data as proposed: Netlify, Railway, Supabase. |
+
+## 7. Order of work
 
 1. **Security baseline** (small, no product change): CSP and security headers, CI with typecheck, tests and secret
    scanning, a global and per-chain kill switch on the engine read by every trade path.
