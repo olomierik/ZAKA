@@ -100,6 +100,10 @@ check(unavailable, 'no key on the site (503): unavailable, so the form asks Rela
 unavailable = false
 try { await getJupOrder(ask, stub(429, {})) } catch (e) { unavailable = e instanceof JupiterUnavailable }
 check(unavailable, 'throttled (429): unavailable too')
+unavailable = false
+const html = (async () => new Response('<!doctype html><title>ARCDEX</title>', { status: 200, headers: { 'content-type': 'text/html' } })) as unknown as typeof fetch
+try { await getJupOrder(ask, html) } catch (e) { unavailable = e instanceof JupiterUnavailable }
+check(unavailable, 'a page instead of JSON (no Jupiter route on this host): unavailable, not an error')
 let refusedErr = false
 try { await getJupOrder(ask, stub(400, { error: 'fee not served' })) } catch (e) { refusedErr = e instanceof JupiterError && !(e instanceof JupiterUnavailable) }
 check(refusedErr, 'a refused request is an error, not a fallback')

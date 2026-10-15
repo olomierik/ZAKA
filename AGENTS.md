@@ -2203,6 +2203,84 @@ acceptance list: `docs/REPO_MAP.md` §8.
   - no sideways scroll and no page errors.
 - Every new string is in all six dictionaries (50).
 
+## Phase 2: Solana through Jupiter, shared guardrails, the fee ledger (2026-10-15)
+
+The build pack's Phase 2 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`), the parts that can be built and checked from the
+sandbox. Status against its acceptance list: `docs/REPO_MAP.md` §9.
+
+- **Solana swaps through Jupiter (`lib/jupiter.ts`, `netlify/edge-functions/jupiter.ts`):** SOL or Solana USDC for a
+  coin, or back, through Jupiter's Swap API V2 (`/order`, then `/execute`), with ARCDEX's 0.5% as Jupiter's referral
+  fee, paid in the swap itself. Checked against Jupiter's OpenAPI spec and referral docs in `jup-ag/docs` (Jupiter's
+  own sites are out of the sandbox's reach).
+  - **The proxy** (`/jup/swap/v2/*`) holds `JUPITER_API_KEY` (a Netlify secret, never in the page). It passes only
+    the site's own pages' requests:
+    - orders with whitelisted parameters, ARCDEX's referral account (`VITE_JUP_REFERRAL_ACCOUNT`) at 50–255 bps, and no
+      receiver or payer;
+    - executions that are exactly a signed transaction and its request id.
+  - **Before signing (`checkJupOrder`, `txProblem`, `simProblem`):**
+    - the order: the mints and amount asked for, the taker, a minimum within the slippage ceiling, no one else's
+      referral account, and the fee as shown;
+    - the transaction: the taker signs; the fee payer is the taker, or the payer Jupiter named; ARCDEX's referral
+      token account is in it when its fee applies; no approval or authority change on the taker's tokens;
+    - a simulation on Solana: the input goes down by at most the amount, the output up by at least the minimum, and
+      the trader spends at most 0.01 SOL more.
+  - **Sending:** `/execute` is retried with the same signed transaction (up to 4 tries on 429, 5xx or a lost
+    connection), never signed again. Jupiter runs the same request once.
+  - **The fee:** Jupiter keeps 20% of a referral fee. A mint whose referral token account doesn't exist yet falls back
+    to Jupiter's own fee, and the form says "None on this trade".
+  - **Relay instead** when the site has no key, Jupiter is throttled or down, the proxy answers with something that
+    isn't JSON (local dev), or `VITE_FLAG_JUPITER=off`. After such an answer Relay quotes for 5 minutes. USDC on Arc
+    in or out still goes through Relay.
+- **`lib/execution.ts`:** the `ExecutionProvider` interface (quote → checks → simulate → sign → submit), with the
+  providers and their fees listed. Solana swaps pick their provider there.
+- **Guardrails (`lib/guardrails.ts`):** the price-impact limits, a 15% slippage ceiling, the minimum received, a
+  $25,000 size cap and the drift check before signing, in one place. Applied to Jupiter, Relay, Across, and Arc's swap,
+  curve and quick-buy paths.
+- **The fee ledger (`engine/src/fees`):** every fee the engine reads on-chain, in `arcdex_fee_ledger`. Amounts are
+  exact decimal strings in the token's units.
+  - **Append-only:** triggers refuse updates, deletes and truncates; a row seen again (same id) is ignored.
+  - **Arc:** USDC that ARCDEX's contracts paid the fee wallet in someone else's transaction (the swap and curve
+    routers, the Universal Router, the launchpad, Across's handler), from the $ARCDEX program's scan (`onFeeLogs`).
+    One row per transaction and paying contract. A transfer logged twice (USDC's 6 decimals and the native logger's
+    18) counts once, and the fee wallet's own trades are left out.
+  - **Relay:** what Relay's balance for the fee wallet grew by is `accrued`, what it fell by `claimed`; the balance
+    first seen is `opening`.
+  - **Jupiter (`fees/jupiterWatch.ts`):** the referral account's token accounts, every 10 minutes: each transaction
+    into one is `received`, each out `claimed`.
+  - **Reconciliation, nightly after 00:30 UTC (`fees/service.ts`):**
+    - Arc: the blocks since the last run, scanned again on their own (the archive-aware log scan), against the
+      ledger's rows, to the unit;
+    - Relay and Jupiter: each balance against opening + received − claimed.
+    - Each result is kept in `arcdex_fee_reconciliations` (append-only). A mismatch is logged, counted
+      (`fee_reconcile_mismatch`) and posted to `ALERT_WEBHOOK_URL` when set.
+  - **Read it:** `GET /v1/fees/summary` and `/v1/fees/ledger?limit=&source=` (public: every row is on-chain data), and
+    `/admin` → Fee ledger.
+- **`/admin` → Fees** lists Solana swaps through Jupiter, on once `VITE_JUP_REFERRAL_ACCOUNT` is set.
+- **`/routes`:** a "Solana swaps" route (Jupiter, Relay while Jupiter isn't on), and Jupiter's health through the
+  proxy.
+- **Not built:**
+  - Ethereum and Arbitrum spot (D3): Relay's contracts on those chains couldn't be checked from the sandbox.
+  - Jito: Jupiter's `/execute` sends the transaction itself.
+  - A real funded trade through Jupiter (the owner's first, once the key is set).
+- **Tests:**
+  - `bun scripts/test-jupiter.ts` (in CI): orders and transactions, real mainnet referral token accounts, tampered
+    orders and transactions refused, simulation, `/execute` retries, the proxy and the provider choice.
+  - `engine/test/feeLedger.test.ts`: exact amounts, each transfer once, Relay and Jupiter rows, reconciliation (equal,
+    short, extra, held balances), the nightly run, alerts; the Postgres table's triggers with `PG_TEST_URL`.
+  - `engine/test/coinProgram.test.ts`: the program's scan feeding the ledger.
+- **Checked in Chromium** (local dev, the engine, GeckoTerminal and Jupiter stubbed in the page), at 1280px and 390px:
+  - `/admin` → Fee ledger: totals by source, a mismatch named, the latest rows.
+  - A Solana coin page quoting 0.05 SOL through Jupiter: route "Jupiter · iris", platform fee 0.5% in SOL, ARCDEX's
+    referral account at 50 bps in the request.
+  - No sideways scroll and no page errors.
+- Every new string is in all six dictionaries (69, and one reworded).
+- **Owner steps:**
+  1. Netlify (`arcsense-app`): `JUPITER_API_KEY` (from developers.jup.ag, marked secret) and
+     `VITE_JUP_REFERRAL_ACCOUNT` (ARCDEX's referral account from referral.jup.ag, with token accounts for SOL and USDC
+     at least). Redeploy.
+  2. Railway (arcdex-engine): `JUP_REFERRAL_ACCOUNT` (the same account), and optionally `ALERT_WEBHOOK_URL`.
+  3. Jupiter's referral fees build up in those token accounts; claim them from referral.jup.ag.
+
 ## Autotrade paused (2026-10-03)
 
 Owner: the platform becomes ARCSENSE (spot and futures trading), and "the auto trade functionality will have to be paused for now".

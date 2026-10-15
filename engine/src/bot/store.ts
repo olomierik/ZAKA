@@ -11,8 +11,9 @@ import { MemoryVoteStore, emptyCounts, isVoteKind, type VoteKind, type VoteStore
 import type { Signal } from './types'
 import type { User, UserStore } from './users'
 import type { AuditEntry, AuditStore } from '../site/tradeSwitch'
+import { MemoryFeeLedgerStore, type FeeLedgerStore, type FeeRow, type FeeSource, type ReconRow } from '../fees/ledger'
 
-export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore, AuditStore {
+export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore, AuditStore, FeeLedgerStore {
   readonly kind: 'memory' | 'postgres'
   saveSignal(s: Signal): void
   savePosition(p: Position): void
@@ -64,6 +65,12 @@ export class MemoryBotStore implements BotStore {
     return [...(this.trades.get(accountId)?.values() ?? [])].filter(p => before === undefined || (p.closedAt ?? 0) < before)
       .sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)).slice(0, limit).map(p => structuredClone(p))
   }
+  private fees = new MemoryFeeLedgerStore()
+  appendFees(rows: FeeRow[]) { return this.fees.appendFees(rows) }
+  feeRows(q: { limit: number; source?: FeeSource; sinceAt?: number }) { return this.fees.feeRows(q) }
+  allFees(source?: FeeSource) { return this.fees.allFees(source) }
+  appendRecon(r: ReconRow) { return this.fees.appendRecon(r) }
+  recons(limit: number) { return this.fees.recons(limit) }
 }
 
 const SCHEMA = `
@@ -93,6 +100,30 @@ drop trigger if exists arcdex_admin_audit_no_change on arcdex_admin_audit;
 create trigger arcdex_admin_audit_no_change before update or delete on arcdex_admin_audit for each row execute function arcdex_admin_audit_append_only();
 drop trigger if exists arcdex_admin_audit_no_truncate on arcdex_admin_audit;
 create trigger arcdex_admin_audit_no_truncate before truncate on arcdex_admin_audit for each statement execute function arcdex_admin_audit_append_only();
+-- The fee ledger (fees/ledger.ts): every fee ARCDEX collected, from on-chain evidence, and each nightly reconciliation.
+-- Append-only like the audit log: a row seen again is ignored (on conflict do nothing), nothing is changed or removed.
+create table if not exists arcdex_fee_ledger (
+  id text primary key, at timestamptz not null, chain text not null, source text not null, token text not null, symbol text not null,
+  amount numeric not null, amount_usd double precision, recipient text not null, tx text, block bigint, status text not null,
+  inserted_at timestamptz not null default now()
+);
+create index if not exists arcdex_fee_ledger_at on arcdex_fee_ledger (at desc);
+create index if not exists arcdex_fee_ledger_source on arcdex_fee_ledger (source, at);
+create table if not exists arcdex_fee_reconciliations (
+  id bigserial primary key, at timestamptz not null, source text not null, scope text not null,
+  ledger numeric not null, onchain numeric not null, diff numeric not null, ok boolean not null, detail jsonb not null
+);
+create index if not exists arcdex_fee_reconciliations_at on arcdex_fee_reconciliations (at desc);
+create or replace function arcdex_fee_append_only() returns trigger language plpgsql as $$
+begin raise exception '% is append-only', tg_table_name; end $$;
+drop trigger if exists arcdex_fee_ledger_no_change on arcdex_fee_ledger;
+create trigger arcdex_fee_ledger_no_change before update or delete on arcdex_fee_ledger for each row execute function arcdex_fee_append_only();
+drop trigger if exists arcdex_fee_ledger_no_truncate on arcdex_fee_ledger;
+create trigger arcdex_fee_ledger_no_truncate before truncate on arcdex_fee_ledger for each statement execute function arcdex_fee_append_only();
+drop trigger if exists arcdex_fee_recon_no_change on arcdex_fee_reconciliations;
+create trigger arcdex_fee_recon_no_change before update or delete on arcdex_fee_reconciliations for each row execute function arcdex_fee_append_only();
+drop trigger if exists arcdex_fee_recon_no_truncate on arcdex_fee_reconciliations;
+create trigger arcdex_fee_recon_no_truncate before truncate on arcdex_fee_reconciliations for each statement execute function arcdex_fee_append_only();
 `
 
 export class PostgresBotStore implements BotStore {
@@ -198,5 +229,48 @@ export class PostgresBotStore implements BotStore {
       ? await this.sql`select data from arcdex_paper_trades where account = ${accountId} order by closed_at desc limit ${limit}`
       : await this.sql`select data from arcdex_paper_trades where account = ${accountId} and closed_at < ${new Date(before)} order by closed_at desc limit ${limit}`
     return rows.map((r: { data: Position | string }) => (typeof r.data === 'string' ? JSON.parse(r.data) : r.data) as Position)
+  }
+
+  async appendFees(rows: FeeRow[]) {
+    await this.ready
+    let n = 0
+    for (const r of rows) {
+      const res = await this.sql`insert into arcdex_fee_ledger (id, at, chain, source, token, symbol, amount, amount_usd, recipient, tx, block, status)
+        values (${r.id}, ${new Date(r.at)}, ${r.chain}, ${r.source}, ${r.token}, ${r.symbol}, ${r.amount}::numeric, ${r.amountUsd}, ${r.recipient}, ${r.tx}, ${r.block}, ${r.status})
+        on conflict (id) do nothing returning id`
+      n += res.length
+    }
+    return n
+  }
+  private feeOf = (r: Record<string, unknown>): FeeRow => ({
+    id: String(r.id), at: new Date(r.at as Date).getTime(), chain: r.chain as FeeRow['chain'], source: r.source as FeeSource, token: String(r.token), symbol: String(r.symbol),
+    amount: String(r.amount), amountUsd: r.amount_usd === null ? null : Number(r.amount_usd), recipient: String(r.recipient), tx: (r.tx as string | null) ?? null,
+    block: r.block === null || r.block === undefined ? null : Number(r.block), status: r.status as FeeRow['status'],
+  })
+  async feeRows(q: { limit: number; source?: FeeSource; sinceAt?: number }) {
+    await this.ready
+    const since = new Date(q.sinceAt ?? 0)
+    const rows = q.source
+      ? await this.sql`select * from arcdex_fee_ledger where source = ${q.source} and at >= ${since} order by at desc, id limit ${q.limit}`
+      : await this.sql`select * from arcdex_fee_ledger where at >= ${since} order by at desc, id limit ${q.limit}`
+    return (rows as Record<string, unknown>[]).map(this.feeOf)
+  }
+  async allFees(source?: FeeSource) {
+    await this.ready
+    const rows = source ? await this.sql`select * from arcdex_fee_ledger where source = ${source}` : await this.sql`select * from arcdex_fee_ledger`
+    return (rows as Record<string, unknown>[]).map(this.feeOf)
+  }
+  async appendRecon(r: ReconRow) {
+    await this.ready
+    await this.sql`insert into arcdex_fee_reconciliations (at, source, scope, ledger, onchain, diff, ok, detail)
+      values (${new Date(r.at)}, ${r.source}, ${r.scope}, ${r.ledger}::numeric, ${r.onchain}::numeric, ${r.diff}::numeric, ${r.ok}, ${JSON.stringify(r.detail)}::jsonb)`
+  }
+  async recons(limit: number): Promise<ReconRow[]> {
+    await this.ready
+    const rows = await this.sql`select * from arcdex_fee_reconciliations order by at desc, id desc limit ${limit}`
+    return (rows as Record<string, unknown>[]).map(r => ({
+      at: new Date(r.at as Date).getTime(), source: r.source as ReconRow['source'], scope: String(r.scope), ledger: String(r.ledger), onchain: String(r.onchain),
+      diff: String(r.diff), ok: !!r.ok, detail: typeof r.detail === 'string' ? JSON.parse(r.detail) : (r.detail as Record<string, unknown>),
+    }))
   }
 }

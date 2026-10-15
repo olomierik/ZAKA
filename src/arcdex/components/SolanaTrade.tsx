@@ -467,7 +467,7 @@ export function SolanaWalletBar({ solBal }: { solBal?: number | null }) {
 }
 
 /** The note under the trade forms. */
-export const SOL_NOTE = () => T('Pay with SOL, USDC on Solana or USDC on Arc, and sell for any of them, through Relay. Every trade is checked and simulated before it’s sent, and approvals are for the exact amount.')
+export const SOL_NOTE = () => T('Pay with SOL, USDC on Solana or USDC on Arc, and sell for any of them: SOL and Solana USDC through Jupiter, USDC on Arc through Relay. Every trade is checked and simulated before it’s sent, and approvals are for the exact amount.')
 
 function Row({ label, value, color, sub }: { label: string; value: string; color?: string; sub?: string }) {
   return (

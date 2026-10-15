@@ -406,7 +406,12 @@ export class CoinProgram {
 
   private relayAt = 0
 
-  constructor(private o: { rpc: Rpc; settings: Settings; priceOf: (token: string) => number | null; feeSources?: string[]; liquidityTargets?: string[]; since?: string; burnLogs?: BurnLogReader; relayBalances?: (wallet: string) => Promise<RelayBalance[]> }) {
+  constructor(private o: {
+    rpc: Rpc; settings: Settings; priceOf: (token: string) => number | null; feeSources?: string[]; liquidityTargets?: string[]; since?: string; burnLogs?: BurnLogReader; relayBalances?: (wallet: string) => Promise<RelayBalance[]>
+    /** The fee ledger's writers (fees/service.ts): each batch of the fee wallet's logs, and each read of Relay's balance. */
+    onFeeLogs?: (logs: RawLog[], timeOf: (block: number) => number | null, ownTxs: Set<string>) => Promise<void> | void
+    onRelayBalances?: (balances: RelayBalance[], at: number) => Promise<void> | void
+  }) {
     this.burnLogs = o.burnLogs ?? scanBurnLogs
     this.ctx = {
       feeWallet: FEE_WALLET, coin: COIN,
@@ -491,6 +496,7 @@ export class CoinProgram {
     if (!this.state.startBlock || now - this.relayAt < RELAY.every) return
     this.relayAt = now
     const balances = await (this.o.relayBalances ?? fetchRelayBalances)(FEE_WALLET)
+    await Promise.resolve(this.o.onRelayBalances?.(balances, now)).catch(e => log.warn('coin program: Relay balance not ledgered', { error: errMsg(e) }))
     const { usd, next } = relayAccrued(this.state.relayBal ?? {}, balances)
     let s: ProgramState = { ...this.state, relayBal: next, relayUnclaimedUsd: r2(balances.reduce((t, b) => t + b.usd, 0)) }
     if (usd > 0) {
@@ -569,7 +575,12 @@ export class CoinProgram {
     })
     entries.sort((a, b) => a.block - b.block)
     this.state = apply(this.state, entries)
+    // The same logs, for the fee ledger: the fees in transactions the fee wallet didn't send.
+    await Promise.resolve(this.o.onFeeLogs?.(logs, b => timeOf.get(b) ?? null, new Set(mine))).catch(e => log.warn('coin program: fees not ledgered', { error: errMsg(e) }))
   }
+
+  /** The last block the program has read (0 before it has loaded). */
+  get scannedTo() { return this.state.startBlock ? this.state.scannedTo : 0 }
 
   /** The first block whose timestamp is at or after `ts` (seconds), or null while the chain is before it. */
   private async firstBlockAt(ts: number, head: number): Promise<number | null> {

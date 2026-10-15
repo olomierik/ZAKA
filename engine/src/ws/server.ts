@@ -65,6 +65,8 @@ import type { BondingBook } from '../market/bonding'
 import type { TradeSwitch } from '../site/tradeSwitch'
 import type { TrenchService } from '../trench/service'
 import { isTrenchChain } from '../../../api/_trenchProtocol'
+import type { FeeLedger, FeeSource } from '../fees/ledger'
+import type { FeeLedgerService } from '../fees/service'
 
 interface Conn { id: number; ip: string; subs: Set<string>; allowance: number; last: number }
 
@@ -93,6 +95,8 @@ export class DataApi {
   perps: PerpsService | null = null
   /** $ARCDEX buyback, burns and liquidity: the fee wallet's ledger (engine/src/coin/program.ts). */
   coin: CoinProgram | null = null
+  /** The fee ledger and its nightly reconciliation (engine/src/fees). */
+  fees: { ledger: FeeLedger; service: FeeLedgerService } | null = null
   /** Argus coins on their launch curve, with their progress by market cap (market/bonding.ts). */
   bonding: BondingBook | null = null
   /** The Trenches' live feed: every chain's launches, trades and smart wallets (trench/service.ts). */
@@ -317,6 +321,15 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
         if (!api.coin) return json(req, 503, { error: 'the program ledger is not running in this process' })
         return json(req, 200, api.coin.view(), 'public, max-age=15')
+      }
+      // The fee ledger (fees/ledger.ts): totals by source, the latest rows and reconciliations; every row is on-chain data.
+      if (url.pathname === '/v1/fees/summary' || url.pathname === '/v1/fees/ledger') {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        if (!api.fees) return json(req, 503, { error: 'the fee ledger is not running in this process' })
+        if (url.pathname === '/v1/fees/summary') return json(req, 200, await api.fees.ledger.summary(), 'public, max-age=30')
+        const source = url.searchParams.get('source') as FeeSource | null
+        const lim = Math.max(1, Math.min(500, Number(url.searchParams.get('limit')) || 100))
+        return json(req, 200, { rows: await api.fees.ledger.store.feeRows({ limit: lim, ...(source ? { source } : {}) }) }, 'public, max-age=30')
       }
       // Argus coins on their curve, closest to graduating first (market/bonding.ts).
       if (url.pathname === '/v1/bonding') {

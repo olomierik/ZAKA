@@ -19,7 +19,7 @@ import { DOLLAR_PLAN } from './bot/dollarPlan'
 import { every, keepAliveOnUnhandled, startWithRetry } from './lifecycle'
 import { randomBytes } from 'node:crypto'
 import { RedisClient } from 'bun'
-import { scanLogs, setLogEndpoints, type RawLog } from '../../api/_arcLogs'
+import { scanLogs, setLogEndpoints, type LogFilter, type RawLog } from '../../api/_arcLogs'
 import { POOL_MANAGER, V3_SWAP, V4_INITIALIZE, V4_SWAP } from '../../api/_arcSwaps'
 import type { ServerMessage } from '../../api/_marketProtocol'
 import { HttpRpc } from './chain/http'
@@ -52,7 +52,11 @@ import { Users } from './bot/users'
 import { Tiers } from './bot/tiers'
 import { MemoryBotStore, PostgresBotStore } from './bot/store'
 import { PerpsService } from './perps/service'
-import { CoinProgram } from './coin/program'
+import { CoinProgram, FEE_SOURCES, FEE_WALLET, fetchRelayBalances } from './coin/program'
+import { FeeLedger } from './fees/ledger'
+import { FeeLedgerService, webhookAlert } from './fees/service'
+import { JupiterFeeWatcher, type SolCall } from './fees/jupiterWatch'
+import { SOL_RPC_SERVER } from '../../api/_solCore'
 import { BondingBook } from './market/bonding'
 import { PostgresCandleStore } from './perps/store'
 import { MemoryCandleStore } from './perps/candles'
@@ -272,14 +276,55 @@ async function main() {
   const env = (name: string) => process.env[`COIN_${name}`] ?? process.env[`SENSE_${name}`]
   if (dataApi && !/^(0|off|false|no)$/i.test(env('PROGRAM')?.trim() ?? '')) {
     const list = (v: string | undefined) => (v ?? '').split(',').map(s => s.trim()).filter(s => /^0x[0-9a-fA-F]{40}$/.test(s))
+    // The fee ledger (fees/ledger.ts): every fee from on-chain evidence, append-only, reconciled every night.
+    const feeLedger = new FeeLedger(botStore, () => metrics.inc('fee_reconcile_mismatch'))
+    const jupRef = (process.env.JUP_REFERRAL_ACCOUNT ?? process.env.VITE_JUP_REFERRAL_ACCOUNT ?? '').trim()
+    const solCall: SolCall = async <T>(method: string, params: unknown[]) => {
+      let last: unknown = new Error('no Solana RPC')
+      for (const url of SOL_RPC_SERVER) {
+        try {
+          const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(15_000) })
+          const j = await r.json() as { result?: T; error?: { message?: string } }
+          if (j.error) throw new Error(j.error.message ?? 'rpc error')
+          return j.result as T
+        } catch (e) { last = e }
+      }
+      throw last
+    }
+    const jupiterFees = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(jupRef) ? new JupiterFeeWatcher({ referral: jupRef, call: solCall, ledger: feeLedger, settings: botStore }) : null
+    let programRef: CoinProgram | null = null
+    const feeSources = [...FEE_SOURCES, ...list(env('FEE_SOURCES'))]
+    const fees = new FeeLedgerService({
+      ledger: feeLedger, settings: botStore, wallet: FEE_WALLET, sources: feeSources,
+      scanArc: async (from, to) => {
+        const filter: LogFilter = { address: ['0x3600000000000000000000000000000000000000', '0xfffffffffffffffffffffffffffffffffffffffe'], topics: ['0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef', null, `0x${FEE_WALLET.slice(2).padStart(64, '0')}`] }
+        const r = await scanLogs(filter, from, to, { head: to, reduce: (logs: RawLog[]) => logs, deadline: Date.now() + 5 * 60_000 })
+        if (r.scannedTo < to) throw new Error(`scanned to ${r.scannedTo} of ${to}`)
+        return r.parts.flat()
+      },
+      ownTxs: async hashes => {
+        if (!hashes.length) return new Set()
+        const txs = await rpc.batch<{ from: string } | null>(hashes.map(h => ({ method: 'eth_getTransactionByHash', params: [h] })))
+        return new Set(hashes.filter((_, i) => txs[i]?.from?.toLowerCase() === FEE_WALLET))
+      },
+      arcScannedTo: () => programRef?.scannedTo ?? 0,
+      relayBalances: () => fetchRelayBalances(FEE_WALLET),
+      jupiter: jupiterFees,
+      alert: webhookAlert(process.env.ALERT_WEBHOOK_URL),
+    })
     const program = new CoinProgram({
       rpc, settings: botStore, priceOf: t => eng.tokens.get(t)?.priceUsd ?? null,
       // More contracts whose payments are fees (the futures contract on mainnet), and where liquidity goes.
       feeSources: list(env('FEE_SOURCES')),
       liquidityTargets: list(env('LIQUIDITY_TARGETS')),
+      onFeeLogs: (logs, timeOf, own) => fees.onArcLogs(logs, timeOf, own),
+      onRelayBalances: (balances, at) => fees.onRelayBalances(balances, at),
     })
+    programRef = program
     dataApi.coin = program
-    void program.start().catch(e => log.error('coin program: did not start', { error: errMsg(e) }))
+    dataApi.fees = { ledger: feeLedger, service: fees }
+    void program.start().then(() => fees.begin()).catch(e => log.error('coin program: did not start', { error: errMsg(e) }))
+    every(10 * 60_000, 'fee ledger', () => { void jupiterFees?.tick(); void fees.tick().catch(e => log.warn('fee ledger: reconciliation failed', { error: errMsg(e) })) })
   }
   // Every Argus coin on its launch curve and how close it is to graduating (market/bonding.ts), for the Near bond column.
   if (dataApi) { const book = new BondingBook({ rpc, engine: eng }); dataApi.bonding = book; book.start() }

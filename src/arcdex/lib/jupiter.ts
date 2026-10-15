@@ -196,7 +196,9 @@ export async function getJupOrder(a: JupAsk, f: Fetch = fetch): Promise<JupOrder
   } catch { throw new JupiterUnavailable('Jupiter did not answer') }
   if (r.status === 503 || r.status === 429 || r.status === 502 || r.status === 404) throw new JupiterUnavailable(`Jupiter unavailable (${r.status})`)
   const body = await r.json().catch(() => null) as unknown
-  if (!r.ok) throw new JupiterError(String((body as { error?: string } | null)?.error ?? `Jupiter answered ${r.status}`).slice(0, 200))
+  // Not JSON: the site has no Jupiter route here (local dev, a page served in its place).
+  if (body === null || typeof body !== 'object') throw new JupiterUnavailable(`Jupiter unavailable (not JSON, ${r.status})`)
+  if (!r.ok) throw new JupiterError(String((body as { error?: string }).error ?? `Jupiter answered ${r.status}`).slice(0, 200))
   return checkJupOrder(body, a)
 }
 
