@@ -33,6 +33,8 @@ jobs:
         run: bun scripts/check-csp.ts
       - name: Trade switch (site side)
         run: bun scripts/test-trade-switch.ts
+      - name: Fees (level, fee wallet, owner control)
+        run: bun scripts/test-fees.ts
 
   engine:
     name: Engine (typecheck, tests)

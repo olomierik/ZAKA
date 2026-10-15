@@ -2,7 +2,10 @@
 // engine/src/site/tradeSwitch.ts). Anyone can open it and see what's off; only an admin wallet (ADMIN_EVM_ADDRESSES on the
 // engine, else the owner's) can change it, by signing the change. Each change is applied at once and written to the
 // engine's append-only audit log. GLOBAL_KILL_SWITCH / KILL_SWITCH_VENUES on Railway do the same without a wallet.
-import { useCallback, useState } from 'react'
+//
+// Fees: every fee ARCDEX takes and where it goes (D2/D4 in docs/REPO_MAP.md). The Arc routers' fee is on-chain; their
+// owner lowers it to 0.5% from here (lib/routerFees.ts), the change simulated as that wallet before it signs.
+import { useCallback, useEffect, useState } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
 import { TRADE_VENUES, TRADE_VENUE_LABEL, type TradeScope } from '../../../api/_marketProtocol'
 import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
@@ -10,6 +13,11 @@ import { t as T } from '../lib/i18n'
 import { useEmbeddedAddress } from '../lib/identity'
 import { readTradeSwitch, sendTradeSwitch, useTradeSwitch } from '../lib/tradeSwitch'
 import { engineApiUrl } from '../api/marketStream'
+import { BRIDGE_FEE_BPS } from '../lib/bridgeKit'
+import { DEFAULT_FEE_WALLET, FEE_WALLET, SPOT_FEE_BPS, ARC_EXPLORER } from '../lib/platform'
+import { atTarget, readRouterFee, routersInForce, setRouterFee, TARGET_FEE_BPS, type RouterFee } from '../lib/routerFees'
+import { pct } from '../lib/routerInfo'
+import { SN_FEE } from '../starknet/net'
 
 const SCOPES: TradeScope[] = ['all', ...TRADE_VENUES]
 const label = (s: TradeScope) => (s === 'all' ? T('Every venue') : TRADE_VENUE_LABEL[s])
@@ -87,6 +95,8 @@ export default function AdminPage() {
         </section>
       )}
 
+      <AdminFees embedded={embedded} address={address ?? null} signer={signer} />
+
       {!!state?.history?.length && (
         <section className="spot-panel rt-health">
           <strong>{T('Recent changes')}</strong>
@@ -96,5 +106,97 @@ export default function AdminPage() {
         </section>
       )}
     </div>
+  )
+}
+
+const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
+
+/** Every fee ARCDEX takes, where it goes, and the Arc routers' owner control. */
+function AdminFees({ embedded, address, signer }: { embedded: `0x${string}` | null; address: `0x${string}` | null; signer: 'embedded' | 'connected' }) {
+  const [routers, setRouters] = useState<RouterFee[] | null>(null)
+  const [readErr, setReadErr] = useState('')
+  const [busy, setBusy] = useState<string | null>(null)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const from = signer === 'embedded' ? embedded : address
+  const kind = signer === 'embedded' ? 'trading-wallet' as const : 'wallet' as const
+
+  const load = useCallback(() => {
+    setReadErr('')
+    Promise.all(routersInForce().map(readRouterFee)).then(setRouters, (e: unknown) => setReadErr(e instanceof Error ? e.message.split('\n')[0] : String(e)))
+  }, [])
+  useEffect(load, [load])
+
+  async function lower(r: RouterFee) {
+    if (!from) return
+    setMsg(null); setBusy(r.address)
+    try {
+      const hash = await setRouterFee(r, TARGET_FEE_BPS, from, kind)
+      setMsg({ ok: true, text: T('{name}’s fee is now {pct}.', { name: r.name, pct: pct(TARGET_FEE_BPS) }) + ` ${short(hash)}` })
+      load()
+    } catch (e) {
+      const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
+      setMsg({ ok: false, text: m.split('\n')[0].slice(0, 220) })
+    } finally { setBusy(null) }
+  }
+
+  const walletMoved = FEE_WALLET !== DEFAULT_FEE_WALLET
+  return (
+    <section className="spot-panel rt-health">
+      <div className="rt-health-h">
+        <strong>{T('Fees')}</strong>
+        <button className="btn-ghost" onClick={load}>{T('Read again')}</button>
+      </div>
+      <p className="fx-fine" style={{ margin: 0 }}>
+        {T('Spot fee: {pct} everywhere (owner’s decision, 2026-10-15). Fees off Arc are set by the site; the Arc routers’ fee is on-chain and only their owner can change it.', { pct: pct(SPOT_FEE_BPS) })}
+      </p>
+      <div className="rt-health-grid rt-fees">
+        {(routers ?? []).map(r => {
+          const isOwner = !!from && from.toLowerCase() === r.owner.toLowerCase()
+          const walletOff = r.feeWallet.toLowerCase() !== FEE_WALLET
+          return (
+            <div key={r.address} className={`rt-prov ${atTarget(r) && !walletOff ? 'up' : 'warn'}`}>
+              <span className="rt-dot" aria-hidden />
+              <div>
+                <strong>{r.name}</strong>
+                <small>{T('Fee {pct} · referrers {share} of it', { pct: pct(r.feeBps), share: pct(r.referralShareBps) })}</small>
+              </div>
+              {!atTarget(r) && (
+                <button className="btn-ghost" disabled={!!busy || !isOwner} title={isOwner ? undefined : T('Sign with the router’s owner ({owner}) to change it.', { owner: short(r.owner) })}
+                  onClick={() => void lower(r)}>
+                  {busy === r.address ? T('Check your wallet…') : T('Set to {pct}', { pct: pct(TARGET_FEE_BPS) })}
+                </button>
+              )}
+              <small className="rt-detail">
+                {T('Owner')} <a href={`${ARC_EXPLORER}/address/${r.owner}`} target="_blank" rel="noreferrer">{short(r.owner)}</a>
+                {' · '}{T('Fee wallet')} <a href={`${ARC_EXPLORER}/address/${r.feeWallet}`} target="_blank" rel="noreferrer">{short(r.feeWallet)}</a>
+                {walletOff && <> · {T('not the site’s fee wallet: its owner changes it with setFeeWallet')}</>}
+              </small>
+            </div>
+          )
+        })}
+        <div className="rt-prov up">
+          <span className="rt-dot" aria-hidden />
+          <div><strong>{T('Solana, BNB Chain, Robinhood Chain')}</strong><small>{T('Fee {pct} (Relay and Across app fees)', { pct: pct(SPOT_FEE_BPS) })}</small></div>
+        </div>
+        <div className={`rt-prov ${SN_FEE ? 'up' : 'warn'}`}>
+          <span className="rt-dot" aria-hidden />
+          <div><strong>Starknet</strong><small>{SN_FEE ? T('Fee {pct} (AVNU integrator fee)', { pct: pct(SN_FEE.bps) }) : T('No fee: set VITE_STARKNET_FEE_RECIPIENT (a Starknet address) on Netlify')}</small></div>
+        </div>
+        <div className="rt-prov up">
+          <span className="rt-dot" aria-hidden />
+          <div><strong>{T('Bridge')}</strong><small>{T('Fee {pct}, $0.05 to $50 (90% to the fee wallet, 10% to Circle)', { pct: pct(BRIDGE_FEE_BPS) })}</small></div>
+        </div>
+        <div className="rt-prov up">
+          <span className="rt-dot" aria-hidden />
+          <div><strong>ArcLaunchpad</strong><small>{T('1% a trade and 40% of creator tax, fixed in the contract; $3 a launch')}</small></div>
+        </div>
+      </div>
+      <div className="fx-fine">
+        {T('Fee wallet (VITE_FEE_RECIPIENT_EVM)')}: <a href={`${ARC_EXPLORER}/address/${FEE_WALLET}`} target="_blank" rel="noreferrer">{short(FEE_WALLET)}</a>
+        {walletMoved ? '' : ` · ${T('the default')}`}
+      </div>
+      {readErr && <div role="status" style={{ color: 'var(--red)', fontSize: '0.82rem' }}>{T('Couldn’t read the routers: {why}', { why: readErr })}</div>}
+      {msg && <div role="status" style={{ color: msg.ok ? 'var(--green)' : 'var(--red)', fontSize: '0.82rem' }}>{msg.text}</div>}
+    </section>
   )
 }

@@ -5,7 +5,7 @@
 //     second, with Solana's fees paid by Relay. A sale is signed on Solana and its USDC lands on Arc.
 //   • SOL, or USDC on Solana (2026-10-05, owner: "users with Solana wallets can't buy"): a swap on Solana alone, signed
 //     by the Solana wallet (Phantom/Solflare/Backpack, or the trading wallet's own Solana key). No Arc wallet needed.
-// ARCDEX's fee (the swap router's, 2%) is Relay's app fee.
+// ARCDEX's fee (0.5%, SPOT_FEE_BPS in lib/platform.ts) is Relay's app fee.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatUnits, parseUnits } from 'viem'
@@ -13,10 +13,10 @@ import { openConnectModal } from './ConnectWallet'
 import { PasscodeField, useWithdrawGuard } from './WithdrawGuard'
 import { useTrader } from '../lib/identity'
 import { useCash } from '../lib/usdc'
-import { useRouterInfo, pct } from '../lib/routerInfo'
+import { pct } from '../lib/routerInfo'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { onBalances } from '../lib/balances'
-import { ARC_EXPLORER, FEE_WALLET } from '../lib/platform'
+import { ARC_EXPLORER, FEE_WALLET, SPOT_FEE_BPS } from '../lib/platform'
 import { solBalance, solTokenBalance, solTx, solAccount, SELL_GAS_SOL, SOL_USDC, type SolHolding } from '../lib/solana'
 import { connectSolanaWallet, disconnectSolanaWallet, pickSolSigner, useSolanaWallets, type SolanaWallets, type SolSigner } from '../lib/solanaWallet'
 import { getRelayQuote, QUOTE_LIMITS, quoteVerdict, relayValue, relayValueUsd, SOL_NATIVE, type RelayQuote, type RelayRequest } from '../lib/relayQuote'
@@ -70,8 +70,7 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
   const trader = useTrader()
   const me = trader.address
   const sol = useSolanaWallets()
-  const info = useRouterInfo()
-  const feeBps = info?.feeBps ?? 200
+  const feeBps = SPOT_FEE_BPS
   const [mode, setMode] = useState<'buy' | 'sell'>(side ?? initialMode ?? 'buy')
   const signer = solSignerOf(sol, trader.kind)
   const solAddr = signer === 'trading' ? sol.trading : signer === 'external' ? sol.external?.address ?? null : null

@@ -593,7 +593,7 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
 - **Files in `public/`:** `arcdex-whitepaper.pdf`, `arcdex-whitepaper-x.png` (also the link-preview image) and `arcdex-roadmap-x.png`. They're committed, not built, so regenerate them after editing the whitepaper or the roadmap:
   - build, run `vite preview --port 4173`, then `node scripts/whitepaper-assets.mjs` (options in its header);
   - check the PDF has no near-empty page (v1.0 is 8 pages).
-- **Phase 1 needs the owner:** the 2% → 1% swap fee is `setFeeBps(100)` on the swap router (owner key), and cashback is paid from the fee wallet. The site doesn't do either by itself.
+- **Phase 1 needs the owner:** the swap fee cut (now 2% → 0.5%, the owner's decision D2 on 2026-10-15) is `setFeeBps(50)` on both Arc routers, by their owners, from `/admin` → Fees ("Fees: 0.5% on spot" below). Cashback is paid from the fee wallet. The site doesn't do either by itself.
 
 ## Speed + live data (2026-09-25)
 
@@ -1782,7 +1782,7 @@ Owner: "we have no users; compare us with DexScreener on platform quality and ho
 - **Engine:** `engine/Dockerfile` copies `api/trending.ts` and `api/coinmeta.ts`, and `railway.toml` watches them. **Add both to the service's own Watch Paths on Railway.**
   - Railway's service doesn't watch `api/_argusCore.ts` or `api/trending.ts` either: 47862dd, which changed only those, never deployed (the engine stayed on 019452d). The next commit touched `engine/README.md` to ship it. Copy `railway.toml`'s `watchPatterns` into the service's Watch Paths.
 - **Not changed, for the owner (switching costs a screener user feels):**
-  - **The 2% fee** is about twice what trading terminals charge (around 1%); Uniswap direct is only the pool's fee. The roadmap's Phase 1 already plans `setFeeBps(100)` on the swap router (owner key).
+  - **The 2% fee** is about twice what trading terminals charge (around 1%); Uniswap direct is only the pool's fee. Since 2026-10-15 the plan is 0.5% (D2): `setFeeBps(50)` on both Arc routers, by their owners ("Fees: 0.5% on spot").
   - **The name:** the domain is arcsense.site and the brand ARCDEX. arcdex.online now points at Netlify, so making it the primary domain (Netlify → Domain management) would match.
   - **Phone wallets:** no WalletConnect project id (cloud.reown.com), so phone wallets can't connect by QR code.
   - **Card deposits** aren't live (Circle key).
@@ -2114,6 +2114,52 @@ decisions D1–D5), then the security baseline it called for first.
     site gate ignoring "everything off", 6 checks fail.
 - **Owner setup (Railway, arcdex-engine):** optionally `ADMIN_EVM_ADDRESSES` (comma-separated). Until it's set, the
   owner wallet (`BOT_OWNER_ADDRESS`) is the admin.
+
+## Fees: 0.5% on spot, the fee wallet from env (2026-10-15)
+
+The owner's decisions D2 ("0.5% everywhere" on spot) and D4 (keep `0x2742…86Bb` for now, but the fee recipient and the
+admins in environment variables, so a move to a multisig is a setting) in `docs/REPO_MAP.md`.
+
+- **Off Arc, in the site's code (live on the next deploy):** Relay's app fee (Solana, BNB Chain, and the Solana-wallet
+  account) and Across's (Robinhood Chain) are `SPOT_FEE_BPS` = 50 in `lib/platform.ts`. Before, those widgets copied the
+  Arc swap router's `feeBps` (2%, `?? 200` while unread). Deposits and withdrawals through Relay stay 0.5% (the bridge's).
+- **On Arc, on-chain (needs the owners):** ArcDexSwapRouter and ArcDexCurveRouter were deployed at 2% (their constructor
+  sets it) and only their owner can lower it: `setFeeBps(50)`. The swap widget, the Universal Router routes (they read
+  the swap router's fee) and the curve routes follow the chain, so nothing else changes.
+  - **`/admin` → Fees (`lib/routerFees.ts`):** each router's fee, referral share, owner and fee wallet, read from the
+    chain; "Set to 0.5%" for the router's owner, signed by the trading wallet or a connected wallet. The change is
+    refused before signing for a wallet that isn't the owner (it says whose it is) or a fee over the router's 2% cap, and
+    is simulated as that wallet first. The swap router's owner is the deploy wallet `0x414B…C3dA`; the curve router's
+    is the wallet that deployed it from `/deploy/curve-router`.
+  - From a terminal instead: `cast send <router> "setFeeBps(uint256)" 50 --rpc-url https://rpc.mainnet.arc.io --interactive`
+    (it asks for the key; never put it in the command).
+  - `/routes` shows the Arc rows' fee as read from the routers, so it says 2% until the owners sign.
+- **Starknet:** 0.5% by default once `VITE_STARKNET_FEE_RECIPIENT` (a Starknet address) is set; `VITE_STARKNET_FEE_BPS`
+  still overrides it. Without a recipient there's no fee (ARCDEX's fee wallet is an EVM address).
+- **Not changed:** ArcLaunchpad's 1% and 40% of creator tax are fixed in its contract; the $3 launch fee; the bridge's
+  0.5% ($0.05–$50); Hyperliquid's builder fee (perps, not spot); four.meme curve trades (no ARCDEX fee); a new curve
+  router deployed from `/deploy/curve-router` still starts at 2% (the contract's constructor) and is then set from `/admin`.
+- **The fee wallet (D4):**
+  - **Site:** `VITE_FEE_RECIPIENT_EVM` on Netlify (`FEE_WALLET` in `lib/platform.ts`): Relay and Across app fees, the
+    bridge fee, the $3 launch fee, Hyperliquid's builder address, a new curve router's fee wallet, and the fee-wallet
+    views. The Across edge function reads the same variable, so the proxy accepts the new recipient.
+  - **Engine:** `FEE_RECIPIENT_EVM` on Railway (`engine/src/feeWallet.ts`): the live bots' 15% profit fee and the
+    $ARCDEX program's fee wallet, and a new futures deployment's.
+  - Unset or not an address, both keep `0x2742…86Bb`, so a typo never sends fees elsewhere (the engine logs a warning).
+  - **Set both to the same wallet.** The Arc routers' own fee wallet is on-chain: their owner changes it with
+    `setFeeWallet` (`/admin` flags a router whose fee wallet isn't the site's).
+  - **Before moving it to a multisig:** Relay pays app fees out on a claim signed by the recipient, and Hyperliquid
+    needs the builder address to sign and hold $100 in its perps account; check both work from the new wallet. A new
+    builder address also means traders approve it again.
+  - Admins were already in env: `ADMIN_EVM_ADDRESSES` (the trade switch, above).
+- **Checked:**
+  - In Chromium with Arc's RPC answered in the page (Multicall3 included): `/admin` → Fees at 1280px and 390px, with
+    both routers at 2%, "Set to 0.5%" disabled for a wallet that isn't the owner (the tooltip names it), every venue's
+    fee, the fee wallet, no sideways scroll and no page errors. `/routes`: the Arc rows at the routers' 2%, Relay and
+    Across at 0.5%.
+  - Tests: `bun scripts/test-fees.ts` (in CI: the level, `/routes`, the fee wallet from env, the owner control's
+    refusals), `bun scripts/test-robinhood.ts` (the Across proxy follows the fee wallet), `engine/test/feeWallet.test.ts`.
+- **Roadmap:** Phase 1's "Swap fee cut from 2% to 1%" now reads 0.5%, in every language.
 
 ## Autotrade paused (2026-10-03)
 

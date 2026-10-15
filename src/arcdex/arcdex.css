@@ -2718,6 +2718,10 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .rt-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted); display: inline-block; flex-shrink: 0; }
 .rt-prov.up .rt-dot, .rt-dot.up { background: var(--green); box-shadow: 0 0 0 3px rgba(14,203,129,0.18); }
 .rt-prov.down .rt-dot, .rt-dot.down { background: var(--red); box-shadow: 0 0 0 3px rgba(246,70,93,0.18); }
+.rt-prov.warn .rt-dot { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-bg); }
+/* /admin's fee tiles carry sentences: wider tiles, and their lines wrap instead of being cut. */
+.rt-fees { grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.rt-fees .rt-prov > div small { white-space: normal; }
 .rt-group h2 { font-size: 1rem; font-weight: 600; margin: 6px 0 8px; }
 .rt-table { background: var(--bg-2); border-radius: 8px; overflow: hidden; }
 .rt-row { display: grid; grid-template-columns: minmax(0, 2.6fr) minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 0.7fr); gap: 12px; padding: 10px 14px; border-top: 1px solid var(--adx-border); font-size: 0.82rem; align-items: start; }

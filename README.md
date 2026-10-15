@@ -58,6 +58,7 @@ Public values (`VITE_*`) ship inside the page. Secrets live in Netlify or Railwa
 | `VITE_WC_PROJECT_ID` | WalletConnect (phone wallets by QR code) |
 | `VITE_ACROSS_INTEGRATOR_ID` | Across integrator id |
 | `VITE_HL_NETWORK`, `VITE_HL_BUILDER_PERP`, `VITE_HL_BUILDER_OUTCOME` | Hyperliquid network and ARCDEX's builder fees |
+| `VITE_FEE_RECIPIENT_EVM` | The fee wallet for fees the site sets, and the one the Across proxy accepts; `0x2742…86Bb` if unset. Set the engine's `FEE_RECIPIENT_EVM` to the same |
 
 **Switches, off unless the owner turns them on:**
 
@@ -65,7 +66,7 @@ Public values (`VITE_*`) ship inside the page. Secrets live in Netlify or Railwa
 |---|---|
 | `VITE_HL_TRADING=on` | Orders, deposits and withdrawals on Hyperliquid |
 | `VITE_STARKNET_SWAPS=on` | Sending Starknet swaps |
-| `VITE_STARKNET_FEE_RECIPIENT`, `VITE_STARKNET_FEE_BPS` | ARCDEX's fee on Starknet swaps (a Starknet address, 1–200 bps) |
+| `VITE_STARKNET_FEE_RECIPIENT`, `VITE_STARKNET_FEE_BPS` | ARCDEX's fee on Starknet swaps (a Starknet address; 50 bps, i.e. 0.5%, unless set, 1–200) |
 
 **Netlify secrets (edge functions):** `ACROSS_API_KEY`, `ACROSS_INTEGRATOR_ID`.
 
@@ -79,6 +80,7 @@ Public values (`VITE_*`) ship inside the page. Secrets live in Netlify or Railwa
 | `WS_ALLOWED_ORIGINS`, `TRUST_PROXY`, `LOG_LEVEL` | Origins, proxy headers, logging |
 | `COINGECKO_API_KEY` | Optional GeckoTerminal key (dedicated rate limit) |
 | `AUTOTRADE_PAUSED` | On by default: bots open no new trades |
+| `FEE_RECIPIENT_EVM` | The fee wallet for the live bots' profit fee and the $ARCDEX program; `0x2742…86Bb` if unset |
 | `ADMIN_EVM_ADDRESSES` | Admin wallets (comma-separated) that may sign the trade switch at `/admin`; the owner (`BOT_OWNER_ADDRESS`) if unset |
 | `GLOBAL_KILL_SWITCH=true`, `KILL_SWITCH_VENUES` | Turn trading off everywhere, or on listed venues (`arc,solana,…`), without a wallet; only removing them turns it back on |
 | `BOT_*`, `BOT_WALLET_SECRET`, `AUTH_SECRET` | Autotrade (paused) |
@@ -104,7 +106,7 @@ bun run engine:test
 forge test
 ```
 
-Offline tests run on recorded answers: `bun scripts/test-<name>.ts`. Among them are `test-trenches`, `test-rpc-settings`, `test-paper`, `test-alerts`, `test-starknet`, `test-hyperliquid`, `test-routes`, `test-robinhood`, `test-solana`, `test-bsc`, `test-xsol`, `test-dex-parity`, `test-chunk-reload`, `test-withdraw-guard`, `test-wallet-2fa` and `test-trade-switch`.
+Offline tests run on recorded answers: `bun scripts/test-<name>.ts`. Among them are `test-trenches`, `test-rpc-settings`, `test-paper`, `test-alerts`, `test-starknet`, `test-hyperliquid`, `test-routes`, `test-robinhood`, `test-solana`, `test-bsc`, `test-xsol`, `test-dex-parity`, `test-chunk-reload`, `test-withdraw-guard`, `test-wallet-2fa` `test-trade-switch` and `test-fees`.
 
 Live checks touch real networks and send nothing. They use `eth_call` / `simulateTransactions` with state overrides, or quotes only:
 - `check-avnu`, `check-hyperliquid` (needs `VITE_HL_TRADING=on`), `check-rh-swaps`, `check-solana-sale`.

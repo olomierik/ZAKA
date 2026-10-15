@@ -48,16 +48,16 @@ price alerts, a social layer and (paused) Autotrade bots.
 
 | Chain | Venue | Code | Platform fee |
 |---|---|---|---|
-| Arc | ArcDexSwapRouter (v3/v4), ArcDexCurveRouter (Mercuri, SolonPad curves), Uniswap Universal Router (native-USDC pools) | `components/ArgusSwapWidget.tsx`, `api/argusMarket.ts`, `api/curves.ts`, `api/universalRouter.ts` | 2% on-chain (`feeBps` 200, owner-settable, cap 2%) |
+| Arc | ArcDexSwapRouter (v3/v4), ArcDexCurveRouter (Mercuri, SolonPad curves), Uniswap Universal Router (native-USDC pools) | `components/ArgusSwapWidget.tsx`, `api/argusMarket.ts`, `api/curves.ts`, `api/universalRouter.ts` | 2% on-chain (`feeBps` 200, owner-settable, cap 2%); 0.5% once the owners sign `setFeeBps(50)` at `/admin` |
 | Arc | ArcLaunchpad curve | `components/CurveSwapWidget.tsx` | 1% + creator tax (immutable contract) |
-| Robinhood Chain | Across, from Arc USDC | `lib/acrossQuote.ts`, `components/RobinhoodTrade.tsx` | 2% (Across app fee) |
-| Solana | Relay (SOL, Solana USDC or Arc USDC) | `lib/relayQuote.ts`, `components/SolanaTrade.tsx` | 2% (Relay app fee) |
-| BNB Chain | four.meme curve, Relay | `lib/fourMeme.ts`, `components/BscTrade.tsx` | 2% |
-| Starknet | AVNU | `src/arcdex/starknet/` | `VITE_STARKNET_FEE_BPS` (default 0) |
+| Robinhood Chain | Across, from Arc USDC | `lib/acrossQuote.ts`, `components/RobinhoodTrade.tsx` | 0.5% (Across app fee; 2% until 2026-10-15) |
+| Solana | Relay (SOL, Solana USDC or Arc USDC) | `lib/relayQuote.ts`, `components/SolanaTrade.tsx` | 0.5% (Relay app fee; 2% until 2026-10-15) |
+| BNB Chain | four.meme curve, Relay | `lib/fourMeme.ts`, `components/BscTrade.tsx` | 0.5% through Relay; none on four.meme's curve |
+| Starknet | AVNU | `src/arcdex/starknet/` | 0.5% once `VITE_STARKNET_FEE_RECIPIENT` is set (`VITE_STARKNET_FEE_BPS` overrides) |
 | Hyperliquid | Hyperliquid API, signed in the browser | `src/arcdex/hl/` | builder fee (`VITE_HL_BUILDER_*`); trading behind `VITE_HL_TRADING` |
 | Bridge | Circle CCTP v2 (Bridge Kit) | `lib/bridgeKit.ts` | 0.5% (90% to the platform) |
 
-Every fee goes to the EOA `0x2742…86Bb`. Quotes from Relay and Across are checked before signing (recipient, amounts,
+Every fee goes to the EOA `0x2742…86Bb` (since 2026-10-15 from `VITE_FEE_RECIPIENT_EVM` / `FEE_RECIPIENT_EVM`, with that as the default). Quotes from Relay and Across are checked before signing (recipient, amounts,
 that the fee is ARCDEX's: `relayQuote.ts`, `acrossQuote.ts`). Trades are simulated before sending; approvals are exact;
 min-out is enforced on-chain; price impact over 15% needs a tick box.
 
@@ -83,8 +83,8 @@ CI. `bunx tsc --noEmit` fails on `scripts/compass-deploy.ts` (missing `@circlefi
 | Chains: Solana, BNB, Ethereum, Arbitrum, Arc | Arc, Robinhood Chain, Solana, BNB, Starknet, Hyperliquid | No spot trading on Ethereum or Arbitrum (they appear only as bridge chains) |
 | Solana via Jupiter Swap API V2 + Jito | Solana via Relay, paid from Arc USDC, SOL or Solana USDC | No Jupiter, no Jito; trades go through Relay's solver |
 | EVM via Uniswap API / aggregator | Arc: own routers and Uniswap contracts; BNB: four.meme and Relay; Robinhood: Across | No aggregator for Ethereum/Arbitrum |
-| 0.5% flat fee, in the trade | 2% spot, 1% launchpad, 0.5% bridge | Fee level differs; in-trade capture exists on every venue |
-| Fee recipient: treasury multisig from env | EOA `0x2742…86Bb`, hard-coded in several places | No multisig; recipient not from env everywhere |
+| 0.5% flat fee, in the trade | 0.5% spot off Arc; 2% on the Arc routers until their owners sign; 1% launchpad, 0.5% bridge | *Partly closed 2026-10-15:* the Arc routers wait for `setFeeBps(50)`; the launchpad's 1% is immutable |
+| Fee recipient: treasury multisig from env | EOA `0x2742…86Bb`, from env since 2026-10-15 (site and engine) | No multisig yet (D4: a setting when it comes); the Arc routers' and launchpad's fee wallet is on-chain |
 | `fee_ledger` append-only + nightly reconciliation | Fee wallet activity read on-chain for the buyback program | No per-trade ledger, no reconciliation job |
 | `ExecutionProvider` interface | One module per venue; a route registry (`/routes`) | No common quote/prepare/submit interface |
 | Admin panel: nonce login, live sessions, fees, trades, audit, flags, kill switch | Signed owner controls for bots and the signal engine; Railway variables | No admin panel, audit log or feature-flag store |
@@ -184,9 +184,9 @@ Phase 0 closes when these are approved. Each changes what Phase 1 builds.
 | | Decision |
 |---|---|
 | D1 | **Privy** for sign-in and embedded EVM + Solana wallets, export hosted by Privy. Current trading-wallet users keep withdraw and export so they can move over. Arc support to be confirmed with Privy before it ships. |
-| D2 | **0.5% everywhere** on spot. The Arc routers change by an owner transaction (`setFeeBps(50)`); Relay and Across fees in code. |
+| D2 | **0.5% everywhere** on spot. The Arc routers change by an owner transaction (`setFeeBps(50)`); Relay and Across fees in code. *Done in code 2026-10-15 (`SPOT_FEE_BPS`); the routers wait for their owners, at `/admin` → Fees.* |
 | D3 | **Keep every current chain and add Ethereum and Arbitrum spot.** |
-| D4 | **Keep `0x2742…86Bb` for now**, but the fee recipient and the admin allowlist move to environment variables, so a later move to a multisig is a configuration change. |
+| D4 | **Keep `0x2742…86Bb` for now**, but the fee recipient and the admin allowlist move to environment variables, so a later move to a multisig is a configuration change. *Done 2026-10-15: `VITE_FEE_RECIPIENT_EVM` (site), `FEE_RECIPIENT_EVM` and `ADMIN_EVM_ADDRESSES` (engine).* |
 | D5 | Hosting and data as proposed: Netlify, Railway, Supabase. |
 
 ## 7. Order of work

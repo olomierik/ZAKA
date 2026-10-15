@@ -8,6 +8,7 @@ echo "== site typecheck";   bunx tsc --noEmit
 echo "== engine typecheck"; (cd engine && bunx tsc --noEmit -p .)
 echo "== security headers"; bun scripts/check-csp.ts
 echo "== trade switch";     bun scripts/test-trade-switch.ts
+echo "== fees";             bun scripts/test-fees.ts
 echo "== engine tests";     bun test engine/test
 if command -v gitleaks >/dev/null; then
   echo "== secrets"; gitleaks dir . --config .gitleaks.toml --no-banner --redact

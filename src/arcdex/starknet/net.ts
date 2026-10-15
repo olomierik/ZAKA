@@ -46,10 +46,11 @@ export const ETH = '0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e
 export const STARKNET_SWAPS = env.VITE_STARKNET_SWAPS === 'on'
 
 /** ARCDEX's fee on Starknet swaps, as AVNU's integrator fee: only once the owner names a Starknet address to receive
- * it (ARCDEX's fee wallet is an EVM address, which Starknet can't pay). */
+ * it (ARCDEX's fee wallet is an EVM address, which Starknet can't pay). 0.5% (D2) unless VITE_STARKNET_FEE_BPS says
+ * otherwise (at most 2%). */
 export const SN_FEE = (() => {
   const recipient = (env.VITE_STARKNET_FEE_RECIPIENT ?? '').trim()
-  const bps = Number(env.VITE_STARKNET_FEE_BPS ?? '0')
+  const bps = Number((env.VITE_STARKNET_FEE_BPS ?? '').trim() || '50')
   const ok = /^0x[0-9a-fA-F]{1,64}$/.test(recipient) && Number.isInteger(bps) && bps > 0 && bps <= 200
   return ok ? { recipient, bps } : null
 })()
