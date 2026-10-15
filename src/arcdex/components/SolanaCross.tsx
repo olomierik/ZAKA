@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { erc20Abi, formatUnits, parseUnits, type Address } from 'viem'
 import { openConnectModal } from './ConnectWallet'
-import { PasscodeField, useWithdrawGuard } from './WithdrawGuard'
+import { PasscodeField, WithdrawLimits, useWithdrawGuard } from './WithdrawGuard'
 import { SolanaWalletBar, solSignerOf } from './SolanaTrade'
 import { client as arcClient } from '../api/launchpad'
 import { solUsd } from '../api/solanaMarket'
@@ -205,14 +205,14 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
 
   // Money leaving the account for a Solana wallet that isn't its own asks as any other send does.
   const ownSol = !!solAddr && (solAddr === accountOwner() || solAddr === sol.trading)
-  const guard = useWithdrawGuard(trader, !paying && !ownSol && solAddr ? solAddr : '')
+  const guard = useWithdrawGuard(trader, !paying && !ownSol && solAddr ? solAddr : '', !paying && inputUsd > 0 ? inputUsd : 0)
   const noSolFees = paying && cur === 'usdc' && solBal !== null && solBal < 0.0005
   // A withdrawal of Arc's USDC pays its gas from the same USDC.
   const noGasToSell = mode === 'sell' && lowGas && (gas ?? 0) <= 0
   const noBuy = mode === 'buy' && !!buyBlocked
   // A sale needs the coin's decimals: unknown until the chain answers.
   const decimalsKnown = given != null || readDecimals !== null
-  const blocked = (!paying && !decimalsKnown) || busy || !quote || quoting || insufficient || refused || noBuy || (needsTick && !costOk) || noSolFees || noGasToSell || guard.missing
+  const blocked = (!paying && !decimalsKnown) || busy || !quote || quoting || insufficient || refused || noBuy || (needsTick && !costOk) || noSolFees || noGasToSell || guard.missing || guard.overLimit || guard.limitsLoading
 
   async function openAccount() {
     setOpening(true); setStep('idle'); setMsg('')
@@ -241,6 +241,7 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
       setMsg(res.status === 'pending' ? T('Still on its way: it lands by itself in a few minutes.')
         : paying ? T('Done: ≈{out} is in your ARCDEX account on {chain}.', { out: outText, chain: CHAIN_NAME[chainId] })
         : T('Done: ≈{out} is in your Solana wallet.', { out: outText }))
+      if (!paying) guard.record(res.tx, inputUsd, outText)
       setStep('done'); setAmount('')
       refresh(); refreshCash(); onDone?.()
     } catch (e) {
@@ -316,6 +317,7 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
       {noSolFees && <div className="rh-msg error">{T('Add a little SOL to this wallet first.')}</div>}
       {noGasToSell && <div className="rh-msg error">{T('Selling on {chain} needs a little {coin} for gas: buy with SOL once and it’s added, or deposit some.', { chain: CHAIN_NAME[chainId], coin: GAS_NAME[chainId] })}</div>}
       {noBuy && <div className="rh-msg error">{buyBlocked}</div>}
+      {!paying && <WithdrawLimits guard={guard} />}
       {!paying && <PasscodeField guard={guard} />}
 
       {msg && (

@@ -7,6 +7,8 @@ import RobinhoodHoldings from '../components/RobinhoodHoldings'
 import SolanaHoldings from '../components/SolanaHoldings'
 import BscHoldings from '../components/BscHoldings'
 import HlHoldings from '../components/HlHoldings'
+import WalletsCard from '../components/WalletsCard'
+import { flag } from '../lib/flags'
 import { hasStoredWallet } from '../lib/embeddedWallet'
 import { shortAddr, useTrader } from '../lib/identity'
 import { loadHoldings, type Holding } from '../lib/portfolio'
@@ -50,6 +52,8 @@ export default function Portfolio({ navigate }: Props) {
   const [bscValue, setBscValue] = useState(0)
   // And the Hyperliquid account: futures margin, positions and predictions (components/HlHoldings.tsx, 2026-10-11).
   const [hlValue, setHlValue] = useState(0)
+  // And Ethereum and Arbitrum, read by the wallets card (components/WalletsCard.tsx, 2026-10-15).
+  const [extraValue, setExtraValue] = useState(0)
   const seq = useRef(0)
 
   const load = useCallback(() => {
@@ -87,7 +91,7 @@ export default function Portfolio({ navigate }: Props) {
   }
 
   const coinsValue = (holdings ?? []).reduce((s, h) => s + h.valueUsd, 0)
-  const total = (cash ?? 0) + coinsValue + rhValue + solValue + bscValue + hlValue
+  const total = (cash ?? 0) + coinsValue + rhValue + solValue + bscValue + hlValue + extraValue
   const visible = (holdings ?? []).filter(h => showDust || h.valueUsd >= DUST_USD || h.priceUsd === 0)
   const dust = (holdings ?? []).length - visible.length
 
@@ -109,12 +113,18 @@ export default function Portfolio({ navigate }: Props) {
           {rhValue > 0 && <span>{T("Robinhood Chain")}: <b className="sensitive" style={{ color: 'var(--text)' }}>{money(rhValue)}</b></span>}
           {solValue > 0 && <span>Solana: <b className="sensitive" style={{ color: 'var(--text)' }}>{money(solValue)}</b></span>}
           {bscValue > 0 && <span>{T('BNB Chain')}: <b className="sensitive" style={{ color: 'var(--text)' }}>{money(bscValue)}</b></span>}
+          {extraValue > 0 && <span>{T('Ethereum and Arbitrum')}: <b className="sensitive" style={{ color: 'var(--text)' }}>{money(extraValue)}</b></span>}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           <button className="btn-primary" style={{ flex: 1, padding: '8px 12px' }} onClick={() => setModal('deposit')}>{T("Deposit")}</button>
           <button className="btn-ghost" style={{ flex: 1, padding: '8px 12px' }} onClick={() => setModal('withdraw')}>{T("Withdraw")}</button>
         </div>
       </div>
+
+      {flag('walletsCard') && (
+        <WalletsCard evm={me} onExtraValue={setExtraValue}
+          values={{ arcCash: cash, arcCoins: holdings === null ? null : coinsValue, bnb: bscValue, robinhood: rhValue, solana: solValue, hyperliquid: hlValue }} />
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <b style={{ fontSize: '0.95rem' }}>{T("Your coins")}</b>
@@ -170,7 +180,7 @@ export default function Portfolio({ navigate }: Props) {
         {sell && <TokenSwap key={sell.address} address={sell.address} pool={sell.pool ?? undefined} initialMode="sell"
           fallback={{ symbol: sell.symbol, image: sell.image, priceUsd: sell.priceUsd }} onTraded={afterTrade} />}
       </Sheet>
-      {send && <WithdrawModal trader={trader} asset={{ address: send.address, symbol: send.symbol, decimals: send.decimals }} onClose={() => setSend(null)} onSent={afterTrade} />}
+      {send && <WithdrawModal trader={trader} asset={{ address: send.address, symbol: send.symbol, decimals: send.decimals, priceUsd: send.priceUsd }} onClose={() => setSend(null)} onSent={afterTrade} />}
       {modal === 'deposit' && <DepositModal trader={trader} navigate={navigate} onClose={() => { setModal(null); refreshCash() }} />}
       {modal === 'withdraw' && <WithdrawModal trader={trader} onClose={() => { setModal(null); refreshCash() }} onSent={refreshCash} />}
     </div>

@@ -2843,3 +2843,39 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .sk-list small { font-size: 0.74rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sk-list code { font-size: 0.72rem; color: var(--text-muted); }
 @media (max-width: 767px) { .sk-amount { font-size: 1.35rem; } }
+
+/* Withdrawals (2026-10-15, the build pack's Phase 1): the limits line, address problems and the review step. */
+.wd-limits { display: flex; flex-direction: column; gap: 4px; font-size: 0.74rem; line-height: 1.45; color: var(--text-muted); padding: 8px 10px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--adx-card-border); }
+.wd-limits.over { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-line); }
+.wd-limits .link-btn { align-self: flex-start; font-size: 0.74rem; }
+.wd-error { font-size: 0.74rem; color: var(--red); }
+.wd-warn { font-size: 0.74rem; line-height: 1.45; color: var(--amber); padding: 8px 10px; border-radius: 8px; background: var(--amber-bg); border: 1px solid var(--amber-line); }
+.wd-review { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 10px; background: var(--bg-2); border: 1px solid var(--adx-card-border); }
+.wd-review > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 0.82rem; }
+.wd-review > div > span { color: var(--text-muted); flex-shrink: 0; }
+.wd-review > div > b { text-align: right; min-width: 0; }
+.wd-review .wd-addr { font-size: 0.74rem; overflow-wrap: anywhere; }
+
+/* Portfolio's wallets card (2026-10-15, the build pack's Phase 1): both addresses and every chain's balance. */
+.wl-card { padding: 14px 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px; }
+.wl-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.wl-head > b { font-size: 0.95rem; }
+.wl-head > span { font-size: 0.72rem; color: var(--text-muted); }
+.wl-addr { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--adx-card-border); }
+.wl-addr-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.wl-addr-top code { font-size: 0.84rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wl-kind { font-size: 0.64rem; font-weight: 700; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 4px; background: var(--accent-bg, rgba(42,109,244,.12)); color: var(--accent-text, var(--text)); flex-shrink: 0; }
+.wl-kind.sol { background: rgba(153,69,255,.14); color: #9945ff; }
+.wl-copy { margin-left: auto; font-size: 0.72rem; padding: 3px 8px; border-radius: 6px; cursor: pointer; background: transparent; color: var(--text-muted); border: 1px solid var(--adx-card-border); flex-shrink: 0; }
+.wl-copy:hover { color: var(--text); }
+.wl-same { display: flex; align-items: center; gap: 8px; font-size: 0.72rem; color: var(--text-muted); line-height: 1.4; }
+.wl-marks { display: inline-flex; gap: 2px; flex-shrink: 0; }
+.wl-muted { font-size: 0.74rem; color: var(--text-muted); }
+.wl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: 8px; }
+.wl-tile { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--adx-card-border); min-width: 0; }
+.wl-tile > div { flex: 1; min-width: 0; }
+.wl-tile.empty { opacity: 0.7; }
+.wl-tile-h { display: flex; justify-content: space-between; gap: 8px; font-size: 0.82rem; }
+.wl-tile small { display: block; font-size: 0.7rem; color: var(--text-muted); line-height: 1.35; overflow-wrap: anywhere; }
+.wl-notices { display: flex; flex-direction: column; gap: 4px; font-size: 0.72rem; color: var(--text-muted); border-top: 1px solid var(--adx-card-border); padding-top: 8px; }
+.wl-notices > b { color: var(--text); font-size: 0.78rem; }

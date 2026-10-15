@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatUnits, parseUnits } from 'viem'
 import { openConnectModal } from './ConnectWallet'
-import { PasscodeField, useWithdrawGuard } from './WithdrawGuard'
+import { PasscodeField, WithdrawLimits, useWithdrawGuard } from './WithdrawGuard'
 import { useTrader } from '../lib/identity'
 import { useCash } from '../lib/usdc'
 import { pct } from '../lib/routerInfo'
@@ -106,7 +106,7 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
   // The passcode rule (lib/funding.ts): a buy the trading wallet pays for on Arc, delivered to a Solana wallet app rather
   // than its own Solana address, is money leaving it.
   const elsewhere = route === 'arc' && trader.kind === 'trading-wallet' && signer === 'external'
-  const guard = useWithdrawGuard(trader, elsewhere ? solAddr ?? '' : '')
+  const guard = useWithdrawGuard(trader, elsewhere ? solAddr ?? '' : '', elsewhere && mode === 'buy' && Number(amount) > 0 ? Number(amount) : 0)
 
   const refreshSol = useCallback(() => {
     if (!solAddr) { setHolding(null); setSolBal(null); setUsdcSol(null); return }
@@ -192,7 +192,7 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
   // Solana's fees are SOL whichever way it pays: a sale, a swap with USDC, all need some.
   const noSolFees = (mode === 'sell' || route === 'usdc') && solBal !== null && solBal < 0.0003
   const missing: 'evm' | 'sol' | null = route === 'arc' ? (!me ? 'evm' : !solAddr ? 'sol' : null) : !solAddr ? 'sol' : null
-  const passcodeMissing = guard.missing && route === 'arc' && mode === 'buy'
+  const passcodeMissing = (guard.missing || guard.overLimit || guard.limitsLoading) && route === 'arc' && mode === 'buy'
   const blocked = busy || !!missing || !quote || quoting || insufficient || refused || noBuy || (needsCostTick && !costOk) || noSolFees || passcodeMissing
 
   const kind = trader.kind ?? 'wallet'
@@ -236,6 +236,7 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
       if (res.outTx && res.outTx !== res.tx) l.push({ label: T('Delivered'), href: mode === 'sell' && route === 'arc' ? arcTx(res.outTx) : solTx(res.outTx) })
       setLinks(l)
       if (res.status === 'filled') {
+        if (paidOnArc) guard.record(res.tx, Number(amount) || 0, `$${amount} (${symbol} on Solana)`)
         const done = mode === 'buy' ? T('Bought ≈{out}: it’s in your Solana wallet.', { out })
           : route === 'arc' ? T('Sold: ≈{out} USDC is back on Arc.', { out }) : T('Sold for ≈{out}: it’s in your Solana wallet.', { out })
         setAmount('')
@@ -346,6 +347,7 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
         </div>
       )}
       {noBuy && <div className="rh-msg error">{buyBlocked}</div>}
+      {guard.needsPasscode && route === 'arc' && mode === 'buy' && <WithdrawLimits guard={guard} />}
       {guard.needsPasscode && route === 'arc' && (mode === 'buy' || needsGas) && <PasscodeField guard={guard} />}
 
       {msg && (

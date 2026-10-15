@@ -21,12 +21,14 @@ const LOOK: Record<string, { bg: string; fg?: string; mark: string }> = {
   Solana: { bg: 'linear-gradient(135deg, #9945ff, #14f195)', mark: 'S' },
   Robinhood: { bg: '#ccff00', fg: '#0b0e11', mark: 'R' },
   BNB: { bg: '#f0b90b', fg: '#0b0e11', mark: 'B' },
+  HL: { bg: '#072723', fg: '#97fce4', mark: 'H' },
 }
 
 export function chainLabel(chain: string): string {
   if (chain === 'Arc') return 'Arc'
   if (chain === 'Robinhood') return 'Robinhood Chain'
   if (chain === 'BNB') return 'BNB Chain'
+  if (chain === 'HL') return 'Hyperliquid'
   return BRIDGE_CHAINS.find(c => c.chain === chain)?.label ?? chain
 }
 

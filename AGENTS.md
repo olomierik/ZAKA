@@ -2161,6 +2161,48 @@ admins in environment variables, so a move to a multisig is a setting) in `docs/
     refusals), `bun scripts/test-robinhood.ts` (the Across proxy follows the fee wallet), `engine/test/feeWallet.test.ts`.
 - **Roadmap:** Phase 1's "Swap fee cut from 2% to 1%" now reads 0.5%, in every language.
 
+## Phase 1: your wallets on every chain, and safer withdrawals (2026-10-15)
+
+The build pack's Phase 1 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`), the parts that don't wait on Privy. Status against its
+acceptance list: `docs/REPO_MAP.md` §8.
+
+- **Feature flags (`lib/flags.ts`):** `flag(name)` reads `VITE_FLAG_<NAME>` (`on` / `off`), else the default: `withdrawLimits` on, `walletsCard` on, `privy` off. A flag change takes effect on the next build.
+- **Your wallets (Portfolio, `components/WalletsCard.tsx`):**
+  - The EVM address with Copy, marked as the same address on Arc, Ethereum, Arbitrum, BNB Chain and Robinhood Chain.
+  - The Solana address (the trading wallet's, or the connected Solana wallet's).
+  - A tile per chain with what's held there:
+    - Arc's cash shows at once, and its coins join once priced;
+    - Ethereum and Arbitrum (D3) are read here (`lib/chainBalances.ts`): ETH and USDC by plain JSON-RPC from public nodes, the next node on failure, 6 seconds each. ETH is priced from Robinhood Chain's WETH/USDG pool.
+    - BNB Chain, Robinhood Chain, Solana and Hyperliquid come from Portfolio's own sections.
+  - Ethereum and Arbitrum count in Portfolio's total.
+  - Amounts stay in base units (bigint) until shown. Arc's native balance (18 decimals) and its USDC ERC-20 (6) are the same money (`arcUsdcSame`).
+  - The wallet's security notices.
+- **Withdrawals (`lib/withdrawPolicy.ts`, `components/WithdrawGuard.tsx`, `components/CashModals.tsx`):**
+  - **Checks as you type:** an address that isn't 0x + 40 hex, the zero address, the wallet itself, or a token's contract (USDC's, or the coin being sent) is refused. A contract address gets a warning. The amount must be above zero and no more than the wallet holds.
+  - **A review step:** what leaves, its worth, the full address, the network, and whether the address funded the wallet, was paid before, or is new. Then the passcode and Confirm.
+  - **Limits, wherever the passcode is asked** (the trading wallet sending anywhere but a wallet that funded it):
+    - a new address takes at most $250 (all new addresses together) until 24 hours after it's saved or first paid. "Save this address" starts its 24 hours.
+    - at most $2,500 a day leaves for such addresses.
+    - The numbers are `WITHDRAW_POLICY`.
+  - **Where the limits apply:** withdraw, sending a coin, Send cash, the bridge's Send from Arc, Solana and cross-chain sales paid elsewhere, and funding a live bot. A refusal says when the money can go, or how (in parts; back to the funding wallet, which has no limit).
+  - **The record:** kept in this browser, signed by the trading wallet's key (an edited one is dropped), and merged with the wallet's USDC sends read from Arc's logs. Clearing the browser doesn't reset the limits for what Arc's recent logs still hold.
+  - **Notices:** each send and each saved address writes a notice (and a system notification when allowed): "If this wasn't you, move your funds back to the wallet that funded it."
+  - **What they can't do:** the limits are client-side. They slow down someone with an unlocked browser; they can't stop the key's owner, who can export the key. Enforcing them against the owner needs Privy's policies or a contract wallet.
+  - `VITE_FLAG_WITHDRAW_LIMITS=off` turns the limits off; the checks and the review step stay.
+- **Not done (waiting for the owner):** Privy sign-in with EVM + Solana wallets and Privy's hosted export behind step-up (D1). They need `VITE_PRIVY_APP_ID` (a public id) and Privy's confirmation that Arc is supported.
+- **Tests:**
+  - `bun scripts/test-withdraw-policy.ts`: new addresses, the daily limit, sends read from logs in both decimals and counted once, the signed record, address checks, flags.
+  - `bun scripts/test-chain-balances.ts`: the requests, the next node, base units, dollars, Arc's two decimals.
+  - Both are in CI.
+- **Checked in Chromium** (local dev, every chain's RPC stubbed in the page; Arc is out of the sandbox's reach), at 1280px and 390px:
+  - the card's addresses and tiles;
+  - each address check;
+  - $300 to a new address refused before signing, with Confirm off;
+  - Save address, then $200 allowed with the passcode;
+  - the notice on the card;
+  - no sideways scroll and no page errors.
+- Every new string is in all six dictionaries (50).
+
 ## Autotrade paused (2026-10-03)
 
 Owner: the platform becomes ARCSENSE (spot and futures trading), and "the auto trade functionality will have to be paused for now".
