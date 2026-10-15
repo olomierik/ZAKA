@@ -13,6 +13,7 @@ import { arc, wagmiConfig } from '../wagmi'
 import { getEmbeddedWalletClient } from './embeddedWallet'
 import { hideWalletPrompt, showWalletPrompt } from './walletPrompt'
 import { t as T } from './i18n'
+import { TradingPausedError } from './tradeSwitch'
 
 export interface ArcCall {
   address: Address
@@ -64,6 +65,7 @@ export async function sendArc(kind: 'trading-wallet' | 'wallet' | null, call: Ar
 /** A failed transaction or wallet error, in words: cancelled, wrong
  * network, not enough gas — or the wallet's own message. */
 export function txErrorText(e: unknown): string {
+  if (e instanceof TradingPausedError) return e.message // the admin's reason, word for word
   const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
   if (/rejected|denied|cancel/i.test(m)) return T('You cancelled the transaction.')
   if (/does not match the target chain|chain ?mismatch/i.test(m)) return T('Your wallet is on another network — switch it to Arc and try again.')

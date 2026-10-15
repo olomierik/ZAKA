@@ -79,10 +79,18 @@ Public values (`VITE_*`) ship inside the page. Secrets live in Netlify or Railwa
 | `WS_ALLOWED_ORIGINS`, `TRUST_PROXY`, `LOG_LEVEL` | Origins, proxy headers, logging |
 | `COINGECKO_API_KEY` | Optional GeckoTerminal key (dedicated rate limit) |
 | `AUTOTRADE_PAUSED` | On by default: bots open no new trades |
+| `ADMIN_EVM_ADDRESSES` | Admin wallets (comma-separated) that may sign the trade switch at `/admin`; the owner (`BOT_OWNER_ADDRESS`) if unset |
+| `GLOBAL_KILL_SWITCH=true`, `KILL_SWITCH_VENUES` | Turn trading off everywhere, or on listed venues (`arc,solana,…`), without a wallet; only removing them turns it back on |
 | `BOT_*`, `BOT_WALLET_SECRET`, `AUTH_SECRET` | Autotrade (paused) |
 | `PERPS`, `SITE_API`, `SIGNALS_LAUNCHPAD_ONLY`, `TIERS_*` | Engine features (see `engine/README.md`) |
 
 ## Tests and checks
+
+```bash
+bun run check
+```
+
+`bun run check` runs what CI runs on every pull request (`.github/workflows/ci.yml`): the site and engine typechecks, the security-header check (`scripts/check-csp.ts`), the engine tests and, when `gitleaks` is installed, the secret scan. One at a time:
 
 ```bash
 bun run typecheck
@@ -96,7 +104,7 @@ bun run engine:test
 forge test
 ```
 
-Offline tests run on recorded answers: `bun scripts/test-<name>.ts`. Among them are `test-trenches`, `test-rpc-settings`, `test-paper`, `test-alerts`, `test-starknet`, `test-hyperliquid`, `test-routes`, `test-robinhood`, `test-solana`, `test-bsc`, `test-xsol`, `test-dex-parity`, `test-chunk-reload`, `test-withdraw-guard` and `test-wallet-2fa`.
+Offline tests run on recorded answers: `bun scripts/test-<name>.ts`. Among them are `test-trenches`, `test-rpc-settings`, `test-paper`, `test-alerts`, `test-starknet`, `test-hyperliquid`, `test-routes`, `test-robinhood`, `test-solana`, `test-bsc`, `test-xsol`, `test-dex-parity`, `test-chunk-reload`, `test-withdraw-guard`, `test-wallet-2fa` and `test-trade-switch`.
 
 Live checks touch real networks and send nothing. They use `eth_call` / `simulateTransactions` with state overrides, or quotes only:
 - `check-avnu`, `check-hyperliquid` (needs `VITE_HL_TRADING=on`), `check-rh-swaps`, `check-solana-sale`.
@@ -113,6 +121,7 @@ Live checks touch real networks and send nothing. They use `eth_call` / `simulat
 
 - **Site:** Netlify → Deploys → an earlier deploy → Publish deploy (instant). Or `git revert <commit>` and push.
 - **Engine:** Railway → Deployments → Redeploy the last one that worked (it rebuilds that commit).
+- **Trading:** the trade switch at `/admin` (an admin wallet signs) stops new trades everywhere or on one venue within a minute, with no deploy; `GLOBAL_KILL_SWITCH=true` on Railway does it without a wallet.
 - **A feature:** turn its switch off (`VITE_HL_TRADING`, `VITE_STARKNET_SWAPS`, `AUTOTRADE_PAUSED`) and redeploy.
 - Pages left open across a deploy reload themselves to the new version (`lib/chunkReload.ts`).
 - **The terminal layout (2026-10-12):** it replaced the Markets pages and the Binance-style theme in one commit; `git revert` it to bring them back.

@@ -10,6 +10,7 @@ import { rememberHolding } from '../lib/held'
 import { t as T } from '../lib/i18n'
 import { waitForReceipt } from '../lib/receipts'
 import { onBalances } from '../lib/balances'
+import { assertTradingOn } from '../lib/tradeSwitch'
 
 const USDC_ADDR = '0x3600000000000000000000000000000000000000' as const
 
@@ -96,6 +97,8 @@ export default function CurveSwapWidget({ token, onTraded, initialMode, initialA
     if (!me || !estimate || amountIn === 0n || !configured) return
     setMsg('')
     try {
+      // The trade switch (lib/tradeSwitch.ts): nothing is signed while trading on Arc is off.
+      await assertTradingOn('arc')
       if (needsApprove) {
         setStep('approving')
         // Exactly this trade's amount — the launchpad never gets more.

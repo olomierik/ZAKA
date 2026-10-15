@@ -31,6 +31,8 @@ jobs:
         run: bun run build
       - name: Security headers (source and built HTML)
         run: bun scripts/check-csp.ts
+      - name: Trade switch (site side)
+        run: bun scripts/test-trade-switch.ts
 
   engine:
     name: Engine (typecheck, tests)

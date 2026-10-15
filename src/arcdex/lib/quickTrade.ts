@@ -8,6 +8,7 @@ import { LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, client as publicClient, getCurve } fr
 import { waitForAllowance } from './rpc'
 import { rememberHolding } from './held'
 import { waitForReceipt } from './receipts'
+import { assertTradingOn } from './tradeSwitch'
 
 const USDC_ADDR = '0x3600000000000000000000000000000000000000' as const
 const ERC20_ABI = parseAbi([
@@ -26,6 +27,7 @@ export class WalletLockedError extends Error {
  * launchpad first when needed (one extra tx, no popup either way). */
 export async function quickBuyLaunchpad(token: `0x${string}`, usdcAmount: bigint): Promise<`0x${string}`> {
   if (!isUnlocked()) throw new WalletLockedError()
+  await assertTradingOn('arc')
   const owner = currentAddress()!
   const wallet = getEmbeddedWalletClient()
 

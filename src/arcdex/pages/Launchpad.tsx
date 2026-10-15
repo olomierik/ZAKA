@@ -21,6 +21,7 @@ import { riskOf } from '../lib/risk'
 import { useNow } from '../lib/ago'
 import { waitForReceipt } from '../lib/receipts'
 import { previewToken } from '../lib/launchPreview'
+import { assertTradingOn } from '../lib/tradeSwitch'
 
 function short(addr: string) { return `${addr.slice(0, 6)}…${addr.slice(-4)}` }
 
@@ -123,6 +124,8 @@ function CreateTokenForm({ onCreated }: { onCreated: (token?: Address) => void }
   async function submit() {
     if (!me || !name || !symbol || LAUNCHPAD_ADDRESS.length !== 42) return
     setError('')
+    // The trade switch (lib/tradeSwitch.ts): checked before the $3 fee is paid.
+    try { await assertTradingOn('arc') } catch (e) { setError(e instanceof Error ? e.message : String(e)); return }
 
     // Build off-chain metadata (image/socials/description) only if the
     // creator actually filled something in — a bare launch with none of

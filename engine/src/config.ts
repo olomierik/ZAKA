@@ -1,6 +1,8 @@
 // Engine configuration — everything comes from the environment; nothing
 // provider-specific or secret is hard-coded. See engine/.env.example.
 
+import { isTradeVenue, type TradeVenue } from '../../api/_marketProtocol'
+
 declare const process: { env: Record<string, string | undefined> }
 
 const list = (v: string | undefined, fallback: string[]) =>
@@ -92,8 +94,23 @@ export interface Config {
   botScalpSizeUsd: number | null
   /** The wallet that may switch paper/live (its signature is checked). The bot wallet's key is read in main.ts, never kept here. */
   botOwner: string | null
+  /**
+   * Wallets whose signed messages run admin actions (the trade switch): ADMIN_EVM_ADDRESSES, comma-separated, else the
+   * owner (BOT_OWNER_ADDRESS). Lowercase.
+   */
+  admins: string[]
+  /** The trade switch set on Railway: GLOBAL_KILL_SWITCH=true stops trading everywhere, KILL_SWITCH_VENUES (comma list) per venue. */
+  killSwitch: { all: boolean; venues: TradeVenue[] }
   /** Live trading limits (bot/liveTrader.ts). */
   live: { minTradeUsd: number; maxTradeUsd: number; dailyLossUsd: number; maxOpen: number; maxOpenScalp: number; slippageBps: number; reserveUsd: number; preflight: boolean; maxRoundTripPct: number; maxShareOfBalance: number; sendUrl: string }
+}
+
+/** Admin wallets from ADMIN_EVM_ADDRESSES (comma-separated), else the owner's; malformed entries are left out. */
+export function adminAddresses(list: string | undefined, owner: string | undefined): string[] {
+  const valid = (a: string) => /^0x[0-9a-fA-F]{40}$/.test(a)
+  const fromList = (list ?? '').split(',').map(a => a.trim()).filter(valid).map(a => a.toLowerCase())
+  if (fromList.length) return [...new Set(fromList)]
+  return owner && valid(owner.trim()) ? [owner.trim().toLowerCase()] : []
 }
 
 /** ARCSENSE's own site (www.arcsense.site on Netlify, 2026-10-03): allowed by the engine without a Railway setting. */
@@ -154,6 +171,11 @@ export function loadConfig(): Config {
     botSizeUsd: process.env.BOT_SIZE_USD ? int('BOT_SIZE_USD', 25, 1, 10_000) : null,
     botScalpSizeUsd: process.env.BOT_SCALP_SIZE_USD ? int('BOT_SCALP_SIZE_USD', 5, 1, 10_000) : null,
     botOwner: /^0x[0-9a-fA-F]{40}$/.test(process.env.BOT_OWNER_ADDRESS ?? '') ? process.env.BOT_OWNER_ADDRESS!.toLowerCase() : null,
+    admins: adminAddresses(process.env.ADMIN_EVM_ADDRESSES, process.env.BOT_OWNER_ADDRESS),
+    killSwitch: {
+      all: /^(1|on|true|yes)$/i.test(process.env.GLOBAL_KILL_SWITCH?.trim() ?? ''),
+      venues: (process.env.KILL_SWITCH_VENUES ?? '').split(',').map(v => v.trim().toLowerCase()).filter(isTradeVenue),
+    },
     live: {
       // The bot wallet's trades start at BOT_LIVE_TRADE_USD ($2) and grow with what its live trades make, up to BOT_LIVE_MAX_TRADE_USD.
       minTradeUsd: int('BOT_LIVE_TRADE_USD', 2, 1, 10_000),

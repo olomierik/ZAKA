@@ -842,6 +842,40 @@ export function botControlMessage(c: BotControl, at: number): string {
   return `ARCDEX signal bot\n${what}\nAt: ${new Date(at).toISOString()}`
 }
 
+/**
+ * The trade switch (the build pack's kill switch; engine/src/site/tradeSwitch.ts, src/arcdex/lib/tradeSwitch.ts): trading
+ * on every venue at once, or one venue, turned off and on by an admin wallet's signed message. Off stops new trades
+ * before they're signed; withdrawals, transfers, the bridge and open positions' management are not trades and go on.
+ */
+export const TRADE_VENUES = ['arc', 'robinhood', 'solana', 'bnb', 'starknet', 'hyperliquid', 'ethereum', 'arbitrum'] as const
+export type TradeVenue = (typeof TRADE_VENUES)[number]
+export const TRADE_VENUE_LABEL: Record<TradeVenue, string> = { arc: 'Arc', robinhood: 'Robinhood Chain', solana: 'Solana', bnb: 'BNB Chain', starknet: 'Starknet', hyperliquid: 'Hyperliquid', ethereum: 'Ethereum', arbitrum: 'Arbitrum' }
+export const isTradeVenue = (v: unknown): v is TradeVenue => typeof v === 'string' && (TRADE_VENUES as readonly string[]).includes(v)
+
+/** One switch: everything, or one venue. */
+export type TradeScope = 'all' | TradeVenue
+export interface TradeSwitchControl { scope: TradeScope; on: boolean; reason: string }
+/** Why a scope is off, and since when. */
+export interface TradeOff { reason: string; at: number }
+
+export interface TradeSwitchState {
+  at: number
+  /** Trading as a whole: off when the switch for everything is off, or the engine's GLOBAL_KILL_SWITCH is set. */
+  on: boolean
+  all: TradeOff | null
+  venues: Partial<Record<TradeVenue, TradeOff>>
+  /** Set on the engine (GLOBAL_KILL_SWITCH, KILL_SWITCH_VENUES): only a change there turns these back on. */
+  env: { all: boolean; venues: TradeVenue[] }
+  /** The last changes, newest first (who made them is in the engine's audit log only). */
+  history: { at: number; scope: TradeScope; on: boolean; reason: string }[]
+}
+
+/** The exact text an admin wallet signs to change the trade switch (nonce: the time, valid 5 minutes, once). */
+export function tradeSwitchMessage(c: TradeSwitchControl, at: number): string {
+  const where = c.scope === 'all' ? 'on every venue' : `on ${TRADE_VENUE_LABEL[c.scope]}`
+  return `ARCDEX trade switch\nSite: arcsense.site\nTurn trading ${c.on ? 'ON' : 'OFF'} ${where}\nReason: ${c.reason}\nAt: ${new Date(at).toISOString()}`
+}
+
 export type ServerMessage =
   | { t: 'SCAN'; d: { rows: ScanRow[]; stats: ScanStats } }
   | { t: 'TRADE'; k: string; d: WireTrade }

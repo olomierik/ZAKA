@@ -115,6 +115,11 @@ Ordered by severity. None is known to be exploited; each is a gap against the bu
    multisig). 05 also lists it as the admin address; it should not be both.
 4. **Medium: no global kill switch.** Pausing needs an owner transaction per router, and Relay/Across/Hyperliquid paths
    have no runtime off switch.
+   **Fixed 2026-10-15:** the trade switch (`engine/src/site/tradeSwitch.ts`, `src/arcdex/lib/tradeSwitch.ts`, `/admin`):
+   off everywhere or per venue, signed by an admin wallet (`ADMIN_EVM_ADDRESSES`), or `GLOBAL_KILL_SWITCH` /
+   `KILL_SWITCH_VENUES` on Railway. Every trade path checks it before signing; an open page picked up "off" in 28s in the
+   browser check. Changes go to an append-only audit table (`arcdex_admin_audit`, updates, deletes and truncates refused
+   by triggers, checked on Postgres 16).
 5. **Medium: withdrawals have no limits, new-address delay or notification** (04 §1). The passcode rule stops a stolen
    phone from sending anywhere but the funding wallet, but nothing alerts the user.
 6. **Medium: no CI checks.** No tests, typecheck, dependency audit or secret scanning on pull requests (04 §3).
@@ -123,7 +128,8 @@ Ordered by severity. None is known to be exploited; each is a gap against the bu
    commits. `bun run check` runs the same locally. gitleaks found no secrets in the files or the 201 commits this
    checkout holds. Dependency audit: not yet.
 7. **Medium: no append-only audit or fee ledger** (04 §3). Owner actions (bot controls, signal settings) are verified but
-   not recorded in an audit table.
+   not recorded in an audit table. **Partly fixed 2026-10-15:** `arcdex_admin_audit` exists and records trade-switch
+   changes; bot and signal controls and the fee ledger are still to do.
 8. **Low: dependency surface.** Four Circle wallet SDKs ship as runtime dependencies but are used only by scripts; they
    could move to devDependencies or out (04 threat 9).
 9. **Low: public keys in `netlify.toml`.** The Supabase anon key and contract addresses are public by design (RLS

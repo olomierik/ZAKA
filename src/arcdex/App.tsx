@@ -29,6 +29,7 @@ const ClanPage        = lazy(() => import('./pages/ClanPage'))
 const TransfersPage   = lazy(() => import('./pages/TransfersPage'))
 const AlertsPage      = lazy(() => import('./pages/AlertsPage'))
 const DeployCurveRouter = lazy(() => import('./pages/DeployCurveRouter'))
+const AdminPage = lazy(() => import('./pages/AdminPage'))
 const SignalsPage     = lazy(() => import('./pages/SignalsPage'))
 // Robinhood Chain: its coins and stock tokens, bought with USDC on Arc (through Across).
 const RobinhoodTokenPage = lazy(() => import('./pages/RobinhoodTokenPage'))
@@ -53,6 +54,7 @@ import './terminal.css'
 import { t as T, N_, useLang } from './lib/i18n'
 import { ConnectModalHost } from './components/ConnectWallet'
 import { NetworkGuard, WalletPromptHost } from './components/WalletPrompt'
+import { TradePausedBar } from './components/TradePausedBar'
 import MobileTabBar from './components/MobileTabBar'
 import Sheet, { afterSheetClose } from './components/Sheet'
 import { sheetHistory } from './lib/sheetHistory'
@@ -90,6 +92,7 @@ export type Page =
   | { name: 'swap' }
   | { name: 'bridge'; dir?: 'in' | 'out' }
   | { name: 'deploy-curve-router' }
+  | { name: 'admin' }
   | { name: 'signals'; view?: 'market' | 'manage'; bot?: string }
   | { name: 'futures' }
   | { name: 'perps'; coin?: string }
@@ -175,6 +178,7 @@ export default function App() {
       <NavBar page={page} navigate={navigate} onMenuClick={() => setNavOpen(o => !o)} onBack={detail ? goBack : undefined} onBell={() => setBell(o => !o)} bellCount={activeAlerts(alerts).length} />
       {/* The bridge switches the wallet to other chains on purpose, and Robinhood Chain and BNB Chain sales are signed there. */}
       <NetworkGuard hidden={page.name === 'bridge' || page.name === 'robinhood' || page.name === 'rh-token' || page.name === 'bsc' || page.name === 'bsc-token' || (page.name === 'terminal' && (page.chain ?? getChain()) !== 'arc')} />
+      <TradePausedBar />
 
       <div className="app-body" key={lang}>
         {navOpen && <div className="sidebar-backdrop" onClick={() => setNavOpen(false)} />}
@@ -218,6 +222,7 @@ export default function App() {
           {page.name === 'rewards'     && <RewardsPage navigate={navigate} />}
           {page.name === 'transfers'   && <TransfersPage navigate={navigate} />}
           {page.name === 'deploy-curve-router' && <DeployCurveRouter />}
+          {page.name === 'admin' && <AdminPage />}
           {/* Autotrade is coming soon; owners still reach their bots to manage and withdraw (/autotrade/manage). */}
           {page.name === 'signals'     && (page.view === 'manage' ? <SignalsPage navigate={navigate} manage /> : <AutotradeSoon navigate={navigate} />)}
           {page.name === 'robinhood'   && <Trenches chain="hood" navigate={navigate} />}

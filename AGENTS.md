@@ -2061,6 +2061,60 @@ The owner's new site, www.arcsense.site, is hosted on Netlify and serves only th
     3. Netlify then issues the certificate by itself, and the rules take effect.
   - **Done by the owner on 2026-10-04:** both names resolve to Netlify (checked through Google's and Namecheap's DNS). Until Netlify issued the arcdex.online certificate, https answered with Netlify's generic `*.netlify.app` certificate, and http went to https on the same host first.
 
+## Security baseline and the trade switch (2026-10-15)
+
+The build pack's Phase 0 (`docs/REPO_MAP.md`: the repo map, gaps against the pack, security findings and the owner's
+decisions D1–D5), then the security baseline it called for first.
+
+- **Security headers (`netlify.toml` `[[headers]]`):** a Content-Security-Policy whose `script-src` allows the site's
+  own files and two hashed inline pieces of `index.html` (the theme script; the fonts' `onload`, via `'unsafe-hashes'`),
+  no framing, HSTS, nosniff, Referrer-Policy, Permissions-Policy. `connect-src` still allows any https/wss host (the
+  app's many RPCs, and the ones a visitor picks in RPC settings).
+  - Checked in Chromium on 17 pages with no violations; an injected inline script, a foreign script and an inline handler
+    are refused.
+  - `bun scripts/check-csp.ts` fails when an inline script or handler in the HTML no longer matches its hash: update the
+    hash in `netlify.toml` whenever `index.html`'s inline code changes.
+- **CI (`.github/workflows/ci.yml`):** on every pull request and push to main, the site typecheck and build, the header
+  check, the engine typecheck and tests, and gitleaks over the files and the new commits (`.gitleaks.toml` allows only
+  addresses, event topics, Anvil's published test keys and the Supabase anon key). `bun run check` runs the same locally
+  (`scripts/check.sh`; it pointed to a missing file before). `scripts/compass-deploy.ts` is left out of the typecheck: it
+  imports Arc Studio's `@circlefin/compass-chains`, which isn't on npm.
+- **The trade switch (the pack's kill switch):** trading off everywhere or on one venue (`arc`, `robinhood`, `solana`,
+  `bnb`, `starknet`, `hyperliquid`, `ethereum`, `arbitrum`).
+  - **Engine (`engine/src/site/tradeSwitch.ts`):** `GET /v1/trading/status` (public, `no-store`) and `POST
+    /v1/trading/control` `{scope, on, reason, at, signature}`. The signature is an admin wallet's
+    (`ADMIN_EVM_ADDRESSES`, else `BOT_OWNER_ADDRESS`; `ControlVerifier.verifyAnyOf`) over `tradeSwitchMessage`
+    (`api/_marketProtocol.ts`: names the site, the change, the reason and the time), valid 5 minutes and once. A reason
+    is required. The change applies at once, then is saved (`arcdex_bot_settings`, key `trade-switch`) and written to
+    `arcdex_admin_audit`; if the database is down it still applies and the answer says it wasn't saved.
+    `GLOBAL_KILL_SWITCH=true` / `KILL_SWITCH_VENUES` keep trading off whatever a wallet signs.
+  - **Audit (`arcdex_admin_audit`):** append-only. Triggers refuse every update, delete and truncate, whoever runs
+    them (checked on Postgres 16). Only accepted changes are recorded; refusals are logged and counted
+    (`trade_switch_refused`).
+  - **Site (`src/arcdex/lib/tradeSwitch.ts`):** `assertTradingOn(venue)` runs before anything is signed in every trade
+    path:
+    - the Arc swap widget (router, Universal Router and curve routes) and the launchpad's widget, quick buy and launch
+      (checked before the $3 fee);
+    - Relay (Solana, BNB Chain; not gas top-ups), Across (Robinhood Chain; not gas top-ups) and four.meme;
+    - Hyperliquid (new positions only: reduce-only orders that close one always go through) and AVNU (Starknet).
+  - **What isn't a trade:** withdrawals, transfers, the bridge and closing positions keep working.
+  - **Reading the status:** read again when over 30s old; an open page polls every 30s. When the engine can't be
+    reached, the last state read decides; with nothing read, trades go ahead, so trading doesn't depend on the engine.
+  - **Banner (`components/TradePausedBar.tsx`):** on every page while anything is off, with where and why.
+  - **`/admin` (`pages/AdminPage.tsx`, not linked):** each venue's state, turn off or on with a reason, signed by the
+    trading wallet or a connected wallet, and the recent changes.
+  - Every new string is in all six dictionaries.
+- **Checked:**
+  - In Chromium, against a stand-in engine running the real switch: no banner while on; Solana off showed its banner
+    and `/admin` tile; "everything off" reached an already-open page in 28s; both back on cleared it; `/admin` at 390px
+    with no sideways scroll; no CSP violations.
+  - Tests: `engine/test/tradeSwitch.test.ts` (14: the request, the message, admins from env, per-venue and global off,
+    a stranger's, replayed, old and altered signatures refused, a restart, the env switches, a failing database, the
+    HTTP routes; the audit triggers and persistence with `PG_TEST_URL`) and `bun scripts/test-trade-switch.ts`. With the
+    site gate ignoring "everything off", 6 checks fail.
+- **Owner setup (Railway, arcdex-engine):** optionally `ADMIN_EVM_ADDRESSES` (comma-separated). Until it's set, the
+  owner wallet (`BOT_OWNER_ADDRESS`) is the admin.
+
 ## Autotrade paused (2026-10-03)
 
 Owner: the platform becomes ARCSENSE (spot and futures trading), and "the auto trade functionality will have to be paused for now".

@@ -839,6 +839,8 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .net-guard { display: flex; align-items: center; gap: 10px; padding: 7px 14px; background: rgba(245,158,11,0.12); border-bottom: 1px solid rgba(245,158,11,0.35); color: var(--amber); font-size: 0.78rem; }
 .net-guard button { padding: 5px 12px; border-radius: 8px; border: none; background: #f59e0b; color: var(--on-accent); font-weight: 700; cursor: pointer; flex-shrink: 0; }
 .net-guard button:disabled { opacity: 0.6; cursor: default; }
+/* The trade switch's bar (components/TradePausedBar.tsx): the network bar's shape, in red. */
+.net-guard.trade-paused { background: var(--red-bg); border-bottom-color: color-mix(in srgb, var(--red) 35%, transparent); color: var(--red); }
 /* Launch form: what the launch costs */
 .launch-cost { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--adx-card-border); font-size: 0.78rem; }
 .launch-cost > div { display: flex; justify-content: space-between; gap: 8px; color: var(--text-muted); }

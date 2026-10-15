@@ -26,6 +26,7 @@ export function pageToPath(p: Page): string {
     case 'swap':        return '/swap'
     case 'bridge':      return p.dir === 'in' ? '/bridge?dir=in' : '/bridge'
     case 'deploy-curve-router': return '/deploy/curve-router'
+    case 'admin':       return '/admin'
     case 'signals':     return p.bot ? `/bots/${encodeURIComponent(p.bot)}` : p.view === 'market' ? '/bots' : p.view === 'manage' ? '/autotrade/manage' : '/autotrade'
     // Hyperliquid's futures are /futures (BTC) and /futures/<coin>; ARCDEX's own testnet futures moved to /futures/testnet.
     case 'perps':       return `/futures${p.coin && p.coin !== 'BTC' ? `/${p.coin}` : ''}`
@@ -114,6 +115,8 @@ export function pathToPage(pathname: string, search: string): Page | null {
         return { name: 'bsc-token', address: parts[2].toLowerCase(), pool: /^0x([0-9a-f]{40}|[0-9a-f]{64})$/.test(pool) ? pool : '' }
       }
       return { name: 'terminal', chain: 'bnb' }
+    // Not linked anywhere: the trade switch (pages/AdminPage.tsx).
+    case 'admin':       return { name: 'admin' }
     // Not linked anywhere: the owner deploys ArcDexCurveRouter here.
     case 'deploy':      return b === 'curve-router' ? { name: 'deploy-curve-router' } : null
     default:            return null

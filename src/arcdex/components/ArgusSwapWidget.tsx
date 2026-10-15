@@ -19,6 +19,7 @@ import { waitForReceipt } from '../lib/receipts'
 import { onBalances } from '../lib/balances'
 import { PERMIT2, PERMIT2_ABI, UR_ABI, encodeNativeBuy, encodeNativeSell, feeShares, netAfterFees, permit2Allowance, quoteExactIn, universalRouter } from '../api/universalRouter'
 import { curveBuyCall, curveRouterConfigured, curveSellCall, curveSpender, loadCurveRouter, quoteCurveBuy, quoteCurveSell, quoteRouterBuy, quoteRouterSell, routerBuyCall, routerSellCall, type CurveCall, type CurveInfo, type CurveRouter } from '../api/curves'
+import { assertTradingOn } from '../lib/tradeSwitch'
 
 export { SWAP_ROUTER_ADDRESS }
 
@@ -360,6 +361,8 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
     if (!me || !info || !route || amountIn === 0n) return
     setMsg('')
     try {
+      // The trade switch (lib/tradeSwitch.ts): nothing is signed while trading on Arc is off.
+      await assertTradingOn('arc')
       if (route.kind === 'curve') { await submitCurve(route.curve); return }
       if (route.kind === 'v4native') { await submitNative(info, route.key); return }
       if (needsApprove) {
