@@ -12,7 +12,7 @@ import type { Page } from '../App'
 
 export type RouteGroup = 'spot' | 'starknet' | 'cross' | 'bridge' | 'futures'
 export type RouteStatus = 'live' | 'off' | 'testnet'
-export type ProviderId = 'arc' | 'relay' | 'across' | 'circle' | 'hyperliquid' | 'robinhood' | 'solana' | 'bsc' | 'engine' | 'avnu' | 'starknet'
+export type ProviderId = 'arc' | 'relay' | 'across' | 'circle' | 'hyperliquid' | 'robinhood' | 'solana' | 'bsc' | 'engine' | 'avnu' | 'starknet' | 'jupiter'
 
 export interface SupportedRoute {
   id: string
@@ -53,7 +53,8 @@ export const ROUTES: SupportedRoute[] = [
   { id: 'arc-native', group: 'spot', from: N_('USDC on Arc'), to: N_('Coins in native-USDC pools (Minara, SolonPad instant)'), provider: N_('Uniswap Universal Router'), fee: ONCHAIN, onchain: 'swap', time: SECONDS, notes: N_('The fee is taken in the same transaction.'), status: 'live', page: { name: 'terminal' }, providers: ['arc'] },
   { id: 'starknet', group: 'starknet', from: N_('Starknet tokens'), to: N_('Starknet tokens (AVNU’s verified list)'), provider: 'AVNU', fee: SN_FEE ? `${SN_FEE.bps / 100}%` : '0%', time: SECONDS, notes: N_('Signed by your Starknet wallet; AVNU’s own 0.1% applies. A 0 STRK test transaction checks a wallet on Sepolia.'), status: STARKNET_SWAPS ? 'live' : 'off', page: { name: 'starknet' }, providers: ['avnu', 'starknet'] },
   { id: 'rh', group: 'cross', from: N_('USDC on Arc'), to: N_('Robinhood Chain coins and stock tokens, and back'), provider: 'Across', fee: SPOT, time: ABOUT_2S, notes: N_('Stock tokens can’t be bought from restricted countries. Selling is signed on Robinhood Chain and needs a little ETH there.'), status: 'live', page: { name: 'robinhood' }, providers: ['across', 'robinhood'] },
-  { id: 'sol', group: 'cross', from: N_('USDC on Arc, SOL or Solana USDC'), to: N_('Solana launchpad coins, and back'), provider: 'Relay', fee: SPOT, time: ABOUT_2S, notes: N_('Sales are signed on Solana.'), status: 'live', page: { name: 'solana' }, providers: ['relay', 'solana'] },
+  { id: 'sol', group: 'cross', from: N_('USDC on Arc'), to: N_('Solana launchpad coins, and back'), provider: 'Relay', fee: SPOT, time: ABOUT_2S, notes: N_('Sales are signed on Solana.'), status: 'live', page: { name: 'solana' }, providers: ['relay', 'solana'] },
+  { id: 'sol-swap', group: 'cross', from: N_('SOL or Solana USDC'), to: N_('Solana launchpad coins, and back'), provider: N_('Jupiter (Relay while Jupiter isn’t on)'), fee: SPOT, time: SECONDS, notes: N_('A swap on Solana alone, signed by your Solana wallet. Through Jupiter, ARCDEX’s fee is paid in the same transaction.'), status: 'live', page: { name: 'solana' }, providers: ['jupiter', 'relay', 'solana'] },
   { id: 'bsc', group: 'cross', from: N_('USDC on Arc, BNB or USDT'), to: N_('BNB Chain coins that left four.meme’s curve, and back'), provider: 'Relay', fee: SPOT, time: ABOUT_2S, notes: N_('Sales are signed on BNB Chain and need a little BNB there.'), status: 'live', page: { name: 'bsc' }, providers: ['relay', 'bsc'] },
   { id: 'four', group: 'cross', from: N_('BNB or USDT on BNB Chain'), to: N_('four.meme coins still on their curve'), provider: N_('four.meme’s own contract'), fee: '0%', time: SECONDS, notes: N_('four.meme’s own fee applies. A coin can’t be sold in the block it was bought in.'), status: 'live', page: { name: 'bsc' }, providers: ['bsc'] },
   { id: 'sol-wallet', group: 'cross', from: N_('SOL or Solana USDC'), to: N_('Coins on Arc, BNB Chain and Robinhood Chain, and back'), provider: 'Relay', fee: SPOT, time: ABOUT_2S, notes: N_('Held by an account your Solana wallet opens; Robinhood’s stock tokens have no route.'), status: 'live', page: { name: 'terminal' }, providers: ['relay', 'solana'] },

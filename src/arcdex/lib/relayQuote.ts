@@ -37,6 +37,7 @@ import { decodeFunctionData, erc20Abi, formatUnits, type Hex } from 'viem'
 import { FEE_WALLET } from './platform'
 import { ARC_USDC, QUOTE_LIMITS, quoteVerdict, type QuoteValue, type QuoteVerdict } from './acrossQuote'
 import { t as T } from './i18n'
+import { minOutProblem } from './guardrails'
 
 export const RELAY_API = 'https://api.relay.link'
 export const ARC_ID = 5042
@@ -230,6 +231,7 @@ export function checkRelayQuote(r: RelayRequest, j: ApiQuote): RelayQuote {
   if (big(cin.amount) !== r.amount) fail('the quote spends another amount')
   const expectedOut = big(cout.amount), minOut = big(cout.minimumAmount)
   if (minOut <= 0n || expectedOut < minOut) fail('the quote has no minimum received')
+  if (minOutProblem(expectedOut, minOut)) fail('its minimum received is more than 15% under its price')
 
   const app = j.fees?.app
   const appFee = big(app?.amount)

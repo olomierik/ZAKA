@@ -10,6 +10,9 @@ export const FLAGS = {
   withdrawLimits: true,
   /** The wallets card across chains on Portfolio (components/WalletsCard.tsx). */
   walletsCard: true,
+  /** Solana swaps through Jupiter's Swap API V2 with ARCDEX's referral fee (lib/jupiter.ts). Works once the site's
+   * proxy has JUPITER_API_KEY; until then (or while Jupiter is down) Solana swaps go through Relay. */
+  jupiter: true,
   /** Sign-in with Privy (email or social), with its embedded EVM and Solana wallets. Needs VITE_PRIVY_APP_ID. */
   privy: false,
 } as const
