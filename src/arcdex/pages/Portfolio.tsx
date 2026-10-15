@@ -8,7 +8,7 @@ import SolanaHoldings from '../components/SolanaHoldings'
 import BscHoldings from '../components/BscHoldings'
 import HlHoldings from '../components/HlHoldings'
 import WalletsCard from '../components/WalletsCard'
-import { flag } from '../lib/flags'
+import { useFlag } from '../lib/flags'
 import { hasStoredWallet } from '../lib/embeddedWallet'
 import { shortAddr, useTrader } from '../lib/identity'
 import { loadHoldings, type Holding } from '../lib/portfolio'
@@ -36,6 +36,7 @@ const DUST_USD = 0.01
 
 export default function Portfolio({ navigate }: Props) {
   const trader = useTrader()
+  const walletsCard = useFlag('walletsCard')
   const me = trader.address
   const { cash, refresh: refreshCash } = useCash(me)
   const [holdings, setHoldings] = useState<Holding[] | null>(null)
@@ -121,7 +122,7 @@ export default function Portfolio({ navigate }: Props) {
         </div>
       </div>
 
-      {flag('walletsCard') && (
+      {walletsCard && (
         <WalletsCard evm={me} onExtraValue={setExtraValue}
           values={{ arcCash: cash, arcCoins: holdings === null ? null : coinsValue, bnb: bscValue, robinhood: rhValue, solana: solValue, hyperliquid: hlValue }} />
       )}

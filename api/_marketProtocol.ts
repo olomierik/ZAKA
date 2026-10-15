@@ -876,6 +876,70 @@ export function tradeSwitchMessage(c: TradeSwitchControl, at: number): string {
   return `ARCDEX trade switch\nSite: arcsense.site\nTurn trading ${c.on ? 'ON' : 'OFF'} ${where}\nReason: ${c.reason}\nAt: ${new Date(at).toISOString()}`
 }
 
+// ── The admin panel (engine/src/admin, /admin) ────────────────────────────
+
+/**
+ * Site feature flags an admin can set while the site runs (engine/src/admin/flags.ts; the site's src/arcdex/lib/flags.ts
+ * reads them). A flag set at build time (VITE_FLAG_<NAME> on Netlify) always wins. A protective flag can only be turned
+ * on at runtime, never off: loosening a protection takes a deploy, so a stolen admin session can't.
+ */
+export const SITE_FLAGS = {
+  withdrawLimits: { protective: true, label: 'Withdrawal limits and the new-address hold' },
+  walletsCard: { protective: false, label: 'Wallets card on Portfolio' },
+  jupiter: { protective: false, label: 'Solana swaps through Jupiter' },
+  privy: { protective: false, label: 'Sign-in with Privy' },
+} as const
+export type SiteFlag = keyof typeof SITE_FLAGS
+export const isSiteFlag = (f: unknown): f is SiteFlag => typeof f === 'string' && Object.prototype.hasOwnProperty.call(SITE_FLAGS, f)
+
+export interface FlagsState {
+  at: number
+  /** Only flags an admin has set; the rest follow the site's defaults. */
+  flags: Partial<Record<SiteFlag, boolean>>
+  history: { at: number; flag: SiteFlag; on: boolean; reason: string }[]
+}
+
+/** The exact text an admin wallet signs to change a flag (valid 5 minutes, once). */
+export function flagChangeMessage(flag: SiteFlag, on: boolean, reason: string, at: number): string {
+  return `ARCDEX feature flag\nSite: arcsense.site\nTurn ${flag} ${on ? 'ON' : 'OFF'}\nReason: ${reason}\nAt: ${new Date(at).toISOString()}`
+}
+
+/** The exact text an admin wallet signs to run the fee sweeper for real (a dry run needs no signature). */
+export function sweepRunMessage(at: number): string {
+  return `ARCDEX fee sweeper\nSite: arcsense.site\nRun the sweep for real (fees owed by bot wallets are sent to the fee wallet)\nAt: ${new Date(at).toISOString()}`
+}
+
+/** One thing the sweeper found: fees still held somewhere other than the fee wallet. */
+export interface SweepItem {
+  id: string
+  /** relay: Relay's balance for the fee wallet; jupiter: a referral token account; bot-fees: fees live bots still owe. */
+  source: 'relay' | 'jupiter' | 'bot-fees'
+  holder: string
+  token: string
+  amount: string
+  usd: number | null
+  /** engine: the engine sends it; owner: the owner claims it with the fee wallet's (or referral account's) key. */
+  action: 'engine' | 'owner'
+  /** Under the threshold: listed, not acted on. */
+  below: boolean
+  outcome?: { ok: boolean; tx?: string; error?: string }
+  how?: string
+}
+
+export interface SweepRun {
+  id: string
+  at: number
+  day: string
+  mode: 'dry' | 'real'
+  by: string
+  status: 'ok' | 'partial' | 'failed' | 'paused' | 'noop'
+  /** What the plan holds over the threshold: the same for a dry run and a real run of the same state. */
+  totals: { engineUsd: number; ownerUsd: number; belowUsd: number; items: number }
+  sentUsd: number
+  items: SweepItem[]
+  note?: string
+}
+
 export type ServerMessage =
   | { t: 'SCAN'; d: { rows: ScanRow[]; stats: ScanStats } }
   | { t: 'TRADE'; k: string; d: WireTrade }

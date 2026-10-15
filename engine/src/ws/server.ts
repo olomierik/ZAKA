@@ -67,6 +67,7 @@ import type { TrenchService } from '../trench/service'
 import { isTrenchChain } from '../../../api/_trenchProtocol'
 import type { FeeLedger, FeeSource } from '../fees/ledger'
 import type { FeeLedgerService } from '../fees/service'
+import type { AdminApi } from '../admin/api'
 
 interface Conn { id: number; ip: string; subs: Set<string>; allowance: number; last: number }
 
@@ -97,6 +98,8 @@ export class DataApi {
   coin: CoinProgram | null = null
   /** The fee ledger and its nightly reconciliation (engine/src/fees). */
   fees: { ledger: FeeLedger; service: FeeLedgerService } | null = null
+  /** The admin panel: sign-in, live sessions, fees and the sweeper, trades, audit, flags (admin/api.ts). */
+  admin: AdminApi | null = null
   /** Argus coins on their launch curve, with their progress by market cap (market/bonding.ts). */
   bonding: BondingBook | null = null
   /** The Trenches' live feed: every chain's launches, trades and smart wallets (trench/service.ts). */
@@ -262,6 +265,15 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         return ok ? undefined : new Response('websocket upgrade expected', { status: 400 })
       }
       if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors(req), 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Content-Type, X-Paper-Key, Authorization', 'Access-Control-Max-Age': '600' } })
+      // The admin panel (admin/api.ts): its own sign-in; every other /v1/admin route needs that session.
+      if (api.admin && (url.pathname.startsWith('/v1/admin/') || url.pathname === '/v1/flags')) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        const r = await api.admin.handle(req, url, ip, { wsClients: clients })
+        if (r) {
+          if (url.pathname === '/v1/admin/auth/verify') metrics.inc(r.status === 200 ? 'admin_logins' : 'admin_login_refused')
+          return json(req, r.status, r.body, r.cache)
+        }
+      }
       // The site's traffic counter (traffic.ts): each open page's heartbeat, and the counts.
       if (url.pathname === '/v1/traffic' || url.pathname === '/v1/traffic/beat') {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
@@ -271,8 +283,8 @@ export function startServer({ cfg, api, health }: ServerDeps) {
           if (Number(req.headers.get('content-length') ?? 0) > 512) return json(req, 413, { error: 'too large' })
           // Sent as text/plain (no preflight); only the site's own pages count.
           const origin = req.headers.get('origin')
-          const body = await req.text().then(t => JSON.parse(t) as { id?: unknown }, () => null).catch(() => null)
-          if (!origin || cfg.allowedOrigins.includes(origin)) traffic.beat(typeof body?.id === 'string' ? body.id : '', ip)
+          const body = await req.text().then(t => JSON.parse(t) as { id?: unknown; p?: unknown }, () => null).catch(() => null)
+          if (!origin || cfg.allowedOrigins.includes(origin)) traffic.beat(typeof body?.id === 'string' ? body.id : '', ip, Date.now(), body?.p)
           return json(req, 200, await traffic.counts(), 'no-store')
         }
         if (req.method === 'GET') return json(req, 200, await traffic.counts(), 'public, max-age=5')

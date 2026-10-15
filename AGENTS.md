@@ -2281,6 +2281,86 @@ sandbox. Status against its acceptance list: `docs/REPO_MAP.md` §9.
   2. Railway (arcdex-engine): `JUP_REFERRAL_ACCOUNT` (the same account), and optionally `ALERT_WEBHOOK_URL`.
   3. Jupiter's referral fees build up in those token accounts; claim them from referral.jup.ag.
 
+## Phase 4: the admin panel and the fee sweeper (2026-10-16)
+
+The build pack's Phase 4 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`). Status against its acceptance list: `docs/REPO_MAP.md`
+§10. `/admin` stays unlinked.
+
+- **Sign-in (`engine/src/admin/auth.ts`, `src/arcdex/lib/adminSession.ts`):** an admin wallet signs an EIP-4361 message
+  that the engine builds: this site, the wallet, a single-use nonce, an expiry 5 minutes out.
+  - **Replay:** a nonce is spent on its first use, whether the signature checks out or not.
+  - **Allowlist:** `ADMIN_EVM_ADDRESSES`, else `BOT_OWNER_ADDRESS`.
+  - **Domain:** both requests must come from the same allowed site (its Origin), and the page refuses to sign a
+    message that names another site or wallet.
+  - **Limits:** 10 nonces a minute per IP.
+  - **Sessions:** last `ADMIN_SESSION_TTL_MINUTES` (30). They're kept in this tab only (sessionStorage) and sent as
+    `Authorization: Bearer`, so no cookie and no CSRF. The engine keeps them in memory as hashes, so a restart signs
+    every admin out. "Sign out every admin" ends them all.
+  - **Recorded:** sign-ins and sign-outs go in the audit log with IP and device, and a sign-in is posted to
+    `ALERT_WEBHOOK_URL`.
+  - Contract wallets can sign in too (ERC-1271/6492, checked on Arc).
+- **The routes (`engine/src/admin/api.ts`):**
+  - `POST /v1/admin/auth/nonce|verify|logout|logout-all`.
+  - `GET /v1/admin/me|live|fees|trades|audit`.
+  - `POST /v1/admin/sweep` (`/v1/admin/fees/claim` is a real run).
+  - `POST /v1/admin/flags`, and `GET /v1/flags` (public).
+  - Everything under `/v1/admin` needs the session, except signing in. Reads change nothing.
+  - A change (a real sweep, a flag) also needs the admin's signature of exactly that change: the second confirmation
+    04 asks for. The kill switch (`/v1/trading/control`) needs no session, so it works in an emergency.
+- **Live sessions:** online now (pages that beat in the last 75s), visitors today and in all, and open WebSocket
+  connections. Also where people are on the site, admins signed in (IP, device), bots running and live, and the switch.
+  - Each heartbeat now carries the section of the site (`sectionOf` in `lib/traffic.ts`: Trenches, coin pages,
+    Futures…); nothing else about the visitor.
+- **The fee sweeper (`engine/src/admin/sweeper.ts`):** fees are paid to the fee wallet inside each trade. The sweeper
+  lists what still sits elsewhere:
+  - fees live bots owe, when their transfer didn't go through: the engine sends them;
+  - Relay's balance for the fee wallet, and Jupiter's referral token accounts: the owner claims those with that
+    wallet's key, which the engine never holds.
+  - **Runs:** daily after `SWEEPER_CRON` (03:00 UTC), and from `/admin` → Fees. Items under `SWEEPER_MIN_USD` ($10)
+    are listed and left alone. A dry run acts on nothing, and its totals equal a real run's on the same state (the
+    same plan function).
+  - **Idempotent:** once a real run of a UTC day goes through, another that day is a no-op. A partial or failed run can
+    go again, and an owed fee is cleared when it's sent, so nothing goes twice.
+  - **Pauses:** "everything off" on the trade switch, or `SWEEPER=off`.
+  - **Recorded:** every run in `arcdex_sweep_runs` (append-only), real runs in the audit log, and a real run's report,
+    a failure or a pause to `ALERT_WEBHOOK_URL`.
+- **Trades:** ARCDEX's router trades from Supabase's `arcdex_trades` (100 newest, and the last 24 hours' count,
+  volume and fees). Without Supabase's key on the engine, the fee ledger's rows stand in.
+- **Audit log:** the append-only `arcdex_admin_audit`: sign-ins, sign-outs, the trade switch, flags and sweeps.
+- **Runtime flags (`engine/src/admin/flags.ts`, `src/arcdex/lib/flags.ts`):** `/admin` → Flags turns a feature on or off
+  for everyone without a deploy. Kept in the engine's settings (`feature-flags`), and audited.
+  - **Which wins:** a flag set on Netlify (`VITE_FLAG_…`) still wins. A protective flag (`withdrawLimits`) can only be
+    turned on there, never off: loosening a protection takes a deploy, so a stolen admin session can't.
+  - **On the site:** pages read the flags when the app starts and every 5 minutes, and keep them for the next visit (a
+    day at most). The admin's own browser follows a change at once.
+  - The flag list is `SITE_FLAGS` in `api/_marketProtocol.ts`.
+- **`/admin`:** a sign-in bar (sign with the trading wallet or a connected one), then tabs: Overview, Fees (the routers'
+  fee, the ledger, the sweeper), Trades, Audit log, Flags, and Kill switch. Kill switch and the routers' fee work
+  without signing in.
+- **Tests:**
+  - `engine/test/admin.test.ts`, 26 tests (and 1 more with `PG_TEST_URL`):
+    - sign-in: the message, replay, expiry, the allowlist, another key, another site, the nonce limit, sessions
+      ending, the audit;
+    - flags: a signed change, the protective rule, a stranger, another admin's session, a replay, a tampered change;
+    - the sweeper: dry equals real, the same-day no-op, failures, pauses, the threshold, the daily run;
+    - the routes (two admins: a real sweep is signed by the one signed in), and the sweep table's triggers.
+    - 14 of 14 planted bugs failed it.
+  - `scripts/test-withdraw-policy.ts`: runtime flags (followed, a build-time pin wins, protective flags never turned
+    off from the panel).
+- **Checked in Chromium** against `engine/scripts/admin-standin.ts` (the engine's own admin code in memory), with an
+  in-page test wallet signing with Anvil's published test key, at 1280px and 390px:
+  - the panel locked before sign-in, then signing in;
+  - Overview, a dry run then a real one ($12.50 sent, $42.50 to claim), and a second real run the same day a no-op;
+  - the protective flag's Off disabled, Jupiter toggled and followed in that browser at once;
+  - Trades, the audit log with each action, Kill switch, and signing out;
+  - no sideways scroll and no page errors.
+- Every new string is in all six dictionaries (82).
+- **Owner steps (Railway, arcdex-engine):**
+  - `ADMIN_EVM_ADDRESSES`: the admin wallets, a hardware wallet preferably.
+  - `ALERT_WEBHOOK_URL`: a Slack or Discord webhook, for sign-in, sweep and mismatch alerts.
+  - Optionally `SWEEPER_MIN_USD` and `SWEEPER_CRON`.
+  - Then redeploy (Deploy latest commit).
+
 ## Autotrade paused (2026-10-03)
 
 Owner: the platform becomes ARCSENSE (spot and futures trading), and "the auto trade functionality will have to be paused for now".
