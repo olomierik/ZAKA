@@ -10,8 +10,9 @@ import type { VisitorStore } from '../traffic'
 import { MemoryVoteStore, emptyCounts, isVoteKind, type VoteKind, type VoteStore } from '../votes'
 import type { Signal } from './types'
 import type { User, UserStore } from './users'
+import type { AuditEntry, AuditStore } from '../site/tradeSwitch'
 
-export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore {
+export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore, AuditStore {
   readonly kind: 'memory' | 'postgres'
   saveSignal(s: Signal): void
   savePosition(p: Position): void
@@ -21,6 +22,8 @@ export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, Vo
   /** Small settings that survive a restart (the owner's mode). */
   getSetting(key: string): Promise<string | null>
   setSetting(key: string, value: string): Promise<void>
+  /** The admin audit log, newest first (appendAudit adds; nothing changes or removes an entry). */
+  audit(limit: number): Promise<AuditEntry[]>
 }
 
 export class MemoryBotStore implements BotStore {
@@ -37,6 +40,9 @@ export class MemoryBotStore implements BotStore {
   private kv = new Map<string, string>()
   async getSetting(key: string) { return this.kv.get(key) ?? null }
   async setSetting(key: string, value: string) { this.kv.set(key, value) }
+  private auditLog: AuditEntry[] = []
+  async appendAudit(e: AuditEntry) { this.auditLog.push(structuredClone(e)) }
+  async audit(limit: number) { return this.auditLog.slice(-limit).reverse().map(e => structuredClone(e)) }
   private accounts = new Map<string, PaperAccount>()
   async paperAccounts() { return [...this.accounts.values()].map(a => structuredClone(a)) }
   savePaperAccount(a: PaperAccount) { this.accounts.set(a.id, structuredClone(a)) }
@@ -78,6 +84,15 @@ create table if not exists arcdex_bot_users (id text primary key, email text not
 create table if not exists arcdex_visitors (id text primary key, first_seen timestamptz not null, last_seen timestamptz not null);
 create index if not exists arcdex_visitors_last on arcdex_visitors (last_seen);
 create table if not exists arcdex_coin_votes (chain text not null, address text not null, voter text not null, kind text not null, at timestamptz not null, primary key (chain, address, voter));
+-- Admin actions (the trade switch), kept for good: the triggers refuse every update, delete and truncate, whoever runs it.
+create table if not exists arcdex_admin_audit (id bigserial primary key, at timestamptz not null, actor text not null, action text not null, detail jsonb not null);
+create index if not exists arcdex_admin_audit_at on arcdex_admin_audit (at desc);
+create or replace function arcdex_admin_audit_append_only() returns trigger language plpgsql as $$
+begin raise exception 'arcdex_admin_audit is append-only'; end $$;
+drop trigger if exists arcdex_admin_audit_no_change on arcdex_admin_audit;
+create trigger arcdex_admin_audit_no_change before update or delete on arcdex_admin_audit for each row execute function arcdex_admin_audit_append_only();
+drop trigger if exists arcdex_admin_audit_no_truncate on arcdex_admin_audit;
+create trigger arcdex_admin_audit_no_truncate before truncate on arcdex_admin_audit for each statement execute function arcdex_admin_audit_append_only();
 `
 
 export class PostgresBotStore implements BotStore {
@@ -117,6 +132,17 @@ export class PostgresBotStore implements BotStore {
   async setSetting(key: string, value: string) {
     await this.ready
     await this.sql`insert into arcdex_bot_settings (key, value, at) values (${key}, ${value}, now()) on conflict (key) do update set value = excluded.value, at = excluded.at`
+  }
+  async appendAudit(e: AuditEntry) {
+    await this.ready
+    await this.sql`insert into arcdex_admin_audit (at, actor, action, detail) values (${new Date(e.at)}, ${e.actor}, ${e.action}, ${JSON.stringify(e.detail)}::jsonb)`
+  }
+  async audit(limit: number): Promise<AuditEntry[]> {
+    await this.ready
+    const rows = await this.sql`select at, actor, action, detail from arcdex_admin_audit order by at desc, id desc limit ${limit}`
+    return rows.map((r: { at: Date; actor: string; action: string; detail: Record<string, unknown> | string }) => ({
+      at: new Date(r.at).getTime(), actor: r.actor, action: r.action, detail: typeof r.detail === 'string' ? JSON.parse(r.detail) : r.detail,
+    }))
   }
   async paperAccounts() {
     await this.ready

@@ -10,6 +10,7 @@ import { BUILDER, forgetAgent, nextNonce, type HlAccess, type HlAccessStatus } f
 import { signL1 } from './signing'
 import { ASSET, cancelAction, marketPrice, newCloid, orderAction, orderWire, roundPrice, roundSize, updateLeverageAction, type Builder, type Grouping, type OrderRequest } from './wire'
 import type { HlMarket } from './markets'
+import { assertTradingOn } from '../lib/tradeSwitch'
 
 export type OrderOutcome =
   | { kind: 'filled'; cloid: string; oid: number; totalSz: number; avgPx: number }
@@ -65,6 +66,8 @@ async function sendL1<T>(a: HlAccess, action: Parameters<typeof signL1>[1]): Pro
 }
 
 export async function placeOrders(a: HlAccess, orders: OrderRequest[], opts: { builder?: Builder | null; grouping?: Grouping } = {}): Promise<OrderOutcome[]> {
+  // The trade switch (lib/tradeSwitch.ts) stops new positions; closing one (reduce-only) always goes through.
+  if (orders.some(o => !o.reduceOnly)) await assertTradingOn('hyperliquid')
   const withIds = orders.map(o => ({ ...o, cloid: o.cloid ?? newCloid() }))
   const action = orderAction(withIds.map(orderWire), opts.builder ?? null, opts.grouping ?? 'na')
   let resp: { type: string; data?: { statuses: RawStatus[] } }

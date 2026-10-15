@@ -6,6 +6,7 @@
 import { N_ } from '../lib/i18n'
 import { AVNU_EXCHANGE, SN, SN_FEE, type SnNetwork } from './net'
 import { felt, fromU256, sameFelt } from './felt'
+import { assertTradingOn } from '../lib/tradeSwitch'
 
 export class AvnuError extends Error {}
 
@@ -133,6 +134,7 @@ export async function avnuQuote(ask: SwapAsk, signal?: AbortSignal): Promise<Avn
 
 /** The calls for a quote, checked. */
 export async function avnuBuild(q: AvnuQuote, ask: SwapAsk & { slippage: number }): Promise<AvnuCall[]> {
+  await assertTradingOn('starknet')
   const r = await fetch(`${SN[ask.net].avnu}/swap/v3/build`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(12_000),
     body: JSON.stringify({ quoteId: q.quoteId, takerAddress: ask.taker, slippage: ask.slippage, includeApprove: true }),

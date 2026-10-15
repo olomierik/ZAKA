@@ -62,6 +62,7 @@ import type { SiteApi } from '../site/siteApi'
 import type { PerpsService } from '../perps/service'
 import type { CoinProgram } from '../coin/program'
 import type { BondingBook } from '../market/bonding'
+import type { TradeSwitch } from '../site/tradeSwitch'
 import type { TrenchService } from '../trench/service'
 import { isTrenchChain } from '../../../api/_trenchProtocol'
 
@@ -96,6 +97,8 @@ export class DataApi {
   bonding: BondingBook | null = null
   /** The Trenches' live feed: every chain's launches, trades and smart wallets (trench/service.ts). */
   trench: TrenchService | null = null
+  /** The trade switch: trading off everywhere or per venue (site/tradeSwitch.ts). */
+  tradeSwitch: TradeSwitch | null = null
   attachBot(b: Bot, control: ControlVerifier | null = null, accounts: PaperAccounts | null = null, users: Users | null = null, tiers: Tiers | null = null) { this.bot = b; this.control = control; this.accounts = accounts; this.users = users; this.tiers = tiers }
 
   async tokenSnapshot(token: string, limit = 50): Promise<{ stats: TokenStats | null; trades: WireTrade[] }> {
@@ -385,6 +388,15 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         }
         return json(req, 404, { error: 'not found' })
       }
+      // The trade switch (site/tradeSwitch.ts): an admin wallet's signed change, applied at once and audited.
+      if (req.method === 'POST' && url.pathname === '/v1/trading/control') {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        if (!api.tradeSwitch) return json(req, 503, { error: 'the trade switch is not running in this process' })
+        if (Number(req.headers.get('content-length') ?? 0) > 2_048) return json(req, 413, { error: 'too large' })
+        const r = await api.tradeSwitch.control(await req.json().catch(() => null))
+        metrics.inc(r.status === 200 ? 'trade_switch_changed' : 'trade_switch_refused')
+        return json(req, r.status, r.body)
+      }
       if (req.method === 'POST' && url.pathname === '/v1/bot/control') {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
         const bot = api.bot, control = api.control
@@ -416,6 +428,11 @@ export function startServer({ cfg, api, health }: ServerDeps) {
       const limit = (d: number, max: number) => Math.max(1, Math.min(max, Number(url.searchParams.get('limit')) || d))
       const before = Number(url.searchParams.get('before')) || undefined
       try {
+        // What trading is off, and why: the site reads it before every trade (no-store: a switch must reach it at once).
+        if (url.pathname === '/v1/trading/status') {
+          if (!api.tradeSwitch) return json(req, 503, { error: 'the trade switch is not running in this process' })
+          return json(req, 200, api.tradeSwitch.state(), 'no-store')
+        }
         if (url.pathname === '/v1/tokens/new') return json(req, 200, { launches: await api.launches(limit(50, 500)) }, 'public, max-age=1')
         if (url.pathname === '/v1/tokens/active') return json(req, 200, { at: Date.now(), tokens: api.active(limit(100, 300)) }, 'public, max-age=5')
         if (url.pathname === '/v1/market') return json(req, 200, { tokens: await api.market(limit(100, 1_000)) }, 'public, max-age=2')

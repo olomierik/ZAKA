@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { t as T } from '../lib/i18n'
+import { TradingPausedError } from '../lib/tradeSwitch'
 import { useTrader, shortAddr } from '../lib/identity'
 import { useCash } from '../lib/usdc'
 import { openConnectModal } from './ConnectWallet'
@@ -19,6 +20,7 @@ import type { HlAccountState } from '../hl/account'
 
 export const money = (n: number | null | undefined, dp = 2) => n == null || !Number.isFinite(n) ? '—' : `$${n.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}`
 export const errText = (e: unknown) => {
+  if (e instanceof TradingPausedError) return e.message
   const m = e instanceof Error ? e.message : String(e)
   if (/user rejected|denied|rejected the request/i.test(m)) return T('You cancelled it in your wallet.')
   return m.length > 220 ? `${m.slice(0, 220)}…` : m

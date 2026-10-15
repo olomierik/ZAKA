@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import { TradingPausedError } from '../lib/tradeSwitch'
 import { useLogo } from '../lib/logo'
 import { AVNU_EXCHANGE, ETH, SN, SN_FEE, STARKNET_SWAPS, STRK, voyagerContract, voyagerTx, type SnNetwork } from '../starknet/net'
 import { parseUnits, sameFelt, units } from '../starknet/felt'
@@ -34,6 +35,7 @@ const num = (n: number, dp = 6) => (Number.isFinite(n) ? n.toLocaleString(undefi
 const gasText = (n: number) => (n > 0 && n < 0.000001 ? '< 0.000001' : n > 0 && n < 0.0001 ? n.toPrecision(2) : num(n, 4))
 const usd = (n: number | undefined) => (n == null || !Number.isFinite(n) ? '' : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
 const errText = (e: unknown) => {
+  if (e instanceof TradingPausedError) return e.message
   const m = e instanceof Error ? e.message : String(e)
   if (/reject|denied|cancel|abort/i.test(m)) return T('You cancelled it in your wallet.')
   return e instanceof AvnuError ? T(m.split(': ')[0]) + (m.includes(': ') ? `: ${m.split(': ').slice(1).join(': ')}` : '') : m.slice(0, 220)

@@ -12,7 +12,7 @@
 // Estimated with a throwaway wallet on 2026-09-26: Arc → Base, Base → Arc,
 // Arbitrum → Arc and Arc → Ethereum all quote (see Bridge.tsx for the fees).
 
-import { createPublicClient, createWalletClient, http, type Chain, type EIP1193Provider, type Transport } from 'viem'
+import { createPublicClient, createWalletClient, getAddress, http, type Chain, type EIP1193Provider, type Transport } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { BridgeKit, type BridgeChain } from '@circle-fin/bridge-kit'
 import * as Chains from '@circle-fin/bridge-kit/chains'
@@ -20,6 +20,7 @@ import { createViemAdapterFromProvider, ViemAdapter } from '@circle-fin/adapter-
 import { getEmbeddedWalletClient, recordBroadcasts } from './embeddedWallet'
 import { chainTransport } from './rpc'
 import { BRIDGE_NETWORKS } from './bridgeChains'
+import { FEE_WALLET } from './platform'
 
 /** Reads, simulations and gas estimates for the kit: lag-tolerant, because
  * the kit simulates the burn the moment the approval confirms, and a
@@ -29,10 +30,9 @@ const kitPublicClient = ({ chain }: { chain: Chain }) => createPublicClient({ ch
 
 export const kit = new BridgeKit()
 
-/** Same wallet ArcDexRouter and ArcLaunchpad already send fees to — see
- * AGENTS.md. Not env-configurable: it's a fixed constant on both deployed
- * contracts, so the bridge fee matches that rather than drifting from it. */
-export const PLATFORM_FEE_WALLET = '0x274262A0321A0701b0A46a3576e07aE881c286Bb'
+/** The platform's fee wallet (lib/platform.ts: VITE_FEE_RECIPIENT_EVM, else
+ * the wallet ArcDexRouter and ArcLaunchpad send fees to), checksummed. */
+export const PLATFORM_FEE_WALLET = getAddress(FEE_WALLET)
 
 /** Bridge fee: 0.5% of the transfer, bounded so it's never trivial on tiny
  * transfers or excessive on large ones — same "predictable, capped, no

@@ -11,7 +11,8 @@ import {
   ORACLE_BYTECODE, ORACLE_IMMUTABLES, ORACLE_RUNTIME, PERPS_BYTECODE, PERPS_IMMUTABLES, PERPS_RUNTIME,
   TEST_USDC_BYTECODE, TEST_USDC_IMMUTABLES, TEST_USDC_RUNTIME,
 } from './build'
-import { ARC_TESTNET, FEE_WALLET, MARKET_DEFAULTS, MARKET_FEEDS, PERPS_OWNER, REDSTONE, TESTNET_SEED_USDC, feedIdOf, type PerpsDeployment } from './shared'
+import { ARC_TESTNET, MARKET_DEFAULTS, MARKET_FEEDS, PERPS_OWNER, REDSTONE, TESTNET_SEED_USDC, feedIdOf, type PerpsDeployment } from './shared'
+import { FEE_RECIPIENT } from '../feeWallet'
 import { log } from '../log'
 
 /** Enough native USDC for the three deployments and the seeding (~0.15 at testnet gas prices). */
@@ -84,7 +85,7 @@ export async function deployStep(d: DeployDeps): Promise<PerpsDeployment> {
   if (chainId !== (d.chainId ?? ARC_TESTNET.id)) throw new Error(`refusing to deploy futures on chain ${chainId}: Arc testnet only`)
   const keeper = d.wallet.account.address
   const owner = d.owner ?? (PERPS_OWNER as Address)
-  const feeWallet = d.feeWallet ?? (FEE_WALLET as Address)
+  const feeWallet = d.feeWallet ?? FEE_RECIPIENT
   const dep = (await d.store.get()) ?? emptyDeployment()
   const save = async () => { await d.store.set(dep) }
 

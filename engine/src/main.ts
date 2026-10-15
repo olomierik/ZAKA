@@ -58,6 +58,7 @@ import { PostgresCandleStore } from './perps/store'
 import { MemoryCandleStore } from './perps/candles'
 import { LiveExecutor } from './trading/live'
 import { DataApi, startServer } from './ws/server'
+import { TradeSwitch } from './site/tradeSwitch'
 import { startSignalEngine, type QuantBoot } from './quant/boot'
 import { createSiteApi } from './site/siteApi'
 import { EstablishedBook } from './market/established'
@@ -232,6 +233,15 @@ async function main() {
   if (dataApi) dataApi.traffic = new Traffic(botStore)
   // Community sentiment on each coin (votes.ts), kept beside it.
   if (dataApi) dataApi.votes = new Votes(botStore)
+  // The trade switch (site/tradeSwitch.ts): trading off everywhere or on one venue, by an admin wallet's signature or
+  // GLOBAL_KILL_SWITCH / KILL_SWITCH_VENUES; every change in the append-only audit log.
+  if (dataApi) {
+    const adminCheck = new ControlVerifier(null, cfg.httpUrls)
+    const tradeSwitch = new TradeSwitch({ settings: botStore, audit: botStore, env: cfg.killSwitch, verify: (m, at, sig, now) => adminCheck.verifyAnyOf(cfg.admins, m, at, sig, now) })
+    await tradeSwitch.load()
+    dataApi.tradeSwitch = tradeSwitch
+    log.info('trade switch', { admins: cfg.admins.length, on: tradeSwitch.state().on, envAll: cfg.killSwitch.all, envVenues: cfg.killSwitch.venues })
+  }
   // Visitors' bots live on: accounts (email + passcode, Resend for email), and
   // live trading from each bot's own wallet once BOT_WALLET_SECRET is set.
   // Secrets are read here only and never logged.

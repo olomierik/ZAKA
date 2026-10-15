@@ -32,6 +32,7 @@
 import { pad } from 'viem'
 import { ARCHIVE_RPCS, hex, rpcCall, scanLogs, type RawLog } from '../../../api/_arcLogs'
 import type { Rpc } from '../chain/http'
+import { FEE_RECIPIENT } from '../feeWallet'
 import { errMsg, log } from '../log'
 import type { CoinEntry, CoinEntryKind, CoinProgramView } from './shared'
 
@@ -40,7 +41,8 @@ export const COIN = '0x4b93446882d29e094181b2fae14b126577a2676c'
 export const COIN_SUPPLY = 1_000_000_000
 /** The block $ARCDEX was created in (2026-09-24 13:11 UTC): its burn history starts here. */
 export const COIN_CREATED_BLOCK = 22_522_612
-export const FEE_WALLET = '0x274262a0321a0701b0a46a3576e07ae881c286bb'
+/** The fee wallet whose buybacks and burns the program follows (FEE_RECIPIENT_EVM, else the default; lowercase). */
+export const FEE_WALLET = FEE_RECIPIENT.toLowerCase()
 export const DEAD = '0x000000000000000000000000000000000000dead'
 const USDC = '0x3600000000000000000000000000000000000000'
 const NATIVE_LOGGER = '0xfffffffffffffffffffffffffffffffffffffffe'

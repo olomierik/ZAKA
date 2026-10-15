@@ -191,6 +191,14 @@ ok('error' in okReq(buyPath, new Headers({ 'sec-fetch-site': 'cross-site' })) &&
 ok('error' in okReq(buyPath.replace('originChainId=5042', 'originChainId=1')), 'refuses a route that isn’t Arc ⇄ Robinhood Chain')
 ok('error' in okReq(buyPath.replace(FEE_WALLET, ATTACKER)), 'refuses a fee to anyone but the fee wallet')
 ok('error' in okReq(buyPath.replace('appFee=0.02', 'appFee=0.5')), 'refuses a fee over 2%')
+{
+  // The fee wallet moved by VITE_FEE_RECIPIENT_EVM (docs/REPO_MAP.md D4): the proxy follows it; a typo keeps the default.
+  const moved = '0x' + '5a'.repeat(20)
+  const movedPath = buyPath.replace(FEE_WALLET, moved)
+  ok('path' in proxy.acrossRequest(new URL(site + '/across' + movedPath), same, proxy.feeWalletFrom(moved.toUpperCase().replace('0X', '0x'))), 'a fee wallet set in the environment is the one it accepts')
+  ok('error' in proxy.acrossRequest(new URL(site + '/across' + buyPath), same, proxy.feeWalletFrom(moved)), 'and the old one is then refused')
+  ok(proxy.feeWalletFrom('0x123') === FEE_WALLET && proxy.feeWalletFrom(undefined) === FEE_WALLET, 'a typo or nothing set keeps the default')
+}
 ok('error' in okReq('/deposits?depositor=' + BUYER) && 'error' in okReq('/deposit/status?depositTxnRef=0x12'), 'refuses anything else')
 {
   const realFetch = globalThis.fetch

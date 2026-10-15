@@ -4,7 +4,7 @@
 // at once); the coin arrives at the same address on Robinhood Chain in
 // seconds. Sell: signed on Robinhood Chain, where gas is ETH (a few cents,
 // added in one tap from Arc's USDC); the USDC lands on Arc. ARCDEX's fee
-// (the swap router's, 2%) comes out of what the trade delivers.
+// (0.5%, SPOT_FEE_BPS in lib/platform.ts) comes out of what the trade delivers.
 //
 // Robinhood's stock tokens can't be bought from some countries
 // (lib/robinhood.ts STOCK_RESTRICTED): the buy side checks the visitor's
@@ -15,10 +15,10 @@ import { formatUnits, parseUnits } from 'viem'
 import { openConnectModal } from './ConnectWallet'
 import { useTrader, shortAddr } from '../lib/identity'
 import { useCash } from '../lib/usdc'
-import { useRouterInfo, pct } from '../lib/routerInfo'
+import { pct } from '../lib/routerInfo'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { onBalances } from '../lib/balances'
-import { ARC_EXPLORER, FEE_WALLET } from '../lib/platform'
+import { ARC_EXPLORER, FEE_WALLET, SPOT_FEE_BPS } from '../lib/platform'
 import { visitorCountry } from '../lib/geo'
 import { rhEthBalance, rhTokenBalance, rhTx, SELL_GAS_ETH, STOCK_RESTRICTED } from '../lib/robinhood'
 import { getAcrossQuote, QUOTE_LIMITS, quoteValue, quoteVerdict, type AcrossQuote, type QuoteRequest } from '../lib/acrossQuote'
@@ -66,8 +66,7 @@ type Step = 'idle' | 'working' | 'done' | 'error'
 export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stock, side, initialMode, compact, buyBlocked, onTraded, initialAmount }: Props) {
   const trader = useTrader()
   const me = trader.address
-  const info = useRouterInfo()
-  const feeBps = info?.feeBps ?? 200
+  const feeBps = SPOT_FEE_BPS
   const [mode, setMode] = useState<'buy' | 'sell'>(side ?? initialMode ?? 'buy')
   const [amount, setAmount] = useState(initialAmount && initialAmount > 0 ? String(initialAmount) : '')
   const [quote, setQuote] = useState<AcrossQuote | null>(null)

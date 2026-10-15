@@ -6,7 +6,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { t as T, N_ } from '../lib/i18n'
 import type { Page } from '../App'
 import { engineApiUrl } from '../api/marketStream'
-import { GROUP_LABEL, NOT_SUPPORTED, ROUTES, type ProviderId, type RouteGroup, type RouteStatus } from '../lib/routes'
+import { GROUP_LABEL, NOT_SUPPORTED, ROUTES, type ProviderId, type RouteGroup, type RouteStatus, type SupportedRoute } from '../lib/routes'
+import { client } from '../api/launchpad'
+import { FEE_ABI, routersInForce, type RouterId } from '../lib/routerFees'
+import { pct } from '../lib/routerInfo'
 
 interface Check { id: ProviderId; name: string; use: string; run: (signal: AbortSignal) => Promise<string> }
 
@@ -74,6 +77,14 @@ export default function RoutesPage({ navigate }: { navigate: (p: Page) => void }
     void Promise.all(CHECKS.map(c => probe(c).then(r => setHealth(h => ({ ...h, [c.id]: r }))))).finally(() => setChecking(false))
   }, [])
   useEffect(() => { check() }, [check])
+  // The Arc routers' fee as it is on-chain now (their owner sets it), not as it was when this page was written.
+  const [chainFee, setChainFee] = useState<Partial<Record<RouterId, number>>>({})
+  useEffect(() => {
+    for (const r of routersInForce()) {
+      client.readContract({ address: r.address, abi: FEE_ABI, functionName: 'feeBps' }).then(b => setChainFee(f => ({ ...f, [r.id]: Number(b) })), () => {})
+    }
+  }, [])
+  const feeOf = (r: SupportedRoute) => (r.onchain && chainFee[r.onchain] !== undefined ? pct(chainFee[r.onchain]!) : T(r.fee))
   useEffect(() => { const base = document.title; document.title = `${T('Supported routes')} | ARCDEX`; return () => { document.title = base } }, [])
 
   const groups: RouteGroup[] = ['spot', 'starknet', 'cross', 'bridge', 'futures']
@@ -124,7 +135,7 @@ export default function RoutesPage({ navigate }: { navigate: (p: Page) => void }
                   {r.page && <button className="link-btn" onClick={() => navigate(r.page!)}>{T('Open')} →</button>}
                 </span>
                 <span className="rt-prov-cell"><span className={`rt-dot ${dot(r.providers)}`} aria-hidden /> {T(r.provider)}</span>
-                <span><span className="rt-label">{T('ARCDEX fee')}</span>{T(r.fee)}</span>
+                <span><span className="rt-label">{T('ARCDEX fee')}</span>{feeOf(r)}</span>
                 <span><span className="rt-label">{T('Usual time')}</span>{T(r.time)}</span>
                 <span><span className={`rt-status ${r.status}`}>{T(STATUS_TEXT[r.status])}</span></span>
               </div>

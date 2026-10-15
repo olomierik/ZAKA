@@ -3,18 +3,26 @@
 // ID can sit there too (ACROSS_INTEGRATOR_ID). Only ARCDEX's own requests pass: from the site's
 // own pages, a quote between Arc and Robinhood Chain whose fee (if any) goes to ARCDEX's fee
 // wallet, or a deposit's status. Without a key it answers 503 and the site asks Across directly.
+// The fee wallet is VITE_FEE_RECIPIENT_EVM, the same Netlify variable the site is built with
+// (src/arcdex/lib/platform.ts), else 0x2742…86Bb.
 
 declare const Netlify: { env: { get(name: string): string | undefined } }
 
 const UPSTREAM = 'https://app.across.to/api'
-const FEE_WALLET = '0x274262a0321a0701b0a46a3576e07ae881c286bb'
+const DEFAULT_FEE_WALLET = '0x274262a0321a0701b0a46a3576e07ae881c286bb'
 const CHAINS = new Set(['5042', '4663'])
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'private, no-store' } })
 
 /** The Across path and query to forward, or why not. */
-export function acrossRequest(url: URL, headers: Headers): { path: string } | { error: string; status: number } {
+/** The fee wallet from the environment value, as the site reads it (lib/platform.ts feeRecipientFrom). */
+export function feeWalletFrom(raw: string | undefined): string {
+  const v = String(raw ?? '').trim()
+  return /^0x[0-9a-fA-F]{40}$/.test(v) ? v.toLowerCase() : DEFAULT_FEE_WALLET
+}
+
+export function acrossRequest(url: URL, headers: Headers, feeWallet = DEFAULT_FEE_WALLET): { path: string } | { error: string; status: number } {
   // Browsers say where a request comes from; other sites' pages can't use the key.
   if (headers.get('sec-fetch-site') !== 'same-origin') return { error: 'not from this site', status: 403 }
   const path = url.pathname.replace(/^\/across/, '')
@@ -29,7 +37,7 @@ export function acrossRequest(url: URL, headers: Headers): { path: string } | { 
   const to = q.get('destinationChainId') ?? ''
   if (!CHAINS.has(from) || !CHAINS.has(to) || from === to) return { error: 'route not served', status: 400 }
   const fee = q.get('appFee')
-  if (fee !== null && (!(Number(fee) >= 0 && Number(fee) <= 0.02) || (q.get('appFeeRecipient') ?? '').toLowerCase() !== FEE_WALLET)) {
+  if (fee !== null && (!(Number(fee) >= 0 && Number(fee) <= 0.02) || (q.get('appFeeRecipient') ?? '').toLowerCase() !== feeWallet)) {
     return { error: 'fee not served', status: 400 }
   }
   return { path: `/swap/approval?${q}` }
@@ -40,7 +48,7 @@ export default async (req: Request) => {
   const key = Netlify.env.get('ACROSS_API_KEY')?.trim()
   if (!key) return json(503, { error: 'not configured' })
   const url = new URL(req.url)
-  const r = acrossRequest(url, req.headers)
+  const r = acrossRequest(url, req.headers, feeWalletFrom(Netlify.env.get('VITE_FEE_RECIPIENT_EVM')))
   if ('error' in r) return json(r.status, { error: r.error })
   let path = r.path
   const id = Netlify.env.get('ACROSS_INTEGRATOR_ID')?.trim()

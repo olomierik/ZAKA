@@ -8,7 +8,7 @@
 //   deposit   SOL or USDC on Solana → USDC on Arc (the account's cash).
 //   withdraw  USDC on Arc → SOL or USDC in the Solana wallet.
 // All through Relay (lib/relayQuote.ts `xin` / `xout`): every quote checked before signing, valued at the market for the
-// price guard, approvals for the exact amount. ARCDEX's fee is Relay's app fee: 2% on trades, 0.5% on deposits and
+// price guard, approvals for the exact amount. ARCDEX's fee is Relay's app fee: 0.5% on trades (SPOT_FEE_BPS), 0.5% on deposits and
 // withdrawals (as the bridge's).
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -20,9 +20,9 @@ import { client as arcClient } from '../api/launchpad'
 import { solUsd } from '../api/solanaMarket'
 import { useTrader } from '../lib/identity'
 import { useCash } from '../lib/usdc'
-import { useRouterInfo, pct } from '../lib/routerInfo'
+import { pct } from '../lib/routerInfo'
 import { onBalances } from '../lib/balances'
-import { ARC_EXPLORER } from '../lib/platform'
+import { ARC_EXPLORER, SPOT_FEE_BPS } from '../lib/platform'
 import { accountOwner, isUnlocked } from '../lib/embeddedWallet'
 import { solBalance, solTokenBalance, solTx, type SolHolding } from '../lib/solana'
 import { connectSolanaWallet, phantomLink, pickSolSigner, useSolanaWallets } from '../lib/solanaWallet'
@@ -100,7 +100,6 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
   const sol = useSolanaWallets()
   const signer = solSignerOf(sol, trader.kind)
   const solAddr = signer === 'trading' ? sol.trading : signer === 'external' ? sol.external?.address ?? null : null
-  const info = useRouterInfo()
   const [mode, setMode] = useState<CrossMode>(initialMode ?? modes[0])
   const [cur, setCur] = useState<'sol' | 'usdc'>('sol')
   const [amount, setAmount] = useState('')
@@ -121,7 +120,7 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
   const busy = step === 'working'
   const paying = mode === 'buy' || mode === 'deposit'
   const bridging = mode === 'deposit' || mode === 'withdraw'
-  const feeBps = bridging ? BRIDGE_FEE_BPS : info?.feeBps ?? 200
+  const feeBps = bridging ? BRIDGE_FEE_BPS : SPOT_FEE_BPS
 
   useEffect(() => {
     if (solPrice > 0) return

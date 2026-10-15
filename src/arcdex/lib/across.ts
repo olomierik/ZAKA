@@ -22,6 +22,7 @@ import { bscClient, bscWallet } from './bsc'
 import type { TraderKind } from './identity'
 import { AcrossError, ARC_ID, depositStatus, getAcrossQuote, QUOTE_LIMITS, RH_ID, type AcrossQuote, type FillStatus, type QuoteRequest } from './acrossQuote'
 import { t as T } from './i18n'
+import { assertTradingOn } from './tradeSwitch'
 
 export { AcrossError }
 
@@ -113,6 +114,7 @@ const DRIFT = 0.03
  */
 export async function runAcross(kind: TraderKind, req: QuoteRequest, shown: AcrossQuote | null, onStep: (p: AcrossProgress) => void,
   { approveExtra = 0n }: { approveExtra?: bigint } = {}): Promise<AcrossResult> {
+  if (req.side !== 'gas') await assertTradingOn('robinhood')
   const chainId = req.side === 'sell' ? RH_ID : ARC_ID
   const trader = req.trader as Address
   if (kind === 'wallet' && req.side !== 'sell' && await isContractWallet(trader)) {

@@ -2,7 +2,7 @@
 // trading wallet signs on BNB Chain with the same key (no pop-ups), a connected wallet is switched to BNB Chain.
 //
 //   • Graduated (PancakeSwap): through Relay (lib/relay.ts), paid with USDC on Arc (the coin lands on BNB Chain in
-//     seconds), BNB or USDT; sold for any of the three. ARCDEX's 2% is Relay's app fee.
+//     seconds), BNB or USDT; sold for any of the three. ARCDEX's 0.5% (SPOT_FEE_BPS) is Relay's app fee.
 //   • On its curve: four.meme's own TokenManager2 (lib/fourMeme.ts), paid with the coin's quote (BNB, or USDT for a
 //     USDT coin) and sold for it. ARCDEX takes no fee there; four.meme takes its own (about 1%).
 // Gas on BNB Chain is BNB: "Add BNB" turns Arc USDC into BNB at the same address (Relay, no ARCDEX fee).
@@ -12,10 +12,10 @@ import { formatUnits, parseUnits } from 'viem'
 import { openConnectModal } from './ConnectWallet'
 import { useTrader } from '../lib/identity'
 import { useCash } from '../lib/usdc'
-import { useRouterInfo, pct } from '../lib/routerInfo'
+import { pct } from '../lib/routerInfo'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { onBalances } from '../lib/balances'
-import { ARC_EXPLORER, FEE_WALLET } from '../lib/platform'
+import { ARC_EXPLORER, FEE_WALLET, SPOT_FEE_BPS } from '../lib/platform'
 import { bnbBalance, bscTokenBalance, bscTx, bscAddress, SELL_GAS_BNB, type BscHolding } from '../lib/bsc'
 import { getRelayQuote, QUOTE_LIMITS, quoteVerdict, relayValue, relayValueUsd, EVM_NATIVE, type RelayQuote, type RelayRequest } from '../lib/relayQuote'
 import { relayErrorText, runRelayEvm, type RelayProgress } from '../lib/relay'
@@ -68,8 +68,7 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
   const trader = useTrader()
   const me = trader.address
   const kind = trader.kind ?? 'wallet'
-  const info = useRouterInfo()
-  const feeBps = info?.feeBps ?? 200
+  const feeBps = SPOT_FEE_BPS
   const curve = !!four && !four.graduated
   const curveRoute: Route = four?.quote === BSC_USDT ? 'usdt' : 'bnb'
   const [mode, setMode] = useState<'buy' | 'sell'>(side ?? initialMode ?? 'buy')

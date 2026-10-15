@@ -22,9 +22,10 @@
 // Relay's newer orders (`protocol.v2`) describe the order a deposit funds: its id is in the Solana deposit's data, and
 // its payments, refunds and calls are checked against the request.
 //
-// ARCDEX's fee is Relay's app fee: 2% (the swap router's feeBps) of what goes in, accrued for the fee wallet
-// 0x2742…86Bb as a USDC balance at Relay and claimed from there (Relay pays app fees out on a claim, signed by that
-// wallet; https://docs.relay.link/features/app-fees). The gas top-ups carry no fee.
+// ARCDEX's fee is Relay's app fee: 0.5% (SPOT_FEE_BPS in lib/platform.ts; 2% until 2026-10-15) of what goes in,
+// accrued for the fee wallet (FEE_WALLET: VITE_FEE_RECIPIENT_EVM, else 0x2742…86Bb) as a USDC balance at Relay and
+// claimed from there (Relay pays app fees out on a claim, signed by that wallet; https://docs.relay.link/features/app-fees).
+// The gas top-ups carry no fee.
 //
 // A quote is refused unless it's exactly the trade asked for: who pays and who receives, the coins, the amount, only
 // Relay's own contracts as Relay publishes them (GET /chains) with approvals for exactly the amount, and on Solana only
