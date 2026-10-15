@@ -12,8 +12,10 @@ import type { Signal } from './types'
 import type { User, UserStore } from './users'
 import type { AuditEntry, AuditStore } from '../site/tradeSwitch'
 import { MemoryFeeLedgerStore, type FeeLedgerStore, type FeeRow, type FeeSource, type ReconRow } from '../fees/ledger'
+import { MemorySweepStore, type SweepStore } from '../admin/sweeper'
+import type { SweepRun } from '../../../api/_marketProtocol'
 
-export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore, AuditStore, FeeLedgerStore {
+export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore, AuditStore, FeeLedgerStore, SweepStore {
   readonly kind: 'memory' | 'postgres'
   saveSignal(s: Signal): void
   savePosition(p: Position): void
@@ -71,6 +73,9 @@ export class MemoryBotStore implements BotStore {
   allFees(source?: FeeSource) { return this.fees.allFees(source) }
   appendRecon(r: ReconRow) { return this.fees.appendRecon(r) }
   recons(limit: number) { return this.fees.recons(limit) }
+  private sweeps = new MemorySweepStore()
+  appendSweepRun(r: SweepRun) { return this.sweeps.appendSweepRun(r) }
+  sweepRuns(limit: number) { return this.sweeps.sweepRuns(limit) }
 }
 
 const SCHEMA = `
@@ -124,6 +129,15 @@ drop trigger if exists arcdex_fee_recon_no_change on arcdex_fee_reconciliations;
 create trigger arcdex_fee_recon_no_change before update or delete on arcdex_fee_reconciliations for each row execute function arcdex_fee_append_only();
 drop trigger if exists arcdex_fee_recon_no_truncate on arcdex_fee_reconciliations;
 create trigger arcdex_fee_recon_no_truncate before truncate on arcdex_fee_reconciliations for each statement execute function arcdex_fee_append_only();
+-- The fee sweeper's runs (admin/sweeper.ts), dry and real, kept for good like the ledger.
+create table if not exists arcdex_sweep_runs (
+  id text primary key, at timestamptz not null, day text not null, mode text not null, by_actor text not null, status text not null, run jsonb not null
+);
+create index if not exists arcdex_sweep_runs_at on arcdex_sweep_runs (at desc);
+drop trigger if exists arcdex_sweep_runs_no_change on arcdex_sweep_runs;
+create trigger arcdex_sweep_runs_no_change before update or delete on arcdex_sweep_runs for each row execute function arcdex_fee_append_only();
+drop trigger if exists arcdex_sweep_runs_no_truncate on arcdex_sweep_runs;
+create trigger arcdex_sweep_runs_no_truncate before truncate on arcdex_sweep_runs for each statement execute function arcdex_fee_append_only();
 `
 
 export class PostgresBotStore implements BotStore {
@@ -272,5 +286,15 @@ export class PostgresBotStore implements BotStore {
       at: new Date(r.at as Date).getTime(), source: r.source as ReconRow['source'], scope: String(r.scope), ledger: String(r.ledger), onchain: String(r.onchain),
       diff: String(r.diff), ok: !!r.ok, detail: typeof r.detail === 'string' ? JSON.parse(r.detail) : (r.detail as Record<string, unknown>),
     }))
+  }
+  async appendSweepRun(r: SweepRun) {
+    await this.ready
+    await this.sql`insert into arcdex_sweep_runs (id, at, day, mode, by_actor, status, run) values (${r.id}, ${new Date(r.at)}, ${r.day}, ${r.mode}, ${r.by}, ${r.status}, ${JSON.stringify(r)}::jsonb)
+      on conflict (id) do nothing`
+  }
+  async sweepRuns(limit: number): Promise<SweepRun[]> {
+    await this.ready
+    const rows = await this.sql`select run from arcdex_sweep_runs order by at desc limit ${limit}`
+    return rows.map((r: { run: SweepRun | string }) => (typeof r.run === 'string' ? JSON.parse(r.run) : r.run) as SweepRun)
   }
 }

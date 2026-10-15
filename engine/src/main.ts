@@ -56,6 +56,12 @@ import { CoinProgram, FEE_SOURCES, FEE_WALLET, fetchRelayBalances } from './coin
 import { FeeLedger } from './fees/ledger'
 import { FeeLedgerService, webhookAlert } from './fees/service'
 import { JupiterFeeWatcher, type SolCall } from './fees/jupiterWatch'
+import { AdminAuth } from './admin/auth'
+import { FeatureFlags } from './admin/flags'
+import { Sweeper, cronMinuteOfDay } from './admin/sweeper'
+import { AdminApi, type AdminTrades } from './admin/api'
+import { adminReady, db } from '../../api/_supabaseAdmin'
+import type { VerifyAdmin } from './site/tradeSwitch'
 import { SOL_RPC_SERVER } from '../../api/_solCore'
 import { BondingBook } from './market/bonding'
 import { PostgresCandleStore } from './perps/store'
@@ -239,9 +245,11 @@ async function main() {
   if (dataApi) dataApi.votes = new Votes(botStore)
   // The trade switch (site/tradeSwitch.ts): trading off everywhere or on one venue, by an admin wallet's signature or
   // GLOBAL_KILL_SWITCH / KILL_SWITCH_VENUES; every change in the append-only audit log.
+  // One verifier for every admin signature (the switch, flags, the sweeper), so a signature is used once across all of them.
+  const adminCheck = new ControlVerifier(null, cfg.httpUrls)
+  const verifyAdmin: VerifyAdmin = (m, at, sig, now) => adminCheck.verifyAnyOf(cfg.admins, m, at, sig, now)
   if (dataApi) {
-    const adminCheck = new ControlVerifier(null, cfg.httpUrls)
-    const tradeSwitch = new TradeSwitch({ settings: botStore, audit: botStore, env: cfg.killSwitch, verify: (m, at, sig, now) => adminCheck.verifyAnyOf(cfg.admins, m, at, sig, now) })
+    const tradeSwitch = new TradeSwitch({ settings: botStore, audit: botStore, env: cfg.killSwitch, verify: verifyAdmin })
     await tradeSwitch.load()
     dataApi.tradeSwitch = tradeSwitch
     log.info('trade switch', { admins: cfg.admins.length, on: tradeSwitch.state().on, envAll: cfg.killSwitch.all, envVenues: cfg.killSwitch.venues })
@@ -274,6 +282,7 @@ async function main() {
   // $ARCDEX buyback, burns and liquidity (coin/program.ts): the fee wallet's activity, 30% / 70% of
   // fees, and every burn. The SENSE_* names still work (the program bought $SENSE until 2026-10-04).
   const env = (name: string) => process.env[`COIN_${name}`] ?? process.env[`SENSE_${name}`]
+  let feeRefs: { ledger: FeeLedger; jupiter: JupiterFeeWatcher | null } | null = null
   if (dataApi && !/^(0|off|false|no)$/i.test(env('PROGRAM')?.trim() ?? '')) {
     const list = (v: string | undefined) => (v ?? '').split(',').map(s => s.trim()).filter(s => /^0x[0-9a-fA-F]{40}$/.test(s))
     // The fee ledger (fees/ledger.ts): every fee from on-chain evidence, append-only, reconciled every night.
@@ -323,6 +332,7 @@ async function main() {
     programRef = program
     dataApi.coin = program
     dataApi.fees = { ledger: feeLedger, service: fees }
+    feeRefs = { ledger: feeLedger, jupiter: jupiterFees }
     void program.start().then(() => fees.begin()).catch(e => log.error('coin program: did not start', { error: errMsg(e) }))
     every(10 * 60_000, 'fee ledger', () => { void jupiterFees?.tick(); void fees.tick().catch(e => log.warn('fee ledger: reconciliation failed', { error: errMsg(e) })) })
   }
@@ -339,6 +349,60 @@ async function main() {
   every(10 * 60_000, 'tier holdings', readHoldings)
   const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => botRef?.priceOf(token) ?? eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s), live: userLive, paperSignals: cfg.botSignals.paper, access: ownerId => tiers.access(users?.get(ownerId) ?? null), liveRouting: cfg.liveGrades === 'board' ? 'board' : cfg.liveGrades === 'dollar' ? 'dollar' : 'grades', paused: cfg.autotradePaused })
   if (accounts) await accounts.load().catch(e => log.error('paper accounts: load failed', { error: errMsg(e) }))
+  // The admin panel (admin/*): sign-in, live sessions, fees and the sweeper, trades, the audit log, runtime flags.
+  if (dataApi) {
+    const alert = webhookAlert(process.env.ALERT_WEBHOOK_URL)
+    const off = (v: string | undefined) => /^(0|off|false|no)$/i.test(v?.trim() ?? '')
+    const auth = new AdminAuth({ admins: cfg.admins, origins: cfg.allowedOrigins, ttlMinutes: Number(process.env.ADMIN_SESSION_TTL_MINUTES) || 30, signedBy: (a, m, sig) => adminCheck.signedBy(a, m, sig), audit: botStore, alert })
+    const flags = new FeatureFlags({ settings: botStore, audit: botStore, verify: verifyAdmin })
+    await flags.load()
+    const minute = cronMinuteOfDay(process.env.SWEEPER_CRON ?? '0 3 * * *')
+    const jup = feeRefs?.jupiter ?? null
+    const SOL_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', WSOL = 'So11111111111111111111111111111111111111112'
+    const sweeper = new Sweeper({
+      store: botStore, settings: botStore, audit: botStore,
+      minUsd: Math.max(0, Number(process.env.SWEEPER_MIN_USD ?? 10) || 0),
+      owedFees: () => accounts?.owedFees() ?? [],
+      sendOwedFees: () => accounts?.sendOwedFees() ?? Promise.resolve([]),
+      relayBalances: async () => (await fetchRelayBalances(FEE_WALLET)).map(b => ({ holder: `Relay ${b.key}`, token: b.symbol, amount: String(b.amount), usd: b.usd })),
+      jupiterBalances: jup ? async () => (await jup.accounts()).map(a => ({ holder: a.account, token: a.mint === SOL_USDC ? 'USDC' : a.mint === WSOL ? 'SOL' : a.mint.slice(0, 6), amount: a.amount, usd: a.mint === SOL_USDC ? Number(a.amount) : null })) : null,
+      paused: () => off(process.env.SWEEPER) ? 'SWEEPER=off on the engine' : dataApi.tradeSwitch && !dataApi.tradeSwitch.state().on ? 'trading is off everywhere (the trade switch)' : null,
+      alert,
+      schedule: off(process.env.SWEEPER) || minute === null ? 'off' : { minuteOfDay: minute, mode: process.env.SWEEPER_MODE === 'dry' ? 'dry' : 'real' },
+    })
+    every(5 * 60_000, 'fee sweeper', () => { void sweeper.tick() })
+    const ledgerTrades = async (): Promise<AdminTrades> => {
+      const rows = (await feeRefs?.ledger.store.feeRows({ limit: 100 })) ?? []
+      const since = Date.now() - 86_400_000
+      const day = rows.filter(r => r.at >= since && (r.status === 'received' || r.status === 'accrued'))
+      return {
+        source: 'ledger',
+        rows: rows.filter(r => r.tx).map(r => ({ tx: r.tx!, at: r.at, trader: '', token: r.token, side: 'buy' as const, usd: 0, feeUsd: r.amountUsd ?? 0, venue: r.source })),
+        day: { trades: day.length, volumeUsd: 0, feesUsd: Math.round(day.reduce((t, r) => t + (r.amountUsd ?? 0), 0) * 100) / 100 },
+      }
+    }
+    const trades = async (): Promise<AdminTrades> => {
+      if (!adminReady) return ledgerTrades()
+      type Row = { tx_hash: string; block_time: string; trader: string; token: string; side: 'buy' | 'sell'; usdc: string; fee_usdc: string; router: string }
+      const since = new Date(Date.now() - 86_400_000).toISOString()
+      const [rows, day] = await Promise.all([
+        db<Row[]>('arcdex_trades?select=tx_hash,block_time,trader,token,side,usdc,fee_usdc,router&order=block_time.desc&limit=100'),
+        db<{ usdc: string; fee_usdc: string }[]>(`arcdex_trades?select=usdc,fee_usdc&block_time=gte.${encodeURIComponent(since)}&limit=10000`),
+      ])
+      const sum = (xs: string[]) => Math.round(xs.reduce((t, x) => t + (Number(x) || 0), 0) * 100) / 100
+      return {
+        source: 'supabase',
+        rows: rows.map(r => ({ tx: r.tx_hash, at: Date.parse(r.block_time), trader: r.trader, token: r.token, side: r.side, usd: Number(r.usdc) || 0, feeUsd: Number(r.fee_usdc) || 0, venue: r.router })),
+        day: { trades: day.length, volumeUsd: sum(day.map(d => d.usdc)), feesUsd: sum(day.map(d => d.fee_usdc)) },
+      }
+    }
+    dataApi.admin = new AdminApi({
+      auth, origins: cfg.allowedOrigins, audit: botStore, verify: verifyAdmin, flags, sweeper, ledger: feeRefs?.ledger ?? null,
+      traffic: dataApi.traffic, tradeSwitch: dataApi.tradeSwitch, trades,
+      bots: accounts ? () => ({ bots: accounts.count, running: accounts.running, live: accounts.liveCount }) : null,
+    })
+    log.info('admin panel', { admins: cfg.admins.length, sweeper: minute === null || off(process.env.SWEEPER) ? 'off' : `daily after ${Math.floor(minute / 60)}:${String(minute % 60).padStart(2, '0')} UTC`, alerts: !!alert })
+  }
   const bot = cfg.botMode === 'off' ? null : new Bot({
     rpc, engine: eng, pools, mode: cfg.botMode, sizeUsd: cfg.botSizeUsd ?? undefined, scalpSizeUsd: cfg.botScalpSizeUsd ?? undefined,
     store: botStore, accounts,

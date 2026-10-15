@@ -1,4 +1,7 @@
-// /admin (not linked anywhere): the trade switch, the build pack's kill switch (lib/tradeSwitch.ts,
+// /admin (not linked anywhere). Sign-in with an admin wallet (lib/adminSession.ts, engine/src/admin) opens Overview (who's
+// online), the fee sweeper, Trades, the Audit log and Flags (components/AdminViews.tsx). Without signing in:
+//
+// Kill switch: the trade switch, the build pack's kill switch (lib/tradeSwitch.ts,
 // engine/src/site/tradeSwitch.ts). Anyone can open it and see what's off; only an admin wallet (ADMIN_EVM_ADDRESSES on the
 // engine, else the owner's) can change it, by signing the change. Each change is applied at once and written to the
 // engine's append-only audit log. GLOBAL_KILL_SWITCH / KILL_SWITCH_VENUES on Railway do the same without a wallet.
@@ -22,22 +25,113 @@ import { atTarget, readRouterFee, routersInForce, setRouterFee, TARGET_FEE_BPS, 
 import { pct } from '../lib/routerInfo'
 import { SN_FEE } from '../starknet/net'
 import { JUP_REFERRAL } from '../lib/jupiter'
+import { adminSignIn, adminSignOut, useAdminSession } from '../lib/adminSession'
+import { AdminAudit, AdminFlags, AdminOverview, AdminSweeper, AdminTrades } from '../components/AdminViews'
 
 const SCOPES: TradeScope[] = ['all', ...TRADE_VENUES]
 const label = (s: TradeScope) => (s === 'all' ? T('Every venue') : TRADE_VENUE_LABEL[s])
 const ago = (at: number) => new Date(at).toLocaleString()
 
+type Tab = 'overview' | 'fees' | 'trades' | 'audit' | 'flags' | 'switch'
+const TABS: { k: Tab; label: string }[] = [
+  { k: 'overview', label: N_('Overview') }, { k: 'fees', label: N_('Fees') }, { k: 'trades', label: N_('Trades') },
+  { k: 'audit', label: N_('Audit log') }, { k: 'flags', label: N_('Flags') }, { k: 'switch', label: N_('Kill switch') },
+]
+
 export default function AdminPage() {
-  const state = useTradeSwitch()
   const embedded = useEmbeddedAddress()
   const { address } = useAccount()
   const { signMessageAsync } = useSignMessage()
   const [signer, setSigner] = useState<'embedded' | 'connected'>(embedded ? 'embedded' : 'connected')
+  const [tab, setTab] = useState<Tab>('overview')
+  const who = signer === 'embedded' ? embedded : (address ?? null)
+  const sign = useCallback(async (message: string) => (signer === 'embedded' ? getEmbeddedWalletClient().signMessage({ message }) : signMessageAsync({ message })), [signer, signMessageAsync])
+  const session = useAdminSession()
+
+  return (
+    <div className="content-page rt-page" style={{ '--page-w': '960px' } as React.CSSProperties}>
+      <h1 className="page-h" style={{ marginBottom: 4 }}>{T('Admin')}</h1>
+      <p className="rt-sub">{T('Sign in with an admin wallet to see who’s online, fees, trades and the audit log, and to change flags or run the fee sweeper. Every change asks for your wallet’s signature again and is kept in the audit log. The kill switch and the routers’ fee work without signing in.')}</p>
+      <AdminSignInBar embedded={embedded} address={address ?? null} signer={signer} setSigner={setSigner} who={who} sign={sign} />
+      <div className="at-tabs" role="tablist" style={{ marginBottom: 12 }}>
+        {TABS.map(x => (
+          <button key={x.k} role="tab" aria-selected={tab === x.k} className={`at-tab${tab === x.k ? ' on' : ''}`} onClick={() => setTab(x.k)}>{T(x.label)}</button>
+        ))}
+      </div>
+      {tab === 'overview' && (session ? <AdminOverview /> : <SignInFirst />)}
+      {tab === 'fees' && (
+        <>
+          <AdminFees embedded={embedded} address={address ?? null} signer={signer} />
+          {!!engineApiUrl && <AdminFeeLedger />}
+          {session ? <AdminSweeper sign={sign} who={who} session={session.address} /> : <SignInFirst what={T('the fee sweeper')} />}
+        </>
+      )}
+      {tab === 'trades' && (session ? <AdminTrades /> : <SignInFirst />)}
+      {tab === 'audit' && (session ? <AdminAudit /> : <SignInFirst />)}
+      {tab === 'flags' && (session ? <AdminFlags sign={sign} who={who} session={session.address} /> : <SignInFirst />)}
+      {tab === 'switch' && <KillSwitch who={who} sign={sign} />}
+    </div>
+  )
+}
+
+/** Who signs, and the admin session. */
+function AdminSignInBar({ embedded, address, signer, setSigner, who, sign }: { embedded: `0x${string}` | null; address: `0x${string}` | null; signer: 'embedded' | 'connected'; setSigner: (s: 'embedded' | 'connected') => void; who: `0x${string}` | null; sign: (m: string) => Promise<`0x${string}`> }) {
+  const session = useAdminSession()
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [, tick] = useState(0)
+  useEffect(() => { const id = setInterval(() => tick(n => n + 1), 30_000); return () => clearInterval(id) }, [])
+  async function signIn() {
+    if (!who) return
+    setBusy(true); setMsg('')
+    try { await adminSignIn(who, sign) } catch (e) { setMsg(e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message).split('\n')[0] : String(e)) } finally { setBusy(false) }
+  }
+  const mins = session ? Math.max(0, Math.round((session.expiresAt - Date.now()) / 60_000)) : 0
+  return (
+    <section className="spot-panel rt-health" style={{ marginBottom: 12 }}>
+      <div className="fx-fine" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        {session ? (
+          <>
+            <span className="rt-dot up" aria-hidden />
+            <strong style={{ fontSize: '0.86rem' }}>{T('Signed in as {who}', { who: short(session.address) })}</strong>
+            <span>{T('ends in {n} min', { n: mins })}</span>
+            <span style={{ flex: 1 }} />
+            <button className="btn-ghost" onClick={() => void adminSignOut()}>{T('Sign out')}</button>
+            <button className="btn-ghost" title={T('Ends every admin session, yours included (if a key or device may be compromised).')} onClick={() => { if (confirm(T('Sign every admin out now?'))) void adminSignOut(true) }}>{T('Sign out every admin')}</button>
+          </>
+        ) : (
+          <>
+            {T('Sign with')}
+            <select value={signer} onChange={e => setSigner(e.target.value as 'embedded' | 'connected')} style={{ padding: '4px 8px', borderRadius: 8, background: 'var(--bg-3)', color: 'inherit', border: '1px solid var(--adx-card-border)' }}>
+              <option value="embedded" disabled={!embedded}>{T('Trading wallet')}{embedded ? ` (${short(embedded)})` : ''}</option>
+              <option value="connected" disabled={!address}>{T('Connected wallet')}{address ? ` (${short(address)})` : ''}</option>
+            </select>
+            <button className="btn-primary" disabled={!who || busy || !engineApiUrl} onClick={() => void signIn()} style={{ padding: '6px 14px' }}>
+              {busy ? T('Check your wallet…') : T('Sign in as admin')}
+            </button>
+            {!who && <span>{T('Unlock the trading wallet or connect a wallet to sign.')}</span>}
+          </>
+        )}
+      </div>
+      {msg && <div role="status" style={{ color: 'var(--red)', fontSize: '0.82rem' }}>{msg}</div>}
+    </section>
+  )
+}
+
+function SignInFirst({ what }: { what?: string }) {
+  return (
+    <section className="spot-panel rt-health">
+      <span className="fx-fine">{what ? T('Sign in as an admin to see {what}.', { what }) : T('Sign in as an admin to see this.')}</span>
+    </section>
+  )
+}
+
+/** The trade switch: anyone sees what's off; an admin wallet signs each change. */
+function KillSwitch({ who, sign }: { who: `0x${string}` | null; sign: (m: string) => Promise<`0x${string}`> }) {
+  const state = useTradeSwitch()
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState<TradeScope | null>(null)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
-  const who = signer === 'embedded' ? embedded : address
-  const sign = useCallback(async (message: string) => (signer === 'embedded' ? getEmbeddedWalletClient().signMessage({ message }) : signMessageAsync({ message })), [signer, signMessageAsync])
 
   async function flip(scope: TradeScope, on: boolean) {
     setMsg(null)
@@ -57,10 +151,8 @@ export default function AdminPage() {
   const forced = (s: TradeScope) => !!state && (s === 'all' ? state.env.all : state.env.venues.includes(s))
 
   return (
-    <div className="content-page rt-page" style={{ '--page-w': '880px' } as React.CSSProperties}>
-      <h1 className="page-h" style={{ marginBottom: 4 }}>{T('Trade switch')}</h1>
+    <>
       <p className="rt-sub">{T('Turn trading off everywhere or on one venue. New trades there are refused before anything is signed; withdrawals, transfers and the bridge keep working, and Hyperliquid positions can still be closed. Only an admin wallet can change it, and every change is kept in the audit log.')}</p>
-
       {!engineApiUrl ? <section className="spot-panel rt-health"><span>{T('The engine isn’t configured on this build, so the switch can’t be read.')}</span></section> : (
         <section className="spot-panel rt-health">
           <div className="rt-health-h">
@@ -87,22 +179,10 @@ export default function AdminPage() {
             <input value={reason} maxLength={200} onChange={e => setReason(e.target.value)} placeholder={T('e.g. Router incident, investigating')}
               style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--adx-card-border)', background: 'var(--bg-3)', color: 'inherit' }} />
           </label>
-          <div className="fx-fine" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            {T('Sign with')}
-            <select value={signer} onChange={e => setSigner(e.target.value as 'embedded' | 'connected')} style={{ padding: '4px 8px', borderRadius: 8, background: 'var(--bg-3)', color: 'inherit', border: '1px solid var(--adx-card-border)' }}>
-              <option value="embedded" disabled={!embedded}>{T('Trading wallet')}{embedded ? ` (${embedded.slice(0, 6)}…${embedded.slice(-4)})` : ''}</option>
-              <option value="connected" disabled={!address}>{T('Connected wallet')}{address ? ` (${address.slice(0, 6)}…${address.slice(-4)})` : ''}</option>
-            </select>
-            {!who && <span>{T('Unlock the trading wallet or connect a wallet to sign.')}</span>}
-          </div>
+          {!who && <span className="fx-fine">{T('Unlock the trading wallet or connect a wallet to sign.')}</span>}
           {msg && <div role="status" style={{ color: msg.ok ? 'var(--green)' : 'var(--red)', fontSize: '0.82rem' }}>{msg.text}</div>}
         </section>
       )}
-
-      <AdminFees embedded={embedded} address={address ?? null} signer={signer} />
-
-      {!!engineApiUrl && <AdminFeeLedger />}
-
       {!!state?.history?.length && (
         <section className="spot-panel rt-health">
           <strong>{T('Recent changes')}</strong>
@@ -111,7 +191,7 @@ export default function AdminPage() {
           ))}
         </section>
       )}
-    </div>
+    </>
   )
 }
 

@@ -66,6 +66,7 @@ import PageErrorBoundary from './components/PageErrorBoundary'
 import { activeAlerts, useAlerts } from './hl/alerts'
 import { engineApiUrl } from './api/marketStream'
 import { startTraffic } from './lib/traffic'
+import { loadRuntimeFlags } from './lib/flags'
 
 // Remember ?ref= or /r/<name> before anything renders (first-touch attribution).
 captureReferral()
@@ -130,7 +131,7 @@ export default function App() {
   const [watchAlerts, setWatchAlerts] = useState(false)
   useEffect(() => { if (activeAlerts(alerts).length) setWatchAlerts(true) }, [alerts])
   // This page counts as a visitor online (the landing's traffic counter, lib/traffic.ts).
-  useEffect(() => { startTraffic(engineApiUrl) }, [])
+  useEffect(() => { startTraffic(engineApiUrl); loadRuntimeFlags(engineApiUrl) }, [])
 
   // Every page has a shareable URL; Back/Forward work. `depth` counts the
   // steps taken inside the app, so a back arrow knows whether "back" stays here.

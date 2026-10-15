@@ -2,7 +2,7 @@
 // logs, the signed record's message, the address checks and the flag. Offline.
 //   bun scripts/test-withdraw-policy.ts
 import { pad } from 'viem'
-import { flag } from '../src/arcdex/lib/flags'
+import { cleanRuntime, flag } from '../src/arcdex/lib/flags'
 import { bookMessage, destinationProblem, mergeBooks, sendsIn, withdrawVerdict, WITHDRAW_POLICY, type WithdrawBook } from '../src/arcdex/lib/withdrawPolicy'
 
 let fails = 0
@@ -80,6 +80,12 @@ check(destinationProblem(A, ME, [USDC]) === null, 'an ordinary address passes')
 console.log('the flag')
 check(flag('withdrawLimits', {}) === true && flag('withdrawLimits', { VITE_FLAG_WITHDRAW_LIMITS: 'off' }) === false, 'on by default; VITE_FLAG_WITHDRAW_LIMITS=off turns it off')
 check(flag('privy', {}) === false && flag('privy', { VITE_FLAG_PRIVY: 'on' }) === true, 'Privy off by default')
+check(flag('jupiter', {}, { jupiter: false }) === false && flag('walletsCard', {}, { walletsCard: false }) === false, 'a flag set from /admin is followed')
+check(flag('jupiter', { VITE_FLAG_JUPITER: 'on' }, { jupiter: false }) === true, 'a flag set at build time wins over /admin')
+check(flag('withdrawLimits', {}, { withdrawLimits: false }) === true, 'a protective flag is never turned off from /admin')
+check(flag('withdrawLimits', { VITE_FLAG_WITHDRAW_LIMITS: 'off' }, { withdrawLimits: true }) === false, '…only by a deploy')
+const rt = cleanRuntime({ jupiter: false, bogus: true, privy: 'yes', walletsCard: true })
+check(JSON.stringify(rt) === JSON.stringify({ jupiter: false, walletsCard: true }), 'only known flags with true or false are read from the engine')
 
 console.log(fails ? `\n${fails} failed` : '\nall passed')
 process.exit(fails ? 1 : 0)

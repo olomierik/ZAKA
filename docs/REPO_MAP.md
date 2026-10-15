@@ -243,3 +243,26 @@ Acceptance (06), where it stands:
   the routers' minimum out, Relay's and Across's minimum received), and the guardrails refuse a minimum more than
   15% under the quote.
 - "The kill switch stops new trades within 1 minute": pages read the switch every 30 seconds and before signing.
+
+## 10. Phase 4 status (2026-10-16)
+
+| Task (06) | Status |
+|---|---|
+| Signature login (nonce, expiry, replay protection) | **Done:** `engine/src/admin/auth.ts`: EIP-4361 message built by the engine, single-use nonce, 5-minute expiry, the site's origin bound, allowlist from env, 30-minute sessions, audited and alerted. |
+| Live Sessions | **Done:** online now, today, in all, by section of the site; WebSocket connections; admins; bots. |
+| Fees | **Done:** the routers' fee (on-chain), the fee ledger and its reconciliation, the sweeper's plan and runs. |
+| Trades | **Done:** `arcdex_trades` from Supabase (the fee ledger without its key). |
+| Audit | **Done:** the append-only `arcdex_admin_audit`. |
+| Flags | **Done:** runtime flags; a build-time flag wins; protections only tightened at runtime. |
+| Kill switch | Done before (security baseline), now a tab. |
+| Claim Platform Fees | **Done as far as the engine can go:** it sends fees bots owe; Relay's and Jupiter's balances are listed for the owner to claim with those keys (the engine holds neither, by design: 04). |
+| Daily cron with alerts | **Done:** `SWEEPER_CRON`, dry-run mode, threshold, `arcdex_sweep_runs`, alerts on every real run, failure and pause. |
+
+Acceptance (06):
+- "Replayed or expired signatures rejected; non-allowlisted address rejected": tested (`engine/test/admin.test.ts`).
+- "Live Sessions matches an independent count within 5%": online is the count of pages that beat in the last 75 seconds.
+  Not yet compared with an independent count (Netlify Analytics or a second counter): to do once there's traffic.
+- "Sweeper: dry-run output equals real-run totals; second run is a no-op; failure triggers an alert": tested.
+- "Every admin action appears in the audit log": sign-ins, sign-outs, the trade switch, flags and real sweeps are
+  audited; the routers' fee is changed on-chain by its owner, where the transaction is its own record.
+
