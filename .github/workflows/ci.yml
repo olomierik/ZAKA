@@ -35,6 +35,10 @@ jobs:
         run: bun scripts/test-trade-switch.ts
       - name: Fees (level, fee wallet, owner control)
         run: bun scripts/test-fees.ts
+      - name: Withdraw limits
+        run: bun scripts/test-withdraw-policy.ts
+      - name: Wallets card balances
+        run: bun scripts/test-chain-balances.ts
 
   engine:
     name: Engine (typecheck, tests)

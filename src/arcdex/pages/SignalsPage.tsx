@@ -36,7 +36,7 @@ import { getLaunchpadColor } from '../api/radardex'
 import { botAction, botChangePasscode, botCreate, botForgot, botLogin, botMe, botSession, botSignOut, botSignOutAll, botSignup, botTrades, botVerify, botVerifySend, botFunders, botWithdraw, botWithdrawCode, botWithdrawPasscode, engineEnabled, getTiers, sendTierGrant, getBotPositions, getBotStats, getBotStatus, getMarket, getMarketBot, getRejections, getScan, getSignals, getStrategyBoard, marketStream, paperKey, sendBotControl, type BotStats, type BotStatsResponse, type LiveSpeedRow } from '../api/marketStream'
 import { AgoText } from '../components/Ago'
 import { openConnectModal } from '../components/ConnectWallet'
-import { PasscodeField, useWithdrawGuard } from '../components/WithdrawGuard'
+import { PasscodeField, WithdrawLimits, useWithdrawGuard } from '../components/WithdrawGuard'
 import { notifyBalances } from '../lib/balances'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { txErrorText } from '../lib/tx'
@@ -1086,8 +1086,8 @@ function FundLive({ wallet, minUsd, onDone, onClose }: { wallet: string; minUsd:
   const trader = useTrader()
   const { cash, refresh } = useCash(trader.address)
   const send = useSendUsdc(trader)
-  const guard = useWithdrawGuard(trader, wallet)
   const [amount, setAmount] = useState(String(Math.max(minUsd, 10)))
+  const guard = useWithdrawGuard(trader, wallet, Number(amount) > 0 ? Number(amount) : 0)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string; hash?: string } | null>(null)
   const [qr, setQr] = useState<string | null>(null)
@@ -1098,11 +1098,12 @@ function FundLive({ wallet, minUsd, onDone, onClose }: { wallet: string; minUsd:
     try {
       await guard.confirm()
       const hash = await send(wallet, amount)
+      guard.record(hash, n, usd(n))
       setMsg({ ok: true, text: T('Sent {v} to the bot\'s wallet.', { v: usd(n) }), hash })
       guard.setPasscode(''); refresh(); notifyBalances(); onDone()
     } catch (e) { setMsg({ ok: false, text: txErrorText(e) }) } finally { setBusy(false) }
   }
-  const blocked = busy || !(n > 0) || (cash !== null && n > cash) || guard.missing
+  const blocked = busy || !(n > 0) || (cash !== null && n > cash) || guard.missing || guard.overLimit || guard.limitsLoading
   return (
     <div className="at-fundbox">
       <div className="at-golive-h">{T('Fund the live wallet')}<button className="link-btn" onClick={onClose} aria-label={T('Close')}>✕</button></div>
@@ -1124,6 +1125,7 @@ function FundLive({ wallet, minUsd, onDone, onClose }: { wallet: string; minUsd:
                 {[10, 25, 50, 100].map(v => <button key={v} className={`at-chip${n === v ? ' on' : ''}`} onClick={() => setAmount(String(v))}>${v}</button>)}
                 <input className="at-input" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} aria-label={T('Amount')} />
               </div>
+              <WithdrawLimits guard={guard} />
               <PasscodeField guard={guard} onEnter={() => { if (!blocked) void go() }} />
               <button className="at-wbtn primary" disabled={blocked} onClick={() => void go()}>{busy ? T('Sending…') : T('Send {v} to the bot', { v: n > 0 ? usd(n) : '$' })}</button>
               {cash !== null && n > cash && <div className="at-error" style={{ marginTop: 0 }}>{T('Not enough USDC in this wallet.')}</div>}

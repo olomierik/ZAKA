@@ -5,7 +5,7 @@ import type { BridgeChain, BridgeResult } from '@circle-fin/bridge-kit'
 import { openConnectModal } from '../components/ConnectWallet'
 import { kit, getBridgeAdapter, tradingWalletAdapter, ensureWalletChain, quoteBridge, BRIDGE_CHAINS, BRIDGE_FEE_BPS, type BridgeQuote } from '../lib/bridgeKit'
 import { useEmbeddedAddress } from '../lib/identity'
-import { PasscodeField, useWithdrawGuard } from '../components/WithdrawGuard'
+import { PasscodeField, WithdrawLimits, useWithdrawGuard } from '../components/WithdrawGuard'
 import { addBridgeDeposit } from '../lib/funding'
 import { t as T } from '../lib/i18n'
 import { promptWallet, txErrorText } from '../lib/tx'
@@ -65,7 +65,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
   const n = parseFloat(amount)
   // Sending from the trading wallet to anyone but itself or the wallet that
   // funded it asks for the passcode, like a withdrawal (WithdrawGuard).
-  const guard = useWithdrawGuard({ address: tradingAddr, kind: fromTrading ? 'trading-wallet' : null }, fromTrading ? recipientAddr : '')
+  const guard = useWithdrawGuard({ address: tradingAddr, kind: fromTrading ? 'trading-wallet' : null }, fromTrading ? recipientAddr : '', n > 0 ? n : 0)
 
   // Circle's fees for this route and amount (debounced; stale answers dropped).
   const quoteSeq = useRef(0)
@@ -136,7 +136,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
       noteDeposit(res)
       setStatus(res.state === 'success' ? 'done' : 'error')
       if (res.state !== 'success') setErrMsg(T("The transfer didn't finish — see the steps below. If the burn went through, your USDC is safe: press Retry to finish it."))
-      if (res.state === 'success') { setAmount(''); guard.setPasscode('') }
+      if (res.state === 'success') { guard.record(`bridge:${Date.now()}`, n, `$${amount} (bridge to ${to})`); setAmount(''); guard.setPasscode('') }
     } catch (e) {
       const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
       setErrMsg(/insufficient|exceeds balance/i.test(m) && !/allowance/i.test(m) ? T('Not enough USDC (or gas) on {chain} for this transfer.', { chain: from }) : txErrorText(e))
@@ -167,7 +167,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
   const busy = status === 'switching' || status === 'bridging'
   const needsWallet = !sender
   const tooSmall = quote !== null && quote.receiveUsdc <= 0
-  const passcodeMissing = fromTrading && guard.missing
+  const passcodeMissing = fromTrading && (guard.missing || guard.overLimit || guard.limitsLoading)
   const STEPS = ['approve', 'burn', 'fetchAttestation', 'mint']
   const stepState = (name: string) => {
     const r = result?.steps.find(x => x.name === name)
@@ -272,6 +272,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
               {recipient && !recipientOk && <small className="bad">{toSolana ? T("That isn't a Solana address.") : T("That isn't a valid address.")}</small>}
             </label>
 
+            {fromTrading && recipientOk && n > 0 && <WithdrawLimits guard={guard} />}
             {fromTrading && recipientOk && <PasscodeField guard={guard} />}
 
             {n > 0 && (

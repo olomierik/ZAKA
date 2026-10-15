@@ -199,3 +199,22 @@ Phase 0 closes when these are approved. Each changes what Phase 1 builds.
    env, an append-only `fee_ledger` with nightly reconciliation, then new chains per D3.
 4. **Phase 4** (admin) before Phase 3 polish, since the kill switch and fees need a control surface: nonce login,
    live sessions, fees, trades, audit, flags.
+
+## 8. Phase 1 status (2026-10-15)
+
+| Task (06) | Status |
+|---|---|
+| Sign-in that provisions EVM + Solana wallets (D1: Privy) | **Waiting for the owner:** needs a Privy app id (`VITE_PRIVY_APP_ID`, public) and Privy's word on Arc. Behind the `privy` flag, off. Until then the trading wallet already gives one EVM address and a Solana address derived from it. |
+| Portfolio card across chains, Arc USDC decimals handled | **Done** behind `walletsCard` (on): `components/WalletsCard.tsx`, `lib/chainBalances.ts`. |
+| Hosted key export behind step-up | **Waiting for Privy** (D1: export hosted by Privy). The current trading wallet's export still asks for the passcode (and passkey with 2FA). |
+| Withdraw/transfer: validation, confirmation, cooldown/limits, notification | **Done** behind `withdrawLimits` (on): `lib/withdrawPolicy.ts`, `components/WithdrawGuard.tsx`, the review step in `components/CashModals.tsx`. |
+
+Acceptance (06), where it stands:
+- "Same EVM address for BNB, Ethereum, Arbitrum and Arc": the card shows one address and marks it as the same on Arc,
+  Ethereum, Arbitrum, BNB Chain and Robinhood Chain, with each chain's balance.
+- "A new address is delayed or confirmed per policy, limits enforced": a new address takes at most $250 until 24 hours
+  after it's saved; at most $2,500 a day leaves for addresses that didn't fund the wallet. Both are checked before
+  signing. They are client-side: they slow down someone holding an unlocked browser, and can't stop the key's owner
+  (who can export the key). Enforcing them against the key's owner needs the provider's policies (Privy) or a contract
+  wallet.
+- "Both addresses visible within 5 seconds of sign-in" and "export leaks nothing": with Privy.
