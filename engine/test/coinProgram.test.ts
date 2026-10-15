@@ -6,6 +6,8 @@ import type { RawLog } from '../../api/_arcLogs'
 import type { Rpc } from '../src/chain/http'
 import { apply, applyBurns, classify, COIN, COIN_CREATED_BLOCK, CoinProgram, DEAD, emptyState, FEE_WALLET, FEE_SOURCES, flowsOf, relayAccrued, RELAY, rpcBurnLogs, view, type ClassifyCtx, type RelayBalance } from '../src/coin/program'
 import { setLogLevel } from '../src/log'
+import { FeeLedger, MemoryFeeLedgerStore } from '../src/fees/ledger'
+import { FeeLedgerService } from '../src/fees/service'
 
 setLogLevel('error')
 const USDC = '0x3600000000000000000000000000000000000000'
@@ -153,7 +155,10 @@ describe('scanning the chain', () => {
         return null
       }),
     } as unknown as Rpc
-    const p = new CoinProgram({ rpc, settings: { getSetting: async k => settings.get(k) ?? null, setSetting: async (k, v) => { settings.set(k, v) } }, priceOf: tok => (tok === COIN ? 0.0000025 : null), feeSources: [ROUTER], since: '2026-10-03T00:00:00Z', burnLogs: rpcBurnLogs(rpc) })
+    // The fee ledger is fed from the same scan (engine/src/fees).
+    const ledger = new FeeLedger(new MemoryFeeLedgerStore())
+    const fees = new FeeLedgerService({ ledger, settings: { getSetting: async k => settings.get(k) ?? null, setSetting: async (k, v) => { settings.set(k, v) } }, wallet: FEE_WALLET, sources: [ROUTER], scanArc: async () => [], ownTxs: async () => new Set(), arcScannedTo: () => 0, relayBalances: async () => [] })
+    const p = new CoinProgram({ rpc, settings: { getSetting: async k => settings.get(k) ?? null, setSetting: async (k, v) => { settings.set(k, v) } }, priceOf: tok => (tok === COIN ? 0.0000025 : null), feeSources: [ROUTER], since: '2026-10-03T00:00:00Z', burnLogs: rpcBurnLogs(rpc), onFeeLogs: (logs, timeOf, own) => fees.onArcLogs(logs, timeOf, own) })
     await p.tick()
     expect(p.state.startBlock).toBe(B)
     expect(p.state.scannedTo).toBe(head)
@@ -167,6 +172,10 @@ describe('scanning the chain', () => {
     expect(p.view().burns.map(b => [b.tx, b.amount, b.from])).toEqual([[theirBurn, 1_000_000, someone], [burnTx, 400_000, FEE_WALLET], [oldBurn, 32_000_000, someone]])
     expect(p.view().burned).toMatchObject({ total: 5, count: 3, complete: true })
     expect(p.view().pending).toEqual({ buybackUsd: 0.2, liquidityUsd: 2.8 })
+    // The ledger has the router's 4 USDC once (logged twice), and not the fee wallet's own buy or the fee before the start.
+    const rows = await ledger.store.allFees()
+    expect(rows.map(r => [r.tx, r.amount, r.status])).toEqual([[feeTx, '4', 'received']])
+    expect(rows[0].at).toBe(1_790_985_605_000)
     // Saved, and picked up by a fresh ledger.
     const q = new CoinProgram({ rpc, settings: { getSetting: async k => settings.get(k) ?? null, setSetting: async (k, v) => { settings.set(k, v) } }, priceOf: () => null, since: '2026-10-03T00:00:00Z', burnLogs: rpcBurnLogs(rpc) })
     await q.start()

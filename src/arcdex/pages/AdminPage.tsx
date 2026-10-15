@@ -5,11 +5,14 @@
 //
 // Fees: every fee ARCDEX takes and where it goes (D2/D4 in docs/REPO_MAP.md). The Arc routers' fee is on-chain; their
 // owner lowers it to 0.5% from here (lib/routerFees.ts), the change simulated as that wallet before it signs.
+//
+// Fee ledger: the engine's append-only record of every fee it read on-chain, and its nightly reconciliation against
+// the chain (engine/src/fees, GET /v1/fees/summary). Read-only.
 import { useCallback, useEffect, useState } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
 import { TRADE_VENUES, TRADE_VENUE_LABEL, type TradeScope } from '../../../api/_marketProtocol'
 import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
-import { t as T } from '../lib/i18n'
+import { t as T, N_ } from '../lib/i18n'
 import { useEmbeddedAddress } from '../lib/identity'
 import { readTradeSwitch, sendTradeSwitch, useTradeSwitch } from '../lib/tradeSwitch'
 import { engineApiUrl } from '../api/marketStream'
@@ -18,6 +21,7 @@ import { DEFAULT_FEE_WALLET, FEE_WALLET, SPOT_FEE_BPS, ARC_EXPLORER } from '../l
 import { atTarget, readRouterFee, routersInForce, setRouterFee, TARGET_FEE_BPS, type RouterFee } from '../lib/routerFees'
 import { pct } from '../lib/routerInfo'
 import { SN_FEE } from '../starknet/net'
+import { JUP_REFERRAL } from '../lib/jupiter'
 
 const SCOPES: TradeScope[] = ['all', ...TRADE_VENUES]
 const label = (s: TradeScope) => (s === 'all' ? T('Every venue') : TRADE_VENUE_LABEL[s])
@@ -96,6 +100,8 @@ export default function AdminPage() {
       )}
 
       <AdminFees embedded={embedded} address={address ?? null} signer={signer} />
+
+      {!!engineApiUrl && <AdminFeeLedger />}
 
       {!!state?.history?.length && (
         <section className="spot-panel rt-health">
@@ -178,6 +184,10 @@ function AdminFees({ embedded, address, signer }: { embedded: `0x${string}` | nu
           <span className="rt-dot" aria-hidden />
           <div><strong>{T('Solana, BNB Chain, Robinhood Chain')}</strong><small>{T('Fee {pct} (Relay and Across app fees)', { pct: pct(SPOT_FEE_BPS) })}</small></div>
         </div>
+        <div className={`rt-prov ${JUP_REFERRAL ? 'up' : 'warn'}`}>
+          <span className="rt-dot" aria-hidden />
+          <div><strong>{T('Solana swaps (Jupiter)')}</strong><small>{JUP_REFERRAL ? T('Fee {pct} (Jupiter referral fee, paid in the transaction)', { pct: pct(SPOT_FEE_BPS) }) : T('Not on: set VITE_JUP_REFERRAL_ACCOUNT and JUPITER_API_KEY on Netlify (Relay trades them meanwhile)')}</small></div>
+        </div>
         <div className={`rt-prov ${SN_FEE ? 'up' : 'warn'}`}>
           <span className="rt-dot" aria-hidden />
           <div><strong>Starknet</strong><small>{SN_FEE ? T('Fee {pct} (AVNU integrator fee)', { pct: pct(SN_FEE.bps) }) : T('No fee: set VITE_STARKNET_FEE_RECIPIENT (a Starknet address) on Netlify')}</small></div>
@@ -197,6 +207,84 @@ function AdminFees({ embedded, address, signer }: { embedded: `0x${string}` | nu
       </div>
       {readErr && <div role="status" style={{ color: 'var(--red)', fontSize: '0.82rem' }}>{T('Couldn’t read the routers: {why}', { why: readErr })}</div>}
       {msg && <div role="status" style={{ color: msg.ok ? 'var(--green)' : 'var(--red)', fontSize: '0.82rem' }}>{msg.text}</div>}
+    </section>
+  )
+}
+
+interface FeeRowView { id: string; at: number; chain: string; source: string; symbol: string; amount: string; amountUsd: number | null; tx: string | null; status: string }
+interface ReconView { at: number; source: string; scope: string; ledger: string; onchain: string; diff: string; ok: boolean }
+interface FeeSummaryView { rows: number; bySource: Record<string, { usd: number; rows: number }>; latest: FeeRowView[]; reconciliations: ReconView[]; lastReconciled: number | null; allOk: boolean | null }
+
+const SOURCE_LABEL: Record<string, string> = {
+  'arc-router': N_('Arc swap router'), 'arc-curve': N_('Arc curve router'), 'arc-ur': N_('Universal Router (Arc)'), 'arc-launchpad': 'ArcLaunchpad',
+  across: N_('Across (Robinhood Chain sales)'), 'arc-other': N_('Other Arc contracts'), relay: N_('Relay (held for the fee wallet)'), jupiter: N_('Jupiter referral'),
+}
+const STATUS_LABEL: Record<string, string> = { received: N_('received'), accrued: N_('accrued'), claimed: N_('claimed'), opening: N_('opening balance') }
+const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`
+
+/** The engine's fee ledger: what it recorded from the chain, and whether the nightly reconciliation agreed. */
+function AdminFeeLedger() {
+  const [sum, setSum] = useState<FeeSummaryView | null>(null)
+  const [err, setErr] = useState('')
+  const load = useCallback(() => {
+    setErr('')
+    fetch(`${engineApiUrl}/v1/fees/summary`, { cache: 'no-store', signal: AbortSignal.timeout(6_000) })
+      .then(async r => { if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? `HTTP ${r.status}`); return r.json() as Promise<FeeSummaryView> })
+      .then(setSum, (e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
+  }, [])
+  useEffect(load, [load])
+
+  const sources = sum ? Object.entries(sum.bySource).sort((a, b) => b[1].usd - a[1].usd) : []
+  const total = sources.reduce((s, [, v]) => s + v.usd, 0)
+  const bad = sum?.reconciliations.filter(r => !r.ok) ?? []
+  return (
+    <section className="spot-panel rt-health">
+      <div className="rt-health-h">
+        <strong>{T('Fee ledger')}</strong>
+        <button className="btn-ghost" onClick={load}>{T('Read again')}</button>
+      </div>
+      <p className="fx-fine" style={{ margin: 0 }}>
+        {T('Every fee the engine read on-chain, kept for good (rows are never changed or removed). Each night it checks the ledger against the chain: Arc receipts block by block, and the balances Relay and Jupiter hold for the fee wallet.')}
+      </p>
+      {err && <div role="status" style={{ color: 'var(--red)', fontSize: '0.82rem' }}>{T('Couldn’t read the ledger: {why}', { why: err })}</div>}
+      {!sum && !err && <span className="fx-fine">{T('Reading…')}</span>}
+      {sum && (
+        <>
+          <div className={`rt-prov ${sum.allOk === false ? 'down' : sum.allOk ? 'up' : 'warn'}`}>
+            <span className="rt-dot" aria-hidden />
+            <div>
+              <strong>{sum.allOk === false ? T('Reconciliation found a difference') : sum.allOk ? T('Ledger matches the chain') : T('Not reconciled yet')}</strong>
+              <small>{sum.lastReconciled ? T('Last checked {when}', { when: ago(sum.lastReconciled) }) : T('The first check runs after 00:30 UTC')}</small>
+            </div>
+            {bad.length > 0 && (
+              <small className="rt-detail">{bad.slice(0, 4).map(r => `${r.source} ${r.scope}: ${T('ledger')} ${r.ledger}, ${T('on-chain')} ${r.onchain}`).join(' · ')}</small>
+            )}
+          </div>
+          <div className="rt-health-grid rt-fees">
+            {sources.length === 0 && <span className="fx-fine">{T('No fees recorded yet.')}</span>}
+            {sources.map(([k, v]) => (
+              <div key={k} className="rt-prov up">
+                <span className="rt-dot" aria-hidden />
+                <div><strong>{T(SOURCE_LABEL[k] ?? k)}</strong><small>{T('{n} fees', { n: v.rows })}</small></div>
+                <span className="rt-ms">{usd(v.usd)}</span>
+              </div>
+            ))}
+          </div>
+          {sources.length > 0 && <div className="fx-fine">{T('In all: {usd} from {n} rows', { usd: usd(total), n: sum.rows })}</div>}
+          {sum.latest.length > 0 && (
+            <div className="fx-fine" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <strong style={{ fontSize: '0.8rem' }}>{T('Latest')}</strong>
+              {sum.latest.slice(0, 10).map(r => (
+                <span key={r.id} style={{ overflowWrap: 'anywhere' }}>
+                  {ago(r.at)} · {T(SOURCE_LABEL[r.source] ?? r.source)} · {r.amount} {r.symbol}{r.amountUsd != null ? ` (${usd(r.amountUsd)})` : ''} · {T(STATUS_LABEL[r.status] ?? r.status)}
+                  {r.tx && r.chain === 'arc' && <> · <a href={`${ARC_EXPLORER}/tx/${r.tx}`} target="_blank" rel="noreferrer">{short(r.tx)}</a></>}
+                  {r.tx && r.chain === 'solana' && <> · <a href={`https://solscan.io/tx/${r.tx}`} target="_blank" rel="noreferrer">{short(r.tx)}</a></>}
+                </span>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </section>
   )
 }

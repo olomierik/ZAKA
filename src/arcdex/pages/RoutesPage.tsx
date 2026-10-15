@@ -40,6 +40,14 @@ const CHECKS: Check[] = [
   } },
   { id: 'hyperliquid', name: 'Hyperliquid', use: N_('Futures, predictions'), run: reachable('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'exchangeStatus' }) }) },
   { id: 'relay', name: 'Relay', use: N_('Solana, BNB Chain, Hyperliquid funding'), run: reachable('https://api.relay.link/config/v2?originChainId=5042&destinationChainId=1337') },
+  { id: 'jupiter', name: 'Jupiter', use: N_('Solana swaps'), run: async signal => {
+    // Through the site's own proxy, which holds the key: 503 means it isn't switched on yet.
+    const r = await fetch('/jup/swap/v2/order?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=10000000&swapMode=ExactIn', { signal, cache: 'no-store' })
+    // Without the edge function (local dev) the path answers with the app's own page.
+    if (r.status === 503 || r.status === 404 || !/json/.test(r.headers.get('content-type') ?? '')) throw new Error(T('not switched on'))
+    if (r.status >= 500) throw new Error(`answered ${r.status}`)
+    return ''
+  } },
   { id: 'across', name: 'Across', use: N_('Robinhood Chain'), run: reachable('https://app.across.to/api/available-routes?originChainId=5042&destinationChainId=4663') },
   { id: 'circle', name: 'Circle CCTP', use: N_('Bridge'), run: reachable('https://iris-api.circle.com/v2/burn/USDC/fees/26/6') },
   { id: 'robinhood', name: 'Robinhood Chain', use: N_('Robinhood coins'), run: rpc('https://rpc.mainnet.chain.robinhood.com', 'eth_blockNumber') },

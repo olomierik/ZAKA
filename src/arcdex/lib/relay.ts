@@ -33,6 +33,7 @@ import { rememberRh } from './robinhood'
 import { primaryOf } from './rpcSettings'
 import { t as T } from './i18n'
 import { assertTradingOn, TradingPausedError } from './tradeSwitch'
+import { sizeProblem } from './guardrails'
 
 export { RelayError }
 
@@ -58,6 +59,9 @@ async function freshQuote(req: RelayRequest, shown: RelayQuote | null): Promise<
   const q = await getRelayQuote(req)
   if (shown && Number(q.expectedOut) < Number(shown.expectedOut) * (1 - DRIFT)) throw new RelayError(T('The price moved since your quote: check the new quote and try again.'))
   if (shown && Number(q.expectedOut) > Number(shown.expectedOut) * (1 + QUOTE_LIMITS.offMarket)) throw new RelayError(T('Relay’s route changed since your quote: check the new quote and try again.'))
+  // The size cap (lib/guardrails.ts): Relay's own dollar value of what goes in.
+  const tooBig = req.side === 'gas' ? null : sizeProblem(q.inUsd || null)
+  if (tooBig) throw new RelayError(tooBig)
   return q
 }
 

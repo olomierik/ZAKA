@@ -20,6 +20,7 @@ import { onBalances } from '../lib/balances'
 import { PERMIT2, PERMIT2_ABI, UR_ABI, encodeNativeBuy, encodeNativeSell, feeShares, netAfterFees, permit2Allowance, quoteExactIn, universalRouter } from '../api/universalRouter'
 import { curveBuyCall, curveRouterConfigured, curveSellCall, curveSpender, loadCurveRouter, quoteCurveBuy, quoteCurveSell, quoteRouterBuy, quoteRouterSell, routerBuyCall, routerSellCall, type CurveCall, type CurveInfo, type CurveRouter } from '../api/curves'
 import { assertTradingOn } from '../lib/tradeSwitch'
+import { sizeProblem } from '../lib/guardrails'
 
 export { SWAP_ROUTER_ADDRESS }
 
@@ -363,6 +364,9 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
     try {
       // The trade switch (lib/tradeSwitch.ts): nothing is signed while trading on Arc is off.
       await assertTradingOn('arc')
+      // The size cap (lib/guardrails.ts): USDC paid, or the coin's worth at its price.
+      const tooBig = sizeProblem(mode === 'buy' ? Number(formatUnits(amountIn, 6)) : priceUsd > 0 ? Number(formatUnits(amountIn, 18)) * priceUsd : null)
+      if (tooBig) throw new Error(tooBig)
       if (route.kind === 'curve') { await submitCurve(route.curve); return }
       if (route.kind === 'v4native') { await submitNative(info, route.key); return }
       if (needsApprove) {

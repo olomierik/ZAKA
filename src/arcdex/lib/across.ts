@@ -23,6 +23,7 @@ import type { TraderKind } from './identity'
 import { AcrossError, ARC_ID, depositStatus, getAcrossQuote, QUOTE_LIMITS, RH_ID, type AcrossQuote, type FillStatus, type QuoteRequest } from './acrossQuote'
 import { t as T } from './i18n'
 import { assertTradingOn } from './tradeSwitch'
+import { sizeProblem } from './guardrails'
 
 export { AcrossError }
 
@@ -132,6 +133,9 @@ export async function runAcross(kind: TraderKind, req: QuoteRequest, shown: Acro
     if (shown && Number(q.expectedOut) > Number(shown.expectedOut) * (1 + QUOTE_LIMITS.offMarket)) {
       throw new AcrossError(T('Across’s route changed since your quote: check the new quote and try again.'))
     }
+    // The size cap (lib/guardrails.ts): a buy spends USDC on Arc (6 decimals); a sale's worth isn't known here.
+    const tooBig = req.side === 'buy' ? sizeProblem(Number(q.inputAmount) / 1e6) : null
+    if (tooBig) throw new AcrossError(tooBig)
     return q
   }
 

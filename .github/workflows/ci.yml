@@ -39,6 +39,8 @@ jobs:
         run: bun scripts/test-withdraw-policy.ts
       - name: Wallets card balances
         run: bun scripts/test-chain-balances.ts
+      - name: Jupiter (orders, transactions, provider choice)
+        run: bun scripts/test-jupiter.ts
 
   engine:
     name: Engine (typecheck, tests)

@@ -151,8 +151,8 @@ before it is built.
 | Privy | Not integrated. `@privy-io/react-auth` 3.49.1 is current on npm. EVM + Solana support, the hosted export flow and support for Arc as a custom EVM chain: unverified |
 | Turnkey | Not integrated. `@turnkey/sdk-browser` 8.6.0 on npm. Unverified |
 | Circle wallets | SDKs installed, used in scripts only. Circle runs Arc, so its wallets are a natural fit; Solana support of the chosen product: unverified |
-| Jupiter Swap API V2 | Not integrated (Solana goes through Relay). The npm client `@jup-ag/api` is still 6.0.48 (the legacy Quote V6 era); V2 endpoints and the API-key plan: unverified |
-| Jito | Not integrated. Unverified |
+| Jupiter Swap API V2 | **Integrated 2026-10-15** (`lib/jupiter.ts`, `/jup` edge proxy), checked against Jupiter's OpenAPI spec and referral docs in `jup-ag/docs`. Off until `JUPITER_API_KEY` and `VITE_JUP_REFERRAL_ACCOUNT` are set; Relay meanwhile |
+| Jito | Not integrated: Jupiter's `/execute` sends the transaction itself |
 | Uniswap on Arc | In use. `@uniswap/sdk-core` 7.19.4 lists Arc (chain 5042); ARCDEX calls the contracts directly. Uniswap's hosted API on Arc: unverified |
 | EVM aggregator (Ethereum, Arbitrum, BNB) | None. Relay already quotes BNB; an aggregator for Ethereum/Arbitrum: to choose |
 | RPC | Arc: public + Blockdaemon + QuickNode (trial) + Alchemy through the site; BNB: publicnode; Solana: via Relay and engine. No paid redundant RPC for Ethereum/Arbitrum |
@@ -218,3 +218,28 @@ Acceptance (06), where it stands:
   (who can export the key). Enforcing them against the key's owner needs the provider's policies (Privy) or a contract
   wallet.
 - "Both addresses visible within 5 seconds of sign-in" and "export leaks nothing": with Privy.
+
+## 9. Phase 2 status (2026-10-15)
+
+| Task (06) | Status |
+|---|---|
+| `ExecutionProvider` over the venues | **Done:** `lib/execution.ts` (the interface, every provider and its fee listed); Solana swaps choose Jupiter, else Relay. The Arc, Across, four.meme, AVNU and Hyperliquid paths keep their own modules, listed there. |
+| Jupiter Swap API V2 with the fee in the transaction | **Done, off until the owner sets the key** (`JUPITER_API_KEY`, `VITE_JUP_REFERRAL_ACCOUNT`). |
+| Jito | Not built: Jupiter's `/execute` sends the transaction itself. |
+| Guardrails | **Done:** `lib/guardrails.ts`, on every spot path. |
+| 0.5% fee (D2) | Done in code; the Arc routers wait for their owners (`setFeeBps(50)`, `/admin` → Fees). |
+| `fee_ledger` + nightly reconciliation | **Done:** `engine/src/fees`, `arcdex_fee_ledger` and `arcdex_fee_reconciliations` (append-only), `/v1/fees/summary`, `/admin` → Fee ledger. |
+| Ethereum and Arbitrum spot (D3) | **Not built:** Relay's contracts there couldn't be checked from the sandbox. Balances already show on the wallets card. |
+
+Acceptance (06), where it stands:
+- "A buy and a sell succeed on each chain": not run with funds. Solana through Jupiter needs the key first; the other
+  chains' routes are unchanged since their own checks (AGENTS.md).
+- "The fee recipient and amount in the signed transaction match the quote; a tampering test fails safely": Jupiter's
+  order and transaction checks require ARCDEX's referral account and fee; Relay, Across and AVNU check theirs.
+  `scripts/test-jupiter.ts` and the other chains' tests refuse tampered quotes.
+- "Ledger totals equal on-chain receipts": the nightly reconciliation compares them to the unit and alerts on a
+  difference.
+- "Trades revert below min-out": every route carries a minimum enforced on-chain (Jupiter's `otherAmountThreshold`,
+  the routers' minimum out, Relay's and Across's minimum received), and the guardrails refuse a minimum more than
+  15% under the quote.
+- "The kill switch stops new trades within 1 minute": pages read the switch every 30 seconds and before signing.
