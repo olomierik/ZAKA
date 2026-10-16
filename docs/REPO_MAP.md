@@ -266,3 +266,26 @@ Acceptance (06):
 - "Every admin action appears in the audit log": sign-ins, sign-outs, the trade switch, flags and real sweeps are
   audited; the routers' fee is changed on-chain by its owner, where the transaction is its own record.
 
+## 11. Phase 5 status (2026-10-16)
+
+| Task (06) | Status |
+|---|---|
+| Trending and new pairs, including Arc launchpad tokens | Done before: the Trenches (New, Almost bonded, Migrated) on Arc, Robinhood Chain, Solana and BNB Chain, with Arc's launchpads. |
+| Token safety card | Done before (`lib/safety.ts`, the Trenches and coin pages); now also **right above Buy on every trade form** (`lib/buyRisk.tsx`), with a tick a Danger coin needs. GeckoTerminal's honeypot flag rates Danger. |
+| Referral links and rebates | Links done before (`/r/<name>`, the routers bind the referrer on-chain). **Rebates now in the fee ledger** (`engine/src/fees/referrals.ts`), reconciled nightly. Off Arc there's nothing to split (Relay, Across, Jupiter). |
+| Price and activity alerts | Price alerts on Hyperliquid in the browser done before. **Now by web push from the engine** (`engine/src/alerts`): Hyperliquid and Arc price levels, Arc whale trades, delivered with ARCDEX closed. |
+
+Acceptance (06):
+- "Risk label shown on every buy path": every trade form (Arc swap and curve, Solana, BNB Chain, Robinhood Chain, paying
+  from a Solana wallet) shows the coin's rating above Buy, given by its page; Starknet labels AVNU's verified tokens;
+  Portfolio's Sell sheets have no Buy. Checked statically and rendered (`scripts/test-buy-risk.tsx`, in CI), and in
+  Chromium.
+- "Referral attribution and rebates verified in the ledger": each rebate is a ledger row with its trader, checked each
+  night against the routers' events, the payment to the referrer, the share of the fee, the referrer the router holds
+  for that trader (`referrerOf`) and the fee wallet's receipt (`engine/test/referrals.test.ts`). Not yet run against
+  mainnet: Arc is out of the sandbox's reach; the first nightly run on Railway does it.
+- "Alerts delivered within 10 seconds of trigger": the engine keeps each delivery's time from the trigger (the trade's
+  block, or the mid's read) to the push service accepting it (`GET /v1/push/stats`). In Chromium against a stand-in
+  engine: 1.8 s from a trade's block (most of it the block's own lag, simulated), 0.8–2.3 s from a Hyperliquid move.
+  What the push service takes to reach the device isn't measurable from the engine.
+
