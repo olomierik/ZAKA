@@ -35,6 +35,8 @@ export interface HistoryStore {
   getCursor(): Promise<number | null>
   setCursor(block: number): Promise<void>
   trades(token: string, limit: number, beforeTs?: number): Promise<Trade[]>
+  /** A wallet's trades, newest first (the wallet tracker). Optional: stores without it give none. */
+  walletTrades?(wallet: string, limit: number): Promise<Trade[]>
   candles(token: string, interval: Interval, limit: number, beforeTs?: number): Promise<WireCandle[]>
   launches(limit: number): Promise<LaunchInfo[]>
   token(token: string): Promise<LaunchInfo | null>
@@ -238,6 +240,10 @@ export class SupabaseHistoryStore extends BatchedHistoryStore {
     const before = beforeTs ? `&ts=lt.${iso(beforeTs)}` : ''
     return (await db<Row[]>(`arcdex_mkt_trades?token=eq.${token}${before}&order=ts.desc,block_number.desc,log_index.desc&limit=${Math.min(500, limit)}`)).map(rowToTrade)
   }
+  async walletTrades(wallet: string, limit: number) {
+    if (!/^0x[0-9a-f]{40}$/.test(wallet)) return []
+    return (await db<Row[]>(`arcdex_mkt_trades?wallet=eq.${wallet}&order=ts.desc,block_number.desc,log_index.desc&limit=${Math.min(200, limit)}`)).map(rowToTrade)
+  }
   async candles(token: string, interval: Interval, limit: number, beforeTs?: number) {
     const before = beforeTs ? `&bucket=lt.${iso(beforeTs)}` : ''
     return (await db<Row[]>(`arcdex_mkt_candles?token=eq.${token}&interval=eq.${interval}${before}&order=bucket.desc&limit=${Math.min(1_000, limit)}`)).reverse().map(rowToCandle)
@@ -267,6 +273,7 @@ export class NullHistoryStore implements HistoryStore {
   async getCursor() { return null }
   async setCursor() {}
   async trades() { return [] }
+  async walletTrades() { return [] }
   async candles() { return [] }
   async launches() { return [] }
   async token() { return null }

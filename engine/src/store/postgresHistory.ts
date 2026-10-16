@@ -160,6 +160,15 @@ export class PostgresHistoryStore extends BatchedHistoryStore {
     )) as Row[]
     return rows.map(rowToTrade)
   }
+  async walletTrades(wallet: string, limit: number): Promise<Trade[]> {
+    await this.ready
+    // arcdex_mkt_trades_wallet_ts serves this.
+    const rows = (await this.sql.unsafe(
+      `select * from arcdex_mkt_trades where wallet = $1 order by ts desc, block_number desc, log_index desc limit $2`,
+      [wallet, Math.min(200, limit)],
+    )) as Row[]
+    return rows.map(rowToTrade)
+  }
   async candles(token: string, interval: Interval, limit: number, beforeTs?: number): Promise<WireCandle[]> {
     await this.ready
     const rows = (await this.sql.unsafe(

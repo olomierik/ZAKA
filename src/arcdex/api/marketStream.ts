@@ -20,10 +20,10 @@ export const engineEnabled = Boolean(WS_URL)
 /** The engine's REST base ('' without an engine). */
 export const engineApiUrl = API_URL
 
-type Sub = { channel: 'token' | 'candles' | 'new_tokens' | 'market' | 'signals' | 'scan' | 'trench_arc' | 'trench_hood' | 'trench_sol' | 'trench_bnb'; token?: string; interval?: Interval }
+type Sub = { channel: 'token' | 'candles' | 'new_tokens' | 'market' | 'signals' | 'scan' | 'trench_arc' | 'trench_hood' | 'trench_sol' | 'trench_bnb' | 'wallet'; token?: string; interval?: Interval; wallet?: string }
 export type EngineStatus = 'off' | 'connecting' | 'open' | 'closed'
 
-const keyOf = (s: Sub) => s.channel === 'candles' ? `candles:${s.token}:${s.interval}` : s.token ? `${s.channel}:${s.token}` : s.channel
+const keyOf = (s: Sub) => s.channel === 'wallet' ? (s.wallet!.startsWith('0x') ? `wallet:evm:${s.wallet}` : `wallet:sol:${s.wallet}`) : s.channel === 'candles' ? `candles:${s.token}:${s.interval}` : s.token ? `${s.channel}:${s.token}` : s.channel
 
 class MarketStream {
   status: EngineStatus = engineEnabled ? 'closed' : 'off'
@@ -36,7 +36,7 @@ class MarketStream {
 
   subscribe(sub: Sub, handler: (m: ServerMessage) => void): () => void {
     if (!engineEnabled) return () => {}
-    const s: Sub = { ...sub, token: sub.token?.toLowerCase() }
+    const s: Sub = { ...sub, token: sub.token?.toLowerCase(), ...(sub.wallet ? { wallet: sub.wallet.startsWith('0x') ? sub.wallet.toLowerCase() : sub.wallet } : {}) }
     const k = keyOf(s)
     let e = this.subs.get(k)
     if (!e) {
@@ -87,6 +87,7 @@ class MarketStream {
         : m.t === 'SIGNAL' || m.t === 'BOT_POSITION' ? 'signals'
         : m.t === 'SCAN' ? 'scan'
         : m.t === 'TLAUNCH' || m.t === 'TTICKS' || m.t === 'TSMART' || m.t === 'TMETA' ? `trench_${m.c}`
+        : m.t === 'WTRADE' ? (m.d.c === 'sol' ? `wallet:sol:${m.d.w}` : `wallet:evm:${m.d.w.toLowerCase()}`)
         : k ? `token:${k}` : null
       if (target) this.subs.get(target)?.handlers.forEach(h => h(m))
     }

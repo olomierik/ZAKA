@@ -19,9 +19,9 @@
 // subscribe to one or the other, or events arrive twice. NEW_TOKEN goes to
 // `new_tokens`; `market` carries TICKS (all tokens, once a second).
 
-import type { TrenchMessage } from './_trenchProtocol'
+import type { TrenchMessage, WalletMessage } from './_trenchProtocol'
 
-export const CHANNELS = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles', 'new_tokens', 'market', 'signals', 'scan', 'trench_arc', 'trench_hood', 'trench_sol', 'trench_bnb'] as const
+export const CHANNELS = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles', 'new_tokens', 'market', 'signals', 'scan', 'trench_arc', 'trench_hood', 'trench_sol', 'trench_bnb', 'wallet'] as const
 export type Channel = (typeof CHANNELS)[number]
 /** Channels that need a token address. */
 export const TOKEN_CHANNELS: readonly Channel[] = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles']
@@ -38,6 +38,8 @@ export interface ClientMessage {
   channel?: Channel
   token?: string
   interval?: Interval
+  /** The `wallet` channel: an EVM or Solana address. */
+  wallet?: string
 }
 
 /** Validates a raw client message. Returns the message or an error code. */
@@ -60,11 +62,17 @@ export function parseClientMessage(raw: unknown): ClientMessage | { error: strin
     if (!isInterval(o.interval)) return { error: 'bad_interval' }
     out.interval = o.interval
   }
+  if (channel === 'wallet') {
+    const w = typeof o.wallet === 'string' ? o.wallet : ''
+    if (!/^0x[0-9a-fA-F]{40}$/.test(w) && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(w)) return { error: 'bad_wallet' }
+    out.wallet = w.startsWith('0x') ? w.toLowerCase() : w
+  }
   return out
 }
 
 /** The pub/sub topic a subscription maps to. */
-export function topicOf(m: { channel: Channel; token?: string; interval?: string }): string {
+export function topicOf(m: { channel: Channel; token?: string; interval?: string; wallet?: string }): string {
+  if (m.channel === 'wallet') return m.wallet!.startsWith('0x') ? `wallet:evm:${m.wallet}` : `wallet:sol:${m.wallet}`
   if (m.channel === 'new_tokens' || m.channel === 'market' || m.channel === 'signals' || m.channel === 'scan' || m.channel.startsWith('trench_')) return m.channel
   if (m.channel === 'candles') return `candles:${m.token}:${m.interval}`
   return `${m.channel}:${m.token}`
@@ -960,6 +968,7 @@ export type ServerMessage =
   | { t: 'TICKS'; d: [string, number | null, number | null, number, number | null, number][] }
   /** trench_<chain> channels: launches, trades once a second, smart wallets' trades (api/_trenchProtocol.ts) */
   | TrenchMessage
+  | WalletMessage
   | { t: 'SUBSCRIBED' | 'UNSUBSCRIBED'; c: string }
   | { t: 'PONG'; ts: number }
   | { t: 'ERROR'; d: { code: string; msg?: string } }

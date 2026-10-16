@@ -98,6 +98,8 @@ export class TrenchBook {
   private secCount = 0
   /** When this book started following its chain (kept across restarts). */
   since = Date.now()
+  /** Every trade, as it comes (the wallet tracker, trench/walletWatch.ts). */
+  onAnyTrade: ((t: FeedTrade) => void) | null = null
   lastEventAt = 0
 
   constructor(
@@ -162,6 +164,7 @@ export class TrenchBook {
   trade(t: FeedTrade, launchedAt = 0): SmartTradeWire | null {
     if (!(t.usd > 0) || !(t.tokens > 0)) return null
     this.lastEventAt = Math.max(this.lastEventAt, Date.now())
+    if (this.onAnyTrade) try { this.onAnyTrade(t) } catch { /* a tracker failure never stops the book */ }
     this.secCount++
     const followed = this.coins.get(t.token)?.launched || this.listed(t.token)
     let c = this.coins.get(t.token)

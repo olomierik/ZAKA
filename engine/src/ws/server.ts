@@ -65,7 +65,7 @@ import type { CoinProgram } from '../coin/program'
 import type { BondingBook } from '../market/bonding'
 import type { TradeSwitch } from '../site/tradeSwitch'
 import type { TrenchService } from '../trench/service'
-import { isTrenchChain } from '../../../api/_trenchProtocol'
+import { isEvmWallet, isTrenchChain, type WalletView } from '../../../api/_trenchProtocol'
 import type { FeeLedger, FeeSource } from '../fees/ledger'
 import type { FeeLedgerService } from '../fees/service'
 import type { ReferralWatcher } from '../fees/referrals'
@@ -117,6 +117,26 @@ export class DataApi {
   /** The trade switch: trading off everywhere or per venue (site/tradeSwitch.ts). */
   tradeSwitch: TradeSwitch | null = null
   attachBot(b: Bot, control: ControlVerifier | null = null, accounts: PaperAccounts | null = null, users: Users | null = null, tiers: Tiers | null = null) { this.bot = b; this.control = control; this.accounts = accounts; this.users = users; this.tiers = tiers }
+
+  /** The wallet tracker's view of a wallet: the trench books' record and kept trades, with Arc's stored trades. */
+  async walletView(address: string): Promise<WalletView | null> {
+    const base = this.trench?.walletView(address)
+    if (!base) return null
+    let trades = base.trades
+    if (isEvmWallet(address) && this.history.walletTrades) {
+      const kept = new Set(trades.map(t => `${t.c}:${t.t}:${t.ts}:${t.side}`))
+      const stored = await this.history.walletTrades(address.toLowerCase(), 100).catch(() => [])
+      for (const t of stored) {
+        if (t.side === 'UNKNOWN' || !(t.usdValue && t.usdValue > 0)) continue
+        const side = t.side === 'BUY' ? 'B' as const : 'S' as const
+        if (kept.has(`arc:${t.token}:${t.timestamp}:${side}`)) continue
+        const meta = this.trench?.books.arc.metaOf(t.token)
+        trades.push({ c: 'arc', w: address.toLowerCase(), t: t.token, s: meta?.symbol ?? '', i: meta?.image ?? null, side, u: Math.round(t.usdValue * 100) / 100, n: t.tokenAmount, ts: t.timestamp, m: 0 })
+      }
+      trades = trades.sort((a, b) => b.ts - a.ts).slice(0, 150)
+    }
+    return { address, at: Date.now(), records: base.records, trades }
+  }
 
   async tokenSnapshot(token: string, limit = 50): Promise<{ stats: TokenStats | null; trades: WireTrade[] }> {
     if (this.engine?.tokens.has(token)) return { stats: this.engine.statsOf(token), trades: this.engine.recentTrades(token, limit) }
@@ -402,6 +422,14 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         const limit = Math.max(1, Math.min(400, Number(url.searchParams.get('limit')) || 200))
         return json(req, 200, { at: api.bonding.at, coins: api.bonding.list(limit) }, 'public, max-age=15')
       }
+      // The wallet tracker (trench/walletWatch.ts): a wallet's record on each chain and its trades, newest first.
+      const wm = /^\/v1\/wallet\/([0-9a-zA-Z]{32,44})$/.exec(url.pathname)
+      if (wm) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        if (!api.trench) return json(req, 503, { error: 'the trenches feed is not running in this process' })
+        const v = await api.walletView(wm[1])
+        return v ? json(req, 200, v, 'no-store') : json(req, 400, { error: 'not an EVM or Solana address' })
+      }
       // The Trenches' live feed (trench/service.ts): a chain's latest launches and its smart wallets.
       const tm = /^\/v1\/trench\/([a-z]+)$/.exec(url.pathname)
       if (tm) {
@@ -589,7 +617,7 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         const m = parseClientMessage(typeof raw === 'string' ? raw : new TextDecoder().decode(raw))
         if ('error' in m) { metrics.inc('ws_bad_messages'); send(ws, { t: 'ERROR', d: { code: m.error } }); return }
         if (m.action === 'ping') { send(ws, { t: 'PONG', ts: now }); return }
-        const topic = topicOf({ channel: m.channel!, token: m.token, interval: m.interval })
+        const topic = topicOf({ channel: m.channel!, token: m.token, interval: m.interval, wallet: m.wallet })
         if (m.action === 'unsubscribe') {
           if (ws.data.subs.delete(topic)) { ws.unsubscribe(topic); counts.set(topic, (counts.get(topic) ?? 1) - 1); if (!counts.get(topic)) counts.delete(topic) }
           send(ws, { t: 'UNSUBSCRIBED', c: topic })

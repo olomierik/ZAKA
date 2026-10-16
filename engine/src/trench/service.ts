@@ -15,6 +15,8 @@ import { BscFeed, type BscPool } from './bsc'
 import { HoodFeed, type HoodPool } from './hood'
 import { NativePrices } from './prices'
 import { SolFeed } from './sol'
+import { WalletWatch } from './walletWatch'
+import { isEvmWallet, isSolWallet, type WalletRecordWire, type WalletTradeWire } from '../../../api/_trenchProtocol'
 
 export interface TrenchServiceOpts {
   publish: (topics: string[], msg: ServerMessage) => void
@@ -35,6 +37,7 @@ const GT_NET: Record<TrenchChain, string> = { arc: 'arc', hood: 'robinhood', sol
 export class TrenchService implements EngineObserver {
   readonly books: Record<TrenchChain, TrenchBook>
   readonly prices = new NativePrices()
+  readonly watch: WalletWatch
   private sol: SolFeed | null = null
   private bsc: BscFeed | null = null
   private hood: HoodFeed | null = null
@@ -51,6 +54,30 @@ export class TrenchService implements EngineObserver {
       sol: new TrenchBook('sol', undefined, t => this.listed.sol.has(t)),
       bnb: new TrenchBook('bnb', undefined, t => this.listed.bnb.has(t)),
     }
+    this.watch = new WalletWatch({ wants: o.wants, publish: (topic, d) => o.publish([topic], { t: 'WTRADE', d } as ServerMessage) })
+    for (const c of TRENCH_CHAINS) {
+      const book = this.books[c]
+      book.onAnyTrade = t => this.watch.record(c, t, book.metaOf(t.token))
+    }
+  }
+
+  /** A wallet's record on each chain the engine has seen it trade, and its kept trades (newest first). */
+  walletView(address: string, now = Date.now()): { records: WalletRecordWire[]; trades: WalletTradeWire[] } | null {
+    const trades = this.watch.view(address, now)
+    if (!trades) return null
+    const chains: TrenchChain[] = isSolWallet(address) && !isEvmWallet(address) ? ['sol'] : ['arc', 'hood', 'bnb']
+    const records: WalletRecordWire[] = []
+    for (const c of chains) {
+      const wb = this.books[c].wallets
+      const key = c === 'sol' ? address : address.toLowerCase()
+      const s = wb.stats(key, now) ?? (key !== address ? wb.stats(address, now) : null)
+      if (!s) continue
+      records.push({
+        c, trades: s.trade_count, winRate: s.win_rate, pnl: Math.round(s.realized_profit - s.realized_loss), coins: s.tokens_traded,
+        avgHoldMs: Math.round(s.average_hold_ms), open: wb.positionsOf(key).length, smart: s.class === 'SMART_MONEY',
+      })
+    }
+    return { records, trades }
   }
 
   private send = (m: TrenchMessage) => {

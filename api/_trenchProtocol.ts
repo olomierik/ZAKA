@@ -132,3 +132,59 @@ export type TrenchMessage =
   | { t: 'TTICKS'; c: TrenchChain; d: TrenchTick[] }
   | { t: 'TSMART'; c: TrenchChain; d: SmartTradeWire }
   | { t: 'TMETA'; c: TrenchChain; d: { a: string; i: string | null } }
+
+// ── the wallet tracker (2026-10-16, owner: GMGN's wallet tracking) ─────────────────────────────────────────────────
+// Follow any wallet and see its trades on Arc, Robinhood Chain, Solana and BNB Chain as the engine reads them. A wallet
+// is one WebSocket topic (`wallet` channel): an EVM address covers Arc, Robinhood Chain and BNB Chain together (the
+// same address on each), a Solana address Solana. The engine pushes WTRADE only while someone is subscribed, and keeps
+// a watched wallet's last trades for GET /v1/wallet/<address> (Arc's from its trade history too, the last 72 hours).
+
+export const isEvmWallet = (v: unknown): v is string => typeof v === 'string' && /^0x[0-9a-fA-F]{40}$/.test(v)
+export const isSolWallet = (v: unknown): v is string => typeof v === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v)
+/** A wallet's topic: `wallet:evm:<lower-case>` or `wallet:sol:<base58>`; null for anything else. */
+export function walletTopic(address: string): string | null {
+  if (isEvmWallet(address)) return `wallet:evm:${address.toLowerCase()}`
+  if (isSolWallet(address)) return `wallet:sol:${address}`
+  return null
+}
+/** The topic of a trade on `chain` by `wallet`. */
+export const tradeTopic = (chain: TrenchChain, wallet: string) => (chain === 'sol' ? `wallet:sol:${wallet}` : `wallet:evm:${wallet.toLowerCase()}`)
+
+export interface WalletTradeWire {
+  /** Chain, wallet, coin, its symbol and picture. */
+  c: TrenchChain
+  w: string
+  t: string
+  s: string
+  i: string | null
+  side: 'B' | 'S'
+  /** Dollars, coins (whole units), time (ms), the coin's market cap then (0 unknown). */
+  u: number
+  n: number
+  ts: number
+  m: number
+}
+
+/** A wallet's record on one chain, from the trades the engine has seen (engine/src/quant/wallets.ts). */
+export interface WalletRecordWire {
+  c: TrenchChain
+  trades: number
+  winRate: number
+  pnl: number
+  coins: number
+  avgHoldMs: number
+  /** Positions still open (bought, not yet sold off). */
+  open: number
+  smart: boolean
+}
+
+export interface WalletView {
+  address: string
+  at: number
+  records: WalletRecordWire[]
+  /** Newest first. */
+  trades: WalletTradeWire[]
+}
+
+/** The `wallet` channel's message: a followed wallet's trade. */
+export type WalletMessage = { t: 'WTRADE'; d: WalletTradeWire }
