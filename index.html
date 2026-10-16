@@ -9,8 +9,45 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="ARCDEX" />
     <meta name="theme-color" content="#f3f4f0" />
-    <!-- Light or dark (lib/theme.ts), set before the stylesheets so the page never flashes the other theme. -->
-    <script>try{document.documentElement.setAttribute("data-adx",localStorage.getItem("arcdex:theme")==="dark"?"dark":"light")}catch(e){document.documentElement.setAttribute("data-adx","light")}</script>
+    <!-- Light or dark (lib/theme.ts), set before the stylesheets so the page never flashes the other theme. It also tells
+         the app shell below what to draw: the Trenches frame on their paths (data-boot, with the chain in data-boot-c), and
+         its English labels only for English readers (data-boot-en; lib/i18n.ts picks the language the same way). -->
+    <script>(function(d){var l=null,c=null;try{d.setAttribute("data-adx",localStorage.getItem("arcdex:theme")==="dark"?"dark":"light");l=localStorage.getItem("arcdex:lang");c=localStorage.getItem("arcdex:chain")}catch(e){d.setAttribute("data-adx","light")}var n=(l||navigator.language||"en").slice(0,2).toLowerCase();if(["fr","es","pt","sw","de","zh"].indexOf(n)<0)d.setAttribute("data-boot-en","");var p=location.pathname.replace(/\/+$/,"")||"/",m=p.match(/^\/(robinhood|solana|bnb|bsc)$/);if(p==="/"||/^\/(app|markets|trenches|arc|launchpad)$/.test(p)||m){d.setAttribute("data-boot","tr");d.setAttribute("data-boot-c",m?{robinhood:"hood",solana:"sol",bnb:"bnb",bsc:"bnb"}[m[1]]:/^\/(arc|launchpad)$/.test(p)?"arc":/^(arc|hood|sol|bnb)$/.test(c)?c:"arc")}})(document.documentElement)</script>
+    <!-- The app shell (2026-10-16, the build pack's Phase 3): the top bar, and on the Trenches their frame, drawn by the
+         HTML itself, so a phone sees the page at once instead of after the app's code has loaded (~3s on a mid-range
+         phone). It matches the app's own layout (terminal.css), and the app replaces it when it starts. -->
+    <style>
+      html{background:#f3f4f0}html[data-adx=dark]{background:#0a0f0c}
+      body{margin:0}
+      .bt{--bg:#f3f4f0;--p:#fff;--l:#dadfd5;--t:#0d1410;--t2:#39443e;--m:#67726b;--ink:#0d1410;--on:#fff;--g:#0a8f4f;--lg:#0a8f4f;--lt:#fff;
+        position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg);color:var(--t);overflow:hidden;
+        font:13px/1.35 'Geist','Inter',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+      html[data-adx=dark] .bt{--bg:#0a0f0c;--p:#101713;--l:#1f2a24;--t:#e9efeb;--t2:#c3ccc6;--m:#8a968f;--ink:#00ec97;--on:#06110b;--g:#00ec97;--lg:#00c37c;--lt:#06110b}
+      .bt-nav{height:50px;flex-shrink:0;display:flex;align-items:center;gap:6px;padding:0 12px;background:var(--p);border-bottom:1px solid var(--l)}
+      .bt-burger{display:none;width:32px;height:32px;flex-direction:column;justify-content:center;gap:4px;padding:0 8px;box-sizing:border-box}
+      .bt-burger i{display:block;height:2px;border-radius:2px;background:var(--t)}
+      .bt-logo{display:flex;align-items:center;gap:7px;font-size:20px;font-weight:700;margin-right:86px}
+      .bt-links{display:flex;gap:2px;font-size:13.5px;color:var(--t2)}
+      .bt-links span{padding:6px 9px;border-radius:6px}
+      .bt-links .on{background:var(--ink);color:var(--on);font-weight:500}.bt-links .hot{color:var(--g);font-weight:600}
+      .bt-login{margin-left:auto;height:32px;display:flex;align-items:center;padding:0 16px;border-radius:4px;background:var(--lg);color:var(--lt);font-weight:600}
+      .bt-tr{display:none;flex:1;min-height:0;flex-direction:column}
+      html[data-boot=tr] .bt-tr{display:flex}
+      .bt-coinbar{height:34px;flex-shrink:0;border-bottom:1px solid var(--l)}
+      .bt-bar{height:44px;flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--l);white-space:nowrap;overflow:hidden}
+      .bt-title{font-size:14px;font-weight:600;margin-right:4px}
+      .bt-chip{height:28px;display:inline-flex;align-items:center;padding:0 10px;border-radius:6px;border:1px solid var(--l);background:var(--p);color:var(--t2);font-size:12.5px;font-weight:600;box-sizing:border-box}
+      html[data-boot-c=arc] .bt-c-arc,html[data-boot-c=hood] .bt-c-hood,html[data-boot-c=sol] .bt-c-sol,html[data-boot-c=bnb] .bt-c-bnb{background:var(--ink);border-color:var(--ink);color:var(--on)}
+      .bt-mtabs{display:none;flex-shrink:0;background:var(--p);border-bottom:1px solid var(--l)}
+      .bt-mtabs span{flex:1;height:38px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:13px;font-weight:600;color:var(--m);border-bottom:2px solid transparent;box-sizing:border-box}
+      .bt-mtabs .on{color:var(--t);border-bottom-color:var(--ink)}
+      .bt-lanes{flex:1;min-height:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
+      .bt-lane{background:var(--p);border-left:1px solid var(--l);border-right:1px solid var(--l)}
+      .bt-lane b{height:40px;display:flex;align-items:center;padding:0 8px 0 12px;border-bottom:1px solid var(--l);font-size:15px;font-weight:600}
+      html:not([data-boot-en]) .bt-x{color:transparent}
+      @media (max-width:900px){.bt-links{display:none}.bt-burger{display:flex}.bt-logo{margin-right:0}.bt-lanes{grid-template-columns:minmax(0,1fr)}}
+      @media (max-width:767px){.bt-nav{padding:0 8px;padding-top:env(safe-area-inset-top);height:calc(50px + env(safe-area-inset-top))}.bt-logo{font-size:18px}.bt-bar{padding:0 8px;gap:6px}.bt-title{display:none}.bt-mtabs{display:flex}.bt-lane b{display:none}}
+    </style>
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="generator" content="Arc Studio by Circle — https://studio.arc.io" />
     <title>ARCDEX — Trading terminal: memecoins, futures and predictions</title>
@@ -32,7 +69,15 @@
   </head>
   <body>
     <!-- Built with Arc Studio — https://studio.arc.io -->
-    <div id="root"></div>
+    <div id="root"><div class="bt" aria-hidden="true">
+      <div class="bt-nav"><span class="bt-burger"><i></i><i></i><i></i></span><span class="bt-logo"><img src="/arcdex-mark-48.png" alt="" width="24" height="24" /><span>arcdex</span></span><span class="bt-links bt-x"><span class="on">Trenches</span><span class="hot">Futures</span><span class="hot">Predict</span><span>Portfolio</span><span>Swap</span><span>Bridge</span></span><span class="bt-login bt-x">Log in</span></div>
+      <div class="bt-tr">
+        <div class="bt-coinbar"></div>
+        <div class="bt-bar bt-x"><span class="bt-title">Trenches</span><span class="bt-chip bt-c-arc">ARC</span><span class="bt-chip bt-c-hood">HOOD</span><span class="bt-chip bt-c-sol">SOL</span><span class="bt-chip bt-c-bnb">BNB</span></div>
+        <div class="bt-mtabs bt-x"><span class="on">New</span><span>Almost bonded</span><span>Migrated</span><span>Smart</span></div>
+        <div class="bt-lanes bt-x"><div class="bt-lane"><b>New</b></div><div class="bt-lane"><b>Almost bonded</b></div><div class="bt-lane"><b>Migrated</b></div><div class="bt-lane"><b>Smart money</b></div></div>
+      </div>
+    </div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

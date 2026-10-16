@@ -428,7 +428,11 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
 .tr-cb-buy { margin-left: auto; height: 24px; padding: 0 12px; border-radius: 6px; border: none; background: var(--green); color: var(--on-accent); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; flex-shrink: 0; }
 .tr-cb-buy:hover { filter: brightness(1.08); }
 @media (max-width: 1280px) { .tr-cb-ca code:not(.sh) { display: none; } .tr-cb-ca code.sh { display: inline; } }
-@media (max-width: 767px) { .tr-coinbar { gap: 10px; padding: 0 8px; } .tr-cb-kv.hide-sm, .tr-cb-meter, .tr-cb-burn em, .tr-cb-coin b { display: none; } }
+@media (max-width: 767px) { .tr-coinbar { gap: 10px; padding: 0 8px; } .tr-cb-kv.hide-sm, .tr-cb-meter, .tr-cb-burn em, .tr-cb-coin b { display: none; } .tr-cb-ca { flex-shrink: 0; } }
+/* A phone's strip holds the address, the price and Buy: squeezed, the address ran into the price (2026-10-16). The burned
+   figure is on /burn. */
+@media (max-width: 440px) { .tr-cb-burn { display: none; } .tr-cb-coin { flex-shrink: 0; } }
+@media (max-width: 359px) { .tr-cb-kv { display: none; } }
 
 .tr-meta-smart { display: inline-flex; align-items: center; gap: 4px; color: var(--green-2); }
 

@@ -2489,9 +2489,45 @@ The build pack's Phase 1 (decision D1). The owner set `VITE_PRIVY_APP_ID` on Net
      - embedded wallets for Ethereum and Solana;
      - MFA methods (authenticator app, passkey), so users can turn on two-step verification.
   2. The App ID is already in Netlify. A deploy builds it in: merging to `main` does.
-  3. On Railway, the admin wallets take effect once the service redeploys (Deployments → Deploy latest commit).
+  3. On Railway, the admin wallets take effect once the service redeploys: Railway does that by itself after a variable changes, and on every merge to `main`.
   4. Try a sign-in and a $1 withdrawal on arcsense.site.
 - Every new string is in all six dictionaries (31).
+
+## Phase 3, first part: the page shows at once on phones (2026-10-16)
+
+The build pack's Phase 3 asks for Lighthouse performance 85+ on a mid-range mobile profile. Status against its other tasks: `docs/REPO_MAP.md` §12.
+
+- **Measured first:** Lighthouse 12 (mobile: simulated slow 4G and a 4× slower CPU) on the production build, served locally, with outside hosts unreachable.
+  - Before: home 70, Portfolio 74.
+  - Nothing showed until the app's code had loaded and run: first paint at about 3 s.
+- **The app shell (`index.html`):** the top bar is drawn by the HTML itself, plus the Trenches frame (coin strip, chain chips, lane tabs and lanes) on their paths. The app replaces it when it starts.
+  - It copies the app's own layout from `terminal.css`: the same heights, colours and breakpoints, in light and dark.
+  - The theme script also sets:
+    - `data-boot="tr"` on the Trenches' paths;
+    - `data-boot-c`, the chain whose chip is marked (the path's, else the last picked, `arcdex:chain`);
+    - `data-boot-en` when the app will be in English (stored language, else the browser's, as `lib/i18n.ts` picks it). Other languages get the frame without English labels.
+  - Its hash in the CSP changed with it (`scripts/check-csp.ts`).
+- **Less code before the first page:**
+  - The account menu's Deposit, Withdraw and Support windows load when opened. They used to bring the Solana cross-chain form, Jupiter, Relay and the withdraw code (about 60 KB) into every first load.
+  - The trading-wallet sheet and the share card (profit notifications) load the same way.
+  - `enableAlertNotifications` moved to `lib/notify.ts`, so the account menu no longer loads the discovery panel for one function.
+- **The logo:** a 48 px copy (`public/arcdex-mark-48.png`, 3.5 KB) for the top bar and the status bar. The 256 px original (40 KB) stays for the landing page and link previews.
+- **The coin strip on phones:** the contract-address pill was squeezed and its text ran into "Price".
+  - The pill no longer shrinks.
+  - Under 440 px the burned figure is left out (it's on `/burn`), and under 360 px the price too.
+  - Checked at 320, 360, 390, 412 and 768 px: no overlap, nothing cut off.
+- **After:**
+  - Home 84–86 over three runs (median 85).
+  - Portfolio 78; a coin page 70.
+  - First paint 0.9 s everywhere.
+  - Home now loads 341 KB of JavaScript (it was about 400 KB).
+- **What's left:**
+  - LCP is the app's own first render, about 4 s on that profile. Most of it is the wallet libraries (viem, wagmi, react-query) every page starts with.
+  - Rendering before them would mean loading wagmi after the first page: a bigger change, for later.
+  - Coin pages wait on their chart and data.
+- **Tests:**
+  - `bun scripts/test-app-shell.ts` (in CI): the boot script on every Trenches path and the others, chains, languages and blocked storage, and the frame's labels, chains, heights and breakpoints against the app's own source.
+  - The Privy browser check (23 checks) was run again after the windows became lazy: all passed.
 
 ## Autotrade paused (2026-10-03)
 
@@ -2663,7 +2699,7 @@ Owner: "I have provided you with Alchemy endpoints for the chains we support, to
   - Measured from the owner's region (2026-10-12, median of 7): Alchemy 175 ms vs 225 (Robinhood Chain), 155 vs 230 (BNB Chain), 159 vs 230 (Solana); on Arc, Arc's public RPC was faster (195 vs 239). Starknet's Alchemy node answered in 0.7–2 s, so it is Starknet's last fallback.
   - Found by the new test and fixed: when every node was stepping aside, the one that answered stayed marked as failing.
 - **Railway:** the engine's last deploy was 2026-10-06. The service's Watch Paths held five file names joined by commas in one entry, plus `railway.tom`. Now `/engine/**`, `/api/**`, `/railway.toml`. The latest commit was deployed from the dashboard and is healthy.
-  - GitHub pushes still don't reach Railway (a test push created no deployment). **Owner step:** Railway → arcdex-engine → Settings → Source: disconnect the `main` branch and connect it again; or check GitHub → Settings → Applications → Railway App's repository access (it asks for your verification code). Until then use Deployments → Deploy latest commit after an engine change.
+  - GitHub pushes didn't reach Railway on 2026-10-12. They do again: since 2026-10-15 GitHub's deployment records show Railway deploying every merge to `main` (`railway-app[bot]`, environment `arcdex / production`). A variable changed on Railway redeploys the service too.
 - **Tests:** `bun scripts/test-rpc-settings.ts` (ordering, Alchemy's methods, unconfigured, failover, the edge function: same-origin, methods, batches, size, the key never echoed).
 
 ## Hosting — arcdex.online only

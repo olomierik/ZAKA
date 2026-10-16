@@ -48,7 +48,7 @@ export default function StatusBar({ navigate, onAlerts }: { navigate: (p: Page) 
 
   return (
     <footer className="tm-status">
-      <button className="tm-st-logo" onClick={() => navigate(trenchesPage(chain))}><img src="/arcdex-mark.png" alt="" width={14} height={14} />arcdex</button>
+      <button className="tm-st-logo" onClick={() => navigate(trenchesPage(chain))}><img src="/arcdex-mark-48.png" alt="" width={14} height={14} />arcdex</button>
       <button className="tm-st-link" onClick={() => navigate({ name: 'portfolio' })}><IcGrid />{T('Positions')}</button>
       <button className="tm-st-link" onClick={onAlerts}><IcBell />{T('Alerts')}</button>
       <button className={`tm-st-link${s.watchOnly ? ' on' : ''}`} onClick={() => { setTrench({ watchOnly: !s.watchOnly }); navigate(trenchesPage(chain)) }}><IcStar on={s.watchOnly} />{T('Watchlist')}</button>

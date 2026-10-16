@@ -39,10 +39,11 @@ const SolanaTokenPage = lazy(() => import('./pages/SolanaTokenPage'))
 const BscTokenPage    = lazy(() => import('./pages/BscTokenPage'))
 // Price alerts are watched on every page, but the watcher (Hyperliquid's live prices) loads only once one exists.
 const PriceAlertWatcher = lazy(() => import('./components/PriceAlertWatcher'))
+// Opens in a sheet on a tap: its code (with the deposit and withdraw windows) loads then.
+const TradingWalletPanel = lazy(() => import('./components/TradingWalletPanel'))
 const PushSync = lazy(() => import('./components/PushSync'))
 // The bell's list of price alerts (Hyperliquid's live prices load with it).
 const AlertsPanel = lazy(() => import('./components/AlertsPanel'))
-import TradingWalletPanel from './components/TradingWalletPanel'
 import StatusBar from './components/StatusBar'
 import RpcSettingsHost from './components/RpcSettings'
 import { getChain, type TChain } from './lib/chains'
@@ -248,7 +249,7 @@ export default function App() {
       <RpcSettingsHost />
       {!detail && <MobileTabBar page={page} navigate={navigate} onOpenLists={() => setNavOpen(true)} />}
       <Sheet open={walletSheet} onClose={() => setWalletSheet(false)}>
-        <TradingWalletPanel navigate={p => { setWalletSheet(false); afterSheetClose(() => navigate(p)) }} />
+        <Suspense fallback={null}><TradingWalletPanel navigate={p => { setWalletSheet(false); afterSheetClose(() => navigate(p)) }} /></Suspense>
       </Sheet>
       <ConnectModalHost />
       {/* Email or social sign-in (Privy): loaded only once someone uses it. */}

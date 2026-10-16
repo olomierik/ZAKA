@@ -1,10 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { ConnectButton } from './ConnectWallet'
 import { useDisconnect } from 'wagmi'
 import Avatar from './Avatar'
-import { DepositModal, WithdrawModal } from './CashModals'
-import SupportModal from './SupportModal'
-import { enableAlertNotifications } from './DiscoveryPanel'
+import { enableAlertNotifications } from '../lib/notify'
 import { getProfile, signOutEverywhere, type Profile } from '../api/social'
 import { accountOwner, hasPasskey, lock } from '../lib/embeddedWallet'
 import { shortAddr, useTrader } from '../lib/identity'
@@ -20,6 +18,12 @@ import { PrivyAccountPanel } from '../privy/PrivyAccount'
 // rewards, clans, contact support, lock / disconnect).
 
 type SettingsTab = 'trading' | 'account' | 'notifications' | 'language'
+
+// The windows open on a click, so their code (deposit and withdraw, with the Solana cross-chain form behind them) loads
+// then, not with every page (2026-10-16, the build pack's Phase 3: it was ~60 KB on every first load).
+const DepositModal = lazy(() => import('./CashModals').then(m => ({ default: m.DepositModal })))
+const WithdrawModal = lazy(() => import('./CashModals').then(m => ({ default: m.WithdrawModal })))
+const SupportModal = lazy(() => import('./SupportModal'))
 
 export default function AccountMenu({ navigate }: { navigate: (p: Page) => void }) {
   const trader = useTrader()
@@ -98,10 +102,12 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
         </div>
       )}
 
-      {deposit && <DepositModal trader={trader} navigate={navigate} onClose={() => setDeposit(false)} />}
-      {withdraw && <WithdrawModal trader={trader} onClose={() => setWithdraw(false)} />}
+      <Suspense fallback={null}>
+        {deposit && <DepositModal trader={trader} navigate={navigate} onClose={() => setDeposit(false)} />}
+        {withdraw && <WithdrawModal trader={trader} onClose={() => setWithdraw(false)} />}
+        {support && <SupportModal onClose={() => setSupport(false)} />}
+      </Suspense>
       {settings && <SettingsModal initial={settings} onClose={() => setSettings(null)} onSupport={() => { setSettings(null); setSupport(true) }} />}
-      {support && <SupportModal onClose={() => setSupport(false)} />}
     </div>
   )
 }

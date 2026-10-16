@@ -47,6 +47,8 @@ jobs:
         run: bun scripts/test-push.ts
       - name: Privy sign-in
         run: bun scripts/test-privy.tsx
+      - name: App shell
+        run: bun scripts/test-app-shell.ts
 
   engine:
     name: Engine (typecheck, tests)

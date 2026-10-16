@@ -68,7 +68,7 @@ export default function NavBar({ page, navigate, onMenuClick, onBack, onBell, be
       {onBack && <button className="tm-back" onClick={onBack} aria-label={T('Back')}>‹</button>}
 
       <button className="tm-logo" onClick={() => navigate(trenchesPage(chain))} aria-label="ARCDEX">
-        <img src="/arcdex-mark.png" alt="" width={24} height={24} /><span>arcdex</span>
+        <img src="/arcdex-mark-48.png" alt="" width={24} height={24} /><span>arcdex</span>
       </button>
       <button className="tm-round" onClick={toggleTheme} title={theme === 'dark' ? T('Light mode') : T('Dark mode')} aria-label={theme === 'dark' ? T('Light mode') : T('Dark mode')}>
         <MoonIcon dark={theme === 'dark'} />
