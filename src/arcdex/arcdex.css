@@ -973,6 +973,15 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .swap-input { width: 100%; min-width: 0; padding: 9px 12px; border-radius: 8px; font-size: 0.95rem; font-family: var(--mono); background: var(--bg-2); border: 1px solid var(--adx-card-border); color: var(--text); outline: none; }
 .swap-input:focus { border-color: var(--adx-accent); }
 .swap-info { padding: 8px 11px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--adx-card-border); font-size: 0.74rem; display: flex; flex-direction: column; gap: 4px; }
+/* The trade forms' Details drawer (components/TradeDetails.tsx): inside the info box, under what the trade gets. */
+.trade-details { display: flex; flex-direction: column; gap: 4px; }
+.trade-details-toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 0 0; margin-top: 1px; border: none; border-top: 1px dashed var(--adx-card-border); background: none; color: var(--text-muted); font: inherit; cursor: pointer; text-align: left; }
+.trade-details-toggle:hover, .trade-details-toggle:focus-visible { color: var(--text); }
+.trade-details-label { font-weight: 600; flex: none; }
+.trade-details-hint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-family: var(--mono); }
+.trade-details-chev { margin-left: auto; flex: none; }
+.trade-details-body { display: flex; flex-direction: column; gap: 4px; }
+.trade-details-body .swap-note { margin: 2px 0 0; text-align: left; }
 .swap-note { font-size: 0.64rem; color: var(--text-muted); text-align: center; line-height: 1.45; margin: 0; }
 .form-page { width: 100%; max-width: 420px; margin: 0 auto; padding: 16px 16px 28px; }
 .page-title { font-size: 1.15rem; font-weight: 800; margin: 0 0 4px; }

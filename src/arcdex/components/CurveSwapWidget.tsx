@@ -12,6 +12,7 @@ import { waitForReceipt } from '../lib/receipts'
 import { onBalances } from '../lib/balances'
 import { assertTradingOn } from '../lib/tradeSwitch'
 import { sizeProblem } from '../lib/guardrails'
+import TradeDetails from './TradeDetails'
 import { useBuyRisk } from '../lib/buyRisk'
 
 const USDC_ADDR = '0x3600000000000000000000000000000000000000' as const
@@ -192,26 +193,29 @@ export default function CurveSwapWidget({ token, onTraded, initialMode, side, in
         </div>
       </div>
 
-      {estimate && (
-        <div className="swap-info">
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--orange)' }}>
-            <span>{T("Fee (1% +")}{' '}{(token.curve.creatorTaxBps / 100).toFixed(1)}{T("% creator tax)")}</span>
-            <span className="mono">{Number(formatUnits(estimate.fee, 6)).toFixed(4)}{' '}{T("USDC")}</span>
-          </div>
+      <div className="swap-info">
+        <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text)' }}>
+          <span>{T("You receive (~)")}</span>
+          <span className="mono" style={{ color: estimate ? 'var(--green)' : undefined }}>
+            {!estimate ? '—' : mode === 'buy' ? `${fmtTok(Number(formatUnits(estimate.out, 18)))} ${token.symbol}` : `$${Number(formatUnits(estimate.out, 6)).toFixed(2)}`}
+          </span>
+        </div>
+        <TradeDetails hint={T('{fee} fee · {s}% slippage', { fee: `${(1 + token.curve.creatorTaxBps / 100).toFixed(1)}%`, s: slippage })}>
+          {estimate && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--orange)' }}>
+              <span>{T("Fee (1% +")}{' '}{(token.curve.creatorTaxBps / 100).toFixed(1)}{T("% creator tax)")}</span>
+              <span className="mono">{Number(formatUnits(estimate.fee, 6)).toFixed(4)}{' '}{T("USDC")}</span>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <span style={{ color: 'var(--text-muted)' }}>{T("Max slippage")}</span>
             <span style={{ display: 'flex', gap: 4 }}>
               {[1, 3, 5, 10].map(s => <button key={s} onClick={() => setSlippage(s)} style={{ ...pill(slippage === s), flex: 'none', padding: '2px 8px', fontSize: '0.72rem' }}>{s}%</button>)}
             </span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--adx-card-border)', paddingTop: 6, color: 'var(--text)' }}>
-            <span>{T("You receive (~)")}</span>
-            <span className="mono" style={{ color: 'var(--green)' }}>
-              {mode === 'buy' ? `${fmtTok(Number(formatUnits(estimate.out, 18)))} ${token.symbol}` : `$${Number(formatUnits(estimate.out, 6)).toFixed(2)}`}
-            </span>
-          </div>
-        </div>
-      )}
+          <p className="swap-note">{T("1% platform fee +")}{' '}{(token.curve.creatorTaxBps / 100).toFixed(1)}{T("% creator tax (60% of that goes straight to the creator). Liquidity lives permanently in the curve — no LP to rug.")}{' '}{T("Approvals are for the exact trade amount only.")}</p>
+        </TradeDetails>
+      </div>
 
       {msg && (
         <div style={{ padding: '10px 14px', borderRadius: 8, fontSize: '0.8125rem',
@@ -235,7 +239,6 @@ export default function CurveSwapWidget({ token, onTraded, initialMode, side, in
         </button>
       )}
 
-      <p className="swap-note">{T("1% platform fee +")}{' '}{(token.curve.creatorTaxBps / 100).toFixed(1)}{T("% creator tax (60% of that goes straight to the creator). Liquidity lives permanently in the curve — no LP to rug.")}{' '}{T("Approvals are for the exact trade amount only.")}</p>
     </div>
   )
 }

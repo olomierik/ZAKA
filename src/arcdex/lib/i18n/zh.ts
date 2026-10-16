@@ -3678,5 +3678,9 @@ const d: Record<string, string> = {
   "Report": "举报",
   "Unmute this wallet": "取消屏蔽此钱包",
   "Mute this wallet": "屏蔽此钱包",
+  "Details": "详情",
+  "{fee} fee · {s}% slippage": "手续费 {fee} · 滑点 {s}%",
+  "{fee} fee · {via}": "手续费 {fee} · {via}",
+  "{fee} fee": "手续费 {fee}",
 }
 export default d

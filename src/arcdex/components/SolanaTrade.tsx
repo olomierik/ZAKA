@@ -28,6 +28,7 @@ import { t as T } from '../lib/i18n'
 import { ed25519 } from '@noble/curves/ed25519'
 import { base58 } from '../../../api/_solCore'
 import { useBuyRisk } from '../lib/buyRisk'
+import TradeDetails, { HOT } from './TradeDetails'
 
 interface Props {
   mint: string
@@ -202,6 +203,8 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
   const impactPct = value ? Math.max(0, value.impact * 100) : null
   const cost = value ? Math.max(0, value.cost * 100) : null
   const needsCostTick = verdict === 'confirm' || verdict === 'unpriced'
+  const impactHot = refused || (impactPct ?? 0) >= HOT.impactPct
+  const costHot = (cost ?? 0) >= HOT.costPct
 
   const noBuy = mode === 'buy' && !!buyBlocked
   // Solana's fees are SOL whichever way it pays: a sale, a swap with USDC, all need some.
@@ -344,22 +347,28 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
       <div className="swap-info">
         <Row label={T('You receive (est.)')} value={quote ? outText(outAmount) : quoting ? '…' : '—'}
           sub={quote && outUsd > 0 && verdict !== 'off-market' && !(mode === 'sell' && route !== 'sol') ? `≈ ${fmtUsd(outUsd)}` : undefined} />
-        <Row label={T('Minimum received')} value={quote ? outText(minAmount) : '—'} />
-        {isJup(quote) ? (
-          <>
-            <Row label={T('Platform fee')} value={quote.arcdexFeeBps > 0 ? T('{pct} (in {token})', { pct: pct(quote.arcdexFeeBps), token: quote.feeMint === WSOL ? 'SOL' : quote.feeMint === SOL_USDC ? 'USDC' : quote.feeMint === mint ? symbol : T('the coin') }) : T('None on this trade')} />
-            <Row label={T('Route')} value={`Jupiter${quote.router ? ` · ${quote.router}` : ''}${quote.gasless ? ` · ${T('gasless')}` : ''}`} />
-          </>
-        ) : (
-          <>
-            <Row label={T('Platform fee')} value={route === 'sol' ? T('{pct} (in SOL)', { pct: pct(feeBps) }) : T('{pct} (in USDC)', { pct: pct(feeBps) })} />
-            <Row label={route === 'arc' ? T('Bridge & delivery (Relay)') : T('Swap (Relay)')} value={quote ? fmtUsd(quote.relayFeeUsd) : '—'} />
-          </>
-        )}
-        {value && <Row label={T('Price impact')} value={verdict === 'off-market' ? T('{x}× the market price', { x: fmtTimes(value.rate) }) : impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`}
-          color={refused || impactPct! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : impactPct! >= 5 ? 'var(--amber)' : 'var(--green)'} />}
-        {value && !refused && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} color={cost! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : cost! >= 6 ? 'var(--amber)' : undefined} />}
-        <Row label={T('Arrives')} value={!quote ? '—' : route !== 'arc' ? T('in your Solana wallet in seconds') : mode === 'buy' ? T('on Solana in ~{s}s', { s: Math.max(2, quote.fillSeconds) }) : T('on Arc in ~{s}s', { s: Math.max(2, quote.fillSeconds) })} />
+        {/* A high price impact or cost stays out of Details. */}
+        {value && impactHot && <Row label={T('Price impact')} value={verdict === 'off-market' ? T('{x}× the market price', { x: fmtTimes(value.rate) }) : impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`}
+          color={refused || impactPct! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : 'var(--amber)'} />}
+        {value && !refused && costHot && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} color={cost! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : 'var(--amber)'} />}
+        <TradeDetails hint={!quote ? T('{fee} fee', { fee: pct(feeBps) }) : T('{fee} fee · {via}', { fee: isJup(quote) ? (quote.arcdexFeeBps > 0 ? pct(quote.arcdexFeeBps) : '0%') : pct(feeBps), via: isJup(quote) ? 'Jupiter' : 'Relay' })}>
+          <Row label={T('Minimum received')} value={quote ? outText(minAmount) : '—'} />
+          {isJup(quote) ? (
+            <>
+              <Row label={T('Platform fee')} value={quote.arcdexFeeBps > 0 ? T('{pct} (in {token})', { pct: pct(quote.arcdexFeeBps), token: quote.feeMint === WSOL ? 'SOL' : quote.feeMint === SOL_USDC ? 'USDC' : quote.feeMint === mint ? symbol : T('the coin') }) : T('None on this trade')} />
+              <Row label={T('Route')} value={`Jupiter${quote.router ? ` · ${quote.router}` : ''}${quote.gasless ? ` · ${T('gasless')}` : ''}`} />
+            </>
+          ) : (
+            <>
+              <Row label={T('Platform fee')} value={route === 'sol' ? T('{pct} (in SOL)', { pct: pct(feeBps) }) : T('{pct} (in USDC)', { pct: pct(feeBps) })} />
+              <Row label={route === 'arc' ? T('Bridge & delivery (Relay)') : T('Swap (Relay)')} value={quote ? fmtUsd(quote.relayFeeUsd) : '—'} />
+            </>
+          )}
+          {value && !impactHot && <Row label={T('Price impact')} value={impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`} color="var(--green)" />}
+          {value && !refused && !costHot && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} />}
+          <Row label={T('Arrives')} value={!quote ? '—' : route !== 'arc' ? T('in your Solana wallet in seconds') : mode === 'buy' ? T('on Solana in ~{s}s', { s: Math.max(2, quote.fillSeconds) }) : T('on Arc in ~{s}s', { s: Math.max(2, quote.fillSeconds) })} />
+          {!compact && <p className="swap-note">{SOL_NOTE()}</p>}
+        </TradeDetails>
       </div>
 
       {quoteErr && !busy && <div className="rh-msg error">{quoteErr}</div>}
@@ -424,7 +433,6 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
       )}
 
       {solAddr && !compact && <SolanaWalletBar solBal={solBal} />}
-      {!compact && <p className="swap-note">{SOL_NOTE()}</p>}
     </div>
   )
 }

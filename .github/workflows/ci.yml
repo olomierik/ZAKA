@@ -53,6 +53,8 @@ jobs:
         run: bun scripts/test-social.tsx
       - name: Wallet reconnect on load
         run: bun scripts/test-reconnect.tsx
+      - name: Trade forms (one field, Details drawer)
+        run: bun scripts/test-trade-details.tsx
 
   engine:
     name: Engine (typecheck, tests)

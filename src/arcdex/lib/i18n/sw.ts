@@ -3678,5 +3678,9 @@ const d: Record<string, string> = {
   "Report": "Ripoti",
   "Unmute this wallet": "Acha kunyamazisha pochi hii",
   "Mute this wallet": "Nyamazisha pochi hii",
+  "Details": "Maelezo",
+  "{fee} fee · {s}% slippage": "ada {fee} · utelezi {s}%",
+  "{fee} fee · {via}": "ada {fee} · {via}",
+  "{fee} fee": "ada {fee}",
 }
 export default d
