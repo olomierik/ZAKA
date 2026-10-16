@@ -110,7 +110,9 @@ export default function CopyPage({ navigate, leader: preset }: { navigate: (p: P
           <div className="cp-row"><button className="at-wbtn primary" onClick={() => void run(() => signInForCopy(trader))}>{T('Sign in with {w}', { w: shortAddr(trader.address) })}</button></div>
         </section>
       ) : !accepted ? (
-        <OpenBox trader={trader} on={status?.on ?? false} renewing={!!wallet} onOpen={() => run(() => openCopyWallet(trader))} />
+        status?.on
+          ? <OpenBox trader={trader} on={status.on} renewing={!!wallet} onOpen={() => run(() => openCopyWallet(trader))} />
+          : <section className="spot-panel cp-box"><b>{T('Copying is off')}</b>{status?.why && <p className="fx-fine">{status.why}</p>}</section>
       ) : wallet && me && (
         <>
           <WalletPanel trader={trader} me={me} onChange={load} run={run} />

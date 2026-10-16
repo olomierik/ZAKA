@@ -207,7 +207,7 @@ export class CopyEngine {
 
   /** Why copying can't happen at all right now, or null. */
   why(): string | null {
-    if (!this.o.vault) return 'copy trading isn’t switched on yet: the platform owner sets BOT_WALLET_SECRET on the engine'
+    if (!this.o.vault) return 'copy trading isn’t available yet'
     if (!this.loaded) return 'copy trading is starting'
     return this.o.on()
   }

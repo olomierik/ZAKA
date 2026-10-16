@@ -340,6 +340,10 @@ boards and points still read Supabase (points leave out flagged wallets).
 
 ## 14. Phase 7 status (2026-10-16)
 
+**Engine-held copy wallets are switched off** (owner, the same day: "I don't want ARCDEX to hold users' copy trade
+wallets"): the engine is given no vault, so none can be made. A non-custodial design is to replace them; what follows
+describes the engine as built.
+
 Custody (owner's choice, 2026-10-16: "proceed with your recommendations"): **engine-held copy wallets**. Each follower
 gets a copy wallet made on the engine, its key encrypted under `BOT_WALLET_SECRET` like a live bot's; ARCDEX is the
 custodian of what followers deposit, and the page says so before anything is signed.
