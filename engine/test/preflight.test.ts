@@ -225,6 +225,39 @@ describe('the executor: a buy', () => {
   })
 })
 
+describe('the executor: copy trading\'s floor and stop guard', () => {
+  const pass = () => null
+  test('a floor the pool can\'t meet: refused before anything is signed', async () => {
+    const n = node()
+    expect(await n.exec.buy(POOL, T, 5, 300, pass, { floor: 6_000n * E18 }).catch(x => x)).toMatchObject({ kind: 'refused', message: expect.stringMatching(/price moved past the cap/) })
+    expect(n.sent).toEqual([])
+  })
+  test('a floor above the slippage minimum is the swap\'s on-chain minimum', async () => {
+    const n = node()
+    await n.exec.buy(POOL, T, 5, 1_000, pass, { floor: 4_800n * E18 })
+    expect(n.txs()[0].data).toContain(toHex(4_800n * E18, { size: 32 }).slice(2))
+    expect(n.txs()[0].data).not.toContain(toHex(4_500n * E18, { size: 32 }).slice(2))
+  })
+  test('a stop before the buy starts: nothing is simulated or signed', async () => {
+    const n = node()
+    expect(await n.exec.buy(POOL, T, 5, 1_000, pass, { guard: () => 'stopped: you paused copying' }).catch(x => x)).toMatchObject({ kind: 'refused', message: 'stopped: you paused copying' })
+    expect(n.sent).toEqual([])
+  })
+  test('a stop that lands after the simulation: still never signed', async () => {
+    const n = node()
+    let asked = 0
+    const guard = () => (++asked >= 2 ? 'stopped: the rule was deleted' : null)
+    expect(await n.exec.buy(POOL, T, 5, 1_000, pass, { guard }).catch(x => x)).toMatchObject({ message: 'stopped: the rule was deleted' })
+    expect(asked).toBe(2)
+    expect(n.sent).toEqual([])
+  })
+  test('a sale with a stop: never signed', async () => {
+    const n = node()
+    expect(await n.exec.sell(POOL, T, 1_000n * E18, 1_000, { guard: () => 'stopped: copy trading is off' }).catch(x => x)).toMatchObject({ message: 'stopped: copy trading is off' })
+    expect(n.sent).toEqual([])
+  })
+})
+
 describe('the executor: sending', () => {
   const to = '0x2222222222222222222222222222222222222222' as Address
   test('a nonce the node says is used: signed again with the next one', async () => {

@@ -21,7 +21,7 @@
 import { log, errMsg } from '../log'
 
 export type FeeChain = 'arc' | 'solana' | 'bnb' | 'robinhood'
-export type FeeSource = 'arc-router' | 'arc-curve' | 'arc-ur' | 'arc-launchpad' | 'across' | 'arc-other' | 'relay' | 'jupiter' | 'arc-referral'
+export type FeeSource = 'arc-router' | 'arc-curve' | 'arc-ur' | 'arc-launchpad' | 'across' | 'arc-other' | 'relay' | 'jupiter' | 'arc-referral' | 'arc-copy'
 export type FeeStatus = 'received' | 'accrued' | 'claimed' | 'opening' | 'rebate'
 
 export interface FeeRow {
@@ -192,7 +192,8 @@ export function relayRows(prev: Record<string, number> | null, now: RelayBalance
 /** Arc: the ledger's rows in a block range against an independent scan of the same range. */
 export function reconcileArc(rows: FeeRow[], onchain: Map<string, { raw: bigint }>, from: number, to: number, at: number): ReconRow {
   // The fee wallet's receipts only: referral rebates went to referrers, and are reconciled on their own (fees/referrals.ts).
-  const inRange = rows.filter(r => r.chain === 'arc' && r.status === 'received' && r.source !== 'arc-referral' && r.block !== null && r.block >= from && r.block <= to)
+  // Copy wallets' fees are their own transfers, recorded when sent with their transaction (copy/engine.ts), not scanned.
+  const inRange = rows.filter(r => r.chain === 'arc' && r.status === 'received' && r.source !== 'arc-referral' && r.source !== 'arc-copy' && r.block !== null && r.block >= from && r.block <= to)
   const ledgerRaw = inRange.reduce((s, r) => s + toRaw(r.amount, 6), 0n)
   const chainRaw = [...onchain.values()].reduce((s, r) => s + r.raw, 0n)
   const ids = new Set(inRange.map(r => r.id.split(':').slice(1).join(':')))

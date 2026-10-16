@@ -11,6 +11,7 @@
 //   GET  /v1/flags                                              the flags an admin set, public (the site reads them)
 //   GET  /v1/admin/reports                                      reported comments, theses and profiles (social/moderation.ts)
 //   POST /v1/admin/moderate       {action, target, reason, at, signature}      hide, restore, dismiss, ban, unban
+//   GET  /v1/admin/copy                                         copy trading: wallets, rules, fees owed, how fast copies land
 // The kill switch stays where it was (POST /v1/trading/control, a signed change that needs no session, so it works in an
 // emergency). Everything under /v1/admin needs a live session (Authorization: Bearer …) except the sign-in itself; reads
 // change nothing, and each change (a real sweep, a flag) also needs the admin's signature of exactly that change.
@@ -43,6 +44,7 @@ export interface AdminApiOptions {
   tradeSwitch: TradeSwitch | null
   trades: (() => Promise<AdminTrades>) | null
   moderation?: Moderation | null
+  copy?: () => { adminView(): unknown } | null
   bots: (() => { bots: number; running: number; live: number }) | null
 }
 
@@ -132,6 +134,11 @@ export class AdminApi {
         if (!this.o.flags) return { status: 503, body: { error: 'flags are not running in this process' } }
         const r = await this.o.flags.change(body, s.address)
         return { status: r.status, body: r.body }
+      }
+      if (!post && path === '/v1/admin/copy') {
+        const copy = this.o.copy?.()
+        if (!copy) return { status: 503, body: { error: 'copy trading is not running in this process' } }
+        return { status: 200, body: copy.adminView(), cache: 'no-store' }
       }
       if (!post && path === '/v1/admin/reports') {
         if (!this.o.moderation) return { status: 503, body: { error: 'the social layer is not running in this process' } }
