@@ -56,6 +56,8 @@ import { CoinProgram, FEE_SOURCES, FEE_WALLET, fetchRelayBalances } from './coin
 import { FeeLedger } from './fees/ledger'
 import { FeeLedgerService, webhookAlert } from './fees/service'
 import { REFERRER_OF, ReferralWatcher } from './fees/referrals'
+import { PushAlerts } from './alerts/service'
+import { generateVapidKeys, vapidValid, type VapidKeys } from './alerts/webpush'
 import { JupiterFeeWatcher, type SolCall } from './fees/jupiterWatch'
 import { AdminAuth } from './admin/auth'
 import { FeatureFlags } from './admin/flags'
@@ -244,6 +246,32 @@ async function main() {
   if (dataApi) dataApi.traffic = new Traffic(botStore)
   // Community sentiment on each coin (votes.ts), kept beside it.
   if (dataApi) dataApi.votes = new Votes(botStore)
+  // Price and activity alerts by web push (alerts/service.ts): Arc coins on every trade, Hyperliquid every 2 seconds.
+  if (dataApi && !/^(0|off|false|no)$/i.test(process.env.PUSH?.trim() ?? '')) {
+    let keys: VapidKeys | null = null
+    const envKeys = { publicKey: process.env.VAPID_PUBLIC_KEY?.trim() ?? '', privateKey: process.env.VAPID_PRIVATE_KEY?.trim() ?? '' }
+    if (envKeys.publicKey && await vapidValid(envKeys)) keys = envKeys
+    else {
+      if (envKeys.publicKey) log.warn('push: VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY aren’t a matching pair; using the stored keys')
+      const stored = await botStore.getSetting('push-vapid').catch(() => null)
+      const k = stored ? JSON.parse(stored) as VapidKeys : null
+      if (k && await vapidValid(k)) keys = k
+      else { keys = await generateVapidKeys(); await botStore.setSetting('push-vapid', JSON.stringify(keys)).catch(e => log.error('push: keys not saved', { error: errMsg(e) })) }
+    }
+    const push = new PushAlerts({
+      store: botStore, keys, subject: process.env.VAPID_SUBJECT?.trim() || 'https://arcsense.site',
+      hlMids: async dex => {
+        const r = await fetch('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(dex ? { type: 'allMids', dex } : { type: 'allMids' }), signal: AbortSignal.timeout(4_000) })
+        if (!r.ok) throw new Error(`hyperliquid allMids ${r.status}`)
+        const j = await r.json() as Record<string, string>
+        return Object.fromEntries(Object.entries(j).map(([k, v]) => [k, Number(v)]))
+      },
+    })
+    await push.load()
+    dataApi.push = push
+    eng.observers.push({ onTrade: (t, ctx) => { if (!ctx.replay) push.onTrade(t) } })
+    every(2_000, 'push alerts', () => { void push.tickHl().catch(e => log.warn('push: hyperliquid check failed', { error: errMsg(e) })) })
+  }
   // The trade switch (site/tradeSwitch.ts): trading off everywhere or on one venue, by an admin wallet's signature or
   // GLOBAL_KILL_SWITCH / KILL_SWITCH_VENUES; every change in the append-only audit log.
   // One verifier for every admin signature (the switch, flags, the sweeper), so a signature is used once across all of them.
