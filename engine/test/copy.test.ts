@@ -226,10 +226,10 @@ describe('the copy wallet', () => {
     await w.open(f)
     expect((await w.engine.me(f.address)).wallet!.address).toBe(first)
   })
-  test('no wallet secret: nothing can be opened, and it says why', async () => {
+  test('no vault (no engine-held wallets): nothing can be opened, and it says why', async () => {
     const w = world({ vault: null })
     await w.engine.load()
-    expect(w.engine.why()).toMatch(/BOT_WALLET_SECRET/)
+    expect(w.engine.why()).toBe('copy trading isn’t available yet')
     expect((await w.engine.open(follower().address, {})).status).toBe(503)
   })
   test('rules: one per leader, not yourself, leaders that pass the verified record only, at most 10', async () => {

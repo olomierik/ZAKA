@@ -539,7 +539,9 @@ async function main() {
     every(10 * 60_000, 'copy fee', () => { void readFee().catch(e => log.warn('copy: router fee not read', { error: errMsg(e) })) })
     const BALANCE_OF = '0x70a08231'
     const copy = new CopyEngine({
-      store: botStore, vault,
+      // No engine-held copy wallets (owner, 2026-10-16: "I don't want ARCDEX to hold users' copy trade wallets"): without a
+      // vault none can be made or opened, whatever the copyTrading flag says, until a non-custodial design replaces it.
+      store: botStore, vault: null,
       makeExec: key => new LiveExecutor({ privateKey: key, readUrls: cfg.httpUrls, sendUrl: cfg.live.sendUrl }),
       pool: token => { const k = eng.tokens.get(token)?.mainPool; return k ? pools.get(k) ?? null : null },
       liquidityUsd: token => eng.tokens.get(token)?.liquidityUsd ?? null,

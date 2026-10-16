@@ -2632,6 +2632,8 @@ The build pack's Phase 6 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`): "PnL on profiles m
 
 The build pack's Phase 7 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`). Custody, asked and chosen by the owner ("proceed with your recommendations", 2026-10-16): **engine-held copy wallets**. Status against the pack: `docs/REPO_MAP.md` §14.
 
+- **Switched off the same day (owner, 2026-10-16: "I don't want ARCDEX to hold users' copy trade wallets"):** `main.ts` gives the copy engine no vault, so no copy wallet can be made or opened, whatever the flag says; `/copy` says copying isn't available. The rest below (leaders, rules, the screen, caps, the stop switch, fees) stays for a non-custodial design to reuse.
+
 - **Off until the owner turns it on:** the `copyTrading` flag (`/admin` → Flags; off by default on the site and the engine). `COPY=off` on Railway stops it whatever the flag says.
 - **The copy wallet (`engine/src/copy/engine.ts`):** one per follower (a wallet signed in on the site).
   - **Made only after the terms are signed:** the follower's wallet signs the six risk notices (`COPY_TERMS` in `api/_copyProtocol.ts`): copied losses, slippage and skips, custody, withdrawals, fees, no advice. Valid 5 minutes. A new terms version asks again and keeps the wallet.
