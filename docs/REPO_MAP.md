@@ -310,3 +310,30 @@ Acceptance (06):
 The rest of LCP is the app's own first render (the wallet libraries every page starts with): loading wagmi after the
 first page is the next step if 85+ is needed on every page.
 
+## 13. Phase 6 status (2026-10-16)
+
+| Task (06) | Status |
+|---|---|
+| Profiles, follows, feed | Done before (Supabase). Profiles now show **verified PnL** and the rank from the engine's own book; the feed hides muted wallets. |
+| Verified-PnL leaderboard | **Done** (`engine/src/social`): ARCDEX's router trades read from the chain into an append-only book, average cost per coin in exact micro-USDC, a nightly re-scan compared trade by trade. |
+| Theses on charts | Done before (the chart's Thesis overlay). |
+| Comments | **Done**: on theses and coins, plain text, limits, delete your own. |
+| Share links | Done before (profile links, P&L cards, `/r/` invites). |
+| Anti-abuse | **Done**: the wash-trade filter (round trips, mirrored trades) on every board, reports with auto-hide at 3 reporters, mutes, signed admin moderation with bans, audited. |
+
+Acceptance (06):
+- "PnL on profiles matches an independent on-chain recomputation": `scripts/verify-pnl.ts` recomputes it with its own
+  scan, decoder and exact fractions, and compares every window to the cent. In CI it agrees with the engine on 600
+  windows of random histories and catches a cent off (`scripts/test-social.tsx`); end to end against a stand-in RPC it
+  matched every number and exited 1 on a cent off. **Not yet run against mainnet**: Arc is out of the sandbox's reach;
+  the owner runs it once the engine has read the history.
+- "Wash-trade test wallets are filtered": a volume farmer and two mirrored wallets are left out of the board, listed
+  with the reason; honest scalpers aren't (`engine/test/social.test.ts`, and in Chromium).
+- "Reports and mutes work": reports hide a comment at 3 reporters, an admin hides, restores, dismisses and bans with a
+  signature, mutes hide a wallet's posts for the muter (tests, and in Chromium: mute, report, hide from `/admin`).
+- Test matrix, "XSS on user content (theses, comments)": comments and theses render as text; `<img onerror>` in a
+  comment shows as typed and runs nothing (rendered in `scripts/test-social.tsx`, and in Chromium).
+
+Not in the book: Arc trades through Uniswap's Universal Router (no ARCDEX event), other chains and Hyperliquid. Clan
+boards and points still read Supabase (points leave out flagged wallets).
+

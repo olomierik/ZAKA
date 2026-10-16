@@ -890,6 +890,7 @@ export const SITE_FLAGS = {
   jupiter: { protective: false, label: 'Solana swaps through Jupiter' },
   privy: { protective: false, label: 'Sign-in with Privy' },
   pushAlerts: { protective: false, label: 'Alerts by push, with ARCDEX closed' },
+  comments: { protective: false, label: 'Comments on theses and coins' },
 } as const
 export type SiteFlag = keyof typeof SITE_FLAGS
 export const isSiteFlag = (f: unknown): f is SiteFlag => typeof f === 'string' && Object.prototype.hasOwnProperty.call(SITE_FLAGS, f)

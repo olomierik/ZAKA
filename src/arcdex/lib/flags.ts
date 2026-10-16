@@ -28,6 +28,9 @@ export const FLAGS = {
   privy: true,
   /** Price and whale alerts sent by the engine as web push, with ARCDEX closed (lib/push.ts). Needs the engine. */
   pushAlerts: true,
+  /** Comment threads under theses and the Comments tab on coin pages (components/CommentThread.tsx). Needs the engine;
+   * reports and mutes stay on whatever this says (they're how people deal with abuse). */
+  comments: true,
 } as const satisfies Record<SiteFlag, boolean>
 export type FlagName = SiteFlag
 export type RuntimeFlags = Partial<Record<FlagName, boolean>>

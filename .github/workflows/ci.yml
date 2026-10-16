@@ -49,6 +49,10 @@ jobs:
         run: bun scripts/test-privy.tsx
       - name: App shell
         run: bun scripts/test-app-shell.ts
+      - name: Social layer (independent PnL check, comments as text, bans, flag)
+        run: bun scripts/test-social.tsx
+      - name: Wallet reconnect on load
+        run: bun scripts/test-reconnect.tsx
 
   engine:
     name: Engine (typecheck, tests)

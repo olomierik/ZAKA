@@ -29,6 +29,12 @@ const TRANSFER = parseAbiItem('event Transfer(address indexed from, address inde
 const chain = createPublicClient({ transport: http('https://rpc.mainnet.arc.io', { retryCount: 2 }) })
 const httpsUrl = (v: string) => /^https:\/\/\S+$/.test(v) && v.length <= 500
 
+/** Wallets that may not post (the engine's moderation: social/moderation.ts sets it). Null: everyone may. */
+let guard: ((me: string) => string | null) | null = null
+export function setSocialGuard(g: ((me: string) => string | null) | null) { guard = g }
+/** What a banned wallet can't do: anything others read. */
+const POSTS = new Set(['profile', 'thesis', 'clan.create', 'clan.update', 'transfer.note'])
+
 type Body = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : undefined)
 const addr = (v: unknown) => {
@@ -46,6 +52,9 @@ export default async function handler(req: Request): Promise<Response> {
 
   let b: Body
   try { b = await req.json() } catch { return json(400, { error: 'Bad JSON' }) }
+
+  const refused = typeof b.action === 'string' && POSTS.has(b.action) ? guard?.(me) : null
+  if (refused) return json(403, { error: refused })
 
   try {
     switch (b.action) {

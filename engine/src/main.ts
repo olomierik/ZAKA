@@ -63,7 +63,12 @@ import { AdminAuth } from './admin/auth'
 import { FeatureFlags } from './admin/flags'
 import { Sweeper, cronMinuteOfDay } from './admin/sweeper'
 import { AdminApi, type AdminTrades } from './admin/api'
-import { adminReady, db } from '../../api/_supabaseAdmin'
+import { adminReady, db, sessionRevoked } from '../../api/_supabaseAdmin'
+import { TradeBook, type IndexRow } from './social/book'
+import { SocialBoards } from './social/boards'
+import { Moderation } from './social/moderation'
+import { SocialApi } from './social/api'
+import { setSocialGuard } from '../../api/social'
 import type { VerifyAdmin } from './site/tradeSwitch'
 import { SOL_RPC_SERVER } from '../../api/_solCore'
 import { BondingBook } from './market/bonding'
@@ -399,6 +404,46 @@ async function main() {
   every(10 * 60_000, 'tier holdings', readHoldings)
   const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => botRef?.priceOf(token) ?? eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s), live: userLive, paperSignals: cfg.botSignals.paper, access: ownerId => tiers.access(users?.get(ownerId) ?? null), liveRouting: cfg.liveGrades === 'board' ? 'board' : cfg.liveGrades === 'dollar' ? 'dollar' : 'grades', paused: cfg.autotradePaused })
   if (accounts) await accounts.load().catch(e => log.error('paper accounts: load failed', { error: errMsg(e) }))
+  // The social layer (social/*): verified PnL from the routers' own trades, the wash-trade filter, comments, reports
+  // and mutes. SOCIAL=off stops it.
+  let moderation: Moderation | null = null
+  if (dataApi && !/^(0|off|false|no)$/i.test(process.env.SOCIAL?.trim() ?? '')) {
+    const headNow = async () => Number(BigInt(await rpc.call<string>('eth_blockNumber', [])))
+    const book = new TradeBook({
+      store: botStore, settings: botStore,
+      scan: async (filter, from, to) => {
+        const r = await scanLogs(filter as LogFilter, from, to, { head: await headNow(), reduce: (logs: RawLog[]) => logs, deadline: Date.now() + 60_000 })
+        return { logs: r.parts.flat(), scannedTo: r.scannedTo }
+      },
+      head: headNow,
+      times: async blocks => {
+        const got = await rpc.batch<{ timestamp: string } | null>(blocks.map(b => ({ method: 'eth_getBlockByNumber', params: [`0x${b.toString(16)}`, false] })))
+        return new Map(blocks.map((b, i) => [b, got[i] ? Number(BigInt(got[i]!.timestamp)) * 1000 : null]))
+      },
+      indexRows: adminReady ? async (from, to) => {
+        const out: IndexRow[] = []
+        for (let offset = 0; ; offset += 1000) {
+          const page = await db<IndexRow[]>(`arcdex_trades?select=tx_hash,log_index,trader,token,side,usdc,token_amount,block_number&block_number=gte.${from}&block_number=lte.${to}&order=block_number,log_index&limit=1000&offset=${offset}`)
+          out.push(...page)
+          if (page.length < 1000) return out
+        }
+      } : null,
+      alert: webhookAlert(process.env.ALERT_WEBHOOK_URL),
+    })
+    await book.load()
+    every(60_000, 'social book', () => { void book.tick() })
+    void book.tick()
+    moderation = new Moderation({
+      store: botStore, settings: botStore, audit: botStore, verify: verifyAdmin,
+      thesis: adminReady ? async id => (await db<{ author: string; body: string }[]>(`arcdex_theses?id=eq.${id}&select=author,body`))[0] ?? null : null,
+    })
+    await moderation.load()
+    // A banned wallet can't post a thesis, edit its profile or make a clan either (api/social.ts).
+    const mod = moderation
+    setSocialGuard(me => (mod.isBanned(me) ? 'This wallet can’t post on ARCDEX' : null))
+    dataApi.social = new SocialApi({ book, boards: new SocialBoards(book), moderation, origins: cfg.allowedOrigins, revoked: adminReady ? sessionRevoked : undefined })
+    log.info('social layer', { trades: book.size, scannedTo: await book.scannedTo() })
+  }
   // The admin panel (admin/*): sign-in, live sessions, fees and the sweeper, trades, the audit log, runtime flags.
   if (dataApi) {
     const alert = webhookAlert(process.env.ALERT_WEBHOOK_URL)
@@ -448,7 +493,7 @@ async function main() {
     }
     dataApi.admin = new AdminApi({
       auth, origins: cfg.allowedOrigins, audit: botStore, verify: verifyAdmin, flags, sweeper, ledger: feeRefs?.ledger ?? null,
-      traffic: dataApi.traffic, tradeSwitch: dataApi.tradeSwitch, trades,
+      traffic: dataApi.traffic, tradeSwitch: dataApi.tradeSwitch, trades, moderation,
       bots: accounts ? () => ({ bots: accounts.count, running: accounts.running, live: accounts.liveCount }) : null,
     })
     log.info('admin panel', { admins: cfg.admins.length, sweeper: minute === null || off(process.env.SWEEPER) ? 'off' : `daily after ${Math.floor(minute / 60)}:${String(minute % 60).padStart(2, '0')} UTC`, alerts: !!alert })

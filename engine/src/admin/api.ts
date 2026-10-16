@@ -9,6 +9,8 @@
 //   GET  /v1/admin/audit                                        the append-only audit log
 //   POST /v1/admin/flags          {flag, on, reason, at, signature}             runtime flags (admin/flags.ts)
 //   GET  /v1/flags                                              the flags an admin set, public (the site reads them)
+//   GET  /v1/admin/reports                                      reported comments, theses and profiles (social/moderation.ts)
+//   POST /v1/admin/moderate       {action, target, reason, at, signature}      hide, restore, dismiss, ban, unban
 // The kill switch stays where it was (POST /v1/trading/control, a signed change that needs no session, so it works in an
 // emergency). Everything under /v1/admin needs a live session (Authorization: Bearer …) except the sign-in itself; reads
 // change nothing, and each change (a real sweep, a flag) also needs the admin's signature of exactly that change.
@@ -23,6 +25,7 @@ import type { FeeLedger } from '../fees/ledger'
 import type { Traffic } from '../traffic'
 import type { TradeSwitch } from '../site/tradeSwitch'
 import type { VerifyAdmin } from '../site/tradeSwitch'
+import type { Moderation } from '../social/moderation'
 import { errMsg, log } from '../log'
 
 export interface AdminTrade { tx: string; at: number; trader: string; token: string; side: 'buy' | 'sell'; usd: number; feeUsd: number; venue: string }
@@ -39,6 +42,7 @@ export interface AdminApiOptions {
   traffic: Traffic | null
   tradeSwitch: TradeSwitch | null
   trades: (() => Promise<AdminTrades>) | null
+  moderation?: Moderation | null
   bots: (() => { bots: number; running: number; live: number }) | null
 }
 
@@ -127,6 +131,15 @@ export class AdminApi {
       if (post && path === '/v1/admin/flags') {
         if (!this.o.flags) return { status: 503, body: { error: 'flags are not running in this process' } }
         const r = await this.o.flags.change(body, s.address)
+        return { status: r.status, body: r.body }
+      }
+      if (!post && path === '/v1/admin/reports') {
+        if (!this.o.moderation) return { status: 503, body: { error: 'the social layer is not running in this process' } }
+        return { status: 200, body: { reports: this.o.moderation.groups(), state: this.o.moderation.state() } }
+      }
+      if (post && path === '/v1/admin/moderate') {
+        if (!this.o.moderation) return { status: 503, body: { error: 'the social layer is not running in this process' } }
+        const r = await this.o.moderation.moderate(body, s.address)
         return { status: r.status, body: r.body }
       }
       return { status: 404, body: { error: 'not found' } }
