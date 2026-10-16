@@ -2,6 +2,8 @@
 //   • the trading wallet's own Solana address, derived from its key (embeddedWallet.ts `solanaSeed`): one passcode,
 //     one-tap trades, no pop-ups. It exists only while the trading wallet is unlocked.
 //   • a Solana wallet app: Phantom, Solflare or Backpack (their injected providers), which confirms every trade.
+//   • the Solana wallet Privy made for an email or social sign-in (privy/PrivyRoot.tsx, 2026-10-16): it stands in for a
+//     wallet app when none is connected, and Privy confirms each signature in its own window.
 // Buying a Solana coin needs only a Solana address to deliver to (it's signed on Arc); selling is signed by the
 // wallet holding the coin.
 
@@ -9,6 +11,7 @@ import { useEffect, useState } from 'react'
 import type { VersionedTransaction } from '@solana/web3.js'
 import { base58 } from '../../../api/_solCore'
 import { accountOwner, isUnlocked, lock, solanaSeed, WALLET_EVENT } from './embeddedWallet'
+import { PRIVY_WALLET_NAME } from '../privy/state'
 
 export type SolSigner = 'trading' | 'external'
 
@@ -46,6 +49,35 @@ let picked: SolSigner | null = null
 export function pickSolSigner(who: SolSigner) { picked = who; tell() }
 let external: { name: string; address: string; provider: InjectedProvider } | null = null
 const tell = () => { try { window.dispatchEvent(new Event(EVENT)) } catch { /* non-browser */ } }
+
+/** The Solana wallet of a Privy sign-in: signs serialized transactions and messages, after Privy's own confirmation. */
+export interface PrivySolanaSigner {
+  address: string
+  signTransaction: (tx: Uint8Array) => Promise<Uint8Array>
+  signMessage: (message: Uint8Array) => Promise<Uint8Array>
+}
+let privySol: { name: string; address: string; provider: InjectedProvider } | null = null
+/** PrivyRoot hands over (or takes back, with null) the Privy account's Solana wallet. */
+export function setPrivySolana(s: PrivySolanaSigner | null) {
+  privySol = s && {
+    name: PRIVY_WALLET_NAME,
+    address: s.address,
+    provider: {
+      publicKey: { toString: () => s.address },
+      connect: async () => ({ publicKey: { toString: () => s.address } }),
+      disconnect: async () => {},
+      async signTransaction<T>(tx: T): Promise<T> {
+        const { VersionedTransaction } = await import('@solana/web3.js')
+        if (!(tx instanceof VersionedTransaction)) throw new Error(`${PRIVY_WALLET_NAME} signs versioned transactions only`)
+        return VersionedTransaction.deserialize(await s.signTransaction(tx.serialize())) as T
+      },
+      signMessage: async message => s.signMessage(message),
+    },
+  }
+  tell()
+}
+/** The Solana wallet that signs as "external": a wallet app the person connected, else the Privy account's. */
+const ext = () => external ?? privySol
 
 /** The trading wallet's Solana address (null while it's locked). */
 async function refreshTrading() {
@@ -122,7 +154,7 @@ export interface SolanaWallets {
 }
 
 export function useSolanaWallets(): SolanaWallets {
-  const read = (): SolanaWallets => ({ trading: tradingAddress, external: external && { name: external.name, address: external.address }, available: solanaProviders().map(p => p.name), picked })
+  const read = (): SolanaWallets => { const e = ext(); return { trading: tradingAddress, external: e && { name: e.name, address: e.address }, available: solanaProviders().map(p => p.name), picked } }
   const [s, set] = useState(read)
   useEffect(() => {
     const on = () => set(read())
@@ -135,15 +167,16 @@ export function useSolanaWallets(): SolanaWallets {
 }
 
 /** The address a signer trades from. */
-export const signerAddress = (who: SolSigner): string | null => (who === 'trading' ? tradingAddress : external?.address ?? null)
+export const signerAddress = (who: SolSigner): string | null => (who === 'trading' ? tradingAddress : ext()?.address ?? null)
 
 /** The connected Solana wallet app signs a message (its owner confirms in the app). */
 export async function signSolanaMessage(message: Uint8Array): Promise<Uint8Array> {
-  if (!external) throw new Error('Connect a Solana wallet first')
-  if (!external.provider.signMessage) throw new Error(`${external.name} can't sign messages`)
-  const res = await external.provider.signMessage(message, 'utf8')
+  const e = ext()
+  if (!e) throw new Error('Connect a Solana wallet first')
+  if (!e.provider.signMessage) throw new Error(`${e.name} can't sign messages`)
+  const res = await e.provider.signMessage(message, 'utf8')
   const sig = res instanceof Uint8Array ? res : res?.signature
-  if (!(sig instanceof Uint8Array) && !Array.isArray(sig)) throw new Error(`${external.name} didn't sign`)
+  if (!(sig instanceof Uint8Array) && !Array.isArray(sig)) throw new Error(`${e.name} didn't sign`)
   return Uint8Array.from(sig as ArrayLike<number>)
 }
 
@@ -156,6 +189,7 @@ export async function signSolana(who: SolSigner, tx: VersionedTransaction): Prom
     tx.sign([kp])
     return tx
   }
-  if (!external) throw new Error('Connect a Solana wallet first')
-  return external.provider.signTransaction(tx)
+  const e = ext()
+  if (!e) throw new Error('Connect a Solana wallet first')
+  return e.provider.signTransaction(tx)
 }

@@ -54,6 +54,7 @@ import './arcdex.css'
 import './terminal.css'
 import { t as T, N_, useLang } from './lib/i18n'
 import { ConnectModalHost } from './components/ConnectWallet'
+import PrivyHost from './privy/PrivyHost'
 import { NetworkGuard, WalletPromptHost } from './components/WalletPrompt'
 import { TradePausedBar } from './components/TradePausedBar'
 import MobileTabBar from './components/MobileTabBar'
@@ -250,6 +251,8 @@ export default function App() {
         <TradingWalletPanel navigate={p => { setWalletSheet(false); afterSheetClose(() => navigate(p)) }} />
       </Sheet>
       <ConnectModalHost />
+      {/* Email or social sign-in (Privy): loaded only once someone uses it. */}
+      <PrivyHost />
       <WalletPromptHost />
       {/* A toast (and, when allowed, a system notification) for every profit the signed-in owner's bots take. */}
       <ProfitAlerts navigate={navigate} />

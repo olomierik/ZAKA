@@ -12,6 +12,8 @@ import { DEFAULT_PREFS, setPrefs, usePrefs } from '../lib/prefs'
 import { LANGS, setLang, t, useLang, type Lang } from '../lib/i18n'
 import { useCash } from '../lib/usdc'
 import type { Page } from '../App'
+import { isPrivyWallet, privySignOut, usePrivyState } from '../privy/state'
+import { PrivyAccountPanel } from '../privy/PrivyAccount'
 
 // Top-right account area, fomo-style: "$X cash · Deposit", then the avatar
 // menu (profile, manage account, settings, transfers, blur balances,
@@ -23,6 +25,9 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
   const trader = useTrader()
   // An account opened from a Solana wallet (lib/solAccount.ts): signed out, not locked.
   const solOwner = trader.kind === 'trading-wallet' ? accountOwner() : null
+  // An email or social sign-in (Privy): its wallet is the connected one.
+  const privy = usePrivyState()
+  const viaPrivy = trader.kind === 'wallet' && isPrivyWallet(trader.address)
   const prefs = usePrefs()
   const lang = useLang()
   const { cash } = useCash(trader.address)
@@ -68,10 +73,11 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
       {open && (
         <div className="menu-pop" style={{ top: 40, right: 0 }}>
           <div style={{ padding: '6px 10px 8px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-            {profile?.username ? `@${profile.username}` : shortAddr(trader.address)} · {solOwner ? `◎ ${t('Solana account')}` : trader.kind === 'trading-wallet' ? `⚡ ${t('trading wallet')}` : t('wallet')}
+            {profile?.username ? `@${profile.username}` : shortAddr(trader.address)} · {solOwner ? `◎ ${t('Solana account')}` : viaPrivy ? `✉ ${privy.label ?? t('email sign-in')}` : trader.kind === 'trading-wallet' ? `⚡ ${t('trading wallet')}` : t('wallet')}
           </div>
           {item('☺', t('Your profile'), () => go({ name: 'trader', address: trader.address! }))}
           {item('👤', t('Manage account'), () => { setOpen(false); setSettings('account') })}
+          {viaPrivy && item('🔑', t('Export keys'), () => { setOpen(false); setSettings('account') })}
           {item('⚙', t('Settings'), () => { setOpen(false); setSettings('trading') })}
           {item('▤', t('Portfolio'), () => go({ name: 'portfolio' }))}
           {item('↑', t('Withdraw'), () => { setOpen(false); setWithdraw(true) })}
@@ -84,6 +90,8 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
           <div style={{ borderTop: '1px solid var(--adx-card-border)', margin: '6px 0' }} />
           {solOwner
             ? item('⏻', t('Sign out'), () => { setOpen(false); lock() })
+            : viaPrivy
+            ? item('⏻', t('Sign out'), () => { setOpen(false); void privySignOut() })
             : trader.kind === 'trading-wallet'
             ? item('🔒', t('Lock trading wallet'), () => { setOpen(false); lock() })
             : item('⏻', t('Disconnect wallet'), () => { setOpen(false); disconnect() })}
@@ -176,10 +184,11 @@ export function SettingsModal({ onClose, initial = 'trading', onSupport }: { onC
 
         {tab === 'account' && (
           <>
+            {trader.kind === 'wallet' && isPrivyWallet(trader.address) && <PrivyAccountPanel />}
             <div style={{ fontSize: '0.84rem' }}><b>{t('Account and addresses')}</b>
               <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.7 }}>
                 {t('Trading as')}: <span style={{ fontFamily: 'var(--mono)', color: 'var(--text)', wordBreak: 'break-all' }}>{trader.address ?? t('not connected')}</span><br />
-                {t('Type')}: {trader.kind === 'trading-wallet' && accountOwner() ? `◎ ${t('ARCDEX account of your Solana wallet {w}', { w: shortAddr(accountOwner()!) })}` : trader.kind === 'trading-wallet' ? `⚡ ${t('One-tap trading wallet (self-custody, encrypted in this browser)')}` : trader.kind === 'wallet' ? t('Connected wallet') : '—'}
+                {t('Type')}: {trader.kind === 'trading-wallet' && accountOwner() ? `◎ ${t('ARCDEX account of your Solana wallet {w}', { w: shortAddr(accountOwner()!) })}` : trader.kind === 'trading-wallet' ? `⚡ ${t('One-tap trading wallet (self-custody, encrypted in this browser)')}` : trader.kind === 'wallet' && isPrivyWallet(trader.address) ? `✉ ${t('Email & social sign-in (Privy)')}` : trader.kind === 'wallet' ? t('Connected wallet') : '—'}
               </div>
             </div>
             <div style={{ fontSize: '0.84rem' }}><b>{t('Security')}</b>

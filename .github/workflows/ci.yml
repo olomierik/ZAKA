@@ -45,6 +45,8 @@ jobs:
         run: bun scripts/test-buy-risk.tsx
       - name: Alerts by push (site side)
         run: bun scripts/test-push.ts
+      - name: Privy sign-in
+        run: bun scripts/test-privy.tsx
 
   engine:
     name: Engine (typecheck, tests)

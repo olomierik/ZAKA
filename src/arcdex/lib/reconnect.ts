@@ -1,5 +1,6 @@
 import type { Config } from 'wagmi'
 import { reconnect } from 'wagmi/actions'
+import { initPrivy } from '../privy/state'
 
 // Reconnect only the wallet used last time. wagmi's default reconnect asks
 // every connector for its provider, which downloads and starts the
@@ -8,7 +9,9 @@ import { reconnect } from 'wagmi/actions'
 export function reconnectLastWallet(config: Config) {
   const run = async () => {
     const recent = await config.storage?.getItem('recentConnectorId')
-    if (!recent) return
+    // An email or social sign-in (Privy) comes back when Privy has loaded: privy/PrivyRoot.tsx connects it then.
+    initPrivy(recent ?? null)
+    if (!recent || recent === 'privy') return
     // Wallets announcing themselves (EIP-6963) can land a moment after load.
     for (let i = 0; i < 6; i++) {
       const found = config.connectors.filter(c => c.id === recent)

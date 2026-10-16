@@ -79,7 +79,7 @@ check(destinationProblem(A, ME, [USDC]) === null, 'an ordinary address passes')
 
 console.log('the flag')
 check(flag('withdrawLimits', {}) === true && flag('withdrawLimits', { VITE_FLAG_WITHDRAW_LIMITS: 'off' }) === false, 'on by default; VITE_FLAG_WITHDRAW_LIMITS=off turns it off')
-check(flag('privy', {}) === false && flag('privy', { VITE_FLAG_PRIVY: 'on' }) === true, 'Privy off by default')
+check(flag('privy', {}) === true && flag('privy', { VITE_FLAG_PRIVY: 'off' }) === false && flag('privy', {}, { privy: false }) === false, 'Privy on by default (offered only with its app id); off at build time or from /admin')
 check(flag('jupiter', {}, { jupiter: false }) === false && flag('walletsCard', {}, { walletsCard: false }) === false, 'a flag set from /admin is followed')
 check(flag('jupiter', { VITE_FLAG_JUPITER: 'on' }, { jupiter: false }) === true, 'a flag set at build time wins over /admin')
 check(flag('withdrawLimits', {}, { withdrawLimits: false }) === true, 'a protective flag is never turned off from /admin')

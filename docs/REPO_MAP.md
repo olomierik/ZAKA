@@ -204,9 +204,9 @@ Phase 0 closes when these are approved. Each changes what Phase 1 builds.
 
 | Task (06) | Status |
 |---|---|
-| Sign-in that provisions EVM + Solana wallets (D1: Privy) | **Waiting for the owner:** needs a Privy app id (`VITE_PRIVY_APP_ID`, public) and Privy's word on Arc. Behind the `privy` flag, off. Until then the trading wallet already gives one EVM address and a Solana address derived from it. |
+| Sign-in that provisions EVM + Solana wallets (D1: Privy) | **Done 2026-10-16** behind `privy` (on, offered once `VITE_PRIVY_APP_ID` is set): `src/arcdex/privy/`. Email or social sign-in; Privy makes an EVM and a Solana wallet; the EVM one is the app's connected wallet (wagmi connector `privy`), the Solana one signs as a wallet app would. Arc is passed to Privy as a custom chain (`defaultChain`). Privy's SDK loads only for people who use it. |
 | Portfolio card across chains, Arc USDC decimals handled | **Done** behind `walletsCard` (on): `components/WalletsCard.tsx`, `lib/chainBalances.ts`. |
-| Hosted key export behind step-up | **Waiting for Privy** (D1: export hosted by Privy). The current trading wallet's export still asks for the passcode (and passkey with 2FA). |
+| Hosted key export behind step-up | **Done 2026-10-16:** Privy's own export window (`useExportWallet`, both keys) after a step-up: Privy's two-step code when the account has it, else a sign-in on this tab within 5 minutes. Sends to another address get the same step-up (15 minutes). The trading wallet's export still asks for its passcode (and passkey with 2FA). |
 | Withdraw/transfer: validation, confirmation, cooldown/limits, notification | **Done** behind `withdrawLimits` (on): `lib/withdrawPolicy.ts`, `components/WithdrawGuard.tsx`, the review step in `components/CashModals.tsx`. |
 
 Acceptance (06), where it stands:
@@ -217,7 +217,14 @@ Acceptance (06), where it stands:
   signing. They are client-side: they slow down someone holding an unlocked browser, and can't stop the key's owner
   (who can export the key). Enforcing them against the key's owner needs the provider's policies (Privy) or a contract
   wallet.
-- "Both addresses visible within 5 seconds of sign-in" and "export leaks nothing": with Privy.
+- "Both addresses visible within 5 seconds of sign-in": against a stand-in for Privy's SDK (its servers are out of the
+  sandbox's reach), the wallet connected about 0.4 s after the sign-in and both addresses showed on Portfolio within a
+  second. With Privy's real servers, wallet creation adds its own time: to check on arcsense.site.
+- "Export leaks nothing to our API, logs or analytics": the key is shown only in Privy's window, on Privy's origin;
+  ARCDEX's code calls `exportWallet` and never receives a key, and nothing in `src/arcdex/privy` logs.
+  `scripts/test-privy.tsx` checks that Privy's SDK is imported by PrivyRoot alone.
+- Withdraw limits apply to the trading wallet only; a Privy wallet's sends to other addresses get the step-up instead,
+  and Privy's two-step verification is the server-enforced check.
 
 ## 9. Phase 2 status (2026-10-15)
 

@@ -2189,7 +2189,7 @@ acceptance list: `docs/REPO_MAP.md` §8.
   - **Notices:** each send and each saved address writes a notice (and a system notification when allowed): "If this wasn't you, move your funds back to the wallet that funded it."
   - **What they can't do:** the limits are client-side. They slow down someone with an unlocked browser; they can't stop the key's owner, who can export the key. Enforcing them against the owner needs Privy's policies or a contract wallet.
   - `VITE_FLAG_WITHDRAW_LIMITS=off` turns the limits off; the checks and the review step stay.
-- **Not done (waiting for the owner):** Privy sign-in with EVM + Solana wallets and Privy's hosted export behind step-up (D1). They need `VITE_PRIVY_APP_ID` (a public id) and Privy's confirmation that Arc is supported.
+- **Privy sign-in and its hosted export behind step-up (D1):** done on 2026-10-16, see "Privy: sign in with email or a social account" below.
 - **Tests:**
   - `bun scripts/test-withdraw-policy.ts`: new addresses, the daily limit, sends read from logs in both decimals and counted once, the signed record, address checks, flags.
   - `bun scripts/test-chain-balances.ts`: the requests, the next node, base units, dollars, Arc's two decimals.
@@ -2440,6 +2440,58 @@ Trending and new pairs were already the Trenches.
 - **Owner steps (Railway, arcdex-engine), optional:** `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` (from
   `npx web-push generate-vapid-keys`) and `VAPID_SUBJECT`. Without them the engine makes a pair and keeps it in its
   database. Then Deploy latest commit.
+
+## Privy: sign in with email or a social account (2026-10-16)
+
+The build pack's Phase 1 (decision D1). The owner set `VITE_PRIVY_APP_ID` on Netlify, and the admin wallets (`ADMIN_EVM_ADDRESSES`) on Railway, on 2026-10-16. Status against the pack: `docs/REPO_MAP.md` §8.
+
+- **What it is:** "Email or social account" at the top of Connect Wallet (`components/ConnectWallet.tsx`).
+  - Privy signs the person in and makes an EVM wallet and a Solana wallet for the account (`createOnLogin: 'all-users'`).
+  - Their keys stay with Privy: ARCDEX's code never sees one.
+- **Loaded only when used (`privy/PrivyHost.tsx`, `privy/PrivyRoot.tsx`):**
+  - Privy's SDK (`@privy-io/react-auth`, pinned) is 1.3 MB (370 KB gzipped) in its own chunk.
+  - It's fetched when someone picks the option, or when this browser was signed in before: `arcdex:privy:v1`, or wagmi's last connector being `privy` (`initPrivy`, called from `lib/reconnect.ts`).
+  - Other visitors load none of it. The app's own files grew about 6 KB gzipped.
+- **The EVM wallet is the connected wallet:**
+  - wagmi's connector `privy` (`wagmi.ts`) is an injected connector over the wallet's EIP-1193 provider. PrivyRoot connects it after a sign-in.
+  - Trade forms, Portfolio, withdrawals and the bridge then use it as they use MetaMask. Privy confirms each transaction in its own window.
+  - Arc is Privy's default chain, and every chain in wagmi's config is in its `supportedChains`.
+  - Another account signing in on the same tab reconnects, so the app never trades from the one before.
+- **The Solana wallet** signs wherever a Solana wallet app would (`lib/solanaWallet.ts` `setPrivySolana`) when no app is connected. It's shown as "Privy", and signs versioned transactions only.
+- **Step-up (`privy/stepUp.ts`; 04: "step-up auth for export and withdraw"):**
+  - **With two-step verification on** (Manage account → Two-step verification, Privy's own enrollment): Privy asks for the code before every export, and before every send to an address that isn't the account's own.
+  - **Without it:** the account must have signed in on this tab within 5 minutes for an export, or 15 minutes for a send.
+    - The sign-in time is kept in memory only, so a reload or another tab needs a fresh sign-in.
+    - "Sign in again" signs out and back in through Privy. The withdraw window then comes back on its first step.
+  - **Sends to the account's own EVM or Solana address** need neither.
+  - **Where:** the withdraw guard (`components/WithdrawGuard.tsx`, `privyStep`) covers every send it already covers, and the bridge's "Send from Arc" for this wallet too.
+  - **What it can't do:**
+    - The sign-in time is checked in the page. It stops someone who finds the site open, not someone using the browser's developer tools; two-step verification is enforced by Privy.
+    - The withdraw limits (`lib/withdrawPolicy.ts`) apply to the trading wallet only, since their ledger is signed by its key.
+- **Export (Manage account → Export keys):** Privy's own window for each key (`useExportWallet`), after the step-up.
+- **Account menu:** "✉ <email>" in the header, Export keys, and Sign out, which also disconnects the wallet from the app.
+- **Flag `privy`:** on by default, but offered only with `VITE_PRIVY_APP_ID` set: lowercase letters and digits, anything else keeps it off. /admin → Flags turns it off without a deploy.
+- **CSP:** Turnstile (`https://challenges.cloudflare.com`) is in `script-src`, for Privy's bot check. Privy's frames were already allowed (`frame-src https:`).
+- **Bug found by the browser check:** signing out left the wallet connected in the app, because Privy's provider was dropped before wagmi could disconnect through it. Now wagmi disconnects first, and drops the connection itself if it can't.
+- **Checked:**
+  - `bun scripts/test-privy.tsx` (in CI): the step-up rules, the sign-in and export calls, the Solana signer, the wagmi connector, the withdraw guard rendered, and the source. The source checks: Privy's SDK is imported only by PrivyRoot, lazily; the connect window; the bridge; the CSP; the pinned version. 12 of 12 planted bugs failed it.
+  - In Chromium, 23 checks against a stand-in for Privy's SDK (`scripts/privy-mock`, run with `scripts/vite.privy-mock.config.ts`), with Arc's RPC answered in the page. Privy's servers are out of the sandbox's reach.
+    - A first visit loads none of Privy's code.
+    - After signing in, the wallet connects in about 0.4 s, and both addresses show on Portfolio within a second of a reload.
+    - After a reload, a send elsewhere is held for the step-up. After "Sign in again" it goes to Privy's wallet as `USDC.transfer(that address, $1)`.
+    - Export is refused after a reload; with two-step verification on, Privy's code comes first, then its export window, for each key.
+    - Sign out, a cancelled sign-in, the flag off, and 390px with no sideways scroll.
+  - Not checked: Privy's real servers, a real sign-in, a real transaction.
+- **Owner steps:**
+  1. In the Privy dashboard (dashboard.privy.io → the app):
+     - allowed origins `https://arcsense.site`, `https://www.arcsense.site`, `https://arcdex.online` and `http://localhost:5173`;
+     - the login methods to offer (email, Google, X, Apple…);
+     - embedded wallets for Ethereum and Solana;
+     - MFA methods (authenticator app, passkey), so users can turn on two-step verification.
+  2. The App ID is already in Netlify. A deploy builds it in: merging to `main` does.
+  3. On Railway, the admin wallets take effect once the service redeploys (Deployments → Deploy latest commit).
+  4. Try a sign-in and a $1 withdrawal on arcsense.site.
+- Every new string is in all six dictionaries (31).
 
 ## Autotrade paused (2026-10-03)
 

@@ -175,7 +175,7 @@ export function WithdrawModal({ trader, onClose, asset, onSent }: { trader: Trad
         {coin && coin.priceUsd ? <div><span>{T('Worth about')}</span><b className="mono">${amountUsd.toFixed(2)}</b></div> : null}
         <div><span>{T('To')}</span><b className="mono wd-addr">{to.trim()}</b></div>
         <div><span>{T('Network')}</span><b>Arc</b></div>
-        <div><span>{T('Address')}</span><b>{guard.isFunder ? T('✓ The wallet that funded this one') : guard.limits?.isNew ? T('New: you haven’t sent here before') : guard.guarded ? T('Sent to before') : T('Your wallet confirms it')}</b></div>
+        <div><span>{T('Address')}</span><b>{guard.isFunder ? T('✓ The wallet that funded this one') : guard.limits?.isNew ? T('New: you haven’t sent here before') : guard.guarded ? T('Sent to before') : guard.privy ? T('Privy confirms it') : T('Your wallet confirms it')}</b></div>
       </div>
       {isContract && <div className="wd-warn">{T('This address is a contract. Exchanges and smart wallets can be; make sure it takes USDC on Arc.')}</div>}
       <WithdrawLimits guard={guard} />
