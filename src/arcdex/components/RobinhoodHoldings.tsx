@@ -66,7 +66,7 @@ export default function RobinhoodHoldings({ owner, navigate, onValue }: { owner:
       ))}
       <Sheet open={!!sell} onClose={() => setSell(null)} title={sell ? T('Sell {symbol}', { symbol: sell.symbol }) : undefined}>
         {sell && <RobinhoodTrade key={sell.address} token={sell.address} symbol={sell.symbol} decimals={sell.decimals} priceUsd={sell.priceUsd} stock={sell.stock}
-          initialMode="sell" onTraded={load} />}
+          side="sell" onTraded={load} />}
       </Sheet>
     </div>
   )

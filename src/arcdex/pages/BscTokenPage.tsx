@@ -28,6 +28,7 @@ import { bscSafety } from '../lib/safety'
 import { useIsMobile } from '../lib/useMobile'
 import { useTrader } from '../lib/identity'
 import { t as T } from '../lib/i18n'
+import { BuyRiskProvider } from '../lib/buyRisk'
 import CoinVotes from '../components/CoinVotes'
 import TokenLayout, { TkPanel } from '../components/TokenLayout'
 import { toggleWatch, usePrefs } from '../lib/prefs'
@@ -232,6 +233,7 @@ export default function BscTokenPage({ address, pool: poolParam, navigate, buy }
   )
 
   if (mobile) return (
+    <BuyRiskProvider view={safety}>
     <div className="token-page coin-mobile rh-token sol-token bsc-token">
       <div className="token-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
@@ -267,10 +269,12 @@ export default function BscTokenPage({ address, pool: poolParam, navigate, buy }
         </Sheet>
       </div>
     </div>
+    </BuyRiskProvider>
   )
 
   // Desktop: motion.gift's coin screen (components/TokenLayout.tsx).
   return (
+    <BuyRiskProvider view={safety}>
     <TokenLayout
       chain="bnb" image={coin?.image ?? null} symbol={symbol} name={coin?.name ?? ''} mc={coin?.marketCap ?? null}
       tags={<>
@@ -312,5 +316,6 @@ export default function BscTokenPage({ address, pool: poolParam, navigate, buy }
       </>}
       side={<TkPanel title={T('Community')}><CoinVotes chain="bsc" address={address} /></TkPanel>}
     />
+    </BuyRiskProvider>
   )
 }

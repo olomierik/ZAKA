@@ -41,6 +41,8 @@ jobs:
         run: bun scripts/test-chain-balances.ts
       - name: Jupiter (orders, transactions, provider choice)
         run: bun scripts/test-jupiter.ts
+      - name: Safety rating on every buy path
+        run: bun scripts/test-buy-risk.tsx
 
   engine:
     name: Engine (typecheck, tests)

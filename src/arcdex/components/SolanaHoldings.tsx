@@ -93,7 +93,7 @@ export default function SolanaHoldings({ navigate, onValue }: { navigate: (p: Pa
       ))}
       <Sheet open={!!sell} onClose={() => setSell(null)} title={sell ? T('Sell {symbol}', { symbol: sell.symbol }) : undefined}>
         {sell && <SolanaTrade key={sell.owner + sell.mint} mint={sell.mint} symbol={sell.symbol} decimals={sell.decimals} priceUsd={sell.priceUsd}
-          initialMode="sell" onTraded={() => void load()} />}
+          side="sell" onTraded={() => void load()} />}
       </Sheet>
     </div>
   )

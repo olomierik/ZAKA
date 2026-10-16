@@ -16,6 +16,8 @@ const env: Env = ((import.meta as unknown as { env?: Env }).env) ?? {}
 export const FLAGS = {
   /** New-address hold and daily limits on money leaving the trading wallet (lib/withdrawPolicy.ts). */
   withdrawLimits: true,
+  /** The coin's safety rating right above Buy on every trade form, and the tick a Danger coin needs (lib/buyRisk.tsx). */
+  buyRisk: true,
   /** The wallets card across chains on Portfolio (components/WalletsCard.tsx). */
   walletsCard: true,
   /** Solana swaps through Jupiter's Swap API V2 with ARCDEX's referral fee (lib/jupiter.ts). Works once the site's

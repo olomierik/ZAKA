@@ -24,6 +24,7 @@ import { rhEthBalance, rhTokenBalance, rhTx, SELL_GAS_ETH, STOCK_RESTRICTED } fr
 import { getAcrossQuote, QUOTE_LIMITS, quoteValue, quoteVerdict, type AcrossQuote, type QuoteRequest } from '../lib/acrossQuote'
 import { acrossErrorText, runAcross, type AcrossProgress } from '../lib/across'
 import { t as T } from '../lib/i18n'
+import { useBuyRisk } from '../lib/buyRisk'
 
 interface Props {
   token: string
@@ -68,6 +69,8 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
   const me = trader.address
   const feeBps = SPOT_FEE_BPS
   const [mode, setMode] = useState<'buy' | 'sell'>(side ?? initialMode ?? 'buy')
+  // The coin's safety rating, right above Buy (lib/buyRisk.tsx): a Danger coin waits for a tick.
+  const buyRisk = useBuyRisk(mode === 'buy')
   const [amount, setAmount] = useState(initialAmount && initialAmount > 0 ? String(initialAmount) : '')
   const [quote, setQuote] = useState<AcrossQuote | null>(null)
   const [quoting, setQuoting] = useState(false)
@@ -162,7 +165,7 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
 
   const sellNoGas = mode === 'sell' && me !== null && eth !== null && eth === 0
   const noBuy = mode === 'buy' && !!buyBlocked
-  const blocked = busy || !quote || quoting || insufficient || refused || noBuy || (needsCostTick && !costOk) || gate !== 'ok' || sellNoGas
+  const blocked = busy || !quote || quoting || insufficient || refused || noBuy || (needsCostTick && !costOk) || gate !== 'ok' || sellNoGas || buyRisk.blocks
 
   const kindOf = () => trader.kind ?? 'wallet'
 
@@ -185,7 +188,7 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
 
   async function submit() {
     const r = request()
-    if (!r || !me || !quote) return
+    if (!r || !me || !quote || buyRisk.blocks) return
     setStep('working'); setLinks([]); setProgress(null)
     const where = mode === 'buy' ? T('Robinhood Chain') : 'Arc'
     const say = (p: AcrossProgress) => {
@@ -319,6 +322,8 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
           {links.length > 0 && <span className="rh-links">{links.map(l => <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer">{l.label} ↗</a>)}</span>}
         </div>
       )}
+
+      {buyRisk.node}
 
       {!me ? (
         <>

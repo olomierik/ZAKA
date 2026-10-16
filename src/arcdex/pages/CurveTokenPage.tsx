@@ -16,6 +16,9 @@ import Sheet, { TradeBar } from '../components/Sheet'
 import { useIsMobile } from '../lib/useMobile'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import { BuyRiskProvider, type ProvidedRisk } from '../lib/buyRisk'
+import { arcSafety } from '../lib/safety'
+import { useCoinSafety } from '../api/coinSafety'
 
 interface Props { address: string; navigate: (p: Page) => void }
 
@@ -142,6 +145,9 @@ export default function CurveTokenPage({ address, navigate }: Props) {
       devPct, devSoldUsd, trustScore: trust?.score ?? null,
     })
   }, [token, trades, chainHolders, liveHolders, devPct, trust])
+  // The rating the trade form shows right above Buy (lib/buyRisk.tsx), as the Trenches rate this coin.
+  const scan = useCoinSafety([address]).get(address.toLowerCase())
+  const buyRating = useMemo<ProvidedRisk>(() => token && risk ? arcSafety(token, risk, scan, !token.curve.graduated) : null, [token, risk, scan])
 
   if (loading && !token) return <div className="loading-state">{T("Loading…")}</div>
   if (!token) return <div style={{ padding: 40, color: 'var(--text-muted)' }}>{T("Token not found.")}</div>
@@ -150,6 +156,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
   const marketCap = token.priceUsd * (Number(token.curve.vToken) / 1e18 > 0 ? 1_000_000_000 : 0)
 
   return (
+    <BuyRiskProvider view={buyRating}>
     <div className="token-page">
       <div className="token-page-header">
         {!mobile && <button className="back-btn" onClick={() => navigate({ name: 'terminal' })}>{T("← Back")}</button>}
@@ -312,6 +319,7 @@ export default function CurveTokenPage({ address, navigate }: Props) {
         </>
       )}
     </div>
+    </BuyRiskProvider>
   )
 }
 

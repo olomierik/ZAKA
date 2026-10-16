@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AgoText } from '../components/Ago'
 import { getPairsByToken, getLaunchpad, type DexPair } from '../api/dexscreener'
 import { subscribePair, deriveTradeInfo, ARC_EXPLORER, type LiveTrade } from '../api/arcRpc'
@@ -12,6 +12,11 @@ import CurveTokenPage from './CurveTokenPage'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 import { useLogo } from '../lib/logo'
+import { BuyRiskProvider, type ProvidedRisk } from '../lib/buyRisk'
+import { arcSafety } from '../lib/safety'
+import { tokenRisk } from '../lib/risk'
+import { arcStageInput } from '../lib/coinStage'
+import { useCoinSafety } from '../api/coinSafety'
 
 // DexScreener's /tokens/{address} endpoint returns every pool for a token
 // (often across multiple launchpads). Pick the deepest pool as "the" pair —
@@ -99,11 +104,15 @@ export default function TokenPage({ address, navigate }: Props) {
   }, [pair?.pairAddress])
 
   const lp = pair ? getLaunchpad(pair) : null
+  // The rating the trade form shows right above Buy (lib/buyRisk.tsx), as the Trenches rate this coin.
+  const scan = useCoinSafety([address]).get(address.toLowerCase())
+  const buyRating = useMemo<ProvidedRisk>(() => radarToken ? arcSafety(radarToken, tokenRisk(radarToken), scan, arcStageInput(radarToken).onCurve) : null, [radarToken, scan])
 
   if (isLaunchpadToken === null) return <div className="loading-state">{T("Loading…")}</div>
   if (isLaunchpadToken) return <CurveTokenPage address={address} navigate={navigate} />
 
   return (
+    <BuyRiskProvider view={buyRating}>
     <div className="token-page">
       {/* header */}
       <div className="token-page-header">
@@ -235,5 +244,6 @@ export default function TokenPage({ address, navigate }: Props) {
         </>
       )}
     </div>
+    </BuyRiskProvider>
   )
 }

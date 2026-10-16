@@ -33,6 +33,7 @@ import { getRelayQuote, quoteVerdict, relayValueUsd, QUOTE_LIMITS, ARC_ID, BSC_I
 import { ARC_USDC } from '../lib/acrossQuote'
 import { relayErrorText, runRelayEvm, runRelaySolana, type RelayProgress } from '../lib/relay'
 import { t as T } from '../lib/i18n'
+import { useBuyRisk } from '../lib/buyRisk'
 
 export type CrossMode = 'buy' | 'sell' | 'deposit' | 'withdraw'
 
@@ -119,6 +120,8 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
   const { cash, refresh: refreshCash } = useCash(chainId === ARC_ID ? me : null)
   const busy = step === 'working'
   const paying = mode === 'buy' || mode === 'deposit'
+  // The coin's safety rating, right above Buy (lib/buyRisk.tsx): a Danger coin waits for a tick.
+  const buyRisk = useBuyRisk(mode === 'buy')
   const bridging = mode === 'deposit' || mode === 'withdraw'
   const feeBps = bridging ? BRIDGE_FEE_BPS : SPOT_FEE_BPS
 
@@ -212,7 +215,7 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
   const noBuy = mode === 'buy' && !!buyBlocked
   // A sale needs the coin's decimals: unknown until the chain answers.
   const decimalsKnown = given != null || readDecimals !== null
-  const blocked = (!paying && !decimalsKnown) || busy || !quote || quoting || insufficient || refused || noBuy || (needsTick && !costOk) || noSolFees || noGasToSell || guard.missing || guard.overLimit || guard.limitsLoading
+  const blocked = (!paying && !decimalsKnown) || busy || !quote || quoting || insufficient || refused || noBuy || (needsTick && !costOk) || noSolFees || noGasToSell || guard.missing || guard.overLimit || guard.limitsLoading || buyRisk.blocks
 
   async function openAccount() {
     setOpening(true); setStep('idle'); setMsg('')
@@ -221,7 +224,7 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
 
   async function submit() {
     const r = request()
-    if (!r || !quote || !signer) return
+    if (!r || !quote || !signer || buyRisk.blocks) return
     setStep('working'); setLinks([])
     const say = (p: RelayProgress) => setMsg(p.step === 'quote' ? T('Checking the trade…')
       : p.step === 'approve' ? T('Approving exactly the amount…')
@@ -326,6 +329,8 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
           {links.length > 0 && <span className="rh-links">{links.map(l => <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer">{l.label} ↗</a>)}</span>}
         </div>
       )}
+
+      {buyRisk.node}
 
       {!solAddr ? (
         sol.available.length > 0

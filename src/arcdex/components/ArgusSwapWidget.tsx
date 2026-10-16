@@ -21,6 +21,7 @@ import { PERMIT2, PERMIT2_ABI, UR_ABI, encodeNativeBuy, encodeNativeSell, feeSha
 import { curveBuyCall, curveRouterConfigured, curveSellCall, curveSpender, loadCurveRouter, quoteCurveBuy, quoteCurveSell, quoteRouterBuy, quoteRouterSell, routerBuyCall, routerSellCall, type CurveCall, type CurveInfo, type CurveRouter } from '../api/curves'
 import { assertTradingOn } from '../lib/tradeSwitch'
 import { sizeProblem } from '../lib/guardrails'
+import { useBuyRisk } from '../lib/buyRisk'
 
 export { SWAP_ROUTER_ADDRESS }
 
@@ -103,6 +104,8 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
   const info = useRouterInfo()
 
   const [mode, setMode] = useState<'buy' | 'sell'>(side ?? initialMode ?? 'buy')
+  // The coin's safety rating, right above Buy (lib/buyRisk.tsx): a Danger coin waits for a tick.
+  const buyRisk = useBuyRisk(mode === 'buy')
   const [amount, setAmount] = useState(initialAmount && initialAmount > 0 ? String(initialAmount) : '')
   const [slippage, setSlippage] = useState(initialSlip && initialSlip > 0 ? initialSlip : 3)
   const [step, setStep] = useState<Step>('idle')
@@ -359,7 +362,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
   }
 
   async function submit() {
-    if (!me || !info || !route || amountIn === 0n) return
+    if (!me || !info || !route || amountIn === 0n || buyRisk.blocks) return
     setMsg('')
     try {
       // The trade switch (lib/tradeSwitch.ts): nothing is signed while trading on Arc is off.
@@ -436,7 +439,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
   const needsSnipeTick = mode === 'buy' && !!snipe
   // A Mercuri curve that has sold out takes sells only while it graduates.
   const buyClosed = mode === 'buy' && !!curve && !curve.canBuy
-  const blocked = busy || amountIn === 0n || !route || insufficient || !info || (needsRiskTick && !riskOk) || (needsSnipeTick && !snipeOk) || buyClosed
+  const blocked = busy || amountIn === 0n || !route || insufficient || !info || (needsRiskTick && !riskOk) || (needsSnipeTick && !snipeOk) || buyClosed || buyRisk.blocks
 
   return (
     <div className={`swap-box${side ? ` swap-side-${side}` : ''}`}>
@@ -520,6 +523,8 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
           {step === 'done' && lastTrade && <button onClick={() => void openShare()} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--green)', color: 'var(--on-accent)', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>{T("Share")}</button>}
         </div>
       )}
+
+      {buyRisk.node}
 
       {!routerConfigured ? (
         <Note>{T("Trading opens once the ARCDEX swap router is deployed.")}</Note>

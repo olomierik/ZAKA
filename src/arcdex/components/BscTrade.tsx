@@ -23,6 +23,7 @@ import { fourErrorText, fourQuoteBuy, fourQuoteSell, fourMinOut, runFourBuy, run
 import { isContractWallet } from '../lib/across'
 import { bnbUsd, BSC_USDT, type FourInfo } from '../api/bscMarket'
 import { t as T } from '../lib/i18n'
+import { useBuyRisk } from '../lib/buyRisk'
 
 interface Props {
   token: string
@@ -72,6 +73,8 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
   const curve = !!four && !four.graduated
   const curveRoute: Route = four?.quote === BSC_USDT ? 'usdt' : 'bnb'
   const [mode, setMode] = useState<'buy' | 'sell'>(side ?? initialMode ?? 'buy')
+  // The coin's safety rating, right above Buy (lib/buyRisk.tsx): a Danger coin waits for a tick.
+  const buyRisk = useBuyRisk(mode === 'buy')
   const [picked, setPicked] = useState<Route | null>(initialRoute ?? null)
   const route: Route = curve ? curveRoute : picked ?? 'arc'
   const [amount, setAmount] = useState(initialAmount && initialAmount > 0 && initialRoute && (curve ? curveRoute === initialRoute : true) ? String(initialAmount) : '')
@@ -186,7 +189,7 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
   const needsCostTick = verdict === 'confirm' || verdict === 'unpriced'
 
   const noBuy = mode === 'buy' && !!buyBlocked
-  const blocked = busy || !me || !haveQuote || quoting || insufficient || refused || noBuy || (needsCostTick && !costOk) || needsGas
+  const blocked = busy || !me || !haveQuote || quoting || insufficient || refused || noBuy || (needsCostTick && !costOk) || needsGas || buyRisk.blocks
 
   async function addBnb(usd: number) {
     if (!me) return
@@ -201,7 +204,7 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
   }
 
   async function submit() {
-    if (!me || !haveQuote) return
+    if (!me || !haveQuote || buyRisk.blocks) return
     setStep('working'); setLinks([])
     try {
       if (curve && fq) {
@@ -343,6 +346,8 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
           {links.length > 0 && <span className="rh-links">{links.map(l => <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer">{l.label} ↗</a>)}</span>}
         </div>
       )}
+
+      {buyRisk.node}
 
       {!me ? (
         <>

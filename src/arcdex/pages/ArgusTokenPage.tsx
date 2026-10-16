@@ -34,6 +34,9 @@ import { COIN_IMAGE, COIN_LC } from '../lib/coin'
 import { useLogo } from '../lib/logo'
 import CoinVotes from '../components/CoinVotes'
 import TokenLayout from '../components/TokenLayout'
+import { BuyRiskProvider, type ProvidedRisk } from '../lib/buyRisk'
+import { arcSafety } from '../lib/safety'
+import { useCoinSafety } from '../api/coinSafety'
 
 // Full page for one Argus launch. What moves is read straight from the
 // chain: every swap in the pool (history from the logs, then each new one
@@ -497,6 +500,11 @@ export default function ArgusTokenPage({ address, pool, navigate, buy }: Props) 
   // GeckoTerminal's API or the market engine, every swap live on top, trade
   // labels, theses and indicators. A live curve charts the curve's trades.
   const isCoin = address.toLowerCase() === COIN_LC
+  // The rating every buy form on this page shows right above Buy (lib/buyRisk.tsx): the engine's on-chain scan with this
+  // page's market data, as the Trenches rate it; $ARCDEX is marked Official instead.
+  const scan = useCoinSafety(isCoin ? [] : [address]).get(address.toLowerCase())
+  const buyRating = useMemo<ProvidedRisk>(() => isCoin ? 'official' : arcSafety({ symbol, address }, risk, scan, !!liveCurve || chain?.bonded === false),
+    [isCoin, symbol, address, risk, scan, liveCurve, chain])
   const stats: [string, string, string][] = active ? [
     ['5m', pct(active.change.m5), active.change.m5 >= 0 ? 'var(--green)' : 'var(--red)'],
     ['1h', pct(active.change.h1), active.change.h1 >= 0 ? 'var(--green)' : 'var(--red)'],
@@ -574,6 +582,7 @@ export default function ArgusTokenPage({ address, pool, navigate, buy }: Props) 
 
   // Phones: the app layout (price, chart, stats, tabs, and a Buy / Sell bar opening the trade sheet).
   if (mobile) return (
+    <BuyRiskProvider view={buyRating}>
     <div className="token-page coin-mobile">
       <div className="token-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
@@ -615,6 +624,7 @@ export default function ArgusTokenPage({ address, pool, navigate, buy }: Props) 
         </Sheet>
       </div>
     </div>
+    </BuyRiskProvider>
   )
 
   // Desktop: motion.gift's coin screen (components/TokenLayout.tsx): the header and its numbers, the chart, the trades,
@@ -622,6 +632,7 @@ export default function ArgusTokenPage({ address, pool, navigate, buy }: Props) 
   const taxText = chain?.buyTaxBps != null && chain?.sellTaxBps != null && (chain.buyTaxBps > 0 || chain.sellTaxBps > 0)
     ? `${T('Tax')} ${chain.buyTaxBps / 100}%/${chain.sellTaxBps / 100}%` : null
   return (
+    <BuyRiskProvider view={buyRating}>
     <TokenLayout
       chain="arc" image={image} symbol={symbol} name={name} mc={mcap ?? null} dir={priceDir}
       tags={<>
@@ -680,5 +691,6 @@ export default function ArgusTokenPage({ address, pool, navigate, buy }: Props) 
       </>}
       side={sidePanels}
     />
+    </BuyRiskProvider>
   )
 }
