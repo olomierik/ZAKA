@@ -57,6 +57,7 @@ export default function NavBar({ page, navigate, onMenuClick, onBack, onBell, be
     { label: T('Futures'), page: { name: 'perps' }, active: page.name === 'perps' || page.name === 'futures' || page.name === 'hl-trader', hot: true },
     { label: T('Predict'), page: { name: 'predict' }, active: page.name === 'predict', hot: true },
     { label: T('Portfolio'), page: { name: 'portfolio' }, active: page.name === 'portfolio' },
+    { label: T('Tracker'), page: { name: 'tracker' }, active: page.name === 'tracker' },
     { label: T('Swap'), page: { name: 'swap' }, active: page.name === 'swap' },
     { label: T('Bridge'), page: { name: 'bridge' }, active: page.name === 'bridge' },
   ]

@@ -61,6 +61,8 @@ jobs:
         run: bun scripts/test-xevm.ts
       - name: Fast buys (approval and swap back to back)
         run: bun scripts/test-fast-buy.ts
+      - name: Wallet tracker (addresses, following, routes)
+        run: bun scripts/test-wallet-tracker.ts
 
   engine:
     name: Engine (typecheck, tests)

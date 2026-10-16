@@ -11,7 +11,7 @@ import { CHAINS, useChain } from '../lib/chains'
 import { OPEN_RPC_SETTINGS, useHead, useReadSpeed } from '../lib/rpcSettings'
 import { setTrench, useTrench } from '../lib/trenches'
 import { t as T } from '../lib/i18n'
-import { IcBell, IcStar, IcSearch, IcGrid } from './TrIcons'
+import { IcBell, IcStar, IcSearch, IcGrid, IcUsers } from './TrIcons'
 
 const TICKERS = ['BTC', 'ETH', 'SOL', 'BNB'] as const
 
@@ -52,6 +52,7 @@ export default function StatusBar({ navigate, onAlerts }: { navigate: (p: Page) 
       <button className="tm-st-link" onClick={() => navigate({ name: 'portfolio' })}><IcGrid />{T('Positions')}</button>
       <button className="tm-st-link" onClick={onAlerts}><IcBell />{T('Alerts')}</button>
       <button className={`tm-st-link${s.watchOnly ? ' on' : ''}`} onClick={() => { setTrench({ watchOnly: !s.watchOnly }); navigate(trenchesPage(chain)) }}><IcStar on={s.watchOnly} />{T('Watchlist')}</button>
+      <button className="tm-st-link" onClick={() => navigate({ name: 'tracker' })}><IcUsers />{T('Wallets')}</button>
       <a className="tm-st-link" href={CHAINS[chain].explorer} target="_blank" rel="noopener noreferrer"><IcSearch />{T('Explorer')}</a>
 
       <div className="tm-st-tickers">

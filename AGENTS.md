@@ -2902,6 +2902,33 @@ Owner: "adjust GMGN's UI and functionalities without changing our UX; combine wi
 - **Tests:** `bun scripts/test-trenches.ts` (the default window, the newest thesis per coin).
 - **Checked** in the production build against the live engine: UBI read $18 and 4 trades on 1h against $26.6K and 387 on 24h; ARGUS's thesis line sits under its row with nothing overlapping; a 390px phone with no sideways scroll.
 
+## The wallet tracker (2026-10-16/17, GMGN's wallet tracking)
+
+Owner: "adjust GMGN's UI and functionalities in our app". Follow any wallet on Arc, Robinhood Chain, Solana or BNB Chain and see its buys and sells as they happen.
+- **The engine (`engine/src/trench/walletWatch.ts`, the `wallet` channel in `api/_marketProtocol.ts`, types in `api/_trenchProtocol.ts`):**
+  - **What it sees:** every trade the Trenches' books read passes through `TrenchBook.onAnyTrade`. That covers Arc's whole stream, Solana's pump.fun and PumpSwap, four.meme and the listed PancakeSwap pools on BNB Chain, and the listed pools on Robinhood Chain.
+  - **Topics:** one per wallet. An EVM address is one topic for Arc, Robinhood Chain and BNB Chain together (`wallet:evm:<lower>`); a Solana address keeps its case (`wallet:sol:<base58>`).
+  - **When it works:** a trade goes out as `WTRADE` only while someone is subscribed (`wants(topic)`). A watched wallet's last 100 trades are kept from the first time it's watched (a subscription or a page view) until a day without watchers, 5,000 wallets at most.
+  - **`GET /v1/wallet/<address>` (`WalletView`):** the wallet's record on each chain from the smart-wallet book (closed trades, share won, realized P&L, coins, open positions, smart or not) and its kept trades. For an EVM address it adds Arc's stored trades (`HistoryStore.walletTrades`, served by the `(wallet, ts)` index; the last 72 hours), named from the engine's launch records (`TrenchService.arcCoin`).
+  - **Measured live (2026-10-17):** Solana trades by followed wallets arrived 8–16 seconds after they happened (the Solana feed's own delay).
+- **The site:**
+  - **`/tracker` and `/tracker/<address>` (`pages/TrackerPage.tsx`):** follow by address with a label, 50 wallets at most, kept in this browser (`lib/walletTracker.ts`, `arcdex:tracked:v1`).
+    - Each wallet shows its record per chain, with copy, rename, alerts and remove.
+    - The feed shows every followed wallet's trades, newest first, filtered by side, size or one wallet; a trade opens its coin's page on its chain.
+    - A linked wallet not followed yet is shown with a Track button. The chain's smart wallets are suggested.
+  - **Alerts (`components/WalletAlertWatcher.tsx`):** while ARCDEX is open on any page, a trade by a wallet with alerts on shows a notice. A system notification is added when the tab is hidden and notifications are allowed. There is no web push for these yet.
+  - **Track buttons:** on every trade in the Trenches' smart-money lane, and on trader profiles.
+  - **Links:** Tracker in the top bar, Wallets in the status bar, and the phone's More sheet and drawer.
+- **The engine refuses messages past 20 a second per connection (`WS_MAX_MSGS_PER_SEC`).** Subscribing to 57 wallets at once had 37 refused, and nothing retried them. The site's socket (`api/marketStream.ts`) now sends at most 15 a second (`SEND_RATE`), queueing the rest, reconnects included: 49 subscriptions, 49 accepted.
+- **Tests:**
+  - `engine/test/walletWatch.test.ts`: topics, the channel, keeping and pushing only watched wallets, the cap, idle cleanup, the service's view and Arc coin names. The engine suite: 809 pass.
+  - `bun scripts/test-wallet-tracker.ts` (in CI): addresses, following and the limit, matching a trade to its wallet, coin pages, routes.
+- **Checked** in the production build against the live engine:
+  - a linked Arc wallet's 51 stored trades and its record;
+  - following it and a Solana smart wallet, whose trades were kept from then on;
+  - Track from the smart-money lane, with a notice two seconds later on another page;
+  - a 390px phone with no sideways scroll.
+
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
 **Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**

@@ -130,7 +130,7 @@ export class DataApi {
         if (t.side === 'UNKNOWN' || !(t.usdValue && t.usdValue > 0)) continue
         const side = t.side === 'BUY' ? 'B' as const : 'S' as const
         if (kept.has(`arc:${t.token}:${t.timestamp}:${side}`)) continue
-        const meta = this.trench?.books.arc.metaOf(t.token)
+        const meta = this.trench?.arcCoin(t.token)
         trades.push({ c: 'arc', w: address.toLowerCase(), t: t.token, s: meta?.symbol ?? '', i: meta?.image ?? null, side, u: Math.round(t.usdValue * 100) / 100, n: t.tokenAmount, ts: t.timestamp, m: 0 })
       }
       trades = trades.sort((a, b) => b.ts - a.ts).slice(0, 150)

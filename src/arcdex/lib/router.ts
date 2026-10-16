@@ -34,6 +34,7 @@ export function pageToPath(p: Page): string {
     case 'predict':     return '/predict'
     case 'hl-trader':   return `/futures/trader/${p.address}`
     case 'routes':      return '/routes'
+    case 'tracker':     return p.address ? `/tracker/${p.address}` : '/tracker'
     case 'copy':        return p.leader ? `/copy/${p.leader}` : '/copy'
     case 'starknet':    return '/starknet'
     case 'coin':        return '/burn'
@@ -88,6 +89,8 @@ export function pathToPage(pathname: string, search: string): Page | null {
     case 'predict':
     case 'predictions': return { name: 'predict' }
     case 'routes':      return { name: 'routes' }
+    case 'tracker':
+    case 'track':       return b && (/^0x[0-9a-fA-F]{40}$/.test(b) || /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(b)) ? { name: 'tracker', address: b.startsWith('0x') ? b.toLowerCase() : b } : { name: 'tracker' }
     case 'copy':        return b && /^0x[0-9a-fA-F]{40}$/.test(b) ? { name: 'copy', leader: b.toLowerCase() } : { name: 'copy' }
     case 'starknet':    return { name: 'starknet' }
     // $ARCDEX: its burns, buybacks and the fee ledger (/sense was $SENSE's, before 2026-10-04).

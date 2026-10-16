@@ -61,6 +61,14 @@ export class TrenchService implements EngineObserver {
     }
   }
 
+  /** An Arc coin's name and picture: the Trenches' book, else the engine's launch record. */
+  arcCoin(token: string): { symbol: string; image: string | null } | null {
+    const b = this.books.arc.metaOf(token)
+    if (b?.symbol) return { symbol: b.symbol, image: b.image }
+    const m = this.o.arcMeta?.(token)
+    return m ? { symbol: m.symbol, image: m.image } : null
+  }
+
   /** A wallet's record on each chain the engine has seen it trade, and its kept trades (newest first). */
   walletView(address: string, now = Date.now()): { records: WalletRecordWire[]; trades: WalletTradeWire[] } | null {
     const trades = this.watch.view(address, now)

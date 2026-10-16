@@ -15,6 +15,8 @@ const PerpsPage       = lazy(() => import('./pages/PerpsPage'))
 const PredictPage     = lazy(() => import('./pages/PredictPage'))
 const HlTraderPage    = lazy(() => import('./pages/HlTraderPage'))
 const RoutesPage      = lazy(() => import('./pages/RoutesPage'))
+const TrackerPage     = lazy(() => import('./pages/TrackerPage'))
+const WalletAlertWatcher = lazy(() => import('./components/WalletAlertWatcher'))
 // Copy trading (the build pack's Phase 7): engine-held copy wallets mirror verified leaders on Arc.
 const CopyPage        = lazy(() => import('./pages/CopyPage'))
 const StarknetPage    = lazy(() => import('./pages/StarknetPage'))
@@ -73,6 +75,7 @@ import { usePush } from './lib/push'
 import { engineApiUrl } from './api/marketStream'
 import { startTraffic } from './lib/traffic'
 import { loadRuntimeFlags, useFlag } from './lib/flags'
+import { useTracked } from './lib/walletTracker'
 
 // Remember ?ref= or /r/<name> before anything renders (first-touch attribution).
 captureReferral()
@@ -106,6 +109,7 @@ export type Page =
   | { name: 'predict' }
   | { name: 'hl-trader'; address: string }
   | { name: 'routes' }
+  | { name: 'tracker'; address?: string }
   | { name: 'copy'; leader?: string }
   | { name: 'starknet' }
   | { name: 'coin' }
@@ -126,7 +130,7 @@ const MOBILE_NAV: [Page, string, string][] = [
   [{ name: 'terminal', chain: 'sol' }, '◎', N_('Trenches · Solana')], [{ name: 'terminal', chain: 'bnb' }, '◆', N_('Trenches · BNB Chain')],
   [{ name: 'perps' }, '📊', N_('Futures')], [{ name: 'predict' }, '🎯', N_('Predict')], [{ name: 'portfolio' }, '▤', N_('Portfolio')],
   [{ name: 'swap' }, '⇄', N_('Swap')], [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'starknet' }, '◆', N_('Starknet')],
-  [{ name: 'leaderboard', tab: 'futures' }, '♛', N_('Top futures traders')], [{ name: 'routes' }, '🧭', N_('Supported routes')],
+  [{ name: 'leaderboard', tab: 'futures' }, '♛', N_('Top futures traders')], [{ name: 'tracker' }, '◉', N_('Wallet tracker')], [{ name: 'routes' }, '🧭', N_('Supported routes')],
 ]
 
 export default function App() {
@@ -137,6 +141,8 @@ export default function App() {
   const alerts = useAlerts()
   const [watchAlerts, setWatchAlerts] = useState(false)
   const copyOn = useFlag('copyTrading')
+  // Followed wallets with alerts on: their trades show a notice on any page (components/WalletAlertWatcher.tsx).
+  const tracking = useTracked().some(w => w.alerts)
   const drawer: [Page, string, string][] = copyOn ? [...MOBILE_NAV, [{ name: 'copy' }, '⧉', N_('Copy trading')]] : MOBILE_NAV
   useEffect(() => { if (activeAlerts(alerts).length) setWatchAlerts(true) }, [alerts])
   // Alerts by push (lib/push.ts): once they're on in this browser, the engine's copy is kept in step.
@@ -221,6 +227,7 @@ export default function App() {
           {page.name === 'predict'     && <PredictPage navigate={navigate} />}
           {page.name === 'hl-trader'   && <HlTraderPage key={page.address} address={page.address} navigate={navigate} />}
           {page.name === 'routes'      && <RoutesPage navigate={navigate} />}
+          {page.name === 'tracker'     && <TrackerPage key={page.address ?? ''} navigate={navigate} focus={page.address} />}
           {page.name === 'copy'        && <CopyPage key={page.leader ?? ''} navigate={navigate} leader={page.leader} />}
           {page.name === 'starknet'    && <StarknetPage navigate={navigate} />}
           {page.name === 'coin'       && <ArcdexPage navigate={navigate} />}
@@ -263,6 +270,7 @@ export default function App() {
       <WalletPromptHost />
       {/* A toast (and, when allowed, a system notification) for every profit the signed-in owner's bots take. */}
       <ProfitAlerts navigate={navigate} />
+      {tracking && <PageErrorBoundary resetKey="wallets" fallback={null}><Suspense fallback={null}><WalletAlertWatcher navigate={navigate} /></Suspense></PageErrorBoundary>}
       {watchAlerts && <PageErrorBoundary resetKey="alerts" fallback={null}><Suspense fallback={null}><PriceAlertWatcher navigate={navigate} /></Suspense></PageErrorBoundary>}
       {pushOn && <PageErrorBoundary resetKey="push" fallback={null}><Suspense fallback={null}><PushSync /></Suspense></PageErrorBoundary>}
     </div>

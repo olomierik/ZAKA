@@ -22,6 +22,7 @@ import { useTokenMeta, type TokenMeta } from '../lib/tokenMeta'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 import { useFlag } from '../lib/flags'
+import { normWallet, trackWallet, useTracked } from '../lib/walletTracker'
 
 // A trader's public page (fomo parity): banner, identity, mutuals, clan,
 // avg hold / trades / joined, top trades, PnL chart by window, cash with
@@ -179,6 +180,7 @@ function Profile_({ addr, navigate }: { addr: string; navigate: (p: Page) => voi
               <>
                 <button onClick={() => me ? setModal('send') : setErr(T("Connect or unlock a wallet to send cash"))} style={btn('var(--bg-2)')}>{T("Send cash")}</button>
                 <button onClick={() => void toggleFollow()} disabled={busy} style={btn(iFollow ? 'var(--bg-2)' : 'var(--adx-accent)')}>{iFollow ? T("Following") : T("Follow")}</button>
+                <TrackButton address={addr} navigate={navigate} style={btn('var(--bg-2)')} />
                 {copyOn && <button onClick={() => navigate({ name: 'copy', leader: addr })} style={btn('var(--bg-2)')} title={T('Mirror this trader’s trades from a copy wallet')}>⧉ {T('Copy')}</button>}
                 <span style={{ ...btn('var(--bg-2)'), padding: '6px 8px', display: 'inline-flex', alignItems: 'center' }}><SocialMenu target={`profile:${addr}`} author={addr} trader={trader} onError={setErr} label={T('More about this trader')} /></span>
               </>
@@ -402,5 +404,16 @@ function WashNote({ flag, navigate }: { flag: WashFlag; navigate: (p: Page) => v
         <div key={m.with}>{T('Traded against')}{' '}<button className="disc-link" onClick={() => navigate({ name: 'trader', address: m.with })} style={{ fontFamily: 'var(--mono)' }}>{shortAddr(m.with)}</button>{' '}{T('{n} times: the same coin, the other way, within a few blocks.', { n: m.count })}</div>
       ))}
     </div>
+  )
+}
+
+/** Follow this wallet in the wallet tracker (its trades on every chain, live), and open it there. */
+function TrackButton({ address, navigate, style }: { address: string; navigate: (p: Page) => void; style: React.CSSProperties }) {
+  const on = useTracked().some(w => w.address === normWallet(address))
+  return (
+    <button style={style} title={on ? T('Open in the wallet tracker') : T('Follow this wallet’s trades on every chain, live')}
+      onClick={() => { try { if (!on) trackWallet(address) } catch { /* the limit: the tracker page says so */ } navigate({ name: 'tracker', address }) }}>
+      ◉ {on ? T('Tracking') : T('Track')}
+    </button>
   )
 }

@@ -121,4 +121,12 @@ describe('TrenchService.walletView', () => {
     expect(v.records.some(r => r.c === 'sol')).toBe(false)
     expect(s.walletView('bad')).toBeNull()
   })
+  test('an Arc coin is named from the book, else from the engine’s launch record', () => {
+    const s = new TrenchService({
+      publish: () => {}, wants: () => false, settings: { getSetting: async () => null, setSetting: async () => {} }, listBase: 'http://127.0.0.1:1',
+      arcMeta: t => (t === '0xlaunched' ? { symbol: 'LNCH', name: 'Launched', image: 'https://x/i.png', launchedAt: 1 } : null),
+    })
+    expect(s.arcCoin('0xlaunched')).toEqual({ symbol: 'LNCH', image: 'https://x/i.png' })
+    expect(s.arcCoin('0xunknown')).toBeNull()
+  })
 })

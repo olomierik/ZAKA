@@ -14,6 +14,7 @@ import { CHAINS } from '../lib/chains'
 import { TokenPic } from './TrenchRow'
 import { IcMax, IcMin, IcTarget } from './TrIcons'
 import { t as T } from '../lib/i18n'
+import { normWallet, trackWallet, untrackWallet, useTracked } from '../lib/walletTracker'
 
 interface Props {
   chain: TrenchChain
@@ -119,6 +120,7 @@ function SmartLane({ chain, feed, coins, now, collapsed, onCollapse, onOpen, onB
                   <a href={walletUrl(chain, t.w)} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} title={T('This wallet: {n} closed trades, {w} won, {p} realized', { n: t.n, w: pct(t.wr), p: signed(t.pnl) })}>
                     {shortW(t.w)} · {pct(t.wr)} · {signed(t.pnl)}
                   </a>
+                  <TrackBtn wallet={t.w} />
                 </span>
                 <span className="tr-sm-age">{ageOf(t.ts, now)}{t.m ? <small>MC {usd(t.m)}</small> : null}</span>
               </div>
@@ -149,3 +151,14 @@ function BuyingRow({ b, chain, now, symbol, image, onOpen, onBuy }: { b: SmartBu
 }
 
 export default memo(SmartLane)
+
+/** Follow a smart wallet in the wallet tracker (pages/TrackerPage.tsx), or stop. */
+function TrackBtn({ wallet }: { wallet: string }) {
+  const on = useTracked().some(w => w.address === normWallet(wallet))
+  return (
+    <button className={`tr-sm-track${on ? ' on' : ''}`} title={on ? T('Following in the wallet tracker: click to stop') : T('Follow this wallet in the wallet tracker')}
+      onClick={e => { e.stopPropagation(); try { if (on) untrackWallet(wallet); else trackWallet(wallet) } catch { /* the limit: the tracker page says so */ } }}>
+      {on ? T('Tracking') : T('Track')}
+    </button>
+  )
+}
