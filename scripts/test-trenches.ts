@@ -93,4 +93,16 @@ ok([tr.count(7.4), tr.count(1_234), tr.count(2_500_000)].join(' ') === '7 1.2K 2
 ok([tr.ageOf(0, NOW), tr.ageOf(NOW + 5_000, NOW), tr.ageOf(NOW - 42_000, NOW), tr.ageOf(NOW - 9 * MIN, NOW), tr.ageOf(NOW - 5 * 3_600_000, NOW), tr.ageOf(NOW - 3 * 86_400_000, NOW)].join(' ') === '— 0s 42s 9m 5h 3d', 'ages (a clock ahead reads 0s)')
 ok([tr.amountText(5, 'USDC'), tr.amountText(150, 'USDC'), tr.amountText(0.05, 'SOL'), tr.amountText(0.012345, 'BNB'), tr.amountText(2.5, 'SOL')].join(' ') === '$5 $150 0.05 0.0123 2.5', 'quick-buy amounts on the button')
 
+console.log('the 1h window and the latest thesis')
+ok(tr.getTrench().window === '24h', 'the window opens on 24h (saved settings from before it keep the default)')
+const { latestByToken } = await import('../src/arcdex/lib/latestTheses')
+const th = latestByToken([
+  { token: '0xAA', body: 'older  call', author: '0xA1', created_at: '2026-10-16T10:00:00Z' },
+  { token: '0xaa', body: ' newest\n call ', author: '0xB2', created_at: '2026-10-16T12:00:00Z' },
+  { token: '0xbb', body: 'only one', author: '0xC3', created_at: '2026-10-16T11:00:00Z' },
+  { token: '', body: 'no coin', author: '0xD4', created_at: '2026-10-16T13:00:00Z' },
+])
+ok(th.get('0xaa')?.body === 'newest call' && th.get('0xaa')?.author === '0xb2', 'each coin keeps its newest thesis, by address in any case, on one line')
+ok(th.get('0xbb')?.body === 'only one' && th.size === 2, 'a thesis with no coin is left out')
+
 console.log('\nall Trenches checks passed')

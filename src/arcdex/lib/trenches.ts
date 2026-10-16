@@ -52,6 +52,10 @@ export interface TrenchCoin {
   dupSame?: boolean
   /** Its launcher's last coins and how many it dumped early (Arc's scan). */
   launcher?: { coins: number; dumps: number } | null
+  /** The last hour's volume and trades (Arc, from the engine), for the 1h window. */
+  hour?: { vol: number; buys: number; sells: number } | null
+  /** The newest thesis anyone posted on the coin (lib/latestTheses.ts). */
+  thesis?: { body: string; author: string; at: number } | null
   page: Page
 }
 
@@ -124,6 +128,8 @@ export interface TrenchSettings {
   slip: Slip
   /** Bonding progress as % of the curve, or the market cap. */
   pctMc: boolean
+  /** The rows' volume, trades and buy/sell bar over the last hour or day (as GMGN's window). */
+  window: '1h' | '24h'
   imageShape: 'square' | 'circle'
   ring: boolean
   metricsLarge: boolean
@@ -147,6 +153,7 @@ const DEFAULTS: TrenchSettings = {
   lanePreset: {},
   slip: 3,
   pctMc: false,
+  window: '24h',
   imageShape: 'square',
   ring: true,
   metricsLarge: true,

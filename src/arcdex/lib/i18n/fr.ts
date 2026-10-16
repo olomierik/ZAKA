@@ -3775,5 +3775,10 @@ const d: Record<string, string> = {
   "Pay with USDC or ETH where you hold it: one signature on {from}, and the coin lands in the same wallet on {chain} in seconds. No bridging first. Every trade is checked and simulated before it’s sent.": "Payez en USDC ou ETH là où vous les détenez : une signature sur {from}, et le coin arrive dans le même portefeuille sur {chain} en quelques secondes. Pas de bridge préalable. Chaque trade est vérifié et simulé avant l’envoi.",
   "Add a little ETH on {chain} for the transaction’s gas.": "Ajoutez un peu d’ETH sur {chain} pour le gas de la transaction.",
   "Done: ≈{out} is in your wallet on {chain}.": "Terminé : ≈{out} est dans votre portefeuille sur {chain}.",
+  "Window": "Période",
+  "Volume, trades and the buy/sell bar over the last hour or day": "Volume, trades et barre achats/ventes sur la dernière heure ou le dernier jour",
+  "The last hour’s numbers are on Arc only for now": "Les chiffres de la dernière heure ne sont disponibles que sur Arc pour l’instant",
+  "Volume, {w}": "Volume, {w}",
+  "{b} buys / {s} sells in the last hour": "{b} achats / {s} ventes sur la dernière heure",
 }
 export default d

@@ -3775,5 +3775,10 @@ const d: Record<string, string> = {
   "Pay with USDC or ETH where you hold it: one signature on {from}, and the coin lands in the same wallet on {chain} in seconds. No bridging first. Every trade is checked and simulated before it’s sent.": "Lipa kwa USDC au ETH ulipo nazo: sahihi moja kwenye {from}, na sarafu inafika kwenye pochi ileile kwenye {chain} ndani ya sekunde. Hakuna bridge kwanza. Kila biashara inakaguliwa na kuigwa kabla ya kutumwa.",
   "Add a little ETH on {chain} for the transaction’s gas.": "Ongeza ETH kidogo kwenye {chain} kwa gas ya muamala.",
   "Done: ≈{out} is in your wallet on {chain}.": "Imekamilika: ≈{out} iko kwenye pochi yako kwenye {chain}.",
+  "Window": "Kipindi",
+  "Volume, trades and the buy/sell bar over the last hour or day": "Kiasi, biashara na upau wa kununua/kuuza wa saa iliyopita au siku",
+  "The last hour’s numbers are on Arc only for now": "Takwimu za saa iliyopita zipo kwenye Arc pekee kwa sasa",
+  "Volume, {w}": "Kiasi, {w}",
+  "{b} buys / {s} sells in the last hour": "{b} manunuzi / {s} mauzo katika saa iliyopita",
 }
 export default d

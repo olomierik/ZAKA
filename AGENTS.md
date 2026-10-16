@@ -2889,6 +2889,19 @@ Owner: "trading speed". A trading-wallet buy through ArcDexSwapRouter used to wa
   - `bun scripts/test-fast-buy.ts` (in CI): the slot; the trading wallet's real client against a stand-in node still reporting the old count, giving consecutive nonces with nothing estimated or filled for the swap.
   - `bun scripts/check-fast-buy.ts` (live, nothing sent): a $1 $ARCDEX buy from an address that never approved the router is refused without the override and goes through with it (gas measured). One unit short is refused.
 
+## Trenches: GMGN's 1h window, fomo's latest thesis (2026-10-16)
+
+Owner: "adjust GMGN's UI and functionalities without changing our UX; combine with fomo's best features".
+- **1h | 24h (GMGN's window), in the Trenches bar, Arc only for now:** each row's volume, trade count and buy/sell bar over the last hour or the day (`TrenchSettings.window`, 24h by default).
+  - **Where the hour comes from:** the engine's activity feed (`/v1/tokens/active`, `vol1h`, `buys1h`, `sells1h`; `useArcMarket` `hourOf`), now asked for 300 coins, its most.
+  - **A coin missing from the feed:** when the feed came back shorter than asked, every coin that traded in the hour is in it, so the missing coin shows zeros. When it's full, the missing coin shows dashes, never the day's numbers under the 1h label.
+  - **Other chains:** their lists carry 24h numbers only, so they stay on 24h.
+- **Latest thesis (fomo's column) (`lib/latestTheses.ts`):** a quiet line under any coin someone wrote a thesis on. It shows the newest thesis, its author and age, read once a minute for the whole page.
+  - **What's left out:** moderation-hidden theses and banned wallets (`getTheses`), and wallets this trader muted.
+  - **Layout:** an implicit third grid row under the middle and right columns, the full width on phones.
+- **Tests:** `bun scripts/test-trenches.ts` (the default window, the newest thesis per coin).
+- **Checked** in the production build against the live engine: UBI read $18 and 4 trades on 1h against $26.6K and 387 on 24h; ARGUS's thesis line sits under its row with nothing overlapping; a 390px phone with no sideways scroll.
+
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
 **Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**

@@ -49,6 +49,9 @@ export function launchToArcToken(l: LaunchInfo): ArcToken {
 }
 
 /** A coin trading now (GET /v1/tokens/active) that the list doesn't carry yet: its launch, with its live stats. */
+/** Coins asked of the engine's activity feed (its most: 300). */
+const ACTIVE_LIMIT = 300
+
 function activeToArcToken(a: ActiveToken): ArcToken | null {
   if (!a.meta) return null
   const s = a.stats
@@ -87,6 +90,7 @@ export interface ArcMarket {
   /** Trades seen on Arc in the last minute. */
   perMin: number
   hotOf: (t: ArcToken) => number | undefined
+  hourOf: (t: ArcToken) => { vol: number; buys: number; sells: number } | null
   activityOf: (t: ArcToken) => number
   safetyOf: (t: ArcToken) => SafetyView
   scanOf: (t: ArcToken) => CoinSafety | null | undefined
@@ -110,6 +114,7 @@ export function useArcMarket(): ArcMarket {
   const curvesRef = useRef<ArcToken[]>([])
   const launchesRef = useRef(new Map<string, LaunchInfo>())
   const activeRef = useRef(new Map<string, ActiveToken>())
+  const activeAll = useRef(false)
   const bondingRef = useRef(new Map<string, BondingCoin>())
   const liveTradesRef = useRef(new Map<string, number>())
   const rankRef = useRef(new Map<string, number>())
@@ -267,10 +272,12 @@ export function useArcMarket(): ArcMarket {
   useEffect(() => {
     if (!engineEnabled || !engineApiUrl) return
     let alive = true
-    const get = () => void fetch(`${engineApiUrl}/v1/tokens/active?limit=150`, { signal: AbortSignal.timeout(10_000) })
+    const get = () => void fetch(`${engineApiUrl}/v1/tokens/active?limit=${ACTIVE_LIMIT}`, { signal: AbortSignal.timeout(10_000) })
       .then(r => (r.ok ? r.json() : null)).then((j: { tokens?: ActiveToken[] } | null) => {
         if (!alive || !j?.tokens) return
         activeRef.current = new Map(j.tokens.map(a => [a.token.toLowerCase(), a]))
+        // Shorter than asked for: every coin that traded in the last hour is in it.
+        activeAll.current = j.tokens.length < ACTIVE_LIMIT
         liveTradesRef.current = new Map()
         takeRank()
         publish([])
@@ -360,5 +367,12 @@ export function useArcMarket(): ArcMarket {
     return n >= HOT_TRADES ? n : undefined
   }, [])
 
-  return { tokens: withHolders, loading, live: engineLive, flash, perMin, hotOf, activityOf, safetyOf, scanOf, riskOf, isOfficial, listable, rugged, passes, dupes }
+  const hourOf = useCallback((t: ArcToken) => {
+    const a = activeRef.current.get(t.address.toLowerCase())
+    if (a) return { vol: a.vol1h, buys: a.buys1h, sells: a.sells1h }
+    // Not among the coins that traded in the last hour, when that list is complete: none.
+    return activeAll.current ? { vol: 0, buys: 0, sells: 0 } : null
+  }, [])
+
+  return { tokens: withHolders, loading, live: engineLive, flash, perMin, hotOf, hourOf, activityOf, safetyOf, scanOf, riskOf, isOfficial, listable, rugged, passes, dupes }
 }

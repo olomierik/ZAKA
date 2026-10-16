@@ -3775,5 +3775,10 @@ const d: Record<string, string> = {
   "Pay with USDC or ETH where you hold it: one signature on {from}, and the coin lands in the same wallet on {chain} in seconds. No bridging first. Every trade is checked and simulated before it’s sent.": "用你持有的 USDC 或 ETH 支付：在 {from} 上签名一次，代币几秒内到达你在 {chain} 上的同一钱包。无需先跨链。每笔交易发送前都会经过检查和模拟。",
   "Add a little ETH on {chain} for the transaction’s gas.": "请在 {chain} 上添加少量 ETH 作为交易的 gas。",
   "Done: ≈{out} is in your wallet on {chain}.": "完成：≈{out} 已在你 {chain} 上的钱包中。",
+  "Window": "时段",
+  "Volume, trades and the buy/sell bar over the last hour or day": "最近一小时或一天的成交量、交易数和买卖条",
+  "The last hour’s numbers are on Arc only for now": "最近一小时的数据目前仅限 Arc",
+  "Volume, {w}": "成交量，{w}",
+  "{b} buys / {s} sells in the last hour": "最近一小时 {b} 笔买入 / {s} 笔卖出",
 }
 export default d

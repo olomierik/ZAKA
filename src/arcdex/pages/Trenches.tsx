@@ -39,6 +39,9 @@ import { COIN_IMAGE } from '../lib/coin'
 import { useIsMobile } from '../lib/useMobile'
 import { usePrefs } from '../lib/prefs'
 import { t as T } from '../lib/i18n'
+import { useLatestTheses } from '../lib/latestTheses'
+import { useMutes } from '../lib/mutes'
+import { useTrader } from '../lib/identity'
 
 interface Props { chain: TChain; navigate: (p: Page) => void }
 
@@ -80,7 +83,7 @@ function useArcData(showAll: boolean, freshNew: boolean): ChainData {
         holders: t.holderCount > 0 ? t.holderCount : null, traders24h: null,
         progress: inp.onCurve ? inp.progress : null, onCurve: inp.onCurve, stage: arcStage(t), safety: m.safetyOf(t),
         fee: null, twitter: t.twitter || null, hot: m.hotOf(t), official, og: d?.og, dup: d?.dup, dupSame: d?.sameCreator,
-        launcher: scan?.launcher ?? null, page: arcPage(t),
+        launcher: scan?.launcher ?? null, hour: m.hourOf(t), page: arcPage(t),
       })
     }
     return { coins: out, hidden }
@@ -246,7 +249,17 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
   const [buyFor, setBuyFor] = useState<{ page: Page; symbol: string; anchor: HTMLElement } | null>(null)
 
   const watch = usePrefs().watchlist
-  const coins = useMemo(() => (s.watchOnly ? data.coins.filter(c => watch.includes(c.address.toLowerCase())) : data.coins), [data.coins, s.watchOnly, watch])
+  // Each coin's newest thesis, as fomo shows it, leaving out wallets this trader muted.
+  const theses = useLatestTheses()
+  const { muted } = useMutes(useTrader())
+  const coins = useMemo(() => {
+    const list = s.watchOnly ? data.coins.filter(c => watch.includes(c.address.toLowerCase())) : data.coins
+    if (!theses.size) return list
+    return list.map(c => {
+      const th = theses.get(c.address.toLowerCase())
+      return th && !muted.has(th.author) ? { ...c, thesis: th } : c
+    })
+  }, [data.coins, s.watchOnly, watch, theses, muted])
   const lanes = useMemo(() => Object.fromEntries(LANES.map(l => [l, laneCoins(coins, l)])) as Record<LaneId, TrenchCoin[]>, [coins])
   const launchpads = useMemo(() => [...new Set(data.coins.map(c => c.launchpad).filter((x): x is string => !!x))].sort(), [data.coins])
   const byKey = useMemo(() => new Map(data.coins.map(c => [keyOf(chain, c.address), c])), [data.coins, chain])
@@ -278,6 +291,9 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
             {SLIPS.map(v => <button key={v} className={s.slip === v ? 'on' : ''} onClick={() => setTrench({ slip: v })}>{v}%</button>)}
           </div>
         )}
+        <div className="tr-seg" role="group" aria-label={T('Window')} title={chain === 'arc' ? T('Volume, trades and the buy/sell bar over the last hour or day') : T('The last hour’s numbers are on Arc only for now')}>
+          {(['1h', '24h'] as const).map(w => <button key={w} className={(chain === 'arc' ? s.window : '24h') === w ? 'on' : ''} disabled={chain !== 'arc' && w === '1h'} onClick={() => setTrench({ window: w })}>{w}</button>)}
+        </div>
         <button className={`tr-watch${s.watchOnly ? ' on' : ''}`} onClick={() => setTrench({ watchOnly: !s.watchOnly })} title={T('Only the coins on your watchlist')}><IcStar on={s.watchOnly} /> {T('Watchlist')}</button>
         <span className="tr-grow" />
         <span className={`tr-live${data.live ? ' on' : ''}`}><i />{data.live ? T('Live') : T('Connecting…')}{perMin ? <small> · {T('{n} trades/min', { n: perMin })}</small> : null}</span>

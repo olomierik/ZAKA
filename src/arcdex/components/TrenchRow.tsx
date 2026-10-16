@@ -61,8 +61,16 @@ function Row({ c, s, flash, fresh, now, onOpen, onBuy }: Props) {
   }
   const done = c.stage === 'graduated' || c.stage === 'established'
   const ring = !s.ring ? 0 : done ? 1 : c.onCurve && c.progress !== null ? Math.max(0.02, Math.min(1, c.progress / 100)) : 0
-  const tx = c.buys24h + c.sells24h
-  const buyShare = tx > 0 ? (c.buys24h / tx) * 100 : 50
+  // GMGN's window: the last hour's numbers where the chain has them (Arc), else the day's.
+  const want1h = s.window === '1h' && c.chain === 'arc'
+  const hr = want1h && c.hour ? c.hour : null
+  // 1h asked for but not known for this coin: dashes, not the day's numbers under the 1h label.
+  const unknown1h = want1h && !hr
+  const buys = hr ? hr.buys : c.buys24h, sells = hr ? hr.sells : c.sells24h
+  const vol = hr ? hr.vol : c.volume24h
+  const tx = buys + sells
+  const buyShare = tx > 0 ? (buys / tx) * 100 : 50
+  const win = hr ? '1h' : '24h'
   const fresh1h = c.createdAt > 0 && now - c.createdAt < 3_600_000
   const showPct = s.pctMc && c.onCurve && c.progress !== null
   const lvl = c.official ? null : c.safety.level
@@ -112,11 +120,11 @@ function Row({ c, s, flash, fresh, now, onOpen, onBuy }: Props) {
 
       {flash && <span key={flash.n} className={`tr-pop ${flash.side}${(flash.usd ?? 0) >= 500 ? ' big' : ''}`} aria-hidden>{popText(flash)}</span>}
       <div className="tr-rgt">
-        <span className="tr-kv"><i>V</i><b>{usd(c.volume24h)}</b><i>{showPct ? 'BC' : 'MC'}</i><b className={showPct ? 'mc' : mcClass(c.marketCap)}>{showPct ? `${c.progress!.toFixed(0)}%` : known(c.marketCap)}</b></span>
+        <span className="tr-kv"><i title={T('Volume, {w}', { w: win })}>V</i><b>{unknown1h ? '—' : usd(vol)}</b><i>{showPct ? 'BC' : 'MC'}</i><b className={showPct ? 'mc' : mcClass(c.marketCap)}>{showPct ? `${c.progress!.toFixed(0)}%` : known(c.marketCap)}</b></span>
         <span className="tr-f">
           <i>L</i><b>{known(c.liquidity)}</b>
-          <i>TX</i><b>{count(tx)}</b>
-          <span className="tr-txbar" title={T('{b} buys / {s} sells in 24h', { b: c.buys24h, s: c.sells24h })}><i style={{ width: `${buyShare}%` }} /></span>
+          <i>TX</i><b>{unknown1h ? '—' : count(tx)}</b>
+          <span className={`tr-txbar${unknown1h ? ' na' : ''}`} title={hr ? T('{b} buys / {s} sells in the last hour', { b: buys, s: sells }) : T('{b} buys / {s} sells in 24h', { b: buys, s: sells })}><i style={{ width: `${buyShare}%` }} /></span>
         </span>
       </div>
 
@@ -131,6 +139,12 @@ function Row({ c, s, flash, fresh, now, onOpen, onBuy }: Props) {
           <span className={`tr-rp${c.launcher.dumps > 0 ? ' down' : ''}`} title={T('Its launcher’s last {n} coins: {d} dumped early', { n: c.launcher.coins, d: c.launcher.dumps })}><IcRocket />{c.launcher.dumps}/{c.launcher.coins}</span>
         )}
       </div>
+
+      {c.thesis && (
+        <div className="tr-thesis" title={c.thesis.body}>
+          <span aria-hidden>💬</span><q>{c.thesis.body}</q><small>{short(c.thesis.author)} · {ageOf(c.thesis.at, now)}</small>
+        </div>
+      )}
 
       <div className="tr-buyw">
         <button className={`tr-buy${s.buttonSize === 'small' ? ' sm' : ''}`} onClick={e => { e.stopPropagation(); onBuy(c, e.currentTarget) }} title={T('Buy {sym}', { sym: c.symbol })}>
