@@ -252,6 +252,60 @@ export function AdminAudit() {
   )
 }
 
+// ── Copy trading ─────────────────────────────────────────────────────────
+
+interface CopyAdminView {
+  on: boolean; why: string | null; wallets: number; stopped: number; rules: number; enabled: number; leaders: number
+  feeDueUsd: number; feesPaidUsd: number; inFlight: number
+  stats: { copies: number; skipped: number; failed: number; withinWindow: number | null; p50Ms: number | null; p95Ms: number | null }
+  recent: { id: string; follower: string; leader: string; token: string; symbol: string | null; side: 'buy' | 'sell'; status: 'filled' | 'skipped' | 'failed'; reason: string | null; usd: number | null; latencyMs: number | null; tx: string | null; at: number }[]
+}
+
+export function AdminCopy() {
+  const { data, err, load } = useAdminData<CopyAdminView>('/v1/admin/copy', 15_000)
+  const secs = (ms: number | null) => (ms === null ? '—' : `${(ms / 1000).toFixed(1)}s`)
+  return (
+    <section className="spot-panel rt-health">
+      <Head title={T('Copy trading')} onReload={load} />
+      <Err text={err} />
+      {data && (
+        <>
+          <p className="fx-fine" style={{ margin: 0 }}>{data.on ? T('Copying is on.') : T('Copying is off: {why}', { why: data.why ?? '' })} {T('Flags → copyTrading turns it on or off for everyone.')}</p>
+          <div className="rt-health-grid">
+            <Stat label={T('Copy wallets')} value={String(data.wallets)} hint={data.stopped ? T('{n} stopped by their owner', { n: data.stopped }) : undefined} />
+            <Stat label={T('Rules on')} value={`${data.enabled} / ${data.rules}`} hint={T('{n} leaders followed', { n: data.leaders })} />
+            <Stat label={T('Copies made')} value={String(data.stats.copies)} hint={T('{s} skipped, {f} failed', { s: data.stats.skipped, f: data.stats.failed })} />
+            <Stat label={T('Within 30 seconds')} value={data.stats.withinWindow === null ? '—' : `${Math.round(data.stats.withinWindow * 100)}%`} hint={T('p50 {a} · p95 {b}', { a: secs(data.stats.p50Ms), b: secs(data.stats.p95Ms) })} tone={data.stats.withinWindow !== null && data.stats.withinWindow < 0.9 ? 'down' : undefined} />
+            <Stat label={T('Fees owed')} value={usd(data.feeDueUsd)} hint={T('{v} paid', { v: usd(data.feesPaidUsd) })} />
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="fx-fine" style={{ width: '100%', borderCollapse: 'collapse', fontVariantNumeric: 'tabular-nums' }}>
+              <thead><tr style={{ textAlign: 'left', color: 'var(--text-muted)' }}>
+                <th>{T('When')}</th><th>{T('Follower')}</th><th>{T('Leader')}</th><th>{T('Side')}</th><th>{T('Coin')}</th><th>{T('USD')}</th><th>{T('After the leader')}</th><th>{T('Result')}</th>
+              </tr></thead>
+              <tbody>
+                {data.recent.map(r => (
+                  <tr key={r.id} style={{ borderTop: '1px solid var(--adx-card-border)' }}>
+                    <td style={{ padding: '4px 6px 4px 0', whiteSpace: 'nowrap' }}>{when(r.at)}</td>
+                    <td>{short(r.follower)}</td>
+                    <td>{short(r.leader)}</td>
+                    <td style={{ color: r.side === 'buy' ? 'var(--green)' : 'var(--red)' }}>{r.side === 'buy' ? T('Buy') : T('Sell')}</td>
+                    <td>{r.symbol ?? short(r.token)}</td>
+                    <td>{r.usd === null ? '—' : usd(r.usd)}</td>
+                    <td>{secs(r.latencyMs)}</td>
+                    <td>{r.tx ? <a href={`${ARC_EXPLORER}/tx/${r.tx}`} target="_blank" rel="noreferrer">{r.status}</a> : r.status}{r.reason ? ` · ${r.reason}` : ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {data.recent.length === 0 && <span className="fx-fine">{T('Nothing copied yet.')}</span>}
+        </>
+      )}
+    </section>
+  )
+}
+
 // ── Flags ────────────────────────────────────────────────────────────────
 
 export function AdminFlags({ sign, who, session }: { sign: Sign; who: `0x${string}` | null; session: string }) {
@@ -261,7 +315,7 @@ export function AdminFlags({ sign, who, session }: { sign: Sign; who: `0x${strin
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const sameWallet = !!who && who.toLowerCase() === session.toLowerCase()
   const live: Record<SiteFlag, boolean> = {
-    withdrawLimits: useFlag('withdrawLimits'), buyRisk: useFlag('buyRisk'), walletsCard: useFlag('walletsCard'), jupiter: useFlag('jupiter'), privy: useFlag('privy'), pushAlerts: useFlag('pushAlerts'), comments: useFlag('comments'),
+    withdrawLimits: useFlag('withdrawLimits'), buyRisk: useFlag('buyRisk'), walletsCard: useFlag('walletsCard'), jupiter: useFlag('jupiter'), privy: useFlag('privy'), pushAlerts: useFlag('pushAlerts'), comments: useFlag('comments'), copyTrading: useFlag('copyTrading'),
   }
 
   async function change(f: SiteFlag, on: boolean) {
