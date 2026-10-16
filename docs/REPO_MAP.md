@@ -91,7 +91,7 @@ CI. `bunx tsc --noEmit` fails on `scripts/compass-deploy.ts` (missing `@circlefi
 | Sweeper with dry run, alerts, `sweep_runs` | Fees already land in the fee wallet; Relay's balance claimed by hand | No sweeper (fees in-trade make most of it unnecessary) |
 | Global and per-chain kill switch | Per-router `pause()`, `AUTOTRADE_PAUSED`, `VITE_HL_TRADING` | No single switch for site trades |
 | Withdraw: cooldown/allowlist, limits, notifications | Passcode unless to a wallet that funded it (`lib/funding.ts`) | No new-address delay, limits or notifications |
-| Copy trading (P3) | Follows, feed, leaderboard, theses; no copy engine | Copy trading not built |
+| Copy trading (P3) | Follows, feed, leaderboard, theses; no copy engine | **Built in Phase 7** (§14): engine-held copy wallets mirror verified leaders’ router trades on Arc |
 | Retail UI: single field, no Pro toggle or order book | Binance/motion-style terminal with Trenches, books, futures | Kept by owner instruction (2026-10-15: "maintain my UI and just improve it"); the one-field flow can live inside it |
 
 What already matches: React/Tailwind PWA with a manifest; Node/TS API with Postgres and Redis (the engine); WebSocket
@@ -337,3 +337,39 @@ Acceptance (06):
 Not in the book: Arc trades through Uniswap's Universal Router (no ARCDEX event), other chains and Hyperliquid. Clan
 boards and points still read Supabase (points leave out flagged wallets).
 
+
+## 14. Phase 7 status (2026-10-16)
+
+Custody (owner's choice, 2026-10-16: "proceed with your recommendations"): **engine-held copy wallets**. Each follower
+gets a copy wallet made on the engine, its key encrypted under `BOT_WALLET_SECRET` like a live bot's; ARCDEX is the
+custodian of what followers deposit, and the page says so before anything is signed.
+
+| Task (06) | Status |
+|---|---|
+| Copy rules: max size, slippage cap, safety filter, stop switch | **Done** (`engine/src/copy/rules.ts`): most per trade $1–$500, slippage cap 0.5–15%, "skip Danger" or "Safe only", a stop-all switch per follower. |
+| Copy engine | **Done** (`engine/src/copy/engine.ts`): leaders' `Swapped` events from the chain stream, mirrored through the bot executor (Uniswap's Universal Router, the pre-flight round trip first). |
+| Disclosures | **Done**: six risk notices on `/copy` (copied losses, slippage and skips, custody, withdrawals, fees, no advice), signed by the wallet before the copy wallet is made; a new version asks again. |
+| Per-mirrored-trade fees | **Done**: every copy owes the swap router's `feeBps`, sent to the fee wallet from $0.25 owed and before any withdrawal, recorded in the fee ledger (`arc-copy`). |
+
+Acceptance (06):
+- "Follower trade lands within the target window after the leader's": the target is 30 s from the leader's block
+  (`COPY.windowMs`); each copy records its time, `/v1/copy/status` and `/admin` show the share within it with p50 and
+  p95, and a copy outside it is logged. A leader trade the engine sees over 60 s late isn't copied. Tested in
+  `engine/test/copy.test.ts`; in Chromium against the stand-in the copies landed ~4 s after the leader. **Not measured
+  on mainnet yet**: nothing is copied until an admin turns the flag on.
+- "Caps respected": the rule's most, the wallet's USDC less a gas reserve and fees owed, the leader's own size, and
+  all followers of one trade together at most 2% of the pool; the buy's on-chain minimum is the leader's price less
+  the cap (tests, including a price past the cap: skipped, nothing signed).
+- "Tokens failing safety are skipped": the scanner's report and the rug guard (Danger and unrated skipped, Risky under
+  "Safe only"), and the pre-flight's round trip (over 20%: skipped). Tests and Chromium.
+- "Stop switch halts mirroring immediately": the follower's stop, a rule switched off or deleted, the `copyTrading`
+  flag and `COPY=off` are asked before a copy starts and again right before each transaction is signed
+  (`SendGuard` in `trading/live.ts`), so a copy under way never signs after a stop (tests, including a stop between
+  simulation and signing; and in Chromium, a stop pressed while a copy was filling).
+
+Also from 04: leaders need 10+ verified trades over 3+ days with 3+ sales with a cost here, and no wash-trading flag
+(checked when a rule is made and before every copied buy); the trade switch stops copied buys (sales still follow the
+leader out); withdrawals are signed by the follower and go only to the follower or a funder.
+
+Not done: copies of trades outside ARCDEX's routers, on other chains, or on Hyperliquid; coins without a Uniswap v4
+USDC pool (curves) or that the scanner can't rate are skipped. The `copyTrading` flag is off until the owner turns it on.

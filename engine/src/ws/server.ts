@@ -72,6 +72,7 @@ import type { ReferralWatcher } from '../fees/referrals'
 import type { PushAlerts } from '../alerts/service'
 import type { AdminApi } from '../admin/api'
 import type { SocialApi } from '../social/api'
+import type { CopyApi } from '../copy/api'
 
 interface Conn { id: number; ip: string; subs: Set<string>; allowance: number; last: number }
 
@@ -108,6 +109,7 @@ export class DataApi {
   admin: AdminApi | null = null
   /** The social layer: verified PnL, the wash-trade filter, comments, reports and mutes (social/api.ts). */
   social: SocialApi | null = null
+  copy: CopyApi | null = null
   /** Argus coins on their launch curve, with their progress by market cap (market/bonding.ts). */
   bonding: BondingBook | null = null
   /** The Trenches' live feed: every chain's launches, trades and smart wallets (trench/service.ts). */
@@ -289,6 +291,16 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         const r = await api.social.handle(req, url)
         if (r) {
           if (req.method === 'POST') metrics.inc(r.status === 200 ? 'social_writes' : 'social_writes_refused')
+          return json(req, r.status, r.body, r.cache)
+        }
+      }
+      // Copy trading (copy/api.ts): copy wallets, rules, the stop switch and withdrawals.
+      if (url.pathname.startsWith('/v1/copy/')) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        if (!api.copy) return json(req, 503, { error: 'copy trading is not running in this process' })
+        const r = await api.copy.handle(req, url)
+        if (r) {
+          if (req.method === 'POST') metrics.inc(r.status === 200 ? 'copy_writes' : 'copy_writes_refused')
           return json(req, r.status, r.body, r.cache)
         }
       }

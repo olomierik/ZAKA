@@ -891,6 +891,7 @@ export const SITE_FLAGS = {
   privy: { protective: false, label: 'Sign-in with Privy' },
   pushAlerts: { protective: false, label: 'Alerts by push, with ARCDEX closed' },
   comments: { protective: false, label: 'Comments on theses and coins' },
+  copyTrading: { protective: false, label: 'Copy trading (engine-held copy wallets on Arc)' },
 } as const
 export type SiteFlag = keyof typeof SITE_FLAGS
 export const isSiteFlag = (f: unknown): f is SiteFlag => typeof f === 'string' && Object.prototype.hasOwnProperty.call(SITE_FLAGS, f)

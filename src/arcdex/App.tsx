@@ -15,6 +15,8 @@ const PerpsPage       = lazy(() => import('./pages/PerpsPage'))
 const PredictPage     = lazy(() => import('./pages/PredictPage'))
 const HlTraderPage    = lazy(() => import('./pages/HlTraderPage'))
 const RoutesPage      = lazy(() => import('./pages/RoutesPage'))
+// Copy trading (the build pack's Phase 7): engine-held copy wallets mirror verified leaders on Arc.
+const CopyPage        = lazy(() => import('./pages/CopyPage'))
 const StarknetPage    = lazy(() => import('./pages/StarknetPage'))
 const ArcdexPage       = lazy(() => import('./pages/ArcdexPage'))
 const AutotradeSoon   = lazy(() => import('./pages/AutotradeSoon'))
@@ -70,7 +72,7 @@ import { activeAlerts, useAlerts } from './hl/alerts'
 import { usePush } from './lib/push'
 import { engineApiUrl } from './api/marketStream'
 import { startTraffic } from './lib/traffic'
-import { loadRuntimeFlags } from './lib/flags'
+import { loadRuntimeFlags, useFlag } from './lib/flags'
 
 // Remember ?ref= or /r/<name> before anything renders (first-touch attribution).
 captureReferral()
@@ -104,6 +106,7 @@ export type Page =
   | { name: 'predict' }
   | { name: 'hl-trader'; address: string }
   | { name: 'routes' }
+  | { name: 'copy'; leader?: string }
   | { name: 'starknet' }
   | { name: 'coin' }
   | { name: 'robinhood' }
@@ -133,6 +136,8 @@ export default function App() {
   // Once an alert exists in this session the watcher stays, so a notice can outlive the last waiting alert.
   const alerts = useAlerts()
   const [watchAlerts, setWatchAlerts] = useState(false)
+  const copyOn = useFlag('copyTrading')
+  const drawer: [Page, string, string][] = copyOn ? [...MOBILE_NAV, [{ name: 'copy' }, '⧉', N_('Copy trading')]] : MOBILE_NAV
   useEffect(() => { if (activeAlerts(alerts).length) setWatchAlerts(true) }, [alerts])
   // Alerts by push (lib/push.ts): once they're on in this browser, the engine's copy is kept in step.
   const pushOn = !!usePush().sub
@@ -194,7 +199,7 @@ export default function App() {
         {navOpen && (
           <aside className="sidebar with-discovery sidebar-open">
             <nav className="mobile-nav" style={{ flexWrap: 'wrap', gap: 4, padding: 8 }}>
-              {MOBILE_NAV.map(([p, icon, label]) => (
+              {drawer.map(([p, icon, label]) => (
                 <button key={label} className={`disc-sub${pageToPath(page) === pageToPath(p) ? ' active' : ''}`} onClick={() => navigate(p)}>{icon} {T(label)}</button>
               ))}
               <a className="disc-sub" href="/about">ⓘ {T('About ARCDEX')}</a>
@@ -216,6 +221,7 @@ export default function App() {
           {page.name === 'predict'     && <PredictPage navigate={navigate} />}
           {page.name === 'hl-trader'   && <HlTraderPage key={page.address} address={page.address} navigate={navigate} />}
           {page.name === 'routes'      && <RoutesPage navigate={navigate} />}
+          {page.name === 'copy'        && <CopyPage key={page.leader ?? ''} navigate={navigate} leader={page.leader} />}
           {page.name === 'starknet'    && <StarknetPage navigate={navigate} />}
           {page.name === 'coin'       && <ArcdexPage navigate={navigate} />}
           {page.name === 'swap'        && <Swap navigate={navigate} />}

@@ -34,6 +34,7 @@ export function pageToPath(p: Page): string {
     case 'predict':     return '/predict'
     case 'hl-trader':   return `/futures/trader/${p.address}`
     case 'routes':      return '/routes'
+    case 'copy':        return p.leader ? `/copy/${p.leader}` : '/copy'
     case 'starknet':    return '/starknet'
     case 'coin':        return '/burn'
     case 'robinhood':   return '/robinhood'
@@ -87,6 +88,7 @@ export function pathToPage(pathname: string, search: string): Page | null {
     case 'predict':
     case 'predictions': return { name: 'predict' }
     case 'routes':      return { name: 'routes' }
+    case 'copy':        return b && /^0x[0-9a-fA-F]{40}$/.test(b) ? { name: 'copy', leader: b.toLowerCase() } : { name: 'copy' }
     case 'starknet':    return { name: 'starknet' }
     // $ARCDEX: its burns, buybacks and the fee ledger (/sense was $SENSE's, before 2026-10-04).
     case 'sense':

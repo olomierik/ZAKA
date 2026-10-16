@@ -2628,6 +2628,60 @@ The build pack's Phase 6 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`): "PnL on profiles m
   1. Once the engine has read the routers' history (`GET /v1/social/board` shows `scannedTo`), run `bun scripts/verify-pnl.ts` from a machine that reaches Arc. It should end "Every number matches the chain."
   2. Railway: the Dockerfile copies `api/_socialProtocol.ts`, and the service's Watch Paths (`/api/**`) already cover it.
 
+## Phase 7: copy trading from engine-held copy wallets (2026-10-16)
+
+The build pack's Phase 7 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`). Custody, asked and chosen by the owner ("proceed with your recommendations", 2026-10-16): **engine-held copy wallets**. Status against the pack: `docs/REPO_MAP.md` §14.
+
+- **Off until the owner turns it on:** the `copyTrading` flag (`/admin` → Flags; off by default on the site and the engine). `COPY=off` on Railway stops it whatever the flag says.
+- **The copy wallet (`engine/src/copy/engine.ts`):** one per follower (a wallet signed in on the site).
+  - **Made only after the terms are signed:** the follower's wallet signs the six risk notices (`COPY_TERMS` in `api/_copyProtocol.ts`): copied losses, slippage and skips, custody, withdrawals, fees, no advice. Valid 5 minutes. A new terms version asks again and keeps the wallet.
+  - **Custody:** its key is made on the engine and encrypted under `BOT_WALLET_SECRET` (`WalletVault`, as live bots'). The engine holds what followers deposit, and the page says so first.
+  - **Money in:** USDC on Arc to its address. The page's Fund sends it from the trading wallet (with its passcode rule and withdraw limits) or a connected wallet.
+  - **Money out:** signed by the follower's wallet (`copyWithdrawMessage`, 5 minutes, once), only to that wallet or one that funded the copy wallet (`bot/funders.ts`). Fees owed are sent first, and $0.05 stays for gas.
+- **Leaders:** wallets on the verified board (Phase 6) with 10+ trades over 3+ days, 3+ sales with a cost here and no wash-trading flag (`LEADER_MIN`, `copy/rules.ts` `leaderVerdict`). Checked when a rule is made and before every copied buy. Copy wallets can't be leaders.
+- **Rules (`copy/rules.ts` `parseRule`), one per leader, 10 at most:**
+  - the most per trade, $1–$500;
+  - a slippage cap, 0.5–15% (3% by default);
+  - safety: skip Danger (default), or Safe coins only;
+  - on or paused.
+- **Copying (`CopyEngine.onLeaderTrade`):**
+  - **The feed:** the chain stream also subscribes to ARCDEX's routers' `Swapped` events (`main.ts`), decoded as the trade book does. They're copied before the batch is parsed. A trade seen over 60 s after its block (a restart, a lag) isn't copied (`COPY.staleMs`).
+  - **Once per trade, for every follower:** the leader's standing and the coin's rating are asked once. Then each follower's copy runs in its own queue, in an order that changes with every trade.
+  - **Buys, through the bot executor (`trading/live.ts`):** Uniswap's Universal Router, the coin's v4 USDC pool, the pre-flight round trip first.
+    - **Size:** the leader's own size (what reached the pool), at most the rule's most and what the wallet can spend after a $0.30 gas reserve, fees owed and the fee on this copy. Copies under $1 aren't made.
+    - **Crowd:** all followers of one leader trade together buy at most 2% of the pool (`COPY.crowdPoolShare`).
+    - **Price:** the leader's price less the rule's cap is the swap's on-chain minimum (`buyFloor`, the executor's `floor`). A quote under it is refused before anything is signed.
+  - **Sales:** the share of the follower's lot of that coin (bought through this leader's copies) that the leader sold of its own holding, read at the trade's block. The whole lot when the leader sold out (1% or less left) or its balance can't be read. Coins from elsewhere are never sold.
+  - **Safety (`copy/rules.ts` `screen`):** the scanner's report (the full scan for "Safe only") and the rug guard. Danger and unrated coins are skipped, and Risky ones under "Safe only". A coin the scanner doesn't track can't be rated, so it isn't copied. The pre-flight's round trip over 20% skips it too.
+  - **Stops:** the follower's stop switch, a rule paused or deleted, the flag and `COPY=off`, and for buys ARCDEX's trade switch (sales still follow the leader out). Each is asked before a copy starts and again right before every transaction is signed (`SendGuard` in `trading/live.ts`), so a stop halts copies already under way.
+  - **Recorded:** every copy, filled, skipped or failed, with why, its transaction, and its time from the leader's block to its receipt (target 30 s, `COPY.windowMs`). `/v1/copy/status` and `/admin` show the share within it, p50 and p95, and one outside it is logged.
+- **Fees:** every copy owes the swap router's `feeBps` (read from the chain every 10 minutes, so 0.5% once the owners set it) on what it spent or received. Sent to the fee wallet once $0.25 is owed (every minute) and before any withdrawal. Recorded in the fee ledger as `arc-copy` (left out of the Arc reconciliation: they're the copy wallets' own transfers).
+- **Storage:** `arcdex_copy_wallets`, `arcdex_copy_rules` and `arcdex_copy_executions` (append-only, like the fee ledger), in the engine's Postgres.
+- **Routes (`copy/api.ts`):**
+  - Public: `GET /v1/copy/status|leaders`.
+  - Signed in (the site's wallet session): `GET /v1/copy/me|destinations`; `POST /v1/copy/open|rules|rules/delete|stop|withdraw`. Writes come from the site's own origins only.
+  - Admin: `GET /v1/admin/copy`.
+- **The site:** `/copy` (`pages/CopyPage.tsx`, `/copy/<leader>` opens with that leader in the form).
+  - The risk notices first, then: open the wallet, the wallet (USDC, fees owed and paid, coins held, Fund, Withdraw, **Stop all copying**), the leaders you follow, your copies with every skip and why, and the leaders you can copy.
+  - Linked from the drawer, the phones' More sheet and a **Copy** button on trader profiles, all while the flag is on.
+  - `/admin` → Copy trading: wallets, rules, copies, the share within 30 s, fees, the latest copies.
+- **Tests:**
+  - `engine/test/copy.test.ts` (33, Postgres with `PG_TEST_URL`): the rules and screen, the wallet and terms, every cap, safety skips, the stop switch before and during a copy (stop, delete, pause, flag), the trade switch, proportional sales, fees and the ledger, withdrawals, a restart, the routes.
+  - `engine/test/preflight.test.ts`: the executor's floor and its guard before simulating and before signing.
+- **Checked in Chromium** against `engine/scripts/copy-standin.ts` (the engine's copy, social-board and admin code in memory, a simulated executor), with an in-page test wallet, at 1280px and 390px:
+  - signing in and opening the wallet (the button waits for the tick);
+  - following Alice, a buy copied at the rule's $25 about 4 s after her, a Danger coin skipped;
+  - stop before a trade, and stop pressed while a copy was filling (nothing bought);
+  - her sale of half her holding copied as half the lot;
+  - a $10 withdrawal (the fee owed paid first), `/admin` → Copy trading;
+  - no sideways scroll.
+- **Not checked:** a real copy on mainnet (nothing is copied until the flag is on).
+- **Every new string is in all six dictionaries** (87).
+- **Owner steps:**
+  1. Read the terms on `/copy` (they say ARCDEX is the custodian of copy wallets) and take advice on offering custodial copy trading where your users are.
+  2. When ready: `/admin` → Flags → copyTrading on. Try it with a small amount first. `COPY=off` on Railway stops it at once.
+  3. `BOT_WALLET_SECRET` must already be set on Railway (it is, for live bots); without it copy wallets can't be made.
+
 ## Autotrade paused (2026-10-03)
 
 Owner: the platform becomes ARCSENSE (spot and futures trading), and "the auto trade functionality will have to be paused for now".

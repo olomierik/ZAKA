@@ -31,6 +31,9 @@ export const FLAGS = {
   /** Comment threads under theses and the Comments tab on coin pages (components/CommentThread.tsx). Needs the engine;
    * reports and mutes stay on whatever this says (they're how people deal with abuse). */
   comments: true,
+  /** Copy trading (pages/CopyPage.tsx): engine-held copy wallets that mirror verified leaders' trades on Arc. Off until an
+   * admin turns it on from /admin → Flags; the engine copies nothing while it's off, whatever the page shows. */
+  copyTrading: false,
 } as const satisfies Record<SiteFlag, boolean>
 export type FlagName = SiteFlag
 export type RuntimeFlags = Partial<Record<FlagName, boolean>>

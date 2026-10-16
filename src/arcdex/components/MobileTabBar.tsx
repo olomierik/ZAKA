@@ -9,6 +9,7 @@ import { trenchesPage } from './NavBar'
 import { useChain } from '../lib/chains'
 import { OPEN_RPC_SETTINGS } from '../lib/rpcSettings'
 import { t as T, N_ } from '../lib/i18n'
+import { useFlag } from '../lib/flags'
 
 const TRENCHES = new Set<Page['name']>(['terminal', 'launchpad', 'robinhood', 'solana', 'bsc'])
 
@@ -26,13 +27,16 @@ interface Props { page: Page; navigate: (p: Page) => void; onOpenLists: () => vo
 export default function MobileTabBar({ page, navigate }: Props) {
   const chain = useChain()
   const [more, setMore] = useState(false)
+  // Copy trading shows once it's switched on (the copyTrading flag, /admin → Flags).
+  const copyOn = useFlag('copyTrading')
+  const items = copyOn ? [{ icon: '⧉', label: N_('Copy trading'), to: { name: 'copy' } as Page }, ...MORE] : MORE
   const tabs: { key: string; icon: string; label: string; to: Page; on: boolean }[] = [
     { key: 'trenches', icon: '◈', label: T('Trenches'), to: trenchesPage(chain), on: TRENCHES.has(page.name) },
     { key: 'futures', icon: '📊', label: T('Futures'), to: { name: 'perps' }, on: page.name === 'perps' || page.name === 'futures' },
     { key: 'predict', icon: '🎯', label: T('Predict'), to: { name: 'predict' }, on: page.name === 'predict' },
     { key: 'portfolio', icon: '▤', label: T('Portfolio'), to: { name: 'portfolio' }, on: page.name === 'portfolio' },
   ]
-  const inMore = MORE.some(m => m.to.name === page.name)
+  const inMore = items.some(m => m.to.name === page.name)
   const goFromSheet = (fn: () => void) => { setMore(false); afterSheetClose(fn) }
 
   return (
@@ -52,7 +56,7 @@ export default function MobileTabBar({ page, navigate }: Props) {
 
       <Sheet open={more} onClose={() => setMore(false)} title={T('More')}>
         <div className="more-grid">
-          {MORE.map(m => (
+          {items.map(m => (
             <button key={m.label} className={`more-item${page.name === m.to.name ? ' active' : ''}`} onClick={() => goFromSheet(() => navigate(m.to))}>
               <span className="more-icon">{m.icon}</span>
               <span>{T(m.label)}</span>

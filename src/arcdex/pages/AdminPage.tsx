@@ -26,16 +26,16 @@ import { pct } from '../lib/routerInfo'
 import { SN_FEE } from '../starknet/net'
 import { JUP_REFERRAL } from '../lib/jupiter'
 import { adminSignIn, adminSignOut, useAdminSession } from '../lib/adminSession'
-import { AdminAudit, AdminFlags, AdminOverview, AdminReports, AdminSweeper, AdminTrades } from '../components/AdminViews'
+import { AdminAudit, AdminCopy, AdminFlags, AdminOverview, AdminReports, AdminSweeper, AdminTrades } from '../components/AdminViews'
 
 const SCOPES: TradeScope[] = ['all', ...TRADE_VENUES]
 const label = (s: TradeScope) => (s === 'all' ? T('Every venue') : TRADE_VENUE_LABEL[s])
 const ago = (at: number) => new Date(at).toLocaleString()
 
-type Tab = 'overview' | 'fees' | 'trades' | 'reports' | 'audit' | 'flags' | 'switch'
+type Tab = 'overview' | 'fees' | 'trades' | 'copy' | 'reports' | 'audit' | 'flags' | 'switch'
 const TABS: { k: Tab; label: string }[] = [
   { k: 'overview', label: N_('Overview') }, { k: 'fees', label: N_('Fees') }, { k: 'trades', label: N_('Trades') },
-  { k: 'reports', label: N_('Reports') }, { k: 'audit', label: N_('Audit log') }, { k: 'flags', label: N_('Flags') }, { k: 'switch', label: N_('Kill switch') },
+  { k: 'copy', label: N_('Copy trading') }, { k: 'reports', label: N_('Reports') }, { k: 'audit', label: N_('Audit log') }, { k: 'flags', label: N_('Flags') }, { k: 'switch', label: N_('Kill switch') },
 ]
 
 export default function AdminPage() {
@@ -67,6 +67,7 @@ export default function AdminPage() {
         </>
       )}
       {tab === 'trades' && (session ? <AdminTrades /> : <SignInFirst />)}
+      {tab === 'copy' && (session ? <AdminCopy /> : <SignInFirst />)}
       {tab === 'reports' && (session ? <AdminReports sign={sign} who={who} session={session.address} /> : <SignInFirst />)}
       {tab === 'audit' && (session ? <AdminAudit /> : <SignInFirst />)}
       {tab === 'flags' && (session ? <AdminFlags sign={sign} who={who} session={session.address} /> : <SignInFirst />)}
@@ -301,7 +302,7 @@ interface FeeSummaryView { rows: number; bySource: Record<string, { usd: number;
 const SOURCE_LABEL: Record<string, string> = {
   'arc-router': N_('Arc swap router'), 'arc-curve': N_('Arc curve router'), 'arc-ur': N_('Universal Router (Arc)'), 'arc-launchpad': 'ArcLaunchpad',
   across: N_('Across (Robinhood Chain sales)'), 'arc-other': N_('Other Arc contracts'), relay: N_('Relay (held for the fee wallet)'), jupiter: N_('Jupiter referral'),
-  'arc-referral': N_('Referral rebate'),
+  'arc-referral': N_('Referral rebate'), 'arc-copy': N_('Copy trading fees'),
 }
 const STATUS_LABEL: Record<string, string> = { received: N_('received'), accrued: N_('accrued'), claimed: N_('claimed'), opening: N_('opening balance'), rebate: N_('paid to the referrer') }
 const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`

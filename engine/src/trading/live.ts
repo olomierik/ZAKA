@@ -212,6 +212,9 @@ export class LiveError extends Error { constructor(msg: string, readonly hash?: 
 
 export interface Fill { hash: Hex; tokens: bigint; usd: number; gasUsd: number; at: number }
 
+/** Asked right before a transaction is signed (and before its simulation): a reason stops it, never sent. */
+export interface SendGuard { guard?: () => string | null }
+
 /** The reads the executor makes (a viem public client; tests pass a stand-in). */
 export type Reader = Pick<PublicClient, 'call' | 'estimateGas' | 'estimateFeesPerGas' | 'getGasPrice' | 'getTransactionCount' | 'getTransactionReceipt' | 'getBalance' | 'readContract' | 'simulateContract'>
 
@@ -304,7 +307,7 @@ export class LiveExecutor {
    * sent only if both went through and `check` has no objection to the round
    * trip, and its gas limit is what the simulation used, with headroom.
    */
-  async buy(pool: PoolInfo, token: Address, usd: number, slippageBps: number, check?: (rt: RoundTrip) => string | null): Promise<Fill & { roundTrip: RoundTrip | null }> {
+  async buy(pool: PoolInfo, token: Address, usd: number, slippageBps: number, check?: (rt: RoundTrip) => string | null, o: SendGuard & { floor?: bigint } = {}): Promise<Fill & { roundTrip: RoundTrip | null }> {
     const router = await this.ready()
     const key = keyOf(pool), usdc = key && usdcSide(key, token)
     if (!key || !usdc) throw new LiveError('not a v4 pool against USDC', undefined, 'refused')
@@ -314,8 +317,11 @@ export class LiveExecutor {
     for (let attempt = 0; ; attempt++) {
       const quoted = await this.quote(key, zeroForOne, amountIn).catch(e => { throw new LiveError(`the pool can't quote this buy (${reason(e)})`, undefined, 'refused') })
       if (quoted === 0n) throw new LiveError('the pool quotes nothing for this buy', undefined, 'refused')
+      // A floor (copy trading: the leader's price less the follower's cap) is never undercut: refused before sending.
+      if (o.floor && quoted < o.floor) throw new LiveError(`the price moved past the cap (quoted ${quoted}, at least ${o.floor} needed)`, undefined, 'refused')
       const deadline = this.deadline()
-      const call = encodeBuy(router, key, token, usdc, amountIn, minOutOf(quoted, slippageBps), this.address, deadline)
+      const min = minOutOf(quoted, slippageBps)
+      const call = encodeBuy(router, key, token, usdc, amountIn, o.floor && o.floor > min ? o.floor : min, this.address, deadline)
       let rt: RoundTrip | null = null
       if (check) {
         rt = await this.roundTrip(call, key, token, usdc)
@@ -323,7 +329,7 @@ export class LiveExecutor {
         if (bad) throw new LiveError(`pre-flight: ${bad}`, undefined, 'refused')
       }
       let r: TransactionReceipt
-      try { r = await this.send(call, 'buy', { gas: rt ? gasLimitOf(rt.gas.buy) : undefined, deadline }) }
+      try { r = await this.send(call, 'buy', { gas: rt ? gasLimitOf(rt.gas.buy) : undefined, deadline, guard: o.guard }) }
       catch (e) {
         if (attempt === 0 && e instanceof LiveError && e.kind === 'refused' && /TooLittleReceived/.test(e.message)) continue
         throw e
@@ -374,7 +380,7 @@ export class LiveExecutor {
   }
 
   /** Sell `amount` of `token` in `pool`, accepting `slippageBps` less than quoted. */
-  async sell(pool: PoolInfo, token: Address, amount: bigint, slippageBps: number): Promise<Fill> {
+  async sell(pool: PoolInfo, token: Address, amount: bigint, slippageBps: number, o: SendGuard = {}): Promise<Fill> {
     const router = await this.ready()
     const key = keyOf(pool), usdc = key && usdcSide(key, token)
     if (!key || !usdc) throw new LiveError('not a v4 pool against USDC', undefined, 'refused')
@@ -382,7 +388,7 @@ export class LiveExecutor {
     // An exit must get out: if the pool can't be quoted, the sale takes whatever it pays.
     const quoted = await this.quote(key, key.currency0.toLowerCase() === token.toLowerCase(), amount).catch(() => 0n)
     const deadline = this.deadline()
-    const r = await this.send(encodeSell(router, key, token, usdc, amount, minOutOf(quoted, slippageBps), deadline), 'sell', { deadline })
+    const r = await this.send(encodeSell(router, key, token, usdc, amount, minOutOf(quoted, slippageBps), deadline), 'sell', { deadline, guard: o.guard })
     return this.saleFill(r, token)
   }
 
@@ -415,13 +421,17 @@ export class LiveExecutor {
    * corrected and the transaction signed again. One that never confirmed
    * gives its nonce, at a higher fee, to the next transaction.
    */
-  private send(call: Call, label: string, o: { gas?: bigint; deadline?: bigint } = {}): Promise<TransactionReceipt> {
+  private send(call: Call, label: string, o: { gas?: bigint; deadline?: bigint } & SendGuard = {}): Promise<TransactionReceipt> {
     const run = async () => {
+      const stopped = () => { const why = o.guard?.(); if (why) throw new LiveError(why, undefined, 'refused') }
+      stopped()
       await this.simulate(call, label)
       const gas = o.gas ?? await this.estimate(call, label)
       const fees = await this.fees()
       let { nonce, bump } = await this.nextNonce()
       for (let attempt = 0; ; attempt++) {
+        // The last moment to stop: nothing is signed or sent after the guard says no.
+        stopped()
         const raw = await this.sign(call, nonce, gas, fees, bump)
         const hash = keccak256(raw)
         const { status, msg } = await this.broadcast(raw)

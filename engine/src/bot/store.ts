@@ -18,8 +18,9 @@ import { MemoryPushStore, type PushStore, type PushSubRow } from '../alerts/serv
 import { MemorySocialTradeStore, type SocialTradeStore } from '../social/book'
 import { MemoryModerationStore, type CommentRow, type ModerationStore, type MuteRow, type ReportRow } from '../social/moderation'
 import type { BookTrade } from '../social/pnl'
+import { MemoryCopyStore, type CopyExecRow, type CopyRuleRow, type CopyStore, type CopyWalletRow } from '../copy/engine'
 
-export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore, AuditStore, FeeLedgerStore, SweepStore, PushStore, SocialTradeStore, ModerationStore {
+export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore, AuditStore, FeeLedgerStore, SweepStore, PushStore, SocialTradeStore, ModerationStore, CopyStore {
   readonly kind: 'memory' | 'postgres'
   saveSignal(s: Signal): void
   savePosition(p: Position): void
@@ -94,6 +95,14 @@ export class MemoryBotStore implements BotStore {
   putReport(r: ReportRow) { return this.mod.putReport(r) }
   socialMutes() { return this.mod.socialMutes() }
   setMute(m: MuteRow, on: boolean) { return this.mod.setMute(m, on) }
+  private copy = new MemoryCopyStore()
+  copyWallets() { return this.copy.copyWallets() }
+  saveCopyWallet(w: CopyWalletRow) { return this.copy.saveCopyWallet(w) }
+  copyRules() { return this.copy.copyRules() }
+  saveCopyRule(r: CopyRuleRow) { return this.copy.saveCopyRule(r) }
+  deleteCopyRule(id: string) { return this.copy.deleteCopyRule(id) }
+  copyExecutions(perFollower: number) { return this.copy.copyExecutions(perFollower) }
+  appendCopyExecution(e: CopyExecRow) { return this.copy.appendCopyExecution(e) }
 }
 
 const SCHEMA = `
@@ -184,6 +193,17 @@ create table if not exists arcdex_social_reports (
   primary key (reporter, target)
 );
 create table if not exists arcdex_social_mutes (muter text not null, muted text not null, at timestamptz not null, primary key (muter, muted));
+-- Copy trading (copy/engine.ts): each follower's copy wallet (its key encrypted under BOT_WALLET_SECRET, as live bots'),
+-- its rules, and every copy made or skipped. Executions are a record: append-only, like the fee ledger.
+create table if not exists arcdex_copy_wallets (follower text primary key, address text not null unique, row jsonb not null, updated_at timestamptz not null default now());
+create table if not exists arcdex_copy_rules (id text primary key, follower text not null, leader text not null, row jsonb not null, updated_at timestamptz not null default now());
+create index if not exists arcdex_copy_rules_leader on arcdex_copy_rules (leader);
+create table if not exists arcdex_copy_executions (id text primary key, follower text not null, at timestamptz not null, row jsonb not null);
+create index if not exists arcdex_copy_executions_follower on arcdex_copy_executions (follower, at desc);
+drop trigger if exists arcdex_copy_executions_no_change on arcdex_copy_executions;
+create trigger arcdex_copy_executions_no_change before update or delete on arcdex_copy_executions for each row execute function arcdex_fee_append_only();
+drop trigger if exists arcdex_copy_executions_no_truncate on arcdex_copy_executions;
+create trigger arcdex_copy_executions_no_truncate before truncate on arcdex_copy_executions for each statement execute function arcdex_fee_append_only();
 `
 
 export class PostgresBotStore implements BotStore {
@@ -423,5 +443,42 @@ export class PostgresBotStore implements BotStore {
     await this.ready
     if (on) await this.sql`insert into arcdex_social_mutes (muter, muted, at) values (${m.muter}, ${m.muted}, ${new Date(m.at)}) on conflict (muter, muted) do nothing`
     else await this.sql`delete from arcdex_social_mutes where muter = ${m.muter} and muted = ${m.muted}`
+  }
+
+  async copyWallets(): Promise<CopyWalletRow[]> {
+    await this.ready
+    const rows = await this.sql`select row from arcdex_copy_wallets`
+    return (rows as { row: unknown }[]).map(r => (typeof r.row === 'string' ? JSON.parse(r.row) : r.row) as CopyWalletRow)
+  }
+  async saveCopyWallet(w: CopyWalletRow) {
+    await this.ready
+    await this.sql`insert into arcdex_copy_wallets (follower, address, row, updated_at) values (${w.follower}, ${w.address}, ${JSON.stringify(w)}::jsonb, now())
+      on conflict (follower) do update set row = excluded.row, updated_at = now()`
+  }
+  async copyRules(): Promise<CopyRuleRow[]> {
+    await this.ready
+    const rows = await this.sql`select row from arcdex_copy_rules`
+    return (rows as { row: unknown }[]).map(r => (typeof r.row === 'string' ? JSON.parse(r.row) : r.row) as CopyRuleRow)
+  }
+  async saveCopyRule(r: CopyRuleRow) {
+    await this.ready
+    await this.sql`insert into arcdex_copy_rules (id, follower, leader, row, updated_at) values (${r.id}, ${r.follower}, ${r.leader}, ${JSON.stringify(r)}::jsonb, now())
+      on conflict (id) do update set leader = excluded.leader, row = excluded.row, updated_at = now()`
+  }
+  async deleteCopyRule(id: string) {
+    await this.ready
+    await this.sql`delete from arcdex_copy_rules where id = ${id}`
+  }
+  async copyExecutions(perFollower: number): Promise<CopyExecRow[]> {
+    await this.ready
+    const rows = await this.sql`select row from (
+        select row, row_number() over (partition by follower order by at desc) as n from arcdex_copy_executions
+      ) x where n <= ${perFollower}`
+    return (rows as { row: unknown }[]).map(r => (typeof r.row === 'string' ? JSON.parse(r.row) : r.row) as CopyExecRow)
+  }
+  async appendCopyExecution(e: CopyExecRow) {
+    await this.ready
+    await this.sql`insert into arcdex_copy_executions (id, follower, at, row) values (${e.id}, ${e.follower}, ${new Date(e.at)}, ${JSON.stringify(e)}::jsonb)
+      on conflict (id) do nothing`
   }
 }

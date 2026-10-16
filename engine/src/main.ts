@@ -44,6 +44,7 @@ import { PostgresHistoryStore } from './store/postgresHistory'
 import { MemoryHotStore, RedisHotStore, type HotStore } from './store/hot'
 import { Bot } from './bot/bot'
 import { ControlVerifier } from './bot/control'
+import { toFunctionSelector, type Address } from 'viem'
 import { DEFAULT_LIMITS, LiveTrader } from './bot/liveTrader'
 import { mailerFromEnv } from './bot/mailer'
 import { PaperAccounts } from './bot/paperAccounts'
@@ -68,6 +69,13 @@ import { TradeBook, type IndexRow } from './social/book'
 import { SocialBoards } from './social/boards'
 import { Moderation } from './social/moderation'
 import { SocialApi } from './social/api'
+import { CopyEngine } from './copy/engine'
+import { CopyApi } from './copy/api'
+import { leaderVerdict, screen as copyScreen } from './copy/rules'
+import { decodeTrades, T_SWAPPED, type RouterLog } from './social/pnl'
+import { emptyLedger, FUNDER, knownFunders, scanFunding } from './bot/funders'
+import { FEE_RECIPIENT } from './feeWallet'
+import { SOCIAL_ROUTERS } from '../../api/_socialProtocol'
 import { setSocialGuard } from '../../api/social'
 import type { VerifyAdmin } from './site/tradeSwitch'
 import { SOL_RPC_SERVER } from '../../api/_solCore'
@@ -407,6 +415,9 @@ async function main() {
   // The social layer (social/*): verified PnL from the routers' own trades, the wash-trade filter, comments, reports
   // and mutes. SOCIAL=off stops it.
   let moderation: Moderation | null = null
+  let socialBoards: SocialBoards | null = null
+  let siteFlags: FeatureFlags | null = null
+  let copyRef: CopyEngine | null = null
   if (dataApi && !/^(0|off|false|no)$/i.test(process.env.SOCIAL?.trim() ?? '')) {
     const headNow = async () => Number(BigInt(await rpc.call<string>('eth_blockNumber', [])))
     const book = new TradeBook({
@@ -441,7 +452,8 @@ async function main() {
     // A banned wallet can't post a thesis, edit its profile or make a clan either (api/social.ts).
     const mod = moderation
     setSocialGuard(me => (mod.isBanned(me) ? 'This wallet can’t post on ARCDEX' : null))
-    dataApi.social = new SocialApi({ book, boards: new SocialBoards(book), moderation, origins: cfg.allowedOrigins, revoked: adminReady ? sessionRevoked : undefined })
+    socialBoards = new SocialBoards(book)
+    dataApi.social = new SocialApi({ book, boards: socialBoards, moderation, origins: cfg.allowedOrigins, revoked: adminReady ? sessionRevoked : undefined })
     log.info('social layer', { trades: book.size, scannedTo: await book.scannedTo() })
   }
   // The admin panel (admin/*): sign-in, live sessions, fees and the sweeper, trades, the audit log, runtime flags.
@@ -450,6 +462,7 @@ async function main() {
     const off = (v: string | undefined) => /^(0|off|false|no)$/i.test(v?.trim() ?? '')
     const auth = new AdminAuth({ admins: cfg.admins, origins: cfg.allowedOrigins, ttlMinutes: Number(process.env.ADMIN_SESSION_TTL_MINUTES) || 30, signedBy: (a, m, sig) => adminCheck.signedBy(a, m, sig), audit: botStore, alert })
     const flags = new FeatureFlags({ settings: botStore, audit: botStore, verify: verifyAdmin })
+    siteFlags = flags
     await flags.load()
     const minute = cronMinuteOfDay(process.env.SWEEPER_CRON ?? '0 3 * * *')
     const jup = feeRefs?.jupiter ?? null
@@ -493,7 +506,7 @@ async function main() {
     }
     dataApi.admin = new AdminApi({
       auth, origins: cfg.allowedOrigins, audit: botStore, verify: verifyAdmin, flags, sweeper, ledger: feeRefs?.ledger ?? null,
-      traffic: dataApi.traffic, tradeSwitch: dataApi.tradeSwitch, trades, moderation,
+      traffic: dataApi.traffic, tradeSwitch: dataApi.tradeSwitch, trades, moderation, copy: () => copyRef,
       bots: accounts ? () => ({ bots: accounts.count, running: accounts.running, live: accounts.liveCount }) : null,
     })
     log.info('admin panel', { admins: cfg.admins.length, sweeper: minute === null || off(process.env.SWEEPER) ? 'off' : `daily after ${Math.floor(minute / 60)}:${String(minute % 60).padStart(2, '0')} UTC`, alerts: !!alert })
@@ -510,6 +523,67 @@ async function main() {
     eng.observers.push(bot)
     await bot.start()
     dataApi?.attachBot(bot, control, accounts, users, tiers)
+  }
+  // Copy trading (copy/*, the build pack's Phase 7): engine-held copy wallets mirror the verified leaders' router trades.
+  // On only once an admin turns the copyTrading flag on (/admin → Flags); COPY=off stops it whatever the flag says.
+  if (dataApi && socialBoards && !/^(0|off|false|no)$/i.test(process.env.COPY?.trim() ?? '')) {
+    const boards = socialBoards
+    const SWAP_ROUTER_V2 = '0xd07583f7db671521aacfda2b4612ad187aa2924e'
+    let feeBps: number | null = null
+    const readFee = async () => {
+      const r = await rpc.call<string>('eth_call', [{ to: SWAP_ROUTER_V2, data: toFunctionSelector('feeBps()') }, 'latest'])
+      const n = Number(BigInt(r))
+      if (Number.isInteger(n) && n >= 0 && n <= 1_000) feeBps = n
+    }
+    await readFee().catch(e => log.warn('copy: router fee not read', { error: errMsg(e) }))
+    every(10 * 60_000, 'copy fee', () => { void readFee().catch(e => log.warn('copy: router fee not read', { error: errMsg(e) })) })
+    const BALANCE_OF = '0x70a08231'
+    const copy = new CopyEngine({
+      store: botStore, vault,
+      makeExec: key => new LiveExecutor({ privateKey: key, readUrls: cfg.httpUrls, sendUrl: cfg.live.sendUrl }),
+      pool: token => { const k = eng.tokens.get(token)?.mainPool; return k ? pools.get(k) ?? null : null },
+      liquidityUsd: token => eng.tokens.get(token)?.liquidityUsd ?? null,
+      symbol: token => eng.metas.get(token)?.symbol ?? null,
+      // The scanner's report (a fresh one, or a scan now: the full one for safe-only rules, whose holders must be known),
+      // and the rug guard. A coin the scanner doesn't track (no launch record) can't be rated, so it isn't copied.
+      screen: async (token, level) => {
+        if (!bot) return { rating: 'unknown', why: 'the safety scanner isn’t running' }
+        const deep = level === 'safe-only'
+        const hit = bot.reportCached(token, 10 * 60_000)
+        const r = hit && (!deep || hit.checks.some(c => c.id === 'holders' && c.ok !== null)) ? hit
+          : await Promise.race([bot.report(token, deep), new Promise<null>(res => setTimeout(() => res(null), 20_000))]).catch(() => null)
+        return copyScreen(r, bot.rug.recentAlarm(token)?.text ?? null)
+      },
+      leader: async address => leaderVerdict(await boards.trader(address), Date.now()),
+      leaders: async limit => {
+        const b = await boards.board('all', 200)
+        return b.rows.filter(r => !copy.isCopyWallet(r.trader) && !leaderVerdict({ periods: { all: r.stats }, wash: null }, Date.now())).slice(0, limit)
+          .map(r => ({ address: r.trader, realized: r.stats.realized, volume: r.stats.volume, trades: r.stats.trades, winRate: r.stats.counted ? r.stats.wins / r.stats.counted : null, first: r.stats.first }))
+      },
+      leaderBalanceAt: async (token, leader, block) => {
+        const r = await rpc.call<string>('eth_call', [{ to: token, data: `${BALANCE_OF}${leader.slice(2).padStart(64, '0')}` }, `0x${block.toString(16)}`])
+        return BigInt(r)
+      },
+      feeBps: () => feeBps,
+      feeWallet: FEE_RECIPIENT,
+      on: () => (siteFlags?.state().flags.copyTrading === true ? null : 'copy trading is off: an admin turns it on from /admin → Flags'),
+      tradingOn: () => !dataApi.tradeSwitch?.offWhy('arc'),
+      verify: (a, m, sig) => adminCheck.signedBy(a as Address, m, sig),
+      funders: async w => {
+        const l = w.funding ?? emptyLedger()
+        const head = l.scannedTo ? 0 : Number(BigInt(await rpc.call<string>('eth_blockNumber', [])))
+        const start = l.scannedTo ? l.scannedTo + 1 : Math.max(0, head - Math.ceil((Date.now() - w.createdAt) / FUNDER.msPerBlock) - FUNDER.margin)
+        const ledger = await scanFunding(rpc, w.address, l, start)
+        return { list: knownFunders(ledger), ledger }
+      },
+      ledger: rows => feeRefs ? feeRefs.ledger.record(rows) : Promise.resolve(0),
+      alert: webhookAlert(process.env.ALERT_WEBHOOK_URL),
+    })
+    await copy.load().catch(e => log.error('copy: load failed', { error: errMsg(e) }))
+    copyRef = copy
+    dataApi.copy = new CopyApi({ engine: copy, origins: cfg.allowedOrigins, revoked: adminReady ? sessionRevoked : undefined })
+    every(60_000, 'copy fees', () => { void copy.settleFees().catch(e => log.warn('copy: fee settlement failed', { error: errMsg(e) })) })
+    log.info('copy trading', { on: !copy.why(), why: copy.why(), feeBps })
   }
   // The signal engine (engine/src/quant): its own scoring, strategies, paper book and validation; live orders only
   // behind its live gate (SIG_LIVE_ALLOWED, the owner's switch, walk-forward and paper records).
@@ -591,6 +665,11 @@ async function main() {
   const PARSE_WINDOW = 2_000
   const handler = async (logs: RawLog[], ctx: { replay: boolean }) => {
     const receivedAt = Date.now()
+    // A leader's trade through ARCDEX's routers is copied first, before the batch is parsed (copy/engine.ts).
+    if (copyRef && !ctx.replay) {
+      const routerLogs = logs.filter(l => SOCIAL_ROUTERS[l.address.toLowerCase()] && l.topics[0]?.toLowerCase() === T_SWAPPED)
+      for (const t of decodeTrades(routerLogs as RouterLog[], () => receivedAt)) void copyRef.onLeaderTrade(t, receivedAt).catch(e => log.error('copy: leader trade not handled', { tx: t.tx, error: errMsg(e) }))
+    }
     // Pools created in this batch first, so their swaps find them registered
     // instead of each scanning the chain for the Initialize.
     await Promise.all(logs.filter(isInitialize).map(l => pools.fromInitialize(l).catch(e => {
@@ -623,6 +702,8 @@ async function main() {
     { address: POOL_MANAGER, topics: [[V4_SWAP, V4_INITIALIZE]] },
     { topics: [V3_SWAP] },
     ...adapters.filters(),
+    // ARCDEX's routers' Swapped events: leaders' trades for copy trading.
+    ...(copyRef ? [{ address: Object.keys(SOCIAL_ROUTERS), topics: [T_SWAPPED] }] : []),
   ]
   const fetchLogs: FetchLogs = async (f, from, to, head) => {
     const r = await scanLogs<RawLog[]>({ address: f.address, topics: f.topics ?? [] }, from, to, { head, reduce: l => l, deadline: Date.now() + 20_000, concurrency: 4 })

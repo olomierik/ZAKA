@@ -21,6 +21,7 @@ import { useCash } from '../lib/usdc'
 import { useTokenMeta, type TokenMeta } from '../lib/tokenMeta'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import { useFlag } from '../lib/flags'
 
 // A trader's public page (fomo parity): banner, identity, mutuals, clan,
 // avg hold / trades / joined, top trades, PnL chart by window, cash with
@@ -67,6 +68,7 @@ function Profile_({ addr, navigate }: { addr: string; navigate: (p: Page) => voi
   const [profile, setProfile] = useState<Profile | null>(null)
   const [stats, setStats] = useState({ followers: 0, following: 0 })
   const [iFollow, setIFollow] = useState(false)
+  const copyOn = useFlag('copyTrading')
   const [mutuals, setMutuals] = useState<Profile[]>([])
   const [clan, setClan] = useState<Clan | null>(null)
   const [positions, setPositions] = useState<PositionRow[]>([])
@@ -177,6 +179,7 @@ function Profile_({ addr, navigate }: { addr: string; navigate: (p: Page) => voi
               <>
                 <button onClick={() => me ? setModal('send') : setErr(T("Connect or unlock a wallet to send cash"))} style={btn('var(--bg-2)')}>{T("Send cash")}</button>
                 <button onClick={() => void toggleFollow()} disabled={busy} style={btn(iFollow ? 'var(--bg-2)' : 'var(--adx-accent)')}>{iFollow ? T("Following") : T("Follow")}</button>
+                {copyOn && <button onClick={() => navigate({ name: 'copy', leader: addr })} style={btn('var(--bg-2)')} title={T('Mirror this trader’s trades from a copy wallet')}>⧉ {T('Copy')}</button>}
                 <span style={{ ...btn('var(--bg-2)'), padding: '6px 8px', display: 'inline-flex', alignItems: 'center' }}><SocialMenu target={`profile:${addr}`} author={addr} trader={trader} onError={setErr} label={T('More about this trader')} /></span>
               </>
             )}
