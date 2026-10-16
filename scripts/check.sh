@@ -22,6 +22,7 @@ echo "== trade forms";      bun scripts/test-trade-details.tsx
 echo "== engine tests";     bun test engine/test
 echo "== chart framing";   bun scripts/test-chart-frame.ts
 echo "== pay from chains"; bun scripts/test-xevm.ts
+echo "== fast buys";      bun scripts/test-fast-buy.ts
 if command -v gitleaks >/dev/null; then
   echo "== secrets"; gitleaks dir . --config .gitleaks.toml --no-banner --redact
 else

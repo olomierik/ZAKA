@@ -59,6 +59,8 @@ jobs:
         run: bun scripts/test-chart-frame.ts
       - name: Paying from Ethereum, Base or Arbitrum (Relay quote checks)
         run: bun scripts/test-xevm.ts
+      - name: Fast buys (approval and swap back to back)
+        run: bun scripts/test-fast-buy.ts
 
   engine:
     name: Engine (typecheck, tests)

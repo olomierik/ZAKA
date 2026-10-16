@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { openConnectModal } from './ConnectWallet'
-import { parseUnits, formatUnits, type Address, type Hex } from 'viem'
+import { encodeFunctionData, parseUnits, formatUnits, type Address, type Hex } from 'viem'
 import { client } from '../api/launchpad'
 import { USDC_ADDRESS, type SwapRoute } from '../api/argusMarket'
 import { useTrader, shortAddr } from '../lib/identity'
@@ -23,6 +23,9 @@ import { curveBuyCall, curveRouterConfigured, curveSellCall, curveSpender, loadC
 import { assertTradingOn } from '../lib/tradeSwitch'
 import { sizeProblem } from '../lib/guardrails'
 import { useBuyRisk } from '../lib/buyRisk'
+import { gasWithAllowance, usdcAllowanceOverride } from '../lib/fastBuy'
+import { ARC_USDC } from '../lib/acrossQuote'
+import { arc } from '../wagmi'
 
 export { SWAP_ROUTER_ADDRESS }
 
@@ -46,7 +49,7 @@ const ROUTER_V1 = [
   { name: 'swapExactInV4', type: 'function', stateMutability: 'nonpayable', inputs: V4_IN, outputs: OUT },
   { name: 'swapExactInV3', type: 'function', stateMutability: 'nonpayable', inputs: V3_IN, outputs: OUT },
 ] as const
-const ROUTER_V2 = [
+export const ROUTER_V2 = [
   { name: 'swapExactInV4', type: 'function', stateMutability: 'nonpayable', inputs: [...V4_IN, REF], outputs: OUT },
   { name: 'swapExactInV3', type: 'function', stateMutability: 'nonpayable', inputs: [...V3_IN, REF], outputs: OUT },
 ] as const
@@ -211,7 +214,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
 
   // One-tap with the trading wallet (signs locally, no pop-up); an external
   // wallet is put on Arc first (lib/tx.ts).
-  const send = (req: { address: Address; abi: unknown; functionName: string; args: unknown[]; value?: bigint }): Promise<Hex> => sendArc(trader.kind, req as never)
+  const send = (req: { address: Address; abi: unknown; functionName: string; args: unknown[]; value?: bigint; gas?: bigint; maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint; chainId?: number }): Promise<Hex> => sendArc(trader.kind, req as never)
 
   /** The trade's outcome, shown and remembered the same way for both routers. */
   function finish(outNum: number) {
@@ -373,7 +376,10 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       if (tooBig) throw new Error(tooBig)
       if (route.kind === 'curve') { await submitCurve(route.curve); return }
       if (route.kind === 'v4native') { await submitNative(info, route.key); return }
-      if (needsApprove) {
+      // The trading wallet buys without waiting for its approval (lib/fastBuy.ts): the swap is simulated as though the
+      // approval had landed, then both are sent back to back.
+      const fast = needsApprove && trader.kind === 'trading-wallet' && mode === 'buy' && tokenIn.toLowerCase() === ARC_USDC
+      if (needsApprove && !fast) {
         setStep('approving')
         // Exact amount only — the router never needs more than this trade.
         const h = await send({ address: tokenIn, abi: ERC20_ABI, functionName: 'approve', args: [SWAP_ROUTER_ADDRESS, amountIn] })
@@ -390,7 +396,8 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       // the coin's tax hook and price impact — and it catches a trade that
       // would revert before anything is signed.
       const sim = callFor(info, 1n, referrer)
-      const { result } = await client.simulateContract({ address: SWAP_ROUTER_ADDRESS, abi: sim.abi, functionName: sim.functionName, args: sim.args, account: me } as never)
+      const override = fast ? usdcAllowanceOverride(me, SWAP_ROUTER_ADDRESS, amountIn) : undefined
+      const { result } = await client.simulateContract({ address: SWAP_ROUTER_ADDRESS, abi: sim.abi, functionName: sim.functionName, args: sim.args, account: me, ...(override ? { stateOverride: override } : {}) } as never)
       const out = result as bigint
 
       // Price impact vs. the market price (after fee and tax, so it's the
@@ -401,6 +408,19 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       const minOut = (out * BigInt(Math.round((100 - slippage) * 100))) / 10_000n
       setStep('swapping')
       const call = callFor(info, minOut, referrer)
+      if (fast) {
+        // Gas and fees are set here, so nothing asks a node to fill the swap before its approval lands.
+        const data = (encodeFunctionData as (p: unknown) => Hex)({ abi: call.abi, functionName: call.functionName, args: call.args })
+        const [gas, fees] = await Promise.all([gasWithAllowance(client as never, me, SWAP_ROUTER_ADDRESS, data, SWAP_ROUTER_ADDRESS, amountIn), client.estimateFeesPerGas()])
+        const a = await send({ address: tokenIn, abi: ERC20_ABI, functionName: 'approve', args: [SWAP_ROUTER_ADDRESS, amountIn] })
+        const h = await send({ address: SWAP_ROUTER_ADDRESS, abi: call.abi, functionName: call.functionName, args: call.args, gas, maxFeePerGas: fees.maxFeePerGas, maxPriorityFeePerGas: fees.maxPriorityFeePerGas, chainId: arc.id })
+        const [ra, rs] = await Promise.all([waitForReceipt(a), waitForReceipt(h)])
+        if (ra.status !== 'success') throw new Error(T('Approval failed'))
+        if (rs.status !== 'success') throw new Error(T('Swap reverted'))
+        setAllowance(0n)
+        finish(outNum)
+        return
+      }
       const h = await send({ address: SWAP_ROUTER_ADDRESS, abi: call.abi, functionName: call.functionName, args: call.args })
       const rc = await waitForReceipt(h)
       if (rc.status !== 'success') throw new Error(T('Swap reverted'))

@@ -2877,6 +2877,18 @@ Owner: "the limitation of having to be on Arc to trade". A trader holding USDC o
 - **Not built yet:** selling back to those chains (sales still pay out on Arc or Solana).
 - **Tests:** `bun scripts/test-xevm.ts` (in CI), on real quotes recorded by `bun scripts/capture-relay-xevm.ts` (quotes only): every route passing, 24 tampered quotes refused; planting a missing depositor or token check fails it. `test-xsol`, `test-solana` and `test-bsc` still pass.
 
+## Faster buys: approval and swap back to back (2026-10-16)
+
+Owner: "trading speed". A trading-wallet buy through ArcDexSwapRouter used to wait for its approval: the receipt, then until the node showed the allowance, and only then simulate and send the swap.
+- **Now (`lib/fastBuy.ts`, `ArgusSwapWidget` submit):** the swap is simulated, and its gas measured, as though the approval had already landed, with a read-only override of Arc USDC's allowance. Then the approval and the swap are signed and sent back to back, and both receipts are awaited together.
+  - **The slot:** Arc's USDC keeps allowances in Circle's FiatToken layout, `allowed` at base slot 10. It was found by reading overrides back on mainnet; Arc's nodes accept overrides on `eth_call` and `eth_estimateGas`.
+  - **The second transaction** carries its own gas (the measured gas plus 30%), fees and chain id, so viem asks the node nothing it can't answer yet. Its nonce comes from the trading wallet's own count (`walletNonces`: one past the last broadcast).
+- **Unchanged:** the approval is still exactly the amount, the swap still carries its minimum received, and the price-impact hold now runs before anything is signed. If the approval somehow failed, the swap would revert for want of allowance and cost only its gas.
+- **Where:** trading-wallet buys paid in USDC through the router. External wallets confirm each transaction themselves, and sales, curves and native-USDC pools keep their own paths.
+- **Tests:**
+  - `bun scripts/test-fast-buy.ts` (in CI): the slot; the trading wallet's real client against a stand-in node still reporting the old count, giving consecutive nonces with nothing estimated or filled for the swap.
+  - `bun scripts/check-fast-buy.ts` (live, nothing sent): a $1 $ARCDEX buy from an address that never approved the router is refused without the override and goes through with it (gas measured). One unit short is refused.
+
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
 **Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**
