@@ -59,10 +59,10 @@ export default function CopyPage({ navigate, leader: preset }: { navigate: (p: P
   }, [trader.address])
   useEffect(() => {
     void load()
-    // While copies are under way, every 3 seconds; otherwise every 15.
-    const id = setInterval(() => { void load() }, me?.inFlight.length ? 3_000 : 15_000)
+    // While copies are under way, every 3 seconds; while following anyone, every 5; otherwise every 15.
+    const id = setInterval(() => { void load() }, me?.inFlight.length ? 3_000 : me?.rules.some(r => r.enabled) ? 5_000 : 15_000)
     return () => clearInterval(id)
-  }, [load, me?.inFlight.length])
+  }, [load, me?.inFlight.length, me?.rules])
 
   const run = async (fn: () => Promise<unknown>) => {
     setErr(null)
@@ -342,7 +342,7 @@ function Activity({ me, profiles }: { me: CopyMeV; profiles: Map<string, Profile
               <span className={e.side === 'buy' ? 'up' : 'down'}><i className="cp-l">{T('Trade')}</i>{e.side === 'buy' ? T('Buy') : T('Sell')} {e.symbol ?? shortAddr(e.token)}</span>
               <span><i className="cp-l">{T('Amount')}</i>{usd(e.usd)}</span>
               <span><i className="cp-l">{T('After the leader')}</i>{secs(e.latencyMs)}</span>
-              <span className="cp-res"><b>{T(STATUS[e.status])}</b>{e.tx ? <> · <a href={`${EXPLORER}/tx/${e.tx}`} target="_blank" rel="noreferrer">tx ↗</a></> : null}{e.reason && <small>{e.reason}</small>}</span>
+              <span className="cp-res"><span><b>{T(STATUS[e.status])}</b>{e.tx ? <> · <a href={`${EXPLORER}/tx/${e.tx}`} target="_blank" rel="noreferrer">tx ↗</a></> : null}</span>{e.reason && <small>{e.reason}</small>}</span>
             </div>
           ))}
         </div>

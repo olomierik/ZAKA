@@ -2951,6 +2951,8 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .cp-failed .cp-res b { color: var(--red); }
 .cp-skipped .cp-res b { color: var(--text-muted); }
 .cp-busy { color: var(--amber); font-size: 0.74rem; font-weight: 700; }
+.adm-copy th, .adm-copy td { padding: 4px 12px 4px 0; white-space: nowrap; }
+.adm-copy td:last-child { white-space: normal; }
 @media (max-width: 760px) {
   .cp-th { display: none; }
   .cp-rules .cp-tr, .cp-leaders .cp-tr, .cp-acts-t .cp-tr { grid-template-columns: 1fr 1fr; gap: 4px 10px; }

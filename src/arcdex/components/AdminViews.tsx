@@ -279,7 +279,7 @@ export function AdminCopy() {
             <Stat label={T('Fees owed')} value={usd(data.feeDueUsd)} hint={T('{v} paid', { v: usd(data.feesPaidUsd) })} />
           </div>
           <div style={{ overflowX: 'auto' }}>
-            <table className="fx-fine" style={{ width: '100%', borderCollapse: 'collapse', fontVariantNumeric: 'tabular-nums' }}>
+            <table className="fx-fine adm-copy" style={{ width: '100%', borderCollapse: 'collapse', fontVariantNumeric: 'tabular-nums' }}>
               <thead><tr style={{ textAlign: 'left', color: 'var(--text-muted)' }}>
                 <th>{T('When')}</th><th>{T('Follower')}</th><th>{T('Leader')}</th><th>{T('Side')}</th><th>{T('Coin')}</th><th>{T('USD')}</th><th>{T('After the leader')}</th><th>{T('Result')}</th>
               </tr></thead>
