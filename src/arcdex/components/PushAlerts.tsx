@@ -2,6 +2,7 @@
 // pages that sets a price alert or a whale alert (a single trade of at least an amount) on that coin.
 
 import { useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { t as T, N_ } from '../lib/i18n'
 import { addCoinAlert, disablePush, enablePush, pushSupport, removeCoinAlert, testPush, usePush, type CoinAlert } from '../lib/push'
 
@@ -48,7 +49,8 @@ export function CoinAlertBell({ address, symbol, priceUsd }: { address: string; 
   return (
     <>
       <button className={`tk-link pa-bell-coin${n ? ' on' : ''}`} title={T('Alerts on {sym}', { sym: symbol })} aria-label={T('Alerts on {sym}', { sym: symbol })} onClick={() => setOpen(true)}>🔔{n ? <b>{n}</b> : null}</button>
-      {open && <CoinAlertModal address={address.toLowerCase()} symbol={symbol} priceUsd={priceUsd} onClose={() => setOpen(false)} />}
+      {/* In <body>, not inside the header's row of links, whose styles (one line, no wrapping) it would inherit. */}
+      {open && createPortal(<CoinAlertModal address={address.toLowerCase()} symbol={symbol} priceUsd={priceUsd} onClose={() => setOpen(false)} />, document.body)}
     </>
   )
 }
