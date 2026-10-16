@@ -159,6 +159,12 @@ check(/const guarded = fromTrading \|\| guard\.privy/.test(src('src/arcdex/pages
 const csp = src('netlify.toml').match(/Content-Security-Policy = "([^"]+)"/)?.[1] ?? ''
 check(/script-src [^;]*https:\/\/challenges\.cloudflare\.com/.test(csp) && /frame-src 'self' https:/.test(csp), 'the CSP lets in Privy’s frames (https:) and its bot check (Turnstile)')
 check(/"@privy-io\/react-auth": "\d+\.\d+\.\d+"/.test(src('package.json')), 'the SDK is pinned to an exact version')
+// Netlify's secret scan fails a deploy on values that look like secrets: the publishable keys inside Privy's SDK are
+// listed as public in netlify.toml, and the app id's variable is left out of the scan.
+const sdkKeys = [...new Set(files('node_modules/@privy-io/react-auth/dist/esm').filter(f => f.endsWith('.mjs')).flatMap(f => src(f).match(/pk_(?:live|test)_[0-9A-Za-z]{10,}/g) ?? []))].sort()
+const omitted = (src('netlify.toml').match(/SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES = "([^"]*)"/)?.[1] ?? '').split(',').filter(Boolean).sort()
+check(JSON.stringify(sdkKeys) === JSON.stringify(omitted), `netlify.toml lists exactly the publishable keys Privy's SDK ships (${sdkKeys.length})`)
+check(/SECRETS_SCAN_OMIT_KEYS = "[^"]*\bVITE_PRIVY_APP_ID\b/.test(src('netlify.toml')), 'the app id is left out of Netlify’s secret scan (it ships in the page by design)')
 
 console.log(fails ? `\n${fails} failed` : '\nall passed')
 process.exit(fails ? 1 : 0)

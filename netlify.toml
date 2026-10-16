@@ -14,6 +14,13 @@
   VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwY2FhY2h6dW1ycGNjZHRhamtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5NjE0MzksImV4cCI6MjEwNTUzNzQzOX0.91KuOFaBZp5ChuRgNUTSjhUng291a31fneD7bhFG4Us"
   VITE_ARC_LAUNCHPAD_ADDRESS = "0xEf6a8fdaF0181E19CC2C7575ada4b9c279809a67"
   VITE_ARCDEX_SWAP_ROUTER_ADDRESS = "0xD07583f7DB671521AAcFdA2b4612AD187aA2924e"
+  # Netlify's secret scan fails a deploy that ships a value it takes for a secret. These are public by design:
+  #   VITE_PRIVY_APP_ID, Privy's app id, which the page needs (the build pack's 05: "the only keys the client may see
+  #   are public identifiers (for example PRIVY_APP_ID)"), whether or not it's marked secret in Netlify;
+  #   the two Stripe publishable keys inside Privy's SDK (for its card on-ramp): publishable keys are meant for pages.
+  # scripts/test-privy.tsx fails when Privy's SDK ships other ones, so this list follows the pinned version.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_PRIVY_APP_ID"
+  SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES = "pk_live_hirbpu0cVcLHrjktC9l7fbc9ctjv0SL,pk_test_fqWjXZMSFwloh7orvJsRfjiUHXJqFzI"
 
 # The site's functions live on the engine: here they're a plain 404, so the site's fallback fails fast instead of
 # reading the app's HTML as data.
