@@ -24,6 +24,7 @@ import { isContractWallet } from '../lib/across'
 import { bnbUsd, BSC_USDT, type FourInfo } from '../api/bscMarket'
 import { t as T } from '../lib/i18n'
 import { useBuyRisk } from '../lib/buyRisk'
+import TradeDetails, { HOT } from './TradeDetails'
 
 interface Props {
   token: string
@@ -186,6 +187,8 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
   const refused = verdict === 'refuse' || verdict === 'off-market'
   const impactPct = value ? Math.max(0, value.impact * 100) : null
   const cost = value ? Math.max(0, value.cost * 100) : null
+  const impactHot = refused || (impactPct ?? 0) >= HOT.impactPct
+  const costHot = (cost ?? 0) >= HOT.costPct
   const needsCostTick = verdict === 'confirm' || verdict === 'unpriced'
 
   const noBuy = mode === 'buy' && !!buyBlocked
@@ -296,23 +299,29 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
       <div className="swap-info">
         <Row label={T('You receive (est.)')} value={haveQuote ? outText(outAmount) : quoting ? '…' : '—'}
           sub={haveQuote && outUsd > 0 && verdict !== 'off-market' && mode === 'buy' ? `≈ ${fmtUsd(outUsd)}` : undefined} />
-        <Row label={T('Minimum received')} value={haveQuote ? outText(minAmount) : '—'} />
-        {curve ? (
-          <>
-            <Row label={T('Platform fee')} value="0%" />
-            <Row label={T('four.meme fee')} value={fq ? `${fmtTok(Number(formatUnits(fq.fee, 18)))} ${ROUTE_LABEL[curveRoute]}` : '≈1%'} />
-            <Row label={T('Max slippage')} value={`${CURVE_SLIPPAGE_BPS / 100}%`} />
-          </>
-        ) : (
-          <>
-            <Row label={T('Platform fee')} value={T('{pct} (in {c})', { pct: pct(feeBps), c: route === 'arc' ? 'USDC' : ROUTE_LABEL[route] })} />
-            <Row label={route === 'arc' ? T('Bridge & delivery (Relay)') : T('Swap (Relay)')} value={quote ? fmtUsd(relayFee) : '—'} />
-          </>
-        )}
-        {value && <Row label={T('Price impact')} value={verdict === 'off-market' ? T('{x}× the market price', { x: fmtTimes(value.rate) }) : impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`}
-          color={refused || impactPct! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : impactPct! >= 5 ? 'var(--amber)' : 'var(--green)'} />}
-        {value && !refused && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} color={cost! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : cost! >= 6 ? 'var(--amber)' : undefined} />}
-        <Row label={T('Arrives')} value={!haveQuote ? '—' : route === 'arc' && quote ? (mode === 'buy' ? T('on BNB Chain in ~{s}s', { s: Math.max(2, quote.fillSeconds) }) : T('on Arc in ~{s}s', { s: Math.max(2, quote.fillSeconds) })) : T('in your wallet in seconds')} />
+        {/* A high price impact or cost stays out of Details. */}
+        {value && impactHot && <Row label={T('Price impact')} value={verdict === 'off-market' ? T('{x}× the market price', { x: fmtTimes(value.rate) }) : impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`}
+          color={refused || impactPct! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : 'var(--amber)'} />}
+        {value && !refused && costHot && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} color={cost! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : 'var(--amber)'} />}
+        <TradeDetails hint={curve ? T('{fee} fee · {via}', { fee: '0%', via: 'four.meme' }) : T('{fee} fee · {via}', { fee: pct(feeBps), via: 'Relay' })}>
+          <Row label={T('Minimum received')} value={haveQuote ? outText(minAmount) : '—'} />
+          {curve ? (
+            <>
+              <Row label={T('Platform fee')} value="0%" />
+              <Row label={T('four.meme fee')} value={fq ? `${fmtTok(Number(formatUnits(fq.fee, 18)))} ${ROUTE_LABEL[curveRoute]}` : '≈1%'} />
+              <Row label={T('Max slippage')} value={`${CURVE_SLIPPAGE_BPS / 100}%`} />
+            </>
+          ) : (
+            <>
+              <Row label={T('Platform fee')} value={T('{pct} (in {c})', { pct: pct(feeBps), c: route === 'arc' ? 'USDC' : ROUTE_LABEL[route] })} />
+              <Row label={route === 'arc' ? T('Bridge & delivery (Relay)') : T('Swap (Relay)')} value={quote ? fmtUsd(relayFee) : '—'} />
+            </>
+          )}
+          {value && !impactHot && <Row label={T('Price impact')} value={impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`} color="var(--green)" />}
+          {value && !refused && !costHot && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} />}
+          <Row label={T('Arrives')} value={!haveQuote ? '—' : route === 'arc' && quote ? (mode === 'buy' ? T('on BNB Chain in ~{s}s', { s: Math.max(2, quote.fillSeconds) }) : T('on Arc in ~{s}s', { s: Math.max(2, quote.fillSeconds) })) : T('in your wallet in seconds')} />
+          {!compact && <p className="swap-note">{BSC_NOTE()}</p>}
+        </TradeDetails>
       </div>
 
       {quoteErr && !busy && <div className="rh-msg error">{quoteErr}</div>}
@@ -365,7 +374,6 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
           {bnb !== null && <> · BNB {bnb < 0.00001 ? '0' : bnb.toPrecision(2)}</>}
         </div>
       )}
-      {!compact && <p className="swap-note">{BSC_NOTE()}</p>}
     </div>
   )
 }

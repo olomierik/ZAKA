@@ -2529,6 +2529,22 @@ The build pack's Phase 3 asks for Lighthouse performance 85+ on a mid-range mobi
   - `bun scripts/test-app-shell.ts` (in CI): the boot script on every Trenches path and the others, chains, languages and blocked storage, and the frame's labels, chains, heights and breakpoints against the app's own source.
   - The Privy browser check (23 checks) was run again after the windows became lazy: all passed.
 
+## Phase 3, second part: one-field Buy/Sell with a Details drawer (2026-10-16)
+
+The build pack's "single-field Buy/Sell, collapsed Details drawer". The owner chose to do it on coin pages and keep the Trenches and futures as they are ("proceed with your recommendations", 2026-10-16).
+
+- **What a form shows:** Buy / Sell, the one amount field with its presets, what the trade gets, the safety rating and the button.
+- **The drawer (`components/TradeDetails.tsx`):** "Details ▾" with a short hint while closed ("0.5% fee · 3% slippage", "0.5% fee · Relay"). Inside: the route, minimum received, fees, creator tax, slippage, when it arrives, which wallet trades, and the form's note.
+  - Collapsed by default. Open or closed is one setting for every form, kept in this browser (`arcdex:trade-details`).
+- **Never in the drawer:** a price impact from 5% or a total cost from 6% (`HOT`, in amber, red at the confirm limit), a snipe tax, the ticks that confirm them, the safety rating, errors, and the notes that say why a coin can't be bought.
+- **Forms:** Arc (`ArgusSwapWidget`, curves included), ARCDEX's launchpad (`CurveSwapWidget`), Solana, BNB Chain, Robinhood Chain, and paying from a Solana wallet (`SolanaCross`). The futures order panel and the Starknet page are unchanged.
+- **Tests:** `bun scripts/test-trade-details.tsx` (in CI): the drawer closed, open and remembered; in each form, one amount field, what the trade gets outside, the route, fees and slippage inside, and the warnings, ticks and rating outside. Hiding the high-impact row, or moving "You receive" into the drawer, each fails it.
+- **Checked in Chromium** (every form mounted with the app's providers, other hosts refused), at 1280px and 390px:
+  - each form with one field and Details collapsed;
+  - opening one opens them all, and it's remembered after a reload;
+  - no sideways scroll.
+- Every new string is in all six dictionaries (4).
+
 ## Phase 6: verified PnL, the wash-trade filter, comments and moderation (2026-10-16)
 
 The build pack's Phase 6 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`): "PnL on profiles matches an independent on-chain recomputation; wash-trade test wallets are filtered; reports and mutes work", and its test matrix's "XSS on user content". Status against its tasks: `docs/REPO_MAP.md` §13. Profiles, follows, the feed, theses on charts and share links were already there.

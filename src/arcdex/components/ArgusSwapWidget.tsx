@@ -14,6 +14,7 @@ import { rememberHolding } from '../lib/held'
 import ShareCardModal from './ShareCardModal'
 import type { CardData } from '../lib/shareCard'
 import { setPrefs, usePrefs } from '../lib/prefs'
+import TradeDetails from './TradeDetails'
 import { t as T } from '../lib/i18n'
 import { waitForReceipt } from '../lib/receipts'
 import { onBalances } from '../lib/balances'
@@ -486,23 +487,39 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
 
       <div className="swap-info">
         <Row label={T("You receive (est.)")} value={estimate > 0 ? (mode === 'buy' ? `${fmtTok(estimate)} ${symbol}` : fmtUsd(estimate)) : '—'} />
-        <Row label={T("Route")} value={routeLoading ? T('Finding route…') : route ? routeText : T('No routable pool')} />
-        <Row label={T("Platform fee")} value={platformBps === null ? '…' : curve && !curveRouterConfigured ? '0%' : T('{pct} (in USDC)', { pct: pct(platformBps) })} />
-        {curve && <Row label={T("Curve fee")} value={pct(curve.feeBps)} />}
-        {/* An Argus creator tax; other launchpads charge through their pool's own fee (the note below). */}
-        {(!venue || taxBps > 0) && <Row label={T("Creator tax")} value={taxBps ? pct(taxBps) : '0%'} />}
+        {/* What needs attention stays out of Details: a high price impact and a snipe tax. */}
         {needsSnipeTick && <Row label={T("Snipe tax")} value={pct(snipe ?? 0)} color="var(--red)" />}
-        {impact !== null && (
-          <Row label={T("Price impact")} value={`${impact.toFixed(2)}%`} color={impact >= CONFIRM_IMPACT ? 'var(--red)' : impact >= WARN_IMPACT ? 'var(--amber)' : undefined} />
+        {impact !== null && impact >= WARN_IMPACT && (
+          <Row label={T("Price impact")} value={`${impact.toFixed(2)}%`} color={impact >= CONFIRM_IMPACT ? 'var(--red)' : 'var(--amber)'} />
         )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ color: 'var(--text-muted)' }}>{T("Max slippage")}</span>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {[1, 3, 5, 10].map(s => (
-              <button key={s} onClick={() => setSlippage(s)} style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.7rem', cursor: 'pointer', border: '1px solid var(--adx-card-border)', background: slippage === s ? 'var(--adx-accent)' : 'transparent', color: slippage === s ? 'var(--on-accent)' : 'var(--text-muted)' }}>{s}%</button>
-            ))}
+        <TradeDetails hint={T('{fee} fee · {s}% slippage', { fee: platformBps === null ? '…' : curve && !curveRouterConfigured ? '0%' : pct(platformBps), s: slippage })}>
+          <Row label={T("Route")} value={routeLoading ? T('Finding route…') : route ? routeText : T('No routable pool')} />
+          <Row label={T("Platform fee")} value={platformBps === null ? '…' : curve && !curveRouterConfigured ? '0%' : T('{pct} (in USDC)', { pct: pct(platformBps) })} />
+          {curve && <Row label={T("Curve fee")} value={pct(curve.feeBps)} />}
+          {/* An Argus creator tax; other launchpads charge through their pool's own fee (the note below). */}
+          {(!venue || taxBps > 0) && <Row label={T("Creator tax")} value={taxBps ? pct(taxBps) : '0%'} />}
+          {impact !== null && impact < WARN_IMPACT && <Row label={T("Price impact")} value={`${impact.toFixed(2)}%`} />}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: 'var(--text-muted)' }}>{T("Max slippage")}</span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {[1, 3, 5, 10].map(s => (
+                <button key={s} onClick={() => setSlippage(s)} style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.7rem', cursor: 'pointer', border: '1px solid var(--adx-card-border)', background: slippage === s ? 'var(--adx-accent)' : 'transparent', color: slippage === s ? 'var(--on-accent)' : 'var(--text-muted)' }}>{s}%</button>
+              ))}
+            </div>
           </div>
-        </div>
+          {me && !compact && (
+            <div className="swap-note">{T("Trading as")}{' '}{trader.kind === 'trading-wallet' ? T("⚡ trading wallet") : T("wallet")} <span style={{ fontFamily: 'var(--mono)' }}>{shortAddr(me)}</span>
+              {trader.kind === 'trading-wallet' ? T(" · one-tap, no pop-ups") : ''}
+            </div>
+          )}
+          {!compact && <p className="swap-note">{curve
+            ? curveRouterConfigured
+              ? T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee on top of the platform fee.", { launchpad: curve.venue })
+              : T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee; ARCDEX adds none.", { launchpad: curve.venue })
+            : venue
+              ? T("Every trade is simulated before it's sent. The pool's own fee, set by {launchpad}, applies on top of the platform fee.", { launchpad: venue.name })
+              : T("Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.")}</p>}
+        </TradeDetails>
       </div>
 
       {needsRiskTick && (
@@ -554,23 +571,10 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         </Note>
       )}
 
-      {me && !compact && (
-        <div className="swap-note">{T("Trading as")}{' '}{trader.kind === 'trading-wallet' ? T("⚡ trading wallet") : T("wallet")} <span style={{ fontFamily: 'var(--mono)' }}>{shortAddr(me)}</span>
-          {trader.kind === 'trading-wallet' ? T(" · one-tap, no pop-ups") : ''}
-        </div>
-      )}
-
       {unverified && (
         <div style={{ fontSize: '0.7rem', color: '#fcd34d', textAlign: 'center' }}>{T("⚠ Unverified token — anyone can launch a coin with any name. Check the contract before trading.")}</div>
       )}
 
-      {!compact && <p className="swap-note">{curve
-        ? curveRouterConfigured
-          ? T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee on top of the platform fee.", { launchpad: curve.venue })
-          : T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee; ARCDEX adds none.", { launchpad: curve.venue })
-        : venue
-          ? T("Every trade is simulated before it's sent. The pool's own fee, set by {launchpad}, applies on top of the platform fee.", { launchpad: venue.name })
-          : T("Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.")}</p>}
 
       {share && <ShareCardModal card={share.card} text={share.text} referralsLive={info?.version === 2} onClose={() => setShare(null)} />}
     </div>

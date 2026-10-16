@@ -301,7 +301,7 @@ Acceptance (06):
 | Task (06) | Status |
 |---|---|
 | Home, token page with live chart, portfolio screen | Exist: the Trenches (home), coin pages with the live chart, Portfolio. |
-| Single-field Buy/Sell, collapsed Details drawer; "no Pro toggle, order book or dense panels" | **Needs the owner's decision.** It conflicts with the terminal chosen on 2026-10-12 (motion.gift's dense lanes) and with futures' order book. Options: a one-field Buy/Sell with the rest under "Details" on coin pages, keeping the Trenches and futures as they are; or the beginner-only app the pack describes. |
+| Single-field Buy/Sell, collapsed Details drawer; "no Pro toggle, order book or dense panels" | **Done on coin pages** (the owner's choice, 2026-10-16): every trade form is one amount field and what it gets, with the route, fees and slippage in a Details drawer collapsed by default (`components/TradeDetails.tsx`). Warnings, confirmation ticks and the safety rating stay outside it. The Trenches and futures keep their dense layout, as chosen on 2026-10-12. |
 | PWA | Installable before (manifest, icons, standalone display). The service worker shows alerts and caches nothing, by design. |
 | Loading, error and empty states | The app shell (below) on every first load; pages keep their own (loading lines, the page error boundary, empty states). A page-by-page audit is still to do. |
 | Lighthouse performance 85+ on a mid-range mobile profile | **Home 84–86 (median 85)**, was 70. Portfolio 78 (74), a coin page 70. First paint 0.9 s everywhere (was 2.5–3.0 s): the app shell in `index.html`, the account menu's windows and other click-only code loaded when used, a 48 px logo. |

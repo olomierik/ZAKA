@@ -25,6 +25,7 @@ import { getAcrossQuote, QUOTE_LIMITS, quoteValue, quoteVerdict, type AcrossQuot
 import { acrossErrorText, runAcross, type AcrossProgress } from '../lib/across'
 import { t as T } from '../lib/i18n'
 import { useBuyRisk } from '../lib/buyRisk'
+import TradeDetails, { HOT } from './TradeDetails'
 
 interface Props {
   token: string
@@ -154,6 +155,8 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
   const refused = verdict === 'refuse' || verdict === 'off-market'
   const impactPct = value ? Math.max(0, value.impact * 100) : null
   const cost = value ? Math.max(0, value.cost * 100) : null
+  const impactHot = refused || (impactPct ?? 0) >= HOT.impactPct
+  const costHot = (cost ?? 0) >= HOT.costPct
   const needsCostTick = verdict === 'confirm' || verdict === 'unpriced'
 
   // Stock tokens: the buyer's country, then their word.
@@ -267,13 +270,24 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
       <div className="swap-info">
         <Row label={T('You receive (est.)')} value={quote ? (mode === 'buy' ? `${fmtTok(outAmount)} ${symbol}` : `${fmtUsd(outAmount)} USDC`) : quoting ? '…' : '—'}
           sub={quote && mode === 'buy' && priceUsd > 0 && verdict !== 'off-market' ? `≈ ${fmtUsd(outUsd)}` : undefined} />
-        <Row label={T('Minimum received')} value={quote ? (mode === 'buy' ? `${fmtTok(minAmount)} ${symbol}` : `${fmtUsd(minAmount)} USDC`) : '—'} />
-        <Row label={T('Platform fee')} value={mode === 'buy' ? T('{pct} (in {symbol})', { pct: pct(feeBps), symbol }) : T('{pct} (in USDC)', { pct: pct(feeBps) })} />
-        <Row label={T('Bridge & gas (Across)')} value={quote ? fmtUsd(quote.bridgeFeeUsd) : '—'} />
-        {value && <Row label={T('Price impact')} value={verdict === 'off-market' ? T('{x}× the market price', { x: fmtTimes(value.rate) }) : impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`}
-          color={refused || impactPct! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : impactPct! >= 5 ? 'var(--amber)' : 'var(--green)'} />}
-        {value && !refused && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} color={cost! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : cost! >= 6 ? 'var(--amber)' : undefined} />}
-        <Row label={T('Arrives')} value={quote ? (mode === 'buy' ? T('on Robinhood Chain in ~{s}s', { s: Math.max(2, quote.fillSeconds) }) : T('on Arc in ~{s}s', { s: Math.max(2, quote.fillSeconds) })) : '—'} />
+        {/* A high price impact or cost stays out of Details. */}
+        {value && impactHot && <Row label={T('Price impact')} value={verdict === 'off-market' ? T('{x}× the market price', { x: fmtTimes(value.rate) }) : impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`}
+          color={refused || impactPct! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : 'var(--amber)'} />}
+        {value && !refused && costHot && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} color={cost! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : 'var(--amber)'} />}
+        <TradeDetails hint={T('{fee} fee · {via}', { fee: pct(feeBps), via: 'Across' })}>
+          <Row label={T('Minimum received')} value={quote ? (mode === 'buy' ? `${fmtTok(minAmount)} ${symbol}` : `${fmtUsd(minAmount)} USDC`) : '—'} />
+          <Row label={T('Platform fee')} value={mode === 'buy' ? T('{pct} (in {symbol})', { pct: pct(feeBps), symbol }) : T('{pct} (in USDC)', { pct: pct(feeBps) })} />
+          <Row label={T('Bridge & gas (Across)')} value={quote ? fmtUsd(quote.bridgeFeeUsd) : '—'} />
+          {value && !impactHot && <Row label={T('Price impact')} value={impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`} color="var(--green)" />}
+          {value && !refused && !costHot && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} />}
+          <Row label={T('Arrives')} value={quote ? (mode === 'buy' ? T('on Robinhood Chain in ~{s}s', { s: Math.max(2, quote.fillSeconds) }) : T('on Arc in ~{s}s', { s: Math.max(2, quote.fillSeconds) })) : '—'} />
+          {me && !compact && (
+            <div className="swap-note">{T('Trading as')}{' '}{trader.kind === 'trading-wallet' ? T('⚡ trading wallet') : T('wallet')} <span style={{ fontFamily: 'var(--mono)' }}>{shortAddr(me)}</span>
+              {mode === 'sell' && eth !== null && <> · {T('Gas')}: {eth.toPrecision(2)} ETH</>}
+            </div>
+          )}
+          {!compact && <p className="swap-note">{RH_NOTE()}</p>}
+        </TradeDetails>
       </div>
 
       {quoteErr && !busy && <div className="rh-msg error">{quoteErr}</div>}
@@ -334,12 +348,6 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
         <button className={`rh-btn ${mode}`} onClick={() => void submit()} disabled={blocked} style={{ opacity: blocked ? 0.5 : 1 }}>{label}</button>
       )}
 
-      {me && !compact && (
-        <div className="swap-note">{T('Trading as')}{' '}{trader.kind === 'trading-wallet' ? T('⚡ trading wallet') : T('wallet')} <span style={{ fontFamily: 'var(--mono)' }}>{shortAddr(me)}</span>
-          {mode === 'sell' && eth !== null && <> · {T('Gas')}: {eth.toPrecision(2)} ETH</>}
-        </div>
-      )}
-      {!compact && <p className="swap-note">{RH_NOTE()}</p>}
     </div>
   )
 }
