@@ -2787,6 +2787,20 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .pa-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--adx-border); font-size: 0.8rem; }
 .pa-row small { color: var(--text-muted); font-size: 0.72rem; }
 .pa-row.fired span { color: var(--text-muted); }
+.pa-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.pa-seg button { font: inherit; font-size: 0.74rem; font-weight: 600; padding: 6px 0; border-radius: 6px; border: 1px solid var(--adx-border); background: var(--bg-3); color: var(--text-muted); cursor: pointer; }
+.pa-seg button.on { color: var(--text); border-color: var(--accent-text); }
+.pa-bell-coin { width: auto; min-width: 22px; gap: 2px; display: inline-flex; align-items: center; }
+.pa-bell-coin b { font-size: 0.62rem; color: var(--amber); }
+/* Alerts by push (components/PushAlerts.tsx). */
+.push-toggle { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--adx-border); border-radius: 8px; background: var(--bg-3); }
+.push-toggle.on { border-color: rgba(14,203,129,0.45); }
+.push-toggle > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 180px; }
+.push-toggle strong { font-size: 0.8rem; }
+.push-toggle small { font-size: 0.72rem; color: var(--text-muted); }
+.push-toggle .btn-primary { padding: 6px 12px; font-size: 0.78rem; }
+.push-actions { display: inline-flex; gap: 12px; font-size: 0.78rem; }
+.push-toggle .fx-hint-bad, .push-tested { flex-basis: 100%; }
 .pa-wait { color: var(--amber); }
 .pa-actions { display: flex; gap: 6px; justify-content: flex-end; }
 .pa-toasts { position: fixed; right: 16px; top: 72px; z-index: 1150; display: flex; flex-direction: column; gap: 8px; width: min(360px, calc(100vw - 32px)); }

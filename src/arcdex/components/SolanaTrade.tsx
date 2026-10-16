@@ -27,6 +27,7 @@ import { solUsd } from '../api/solanaMarket'
 import { t as T } from '../lib/i18n'
 import { ed25519 } from '@noble/curves/ed25519'
 import { base58 } from '../../../api/_solCore'
+import { useBuyRisk } from '../lib/buyRisk'
 
 interface Props {
   mint: string
@@ -74,6 +75,8 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
   const sol = useSolanaWallets()
   const feeBps = SPOT_FEE_BPS
   const [mode, setMode] = useState<'buy' | 'sell'>(side ?? initialMode ?? 'buy')
+  // The coin's safety rating, right above Buy (lib/buyRisk.tsx): a Danger coin waits for a tick.
+  const buyRisk = useBuyRisk(mode === 'buy')
   const signer = solSignerOf(sol, trader.kind)
   const solAddr = signer === 'trading' ? sol.trading : signer === 'external' ? sol.external?.address ?? null : null
   // A Solana wallet app trades with its own SOL by default (2026-10-05: its users had no way to buy without an Arc
@@ -205,7 +208,7 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
   const noSolFees = (mode === 'sell' || route === 'usdc') && solBal !== null && solBal < 0.0003
   const missing: 'evm' | 'sol' | null = route === 'arc' ? (!me ? 'evm' : !solAddr ? 'sol' : null) : !solAddr ? 'sol' : null
   const passcodeMissing = (guard.missing || guard.overLimit || guard.limitsLoading) && route === 'arc' && mode === 'buy'
-  const blocked = busy || !!missing || !quote || quoting || insufficient || refused || noBuy || (needsCostTick && !costOk) || noSolFees || passcodeMissing
+  const blocked = busy || !!missing || !quote || quoting || insufficient || refused || noBuy || (needsCostTick && !costOk) || noSolFees || passcodeMissing || buyRisk.blocks
 
   const kind = trader.kind ?? 'wallet'
 
@@ -227,7 +230,7 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
 
   async function submit() {
     const r = request()
-    if (!r || !solAddr || !signer || !quote || (route === 'arc' && !me)) return
+    if (!r || !solAddr || !signer || !quote || (route === 'arc' && !me) || buyRisk.blocks) return
     setStep('working'); setLinks([]); setProgress(null)
     const say = (p: RelayProgress) => {
       setProgress(p)
@@ -397,6 +400,8 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
           {links.length > 0 && <span className="rh-links">{links.map(l => <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer">{l.label} ↗</a>)}</span>}
         </div>
       )}
+
+      {buyRisk.node}
 
       {missing === 'evm' ? (
         <>

@@ -55,6 +55,9 @@ import { PerpsService } from './perps/service'
 import { CoinProgram, FEE_SOURCES, FEE_WALLET, fetchRelayBalances } from './coin/program'
 import { FeeLedger } from './fees/ledger'
 import { FeeLedgerService, webhookAlert } from './fees/service'
+import { REFERRER_OF, ReferralWatcher } from './fees/referrals'
+import { PushAlerts } from './alerts/service'
+import { generateVapidKeys, vapidValid, type VapidKeys } from './alerts/webpush'
 import { JupiterFeeWatcher, type SolCall } from './fees/jupiterWatch'
 import { AdminAuth } from './admin/auth'
 import { FeatureFlags } from './admin/flags'
@@ -243,6 +246,32 @@ async function main() {
   if (dataApi) dataApi.traffic = new Traffic(botStore)
   // Community sentiment on each coin (votes.ts), kept beside it.
   if (dataApi) dataApi.votes = new Votes(botStore)
+  // Price and activity alerts by web push (alerts/service.ts): Arc coins on every trade, Hyperliquid every 2 seconds.
+  if (dataApi && !/^(0|off|false|no)$/i.test(process.env.PUSH?.trim() ?? '')) {
+    let keys: VapidKeys | null = null
+    const envKeys = { publicKey: process.env.VAPID_PUBLIC_KEY?.trim() ?? '', privateKey: process.env.VAPID_PRIVATE_KEY?.trim() ?? '' }
+    if (envKeys.publicKey && await vapidValid(envKeys)) keys = envKeys
+    else {
+      if (envKeys.publicKey) log.warn('push: VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY aren’t a matching pair; using the stored keys')
+      const stored = await botStore.getSetting('push-vapid').catch(() => null)
+      const k = stored ? JSON.parse(stored) as VapidKeys : null
+      if (k && await vapidValid(k)) keys = k
+      else { keys = await generateVapidKeys(); await botStore.setSetting('push-vapid', JSON.stringify(keys)).catch(e => log.error('push: keys not saved', { error: errMsg(e) })) }
+    }
+    const push = new PushAlerts({
+      store: botStore, keys, subject: process.env.VAPID_SUBJECT?.trim() || 'https://arcsense.site',
+      hlMids: async dex => {
+        const r = await fetch('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(dex ? { type: 'allMids', dex } : { type: 'allMids' }), signal: AbortSignal.timeout(4_000) })
+        if (!r.ok) throw new Error(`hyperliquid allMids ${r.status}`)
+        const j = await r.json() as Record<string, string>
+        return Object.fromEntries(Object.entries(j).map(([k, v]) => [k, Number(v)]))
+      },
+    })
+    await push.load()
+    dataApi.push = push
+    eng.observers.push({ onTrade: (t, ctx) => { if (!ctx.replay) push.onTrade(t) } })
+    every(2_000, 'push alerts', () => { void push.tickHl().catch(e => log.warn('push: hyperliquid check failed', { error: errMsg(e) })) })
+  }
   // The trade switch (site/tradeSwitch.ts): trading off everywhere or on one venue, by an admin wallet's signature or
   // GLOBAL_KILL_SWITCH / KILL_SWITCH_VENUES; every change in the append-only audit log.
   // One verifier for every admin signature (the switch, flags, the sweeper), so a signature is used once across all of them.
@@ -335,6 +364,27 @@ async function main() {
     feeRefs = { ledger: feeLedger, jupiter: jupiterFees }
     void program.start().then(() => fees.begin()).catch(e => log.error('coin program: did not start', { error: errMsg(e) }))
     every(10 * 60_000, 'fee ledger', () => { void jupiterFees?.tick(); void fees.tick().catch(e => log.warn('fee ledger: reconciliation failed', { error: errMsg(e) })) })
+    // Referral rebates (fees/referrals.ts): the routers' ReferralPaid events into the ledger every minute, reconciled nightly.
+    const referrals = new ReferralWatcher({
+      ledger: feeLedger, settings: botStore,
+      scan: async (filter, from, to) => {
+        const head = Number(BigInt(await rpc.call<string>('eth_blockNumber', [])))
+        const r = await scanLogs(filter as LogFilter, from, to, { head, reduce: (logs: RawLog[]) => logs, deadline: Date.now() + 60_000 })
+        return { logs: r.parts.flat(), scannedTo: r.scannedTo }
+      },
+      head: async () => Number(BigInt(await rpc.call<string>('eth_blockNumber', []))),
+      times: async blocks => {
+        const got = await rpc.batch<{ timestamp: string } | null>(blocks.map(b => ({ method: 'eth_getBlockByNumber', params: [`0x${b.toString(16)}`, false] })))
+        return new Map(blocks.map((b, i) => [b, got[i] ? Number(BigInt(got[i]!.timestamp)) * 1000 : null]))
+      },
+      referrerOf: async pairs => {
+        const got = await rpc.batch<string>(pairs.map(p => ({ method: 'eth_call', params: [{ to: p.router, data: `${REFERRER_OF}${p.trader.slice(2).padStart(64, '0')}` }, 'latest'] })))
+        return got.map(h => (h && h.length >= 42 ? `0x${h.slice(-40)}`.toLowerCase() : null)).map(a => (a && !/^0x0{40}$/.test(a) ? a : null))
+      },
+      alert: webhookAlert(process.env.ALERT_WEBHOOK_URL),
+    })
+    dataApi.fees.referrals = referrals
+    every(60_000, 'referral rebates', () => { void referrals.tick() })
   }
   // Every Argus coin on its launch curve and how close it is to graduating (market/bonding.ts), for the Near bond column.
   if (dataApi) { const book = new BondingBook({ rpc, engine: eng }); dataApi.bonding = book; book.start() }

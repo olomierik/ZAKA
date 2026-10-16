@@ -25,6 +25,15 @@ regexes = [
   '''^0x(ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80|59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d)$''',
 ]
 
+# RFC 8291's published Web Push example (its Appendix A): the auth secret and keys every implementation tests against
+# (engine/test/pushAlerts.test.ts). Only those exact values.
+[[allowlists]]
+description = "RFC 8291 test vector"
+regexTarget = "secret"
+regexes = [
+  '''^(BTBZMqHH6r4Tts7J_aSIgg|yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw|q1dXpw3UpT5VOmu_cf_v6ih07Aems3njxI-JWgLcM94|DGv6ra1nlYgDCS1FRnbzlw)$''',
+]
+
 # Event topics: a 64-hex constant on a line that names it as an event.
 [[allowlists]]
 description = "Event topic constants"

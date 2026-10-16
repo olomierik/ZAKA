@@ -30,6 +30,8 @@ import type { Tick } from '../lib/candles'
 import { useIsMobile } from '../lib/useMobile'
 import { useTrader } from '../lib/identity'
 import { t as T } from '../lib/i18n'
+import { BuyRiskProvider, type ProvidedRisk } from '../lib/buyRisk'
+import { rhSafety } from '../lib/safety'
 import CoinVotes from '../components/CoinVotes'
 import TokenLayout, { TkPanel } from '../components/TokenLayout'
 import { toggleWatch, usePrefs } from '../lib/prefs'
@@ -119,6 +121,11 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate,
   const buyBlocked = unlisted ? T('Not a launchpad coin: ARCDEX only lists and sells coins launched on a launchpad (and Robinhood’s stock tokens), because coins from unknown contracts can be malicious. You can still sell any you hold.') : undefined
   const name = stock ? stockCompany(fullName) : fullName
   const decimals = coin?.decimals ?? onchain?.decimals ?? null
+  // The rating every trade form on this page shows right above Buy (lib/buyRisk.tsx), from its market data as the
+  // Trenches rate it; whether it's a stock token is the chain's word, and a stock name Robinhood didn't issue is Danger.
+  const buyRating: ProvidedRisk = !coin ? null
+    : impostor ? { level: 'danger', reasons: [T('It uses a Robinhood stock name, but Robinhood didn’t issue it')], source: 'chain' }
+    : rhSafety({ ...coin, stock: stock && !impostor })
 
   // The pool's swaps from the chain: the last ~50 minutes at once, then each new one as its block lands.
   const poolRow = coin ? (coin.pool === shown ? coin : coin.pools.find(p => p.pool === shown)) : undefined
@@ -335,6 +342,7 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate,
   )
 
   if (mobile) return (
+    <BuyRiskProvider view={buyRating}>
     <div className="token-page coin-mobile rh-token">
       <div className="token-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
@@ -370,10 +378,12 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate,
         </Sheet>
       </div>
     </div>
+    </BuyRiskProvider>
   )
 
   // Desktop: motion.gift's coin screen (components/TokenLayout.tsx).
   return (
+    <BuyRiskProvider view={buyRating}>
     <TokenLayout
       chain="hood" image={coin?.image ?? null} symbol={symbol} name={name} mc={coin?.marketCap ?? null}
       tags={<>
@@ -415,5 +425,6 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate,
       </>}
       side={<TkPanel title={T('Community')}><CoinVotes chain="robinhood" address={address} /></TkPanel>}
     />
+    </BuyRiskProvider>
   )
 }

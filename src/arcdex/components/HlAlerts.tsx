@@ -7,6 +7,7 @@ import type { HlMarket } from '../hl/markets'
 import { roundPrice } from '../hl/wire'
 import { fmtPx, sanitize } from '../hl/format'
 import { activeAlerts, addAlert, AlertError, ALERTS, clearFired, removeAlert, updateAlerts, useAlerts, type PriceAlert } from '../hl/alerts'
+import { PushToggle } from './PushAlerts'
 
 const newId = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`)
 const when = (t: number) => new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -79,6 +80,7 @@ export function AlertModal({ market, px, onClose }: { market: HlMarket; px: numb
           <input type="checkbox" checked={s.notify} disabled={notifyBlocked} onChange={e => void setAlertNotify(e.target.checked)} /> {T('Also a system notification (with ARCDEX in the background)')}
         </label>
         {notifyBlocked && <div className="fx-fine">{T('Notifications are blocked for this site in your browser’s settings.')}</div>}
+        <PushToggle />
         {err && <div className="fx-hint-bad">⚠ {err}</div>}
         {done && <div className="fx-note ok">✓ {T('Alert set: {cond}.', { cond: done })}</div>}
         <button className="btn-primary" disabled={!(n > 0) || !(px > 0)} onClick={create}>{T('Set alert')}</button>

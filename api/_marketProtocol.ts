@@ -885,9 +885,11 @@ export function tradeSwitchMessage(c: TradeSwitchControl, at: number): string {
  */
 export const SITE_FLAGS = {
   withdrawLimits: { protective: true, label: 'Withdrawal limits and the new-address hold' },
+  buyRisk: { protective: true, label: 'Safety rating above Buy, and the tick a Danger coin needs' },
   walletsCard: { protective: false, label: 'Wallets card on Portfolio' },
   jupiter: { protective: false, label: 'Solana swaps through Jupiter' },
   privy: { protective: false, label: 'Sign-in with Privy' },
+  pushAlerts: { protective: false, label: 'Alerts by push, with ARCDEX closed' },
 } as const
 export type SiteFlag = keyof typeof SITE_FLAGS
 export const isSiteFlag = (f: unknown): f is SiteFlag => typeof f === 'string' && Object.prototype.hasOwnProperty.call(SITE_FLAGS, f)

@@ -97,7 +97,7 @@ export default function BscHoldings({ owner, navigate, onValue }: { owner: strin
       ))}
       <Sheet open={!!sell} onClose={() => setSell(null)} title={sell ? T('Sell {symbol}', { symbol: sell.symbol }) : undefined}>
         {sell && <BscTrade key={sell.token} token={sell.token} symbol={sell.symbol} decimals={sell.decimals} priceUsd={sell.priceUsd} four={sell.four}
-          initialMode="sell" onTraded={() => void load()} />}
+          side="sell" onTraded={() => void load()} />}
       </Sheet>
     </div>
   )

@@ -67,6 +67,8 @@ import type { TrenchService } from '../trench/service'
 import { isTrenchChain } from '../../../api/_trenchProtocol'
 import type { FeeLedger, FeeSource } from '../fees/ledger'
 import type { FeeLedgerService } from '../fees/service'
+import type { ReferralWatcher } from '../fees/referrals'
+import type { PushAlerts } from '../alerts/service'
 import type { AdminApi } from '../admin/api'
 
 interface Conn { id: number; ip: string; subs: Set<string>; allowance: number; last: number }
@@ -88,6 +90,8 @@ export class DataApi {
   traffic: Traffic | null = null
   /** Community sentiment on each coin (votes.ts). */
   votes: Votes | null = null
+  /** Alerts by web push (alerts/service.ts). */
+  push: PushAlerts | null = null
   /** The signal engine (engine/src/quant), when this process runs it. */
   quant: QuantApiDeps | null = null
   /** The site's read functions (engine/src/site/siteApi.ts), served here instead of on Vercel. */
@@ -97,7 +101,7 @@ export class DataApi {
   /** $ARCDEX buyback, burns and liquidity: the fee wallet's ledger (engine/src/coin/program.ts). */
   coin: CoinProgram | null = null
   /** The fee ledger and its nightly reconciliation (engine/src/fees). */
-  fees: { ledger: FeeLedger; service: FeeLedgerService } | null = null
+  fees: { ledger: FeeLedger; service: FeeLedgerService; referrals?: ReferralWatcher } | null = null
   /** The admin panel: sign-in, live sessions, fees and the sweeper, trades, audit, flags (admin/api.ts). */
   admin: AdminApi | null = null
   /** Argus coins on their launch curve, with their progress by market cap (market/bonding.ts). */
@@ -290,6 +294,28 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         if (req.method === 'GET') return json(req, 200, await traffic.counts(), 'public, max-age=5')
         return json(req, 405, { error: 'method not allowed' })
       }
+      // Alerts by web push (alerts/service.ts): the public key and delivery times for anyone; a browser's subscription
+      // and its alerts by its id and token, from the site's own pages only (sent as text/plain, so no preflight).
+      if (url.pathname.startsWith('/v1/push/')) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        const push = api.push
+        if (!push) return json(req, 503, { error: 'alerts aren’t switched on in this engine' })
+        const action = url.pathname.slice('/v1/push/'.length)
+        if (req.method === 'GET' && action === 'key') return json(req, 200, { publicKey: push.publicKey }, 'public, max-age=300')
+        if (req.method === 'GET' && action === 'stats') return json(req, 200, push.stats(), 'public, max-age=5')
+        if (req.method !== 'POST') return json(req, 405, { error: 'method not allowed' })
+        const origin = req.headers.get('origin')
+        if (!origin || !cfg.allowedOrigins.includes(origin)) return json(req, 403, { error: 'alerts are set from the site' })
+        if (Number(req.headers.get('content-length') ?? 0) > 64 * 1024) return json(req, 413, { error: 'too large' })
+        const body = await req.text().then(t => JSON.parse(t) as Record<string, unknown>, () => null).catch(() => null)
+        const r = action === 'subscribe' ? await push.subscribe(body, ip)
+          : action === 'alerts' ? await push.setAlerts(body)
+          : action === 'state' ? push.read(body)
+          : action === 'unsubscribe' ? await push.unsubscribe(body)
+          : action === 'test' ? await push.test(body)
+          : { status: 404, body: { error: 'not found' } }
+        return json(req, r.status, r.body, 'no-store')
+      }
       // Community sentiment on each coin (votes.ts): the counts, and a visitor's vote.
       if (url.pathname === '/v1/votes') {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
@@ -338,7 +364,7 @@ export function startServer({ cfg, api, health }: ServerDeps) {
       if (url.pathname === '/v1/fees/summary' || url.pathname === '/v1/fees/ledger') {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
         if (!api.fees) return json(req, 503, { error: 'the fee ledger is not running in this process' })
-        if (url.pathname === '/v1/fees/summary') return json(req, 200, await api.fees.ledger.summary(), 'public, max-age=30')
+        if (url.pathname === '/v1/fees/summary') return json(req, 200, { ...await api.fees.ledger.summary(), rebatesScannedTo: api.fees.referrals ? await api.fees.referrals.scannedTo() : null }, 'public, max-age=30')
         const source = url.searchParams.get('source') as FeeSource | null
         const lim = Math.max(1, Math.min(500, Number(url.searchParams.get('limit')) || 100))
         return json(req, 200, { rows: await api.fees.ledger.store.feeRows({ limit: lim, ...(source ? { source } : {}) }) }, 'public, max-age=30')

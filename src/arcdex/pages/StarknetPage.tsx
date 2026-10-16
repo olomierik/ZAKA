@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import { BuyRiskLabel } from '../lib/buyRisk'
 import { TradingPausedError } from '../lib/tradeSwitch'
 import { useLogo } from '../lib/logo'
 import { AVNU_EXCHANGE, ETH, SN, SN_FEE, STARKNET_SWAPS, STRK, voyagerContract, voyagerTx, type SnNetwork } from '../starknet/net'
@@ -276,6 +277,8 @@ export default function StarknetPage({ navigate }: { navigate: (p: Page) => void
             )}
             {verdict?.confirm && verdict.ok && <label className="fxb-check"><input type="checkbox" checked={tick} onChange={e => setTick(e.target.checked)} /> {T('I accept losing about {pct}% to price impact', { pct: verdict.lossPct.toFixed(1) })}</label>}
 
+            {/* The token bought, rated (lib/buyRisk.tsx): only AVNU's verified tokens are offered here. */}
+            <BuyRiskLabel view={{ level: 'safe', reasons: [T('{sym} is on AVNU’s verified token list: the only Starknet tokens ARCDEX offers', { sym: buy.symbol })], source: 'market' }} />
             {action}
             {!STARKNET_SWAPS && <div className="fx-fine">{T('Quotes are live from AVNU. Sending swaps is switched off for now.')}</div>}
             {err && <div className="fx-hint-bad">⚠ {err}</div>}

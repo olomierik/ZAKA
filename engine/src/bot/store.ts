@@ -14,8 +14,9 @@ import type { AuditEntry, AuditStore } from '../site/tradeSwitch'
 import { MemoryFeeLedgerStore, type FeeLedgerStore, type FeeRow, type FeeSource, type ReconRow } from '../fees/ledger'
 import { MemorySweepStore, type SweepStore } from '../admin/sweeper'
 import type { SweepRun } from '../../../api/_marketProtocol'
+import { MemoryPushStore, type PushStore, type PushSubRow } from '../alerts/service'
 
-export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore, AuditStore, FeeLedgerStore, SweepStore {
+export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore, AuditStore, FeeLedgerStore, SweepStore, PushStore {
   readonly kind: 'memory' | 'postgres'
   saveSignal(s: Signal): void
   savePosition(p: Position): void
@@ -76,6 +77,10 @@ export class MemoryBotStore implements BotStore {
   private sweeps = new MemorySweepStore()
   appendSweepRun(r: SweepRun) { return this.sweeps.appendSweepRun(r) }
   sweepRuns(limit: number) { return this.sweeps.sweepRuns(limit) }
+  private push = new MemoryPushStore()
+  pushSubs() { return this.push.pushSubs() }
+  putPushSub(r: PushSubRow) { return this.push.putPushSub(r) }
+  deletePushSub(id: string) { return this.push.deletePushSub(id) }
 }
 
 const SCHEMA = `
@@ -113,6 +118,9 @@ create table if not exists arcdex_fee_ledger (
   inserted_at timestamptz not null default now()
 );
 create index if not exists arcdex_fee_ledger_at on arcdex_fee_ledger (at desc);
+-- Referral rebates (fees/referrals.ts): the referred trader and the evidence. Adding columns isn't a change to any row.
+alter table arcdex_fee_ledger add column if not exists trader text;
+alter table arcdex_fee_ledger add column if not exists meta jsonb;
 create index if not exists arcdex_fee_ledger_source on arcdex_fee_ledger (source, at);
 create table if not exists arcdex_fee_reconciliations (
   id bigserial primary key, at timestamptz not null, source text not null, scope text not null,
@@ -129,6 +137,10 @@ drop trigger if exists arcdex_fee_recon_no_change on arcdex_fee_reconciliations;
 create trigger arcdex_fee_recon_no_change before update or delete on arcdex_fee_reconciliations for each row execute function arcdex_fee_append_only();
 drop trigger if exists arcdex_fee_recon_no_truncate on arcdex_fee_reconciliations;
 create trigger arcdex_fee_recon_no_truncate before truncate on arcdex_fee_reconciliations for each statement execute function arcdex_fee_append_only();
+-- Web-push subscriptions and their alerts (alerts/service.ts): the browser's push endpoint and keys, the token's hash.
+create table if not exists arcdex_push_subs (
+  id text primary key, endpoint text not null unique, row jsonb not null, updated_at timestamptz not null default now()
+);
 -- The fee sweeper's runs (admin/sweeper.ts), dry and real, kept for good like the ledger.
 create table if not exists arcdex_sweep_runs (
   id text primary key, at timestamptz not null, day text not null, mode text not null, by_actor text not null, status text not null, run jsonb not null
@@ -249,8 +261,9 @@ export class PostgresBotStore implements BotStore {
     await this.ready
     let n = 0
     for (const r of rows) {
-      const res = await this.sql`insert into arcdex_fee_ledger (id, at, chain, source, token, symbol, amount, amount_usd, recipient, tx, block, status)
-        values (${r.id}, ${new Date(r.at)}, ${r.chain}, ${r.source}, ${r.token}, ${r.symbol}, ${r.amount}::numeric, ${r.amountUsd}, ${r.recipient}, ${r.tx}, ${r.block}, ${r.status})
+      const res = await this.sql`insert into arcdex_fee_ledger (id, at, chain, source, token, symbol, amount, amount_usd, recipient, tx, block, status, trader, meta)
+        values (${r.id}, ${new Date(r.at)}, ${r.chain}, ${r.source}, ${r.token}, ${r.symbol}, ${r.amount}::numeric, ${r.amountUsd}, ${r.recipient}, ${r.tx}, ${r.block}, ${r.status},
+          ${r.trader ?? null}, ${r.meta ? JSON.stringify(r.meta) : null}::jsonb)
         on conflict (id) do nothing returning id`
       n += res.length
     }
@@ -260,6 +273,8 @@ export class PostgresBotStore implements BotStore {
     id: String(r.id), at: new Date(r.at as Date).getTime(), chain: r.chain as FeeRow['chain'], source: r.source as FeeSource, token: String(r.token), symbol: String(r.symbol),
     amount: String(r.amount), amountUsd: r.amount_usd === null ? null : Number(r.amount_usd), recipient: String(r.recipient), tx: (r.tx as string | null) ?? null,
     block: r.block === null || r.block === undefined ? null : Number(r.block), status: r.status as FeeRow['status'],
+    trader: (r.trader as string | null | undefined) ?? null,
+    meta: r.meta == null ? null : typeof r.meta === 'string' ? JSON.parse(r.meta) : (r.meta as Record<string, string | number>),
   })
   async feeRows(q: { limit: number; source?: FeeSource; sinceAt?: number }) {
     await this.ready
@@ -296,5 +311,21 @@ export class PostgresBotStore implements BotStore {
     await this.ready
     const rows = await this.sql`select run from arcdex_sweep_runs order by at desc limit ${limit}`
     return rows.map((r: { run: SweepRun | string }) => (typeof r.run === 'string' ? JSON.parse(r.run) : r.run) as SweepRun)
+  }
+  async pushSubs(): Promise<PushSubRow[]> {
+    await this.ready
+    const rows = await this.sql`select row from arcdex_push_subs`
+    return rows.map((r: { row: PushSubRow | string }) => (typeof r.row === 'string' ? JSON.parse(r.row) : r.row) as PushSubRow)
+  }
+  async putPushSub(r: PushSubRow) {
+    await this.ready
+    // One endpoint, one subscription: a browser subscribing again replaces its row.
+    await this.sql`delete from arcdex_push_subs where endpoint = ${r.endpoint} and id <> ${r.id}`
+    await this.sql`insert into arcdex_push_subs (id, endpoint, row, updated_at) values (${r.id}, ${r.endpoint}, ${JSON.stringify(r)}::jsonb, now())
+      on conflict (id) do update set endpoint = excluded.endpoint, row = excluded.row, updated_at = now()`
+  }
+  async deletePushSub(id: string) {
+    await this.ready
+    await this.sql`delete from arcdex_push_subs where id = ${id}`
   }
 }

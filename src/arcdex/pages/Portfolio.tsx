@@ -178,7 +178,7 @@ export default function Portfolio({ navigate }: Props) {
       <HlHoldings owner={me} navigate={navigate} onValue={setHlValue} />
 
       <Sheet open={!!sell} onClose={() => setSell(null)} title={sell ? T('Sell {symbol}', { symbol: sell.symbol }) : undefined}>
-        {sell && <TokenSwap key={sell.address} address={sell.address} pool={sell.pool ?? undefined} initialMode="sell"
+        {sell && <TokenSwap key={sell.address} address={sell.address} pool={sell.pool ?? undefined} side="sell"
           fallback={{ symbol: sell.symbol, image: sell.image, priceUsd: sell.priceUsd }} onTraded={afterTrade} />}
       </Sheet>
       {send && <WithdrawModal trader={trader} asset={{ address: send.address, symbol: send.symbol, decimals: send.decimals, priceUsd: send.priceUsd }} onClose={() => setSend(null)} onSent={afterTrade} />}

@@ -12,6 +12,8 @@ echo "== fees";             bun scripts/test-fees.ts
 echo "== withdraw limits";  bun scripts/test-withdraw-policy.ts
 echo "== wallets card";     bun scripts/test-chain-balances.ts
 echo "== jupiter";          bun scripts/test-jupiter.ts
+echo "== buy risk";         bun scripts/test-buy-risk.tsx
+echo "== push alerts";      bun scripts/test-push.ts
 echo "== engine tests";     bun test engine/test
 if command -v gitleaks >/dev/null; then
   echo "== secrets"; gitleaks dir . --config .gitleaks.toml --no-banner --redact

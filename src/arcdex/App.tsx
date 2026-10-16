@@ -39,6 +39,7 @@ const SolanaTokenPage = lazy(() => import('./pages/SolanaTokenPage'))
 const BscTokenPage    = lazy(() => import('./pages/BscTokenPage'))
 // Price alerts are watched on every page, but the watcher (Hyperliquid's live prices) loads only once one exists.
 const PriceAlertWatcher = lazy(() => import('./components/PriceAlertWatcher'))
+const PushSync = lazy(() => import('./components/PushSync'))
 // The bell's list of price alerts (Hyperliquid's live prices load with it).
 const AlertsPanel = lazy(() => import('./components/AlertsPanel'))
 import TradingWalletPanel from './components/TradingWalletPanel'
@@ -64,6 +65,7 @@ import { useFundingScan } from './lib/funding'
 import ProfitAlerts from './components/ProfitAlerts'
 import PageErrorBoundary from './components/PageErrorBoundary'
 import { activeAlerts, useAlerts } from './hl/alerts'
+import { usePush } from './lib/push'
 import { engineApiUrl } from './api/marketStream'
 import { startTraffic } from './lib/traffic'
 import { loadRuntimeFlags } from './lib/flags'
@@ -130,6 +132,8 @@ export default function App() {
   const alerts = useAlerts()
   const [watchAlerts, setWatchAlerts] = useState(false)
   useEffect(() => { if (activeAlerts(alerts).length) setWatchAlerts(true) }, [alerts])
+  // Alerts by push (lib/push.ts): once they're on in this browser, the engine's copy is kept in step.
+  const pushOn = !!usePush().sub
   // This page counts as a visitor online (the landing's traffic counter, lib/traffic.ts).
   useEffect(() => { startTraffic(engineApiUrl); loadRuntimeFlags(engineApiUrl) }, [])
 
@@ -250,6 +254,7 @@ export default function App() {
       {/* A toast (and, when allowed, a system notification) for every profit the signed-in owner's bots take. */}
       <ProfitAlerts navigate={navigate} />
       {watchAlerts && <PageErrorBoundary resetKey="alerts" fallback={null}><Suspense fallback={null}><PriceAlertWatcher navigate={navigate} /></Suspense></PageErrorBoundary>}
+      {pushOn && <PageErrorBoundary resetKey="push" fallback={null}><Suspense fallback={null}><PushSync /></Suspense></PageErrorBoundary>}
     </div>
   )
 }

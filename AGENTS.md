@@ -2361,6 +2361,86 @@ The build pack's Phase 4 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`). Status against its
   - Optionally `SWEEPER_MIN_USD` and `SWEEPER_CRON`.
   - Then redeploy (Deploy latest commit).
 
+## Phase 5: safety above Buy, referral rebates in the ledger, alerts by push (2026-10-16)
+
+The build pack's Phase 5 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`). Status against its acceptance list: `docs/REPO_MAP.md` §11.
+Trending and new pairs were already the Trenches.
+
+- **A safety rating above Buy (`lib/buyRisk.tsx`):** every trade form shows the coin's rating right above its Buy
+  button, on desktop and in the phone's trade sheet.
+  - **Which forms:** Arc's swap and curve widgets, Solana, BNB Chain, Robinhood Chain, and paying from a Solana wallet.
+  - **Where the rating comes from:** each coin page (and the Swap page, for the coin picked) gives it with
+    `<BuyRiskProvider>`, rated as the Trenches rate it: `arcSafety` with the engine's scan, `solSafety`, `bscSafety`,
+    `rhSafety`. A Robinhood stock name Robinhood didn't issue is Danger.
+  - **Danger:** the buy waits for a tick ("I understand this coin is rated Danger and I could lose everything I put
+    in"); the button is disabled and the submit refuses until then. Selling is never held up.
+  - **Other cases:** $ARCDEX shows "Official". A form no page rated says so ("Not rated here"). Starknet labels the token
+    bought as on AVNU's verified list. GeckoTerminal's honeypot flag now rates Danger (it was Risky).
+  - **Portfolio:** its Sell sheets (Arc, Solana, BNB Chain, Robinhood Chain) are sell-only now, so there's no buy path
+    there without the coin's rating.
+  - Behind the protective flag `buyRisk` (only `VITE_FLAG_BUY_RISK=off` and a deploy turn it off).
+- **Referral rebates in the fee ledger (`engine/src/fees/referrals.ts`):** the Arc routers pay a trader's referrer their
+  share of the fee inside the trade (`ReferralPaid`).
+  - **Recording:** each one is a ledger row (`arc-referral`, status `rebate`) with the trader, the whole fee (from the
+    trade's `Swapped`) and the share in force at that block (1500 from the constructors, then `ReferralShareUpdated`).
+    Read every minute from block 22,548,761 on.
+  - **Nightly check (after 00:40 UTC),** from a scan of its own, each rebate against:
+    - the routers' events, one to one;
+    - the transfer that paid the referrer;
+    - the share of the fee (exact on the swap router; one unit on the curve router, which cuts both from 18 decimals);
+    - the referrer the router holds for that trader (`referrerOf`, read then: bindings never change);
+    - the fee wallet's receipt for the same trade.
+    Results go to `arcdex_fee_reconciliations` (source `referral`); a mismatch alerts.
+  - **Elsewhere in the ledger:** the Arc fee reconciliation now ignores rebate rows, and per-source totals round once
+    (row-by-row rounding drifted). `/admin` → Fees shows rebates and how far they're read; `/v1/fees/summary` has
+    `rebates` (exact USDC) and `rebatesScannedTo`.
+  - **Off Arc:** there's no referral share to record: Relay's, Across's and Jupiter's fees have none (Jupiter's smallest
+    referral fee is ARCDEX's whole 0.5%).
+- **Alerts by web push (`engine/src/alerts`, `lib/push.ts`, `public/sw.js`):** alerts reach a phone or desktop with every
+  ARCDEX tab closed.
+  - **Web push with no library:** VAPID (RFC 8292) and aes128gcm encryption (RFC 8291). It matches RFC 8291's own
+    example byte for byte; the reference `web-push`/`http_ece` decrypt it and verify its tokens. Only the browsers' push
+    services are called (FCM, Mozilla, Apple, Windows), so a subscription can't point the engine at any other host.
+  - **What can be watched:**
+    - Hyperliquid price alerts: the ones set on `/futures` are mirrored to the engine while push is on, in the visitor's
+      language;
+    - Arc coin price levels;
+    - Arc whale trades (a single trade of at least an amount, any side, buys or sells).
+    A price alert fires once; a whale alert at most once a minute. Arc alerts are checked on every streamed trade;
+    Hyperliquid's mids every 2 seconds while an alert waits on them.
+  - **Delivery time:** each delivery's time from the trigger (the trade's block, or the mid's read) to the push service
+    accepting it is kept: `GET /v1/push/stats` gives p50, p95 and the share within 10 seconds, never a subscription.
+  - **Subscriptions:** by id and a secret token (only its hash is stored), from the site's own pages only, ten new ones
+    an hour per address, 50 alerts each. Gone endpoints are dropped, and so is one that fails 10 times. A push service
+    asking to wait gets one retry. Kept in `arcdex_push_subs`.
+  - **Routes:** `GET /v1/push/key|stats`; `POST /v1/push/subscribe|alerts|state|unsubscribe|test`.
+  - **The site:**
+    - a 🔔 on Arc coin pages opens the alerts dialog (price level with ± chips, whale size and side);
+    - the futures alert dialog has the same "Get alerts with ARCDEX closed" switch, with Send a test and Turn off;
+    - the service worker shows notifications and opens the page an alert names. It caches nothing and answers no
+      requests; Netlify serves it no-cache.
+  - **The flag:** `pushAlerts` (on; `/admin` can turn it off). `PUSH=off` on Railway stops the engine's side.
+- **Checked:**
+  - **Tests (in CI):**
+    - `scripts/test-buy-risk.tsx`: 9 of 9 planted bugs caught.
+    - `scripts/test-push.ts`: every alert the page builds is one the engine takes.
+    - `engine/test/referrals.test.ts`: 15 of 15 planted bugs caught; Postgres columns checked.
+    - `engine/test/pushAlerts.test.ts`: 20 of 20 planted bugs caught; Postgres checked.
+  - **In Chromium** (full Chromium in its new headless mode: the headless shell reports notifications as denied),
+    against `engine/scripts/push-standin.ts` (the engine's server and alert code in memory):
+    - the label above Buy; turning alerts on (the service worker registered, the subscription with the engine);
+    - setting a price and a whale alert;
+    - trades that shouldn't and should fire them; each push decrypted with the browser's own key;
+    - delivered to the real service worker through Chromium's DevTools protocol: both notifications shown, each opening
+      its coin page, and the open tab marking the alert reached;
+    - a Hyperliquid alert set on `/futures` pushed 0.8–2.3 s after the move;
+    - 390px with no sideways scroll, no page errors.
+  - **Not checked:** a real push service (FCM and the others are out of the sandbox's reach) and a real phone.
+- **Every new string is in all six dictionaries** (39).
+- **Owner steps (Railway, arcdex-engine), optional:** `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` (from
+  `npx web-push generate-vapid-keys`) and `VAPID_SUBJECT`. Without them the engine makes a pair and keeps it in its
+  database. Then Deploy latest commit.
+
 ## Autotrade paused (2026-10-03)
 
 Owner: the platform becomes ARCSENSE (spot and futures trading), and "the auto trade functionality will have to be paused for now".

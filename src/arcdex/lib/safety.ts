@@ -65,8 +65,11 @@ const RANK: Record<SafetyLevel, number> = { danger: 3, risky: 2, checking: 1, sa
 /** Worst first, for sorting by safety. */
 export const safetyRank = (l: SafetyLevel) => RANK[l]
 
+/** A market-data flag that alone puts everything at risk: GeckoTerminal's honeypot flag (lib/risk.ts scores it 100). */
+const honeypotOf = (risk: Risk): string[] => risk.factors.some(f => f.pts >= 100) ? riskReasons(risk, 1) : []
+
 function fromMarket(risk: Risk, copycat: string | null, extra: { danger?: string[]; safe?: string } = {}): SafetyView {
-  const danger = [...(extra.danger ?? [])]
+  const danger = [...(extra.danger ?? []), ...honeypotOf(risk)]
   if (copycat) danger.push(T('Uses the {sym} ticker: not the real {sym}', { sym: copycat }))
   if (danger.length) return { level: 'danger', reasons: danger, source: 'market' }
   // Market data alone can't vouch for a coin: only a low market risk reads as safe.
@@ -76,7 +79,7 @@ function fromMarket(risk: Risk, copycat: string | null, extra: { danger?: string
 
 /** An Arc coin: the engine's scan (`chain`: undefined while it loads, null when the engine doesn't track the coin or
  * can't be reached) with its market data. */
-export function arcSafety(t: ArcToken, risk: Risk, chain: CoinSafety | null | undefined, onCurve: boolean): SafetyView {
+export function arcSafety(t: Pick<ArcToken, 'symbol' | 'address'>, risk: Risk, chain: CoinSafety | null | undefined, onCurve: boolean): SafetyView {
   const copycat = copycatOf(t.symbol, t.address)
   if (chain === undefined) return { level: 'checking', reasons: [T('Checking it on-chain…')], source: 'chain' }
   if (chain === null) return fromMarket(risk, copycat)
@@ -84,6 +87,7 @@ export function arcSafety(t: ArcToken, risk: Risk, chain: CoinSafety | null | un
   for (const f of chain.fails) (DANGER_CHECKS.has(f.id) ? danger : risky).push(checkText(f.id))
   for (const r of chain.risks) risky.push(checkText(r.id))
   if (copycat) danger.push(T('Uses the {sym} ticker: not the real {sym}', { sym: copycat }))
+  danger.push(...honeypotOf(risk))
   const l = chain.launcher
   if (l && l.dumps > 0) {
     const rate = launcherRate(l.dumps, l.coins)
@@ -91,7 +95,7 @@ export function arcSafety(t: ArcToken, risk: Risk, chain: CoinSafety | null | un
     if (l.dumps >= LAUNCHER.dangerDumps && rate > LAUNCHER.dangerRate) danger.push(text)
     else if (rate > LAUNCHER.riskyRate) risky.push(text)
   }
-  if (risk.level === 'high') risky.push(...riskReasons(risk, 2))
+  if (risk.level === 'high' && !honeypotOf(risk).length) risky.push(...riskReasons(risk, 2))
   if (danger.length) return { level: 'danger', reasons: [...danger, ...risky], source: 'chain' }
   if (risky.length) return { level: 'risky', reasons: risky, source: 'chain' }
   if (chain.at === 0 || (!onCurve && chain.sellable !== true)) return { level: 'checking', reasons: [T('Checking it on-chain…')], source: 'chain' }

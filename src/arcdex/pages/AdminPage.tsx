@@ -291,15 +291,18 @@ function AdminFees({ embedded, address, signer }: { embedded: `0x${string}` | nu
   )
 }
 
-interface FeeRowView { id: string; at: number; chain: string; source: string; symbol: string; amount: string; amountUsd: number | null; tx: string | null; status: string }
+interface FeeRowView { id: string; at: number; chain: string; source: string; symbol: string; amount: string; amountUsd: number | null; tx: string | null; status: string; recipient?: string; trader?: string | null }
 interface ReconView { at: number; source: string; scope: string; ledger: string; onchain: string; diff: string; ok: boolean }
-interface FeeSummaryView { rows: number; bySource: Record<string, { usd: number; rows: number }>; latest: FeeRowView[]; reconciliations: ReconView[]; lastReconciled: number | null; allOk: boolean | null }
+interface FeeSummaryView { rows: number; bySource: Record<string, { usd: number; rows: number }>; latest: FeeRowView[]; reconciliations: ReconView[]; lastReconciled: number | null; allOk: boolean | null
+  /** Referral rebates the Arc routers paid referrers (engines before Phase 5 don't send it). */
+  rebates?: { usdc: string; usd: number; rows: number; referrers: number }; rebatesScannedTo?: number | null }
 
 const SOURCE_LABEL: Record<string, string> = {
   'arc-router': N_('Arc swap router'), 'arc-curve': N_('Arc curve router'), 'arc-ur': N_('Universal Router (Arc)'), 'arc-launchpad': 'ArcLaunchpad',
   across: N_('Across (Robinhood Chain sales)'), 'arc-other': N_('Other Arc contracts'), relay: N_('Relay (held for the fee wallet)'), jupiter: N_('Jupiter referral'),
+  'arc-referral': N_('Referral rebate'),
 }
-const STATUS_LABEL: Record<string, string> = { received: N_('received'), accrued: N_('accrued'), claimed: N_('claimed'), opening: N_('opening balance') }
+const STATUS_LABEL: Record<string, string> = { received: N_('received'), accrued: N_('accrued'), claimed: N_('claimed'), opening: N_('opening balance'), rebate: N_('paid to the referrer') }
 const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`
 
 /** The engine's fee ledger: what it recorded from the chain, and whether the nightly reconciliation agreed. */
@@ -324,7 +327,8 @@ function AdminFeeLedger() {
         <button className="btn-ghost" onClick={load}>{T('Read again')}</button>
       </div>
       <p className="fx-fine" style={{ margin: 0 }}>
-        {T('Every fee the engine read on-chain, kept for good (rows are never changed or removed). Each night it checks the ledger against the chain: Arc receipts block by block, and the balances Relay and Jupiter hold for the fee wallet.')}
+        {T('Every fee the engine read on-chain, kept for good (rows are never changed or removed). Each night it checks the ledger against the chain: Arc receipts block by block, and the balances Relay and Jupiter hold for the fee wallet.')}{' '}
+        {T('Referral rebates too: each one against the router’s event, the transfer that paid it, the share of the fee, and the referrer the router holds for that trader.')}
       </p>
       {err && <div role="status" style={{ color: 'var(--red)', fontSize: '0.82rem' }}>{T('Couldn’t read the ledger: {why}', { why: err })}</div>}
       {!sum && !err && <span className="fx-fine">{T('Reading…')}</span>}
@@ -351,12 +355,23 @@ function AdminFeeLedger() {
             ))}
           </div>
           {sources.length > 0 && <div className="fx-fine">{T('In all: {usd} from {n} rows', { usd: usd(total), n: sum.rows })}</div>}
+          {sum.rebates && (
+            <div className="rt-prov up" data-rebates>
+              <span className="rt-dot" aria-hidden />
+              <div>
+                <strong>{T('Referral rebates')}</strong>
+                <small>{T('{n} paid to {r} referrers, in the trade, by the Arc routers', { n: sum.rebates.rows, r: sum.rebates.referrers })}{sum.rebatesScannedTo ? ` · ${T('read to block {b}', { b: sum.rebatesScannedTo.toLocaleString() })}` : ''}</small>
+              </div>
+              <span className="rt-ms" title={`${sum.rebates.usdc} USDC`}>{sum.rebates.usdc} USDC</span>
+            </div>
+          )}
           {sum.latest.length > 0 && (
             <div className="fx-fine" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <strong style={{ fontSize: '0.8rem' }}>{T('Latest')}</strong>
               {sum.latest.slice(0, 10).map(r => (
                 <span key={r.id} style={{ overflowWrap: 'anywhere' }}>
                   {ago(r.at)} · {T(SOURCE_LABEL[r.source] ?? r.source)} · {r.amount} {r.symbol}{r.amountUsd != null ? ` (${usd(r.amountUsd)})` : ''} · {T(STATUS_LABEL[r.status] ?? r.status)}
+                  {r.status === 'rebate' && r.recipient && <> {short(r.recipient)}{r.trader ? <> · {T('trader')} {short(r.trader)}</> : null}</>}
                   {r.tx && r.chain === 'arc' && <> · <a href={`${ARC_EXPLORER}/tx/${r.tx}`} target="_blank" rel="noreferrer">{short(r.tx)}</a></>}
                   {r.tx && r.chain === 'solana' && <> · <a href={`https://solscan.io/tx/${r.tx}`} target="_blank" rel="noreferrer">{short(r.tx)}</a></>}
                 </span>

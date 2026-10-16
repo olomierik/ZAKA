@@ -83,3 +83,10 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=(), usb=(), serial=(), hid=(), bluetooth=()"
     Cross-Origin-Opener-Policy = "same-origin-allow-popups"
+
+# The service worker that shows pushed alerts (public/sw.js): always checked for a newer copy, so an update reaches
+# every browser at once.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"

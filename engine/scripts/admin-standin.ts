@@ -31,6 +31,7 @@ const ledger = new FeeLedger(store)
 const now = Date.now()
 await ledger.record([
   { id: 'arc:0xa1:router', at: now - 3_600_000, chain: 'arc', source: 'arc-router', token: '0x3600000000000000000000000000000000000000', symbol: 'USDC', amount: '4.2', amountUsd: 4.2, recipient: '0x274262a0321a0701b0a46a3576e07ae881c286bb', tx: `0x${'a1'.repeat(32)}`, block: 1, status: 'received' },
+  { id: 'ref:0xa2:3', at: now - 600_000, chain: 'arc', source: 'arc-referral', token: '0x3600000000000000000000000000000000000000', symbol: 'USDC', amount: '0.1575', amountUsd: 0.1575, recipient: '0x00000000000000000000000000000000000000f1', tx: `0x${'a2'.repeat(32)}`, block: 2, status: 'rebate', trader: '0x00000000000000000000000000000000000000b1', meta: { router: '0xd07583f7db671521aacfda2b4612ad187aa2924e', fee: '1207500', shareBps: 1500, logIndex: 3, decimals: 6 } },
   { id: 'arc:0xa2:router', at: now - 600_000, chain: 'arc', source: 'arc-router', token: '0x3600000000000000000000000000000000000000', symbol: 'USDC', amount: '1.05', amountUsd: 1.05, recipient: '0x274262a0321a0701b0a46a3576e07ae881c286bb', tx: `0x${'a2'.repeat(32)}`, block: 2, status: 'received' },
 ])
 const traffic = new Traffic(store)
