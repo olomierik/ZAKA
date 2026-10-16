@@ -2857,16 +2857,13 @@ Owner: "I have provided you with Alchemy endpoints for the chains we support, to
   - GitHub pushes didn't reach Railway on 2026-10-12. They do again: since 2026-10-15 GitHub's deployment records show Railway deploying every merge to `main` (`railway-app[bot]`, environment `arcdex / production`). A variable changed on Railway redeploys the service too.
 - **Tests:** `bun scripts/test-rpc-settings.ts` (ordering, Alchemy's methods, unconfigured, failover, the edge function: same-origin, methods, batches, size, the key never echoed).
 
-## Hosting — arcdex.online only
+## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
-**Every commit to `main` deploys to arcdex.online, and nowhere else** (owner decision, 2026-09-24).
+**Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**
 
-- **Project:** Vercel project `app` (`prj_cvHmYqjjLNXDMycZfQTbV4JKmkW2`), serving **arcdex.online** and `www.arcdex.online`. It builds automatically from GitHub `olomierik/ZAKA` `main`, so to ship you commit and push, then check the new `app` deployment (`vercel ls app`). Don't use `vercel --prod` for normal releases.
-- **Local link:** `.vercel/project.json` is linked to `app`, so any Vercel CLI command run here targets arcdex.online.
-- **Env vars:** only `app`'s Vercel settings are used. `.env` isn't committed, so GitHub builds never see it. `app` production has `VITE_ARC_LAUNCHPAD_ADDRESS`, `VITE_ARCDEX_SWAP_ROUTER_ADDRESS`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_WC_PROJECT_ID`. `VITE_ARCDEX_CURVE_ROUTER_ADDRESS` isn't needed: the deployed curve router is the default (`api/_curves.ts`). Set it only to name another router, or to `off`. `VITE_ARC_RPC_URL` / `VITE_ARC_WSS_URL` switch on the dedicated Arc endpoint ("Dedicated Arc RPC"). A new `VITE_*` var must be added there, and it only takes effect on the next build.
-  - To verify a var reached the site, fetch the live JS chunks and grep for the value. `vercel env pull` shows sensitive vars as empty.
-- **Retired project:** `zaka_app` (`zakaapp-drab.vercel.app`) is disconnected from GitHub. Its production deployment is only a 307 redirect of every path to the same path on arcdex.online. The source for that deployment isn't in this repo; it's just a `vercel.json` with `redirects`.
-  - History: until 2026-09-24, every push built **both** projects, and CLI deploys went to `zaka_app` with `.env` baked in. arcdex.online had no env vars, so the Launchpad showed "contract not configured".
+- **Vercel is gone (owner, 2026-10-16: "Remove vercel").** Vercel project `app` was disconnected from GitHub (`vercel git disconnect`), so commits no longer get a failing Vercel check. `vercel.json` and `.vercel/` were removed from the repo. The account had been blocked since 2026-10-03 (402), which is why every commit showed Vercel ✗.
+- The `api/` functions run on the engine (`/api/*`, "The site's read functions run on the engine"); Netlify serves only the built files and its edge functions (`netlify/edge-functions`).
+- **Env vars:** the site's `VITE_*` values are in `netlify.toml` or Netlify's environment (secrets such as `ALCHEMY_API_KEY`, `JUPITER_API_KEY`, `ACROSS_API_KEY`); the engine's are on Railway. A new `VITE_*` var takes effect on the next build.
 
 ## What This App Does
 
