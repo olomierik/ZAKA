@@ -4,6 +4,7 @@ import { defineChain } from 'viem'
 import { arbitrum, avalanche, base, bsc, linea, mainnet, optimism, polygon, robinhood, sonic, unichain, worldchain } from 'viem/chains'
 import { arcTransport } from './lib/rpc'
 import { ARC_TESTNET } from '../../engine/src/perps/shared'
+import { PRIVY_WALLET_NAME, privyEvmProvider } from './privy/state'
 
 // Arc mainnet — not in wagmi/chains yet, defined inline
 export const arc = defineChain({
@@ -83,5 +84,12 @@ export const wagmiConfig = createConfig({
       metadata: { name: 'ARCDEX', description: 'Spot and futures exchange on Arc', url: 'https://arcsense.site', icons: [APP_ICON] },
     }),
     coinbaseWallet({ appName: 'ARCDEX', appLogoUrl: APP_ICON }),
+    // The EVM wallet of an email or social sign-in (privy/PrivyRoot.tsx connects it once Privy has made it). Its provider
+    // is there only while signed in; the connect modal doesn't list it among the browser wallets.
+    injected({
+      target: { id: 'privy', name: PRIVY_WALLET_NAME, provider: () => privyEvmProvider() },
+      // No "pick an account" prompt (Privy's wallet has one account), and no disconnected flag: PrivyRoot decides.
+      shimDisconnect: false,
+    }),
   ],
 })

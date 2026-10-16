@@ -1,3 +1,4 @@
+import { enableAlertNotifications } from '../lib/notify'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Avatar from './Avatar'
 import FeedList from './FeedList'
@@ -216,11 +217,7 @@ function notify(title: string, body: string, onClick: () => void) {
   } catch { /* unsupported */ }
 }
 
-export async function enableAlertNotifications(): Promise<boolean> {
-  if (!('Notification' in window)) return false
-  const p = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission
-  return p === 'granted'
-}
+export { enableAlertNotifications }
 
 function Alerts({ navigate }: { navigate: (p: Page) => void }) {
   const me = useTrader().address?.toLowerCase() ?? null

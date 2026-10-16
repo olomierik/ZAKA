@@ -6,6 +6,7 @@ import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { isUnlocked } from '../lib/embeddedWallet'
 import { connectSolanaWallet, phantomLink, pickSolSigner, useSolanaWallets } from '../lib/solanaWallet'
 import { openSolAccount } from '../lib/solAccount'
+import { privySignIn, usePrivyOn } from '../privy/state'
 
 // "Connect wallet" for the whole app — a small modal over wagmi's own
 // connectors, in place of ConnectKit (which, with its Aave account kit,
@@ -19,6 +20,9 @@ import { openSolAccount } from '../lib/solAccount'
 // With no EVM wallet, the Solana wallet then signs once to open its ARCDEX
 // account (lib/solAccount.ts), which holds what it buys on Arc, BNB Chain and
 // Robinhood Chain.
+//
+// Email or social (2026-10-16, privy/state.ts): signs in with Privy, which makes an EVM and a Solana wallet for the
+// account. Shown once VITE_PRIVY_APP_ID is set and the `privy` flag is on.
 
 let isOpen = false
 const subs = new Set<() => void>()
@@ -55,6 +59,7 @@ export function ConnectModalHost() {
   const { connectors, connectAsync } = useConnect()
   const { isConnected } = useAccount()
   const sol = useSolanaWallets()
+  const privy = usePrivyOn()
   const [pending, setPending] = useState<string | null>(null)
   const [err, setErr] = useState('')
   // Which injected connectors actually have a wallet behind them.
@@ -64,7 +69,7 @@ export function ConnectModalHost() {
   useEffect(() => {
     if (!open) { setErr(''); setPending(null); return }
     let alive = true
-    void Promise.all(connectors.filter(c => c.type === 'injected').map(async c => (await c.getProvider().catch(() => null)) ? c.id : null))
+    void Promise.all(connectors.filter(c => c.type === 'injected' && c.id !== 'privy').map(async c => (await c.getProvider().catch(() => null)) ? c.id : null))
       .then(ids => { if (alive) setPresent(new Set(ids.filter((x): x is string => !!x))) })
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
     document.addEventListener('keydown', onKey)
@@ -101,6 +106,16 @@ export function ConnectModalHost() {
     } finally { setPending(null) }
   }
 
+  // Email or social: Privy's own window takes over; the wallet it makes connects by itself (privy/PrivyRoot.tsx).
+  async function pickPrivy() {
+    setErr(''); setPending('privy'); setOpen(false)
+    try {
+      await privySignIn()
+    } catch (e) {
+      if (!(e as { cancelled?: boolean }).cancelled) { setOpen(true); setErr(T(e instanceof Error ? e.message : 'Could not connect — try again')) }
+    } finally { setPending(null) }
+  }
+
   // A Solana wallet: connected, then (with no EVM wallet or trading wallet in use) its ARCDEX account opened.
   async function pickSol(name: string) {
     setErr(''); setPending(`sol:${name}`)
@@ -124,6 +139,19 @@ export function ConnectModalHost() {
           <button onClick={() => setOpen(false)} aria-label={T("Close")} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer' }}>×</button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {privy && (
+            <>
+              <div className="wallet-group">{T("Sign in")}</div>
+              <button className="wallet-row" onClick={() => void pickPrivy()} disabled={!!pending} data-testid="privy-signin">
+                <span className="wallet-row-blank" style={{ color: 'var(--adx-accent)' }}>✉</span>
+                <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
+                  <span style={{ fontWeight: 700 }}>{T("Email or social account")}</span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T("No wallet app: an EVM and a Solana wallet are made for you")}</span>
+                </span>
+                <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)' }}>{pending === 'privy' ? T("Opening…") : ''}</span>
+              </button>
+            </>
+          )}
           <div className="wallet-group">{T("EVM · Arc, BNB Chain, Robinhood Chain")}</div>
           {rows.map(c => {
             const l = label(c)

@@ -18,6 +18,9 @@ function alchemyDevProxy(): Record<string, ProxyOptions> {
 export default defineConfig({
   plugins: [react(), nodePolyfills()],
   build: {
+    // The gzip size of every file in the build log: ~465 files since Privy's SDK (2026-10-16), and memory the build
+    // needs elsewhere (netlify.toml's note on the build's heap).
+    reportCompressedSize: false,
     rollupOptions: {
       input: {
         main:   path.resolve(__dirname, 'index.html'),

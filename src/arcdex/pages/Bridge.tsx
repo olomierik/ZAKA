@@ -65,7 +65,10 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
   const n = parseFloat(amount)
   // Sending from the trading wallet to anyone but itself or the wallet that
   // funded it asks for the passcode, like a withdrawal (WithdrawGuard).
-  const guard = useWithdrawGuard({ address: tradingAddr, kind: fromTrading ? 'trading-wallet' : null }, fromTrading ? recipientAddr : '', n > 0 ? n : 0)
+  // A connected wallet confirms each transfer itself; an email or social sign-in's wallet (Privy) also needs its
+  // step-up when the recipient isn't its own address.
+  const guard = useWithdrawGuard(fromTrading ? { address: tradingAddr, kind: 'trading-wallet' } : { address: address ?? null, kind: address ? 'wallet' : null }, dir === 'out' ? recipientAddr : '', n > 0 ? n : 0)
+  const guarded = fromTrading || guard.privy
 
   // Circle's fees for this route and amount (debounced; stale answers dropped).
   const quoteSeq = useRef(0)
@@ -102,7 +105,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
   async function handleBridge() {
     if (!sender || !(n > 0) || !recipientOk) return
     setErrMsg(''); setResult(null); setProgress([])
-    if (fromTrading) {
+    if (guarded) {
       try { await guard.confirm() } catch (e) { setErrMsg(e instanceof Error ? e.message : T('Wrong passcode')); setStatus('error'); return }
     }
     let provider: EIP1193Provider | null = null
@@ -167,7 +170,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
   const busy = status === 'switching' || status === 'bridging'
   const needsWallet = !sender
   const tooSmall = quote !== null && quote.receiveUsdc <= 0
-  const passcodeMissing = fromTrading && (guard.missing || guard.overLimit || guard.limitsLoading)
+  const passcodeMissing = guarded && (guard.missing || guard.overLimit || guard.limitsLoading)
   const STEPS = ['approve', 'burn', 'fetchAttestation', 'mint']
   const stepState = (name: string) => {
     const r = result?.steps.find(x => x.name === name)
@@ -273,7 +276,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
             </label>
 
             {fromTrading && recipientOk && n > 0 && <WithdrawLimits guard={guard} />}
-            {fromTrading && recipientOk && <PasscodeField guard={guard} />}
+            {guarded && recipientOk && <PasscodeField guard={guard} />}
 
             {n > 0 && (
               <div className="xs-quote">

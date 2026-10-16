@@ -8,6 +8,10 @@
 //
 // Where the passcode is asked, the withdraw limits apply too (2026-10-15, lib/withdrawPolicy.ts): a new address takes
 // at most $250 in its first 24 hours, and at most $2,500 a day leaves for addresses that didn't fund the wallet.
+//
+// A wallet Privy made for an email or social sign-in (2026-10-16, privy/state.ts) confirms each transfer in Privy's
+// window, like a wallet app; sending anywhere but its own EVM or Solana address also needs a step-up first (the build
+// pack's 04): Privy's two-step verification, or, without it, a sign-in on this tab within 15 minutes.
 
 import { useCallback, useState } from 'react'
 import { accountOwner, hasPasskey, verifyPasscode } from '../lib/embeddedWallet'
@@ -15,6 +19,9 @@ import { passcodeRule, useFundingWallets } from '../lib/funding'
 import { shortAddr, type Trader } from '../lib/identity'
 import { t as T } from '../lib/i18n'
 import { recordWithdrawal, saveWithdrawAddress, useWithdrawBook, withdrawLimitsOn, withdrawVerdict, WITHDRAW_POLICY, type WithdrawVerdict } from '../lib/withdrawPolicy'
+import { privyStepUp, usePrivyState } from '../privy/state'
+import { isOwnAddress, stepUpNeed, type StepUpNeed } from '../privy/stepUp'
+import { PrivyStepUpNote } from '../privy/PrivyAccount'
 
 export interface WithdrawGuard {
   /** The trading wallet is sending (the rule applies). */
@@ -41,6 +48,10 @@ export interface WithdrawGuard {
   saveAddress: () => Promise<void>
   /** Records a transfer that went through (call it after sending). */
   record: (tx: string, usd: number, label: string) => void
+  /** The sender is the wallet of an email or social sign-in (Privy). */
+  privy: boolean
+  /** What that sign-in needs before this send: nothing, Privy's two-step code, or signing in again. */
+  privyStep: StepUpNeed
 }
 
 export function useWithdrawGuard(trader: Pick<Trader, 'address' | 'kind'>, to: string, amountUsd = 0): WithdrawGuard {
@@ -64,7 +75,14 @@ export function useWithdrawGuard(trader: Pick<Trader, 'address' | 'kind'>, to: s
   const record = useCallback((tx: string, usd: number, label: string) => {
     if (applies && trader.address) void recordWithdrawal(trader.address, { tx: tx.toLowerCase(), to, usd, at: Date.now() }, label)
   }, [applies, trader.address, to])
+  // An email or social sign-in sending somewhere other than its own addresses.
+  const p = usePrivyState()
+  const privy = !guarded && trader.kind === 'wallet' && !!trader.address && p.authenticated && !!p.evm && trader.address.toLowerCase() === p.evm.toLowerCase()
+  const privyAway = privy && !isOwnAddress(to, { evm: p.evm, sol: p.sol }) && to.trim() !== ''
+  const privyStep: StepUpNeed = privyAway ? stepUpNeed('send', { lastAuthAt: p.lastAuthAt, mfa: p.mfa, now: Date.now() }) : 'none'
   const confirm = useCallback(async () => {
+    // Checked again now (the sign-in may have aged while the form was open): Privy's code, or a refusal.
+    if (privyAway) { await privyStepUp('send', T('For your safety, sign in again before sending to this address.')); return }
     if (limitsLoading) throw new Error(T('Checking your withdraw limits… try again in a moment.'))
     if (limits && !limits.ok) throw new Error(limits.reason ?? T('Over your withdraw limit.'))
     if (!needsPasscode) return
@@ -83,11 +101,11 @@ export function useWithdrawGuard(trader: Pick<Trader, 'address' | 'kind'>, to: s
       const m = e instanceof Error ? e.message : ''
       throw new Error(/cancel|timed out|passkey/i.test(m) ? m : T('Wrong passcode'))
     }
-  }, [needsPasscode, passcode, viaSolana, owner, to, limits, limitsLoading])
+  }, [needsPasscode, passcode, viaSolana, owner, to, limits, limitsLoading, privyAway])
   return {
     guarded, funders: wallets, loadingFunders: loading, isFunder, needsPasscode, viaSolana,
-    missing: needsPasscode && !viaSolana && !passcode, passcode, setPasscode, confirm,
-    limits, limitsLoading, overLimit, saveAddress, record,
+    missing: (needsPasscode && !viaSolana && !passcode) || privyStep === 'relogin', passcode, setPasscode, confirm,
+    limits, limitsLoading, overLimit, saveAddress, record, privy, privyStep,
   }
 }
 
@@ -138,6 +156,7 @@ export function FunderChips({ guard, onPick }: { guard: WithdrawGuard; onPick: (
 
 /** "Your funding wallet ✓", or the passcode box when the address needs it. */
 export function PasscodeField({ guard, onEnter }: { guard: WithdrawGuard; onEnter?: () => void }) {
+  if (guard.privyStep !== 'none') return <PrivyStepUpNote need={guard.privyStep} />
   if (guard.isFunder) {
     return <div style={{ fontSize: '0.72rem', color: 'var(--green)' }}>{T('✓ This wallet funded your trading wallet — no passcode needed.')}</div>
   }

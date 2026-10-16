@@ -2189,7 +2189,7 @@ acceptance list: `docs/REPO_MAP.md` §8.
   - **Notices:** each send and each saved address writes a notice (and a system notification when allowed): "If this wasn't you, move your funds back to the wallet that funded it."
   - **What they can't do:** the limits are client-side. They slow down someone with an unlocked browser; they can't stop the key's owner, who can export the key. Enforcing them against the owner needs Privy's policies or a contract wallet.
   - `VITE_FLAG_WITHDRAW_LIMITS=off` turns the limits off; the checks and the review step stay.
-- **Not done (waiting for the owner):** Privy sign-in with EVM + Solana wallets and Privy's hosted export behind step-up (D1). They need `VITE_PRIVY_APP_ID` (a public id) and Privy's confirmation that Arc is supported.
+- **Privy sign-in and its hosted export behind step-up (D1):** done on 2026-10-16, see "Privy: sign in with email or a social account" below.
 - **Tests:**
   - `bun scripts/test-withdraw-policy.ts`: new addresses, the daily limit, sends read from logs in both decimals and counted once, the signed record, address checks, flags.
   - `bun scripts/test-chain-balances.ts`: the requests, the next node, base units, dollars, Arc's two decimals.
@@ -2441,6 +2441,94 @@ Trending and new pairs were already the Trenches.
   `npx web-push generate-vapid-keys`) and `VAPID_SUBJECT`. Without them the engine makes a pair and keeps it in its
   database. Then Deploy latest commit.
 
+## Privy: sign in with email or a social account (2026-10-16)
+
+The build pack's Phase 1 (decision D1). The owner set `VITE_PRIVY_APP_ID` on Netlify, and the admin wallets (`ADMIN_EVM_ADDRESSES`) on Railway, on 2026-10-16. Status against the pack: `docs/REPO_MAP.md` §8.
+
+- **What it is:** "Email or social account" at the top of Connect Wallet (`components/ConnectWallet.tsx`).
+  - Privy signs the person in and makes an EVM wallet and a Solana wallet for the account (`createOnLogin: 'all-users'`).
+  - Their keys stay with Privy: ARCDEX's code never sees one.
+- **Loaded only when used (`privy/PrivyHost.tsx`, `privy/PrivyRoot.tsx`):**
+  - Privy's SDK (`@privy-io/react-auth`, pinned) is 1.3 MB (370 KB gzipped) in its own chunk.
+  - It's fetched when someone picks the option, or when this browser was signed in before: `arcdex:privy:v1`, or wagmi's last connector being `privy` (`initPrivy`, called from `lib/reconnect.ts`).
+  - Other visitors load none of it. The app's own files grew about 6 KB gzipped.
+- **The EVM wallet is the connected wallet:**
+  - wagmi's connector `privy` (`wagmi.ts`) is an injected connector over the wallet's EIP-1193 provider. PrivyRoot connects it after a sign-in.
+  - Trade forms, Portfolio, withdrawals and the bridge then use it as they use MetaMask. Privy confirms each transaction in its own window.
+  - Arc is Privy's default chain, and every chain in wagmi's config is in its `supportedChains`.
+  - Another account signing in on the same tab reconnects, so the app never trades from the one before.
+- **The Solana wallet** signs wherever a Solana wallet app would (`lib/solanaWallet.ts` `setPrivySolana`) when no app is connected. It's shown as "Privy", and signs versioned transactions only.
+- **Step-up (`privy/stepUp.ts`; 04: "step-up auth for export and withdraw"):**
+  - **With two-step verification on** (Manage account → Two-step verification, Privy's own enrollment): Privy asks for the code before every export, and before every send to an address that isn't the account's own.
+  - **Without it:** the account must have signed in on this tab within 5 minutes for an export, or 15 minutes for a send.
+    - The sign-in time is kept in memory only, so a reload or another tab needs a fresh sign-in.
+    - "Sign in again" signs out and back in through Privy. The withdraw window then comes back on its first step.
+  - **Sends to the account's own EVM or Solana address** need neither.
+  - **Where:** the withdraw guard (`components/WithdrawGuard.tsx`, `privyStep`) covers every send it already covers, and the bridge's "Send from Arc" for this wallet too.
+  - **What it can't do:**
+    - The sign-in time is checked in the page. It stops someone who finds the site open, not someone using the browser's developer tools; two-step verification is enforced by Privy.
+    - The withdraw limits (`lib/withdrawPolicy.ts`) apply to the trading wallet only, since their ledger is signed by its key.
+- **Export (Manage account → Export keys):** Privy's own window for each key (`useExportWallet`), after the step-up.
+- **Account menu:** "✉ <email>" in the header, Export keys, and Sign out, which also disconnects the wallet from the app.
+- **Flag `privy`:** on by default, but offered only with `VITE_PRIVY_APP_ID` set: lowercase letters and digits, anything else keeps it off. /admin → Flags turns it off without a deploy.
+- **CSP:** Turnstile (`https://challenges.cloudflare.com`) is in `script-src`, for Privy's bot check. Privy's frames were already allowed (`frame-src https:`).
+- **Bug found by the browser check:** signing out left the wallet connected in the app, because Privy's provider was dropped before wagmi could disconnect through it. Now wagmi disconnects first, and drops the connection itself if it can't.
+- **Checked:**
+  - `bun scripts/test-privy.tsx` (in CI): the step-up rules, the sign-in and export calls, the Solana signer, the wagmi connector, the withdraw guard rendered, and the source. The source checks: Privy's SDK is imported only by PrivyRoot, lazily; the connect window; the bridge; the CSP; the pinned version. 12 of 12 planted bugs failed it.
+  - In Chromium, 23 checks against a stand-in for Privy's SDK (`scripts/privy-mock`, run with `scripts/vite.privy-mock.config.ts`), with Arc's RPC answered in the page. Privy's servers are out of the sandbox's reach.
+    - A first visit loads none of Privy's code.
+    - After signing in, the wallet connects in about 0.4 s, and both addresses show on Portfolio within a second of a reload.
+    - After a reload, a send elsewhere is held for the step-up. After "Sign in again" it goes to Privy's wallet as `USDC.transfer(that address, $1)`.
+    - Export is refused after a reload; with two-step verification on, Privy's code comes first, then its export window, for each key.
+    - Sign out, a cancelled sign-in, the flag off, and 390px with no sideways scroll.
+  - Not checked: Privy's real servers, a real sign-in, a real transaction.
+- **Owner steps:**
+  1. In the Privy dashboard (dashboard.privy.io → the app):
+     - allowed origins `https://arcsense.site`, `https://www.arcsense.site`, `https://arcdex.online` and `http://localhost:5173`;
+     - the login methods to offer (email, Google, X, Apple…);
+     - embedded wallets for Ethereum and Solana;
+     - MFA methods (authenticator app, passkey), so users can turn on two-step verification.
+  2. The App ID is already in Netlify. A deploy builds it in: merging to `main` does.
+  3. On Railway, the admin wallets take effect once the service redeploys: Railway does that by itself after a variable changes, and on every merge to `main`.
+  4. Try a sign-in and a $1 withdrawal on arcsense.site.
+- Every new string is in all six dictionaries (31).
+
+## Phase 3, first part: the page shows at once on phones (2026-10-16)
+
+The build pack's Phase 3 asks for Lighthouse performance 85+ on a mid-range mobile profile. Status against its other tasks: `docs/REPO_MAP.md` §12.
+
+- **Measured first:** Lighthouse 12 (mobile: simulated slow 4G and a 4× slower CPU) on the production build, served locally, with outside hosts unreachable.
+  - Before: home 70, Portfolio 74.
+  - Nothing showed until the app's code had loaded and run: first paint at about 3 s.
+- **The app shell (`index.html`):** the top bar is drawn by the HTML itself, plus the Trenches frame (coin strip, chain chips, lane tabs and lanes) on their paths. The app replaces it when it starts.
+  - It copies the app's own layout from `terminal.css`: the same heights, colours and breakpoints, in light and dark.
+  - The theme script also sets:
+    - `data-boot="tr"` on the Trenches' paths;
+    - `data-boot-c`, the chain whose chip is marked (the path's, else the last picked, `arcdex:chain`);
+    - `data-boot-en` when the app will be in English (stored language, else the browser's, as `lib/i18n.ts` picks it). Other languages get the frame without English labels.
+  - Its hash in the CSP changed with it (`scripts/check-csp.ts`).
+- **Less code before the first page:**
+  - The account menu's Deposit, Withdraw and Support windows load when opened. They used to bring the Solana cross-chain form, Jupiter, Relay and the withdraw code (about 60 KB) into every first load.
+  - The trading-wallet sheet and the share card (profit notifications) load the same way.
+  - `enableAlertNotifications` moved to `lib/notify.ts`, so the account menu no longer loads the discovery panel for one function.
+- **The logo:** a 48 px copy (`public/arcdex-mark-48.png`, 3.5 KB) for the top bar and the status bar. The 256 px original (40 KB) stays for the landing page and link previews.
+- **The coin strip on phones:** the contract-address pill was squeezed and its text ran into "Price".
+  - The pill no longer shrinks.
+  - Under 440 px the burned figure is left out (it's on `/burn`), and under 360 px the price too.
+  - Checked at 320, 360, 390, 412 and 768 px: no overlap, nothing cut off.
+- **After:**
+  - Home 84–86 over three runs (median 85).
+  - Portfolio 78; a coin page 70.
+  - First paint 0.9 s everywhere.
+  - Home now loads 341 KB of JavaScript (it was about 400 KB).
+- **What's left:**
+  - LCP is the app's own first render, about 4 s on that profile. Most of it is the wallet libraries (viem, wagmi, react-query) every page starts with.
+  - Rendering before them would mean loading wagmi after the first page: a bigger change, for later.
+  - Coin pages wait on their chart and data.
+- **Tests:**
+  - `bun scripts/test-app-shell.ts` (in CI): the boot script on every Trenches path and the others, chains, languages and blocked storage, and the frame's labels, chains, heights and breakpoints against the app's own source.
+  - The Privy browser check (23 checks) was run again after the windows became lazy: all passed.
+
 ## Autotrade paused (2026-10-03)
 
 Owner: the platform becomes ARCSENSE (spot and futures trading), and "the auto trade functionality will have to be paused for now".
@@ -2611,7 +2699,7 @@ Owner: "I have provided you with Alchemy endpoints for the chains we support, to
   - Measured from the owner's region (2026-10-12, median of 7): Alchemy 175 ms vs 225 (Robinhood Chain), 155 vs 230 (BNB Chain), 159 vs 230 (Solana); on Arc, Arc's public RPC was faster (195 vs 239). Starknet's Alchemy node answered in 0.7–2 s, so it is Starknet's last fallback.
   - Found by the new test and fixed: when every node was stepping aside, the one that answered stayed marked as failing.
 - **Railway:** the engine's last deploy was 2026-10-06. The service's Watch Paths held five file names joined by commas in one entry, plus `railway.tom`. Now `/engine/**`, `/api/**`, `/railway.toml`. The latest commit was deployed from the dashboard and is healthy.
-  - GitHub pushes still don't reach Railway (a test push created no deployment). **Owner step:** Railway → arcdex-engine → Settings → Source: disconnect the `main` branch and connect it again; or check GitHub → Settings → Applications → Railway App's repository access (it asks for your verification code). Until then use Deployments → Deploy latest commit after an engine change.
+  - GitHub pushes didn't reach Railway on 2026-10-12. They do again: since 2026-10-15 GitHub's deployment records show Railway deploying every merge to `main` (`railway-app[bot]`, environment `arcdex / production`). A variable changed on Railway redeploys the service too.
 - **Tests:** `bun scripts/test-rpc-settings.ts` (ordering, Alchemy's methods, unconfigured, failover, the edge function: same-origin, methods, batches, size, the key never echoed).
 
 ## Hosting — arcdex.online only

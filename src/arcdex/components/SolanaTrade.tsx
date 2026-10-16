@@ -392,7 +392,7 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
       )}
       {noBuy && <div className="rh-msg error">{buyBlocked}</div>}
       {guard.needsPasscode && route === 'arc' && mode === 'buy' && <WithdrawLimits guard={guard} />}
-      {guard.needsPasscode && route === 'arc' && (mode === 'buy' || needsGas) && <PasscodeField guard={guard} />}
+      {(guard.needsPasscode || guard.privyStep !== 'none') && route === 'arc' && (mode === 'buy' || needsGas) && <PasscodeField guard={guard} />}
 
       {msg && (
         <div className={`rh-msg ${step === 'error' ? 'error' : step === 'done' ? 'done' : 'busy'}`}>

@@ -14,6 +14,17 @@
   VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwY2FhY2h6dW1ycGNjZHRhamtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5NjE0MzksImV4cCI6MjEwNTUzNzQzOX0.91KuOFaBZp5ChuRgNUTSjhUng291a31fneD7bhFG4Us"
   VITE_ARC_LAUNCHPAD_ADDRESS = "0xEf6a8fdaF0181E19CC2C7575ada4b9c279809a67"
   VITE_ARCDEX_SWAP_ROUTER_ADDRESS = "0xD07583f7DB671521AAcFdA2b4612AD187aA2924e"
+  # Netlify's secret scan fails a deploy that ships a value it takes for a secret. These are public by design:
+  #   VITE_PRIVY_APP_ID, Privy's app id, which the page needs (the build pack's 05: "the only keys the client may see
+  #   are public identifiers (for example PRIVY_APP_ID)"), whether or not it's marked secret in Netlify;
+  #   the two Stripe publishable keys inside Privy's SDK (for its card on-ramp): publishable keys are meant for pages.
+  # scripts/test-privy.tsx fails when Privy's SDK ships other ones, so this list follows the pinned version.
+  # The build's JavaScript heap (2026-10-16): with Privy's SDK the build needs 1.5-2 GB of it (main needed 1-1.5 GB),
+  # and the preview deploys failed about a minute in, as a build out of heap does. Measured locally: 3 GB builds with
+  # room to spare, at a peak of about 3.1 GB of memory.
+  NODE_OPTIONS = "--max-old-space-size=3072"
+  SECRETS_SCAN_OMIT_KEYS = "VITE_PRIVY_APP_ID"
+  SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES = "pk_live_hirbpu0cVcLHrjktC9l7fbc9ctjv0SL,pk_test_fqWjXZMSFwloh7orvJsRfjiUHXJqFzI"
 
 # The site's functions live on the engine: here they're a plain 404, so the site's fallback fails fast instead of
 # reading the app's HTML as data.
@@ -69,14 +80,17 @@
 #   script-src   this site's files only, plus two hashed inline pieces of index.html: the theme script and the fonts'
 #                onload="this.media='all'" ('unsafe-hashes' allows that exact handler and nothing else).
 #                Edit either and its hash changes: `bun scripts/check-csp.ts` fails until this line is updated.
+#                Also Cloudflare Turnstile (challenges.cloudflare.com), the bot check Privy's sign-in shows when the
+#                Privy app has it on (2026-10-16, privy/PrivyRoot.tsx).
 #   connect-src  any https/wss host: the app talks to many chains' RPCs (and ones the user picks in RPC settings),
 #                Relay, Across, Hyperliquid, Supabase and the engine. Narrowing it is a later step.
-#   frame-src    https: wallet and on-ramp frames (WalletConnect, Coinbase, Circle).
+#   frame-src    https: wallet and on-ramp frames (WalletConnect, Coinbase, Circle), Privy's auth.privy.io (its wallets and
+#                key export live in that frame, on Privy's origin) and Turnstile.
 # No one may frame the site (frame-ancestors, X-Frame-Options); HSTS keeps it on https.
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'sha256-UWp2Tu29+U0uKTgcujF8Z+eKD4Z5Tl6VW7eJo9mIvDU=' 'unsafe-hashes' 'sha256-MhtPZXr7+LpJUY5qtMutB+qWfQtMaPccfe7QXtCcEYc='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'sha256-zhY0Xc/Db6MZsKr0fVYGPsbzIE07OvhG3SW1fbK3bB4=' 'unsafe-hashes' 'sha256-MhtPZXr7+LpJUY5qtMutB+qWfQtMaPccfe7QXtCcEYc=' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
     X-Content-Type-Options = "nosniff"
     X-Frame-Options = "DENY"

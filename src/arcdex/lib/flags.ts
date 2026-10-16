@@ -5,7 +5,7 @@
 //   • while the site runs, from /admin → Flags (engine/src/admin/flags.ts): the engine serves GET /v1/flags, read when the
 //     app starts and every 5 minutes, and kept in this browser for the next visit. A protective flag (SITE_FLAGS in
 //     api/_marketProtocol.ts) is only ever turned on this way, never off: loosening a protection takes a deploy.
-// Protections default on; features that need an outside account (Privy) default off until it's configured.
+// Protections default on; a feature that needs an outside account (Privy) shows only once that account is configured.
 
 import { useSyncExternalStore } from 'react'
 import { SITE_FLAGS, isSiteFlag, type SiteFlag } from '../../../api/_marketProtocol'
@@ -23,8 +23,9 @@ export const FLAGS = {
   /** Solana swaps through Jupiter's Swap API V2 with ARCDEX's referral fee (lib/jupiter.ts). Works once the site's
    * proxy has JUPITER_API_KEY; until then (or while Jupiter is down) Solana swaps go through Relay. */
   jupiter: true,
-  /** Sign-in with Privy (email or social), with its embedded EVM and Solana wallets. Needs VITE_PRIVY_APP_ID. */
-  privy: false,
+  /** Sign-in with Privy (email or social), with its embedded EVM and Solana wallets (privy/state.ts). On, but offered only
+   * once VITE_PRIVY_APP_ID is set (the owner set it on 2026-10-16); /admin can turn it off without a deploy. */
+  privy: true,
   /** Price and whale alerts sent by the engine as web push, with ARCDEX closed (lib/push.ts). Needs the engine. */
   pushAlerts: true,
 } as const satisfies Record<SiteFlag, boolean>
