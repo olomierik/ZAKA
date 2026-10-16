@@ -25,6 +25,7 @@ import { useTrader } from '../lib/identity'
 import { useIsMobile } from '../lib/useMobile'
 import Sheet, { TradeBar } from '../components/Sheet'
 import { SolanaPayCard } from '../components/SolanaCross'
+import { PayFromCard } from '../components/PayFromChain'
 import { ARC_ID } from '../lib/relayQuote'
 import type { BuyIntent, Page } from '../App'
 import { t as T } from '../lib/i18n'
@@ -622,7 +623,7 @@ export default function ArgusTokenPage({ address, pool, navigate, buy }: Props) 
         <TradeBar symbol={symbol} onTrade={setTradeSheet} />
         <Sheet open={tradeSheet !== null} onClose={() => setTradeSheet(null)}>
           {tradeSheet && swapWidget(tradeSheet)}
-          {tradeSheet && <div style={{ padding: '0 14px 14px' }}><SolanaPayCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} initialMode={tradeSheet} /></div>}
+          {tradeSheet && <div style={{ padding: '0 14px 14px' }}>{tradeSheet === 'buy' && <PayFromCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} />}<SolanaPayCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} initialMode={tradeSheet} /></div>}
         </Sheet>
       </div>
     </div>
@@ -690,7 +691,7 @@ export default function ArgusTokenPage({ address, pool, navigate, buy }: Props) 
             {T('Trading as')}{' '}{trader.kind === 'trading-wallet' ? T('⚡ trading wallet') : T('wallet')} <span className="spot-addr">{trader.address.slice(0, 6)}…{trader.address.slice(-4)}</span>{trader.kind === 'trading-wallet' ? T(' · one-tap, no pop-ups') : ''}
           </p>
         )}
-        <div className="tk-note"><SolanaPayCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} /></div>
+        <div className="tk-note"><PayFromCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} /><SolanaPayCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} /></div>
       </>}
       side={sidePanels}
     />

@@ -31,6 +31,7 @@ import { rememberBsc } from './bsc'
 import { rememberHolding } from './held'
 import { rememberRh } from './robinhood'
 import { primaryOf } from './rpcSettings'
+import { isPayChain } from './payChains'
 import { t as T } from './i18n'
 import { assertTradingOn, TradingPausedError } from './tradeSwitch'
 import { sizeProblem } from './guardrails'
@@ -81,7 +82,9 @@ async function follow(q: RelayQuote, tx: string, onStep: (p: RelayProgress) => v
 }
 
 /** The trade switch's venue for a Relay trade: the chain its coin is on. */
-const relayVenue = (req: RelayRequest) => (req.chain === 'bsc' ? 'bnb' as const : 'solana' as const)
+const relayVenue = (req: RelayRequest) => (req.side === 'xevm'
+  ? (req.evmChain === BSC_ID ? 'bnb' as const : req.evmChain === RH_ID ? 'robinhood' as const : 'arc' as const)
+  : req.chain === 'bsc' ? 'bnb' as const : 'solana' as const)
 
 /** A trade signed on an EVM chain: paid on Arc (a buy or gas top-up), on BNB Chain (a sale to Arc, or a swap there), or
  * from the trader's account on Arc, BNB Chain or Robinhood Chain to a Solana wallet (xout). */
@@ -91,7 +94,7 @@ export async function runRelayEvm(kind: TraderKind, req: RelayRequest, shown: Re
   onStep({ step: 'quote' })
   let q = await freshQuote(req, shown)
   const chainId = q.signChain
-  if (chainId !== ARC_ID && chainId !== BSC_ID && chainId !== RH_ID) throw new RelayError(T('An unexpected chain to sign on.'))
+  if (chainId !== ARC_ID && chainId !== BSC_ID && chainId !== RH_ID && !(req.side === 'xevm' && isPayChain(chainId))) throw new RelayError(T('An unexpected chain to sign on.'))
   const reader = evmReader(chainId)
   // What goes in, and who must be allowed to take it, as the checked quote says (Relay's depository for Arc's USDC, its
   // approval proxy for any other token; native coins go with the call, no approval).
@@ -117,6 +120,12 @@ export async function runRelayEvm(kind: TraderKind, req: RelayRequest, shown: Re
   if (req.side === 'buy' && req.chain === 'bsc') rememberBsc(req.evm, req.mint)
   if (req.side === 'buy' && (req.chain ?? 'solana') === 'solana') rememberSol(req.sol, req.mint)
   if (req.side === 'swap' && req.chain === 'bsc' && req.outToken) rememberBsc(req.evm, req.outToken)
+  // A coin paid for from Ethereum, Base or Arbitrum: Portfolio checks it first on its chain.
+  if (req.side === 'xevm') {
+    if (req.evmChain === BSC_ID) rememberBsc(req.evm, req.mint)
+    else if (req.evmChain === RH_ID) rememberRh(req.evm, req.mint)
+    else rememberHolding(req.evm, req.mint)
+  }
   return follow(q, tx, onStep)
 }
 

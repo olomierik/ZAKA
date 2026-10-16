@@ -3769,5 +3769,11 @@ const d: Record<string, string> = {
   "Withdrawals go only to the wallet you signed in with, or to a wallet that funded the copy wallet.": "Utoaji huenda tu kwenye pochi uliyoingia nayo, au kwenye pochi iliyoweka pesa kwenye pochi ya kunakili.",
   "Every copied trade pays ARCDEX’s normal trading fee. Gas is paid from the copy wallet.": "Kila biashara iliyonakiliwa hulipa ada ya kawaida ya biashara ya ARCDEX. Gas hulipwa kutoka pochi ya kunakili.",
   "Past results of a leader don’t predict future ones. Nothing here is investment advice.": "Matokeo ya zamani ya kiongozi hayatabiri ya baadaye. Hakuna hapa kilicho ushauri wa uwekezaji.",
+  "Pay from Ethereum, Base or Arbitrum": "Lipa kutoka Ethereum, Base au Arbitrum",
+  "USDC or ETH · one signature · no bridging": "USDC au ETH · sahihi moja · bila bridge",
+  "Pay from": "Lipa kutoka",
+  "Pay with USDC or ETH where you hold it: one signature on {from}, and the coin lands in the same wallet on {chain} in seconds. No bridging first. Every trade is checked and simulated before it’s sent.": "Lipa kwa USDC au ETH ulipo nazo: sahihi moja kwenye {from}, na sarafu inafika kwenye pochi ileile kwenye {chain} ndani ya sekunde. Hakuna bridge kwanza. Kila biashara inakaguliwa na kuigwa kabla ya kutumwa.",
+  "Add a little ETH on {chain} for the transaction’s gas.": "Ongeza ETH kidogo kwenye {chain} kwa gas ya muamala.",
+  "Done: ≈{out} is in your wallet on {chain}.": "Imekamilika: ≈{out} iko kwenye pochi yako kwenye {chain}.",
 }
 export default d

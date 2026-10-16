@@ -3769,5 +3769,11 @@ const d: Record<string, string> = {
   "Withdrawals go only to the wallet you signed in with, or to a wallet that funded the copy wallet.": "提现只能转到你登录所用的钱包，或曾为跟单钱包充值的钱包。",
   "Every copied trade pays ARCDEX’s normal trading fee. Gas is paid from the copy wallet.": "每笔跟单交易都支付 ARCDEX 的常规交易费。gas 由跟单钱包支付。",
   "Past results of a leader don’t predict future ones. Nothing here is investment advice.": "带单人的过往业绩不代表未来表现。此处内容均不构成投资建议。",
+  "Pay from Ethereum, Base or Arbitrum": "从 Ethereum、Base 或 Arbitrum 支付",
+  "USDC or ETH · one signature · no bridging": "USDC 或 ETH · 一次签名 · 无需跨链桥",
+  "Pay from": "支付来源",
+  "Pay with USDC or ETH where you hold it: one signature on {from}, and the coin lands in the same wallet on {chain} in seconds. No bridging first. Every trade is checked and simulated before it’s sent.": "用你持有的 USDC 或 ETH 支付：在 {from} 上签名一次，代币几秒内到达你在 {chain} 上的同一钱包。无需先跨链。每笔交易发送前都会经过检查和模拟。",
+  "Add a little ETH on {chain} for the transaction’s gas.": "请在 {chain} 上添加少量 ETH 作为交易的 gas。",
+  "Done: ≈{out} is in your wallet on {chain}.": "完成：≈{out} 已在你 {chain} 上的钱包中。",
 }
 export default d

@@ -8,6 +8,7 @@ import { cachedArgusMarket, copycatOf, getArgusMarket, type ArgusPool } from '..
 import { getAllLaunchpadTokens } from '../api/launchpad'
 import TokenSwap from '../components/TokenSwap'
 import { SolanaPayCard } from '../components/SolanaCross'
+import { PayFromCard } from '../components/PayFromChain'
 import { ARC_ID } from '../lib/relayQuote'
 import { ChainIcon, ChainStrip, UsdcIcon } from '../components/Chains'
 import { BRIDGE_NETWORKS } from '../lib/bridgeChains'
@@ -160,7 +161,7 @@ export default function Swap({ navigate }: Props) {
                 <div className="xs-widget">
                   <TokenSwap address={picked.address} pool={picked.pool} fallback={{ symbol: picked.symbol, image: picked.image, priceUsd: picked.priceUsd }} />
                   {/* Or straight from a Solana wallet, with SOL or USDC on Solana. */}
-                  <SolanaPayCard chainId={ARC_ID} token={picked.address} symbol={picked.symbol} priceUsd={picked.priceUsd} />
+                  <PayFromCard chainId={ARC_ID} token={picked.address} symbol={picked.symbol} priceUsd={picked.priceUsd} /><SolanaPayCard chainId={ARC_ID} token={picked.address} symbol={picked.symbol} priceUsd={picked.priceUsd} />
                 </div>
                 </BuyRiskProvider>
               </>

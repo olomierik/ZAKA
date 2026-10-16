@@ -3769,5 +3769,11 @@ const d: Record<string, string> = {
   "Withdrawals go only to the wallet you signed in with, or to a wallet that funded the copy wallet.": "Os saques vão só para a carteira com que você entrou, ou para uma carteira que abasteceu a carteira de cópia.",
   "Every copied trade pays ARCDEX’s normal trading fee. Gas is paid from the copy wallet.": "Cada operação copiada paga a taxa de trading normal da ARCDEX. O gas é pago pela carteira de cópia.",
   "Past results of a leader don’t predict future ones. Nothing here is investment advice.": "Resultados passados de um líder não preveem os futuros. Nada aqui é recomendação de investimento.",
+  "Pay from Ethereum, Base or Arbitrum": "Pagar a partir de Ethereum, Base ou Arbitrum",
+  "USDC or ETH · one signature · no bridging": "USDC ou ETH · uma assinatura · sem bridge",
+  "Pay from": "Pagar a partir de",
+  "Pay with USDC or ETH where you hold it: one signature on {from}, and the coin lands in the same wallet on {chain} in seconds. No bridging first. Every trade is checked and simulated before it’s sent.": "Pague com USDC ou ETH onde os tiver: uma assinatura em {from} e a moeda chega à mesma carteira em {chain} em segundos. Sem bridge antes. Cada operação é verificada e simulada antes de ser enviada.",
+  "Add a little ETH on {chain} for the transaction’s gas.": "Adicione um pouco de ETH em {chain} para o gas da transação.",
+  "Done: ≈{out} is in your wallet on {chain}.": "Pronto: ≈{out} está na sua carteira em {chain}.",
 }
 export default d

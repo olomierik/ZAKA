@@ -18,6 +18,7 @@ import PriceChart, { type ChartTrade } from '../components/PriceChart'
 import type { TradeRow } from '../components/TokenSocialTabs'
 import Sheet, { TradeBar } from '../components/Sheet'
 import { SolanaPayCard } from '../components/SolanaCross'
+import { PayFromCard } from '../components/PayFromChain'
 import { RH_ID } from '../lib/relayQuote'
 import { AgoText } from '../components/Ago'
 import { ChainIcon } from '../components/Chains'
@@ -374,7 +375,7 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate,
         {!notToken && <TradeBar symbol={symbol} onTrade={setSheet} />}
         <Sheet open={sheet !== null} onClose={() => setSheet(null)}>
           {sheet && trade(undefined, false, sheet)}
-          {sheet && solPay && <div style={{ padding: '0 14px 14px' }}><SolanaPayCard chainId={RH_ID} token={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked} initialMode={sheet} /></div>}
+          {sheet && solPay && <div style={{ padding: '0 14px 14px' }}>{sheet === 'buy' && <PayFromCard chainId={RH_ID} token={address} symbol={symbol} priceUsd={guardPrice} buyBlocked={buyBlocked} />}<SolanaPayCard chainId={RH_ID} token={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked} initialMode={sheet} /></div>}
         </Sheet>
       </div>
     </div>
@@ -421,7 +422,7 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate,
       flow={{ volume: coin?.volume24h ?? null, buys: coin?.buys24h ?? null, sells: coin?.sells24h ?? null }}
       trade={<>
         {trade(undefined, false, buy ? 'buy' : undefined)}
-        {solPay && <div className="tk-note"><SolanaPayCard chainId={RH_ID} token={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked} /></div>}
+        {solPay && <div className="tk-note"><PayFromCard chainId={RH_ID} token={address} symbol={symbol} priceUsd={guardPrice} buyBlocked={buyBlocked} /><SolanaPayCard chainId={RH_ID} token={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked} /></div>}
       </>}
       side={<TkPanel title={T('Community')}><CoinVotes chain="robinhood" address={address} /></TkPanel>}
     />

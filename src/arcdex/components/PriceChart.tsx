@@ -10,6 +10,7 @@ import type { WireCandle } from '../../../api/_marketProtocol'
 import { INDICATORS, bollinger, ema, rsi, sma, vwap, type IndicatorId } from '../lib/indicators'
 import { t as T } from '../lib/i18n'
 import { RIGHT_OFFSET_BARS, fitWindow, flightOf, followAfterRedraw } from '../lib/chartMotion'
+import { OPEN_CHOICES, fillGaps, pickOpenRes } from '../lib/chartFrame'
 
 const IND_KEY = 'arcdex:chart-indicators'
 const RSI_PANE = 110
@@ -28,12 +29,14 @@ const RESOLUTIONS: { label: string; value: Resolution }[] = [
 const RES_SECONDS: Record<Resolution, number> = { '1s': 1, '5s': 5, '15s': 15, '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14_400, '1d': 86_400 }
 /** Sub-minute candles exist only on-chain (GeckoTerminal's finest is 1m). */
 const onChainOnly = (r: Resolution) => RES_SECONDS[r] < 60
-/** Every coin opens on 15s, drawn as a line of its price, wherever its swaps
- * come in live (as fomo does: owner, 2026-10-04), else on 15m. A switch holds
- * while the coin is open; the next coin opens the same way again. */
-const OPEN_RES: Resolution = '15s'
+/** A coin opens on the finest timeframe its own trades fill (lib/chartFrame.ts pickOpenRes: 15s
+ * for a busy coin, up to 4H for a quiet one; owner, 2026-10-16, "the chart is messy"), else on 15m
+ * until its trades are read. A switch holds while the coin is open; the next coin is picked again. */
 const DEFAULT_RES: Resolution = '15m'
-const DEFAULT_MODE = 'price' as const
+/** Market cap first, as on fomo and GMGN (where the coin has a supply); Price is one click. */
+const DEFAULT_MODE = 'mcap' as const
+/** The first pick may get finer for this long while older trades are still being read. */
+const AUTO_SETTLE_MS = 8_000
 const fromWireCandle = (c: WireCandle): Candle => ({ time: c[0], open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5] })
 /** History with live candles laid over it, by bucket. */
 function overlay(history: Candle[], live: Candle[]): Candle[] {
@@ -131,8 +134,8 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
   const seriesId = source?.id ?? poolAddress
   const hasVolume = source?.volume !== false
   const hasTicks = ticks !== undefined || engineMode
-  const [res, setRes] = useState<Resolution>(OPEN_RES)
-  // Whether someone picked this coin's timeframe (the next coin opens on 15s again).
+  const [res, setRes] = useState<Resolution>(DEFAULT_RES)
+  // Whether someone picked this coin's timeframe (the next coin is picked from its trades again).
   const picked = useRef(false)
   const [history, setHistory] = useState<Candle[]>([])
   const [historyLoaded, setHistoryLoaded] = useState(false)
@@ -144,6 +147,7 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
   const styleRef = useRef(style)
   styleRef.current = style
   const [showBubbles, setShowBubbles] = useState(true)
+  const [optsOpen, setOptsOpen] = useState(false)
   const [showMine, setShowMine] = useState(true)
   // Theses stay on the chart when this is on; off by default, so the chart
   // shows nothing but the price (and each trade's pop) until asked.
@@ -232,12 +236,25 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
   }, [engineMode, engineToken, res])
 
   const step = RES_SECONDS[res]
+  // The current bar's start, so bars keep coming (flat at the last price) while no one trades.
+  const [nowBucket, setNowBucket] = useState(() => Math.floor(Date.now() / 1000 / step) * step)
+  useEffect(() => {
+    const at = () => setNowBucket(Math.floor(Date.now() / 1000 / step) * step)
+    at()
+    const id = setInterval(at, Math.min(step, 15) * 1000)
+    return () => clearInterval(id)
+  }, [step])
   const recent = useMemo(() => candlesFromTicks(ticks ?? [], step), [ticks, step])
   const candles = useMemo(() => {
-    if (engineMode && engineHistory) return overlay(history, liveCandles)
-    const base = mergeCandles(onChainOnly(res) ? [] : history, recent)
-    return engineMode ? overlay(base, liveCandles) : base
-  }, [engineMode, engineHistory, history, liveCandles, recent, res])
+    let raw: Candle[]
+    if (engineMode && engineHistory) raw = overlay(history, liveCandles)
+    else {
+      const base = mergeCandles(onChainOnly(res) ? [] : history, recent)
+      raw = engineMode ? overlay(base, liveCandles) : base
+    }
+    // Every bar between trades, flat at the last price, up to now: time runs evenly on the axis.
+    return fillGaps(raw, step, nowBucket)
+  }, [engineMode, engineHistory, history, liveCandles, recent, res, step, nowBucket])
   const loading = candles.length === 0 && (!historyLoaded || (hasTicks && ticks === null))
   // A new coin, timeframe, Price/MCap view or chart style starts fitted:
   // every candle in the window and the price axis on auto. Changing the
@@ -247,11 +264,21 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
   useEffect(() => { if (source?.resolutions && !source.resolutions.includes(res)) setRes(source.resolutions.includes(DEFAULT_RES) ? DEFAULT_RES : source.resolutions[0]) }, [source, res])
   // Without on-chain swaps there are no sub-minute candles.
   useEffect(() => { if (!hasTicks && onChainOnly(res)) setRes(DEFAULT_RES) }, [hasTicks, res])
-  // A new coin opens on 15s once its live swaps make 15s possible (a Robinhood
-  // coin's chain feed starts a moment after its page), unless someone picked.
-  useEffect(() => { picked.current = false }, [seriesId])
-  const liveRes = hasTicks && (!source?.resolutions || source.resolutions.includes(OPEN_RES))
-  useEffect(() => { if (!picked.current && liveRes && res !== OPEN_RES) setRes(OPEN_RES) }, [liveRes, res, seriesId])
+  // A new coin opens on the finest timeframe its trades fill, once they're read (a chain feed
+  // starts a moment after its page). While older trades are still arriving the pick may only get
+  // finer, for AUTO_SETTLE_MS; after that it holds, so a coin heating up doesn't jump timeframes.
+  const auto = useRef({ done: false, at: 0 })
+  useEffect(() => { picked.current = false; auto.current = { done: false, at: 0 } }, [seriesId])
+  const choicesKey = OPEN_CHOICES.filter(r => (source?.resolutions ? source.resolutions.includes(r) : hasTicks || !onChainOnly(r))).join(',')
+  useEffect(() => {
+    if (picked.current || !ticks?.length) return
+    const a = auto.current
+    if (a.done && Date.now() - a.at > AUTO_SETTLE_MS) return
+    const choice = pickOpenRes(ticks.map(t => t.time), Date.now(), choicesKey.split(',').filter(Boolean) as Resolution[])
+    if (!choice) return
+    if (!a.done) { auto.current = { done: true, at: Date.now() }; if (choice !== res) setRes(choice) }
+    else if (RES_SECONDS[choice] < RES_SECONDS[res]) setRes(choice)
+  }, [ticks, choicesKey, res, seriesId])
   // 5s candles exist only in the engine.
   useEffect(() => { if (!engineMode && res === '5s') setRes('15s') }, [engineMode, res])
   // Wheel zoom only in fullscreen, where there's no page to scroll.
@@ -682,6 +709,24 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
           </div>
         )}
       </span>
+      {(trades || thesisMarks) && (
+        <span style={{ position: 'relative' }}>
+          <button onClick={() => setOptsOpen(o => !o)} style={pill(optsOpen)} title={T("Chart overlays")} aria-expanded={optsOpen}>⚙</button>
+          {optsOpen && (
+            <div className="menu-pop chart-overlays" style={{ top: 30, right: 0, minWidth: 220, zIndex: 20, display: 'grid', gap: 8, padding: 10, fontSize: '0.78rem' }} onMouseLeave={() => setOptsOpen(false)}>
+              <b>{T("Chart overlays")}</b>
+              {check(showBubbles, setShowBubbles, T('Trades'))}
+              {check(showMine, setShowMine, T('My swaps'))}
+              {thesisMarks && check(showThesis, setShowThesis, T('Thesis'))}
+              {friends && check(friendsOnly, setFriendsOnly, T('Friends only'))}
+              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>{T("Min size")}<select value={minSize} onChange={e => setMinSize(Number(e.target.value) as (typeof MIN_SIZES)[number])} className="disc-select">
+                  {MIN_SIZES.map(m => <option key={m} value={m}>{m === 0 ? T("All") : `>$${m >= 1000 ? '1K' : m}`}</option>)}
+                </select>
+              </span>
+            </div>
+          )}
+        </span>
+      )}
       <button onClick={screenshot} style={pill(false)} title={T("Save chart image")}>📷</button>
       <button onClick={fullscreen} style={pill(false)} title={T("Fullscreen")}>⛶</button>
     </div>
@@ -718,19 +763,6 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
       <button className={scaleMode === 'log' ? 'on' : ''} onClick={() => setScaleMode(m => (m === 'log' ? 'normal' : 'log'))} title={T("Logarithmic scale")}>log</button>
       <button className={autoScale ? 'on' : ''} onClick={() => setAutoScale(a => !a)} title={T("Auto-fit the price scale")}>auto</button>
     </div>
-    {(trades || thesisMarks) && (
-      <div className="chart-overlays" style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginTop: 10, fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-        <b style={{ color: 'var(--text)' }}>{T("Chart overlays")}</b>
-        {check(showBubbles, setShowBubbles, T('Trades'))}
-        {check(showMine, setShowMine, T('My swaps'))}
-        {thesisMarks && check(showThesis, setShowThesis, T('Thesis'))}
-        {friends && check(friendsOnly, setFriendsOnly, T('Friends only'))}
-        <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>{T("Min size")}<select value={minSize} onChange={e => setMinSize(Number(e.target.value) as (typeof MIN_SIZES)[number])} className="disc-select">
-            {MIN_SIZES.map(m => <option key={m} value={m}>{m === 0 ? T("All") : `>$${m >= 1000 ? '1K' : m}`}</option>)}
-          </select>
-        </span>
-      </div>
-    )}
     </div>
   )
 }

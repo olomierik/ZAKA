@@ -19,6 +19,7 @@ import { waitForReceipt } from './receipts'
 import { notifyBalances } from './balances'
 import { isContractCode, rememberRh, rhClient, RH_RPC, robinhood } from './robinhood'
 import { bscClient, bscWallet } from './bsc'
+import { isPayChain, payChain, payClient } from './payChains'
 import type { TraderKind } from './identity'
 import { AcrossError, ARC_ID, depositStatus, getAcrossQuote, QUOTE_LIMITS, RH_ID, type AcrossQuote, type FillStatus, type QuoteRequest } from './acrossQuote'
 import { t as T } from './i18n'
@@ -27,7 +28,8 @@ import { sizeProblem } from './guardrails'
 
 export { AcrossError }
 
-const readerOf = (chainId: number) => (chainId === RH_ID ? rhClient : chainId === 56 ? bscClient : arcClient)
+// Ethereum, Base and Arbitrum (lib/payChains.ts): paying for a coin on Arc from there, through Relay.
+const readerOf = (chainId: number) => (chainId === RH_ID ? rhClient : chainId === 56 ? bscClient : isPayChain(chainId) ? payClient(chainId) : arcClient)
 
 /** Puts the connected external wallet on `chainId`, adding Robinhood Chain to it first if it doesn't know it. */
 async function ensureChain(chainId: number): Promise<void> {
@@ -40,10 +42,16 @@ async function ensureChain(chainId: number): Promise<void> {
 }
 
 const rhWallet = () => getEmbeddedWalletClientOn(robinhood, recordBroadcasts(chainTransport(RH_RPC)))
+const payWallet = (chainId: number) => { const p = payChain(chainId)!; return getEmbeddedWalletClientOn(p.chain, recordBroadcasts(chainTransport(p.rpcs[0]))) }
 
 async function sendRaw(kind: TraderKind, chainId: number, tx: { to: Address; data: Hex; gas?: bigint; value?: bigint }): Promise<Hash> {
   const req = { to: tx.to, data: tx.data, value: tx.value ?? 0n, ...(tx.gas ? { gas: tx.gas } : {}) }
-  if (kind === 'trading-wallet') return chainId === RH_ID ? rhWallet().sendTransaction(req) : chainId === 56 ? bscWallet().sendTransaction(req) : getEmbeddedWalletClient().sendTransaction(req)
+  if (kind === 'trading-wallet') {
+    if (chainId === RH_ID) return rhWallet().sendTransaction(req)
+    if (chainId === 56) return bscWallet().sendTransaction(req)
+    if (isPayChain(chainId)) return payWallet(chainId).sendTransaction(req)
+    return getEmbeddedWalletClient().sendTransaction(req)
+  }
   await ensureChain(chainId)
   const prompted = await promptWallet()
   try { return await sendTransaction(wagmiConfig, { ...req, chainId: chainId as typeof arc.id }) }
@@ -52,7 +60,12 @@ async function sendRaw(kind: TraderKind, chainId: number, tx: { to: Address; dat
 
 async function approve(kind: TraderKind, chainId: number, token: Address, spender: Address, amount: bigint): Promise<Hash> {
   const call = { address: token, abi: erc20Abi, functionName: 'approve' as const, args: [spender, amount] as const }
-  if (kind === 'trading-wallet') return chainId === RH_ID ? rhWallet().writeContract(call) : chainId === 56 ? bscWallet().writeContract(call) : getEmbeddedWalletClient().writeContract(call)
+  if (kind === 'trading-wallet') {
+    if (chainId === RH_ID) return rhWallet().writeContract(call)
+    if (chainId === 56) return bscWallet().writeContract(call)
+    if (isPayChain(chainId)) return payWallet(chainId).writeContract(call)
+    return getEmbeddedWalletClient().writeContract(call)
+  }
   await ensureChain(chainId)
   const prompted = await promptWallet()
   try { return await writeContract(wagmiConfig, { ...call, chainId: chainId as typeof arc.id }) }
@@ -64,7 +77,9 @@ async function mined(chainId: number, hash: Hash): Promise<void> {
     ? await rhClient.waitForTransactionReceipt({ hash, pollingInterval: 250, timeout: 180_000 })
     : chainId === 56
       ? await bscClient.waitForTransactionReceipt({ hash, pollingInterval: 750, timeout: 180_000 })
-      : await waitForReceipt(hash)
+      : isPayChain(chainId)
+        ? await payClient(chainId).waitForTransactionReceipt({ hash, pollingInterval: 1_000, timeout: 300_000 })
+        : await waitForReceipt(hash)
   if (r.status !== 'success') throw new AcrossError(T('The transaction failed on-chain.'))
 }
 

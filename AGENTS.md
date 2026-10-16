@@ -2857,6 +2857,26 @@ Owner: "I have provided you with Alchemy endpoints for the chains we support, to
   - GitHub pushes didn't reach Railway on 2026-10-12. They do again: since 2026-10-15 GitHub's deployment records show Railway deploying every merge to `main` (`railway-app[bot]`, environment `arcdex / production`). A variable changed on Railway redeploys the service too.
 - **Tests:** `bun scripts/test-rpc-settings.ts` (ordering, Alchemy's methods, unconfigured, failover, the edge function: same-origin, methods, batches, size, the key never echoed).
 
+## The chart, framed by the coin's own trading (2026-10-16)
+
+Owner: "the chart for my app is messy". Seen on the live spot page: $ARCDEX (a few trades a day) opened on 15s bars, the chart library squeezed out the hours with no bar, and the time axis jumped (4:45, 18:52, 18:50, 5, 6, 10…) under a jagged line.
+- **Opening timeframe (`lib/chartFrame.ts` `pickOpenRes`):** the finest of 15s, 1m, 5m, 15m, 1H, 4H whose last 120 bars hold 40+ of the coin's trades (about one every three bars), else 4H. Picked from the trades the page has read; for 8 seconds after a coin opens the pick may only get finer (older trades still arriving), then it holds. A timeframe someone picks holds while the coin is open. This replaces "every coin opens on 15s" (round 8): busy coins still open on 15s.
+- **Even time (`fillGaps`):** every bar between trades is drawn flat at the last close (no volume), up to the current bar, which a clock adds as time passes. At most ~3,000–3,500 bars, the window moving in 500-bar steps so the first bar moves rarely (a moving first bar would redraw the chart on every new bar).
+- **Market cap first** (as fomo and GMGN), wherever the coin has a supply; Price is one click.
+- **The overlay checkboxes** (Trades, My swaps, Thesis, Friends only, Min size) moved into a ⚙ menu beside Indicators.
+- **Checked** in the production build against the live engine: FTR (766 trades a day) opened on 1m with an even 15-minute axis; $ARCDEX on 4H with its whole history since launch.
+- **Tests:** `bun scripts/test-chart-frame.ts` (in CI).
+
+## Buying from Ethereum, Base or Arbitrum, no Arc needed (2026-10-16)
+
+Owner: "the limitation of having to be on Arc to trade". A trader holding USDC or ETH on Ethereum, Base or Arbitrum buys a coin on Arc, BNB Chain or Robinhood Chain in one signature on the chain the money is on; the coin lands at the same address on the coin's chain in about a second. No bridge first, no switching the wallet to Arc.
+- **Route (`lib/relayQuote.ts` side `xevm`, `lib/payChains.ts`):** Relay. Its depository is the same contract at the same address (`0x4cd0…bc31`) on Ethereum, Base, Arbitrum and Arc (same code size on all four, checked 2026-10-16). USDC: an approval of exactly the amount to it, then `depositErc20(trader, USDC, amount, id)`. ETH: `depositNative(trader, id)` with exactly the amount. With no gas on the coin's chain, $0.50 of it is added (Relay's top-up), as for Solana wallets.
+- **Checks (a quote is refused unless it's exactly the trade asked for):** a pay chain and its own USDC or ETH, a coin chain ARCDEX trades, the trader as sender and recipient, the coin and amount, Relay's depository only, the deposit word by word (depositor, token, amount; ETH's value exactly the amount), an exact approval, ARCDEX's fee, no gas top-up not asked for, Relay's order paying only the trader. The price guard values ETH from Robinhood Chain's WETH/USDG pool (else Relay's own value), the coin at its market price. The call is simulated from the trader before signing. The trade switch's venue is the coin's chain.
+- **Fee:** ARCDEX's 0.5% as Relay's app fee (`SPOT_FEE_BPS`), accruing at Relay for the fee wallet with the other Relay fees. Measured: $5 of Base USDC → $ARCDEX, Relay ~$0.04 and ARCDEX $0.025, about 1 second.
+- **Where (`components/PayFromChain.tsx`):** "⇄ Pay from Ethereum, Base or Arbitrum" above the Solana card on Arc, BNB Chain and Robinhood Chain coin pages (in the phone sheet on Buy only) and the Swap page. It opens by itself when the wallet has under $1 of USDC on Arc, and picks the chain and currency the wallet holds most of. Before a wallet connects it quotes for a placeholder address that is never paid. The signing helpers (`lib/across.ts`) and `runRelayEvm` now take these chains; a wallet is switched to the pay chain by wagmi (all three are in its config).
+- **Not built yet:** selling back to those chains (sales still pay out on Arc or Solana).
+- **Tests:** `bun scripts/test-xevm.ts` (in CI), on real quotes recorded by `bun scripts/capture-relay-xevm.ts` (quotes only): every route passing, 24 tampered quotes refused; planting a missing depositor or token check fails it. `test-xsol`, `test-solana` and `test-bsc` still pass.
+
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
 **Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**

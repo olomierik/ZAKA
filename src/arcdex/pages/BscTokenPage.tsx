@@ -13,6 +13,7 @@ import type { BuyIntent, Page } from '../App'
 import PriceChart, { type ChartTrade } from '../components/PriceChart'
 import Sheet, { TradeBar } from '../components/Sheet'
 import { SolanaPayCard } from '../components/SolanaCross'
+import { PayFromCard } from '../components/PayFromChain'
 import { BSC_ID } from '../lib/relayQuote'
 import { AgoText } from '../components/Ago'
 import { ChainIcon } from '../components/Chains'
@@ -265,7 +266,7 @@ export default function BscTokenPage({ address, pool: poolParam, navigate, buy }
         <TradeBar symbol={symbol} onTrade={setSheet} />
         <Sheet open={sheet !== null} onClose={() => setSheet(null)}>
           {sheet && trade(undefined, false, sheet)}
-          {sheet && <div style={{ padding: '0 14px 14px' }}><SolanaPayCard chainId={BSC_ID} token={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked} initialMode={sheet} /></div>}
+          {sheet && <div style={{ padding: '0 14px 14px' }}>{sheet === 'buy' && <PayFromCard chainId={BSC_ID} token={address} symbol={symbol} priceUsd={guardPrice} buyBlocked={buyBlocked} />}<SolanaPayCard chainId={BSC_ID} token={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked} initialMode={sheet} /></div>}
         </Sheet>
       </div>
     </div>
@@ -312,7 +313,7 @@ export default function BscTokenPage({ address, pool: poolParam, navigate, buy }
       flow={{ volume: coin?.volume24h ?? null, buys: coin?.buys24h ?? null, sells: coin?.sells24h ?? null }}
       trade={<>
         {trade(undefined, false, buy ? 'buy' : undefined)}
-        <div className="tk-note"><SolanaPayCard chainId={BSC_ID} token={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked} /></div>
+        <div className="tk-note"><PayFromCard chainId={BSC_ID} token={address} symbol={symbol} priceUsd={guardPrice} buyBlocked={buyBlocked} /><SolanaPayCard chainId={BSC_ID} token={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked} /></div>
       </>}
       side={<TkPanel title={T('Community')}><CoinVotes chain="bsc" address={address} /></TkPanel>}
     />
