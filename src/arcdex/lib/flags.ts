@@ -25,6 +25,8 @@ export const FLAGS = {
   jupiter: true,
   /** Sign-in with Privy (email or social), with its embedded EVM and Solana wallets. Needs VITE_PRIVY_APP_ID. */
   privy: false,
+  /** Price and whale alerts sent by the engine as web push, with ARCDEX closed (lib/push.ts). Needs the engine. */
+  pushAlerts: true,
 } as const satisfies Record<SiteFlag, boolean>
 export type FlagName = SiteFlag
 export type RuntimeFlags = Partial<Record<FlagName, boolean>>

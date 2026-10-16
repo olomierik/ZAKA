@@ -43,6 +43,8 @@ jobs:
         run: bun scripts/test-jupiter.ts
       - name: Safety rating on every buy path
         run: bun scripts/test-buy-risk.tsx
+      - name: Alerts by push (site side)
+        run: bun scripts/test-push.ts
 
   engine:
     name: Engine (typecheck, tests)
