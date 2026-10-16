@@ -11,6 +11,9 @@
 //   jupiter    Jupiter's referral fees (Solana swaps through Jupiter): paid into token accounts owned by ARCDEX's
 //              referral account (fees/jupiterWatch.ts): each transaction into one is 'received', each out 'claimed',
 //              the balance found the first time 'opening'.
+//   referral   the share of a fee ARCDEX's Arc routers paid a trader's referrer in the same trade (fees/referrals.ts):
+//              one 'rebate' row per ReferralPaid event, with the trader, the whole fee and the share in force. Paid out,
+//              not income: it's what the fee wallet didn't get.
 //
 // Rows are never changed or removed: arcdex_fee_ledger refuses updates, deletes and truncates, and a row seen again
 // (the same id) is ignored. Amounts are exact decimal strings in the token's units.
@@ -18,8 +21,8 @@
 import { log, errMsg } from '../log'
 
 export type FeeChain = 'arc' | 'solana' | 'bnb' | 'robinhood'
-export type FeeSource = 'arc-router' | 'arc-curve' | 'arc-ur' | 'arc-launchpad' | 'across' | 'arc-other' | 'relay' | 'jupiter'
-export type FeeStatus = 'received' | 'accrued' | 'claimed' | 'opening'
+export type FeeSource = 'arc-router' | 'arc-curve' | 'arc-ur' | 'arc-launchpad' | 'across' | 'arc-other' | 'relay' | 'jupiter' | 'arc-referral'
+export type FeeStatus = 'received' | 'accrued' | 'claimed' | 'opening' | 'rebate'
 
 export interface FeeRow {
   /** Deterministic, so a row read twice is written once: arc:<tx>:<payer>, relay:<currency>:<at>, jupiter:<sig>:<account>. */
@@ -38,11 +41,15 @@ export interface FeeRow {
   tx: string | null
   block: number | null
   status: FeeStatus
+  /** A rebate's referred trader (whose trade paid the fee); null otherwise. */
+  trader?: string | null
+  /** A rebate's evidence: the router, the whole fee (raw), the share in force (bps), the event's log index. */
+  meta?: Record<string, string | number> | null
 }
 
 export interface ReconRow {
   at: number
-  source: 'arc' | 'relay' | 'jupiter'
+  source: 'arc' | 'relay' | 'jupiter' | 'referral'
   /** What was compared: a block range, or "balance". */
   scope: string
   ledger: string
@@ -184,7 +191,8 @@ export function relayRows(prev: Record<string, number> | null, now: RelayBalance
 
 /** Arc: the ledger's rows in a block range against an independent scan of the same range. */
 export function reconcileArc(rows: FeeRow[], onchain: Map<string, { raw: bigint }>, from: number, to: number, at: number): ReconRow {
-  const inRange = rows.filter(r => r.source !== 'relay' && r.source !== 'jupiter' && r.block !== null && r.block >= from && r.block <= to)
+  // The fee wallet's receipts only: referral rebates went to referrers, and are reconciled on their own (fees/referrals.ts).
+  const inRange = rows.filter(r => r.chain === 'arc' && r.status === 'received' && r.source !== 'arc-referral' && r.block !== null && r.block >= from && r.block <= to)
   const ledgerRaw = inRange.reduce((s, r) => s + toRaw(r.amount, 6), 0n)
   const chainRaw = [...onchain.values()].reduce((s, r) => s + r.raw, 0n)
   const ids = new Set(inRange.map(r => r.id.split(':').slice(1).join(':')))
@@ -227,6 +235,8 @@ export interface FeeSummary {
   rows: number
   /** Dollars received or accrued, by source, since the ledger began. */
   bySource: Record<string, { usd: number; rows: number }>
+  /** Referral rebates ARCDEX's routers paid referrers (USDC), since the ledger began. */
+  rebates: { usdc: string; usd: number; rows: number; referrers: number }
   latest: FeeRow[]
   reconciliations: ReconRow[]
   lastReconciled: number | null
@@ -259,18 +269,23 @@ export class FeeLedger {
   async summary(): Promise<FeeSummary> {
     const all = await this.store.allFees()
     const bySource: FeeSummary['bySource'] = {}
+    const reb = all.filter(r => r.status === 'rebate')
+    const usdc = sumAmounts(reb.filter(r => r.token === ARC_USDC).map(r => r.amount), 6)
+    const rebates = { usdc, usd: Math.round(Number(usdc) * 100) / 100, rows: reb.length, referrers: new Set(reb.map(r => r.recipient)).size }
     for (const r of all) {
       if (r.status !== 'received' && r.status !== 'accrued') continue
       const s = bySource[r.source] ?? (bySource[r.source] = { usd: 0, rows: 0 })
-      s.usd = Math.round((s.usd + (r.amountUsd ?? 0)) * 100) / 100
+      s.usd += r.amountUsd ?? 0
       s.rows++
     }
+    // Rounded once, to the cent, not row by row (which drifted: two 1.7¢ fees read 4¢).
+    for (const s of Object.values(bySource)) s.usd = Math.round(s.usd * 100) / 100
     const recs = await this.store.recons(20)
     // The latest result per source and scope.
     const latest = new Map<string, ReconRow>()
     for (const r of recs) if (!latest.has(`${r.source}:${r.scope.split(' ')[0]}`)) latest.set(`${r.source}:${r.scope.split(' ')[0]}`, r)
     return {
-      rows: all.length, bySource,
+      rows: all.length, bySource, rebates,
       latest: all.sort((a, b) => b.at - a.at).slice(0, 25),
       reconciliations: recs,
       lastReconciled: recs[0]?.at ?? null,

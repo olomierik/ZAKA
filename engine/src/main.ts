@@ -55,6 +55,7 @@ import { PerpsService } from './perps/service'
 import { CoinProgram, FEE_SOURCES, FEE_WALLET, fetchRelayBalances } from './coin/program'
 import { FeeLedger } from './fees/ledger'
 import { FeeLedgerService, webhookAlert } from './fees/service'
+import { REFERRER_OF, ReferralWatcher } from './fees/referrals'
 import { JupiterFeeWatcher, type SolCall } from './fees/jupiterWatch'
 import { AdminAuth } from './admin/auth'
 import { FeatureFlags } from './admin/flags'
@@ -335,6 +336,27 @@ async function main() {
     feeRefs = { ledger: feeLedger, jupiter: jupiterFees }
     void program.start().then(() => fees.begin()).catch(e => log.error('coin program: did not start', { error: errMsg(e) }))
     every(10 * 60_000, 'fee ledger', () => { void jupiterFees?.tick(); void fees.tick().catch(e => log.warn('fee ledger: reconciliation failed', { error: errMsg(e) })) })
+    // Referral rebates (fees/referrals.ts): the routers' ReferralPaid events into the ledger every minute, reconciled nightly.
+    const referrals = new ReferralWatcher({
+      ledger: feeLedger, settings: botStore,
+      scan: async (filter, from, to) => {
+        const head = Number(BigInt(await rpc.call<string>('eth_blockNumber', [])))
+        const r = await scanLogs(filter as LogFilter, from, to, { head, reduce: (logs: RawLog[]) => logs, deadline: Date.now() + 60_000 })
+        return { logs: r.parts.flat(), scannedTo: r.scannedTo }
+      },
+      head: async () => Number(BigInt(await rpc.call<string>('eth_blockNumber', []))),
+      times: async blocks => {
+        const got = await rpc.batch<{ timestamp: string } | null>(blocks.map(b => ({ method: 'eth_getBlockByNumber', params: [`0x${b.toString(16)}`, false] })))
+        return new Map(blocks.map((b, i) => [b, got[i] ? Number(BigInt(got[i]!.timestamp)) * 1000 : null]))
+      },
+      referrerOf: async pairs => {
+        const got = await rpc.batch<string>(pairs.map(p => ({ method: 'eth_call', params: [{ to: p.router, data: `${REFERRER_OF}${p.trader.slice(2).padStart(64, '0')}` }, 'latest'] })))
+        return got.map(h => (h && h.length >= 42 ? `0x${h.slice(-40)}`.toLowerCase() : null)).map(a => (a && !/^0x0{40}$/.test(a) ? a : null))
+      },
+      alert: webhookAlert(process.env.ALERT_WEBHOOK_URL),
+    })
+    dataApi.fees.referrals = referrals
+    every(60_000, 'referral rebates', () => { void referrals.tick() })
   }
   // Every Argus coin on its launch curve and how close it is to graduating (market/bonding.ts), for the Near bond column.
   if (dataApi) { const book = new BondingBook({ rpc, engine: eng }); dataApi.bonding = book; book.start() }

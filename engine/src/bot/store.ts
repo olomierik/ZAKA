@@ -113,6 +113,9 @@ create table if not exists arcdex_fee_ledger (
   inserted_at timestamptz not null default now()
 );
 create index if not exists arcdex_fee_ledger_at on arcdex_fee_ledger (at desc);
+-- Referral rebates (fees/referrals.ts): the referred trader and the evidence. Adding columns isn't a change to any row.
+alter table arcdex_fee_ledger add column if not exists trader text;
+alter table arcdex_fee_ledger add column if not exists meta jsonb;
 create index if not exists arcdex_fee_ledger_source on arcdex_fee_ledger (source, at);
 create table if not exists arcdex_fee_reconciliations (
   id bigserial primary key, at timestamptz not null, source text not null, scope text not null,
@@ -249,8 +252,9 @@ export class PostgresBotStore implements BotStore {
     await this.ready
     let n = 0
     for (const r of rows) {
-      const res = await this.sql`insert into arcdex_fee_ledger (id, at, chain, source, token, symbol, amount, amount_usd, recipient, tx, block, status)
-        values (${r.id}, ${new Date(r.at)}, ${r.chain}, ${r.source}, ${r.token}, ${r.symbol}, ${r.amount}::numeric, ${r.amountUsd}, ${r.recipient}, ${r.tx}, ${r.block}, ${r.status})
+      const res = await this.sql`insert into arcdex_fee_ledger (id, at, chain, source, token, symbol, amount, amount_usd, recipient, tx, block, status, trader, meta)
+        values (${r.id}, ${new Date(r.at)}, ${r.chain}, ${r.source}, ${r.token}, ${r.symbol}, ${r.amount}::numeric, ${r.amountUsd}, ${r.recipient}, ${r.tx}, ${r.block}, ${r.status},
+          ${r.trader ?? null}, ${r.meta ? JSON.stringify(r.meta) : null}::jsonb)
         on conflict (id) do nothing returning id`
       n += res.length
     }
@@ -260,6 +264,8 @@ export class PostgresBotStore implements BotStore {
     id: String(r.id), at: new Date(r.at as Date).getTime(), chain: r.chain as FeeRow['chain'], source: r.source as FeeSource, token: String(r.token), symbol: String(r.symbol),
     amount: String(r.amount), amountUsd: r.amount_usd === null ? null : Number(r.amount_usd), recipient: String(r.recipient), tx: (r.tx as string | null) ?? null,
     block: r.block === null || r.block === undefined ? null : Number(r.block), status: r.status as FeeRow['status'],
+    trader: (r.trader as string | null | undefined) ?? null,
+    meta: r.meta == null ? null : typeof r.meta === 'string' ? JSON.parse(r.meta) : (r.meta as Record<string, string | number>),
   })
   async feeRows(q: { limit: number; source?: FeeSource; sinceAt?: number }) {
     await this.ready
