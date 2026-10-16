@@ -15,8 +15,11 @@ import { MemoryFeeLedgerStore, type FeeLedgerStore, type FeeRow, type FeeSource,
 import { MemorySweepStore, type SweepStore } from '../admin/sweeper'
 import type { SweepRun } from '../../../api/_marketProtocol'
 import { MemoryPushStore, type PushStore, type PushSubRow } from '../alerts/service'
+import { MemorySocialTradeStore, type SocialTradeStore } from '../social/book'
+import { MemoryModerationStore, type CommentRow, type ModerationStore, type MuteRow, type ReportRow } from '../social/moderation'
+import type { BookTrade } from '../social/pnl'
 
-export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore, AuditStore, FeeLedgerStore, SweepStore, PushStore {
+export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore, AuditStore, FeeLedgerStore, SweepStore, PushStore, SocialTradeStore, ModerationStore {
   readonly kind: 'memory' | 'postgres'
   saveSignal(s: Signal): void
   savePosition(p: Position): void
@@ -81,6 +84,16 @@ export class MemoryBotStore implements BotStore {
   pushSubs() { return this.push.pushSubs() }
   putPushSub(r: PushSubRow) { return this.push.putPushSub(r) }
   deletePushSub(id: string) { return this.push.deletePushSub(id) }
+  private socialBook = new MemorySocialTradeStore()
+  socialTrades() { return this.socialBook.socialTrades() }
+  appendSocialTrades(rows: BookTrade[]) { return this.socialBook.appendSocialTrades(rows) }
+  private mod = new MemoryModerationStore()
+  socialComments() { return this.mod.socialComments() }
+  putComment(c: CommentRow) { return this.mod.putComment(c) }
+  socialReports() { return this.mod.socialReports() }
+  putReport(r: ReportRow) { return this.mod.putReport(r) }
+  socialMutes() { return this.mod.socialMutes() }
+  setMute(m: MuteRow, on: boolean) { return this.mod.setMute(m, on) }
 }
 
 const SCHEMA = `
@@ -150,6 +163,27 @@ drop trigger if exists arcdex_sweep_runs_no_change on arcdex_sweep_runs;
 create trigger arcdex_sweep_runs_no_change before update or delete on arcdex_sweep_runs for each row execute function arcdex_fee_append_only();
 drop trigger if exists arcdex_sweep_runs_no_truncate on arcdex_sweep_runs;
 create trigger arcdex_sweep_runs_no_truncate before truncate on arcdex_sweep_runs for each statement execute function arcdex_fee_append_only();
+-- The social trade book (social/book.ts): every Swapped event of ARCDEX's Arc routers, from the chain. Append-only:
+-- a trade seen again is ignored, nothing is changed or removed (verified PnL is worked out from these rows).
+create table if not exists arcdex_social_trades (
+  id text primary key, router text not null, tx text not null, block bigint not null, log_index int not null, at timestamptz not null,
+  trader text not null, token text not null, side text not null, usdc numeric not null, tokens numeric not null, fee numeric not null
+);
+create index if not exists arcdex_social_trades_trader on arcdex_social_trades (trader, block, log_index);
+drop trigger if exists arcdex_social_trades_no_change on arcdex_social_trades;
+create trigger arcdex_social_trades_no_change before update or delete on arcdex_social_trades for each row execute function arcdex_fee_append_only();
+drop trigger if exists arcdex_social_trades_no_truncate on arcdex_social_trades;
+create trigger arcdex_social_trades_no_truncate before truncate on arcdex_social_trades for each statement execute function arcdex_fee_append_only();
+-- Comments, reports and mutes (social/moderation.ts).
+create table if not exists arcdex_social_comments (
+  id text primary key, target text not null, author text not null, body text not null, at timestamptz not null, deleted_at timestamptz
+);
+create index if not exists arcdex_social_comments_target on arcdex_social_comments (target, at);
+create table if not exists arcdex_social_reports (
+  reporter text not null, target text not null, reason text not null, note text, at timestamptz not null, snapshot jsonb,
+  primary key (reporter, target)
+);
+create table if not exists arcdex_social_mutes (muter text not null, muted text not null, at timestamptz not null, primary key (muter, muted));
 `
 
 export class PostgresBotStore implements BotStore {
@@ -327,5 +361,67 @@ export class PostgresBotStore implements BotStore {
   async deletePushSub(id: string) {
     await this.ready
     await this.sql`delete from arcdex_push_subs where id = ${id}`
+  }
+
+  async socialTrades(): Promise<BookTrade[]> {
+    await this.ready
+    const rows = await this.sql`select id, router, tx, block, log_index, at, trader, token, side, usdc::text as usdc, tokens::text as tokens, fee::text as fee
+      from arcdex_social_trades order by block, log_index`
+    return (rows as Record<string, unknown>[]).map(r => ({
+      id: String(r.id), router: String(r.router), tx: String(r.tx), block: Number(r.block), logIndex: Number(r.log_index), at: new Date(r.at as Date).getTime(),
+      trader: String(r.trader), token: String(r.token), side: r.side === 'sell' ? 'sell' : 'buy',
+      usdc: BigInt(String(r.usdc).split('.')[0]), tokens: BigInt(String(r.tokens).split('.')[0]), fee: BigInt(String(r.fee).split('.')[0]),
+    }))
+  }
+  async appendSocialTrades(rows: BookTrade[]) {
+    await this.ready
+    let n = 0
+    for (const t of rows) {
+      const res = await this.sql`insert into arcdex_social_trades (id, router, tx, block, log_index, at, trader, token, side, usdc, tokens, fee)
+        values (${t.id}, ${t.router}, ${t.tx}, ${t.block}, ${t.logIndex}, ${new Date(t.at)}, ${t.trader}, ${t.token}, ${t.side},
+          ${t.usdc.toString()}::numeric, ${t.tokens.toString()}::numeric, ${t.fee.toString()}::numeric)
+        on conflict (id) do nothing returning id`
+      n += res.length
+    }
+    return n
+  }
+  async socialComments(): Promise<CommentRow[]> {
+    await this.ready
+    const rows = await this.sql`select id, target, author, body, at, deleted_at from arcdex_social_comments order by at`
+    return (rows as Record<string, unknown>[]).map(r => ({
+      id: String(r.id), target: String(r.target) as CommentRow['target'], author: String(r.author), body: String(r.body),
+      at: new Date(r.at as Date).getTime(), deletedAt: r.deleted_at ? new Date(r.deleted_at as Date).getTime() : null,
+    }))
+  }
+  async putComment(c: CommentRow) {
+    await this.ready
+    await this.sql`insert into arcdex_social_comments (id, target, author, body, at, deleted_at)
+      values (${c.id}, ${c.target}, ${c.author}, ${c.body}, ${new Date(c.at)}, ${c.deletedAt ? new Date(c.deletedAt) : null})
+      on conflict (id) do update set body = excluded.body, deleted_at = excluded.deleted_at`
+  }
+  async socialReports(): Promise<ReportRow[]> {
+    await this.ready
+    const rows = await this.sql`select reporter, target, reason, note, at, snapshot from arcdex_social_reports`
+    return (rows as Record<string, unknown>[]).map(r => ({
+      reporter: String(r.reporter), target: String(r.target) as ReportRow['target'], reason: String(r.reason) as ReportRow['reason'],
+      note: (r.note as string | null) ?? null, at: new Date(r.at as Date).getTime(),
+      snapshot: r.snapshot == null ? null : (typeof r.snapshot === 'string' ? JSON.parse(r.snapshot) : r.snapshot) as ReportRow['snapshot'],
+    }))
+  }
+  async putReport(x: ReportRow) {
+    await this.ready
+    await this.sql`insert into arcdex_social_reports (reporter, target, reason, note, at, snapshot)
+      values (${x.reporter}, ${x.target}, ${x.reason}, ${x.note}, ${new Date(x.at)}, ${x.snapshot ? JSON.stringify(x.snapshot) : null}::jsonb)
+      on conflict (reporter, target) do update set reason = excluded.reason, note = excluded.note, at = excluded.at`
+  }
+  async socialMutes(): Promise<MuteRow[]> {
+    await this.ready
+    const rows = await this.sql`select muter, muted, at from arcdex_social_mutes`
+    return (rows as Record<string, unknown>[]).map(r => ({ muter: String(r.muter), muted: String(r.muted), at: new Date(r.at as Date).getTime() }))
+  }
+  async setMute(m: MuteRow, on: boolean) {
+    await this.ready
+    if (on) await this.sql`insert into arcdex_social_mutes (muter, muted, at) values (${m.muter}, ${m.muted}, ${new Date(m.at)}) on conflict (muter, muted) do nothing`
+    else await this.sql`delete from arcdex_social_mutes where muter = ${m.muter} and muted = ${m.muted}`
   }
 }

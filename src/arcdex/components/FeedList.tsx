@@ -7,6 +7,7 @@ import {
   type ClosedPosition, type IndexedTrade, type MultiBuy, type Profile, type Thesis,
 } from '../api/social'
 import { shortAddr, useTrader } from '../lib/identity'
+import { useMutes } from '../lib/mutes'
 import { useMarket, type TokenMeta } from '../lib/tokenMeta'
 import type { Page } from '../App'
 import { t as T, N_ } from '../lib/i18n'
@@ -40,7 +41,10 @@ function loadFilter(): Set<FeedType> {
 }
 
 export default function FeedList({ navigate, compact = false, scope = 'all' }: { navigate: (p: Page) => void; compact?: boolean; scope?: 'all' | 'following' }) {
-  const me = useTrader().address?.toLowerCase() ?? null
+  const trader = useTrader()
+  const me = trader.address?.toLowerCase() ?? null
+  // Wallets this wallet muted: their trades, theses and closed positions are hidden here.
+  const { isMuted } = useMutes(trader)
   const market = useMarket()
   const meta = useMemo(() => new Map(market.map(t => [t.address, t])), [market])
   const [types, setTypes] = useState<Set<FeedType>>(loadFilter)
@@ -115,7 +119,8 @@ export default function FeedList({ navigate, compact = false, scope = 'all' }: {
     <button onClick={() => openToken(address)} style={{ ...linkBtn, color: 'var(--adx-accent)' }}>${sym ?? meta.get(address)?.symbol ?? shortAddr(address)}</button>
   )
 
-  const visible = (items ?? []).filter(i => types.has(i.kind as FeedType))
+  const authorOf = (i: Item): string | null => i.kind === 'trade' || i.kind === 'closed' || i.kind === 'milestone' ? i.t.trader : i.kind === 'thesis' ? i.t.author : i.kind === 'newtrader' ? i.t.address : null
+  const visible = (items ?? []).filter(i => types.has(i.kind as FeedType) && !isMuted(authorOf(i)))
   const pad = compact ? '10px 12px' : '12px 16px'
   const fs = compact ? '0.78rem' : '0.86rem'
 

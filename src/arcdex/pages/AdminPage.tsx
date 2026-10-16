@@ -26,16 +26,16 @@ import { pct } from '../lib/routerInfo'
 import { SN_FEE } from '../starknet/net'
 import { JUP_REFERRAL } from '../lib/jupiter'
 import { adminSignIn, adminSignOut, useAdminSession } from '../lib/adminSession'
-import { AdminAudit, AdminFlags, AdminOverview, AdminSweeper, AdminTrades } from '../components/AdminViews'
+import { AdminAudit, AdminFlags, AdminOverview, AdminReports, AdminSweeper, AdminTrades } from '../components/AdminViews'
 
 const SCOPES: TradeScope[] = ['all', ...TRADE_VENUES]
 const label = (s: TradeScope) => (s === 'all' ? T('Every venue') : TRADE_VENUE_LABEL[s])
 const ago = (at: number) => new Date(at).toLocaleString()
 
-type Tab = 'overview' | 'fees' | 'trades' | 'audit' | 'flags' | 'switch'
+type Tab = 'overview' | 'fees' | 'trades' | 'reports' | 'audit' | 'flags' | 'switch'
 const TABS: { k: Tab; label: string }[] = [
   { k: 'overview', label: N_('Overview') }, { k: 'fees', label: N_('Fees') }, { k: 'trades', label: N_('Trades') },
-  { k: 'audit', label: N_('Audit log') }, { k: 'flags', label: N_('Flags') }, { k: 'switch', label: N_('Kill switch') },
+  { k: 'reports', label: N_('Reports') }, { k: 'audit', label: N_('Audit log') }, { k: 'flags', label: N_('Flags') }, { k: 'switch', label: N_('Kill switch') },
 ]
 
 export default function AdminPage() {
@@ -67,6 +67,7 @@ export default function AdminPage() {
         </>
       )}
       {tab === 'trades' && (session ? <AdminTrades /> : <SignInFirst />)}
+      {tab === 'reports' && (session ? <AdminReports sign={sign} who={who} session={session.address} /> : <SignInFirst />)}
       {tab === 'audit' && (session ? <AdminAudit /> : <SignInFirst />)}
       {tab === 'flags' && (session ? <AdminFlags sign={sign} who={who} session={session.address} /> : <SignInFirst />)}
       {tab === 'switch' && <KillSwitch who={who} sign={sign} />}

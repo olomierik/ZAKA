@@ -3,6 +3,7 @@
 // also asks the admin's wallet to sign exactly that change.
 import { useCallback, useEffect, useState } from 'react'
 import { SITE_FLAGS, flagChangeMessage, sweepRunMessage, type FlagsState, type SiteFlag, type SweepItem, type SweepRun, type TradeSwitchState } from '../../../api/_marketProtocol'
+import { moderationMessage, type ModerationAction, type ModerationState, type ReportGroup } from '../../../api/_socialProtocol'
 import { adminFetch } from '../lib/adminSession'
 import { applyRuntimeFlags, useFlag } from '../lib/flags'
 import { t as T, N_ } from '../lib/i18n'
@@ -260,7 +261,7 @@ export function AdminFlags({ sign, who, session }: { sign: Sign; who: `0x${strin
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const sameWallet = !!who && who.toLowerCase() === session.toLowerCase()
   const live: Record<SiteFlag, boolean> = {
-    withdrawLimits: useFlag('withdrawLimits'), buyRisk: useFlag('buyRisk'), walletsCard: useFlag('walletsCard'), jupiter: useFlag('jupiter'), privy: useFlag('privy'), pushAlerts: useFlag('pushAlerts'),
+    withdrawLimits: useFlag('withdrawLimits'), buyRisk: useFlag('buyRisk'), walletsCard: useFlag('walletsCard'), jupiter: useFlag('jupiter'), privy: useFlag('privy'), pushAlerts: useFlag('pushAlerts'), comments: useFlag('comments'),
   }
 
   async function change(f: SiteFlag, on: boolean) {
@@ -314,6 +315,81 @@ export function AdminFlags({ sign, who, session }: { sign: Sign; who: `0x${strin
         <div className="fx-fine" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <strong style={{ fontSize: '0.8rem' }}>{T('Recent changes')}</strong>
           {data.history.slice(0, 10).map(h => <span key={`${h.at}-${h.flag}`}>{when(h.at)} · {h.flag} · {h.on ? T('on') : T('off')} · {h.reason}</span>)}
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** Reported comments, theses and profiles (engine/src/social/moderation.ts): hide, restore, dismiss, ban and unban, each
+ * signed by the admin who's signed in and kept in the audit log. Waiting ones first. */
+export function AdminReports({ sign, who, session }: { sign: Sign; who: `0x${string}` | null; session: string }) {
+  const { data, err, load } = useAdminData<{ reports: ReportGroup[]; state: ModerationState }>('/v1/admin/reports', 30_000)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState<string | null>(null)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const sameWallet = !!who && who.toLowerCase() === session.toLowerCase()
+
+  async function act(action: ModerationAction, target: string) {
+    setMsg(null)
+    const r = reason.replace(/\s+/g, ' ').trim()
+    if (r.length < 3) { setMsg({ ok: false, text: T('Write a reason first (3 characters or more): it goes in the audit log.') }); return }
+    setBusy(`${action}:${target}`)
+    try {
+      const at = Date.now()
+      const signature = await sign(moderationMessage(action, target, r, at))
+      await adminFetch('/v1/admin/moderate', { method: 'POST', body: { action, target, reason: r, at, signature } })
+      setMsg({ ok: true, text: T('Done: {action} {target}. The site picks it up within a minute.', { action, target }) })
+      load()
+    } catch (e) { setMsg({ ok: false, text: errText(e) }) } finally { setBusy(null) }
+  }
+  const btn = (action: ModerationAction, target: string, text: string) => (
+    <button key={action} className="btn-ghost" disabled={!!busy || !sameWallet} title={!sameWallet ? T('Sign with the wallet you signed in with.') : undefined}
+      onClick={() => void act(action, target)}>{busy === `${action}:${target}` ? T('Check your wallet…') : text}</button>
+  )
+  const STATE: Record<ReportGroup['state'], string> = { open: N_('Waiting'), hidden: N_('Hidden'), restored: N_('Restored'), dismissed: N_('Dismissed') }
+
+  return (
+    <section className="spot-panel rt-health">
+      <Head title={T('Reports')} onReload={load} />
+      <p className="fx-fine" style={{ margin: 0 }}>{T('What people reported. A comment or thesis that three different wallets report is hidden until you look at it. Restore or dismiss keeps it up for good; ban stops a wallet posting and hides what it posted.')}</p>
+      <Err text={err} />
+      <label className="fx-fine" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {T('Reason (kept in the audit log)')}
+        <input value={reason} maxLength={200} onChange={e => setReason(e.target.value)} placeholder={T('e.g. phishing link')}
+          style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--adx-card-border)', background: 'var(--bg-3)', color: 'inherit' }} />
+      </label>
+      {msg && <div role="status" style={{ color: msg.ok ? 'var(--green)' : 'var(--red)', fontSize: '0.82rem' }}>{msg.text}</div>}
+      {data && data.reports.length === 0 && <div className="fx-fine">{T('Nothing reported.')}</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {(data?.reports ?? []).map(g => {
+          const author = g.snapshot?.author ?? null
+          const banned = !!author && !!data?.state.banned.includes(author)
+          const profile = g.target.startsWith('profile:')
+          return (
+            <div key={g.target} className={`rt-prov ${g.state === 'open' ? 'warn' : g.state === 'hidden' ? 'down' : 'up'}`} style={{ alignItems: 'flex-start' }}>
+              <span className="rt-dot" aria-hidden />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong style={{ fontFamily: 'var(--mono)', fontSize: '0.78rem' }}>{g.target}</strong>
+                <small>{T(STATE[g.state])} · {g.reports === 1 ? T('1 report') : T('{n} reports', { n: g.reports })} · {Object.entries(g.reasons).map(([k, n]) => `${k} ${n}`).join(', ')} · {when(g.latest)}</small>
+                {author && <small>{T('By')} <span style={{ fontFamily: 'var(--mono)' }}>{short(author)}</span>{banned ? ` · ${T('banned')}` : ''}</small>}
+                {g.snapshot?.body && <div className="report-body" style={{ fontSize: '0.8rem', margin: '6px 0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', padding: '6px 8px', borderRadius: 6, background: 'var(--bg-3)' }}>{g.snapshot.body}</div>}
+                {g.notes.filter(n => n.note).slice(0, 3).map(n => <small key={`${n.reporter}${n.at}`}>“{n.note}” — {short(n.reporter)}</small>)}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                  {!profile && g.state !== 'hidden' && btn('hide', g.target, T('Hide'))}
+                  {!profile && g.state === 'hidden' && btn('restore', g.target, T('Restore'))}
+                  {!profile && g.state === 'open' && btn('dismiss', g.target, T('Dismiss'))}
+                  {author && (banned ? btn('unban', `profile:${author}`, T('Unban author')) : btn('ban', `profile:${author}`, T('Ban author')))}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      {!!data?.state.banned.length && (
+        <div className="fx-fine" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <strong style={{ fontSize: '0.8rem' }}>{T('Banned wallets')}</strong>
+          {data.state.banned.map(b => <span key={b} style={{ display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ fontFamily: 'var(--mono)' }}>{b}</span>{btn('unban', `profile:${b}`, T('Unban'))}</span>)}
         </div>
       )}
     </section>

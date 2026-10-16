@@ -1,4 +1,5 @@
-import type { Config } from 'wagmi'
+import { useEffect } from 'react'
+import { useConfig, type Config } from 'wagmi'
 import { reconnect } from 'wagmi/actions'
 import { initPrivy } from '../privy/state'
 
@@ -6,7 +7,10 @@ import { initPrivy } from '../privy/state'
 // every connector for its provider, which downloads and starts the
 // WalletConnect SDK (with its relay socket) and the Coinbase SDK — ~700 KB —
 // on every visit, for everyone, even people who never used them.
+const started = new WeakSet<Config>()
 export function reconnectLastWallet(config: Config) {
+  if (started.has(config)) return
+  started.add(config)
   const run = async () => {
     const recent = await config.storage?.getItem('recentConnectorId')
     // An email or social sign-in (Privy) comes back when Privy has loaded: privy/PrivyRoot.tsx connects it then.
@@ -20,4 +24,13 @@ export function reconnectLastWallet(config: Config) {
     }
   }
   void run()
+}
+
+/** Put inside `<WagmiProvider reconnectOnMount={false}>`. With that setting, wagmi clears every connection while the
+ * provider first renders. A reconnect started before then could finish first and be wiped: a wallet that answers at
+ * once (no round trip to an extension) was signed out on every reload. So it starts after the provider has mounted. */
+export function ReconnectLastWallet(): null {
+  const config = useConfig()
+  useEffect(() => { reconnectLastWallet(config) }, [config])
+  return null
 }

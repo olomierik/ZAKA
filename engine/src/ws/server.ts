@@ -32,6 +32,7 @@
 //   /v1/auth/*, /v1/me…, /v1/bots…               accounts, owners' bots, the marketplace (ws/botApi.ts)
 //   GET /v1/coin/program                        $ARCDEX buyback, burns and liquidity: fees in, bought, burned, added (coin/program.ts)
 //   GET /v1/perps/status|prices|candles|state   futures: deployment, keeper, signed prices, chart, contract state (perps/service.ts)
+//   /v1/social/*                                verified PnL and boards, comments, reports, mutes (social/api.ts)
 //   /v1/quant/*                                 the signal engine: signals, radar, positions, wallets, validation, controls (quant/api.ts)
 //   /api/argus|gecko|holders|launchpad|radar|dex|rhmarket|session|social|upload   the site's functions, moved off Vercel (site/siteApi.ts)
 //   GET /health           summary (200 ok/degraded, 503 down)
@@ -70,6 +71,7 @@ import type { FeeLedgerService } from '../fees/service'
 import type { ReferralWatcher } from '../fees/referrals'
 import type { PushAlerts } from '../alerts/service'
 import type { AdminApi } from '../admin/api'
+import type { SocialApi } from '../social/api'
 
 interface Conn { id: number; ip: string; subs: Set<string>; allowance: number; last: number }
 
@@ -104,6 +106,8 @@ export class DataApi {
   fees: { ledger: FeeLedger; service: FeeLedgerService; referrals?: ReferralWatcher } | null = null
   /** The admin panel: sign-in, live sessions, fees and the sweeper, trades, audit, flags (admin/api.ts). */
   admin: AdminApi | null = null
+  /** The social layer: verified PnL, the wash-trade filter, comments, reports and mutes (social/api.ts). */
+  social: SocialApi | null = null
   /** Argus coins on their launch curve, with their progress by market cap (market/bonding.ts). */
   bonding: BondingBook | null = null
   /** The Trenches' live feed: every chain's launches, trades and smart wallets (trench/service.ts). */
@@ -275,6 +279,16 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         const r = await api.admin.handle(req, url, ip, { wsClients: clients })
         if (r) {
           if (url.pathname === '/v1/admin/auth/verify') metrics.inc(r.status === 200 ? 'admin_logins' : 'admin_login_refused')
+          return json(req, r.status, r.body, r.cache)
+        }
+      }
+      // The social layer (social/api.ts): verified PnL and boards, comments, reports and mutes.
+      if (url.pathname.startsWith('/v1/social/')) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        if (!api.social) return json(req, 503, { error: 'the social layer is not running in this process' })
+        const r = await api.social.handle(req, url)
+        if (r) {
+          if (req.method === 'POST') metrics.inc(r.status === 200 ? 'social_writes' : 'social_writes_refused')
           return json(req, r.status, r.body, r.cache)
         }
       }

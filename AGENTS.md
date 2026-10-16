@@ -2529,6 +2529,89 @@ The build pack's Phase 3 asks for Lighthouse performance 85+ on a mid-range mobi
   - `bun scripts/test-app-shell.ts` (in CI): the boot script on every Trenches path and the others, chains, languages and blocked storage, and the frame's labels, chains, heights and breakpoints against the app's own source.
   - The Privy browser check (23 checks) was run again after the windows became lazy: all passed.
 
+## Phase 6: verified PnL, the wash-trade filter, comments and moderation (2026-10-16)
+
+The build pack's Phase 6 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`): "PnL on profiles matches an independent on-chain recomputation; wash-trade test wallets are filtered; reports and mutes work", and its test matrix's "XSS on user content". Status against its tasks: `docs/REPO_MAP.md` §13. Profiles, follows, the feed, theses on charts and share links were already there.
+
+- **The trade book (`engine/src/social/book.ts`):** every `Swapped` event of ARCDEX's Arc routers, read from the chain every minute, 50 blocks behind the head.
+  - **Routers:** ArcDexSwapRouter v1 and v2, and ArcDexCurveRouter, from block 22,548,761 (`SOCIAL_ROUTERS` in `api/_socialProtocol.ts`).
+  - **Stored:** in the engine's Postgres, `arcdex_social_trades`, append-only (triggers refuse updates and deletes). Also kept in memory for the boards.
+  - **Sources:** never the Supabase index, and nothing a browser sends.
+- **Verified PnL (`engine/src/social/pnl.ts`, `PNL_METHOD`):**
+  - **Method:** average cost per coin, in chain order. A buy costs the USDC it paid, fee included. A sale realizes the USDC it received less the average cost of what it sold.
+  - **Tokens with no cost here:** tokens sold beyond what was bought through ARCDEX (sent in from elsewhere) are "unmatched". Their proceeds aren't profit.
+  - **Units:** every amount is a micro-USDC integer.
+  - **Windows:** a window (24H, 7D, 30D, All) counts the sales in it, against costs from any time before them.
+- **The wash-trade filter (`engine/src/social/wash.ts`, numbers in `WASH`):** over the last 30 days of router trades.
+  - **Round trips:** a coin bought and sold back within 5 minutes, tokens within 10% and USDC within 5%. A wallet is flagged with 5+ of them making half or more of its volume.
+  - **Mirrors:** two wallets trading the same coin in opposite directions within 3 blocks, tokens within 10%. Flagged at 3+.
+  - **What a flag does:** the wallet is left out of every board, and the board lists it with the reason and the PnL it would have claimed. Its profile says so. It's left out of the site's points list too.
+  - **Board minimum (`BOARD_MIN`):** 3 trades and 1 sale with a cost.
+- **Nightly check, after 00:50 UTC:**
+  - **What it does:** the blocks recorded since the last check are scanned again on their own and compared with the book, trade by trade, to the unit (missing, extra, changed).
+  - **On a mismatch:** it's logged, counted and posted to `ALERT_WEBHOOK_URL`. `checkedTo` advances only to blocks that matched.
+  - **The Supabase index:** where it can be read, `arcdex_trades` is compared over the same range. The profile's swaps and positions lists still come from it.
+- **Comments, reports, mutes, moderation (`engine/src/social/moderation.ts`):**
+  - **Comments:** on a thesis (its thread) or a coin, by a signed-in wallet (the site's wallet session).
+    - Plain text, cleaned of control, direction and zero-width characters (`cleanText`).
+    - 280 characters at most, 30 a day, one every 10 seconds. An author can delete their own.
+  - **Reports:** a comment, thesis or profile, once per wallet, 20 a day, with a reason. A comment or thesis that 3 different wallets report is hidden until an admin looks. The author's and banned wallets' reports don't count.
+  - **Mutes:** a wallet hides another's theses, comments and feed items for itself (1,000 at most). Kept on the engine, with a copy in the browser (`lib/mutes.ts`).
+  - **Admins (`/admin` → Reports):** hide, restore, dismiss, ban and unban.
+    - Each is signed (`moderationMessage`) by the admin signed in, and audited.
+    - A restored or dismissed item isn't hidden by reports again.
+  - **Banned wallets:** can't comment or report, and what they posted is hidden. `/api/social` (on the engine) refuses their theses, profile, clan and transfer-note writes (`setSocialGuard`).
+  - **Storage:** rows in the engine's Postgres (`arcdex_social_comments`, `_reports`, `_mutes`); the moderation state is the setting `social-moderation`. Theses stay in Supabase, and the site leaves out the ones hidden here.
+- **Routes (`engine/src/social/api.ts`):**
+  - Reads: `GET /v1/social/board?period=`, `/trader/:address`, `/flags`, `/checks`, `/comments?target=`, `/counts?targets=`, `/moderation`, `/me`.
+  - Writes: `POST /v1/social/comment`, `/comment/delete`, `/report`, `/mute`. Each needs the site's own origin and a wallet session.
+  - Admin: `GET /v1/admin/reports`, `POST /v1/admin/moderate`.
+  - `SOCIAL=off` on Railway stops all of it.
+- **The site:**
+  - **Leaderboard:** the verified board first, with a Win rate column. A footnote reads "Verified on-chain", with the last block read and the wallets the filter left out.
+  - **Profiles:** "✓ Verified on-chain" and the rank beside the PnL. The period numbers and the chart come from the book. A flagged wallet carries its note.
+  - **Where comments are:** a Comments tab on coin pages, and a 💬 thread under each thesis. Shown as text, never HTML.
+  - **The ⋯ menu:** on comments, theses and profiles: Report, Mute this wallet, Delete (your own).
+  - **Fallback:** without the engine, the old Supabase numbers show.
+  - **Flag:** `comments` (on; `/admin` can turn it off).
+- **The independent check (`scripts/verify-pnl.ts`):**
+  - **What's its own:** a scan (plain JSON-RPC, and every slice must answer), a decoder (viem's, on the event as the contracts declare it), and exact fractions.
+  - **What it compares:** the engine's numbers for each window. Counts and volume must match exactly. Realized PnL and unmatched proceeds must be within the engine's rounding (2 micro-USDC a sale) and to the cent.
+  - **Running it:** `bun scripts/verify-pnl.ts` checks the 10 best traders of the all-time board; `--top N` or addresses check others. It exits 1 on any mismatch.
+- **Fixed on the way:**
+  - **A reload signed some wallets out (`lib/reconnect.ts`):** with `reconnectOnMount={false}`, wagmi's provider clears every connection while it first renders. The app started its own reconnect before that, so a wallet that answers at once was reconnected and then wiped. It now starts from an effect inside the provider (`<ReconnectLastWallet />`).
+  - **The profile's Share, 𝕏 and Send cash buttons** were white on white in the light theme.
+- **Tests:**
+  - `engine/test/social.test.ts` (30, with Postgres when `PG_TEST_URL` is set) covers:
+    - decoding;
+    - PnL against an independent exact computation on 300 random histories;
+    - unmatched tokens and windows;
+    - wash test wallets (a farmer, mirrored twins) left out while honest scalpers stay;
+    - the book across a restart, and the nightly check;
+    - comments, reports and auto-hide, mutes, signed moderation and the audit, the routes;
+    - the tables' append-only triggers.
+  - `bun scripts/test-social.tsx` (in CI) covers:
+    - the independent check against the engine, on the same events: 600 windows agree, and it catches a cent off or a missing trade;
+    - comment markup escaped, with no raw HTML in any social component;
+    - a banned wallet refused by `/api/social`;
+    - the flag.
+  - `bun scripts/test-reconnect.tsx` (in CI): wagmi's clearing, the reconnect order, and both entry files.
+- **Checked:**
+  - **In Chromium,** against `engine/scripts/social-standin.ts` (the engine's social and admin code in memory, seeded with honest traders, a farmer and mirrored twins), with an in-page test wallet, at 1280px and 390px:
+    - the board, the wash list, a twin's note and Alice's verified profile;
+    - mute, report and unmute;
+    - a coin's comments with `<img onerror>` shown as text (no alert), posting, reporting a comment, and a thesis thread;
+    - `/admin` → Reports: hiding the scam comment, then gone from the coin page;
+    - no sideways scroll.
+  - **verify-pnl end to end,** against a stand-in Arc RPC (9k-block slices, 429s) and the engine's boards over the same 190 events: every number matched, and a cent off exited 1.
+- **Not in the book:**
+  - Arc trades through Uniswap's Universal Router (native-USDC pools): they carry no ARCDEX event.
+  - Trades on other chains (Relay, Across, Jupiter, AVNU) and Hyperliquid.
+  - Clan boards and points still come from Supabase. Points leave out flagged wallets.
+- **Owner steps:**
+  1. Once the engine has read the routers' history (`GET /v1/social/board` shows `scannedTo`), run `bun scripts/verify-pnl.ts` from a machine that reaches Arc. It should end "Every number matches the chain."
+  2. Railway: the Dockerfile copies `api/_socialProtocol.ts`, and the service's Watch Paths (`/api/**`) already cover it.
+
 ## Autotrade paused (2026-10-03)
 
 Owner: the platform becomes ARCSENSE (spot and futures trading), and "the auto trade functionality will have to be paused for now".

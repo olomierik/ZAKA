@@ -16,6 +16,8 @@ echo "== buy risk";         bun scripts/test-buy-risk.tsx
 echo "== push alerts";      bun scripts/test-push.ts
 echo "== privy sign-in";    bun scripts/test-privy.tsx
 echo "== app shell";        bun scripts/test-app-shell.ts
+echo "== social";           bun scripts/test-social.tsx
+echo "== wallet reconnect"; bun scripts/test-reconnect.tsx
 echo "== engine tests";     bun test engine/test
 if command -v gitleaks >/dev/null; then
   echo "== secrets"; gitleaks dir . --config .gitleaks.toml --no-banner --redact
