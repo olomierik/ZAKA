@@ -1,8 +1,13 @@
 // /admin → Analytics (owner, 2026-10-17: "the number of users who have logged in, who are trading, how much has been
 // traded, and the fees we've collected; monitor how the money the application is performing"). Read from the engine's
 // GET /v1/admin/analytics (engine/src/analytics.ts) with the admin session, again every minute.
+//
+// The same view for everyone (`pub`, pages/StatsPage.tsx at /analytics; owner, 2026-10-17: "put it there for everyone
+// to see the number of users, wallets, volume traded, fees collected"): GET /v1/stats, the totals and the daily
+// series, with no wallet address, transaction or check counts in it.
 import { useCallback, useEffect, useState } from 'react'
 import { adminFetch } from '../lib/adminSession'
+import { engineApiUrl } from '../api/marketStream'
 import { t as T, N_ } from '../lib/i18n'
 
 interface DayRow { day: string; signIns: number; newUsers: number; traders: number; trades: number; volumeUsd: number; feesUsd: number }
@@ -13,12 +18,22 @@ export interface AnalyticsReport {
   users: { total: number; new24h: number; active24h: number; active7d: number; byKind: Record<string, number> }
   traders: { total: number; d1: number; d7: number; d30: number }
   trades: { total: number; d1: number; d7: number; d30: number; volume: { total: number; d1: number; d7: number; d30: number }; byChain: Record<string, { trades: number; volumeUsd: number }>; byVenue: Record<string, { trades: number; volumeUsd: number }> }
-  fees: { total: number; d1: number; d7: number; d30: number; bySource: Record<string, number>; reportedByTrades: number }
-  funnel: { visitorsToday: number | null; signedIn24h: number; traded24h: number }
-  checks: Record<'pending' | 'ok' | 'failed' | 'mismatch' | 'unverified', number>
+  fees: { total: number; d1: number; d7: number; d30: number; bySource: Record<string, number>; reportedByTrades?: number }
+  /** Admin only. */
+  funnel?: { visitorsToday: number | null; signedIn24h: number; traded24h: number }
+  checks?: Record<'pending' | 'ok' | 'failed' | 'mismatch' | 'unverified', number>
   daily: DayRow[]
-  topTraders: { address: string; trades: number; volumeUsd: number; feesUsd: number }[]
-  latest: { chain: string; venue: string; side: 'buy' | 'sell'; address: string; usd: number; feeUsd: number; coin: string; tx: string; at: number; status: string }[]
+  topTraders?: { address: string; trades: number; volumeUsd: number; feesUsd: number }[]
+  /** Public rows carry no address, transaction or status. */
+  latest: { chain: string; venue: string; side: 'buy' | 'sell' | string; address?: string; usd: number; feeUsd?: number; coin: string | null; tx?: string; at: number; status?: string }[]
+}
+
+async function publicStats(days: number): Promise<AnalyticsReport> {
+  if (!engineApiUrl) throw new Error(T('The stats aren’t available on this build.'))
+  const r = await fetch(`${engineApiUrl}/v1/stats?days=${days}`, { signal: AbortSignal.timeout(15_000) })
+  const j = await r.json().catch(() => null) as (AnalyticsReport & { error?: string }) | null
+  if (!r.ok || !j) throw new Error(j?.error ?? T('The stats didn’t load (the engine answered {s}).', { s: r.status }))
+  return j
 }
 
 const KIND_LABEL: Record<string, string> = { privy: N_('Email or social (Privy)'), wallet: N_('Wallet app'), trading: N_('Trading wallet'), solana: N_('Solana wallet') }
@@ -53,23 +68,26 @@ function Kpi({ label, value, sub, tone }: { label: string; value: string; sub: s
   return <div className={`an-kpi${tone ? ` ${tone}` : ''}`}><span>{label}</span><b>{value}</b><small>{sub}</small></div>
 }
 
-export default function AdminAnalytics() {
+export default function AdminAnalytics({ pub = false }: { pub?: boolean } = {}) {
   const [days, setDays] = useState(30)
   const [data, setData] = useState<AnalyticsReport | null>(null)
   const [err, setErr] = useState('')
-  const load = useCallback(() => { setErr(''); adminFetch<AnalyticsReport>(`/v1/admin/analytics?days=${days}`).then(setData, e => setErr(errText(e))) }, [days])
+  const load = useCallback(() => {
+    setErr('')
+    ;(pub ? publicStats(days) : adminFetch<AnalyticsReport>(`/v1/admin/analytics?days=${days}`)).then(setData, e => setErr(errText(e)))
+  }, [days, pub])
   useEffect(() => {
     load()
-    const id = setInterval(() => { if (document.visibilityState === 'visible') load() }, 60_000)
+    const id = setInterval(() => { if (document.visibilityState === 'visible') load() }, pub ? 30_000 : 60_000)
     return () => clearInterval(id)
   }, [load])
 
   const chains = Object.entries(data?.trades.byChain ?? {}).sort((a, b) => b[1].volumeUsd - a[1].volumeUsd)
   const sources = Object.entries(data?.fees.bySource ?? {}).sort((a, b) => b[1] - a[1])
   return (
-    <section className="spot-panel rt-health an" data-testid="admin-analytics">
+    <section className="spot-panel rt-health an" data-testid={pub ? 'public-stats' : 'admin-analytics'}>
       <div className="rt-health-h">
-        <strong>{T('Analytics')}</strong>
+        <strong>{pub ? T('Live, from the chain') : T('Analytics')}</strong>
         <span style={{ flex: 1 }} />
         <div className="an-days">{[7, 30, 90].map(d => <button key={d} className={days === d ? 'on' : ''} onClick={() => setDays(d)}>{T('{n} days', { n: d })}</button>)}</div>
         <button className="btn-ghost" onClick={load}>{T('Read again')}</button>
@@ -79,7 +97,7 @@ export default function AdminAnalytics() {
       {data && (
         <>
           <div className="an-kpis">
-            <Kpi label={T('Users')} value={data.users.total.toLocaleString()} sub={T('{n} new in 24h · {a} active in 7 days', { n: data.users.new24h, a: data.users.active7d })} />
+            <Kpi label={pub ? T('Users (wallets)') : T('Users')} value={data.users.total.toLocaleString()} sub={T('{n} new in 24h · {a} active in 7 days', { n: data.users.new24h, a: data.users.active7d })} />
             <Kpi label={T('Traders')} value={data.traders.total.toLocaleString()} sub={T('{d1} today · {d7} in 7 days', { d1: data.traders.d1, d7: data.traders.d7 })} />
             <Kpi label={T('Volume traded')} value={big(data.trades.volume.total)} sub={T('{d1} today · {d7} in 7 days', { d1: big(data.trades.volume.d1), d7: big(data.trades.volume.d7) })} />
             <Kpi label={T('Trades')} value={data.trades.total.toLocaleString()} sub={T('{d1} today · {d7} in 7 days', { d1: data.trades.d1, d7: data.trades.d7 })} />
@@ -87,11 +105,11 @@ export default function AdminAnalytics() {
             <Kpi label={T('Online now')} value={String(data.visitors?.online ?? '—')} sub={T('{n} visitors today', { n: data.visitors?.today ?? '—' })} />
           </div>
 
-          <div className="an-funnel">
+          {data.funnel && <div className="an-funnel">
             <span><b>{data.funnel.visitorsToday ?? '—'}</b> {T('visitors today')}</span><i aria-hidden>→</i>
             <span><b>{data.funnel.signedIn24h}</b> {T('signed in')}</span><i aria-hidden>→</i>
             <span><b>{data.funnel.traded24h}</b> {T('traded')}</span>
-          </div>
+          </div>}
 
           <div className="an-charts">
             <DayBars rows={data.daily} pick={r => r.volumeUsd} title={T('Volume per day')} money />
@@ -117,9 +135,9 @@ export default function AdminAnalytics() {
               {Object.entries(data.users.byKind).map(([k, n]) => <div key={k} className="an-row"><span>{T(KIND_LABEL[k] ?? k)}</span><b>{n}</b></div>)}
             </div>
           </div>
-          <div className="fx-fine">{T('Trades checked on their chains: {ok} counted, {p} waiting, {f} failed or not from that wallet, {u} not checkable.', { ok: data.checks.ok, p: data.checks.pending, f: data.checks.failed + data.checks.mismatch, u: data.checks.unverified })}</div>
+          {data.checks && <div className="fx-fine">{T('Trades checked on their chains: {ok} counted, {p} waiting, {f} failed or not from that wallet, {u} not checkable.', { ok: data.checks.ok, p: data.checks.pending, f: data.checks.failed + data.checks.mismatch, u: data.checks.unverified })}</div>}
 
-          {data.topTraders.length > 0 && (
+          {!!data.topTraders?.length && (
             <>
               <strong className="an-h">{T('Top traders')}</strong>
               <div className="an-table">
@@ -129,15 +147,15 @@ export default function AdminAnalytics() {
           )}
           {data.latest.length > 0 && (
             <>
-              <strong className="an-h">{T('Latest trades from the site')}</strong>
+              <strong className="an-h">{pub ? T('Latest trades') : T('Latest trades from the site')}</strong>
               <div className="an-table">
                 {data.latest.slice(0, 20).map(t => (
-                  <div key={t.chain + t.tx} className="an-row">
+                  <div key={`${t.chain}${t.tx ?? ''}${t.at}${t.usd}`} className="an-row">
                     <span className={t.side === 'buy' ? 'up' : 'down'}>{t.side === 'buy' ? T('Buy') : T('Sell')}</span>
                     <span>{CHAIN_LABEL[t.chain] ?? t.chain} · {t.venue}</span>
                     <b>{usd(t.usd)}</b>
-                    <code>{short(t.address)}</code>
-                    <span className={`an-st ${t.status}`}>{T(STATUS_LABEL[t.status] ?? t.status)}</span>
+                    {t.address && <code>{short(t.address)}</code>}
+                    {t.status && <span className={`an-st ${t.status}`}>{T(STATUS_LABEL[t.status] ?? t.status)}</span>}
                     <span>{new Date(t.at).toLocaleString()}</span>
                   </div>
                 ))}

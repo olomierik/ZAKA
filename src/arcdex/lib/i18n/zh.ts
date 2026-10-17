@@ -4082,5 +4082,11 @@ const d: Record<string, string> = {
   "Jito didn’t take the transaction ({why}). Nothing was sent; try again, or turn anti-MEV off in Settings to send it normally.": "Jito 没有接收这笔交易（{why}）。什么都没发出；请重试，或在设置中关闭防 MEV 以正常发送。",
   "Jito didn’t land the trade in time, so nothing was spent. Try again, or raise the Jito tip in Settings.": "Jito 没有及时让交易上链，所以没有任何花费。请重试，或在设置中提高 Jito 小费。",
   "{wallet} isn’t an admin wallet. Sign in with Privy under an admin email and sign with its wallet, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} 不是管理员钱包。请用管理员邮箱通过 Privy 登录并用其钱包签名，或在 Railway（arcdex-engine）上把该钱包加入 ADMIN_EVM_ADDRESSES。",
+  "The stats aren’t available on this build.": "此版本无法查看统计数据。",
+  "The stats didn’t load (the engine answered {s}).": "统计数据未能加载（引擎返回 {s}）。",
+  "Live, from the chain": "实时，来自链上",
+  "Users (wallets)": "用户（钱包）",
+  "ARCDEX in numbers": "ARCDEX 数据",
+  "How many people use ARCDEX, what they trade and the fees it collects, read again every 30 seconds. A trade counts once its transaction is found on its chain; fees are read from the fee ledger on-chain.": "有多少人在使用 ARCDEX、交易了什么以及收取了多少费用，每 30 秒更新一次。交易在其链上找到后才计入；费用来自链上费用账本。",
 }
 export default d

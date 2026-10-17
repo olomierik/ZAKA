@@ -19,6 +19,8 @@ export const PRIMARY: NavItem[] = [
   { icon: '📊', label: N_('Futures'), to: { name: 'perps' } },
   { icon: '🎯', label: N_('Predict'), to: { name: 'predict' } },
   { icon: '▤', label: N_('Portfolio'), to: { name: 'portfolio' } },
+  // ARCDEX in numbers, for everyone (owner, 2026-10-17).
+  { icon: '📈', label: N_('Analytics'), to: { name: 'stats' } },
   { icon: '⇄', label: N_('Swap'), to: { name: 'swap' }, fold: 'wide' },
   { icon: '◎', label: N_('Bridge'), to: { name: 'bridge' }, fold: 'wide' },
 ]

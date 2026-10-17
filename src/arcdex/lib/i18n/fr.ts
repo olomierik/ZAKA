@@ -4082,5 +4082,11 @@ const d: Record<string, string> = {
   "Jito didn’t take the transaction ({why}). Nothing was sent; try again, or turn anti-MEV off in Settings to send it normally.": "Jito n’a pas pris la transaction ({why}). Rien n’a été envoyé ; réessayez, ou désactivez l’anti-MEV dans les Paramètres pour l’envoyer normalement.",
   "Jito didn’t land the trade in time, so nothing was spent. Try again, or raise the Jito tip in Settings.": "Jito n’a pas exécuté le trade à temps, donc rien n’a été dépensé. Réessayez, ou augmentez le pourboire Jito dans les Paramètres.",
   "{wallet} isn’t an admin wallet. Sign in with Privy under an admin email and sign with its wallet, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} n’est pas un portefeuille admin. Connectez-vous avec Privy sous un e-mail admin et signez avec son portefeuille, ou ajoutez le portefeuille à ADMIN_EVM_ADDRESSES sur Railway (arcdex-engine).",
+  "The stats aren’t available on this build.": "Les statistiques ne sont pas disponibles sur cette version.",
+  "The stats didn’t load (the engine answered {s}).": "Les statistiques ne se sont pas chargées (le moteur a répondu {s}).",
+  "Live, from the chain": "En direct, depuis la chaîne",
+  "Users (wallets)": "Utilisateurs (portefeuilles)",
+  "ARCDEX in numbers": "ARCDEX en chiffres",
+  "How many people use ARCDEX, what they trade and the fees it collects, read again every 30 seconds. A trade counts once its transaction is found on its chain; fees are read from the fee ledger on-chain.": "Combien de personnes utilisent ARCDEX, ce qu’elles échangent et les frais perçus, relus toutes les 30 secondes. Un trade compte une fois sa transaction trouvée sur sa chaîne ; les frais sont lus dans le registre des frais on-chain.",
 }
 export default d
