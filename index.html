@@ -12,7 +12,7 @@
     <!-- Light or dark (lib/theme.ts), set before the stylesheets so the page never flashes the other theme. It also tells
          the app shell below what to draw: the Trenches frame on their paths (data-boot, with the chain in data-boot-c), and
          its English labels only for English readers (data-boot-en; lib/i18n.ts picks the language the same way). -->
-    <script>(function(d){var l=null,c=null;try{d.setAttribute("data-adx",localStorage.getItem("arcdex:theme")==="dark"?"dark":"light");l=localStorage.getItem("arcdex:lang");c=localStorage.getItem("arcdex:chain")}catch(e){d.setAttribute("data-adx","light")}var n=(l||navigator.language||"en").slice(0,2).toLowerCase();if(["fr","es","pt","sw","de","zh"].indexOf(n)<0)d.setAttribute("data-boot-en","");var p=location.pathname.replace(/\/+$/,"")||"/",m=p.match(/^\/(robinhood|solana|bnb|bsc)$/);if(p==="/"||/^\/(app|markets|trenches|arc|launchpad)$/.test(p)||m){d.setAttribute("data-boot","tr");d.setAttribute("data-boot-c",m?{robinhood:"hood",solana:"sol",bnb:"bnb",bsc:"bnb"}[m[1]]:/^\/(arc|launchpad)$/.test(p)?"arc":/^(arc|hood|sol|bnb)$/.test(c)?c:"arc")}})(document.documentElement)</script>
+    <script>(function(d){var l=null,c=null,r=!1;try{d.setAttribute("data-adx",localStorage.getItem("arcdex:theme")==="dark"?"dark":"light");l=localStorage.getItem("arcdex:lang");c=localStorage.getItem("arcdex:chain");r=localStorage.getItem("arcdex:returning")==="1"}catch(e){d.setAttribute("data-adx","light")}var n=(l||navigator.language||"en").slice(0,2).toLowerCase();if(["fr","es","pt","sw","de","zh"].indexOf(n)<0)d.setAttribute("data-boot-en","");var p=location.pathname.replace(/\/+$/,"")||"/",m=p.match(/^\/(robinhood|solana|bnb|bsc)$/);if(p==="/about"||(p==="/"&&!r))d.setAttribute("data-boot","ld");else if(p==="/"||/^\/(app|markets|trenches|arc|launchpad)$/.test(p)||m){d.setAttribute("data-boot","tr");d.setAttribute("data-boot-c",m?{robinhood:"hood",solana:"sol",bnb:"bnb",bsc:"bnb"}[m[1]]:/^\/(arc|launchpad)$/.test(p)?"arc":/^(arc|hood|sol|bnb)$/.test(c)?c:"arc")}})(document.documentElement)</script>
     <!-- The app shell (2026-10-16, the build pack's Phase 3): the top bar, and on the Trenches their frame, drawn by the
          HTML itself, so a phone sees the page at once instead of after the app's code has loaded (~3s on a mid-range
          phone). It matches the app's own layout (terminal.css), and the app replaces it when it starts. -->
@@ -33,6 +33,7 @@
       .bt-login{margin-left:auto;height:32px;display:flex;align-items:center;padding:0 16px;border-radius:4px;background:var(--lg);color:var(--lt);font-weight:600}
       .bt-tr{display:none;flex:1;min-height:0;flex-direction:column}
       html[data-boot=tr] .bt-tr{display:flex}
+      html[data-boot=ld] .bt{display:none}
       .bt-coinbar{height:34px;flex-shrink:0;border-bottom:1px solid var(--l)}
       .bt-bar{height:44px;flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--l);white-space:nowrap;overflow:hidden}
       .bt-title{font-size:14px;font-weight:600;margin-right:4px}

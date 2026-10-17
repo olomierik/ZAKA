@@ -7,9 +7,7 @@ import { LANGS, setLang, t as T, useLang, type Lang } from '../lib/i18n'
 import { COIN_LC, COIN_POOL } from '../lib/coin'
 import { CHAINS, CHAIN_LIST, setChain, useChain, type TChain } from '../lib/chains'
 import { toggleTheme, useTheme } from '../lib/theme'
-import { OPEN_RPC_SETTINGS } from '../lib/rpcSettings'
-import { useFlag } from '../lib/flags'
-import { useMoreItems } from '../lib/navItems'
+import { PRIMARY, useMoreItems } from '../lib/navItems'
 
 interface Props { page: Page; navigate: (p: Page) => void; onMenuClick: () => void; onBack?: () => void; onBell: () => void; bellCount: number }
 
@@ -42,8 +40,8 @@ function useOutside(open: boolean, close: () => void) {
 }
 
 // motion.gift's top bar (owner, 2026-10-12): the mark, theme and language, the pages (Futures and Predict, which
-// motion doesn't have, stand out in green), search by name or contract, the network menu (the Trenches' chain and
-// RPC settings), price alerts and the account.
+// motion doesn't have, stand out in green), search by name or contract, the network menu (the Trenches' chain), price
+// alerts and the account. RPC settings open from the status line's speed (phones: More); Starknet is in More.
 export default function NavBar({ page, navigate, onMenuClick, onBack, onBell, bellCount }: Props) {
   const theme = useTheme()
   const lang = useLang()
@@ -55,20 +53,14 @@ export default function NavBar({ page, navigate, onMenuClick, onBack, onBell, be
   const langRef = useOutside(langOpen, () => setLangOpen(false))
   const netRef = useOutside(netOpen, () => setNetOpen(false))
   const moreRef = useOutside(moreOpen, () => setMoreOpen(false))
-  // Every page beyond the links, the same list as the phone's More sheet (lib/navItems.ts).
-  const more = useMoreItems()
-  const copyOn = useFlag('walletCopy')
+  // Every page has one place (lib/navItems.ts): these links, then More. Swap and Bridge drop out of the links under
+  // 1360px, and More then shows them instead (`fold`).
+  const more = [...PRIMARY.filter(i => i.fold), ...useMoreItems()]
 
-  // Links that don't fit drop out as the screen narrows (`fold`: 'wide' at 1360px, 'mid' at 1100px); every one is also in More.
-  const links: { label: string; page: Page; active: boolean; hot?: boolean; fold?: 'wide' | 'mid' }[] = [
+  const active = (to: Page) => to.name === 'perps' ? page.name === 'perps' || page.name === 'futures' || page.name === 'hl-trader' : page.name === to.name
+  const links: { label: string; page: Page; active: boolean; hot?: boolean; fold?: 'wide' }[] = [
     { label: T('Trenches'), page: trenchesPage(chain), active: TRENCHES.has(page.name) },
-    { label: T('Futures'), page: { name: 'perps' }, active: page.name === 'perps' || page.name === 'futures' || page.name === 'hl-trader', hot: true },
-    { label: T('Predict'), page: { name: 'predict' }, active: page.name === 'predict', hot: true },
-    { label: T('Portfolio'), page: { name: 'portfolio' }, active: page.name === 'portfolio' },
-    ...(copyOn ? [{ label: T('Copy'), page: { name: 'copy' } as Page, active: page.name === 'copy' }] : []),
-    { label: T('Tracker'), page: { name: 'tracker' }, active: page.name === 'tracker', fold: 'mid' },
-    { label: T('Swap'), page: { name: 'swap' }, active: page.name === 'swap', fold: 'wide' },
-    { label: T('Bridge'), page: { name: 'bridge' }, active: page.name === 'bridge', fold: 'wide' },
+    ...PRIMARY.map(i => ({ label: T(i.label), page: i.to, active: active(i.to), hot: i.to.name === 'perps' || i.to.name === 'predict', fold: i.fold })),
   ]
   const pickChain = (c: TChain) => { setChain(c); setNetOpen(false); navigate(trenchesPage(c)) }
 
@@ -102,13 +94,13 @@ export default function NavBar({ page, navigate, onMenuClick, onBack, onBell, be
         ))}
       </nav>
       <div className="tm-pop-wrap tm-more" ref={moreRef}>
-        <button className={`tm-link${more.some(m => m.to.name === page.name) && !links.some(l => l.active && !l.fold) ? ' on' : ''}`} onClick={() => setMoreOpen(o => !o)} aria-expanded={moreOpen} aria-haspopup="menu">
+        <button className={`tm-link${more.some(m => !m.fold && m.to.name === page.name) ? ' on' : ''}`} onClick={() => setMoreOpen(o => !o)} aria-expanded={moreOpen} aria-haspopup="menu">
           {T('More')} <Chevron />
         </button>
         {moreOpen && (
           <div className="tm-pop tm-more-pop" role="menu">
             {more.map(m => (
-              <button key={m.label} role="menuitem" className={`tm-pop-item${page.name === m.to.name ? ' on' : ''}`} onClick={() => { setMoreOpen(false); navigate(m.to) }}>
+              <button key={m.label} role="menuitem" className={`tm-pop-item${page.name === m.to.name ? ' on' : ''}${m.fold ? ` fold-${m.fold}-in` : ''}`} onClick={() => { setMoreOpen(false); navigate(m.to) }}>
                 <span className="tm-more-icon" aria-hidden>{m.icon}</span><span>{T(m.label)}</span>
               </button>
             ))}
@@ -134,13 +126,6 @@ export default function NavBar({ page, navigate, onMenuClick, onBack, onBell, be
                   <ChainLogo chain={c} size={18} /><span>{CHAINS[c].name}</span><small>{CHAINS[c].native}</small>{c === chain && <span className="tm-check">✓</span>}
                 </button>
               ))}
-              <button className="tm-pop-item" onClick={() => { setNetOpen(false); navigate({ name: 'starknet' }) }}>
-                <ChainLogo chain="strk" size={18} /><span>Starknet</span><small>{T('Swap')}</small>
-              </button>
-              <div className="tm-pop-sep" />
-              <button className="tm-pop-item" onClick={() => { setNetOpen(false); window.dispatchEvent(new Event(OPEN_RPC_SETTINGS)) }}>
-                <span className="tm-rpc-dot" /><span>{T('RPC settings')}</span><small>{T('speed test')}</small>
-              </button>
             </div>
           )}
         </div>

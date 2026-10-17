@@ -28,7 +28,9 @@ export function visitorId(): string {
 
 /** The part of the site this page is on (the engine counts who's where for the admin panel; nothing else is sent). */
 export function sectionOf(path: string): string {
-  if (/^\/((arc|robinhood|solana|bnb|bsc|app|markets|trenches|launchpad)\/?)?$/.test(path)) return 'trenches'
+  // / is the landing page (2026-10-17: a returning trader's / becomes /trenches before the app starts).
+  if (path === '/' || path.startsWith('/about')) return 'landing'
+  if (/^\/(arc|robinhood|solana|bnb|bsc|app|markets|trenches|launchpad)\/?$/.test(path)) return 'trenches'
   if (/^\/((solana|bnb|bsc|robinhood)\/)?token\/|^\/spot/.test(path)) return 'token'
   if (path.startsWith('/futures')) return 'futures'
   if (path.startsWith('/predict')) return 'predict'
@@ -36,7 +38,6 @@ export function sectionOf(path: string): string {
   if (path.startsWith('/swap')) return 'swap'
   if (path.startsWith('/bridge')) return 'bridge'
   if (path.startsWith('/admin')) return 'admin'
-  if (path.startsWith('/about')) return 'landing'
   return 'other'
 }
 

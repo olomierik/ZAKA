@@ -1,9 +1,11 @@
 import { captureReferral } from './arcdex/lib/referral'
 import { isChunkError, reloadForNewVersion, watchChunkErrors } from './arcdex/lib/chunkReload'
+import { firstScreen, isReturning } from './arcdex/lib/returning'
 
-// arcsense.site/ is the trading terminal (the Trenches, motion.gift's layout, 2026-10-12). /about is the old landing
-// page: a small bundle with no wallet libraries ($ARCDEX, the fee split, the roadmap). /r/<name> referral links are
-// remembered first, then open the terminal.
+// arcsense.site/ is the landing page for a first visit, and the Trenches for a trader who has signed in here before
+// (owner, 2026-10-17; lib/returning.ts). The landing page is a small bundle with no wallet libraries; its Log in opens
+// the app at /trenches?login=1, which opens Privy's sign-in. /about is always the landing page. /r/<name> referral
+// links are remembered first.
 captureReferral()
 // A page left open across a deploy reloads to get the new version instead of going blank (lib/chunkReload.ts).
 watchChunkErrors()
@@ -11,9 +13,11 @@ const failed = (e: unknown) => { if (isChunkError(e)) reloadForNewVersion(); els
 
 const root = document.getElementById('root')!
 const path = window.location.pathname
-if (path === '/about' || path === '/about/') {
+if (firstScreen(path, isReturning()) === 'landing') {
   void import('./arcdex/landing/Landing').then(m => m.mountLanding(root), failed)
 } else {
+  // A returning trader at / sees the Trenches under their own address, so a reload or a shared link stays in the app.
+  if (path === '/') window.history.replaceState(null, '', '/trenches' + window.location.search + window.location.hash)
   // The page's own code starts loading with the app's, not after it (2026-10-05): a coin page loaded six files one after
   // another (main → app → App → CoinPage → ArgusTokenPage → chart), ~9s on a fast connection. The app's lazy routes
   // then find these already loaded.

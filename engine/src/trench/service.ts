@@ -171,7 +171,7 @@ export class TrenchService implements EngineObserver {
         .filter(r => r.pool && !r.offMarket && r.quote && (r.pool.length === 66 || r.pool.length === 42))
         .map(r => {
           const q = rowOf.get(r.quote!.toLowerCase())
-          return { pool: r.pool!.toLowerCase(), coin: r.address.toLowerCase(), quote: r.quote!.toLowerCase(), coinDecimals: r.decimals ?? 18, supply: supplyOf(r), quoteUsd: q?.priceUsd ?? null, quoteDecimals: q?.decimals ?? 18 }
+          return { pool: r.pool!.toLowerCase(), coin: r.address.toLowerCase(), quote: r.quote!.toLowerCase(), coinDecimals: r.decimals ?? 18, supply: supplyOf(r), quoteUsd: q?.priceUsd ?? null, quoteDecimals: q?.decimals ?? 18, ...(r.dex === 'pons-v2' ? { kind: 'pons' as const } : {}) }
         })
     }
   }

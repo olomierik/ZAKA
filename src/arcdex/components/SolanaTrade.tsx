@@ -17,6 +17,7 @@ import { pct } from '../lib/routerInfo'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { onBalances } from '../lib/balances'
 import { ARC_EXPLORER, FEE_WALLET, SPOT_FEE_BPS } from '../lib/platform'
+import { reportTrade } from '../lib/analytics'
 import { solBalance, solTokenBalance, solTx, solAccount, SELL_GAS_SOL, SOL_USDC, type SolHolding } from '../lib/solana'
 import { connectSolanaWallet, disconnectSolanaWallet, pickSolSigner, useSolanaWallets, type SolanaWallets, type SolSigner } from '../lib/solanaWallet'
 import { getRelayQuote, QUOTE_LIMITS, quoteVerdict, relayValue, relayValueUsd, SOL_NATIVE, type RelayQuote, type RelayRequest } from '../lib/relayQuote'
@@ -251,6 +252,7 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
         const got = Number(formatUnits(res.outAmount ?? quote.expectedOut, quote.outDecimals))
         const out = mode === 'buy' ? `${fmtTok(got)} ${symbol}` : route === 'sol' ? `${fmtTok(got)} SOL` : `${fmtUsd(got)} USDC`
         setLinks([{ label: T('Solana transaction'), href: solTx(res.tx) }])
+        reportTrade({ chain: 'solana', venue: 'jupiter', side: mode, address: solAddr, usd: inputUsd, feeUsd: inputUsd * feeBps / 10_000, coin: mint, tx: res.tx })
         setAmount('')
         onTraded?.()
         setMsg(mode === 'buy' ? T('Bought {out}: it’s in your Solana wallet.', { out }) : T('Sold for {out}: it’s in your Solana wallet.', { out }))
@@ -275,6 +277,7 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
       setLinks(l)
       if (res.status === 'filled') {
         if (paidOnArc) guard.record(res.tx, Number(amount) || 0, `$${amount} (${symbol} on Solana)`)
+        reportTrade({ chain: paidOnArc ? 'arc' : 'solana', venue: 'relay', side: mode, address: paidOnArc ? me! : solAddr, usd: inputUsd, feeUsd: inputUsd * feeBps / 10_000, coin: mint, tx: res.tx })
         const done = mode === 'buy' ? T('Bought ≈{out}: it’s in your Solana wallet.', { out })
           : route === 'arc' ? T('Sold: ≈{out} USDC is back on Arc.', { out }) : T('Sold for ≈{out}: it’s in your Solana wallet.', { out })
         setAmount('')

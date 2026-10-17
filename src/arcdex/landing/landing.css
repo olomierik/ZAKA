@@ -374,6 +374,11 @@ body { font-family: 'IBM Plex Sans', 'DM Sans', system-ui, sans-serif; font-vari
 .ld-buybox .ld-ca code { font-size: 0.8rem; color: var(--ld-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ld-buy { height: 48px; padding: 0 28px; font-size: 0.95rem; }
 .ld-hero-links { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+/* Log in first (2026-10-17): the hero's main action, then the markets; wallet-app users have a quiet link. */
+.ld-hero-start { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0 8px; }
+.ld-hero-start .ld-btn { padding: 12px 22px; font-size: 15px; }
+.ld-wallet-link { display: inline-block; font-size: 12.5px; color: var(--ld-muted, #8a94a6); text-decoration: underline; text-underline-offset: 3px; margin-bottom: 14px; }
+@media (max-width: 560px) { .ld-hero-start .ld-btn { flex: 1; text-align: center; justify-content: center; } }
 .ld-traffic { background: transparent; border-color: var(--ld-border); }
 
 .ld-hero-side { display: flex; flex-direction: column; gap: 16px; }

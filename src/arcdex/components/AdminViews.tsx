@@ -52,7 +52,7 @@ interface Live {
 }
 const SECTION_LABEL: Record<string, string> = {
   trenches: N_('Trenches'), token: N_('Coin pages'), futures: N_('Futures'), predict: N_('Predict'), portfolio: N_('Portfolio'),
-  swap: N_('Swap'), bridge: N_('Bridge'), admin: N_('Admin'), landing: N_('About page'), other: N_('Other pages'),
+  swap: N_('Swap'), bridge: N_('Bridge'), admin: N_('Admin'), landing: N_('Landing page'), other: N_('Other pages'),
 }
 
 export function AdminOverview() {

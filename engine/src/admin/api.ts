@@ -12,6 +12,7 @@
 //   GET  /v1/admin/reports                                      reported comments, theses and profiles (social/moderation.ts)
 //   POST /v1/admin/moderate       {action, target, reason, at, signature}      hide, restore, dismiss, ban, unban
 //   GET  /v1/admin/copy                                         copy trading: wallets, rules, fees owed, how fast copies land
+//   GET  /v1/admin/analytics?days=30                            sign-ins, traders, trades, volume, fees, by day (analytics.ts)
 // The kill switch stays where it was (POST /v1/trading/control, a signed change that needs no session, so it works in an
 // emergency). Everything under /v1/admin needs a live session (Authorization: Bearer …) except the sign-in itself; reads
 // change nothing, and each change (a real sweep, a flag) also needs the admin's signature of exactly that change.
@@ -27,6 +28,7 @@ import type { Traffic } from '../traffic'
 import type { TradeSwitch } from '../site/tradeSwitch'
 import type { VerifyAdmin } from '../site/tradeSwitch'
 import type { Moderation } from '../social/moderation'
+import type { Analytics } from '../analytics'
 import { errMsg, log } from '../log'
 
 export interface AdminTrade { tx: string; at: number; trader: string; token: string; side: 'buy' | 'sell'; usd: number; feeUsd: number; venue: string }
@@ -45,6 +47,7 @@ export interface AdminApiOptions {
   trades: (() => Promise<AdminTrades>) | null
   moderation?: Moderation | null
   copy?: () => { adminView(): unknown } | null
+  analytics?: Analytics | null
   bots: (() => { bots: number; running: number; live: number }) | null
 }
 
@@ -139,6 +142,11 @@ export class AdminApi {
         const copy = this.o.copy?.()
         if (!copy) return { status: 503, body: { error: 'copy trading is not running in this process' } }
         return { status: 200, body: copy.adminView(), cache: 'no-store' }
+      }
+      if (!post && path === '/v1/admin/analytics') {
+        if (!this.o.analytics) return { status: 503, body: { error: 'analytics aren’t running in this process' } }
+        const days = Number(url.searchParams.get('days')) || 30
+        return { status: 200, body: await this.o.analytics.report(days), cache: 'no-store' }
       }
       if (!post && path === '/v1/admin/reports') {
         if (!this.o.moderation) return { status: 503, body: { error: 'the social layer is not running in this process' } }

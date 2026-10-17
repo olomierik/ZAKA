@@ -10,6 +10,7 @@ import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { SWAP_ROUTER_ADDRESS, routerConfigured, useRouterInfo, pct, type RouterInfo } from '../lib/routerInfo'
 import { referrerFor, referralLink } from '../lib/referral'
 import { getProfile, triggerIndex } from '../api/social'
+import { reportTrade } from '../lib/analytics'
 import { rememberHolding } from '../lib/held'
 import ShareCardModal from './ShareCardModal'
 import type { CardData } from '../lib/shareCard'
@@ -196,12 +197,13 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
   // wallet is put on Arc first (lib/tx.ts).
   const send = (req: { address: Address; abi: unknown; functionName: string; args: unknown[]; value?: bigint; gas?: bigint; maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint; chainId?: number }): Promise<Hex> => sendArc(trader.kind, req as never)
 
-  /** The trade's outcome, shown and remembered the same way for both routers. */
-  function finish(outNum: number) {
+  /** The trade's outcome, shown and remembered the same way for both routers, and counted (lib/analytics.ts). */
+  function finish(outNum: number, tx: Hex, how: string) {
     if (!me) return
     const usd = mode === 'buy' ? Number(formatUnits(amountIn, 6)) : outNum
     const tokens = mode === 'buy' ? outNum : Number(formatUnits(amountIn, 18))
     rememberHolding(me, token)
+    reportTrade({ chain: 'arc', venue: how, side: mode, address: me, usd, feeUsd: usd * feeBps / 10_000, coin: token, tx })
     setLastTrade({ kind: mode, usd, tokens })
     setStep('done')
     setMsg(T(mode === 'buy' ? 'Bought {amount} {symbol} for {usd}' : 'Sold {amount} {symbol} for {usd}', { amount: fmtTok(tokens), symbol, usd: fmtUsd(usd) }))
@@ -280,7 +282,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
     setStep('swapping')
     const h = await send({ address: ur, abi: UR_ABI, functionName: 'execute', args: [...args], value })
     if ((await waitForReceipt(h)).status !== 'success') throw new Error(T('Swap reverted'))
-    finish(outNum)
+    finish(outNum, h, 'arc-ur')
   }
 
   /** Mercuri's or SolonPad's own bonding curve: through ARCDEX's curve
@@ -342,7 +344,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
     setStep('swapping')
     const h = await send({ ...req, args: [...req.args] })
     if ((await waitForReceipt(h)).status !== 'success') throw new Error(T('Swap reverted'))
-    finish(outNum)
+    finish(outNum, h, 'arc-curve')
   }
 
   async function submit() {
@@ -398,7 +400,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         if (ra.status !== 'success') throw new Error(T('Approval failed'))
         if (rs.status !== 'success') throw new Error(T('Swap reverted'))
         setAllowance(0n)
-        finish(outNum)
+        finish(outNum, h, 'arc-router')
         return
       }
       const h = await send({ address: SWAP_ROUTER_ADDRESS, abi: call.abi, functionName: call.functionName, args: call.args })
@@ -406,7 +408,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       if (rc.status !== 'success') throw new Error(T('Swap reverted'))
 
       setAllowance(a => (a >= amountIn ? a - amountIn : 0n))
-      finish(outNum)
+      finish(outNum, h, 'arc-router')
     } catch (e) {
       setStep('error')
       setMsg(txErrorText(e))

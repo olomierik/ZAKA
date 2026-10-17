@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { isKnownAdmin } from '../lib/adminSession'
-import { ConnectButton } from './ConnectWallet'
+import { ConnectButton, OPEN_DEPOSIT } from './ConnectWallet'
+import { markReturning } from '../lib/returning'
 import { useDisconnect } from 'wagmi'
 import Avatar from './Avatar'
 import { enableAlertNotifications } from '../lib/notify'
@@ -8,17 +9,17 @@ import { getProfile, signOutEverywhere, type Profile } from '../api/social'
 import { accountOwner, hasPasskey, lock } from '../lib/embeddedWallet'
 import { shortAddr, useTrader } from '../lib/identity'
 import { DEFAULT_PREFS, setPrefs, usePrefs } from '../lib/prefs'
-import { LANGS, setLang, t, useLang, type Lang } from '../lib/i18n'
+import { t } from '../lib/i18n'
 import { useCash } from '../lib/usdc'
 import type { Page } from '../App'
 import { isPrivyWallet, privySignOut, usePrivyState } from '../privy/state'
 import { PrivyAccountPanel } from '../privy/PrivyAccount'
 
-// Top-right account area, fomo-style: "$X cash · Deposit", then the avatar
-// menu (profile, manage account, settings, transfers, blur balances,
-// rewards, clans, contact support, lock / disconnect).
+// Top-right account area, fomo-style: "$X cash · Deposit", then the avatar menu with what's yours (profile, account,
+// settings, withdraw, transfers, rewards, support, sign out). Pages that are in the top bar or its More menu aren't
+// repeated here (owner, 2026-10-17: "nothing repeated on our platform"); the language is the top bar's.
 
-type SettingsTab = 'trading' | 'account' | 'notifications' | 'language'
+type SettingsTab = 'trading' | 'account' | 'notifications'
 
 // The windows open on a click, so their code (deposit and withdraw, with the Solana cross-chain form behind them) loads
 // then, not with every page (2026-10-16, the build pack's Phase 3: it was ~60 KB on every first load).
@@ -34,11 +35,11 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
   const privy = usePrivyState()
   const viaPrivy = trader.kind === 'wallet' && isPrivyWallet(trader.address)
   const prefs = usePrefs()
-  const lang = useLang()
   const { cash } = useCash(trader.address)
   const { disconnect } = useDisconnect()
   const [open, setOpen] = useState(false)
   const [deposit, setDeposit] = useState(false)
+  const [welcome, setWelcome] = useState(false)
   const [withdraw, setWithdraw] = useState(false)
   const [settings, setSettings] = useState<SettingsTab | null>(null)
   const [support, setSupport] = useState(false)
@@ -46,6 +47,12 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => { if (trader.address) void getProfile(trader.address).then(setProfile).catch(() => {}) }, [trader.address])
+  // After a first sign-in (ConnectWallet.tsx logIn): the deposit window, saying the wallet is ready.
+  useEffect(() => {
+    const open = (e: Event) => { setWelcome(!!(e as CustomEvent<{ welcome?: boolean }>).detail?.welcome); setDeposit(true) }
+    window.addEventListener(OPEN_DEPOSIT, open)
+    return () => window.removeEventListener(OPEN_DEPOSIT, open)
+  }, [])
   useEffect(() => {
     if (!open) return
     const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
@@ -53,12 +60,7 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
     return () => document.removeEventListener('mousedown', close)
   }, [open])
 
-  if (!trader.address) return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <LangQuick />
-      <ConnectButton label={t('Log in')} />
-    </div>
-  )
+  if (!trader.address) return <ConnectButton label={t('Log in')} />
 
   const go = (p: Page) => { setOpen(false); navigate(p) }
   const item = (icon: string, label: string, onClick: () => void, right?: React.ReactNode) => (
@@ -84,44 +86,30 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
           {item('👤', t('Manage account'), () => { setOpen(false); setSettings('account') })}
           {viaPrivy && item('🔑', t('Export keys'), () => { setOpen(false); setSettings('account') })}
           {item('⚙', t('Settings'), () => { setOpen(false); setSettings('trading') })}
-          {item('▤', t('Portfolio'), () => go({ name: 'portfolio' }))}
           {item('↑', t('Withdraw'), () => { setOpen(false); setWithdraw(true) })}
           {item('⇅', t('Transfers'), () => go({ name: 'transfers' }))}
           {item('◌', t('Blur balances'), () => setPrefs(p => ({ blur: !p.blur })), <Toggle on={prefs.blur} />)}
           {item('✦', t('Rewards'), () => go({ name: 'rewards' }))}
-          {item('⚑', t('Clans'), () => go({ name: 'clans' }))}
-          {item('☰', t('Feed'), () => go({ name: 'feed' }))}
           {isKnownAdmin(trader.address) && item('🛡', t('Admin'), () => go({ name: 'admin' }))}
-          {item('🌐', t('Language'), () => { setOpen(false); setSettings('language') }, <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{LANGS.find(l => l.code === lang)?.name}</span>)}
           {item('✉', t('Contact support'), () => { setOpen(false); setSupport(true) })}
           <div style={{ borderTop: '1px solid var(--adx-card-border)', margin: '6px 0' }} />
           {solOwner
-            ? item('⏻', t('Sign out'), () => { setOpen(false); lock() })
+            ? item('⏻', t('Sign out'), () => { setOpen(false); markReturning(false); lock() })
             : viaPrivy
-            ? item('⏻', t('Sign out'), () => { setOpen(false); void privySignOut() })
+            ? item('⏻', t('Sign out'), () => { setOpen(false); markReturning(false); void privySignOut() })
             : trader.kind === 'trading-wallet'
             ? item('🔒', t('Lock trading wallet'), () => { setOpen(false); lock() })
-            : item('⏻', t('Disconnect wallet'), () => { setOpen(false); disconnect() })}
+            : item('⏻', t('Disconnect wallet'), () => { setOpen(false); markReturning(false); disconnect() })}
         </div>
       )}
 
       <Suspense fallback={null}>
-        {deposit && <DepositModal trader={trader} navigate={navigate} onClose={() => setDeposit(false)} />}
+        {deposit && <DepositModal trader={trader} navigate={navigate} welcome={welcome} onClose={() => { setDeposit(false); setWelcome(false) }} />}
         {withdraw && <WithdrawModal trader={trader} onClose={() => setWithdraw(false)} />}
         {support && <SupportModal onClose={() => setSupport(false)} />}
       </Suspense>
       {settings && <SettingsModal initial={settings} onClose={() => setSettings(null)} onSupport={() => { setSettings(null); setSupport(true) }} />}
     </div>
-  )
-}
-
-/** Language picker shown before a wallet is connected. */
-function LangQuick() {
-  const lang = useLang()
-  return (
-    <select className="disc-select lang-quick" value={lang} onChange={e => void setLang(e.target.value as Lang)} title={t('Language')} aria-label={t('Language')}>
-      {LANGS.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
-    </select>
   )
 }
 
@@ -132,7 +120,6 @@ function Toggle({ on }: { on: boolean }) {
 export function SettingsModal({ onClose, initial = 'trading', onSupport }: { onClose: () => void; initial?: SettingsTab; onSupport?: () => void }) {
   const prefs = usePrefs()
   const trader = useTrader()
-  const lang = useLang()
   const [tab, setTab] = useState<SettingsTab>(initial)
   const [buy, setBuy] = useState(prefs.buyPresets.map(String))
   const [sell, setSell] = useState(prefs.sellPresets.map(String))
@@ -168,7 +155,8 @@ export function SettingsModal({ onClose, initial = 'trading', onSupport }: { onC
     try { await signOutEverywhere(trader); setSignOut('done') } catch (e) { setSignOut(e instanceof Error ? e.message : t('Could not sign out')) }
   }
 
-  const TABS: [SettingsTab, string][] = [['trading', t('Trading')], ['account', t('Account')], ['notifications', t('Notifications')], ['language', t('Language')]]
+  // The language is the top bar's (EN), not a second picker here.
+  const TABS: [SettingsTab, string][] = [['trading', t('Trading')], ['account', t('Account')], ['notifications', t('Notifications')]]
 
   return (
     <div className="modal-back" onClick={onClose}>
@@ -235,16 +223,6 @@ export function SettingsModal({ onClose, initial = 'trading', onSupport }: { onC
           </>
         )}
 
-        {tab === 'language' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {LANGS.map(l => (
-              <button key={l.code} onClick={() => void setLang(l.code)} className="menu-item" style={{ border: `1px solid ${lang === l.code ? 'var(--adx-accent)' : 'var(--adx-card-border)'}`, borderRadius: 8 }}>
-                <span style={{ flex: 1, textAlign: 'left' }}>{l.name}</span>{lang === l.code && <span style={{ color: 'var(--adx-accent)' }}>✓</span>}
-              </button>
-            ))}
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('Coin names, usernames and theses stay as their authors wrote them.')}</div>
-          </div>
-        )}
       </div>
     </div>
   )

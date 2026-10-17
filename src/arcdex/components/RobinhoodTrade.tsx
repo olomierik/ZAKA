@@ -19,6 +19,7 @@ import { pct } from '../lib/routerInfo'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { onBalances } from '../lib/balances'
 import { ARC_EXPLORER, FEE_WALLET, SPOT_FEE_BPS } from '../lib/platform'
+import { reportTrade } from '../lib/analytics'
 import { visitorCountry } from '../lib/geo'
 import { rhEthBalance, rhTokenBalance, rhTx, SELL_GAS_ETH, STOCK_RESTRICTED } from '../lib/robinhood'
 import { getAcrossQuote, QUOTE_LIMITS, quoteValue, quoteVerdict, type AcrossQuote, type QuoteRequest } from '../lib/acrossQuote'
@@ -210,6 +211,7 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
       if (res.fillTx) l.push({ label: T('Delivered'), href: mode === 'buy' ? rhTx(res.fillTx) : arcTx(res.fillTx) })
       setLinks(l)
       if (res.status === 'filled') {
+        { const usd = mode === 'buy' ? Number(amount) || 0 : got; reportTrade({ chain: mode === 'buy' ? 'arc' : 'robinhood', venue: 'across', side: mode, address: me, usd, feeUsd: usd * feeBps / 10_000, coin: token, tx: res.depositTx }) }
         const done = mode === 'buy' ? T('Bought ≈{out}: it’s in your wallet on Robinhood Chain.', { out }) : T('Sold: ≈{out} USDC is back on Arc.', { out })
         setAmount('')
         onTraded?.()

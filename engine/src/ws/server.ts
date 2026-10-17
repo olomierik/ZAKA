@@ -59,6 +59,7 @@ import type { HistoryStore } from '../store/history'
 import type { HotStore } from '../store/hot'
 import type { Traffic } from '../traffic'
 import type { Votes } from '../votes'
+import type { Analytics } from '../analytics'
 import { quantApi, type QuantApiDeps } from '../quant/api'
 import { algoApi } from '../algo/api'
 import type { AlgoAgent } from '../algo/agent'
@@ -96,6 +97,8 @@ export class DataApi {
   traffic: Traffic | null = null
   /** Community sentiment on each coin (votes.ts). */
   votes: Votes | null = null
+  /** The owner's analytics (analytics.ts): sign-ins and trades the site sends. */
+  analytics: Analytics | null = null
   /** Alerts by web push (alerts/service.ts). */
   push: PushAlerts | null = null
   /** The signal engine (engine/src/quant), when this process runs it. */
@@ -367,6 +370,23 @@ export function startServer({ cfg, api, health }: ServerDeps) {
           : action === 'test' ? await push.test(body)
           : { status: 404, body: { error: 'not found' } }
         return json(req, r.status, r.body, 'no-store')
+      }
+      // The owner's analytics (analytics.ts): a wallet signing in, a trade the site made. Sent as text/plain (no
+      // preflight), from the site's own pages only.
+      if (url.pathname === '/v1/analytics/signin' || url.pathname === '/v1/analytics/trade') {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        const an = api.analytics
+        if (!an) return json(req, 503, { error: 'analytics aren’t running here' })
+        if (req.method !== 'POST') return json(req, 405, { error: 'method not allowed' })
+        const origin = req.headers.get('origin')
+        if (!origin || !cfg.allowedOrigins.includes(origin)) return json(req, 403, { error: 'sent from the site only' })
+        if (Number(req.headers.get('content-length') ?? 0) > 2048) return json(req, 413, { error: 'too large' })
+        const body = await req.text().then(t => JSON.parse(t) as Record<string, unknown>, () => null).catch(() => null)
+        if (!body) return json(req, 400, { error: 'bad request' })
+        const r = url.pathname.endsWith('/signin') ? an.signin(body, ip) : await an.trade(body, ip)
+        if ('error' in r) return json(req, r.error.startsWith('too many') ? 429 : 400, r, 'no-store')
+        metrics.inc(url.pathname.endsWith('/signin') ? 'analytics_signins' : 'analytics_trades')
+        return json(req, 200, r, 'no-store')
       }
       // Community sentiment on each coin (votes.ts): the counts, and a visitor's vote.
       if (url.pathname === '/v1/votes') {

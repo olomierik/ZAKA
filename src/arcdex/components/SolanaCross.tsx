@@ -23,6 +23,7 @@ import { useCash } from '../lib/usdc'
 import { pct } from '../lib/routerInfo'
 import { onBalances } from '../lib/balances'
 import { ARC_EXPLORER, SPOT_FEE_BPS } from '../lib/platform'
+import { chainOfId, reportTrade } from '../lib/analytics'
 import { accountOwner, isUnlocked } from '../lib/embeddedWallet'
 import { solBalance, solTokenBalance, solTx, type SolHolding } from '../lib/solana'
 import { connectSolanaWallet, phantomLink, pickSolSigner, useSolanaWallets } from '../lib/solanaWallet'
@@ -247,6 +248,8 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
         : paying ? T('Done: ≈{out} is in your ARCDEX account on {chain}.', { out: outText, chain: CHAIN_NAME[chainId] })
         : T('Done: ≈{out} is in your Solana wallet.', { out: outText }))
       if (!paying) guard.record(res.tx, inputUsd, outText)
+      // A trade (not a deposit or withdrawal): counted where it was signed.
+      if (!bridging) { const c = paying ? 'solana' : chainOfId(chainId); if (c) reportTrade({ chain: c, venue: 'relay', side: paying ? 'buy' : 'sell', address: (paying ? solAddr : me) ?? '', usd: inputUsd, feeUsd: inputUsd * feeBps / 10_000, coin: token, tx: res.tx }) }
       setStep('done'); setAmount('')
       refresh(); refreshCash(); onDone?.()
     } catch (e) {

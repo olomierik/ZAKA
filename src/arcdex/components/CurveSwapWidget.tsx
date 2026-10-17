@@ -6,6 +6,7 @@ import { useTrader } from '../lib/identity'
 import { sendArc, txErrorText } from '../lib/tx'
 import { waitForAllowance } from '../lib/rpc'
 import { triggerIndex } from '../api/social'
+import { reportTrade } from '../lib/analytics'
 import { rememberHolding } from '../lib/held'
 import { t as T } from '../lib/i18n'
 import { waitForReceipt } from '../lib/receipts'
@@ -130,6 +131,8 @@ export default function CurveSwapWidget({ token, onTraded, initialMode, side, in
       if (rc.status !== 'success') throw new Error(T('Swap reverted'))
       const out = Number(formatUnits(estimate.out, estimate.decimals))
       rememberHolding(me, token.address)
+      // ArcLaunchpad's platform fee is 1% of every trade (contracts/ArcLaunchpad.sol), plus 40% of any creator tax.
+      { const usd = mode === 'buy' ? Number(formatUnits(amountIn, 6)) : out; reportTrade({ chain: 'arc', venue: 'launchpad', side: mode, address: me, usd, feeUsd: usd * 0.01, coin: token.address, tx: h }) }
       setStep('done')
       setMsg(mode === 'buy'
         ? T('Bought {amount} {symbol} for {usd}', { amount: fmtTok(out), symbol: token.symbol, usd: `$${Number(formatUnits(amountIn, 6)).toFixed(2)}` })
