@@ -66,6 +66,12 @@ export const SMART_RULES: Record<TrenchChain, SmartRules> = {
   arc: { ...BASE, minClosedTrades: 3, minTokens: 2, minRealizedUsd: 25, maxWallets: 40_000 },
 }
 
+/** The first moments after a launch, as GMGN and fomo count them (2026-10-17, owner: "all launchpad coins should show
+ * dev sold, bundlers, snipers"). Bundlers: wallets other than the creator buying within a second of the launch (its own
+ * block on every chain read here; Solana's block times are whole seconds). Snipers: wallets other than the creator
+ * buying within 15 seconds. Counted only for coins this book saw launch, so its first trades are all here. */
+export const EARLY = { bundleMs: 1_000, snipeMs: 15_000 }
+
 const LAUNCH_KEEP_MS = 2 * 3_600_000
 const MAX_LAUNCHES = 700
 const MAX_COINS = 6_000
@@ -79,6 +85,11 @@ interface LiveCoin {
   traders: Set<string> | null
   launched: boolean
   lastAt: number
+  /** Launches only: the creator's buys and sales (coins), and the early buyers (EARLY). */
+  devIn?: number
+  devOut?: number
+  bundlers?: Set<string>
+  snipers?: Set<string>
 }
 
 interface Pending { b: number; x: number; bu: number; xu: number; big: number }
@@ -125,6 +136,7 @@ export class TrenchBook {
       a: l.token, s: l.symbol, n: l.name, i: l.image, lp: l.launchpad, q: l.quote, pool: l.pool, c: l.createdAt, cr: l.creator,
       o: l.priceUsd || prev?.o || 0, p: prev?.p || l.priceUsd, m: prev?.m || l.mcapUsd, l: prev?.l || l.liquidityUsd, v: prev?.v ?? 0, b: prev?.b ?? 0, x: prev?.x ?? 0,
       w: prev?.w ?? 0, g: prev?.g ?? l.progress, gr: false, traders: prev?.traders ?? new Set(), launched: true, lastAt: now,
+      devIn: 0, devOut: 0, bundlers: new Set(), snipers: new Set(),
     }
     this.coins.set(l.token, c)
     this.launches.push(l.token)
@@ -189,6 +201,15 @@ export class TrenchBook {
         if (c.traders.size >= TRADER_CAP) c.traders = null
       }
       c.lastAt = t.ts
+      if (c.launched && t.wallet && c.c > 0) {
+        const dev = !!c.cr && t.wallet.toLowerCase() === c.cr.toLowerCase()
+        if (dev) { if (t.side === 'buy') c.devIn = (c.devIn ?? 0) + t.tokens; else c.devOut = (c.devOut ?? 0) + t.tokens }
+        else if (t.side === 'buy') {
+          const after = t.ts - c.c
+          if (after <= EARLY.bundleMs) c.bundlers?.add(t.wallet)
+          if (after <= EARLY.snipeMs) c.snipers?.add(t.wallet)
+        }
+      }
       if (followed) {
         const p = this.pending.get(t.token) ?? { b: 0, x: 0, bu: 0, xu: 0, big: 0 }
         if (t.side === 'buy') { p.b++; p.bu += t.usd } else { p.x++; p.xu += t.usd }
@@ -325,7 +346,14 @@ export class TrenchBook {
 }
 
 function wire(c: LiveCoin): TrenchCoinWire {
-  return { a: c.a, s: c.s, n: c.n, i: c.i, lp: c.lp, q: c.q, pool: c.pool, c: c.c, cr: c.cr, o: c.o, p: c.p, m: Math.round(c.m), l: Math.round(c.l), v: round2(c.v), b: c.b, x: c.x, w: c.w, g: c.g === null ? null : Math.round(c.g * 10) / 10, gr: c.gr }
+  const out: TrenchCoinWire = { a: c.a, s: c.s, n: c.n, i: c.i, lp: c.lp, q: c.q, pool: c.pool, c: c.c, cr: c.cr, o: c.o, p: c.p, m: Math.round(c.m), l: Math.round(c.l), v: round2(c.v), b: c.b, x: c.x, w: c.w, g: c.g === null ? null : Math.round(c.g * 10) / 10, gr: c.gr }
+  if (c.launched && c.bundlers) {
+    out.bn = c.bundlers.size
+    out.sn = c.snipers?.size ?? 0
+    // Of what the creator bought, the share sold (100 at most): null when the creator isn't known or never bought.
+    out.dv = c.cr && (c.devIn ?? 0) > 0 ? Math.min(100, Math.round(((c.devOut ?? 0) / c.devIn!) * 100)) : c.cr && (c.devOut ?? 0) > 0 ? 100 : null
+  }
+  return out
 }
 const round2 = (n: number) => Math.round(n * 100) / 100
 const round3 = (n: number) => Math.round(n * 1000) / 1000

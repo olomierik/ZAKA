@@ -15,7 +15,7 @@
 // publicnode's Solana RPC answers browsers (measured 2026-10-05: ~0.3s for the newest signatures, ~0.5s for three
 // transactions read in parallel; a batch request may hold only one getTransaction).
 
-import { SOL_RPC_BROWSER, SOL_USDC, WSOL } from '../../../api/_solCore'
+import { SOL_RPC_BROWSER, SOL_USDC, WSOL, base58, fromBase64 } from '../../../api/_solCore'
 import type { ChainFeed, ChainSwap } from '../lib/useChainTrades'
 
 export interface SolPoolMeta {
@@ -30,7 +30,7 @@ interface TokenBal { accountIndex: number; mint: string; owner?: string; uiToken
 export interface SolTx {
   slot: number
   blockTime: number | null
-  meta: { err: unknown; fee: number; preBalances: number[]; postBalances: number[]; preTokenBalances?: TokenBal[] | null; postTokenBalances?: TokenBal[] | null } | null
+  meta: { err: unknown; fee: number; preBalances: number[]; postBalances: number[]; preTokenBalances?: TokenBal[] | null; postTokenBalances?: TokenBal[] | null; logMessages?: string[] | null } | null
   transaction: { signatures: string[]; message: { accountKeys: ({ pubkey: string } | string)[] } }
 }
 
@@ -61,9 +61,15 @@ export function parseSolSwap(tx: SolTx, m: SolPoolMeta): ChainSwap | null {
   let pq = delta(tx, m.quoteMint, m.pool)
   const pi = keys.indexOf(m.pool)
   if (sol && pq === 0 && pi >= 0) pq = (meta.postBalances[pi] - meta.preBalances[pi]) / 1e9
+  // A pool that holds its own token accounts (PumpSwap, pump.fun's curve) shows every trade in its own balances. One
+  // whose balances didn't move wasn't traded in this transaction: an arbitrage bot's transaction can name the pool and
+  // trade elsewhere, and its wallet's net change priced ALLOX's "trades" at 2× and 0.03× the market (2026-10-17).
+  const owns = [...(meta.preTokenBalances ?? []), ...(meta.postTokenBalances ?? [])].some(b => b.owner === m.pool && (b.mint === m.mint || b.mint === m.quoteMint))
   if (pc !== 0 && pq !== 0 && Math.sign(pc) !== Math.sign(pq)) {
     buy = pc < 0
     tokens = Math.abs(pc); quote = Math.abs(pq)
+  } else if (owns) {
+    return null
   } else {
     // The signer's side.
     const sc = delta(tx, m.mint, signer)
@@ -87,6 +93,85 @@ export function parseSolSwap(tx: SolTx, m: SolPoolMeta): ChainSwap | null {
     id: sig, txHash: sig, time: (tx.blockTime ?? Math.floor(Date.now() / 1000)) * 1000,
     kind: buy ? 'buy' : 'sell', tokenAmount: tokens, quoteAmount: quote, price: quote / tokens, maker: signer,
   }
+}
+
+// ── pump.fun's and PumpSwap's own events ────────────────────────────────
+// Each swap on pump.fun's curve and in a PumpSwap pool logs its own event ("Program data:", Anchor), with the exact SOL
+// and coins of that one swap: the engine reads the same (engine/src/trench/sol.ts decodePumpData, whose layouts were
+// read from live transactions). Balance changes net a transaction's swaps together: volume bots that buy and sell in
+// one transaction read as one trade at 6× or 0.03× the market (ALLOX, 2026-10-17). So where events are logged, each
+// swap of this coin's pool is a trade of its own. The event names' hashes are Anchor's sha256("event:<Name>")[0..8].
+
+const EV = { trade: 'bddb7fd34ee661ee', buy: '67f4521f2cf57777', sell: '3e2f370aa503dc2a' }
+const hex8 = (b: Uint8Array) => Array.from(b.subarray(0, 8), x => x.toString(16).padStart(2, '0')).join('')
+const u64 = (b: Uint8Array, o: number) => new DataView(b.buffer, b.byteOffset, b.byteLength).getBigUint64(o, true)
+
+export type PumpSwapEvent =
+  | { k: 'curve'; mint: string; sol: bigint; tok: bigint; buy: boolean; user: string }
+  | { k: 'amm'; pool: string; base: bigint; quote: bigint; poolBase: bigint; poolQuote: bigint; buy: boolean; user: string }
+
+/** A "Program data:" payload as a pump.fun trade or a PumpSwap buy or sell, or null. */
+export function decodeSwapEvent(b64: string): PumpSwapEvent | null {
+  let b: Uint8Array
+  try { b = fromBase64(b64) } catch { return null }
+  if (b.length < 16) return null
+  const d = hex8(b)
+  try {
+    if (d === EV.trade && b.length >= 129) return { k: 'curve', mint: base58(b.subarray(8, 40)), sol: u64(b, 40), tok: u64(b, 48), buy: b[56] === 1, user: base58(b.subarray(57, 89)) }
+    if ((d === EV.buy || d === EV.sell) && b.length >= 184) return { k: 'amm', buy: d === EV.buy, base: u64(b, 16), quote: u64(b, 64), poolBase: u64(b, 48), poolQuote: u64(b, 56), pool: base58(b.subarray(120, 152)), user: base58(b.subarray(152, 184)) }
+  } catch { return null }
+  return null
+}
+
+/** A transaction's swaps of this coin, one per event (pump.fun's curve, PumpSwap pools quoted in SOL); null when it
+ * logs none, so the caller reads it from balances. */
+export function swapsFromEvents(tx: SolTx, m: SolPoolMeta): ChainSwap[] | null {
+  const logs = tx.meta?.logMessages
+  const sig = tx.transaction.signatures[0]
+  if (!logs?.length || !sig || tx.meta?.err) return null
+  const bals = [...(tx.meta?.postTokenBalances ?? []), ...(tx.meta?.preTokenBalances ?? [])]
+  const dec = bals.find(b => b.mint === m.mint)?.uiTokenAmount.decimals ?? 6
+  // A PumpSwap pool's base can be the coin (most) or SOL (some, as ALLOX's): its reserve in the event matches the
+  // pool's vault of that mint in this transaction (before or after the swap).
+  const vault = (mint: string) => bals.filter(b => b.owner === m.pool && b.mint === mint).map(b => BigInt(b.uiTokenAmount.amount))
+  const near = (x: bigint, list: bigint[]) => list.some(v => v > 0n && (x > v ? x - v : v - x) * 100n <= v)
+  const out: ChainSwap[] = []
+  let any = false
+  for (const line of logs) {
+    if (!line.startsWith('Program data: ')) continue
+    const e = decodeSwapEvent(line.slice(14))
+    if (!e) continue
+    any = true
+    let tokRaw: bigint, solRaw: bigint, buy: boolean
+    if (e.k === 'curve') {
+      if (e.mint !== m.mint) continue
+      tokRaw = e.tok; solRaw = e.sol; buy = e.buy
+    } else {
+      if (e.pool !== m.pool || m.quoteMint !== WSOL) continue
+      const coin = vault(m.mint), sol = vault(WSOL)
+      const baseIsCoin = near(e.poolBase, coin) || near(e.poolQuote, sol)
+      const baseIsSol = near(e.poolBase, sol) || near(e.poolQuote, coin)
+      if (baseIsCoin === baseIsSol) continue
+      // A Buy event buys the base with the quote: buying the coin when it's the base, selling it when SOL is.
+      tokRaw = baseIsCoin ? e.base : e.quote; solRaw = baseIsCoin ? e.quote : e.base; buy = baseIsCoin ? e.buy : !e.buy
+    }
+    const tok = Number(tokRaw) / 10 ** dec
+    const sol = Number(solRaw) / 1e9
+    if (!(tok > 0) || !(sol > 0)) continue
+    out.push({
+      id: out.length ? `${sig}:${out.length}` : sig, txHash: sig, time: (tx.blockTime ?? Math.floor(Date.now() / 1000)) * 1000,
+      kind: buy ? 'buy' : 'sell', tokenAmount: tok, quoteAmount: sol, price: sol / tok, maker: e.user,
+    })
+  }
+  return any ? out : null
+}
+
+/** A transaction's trades of the pool's coin: from its events where it logs them, else from what moved. */
+export function parseSolSwaps(tx: SolTx, m: SolPoolMeta): ChainSwap[] {
+  const ev = swapsFromEvents(tx, m)
+  if (ev) return ev
+  const one = parseSolSwap(tx, m)
+  return one ? [one] : []
 }
 
 // ── reading ─────────────────────────────────────────────────────────────
@@ -131,7 +216,7 @@ export async function loadSolSwaps(m: SolPoolMeta): Promise<{ swaps: ChainSwap[]
   const sigs = await signatures(m.pool, { limit: 40 })
   const ok = sigs.filter(s => !s.err).slice(0, 12).map(s => s.signature)
   const txs = await transactions(ok)
-  const swaps = txs.map(t => (t ? parseSolSwap(t, m) : null)).filter((s): s is ChainSwap => !!s)
+  const swaps = txs.flatMap(t => (t ? parseSolSwaps(t, m) : []))
   return { swaps: swaps.sort((a, b) => b.time - a.time), newest: sigs[0]?.signature ?? null }
 }
 
@@ -168,8 +253,7 @@ export function watchSolSwaps(m: SolPoolMeta, newest: string | null, known: Iter
         }
         pending.delete(sig)
         seen.add(sig)
-        const s = parseSolSwap(tx, m)
-        if (s) fresh.push({ ...s, live: true })
+        for (const s of parseSolSwaps(tx, m)) fresh.push({ ...s, live: true })
       })
       if (seen.size > 4_000) for (const id of [...seen].slice(0, 2_000)) seen.delete(id)
       if (fresh.length && !stopped) onSwaps(fresh.sort((a, b) => b.time - a.time))

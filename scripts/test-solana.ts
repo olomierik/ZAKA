@@ -3,6 +3,7 @@
 // refused), the price guard, stages, safety ratings and routes.
 // Run: bun scripts/test-solana.ts
 
+import { readFileSync } from 'node:fs'
 import accounts from './fixtures/sol-accounts.json'
 import relayBuy from './fixtures/relay-buy.json'
 import relaySell from './fixtures/relay-sell.json'
@@ -189,6 +190,22 @@ for (const p of swapsFx.pools as any[]) {
   const failed = { ...p.txs[0], meta: { ...p.txs[0].meta, err: { InstructionError: [0, 'Custom'] } } }
   ok(parseSolSwap(failed, meta) === null, 'a failed transaction isn’t a trade')
   ok(parseSolSwap(p.txs[0], { ...meta, mint: 'QtherMint111111111111111111111111111111abc' }) === null, 'another coin’s transaction isn’t this coin’s trade')
+}
+
+console.log('each swap from its own event (real ALLOX transactions, scripts/fixtures/sol-allox.json)')
+{
+  const { parseSolSwaps, swapsFromEvents } = await import('../src/arcdex/api/solSwaps')
+  const fx = JSON.parse(readFileSync('scripts/fixtures/sol-allox.json', 'utf8')) as { pool: string; mint: string; txs: any[] }
+  const meta = { pool: fx.pool, mint: fx.mint, quoteMint: core.WSOL }
+  const all = fx.txs.flatMap(t => parseSolSwaps(t, meta))
+  const both = fx.txs.find(t => (swapsFromEvents(t, meta) ?? []).length === 2)!
+  const pair = swapsFromEvents(both, meta)!
+  ok(!!pair && pair.map(s => s.kind).sort().join() === 'buy,sell', 'a volume bot’s buy and sell in one transaction: two trades')
+  ok(new Set(pair.map(s => s.id)).size === 2 && pair[0].id === pair[0].txHash, 'each with its own id (the first keeps the signature)')
+  const prices = all.map(s => s.price)
+  ok(Math.max(...prices) / Math.min(...prices) < 1.05, `every swap at the pool’s price, within 5% (${prices.map(x => x.toExponential(3)).join(', ')} SOL)`)
+  ok(all.every(s => s.maker && s.maker.length >= 32), 'the trader is the event’s user')
+  ok(swapsFromEvents(both, { ...meta, pool: 'OtherPooL1111111111111111111111111111111111' })!.length === 0, 'another pool’s events aren’t this pool’s trades')
 }
 
 console.log('routes')

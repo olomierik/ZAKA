@@ -63,4 +63,14 @@ ok(Math.abs(wick.high - 3.3) < 1e-12 && Math.abs(wick.low - 1 / 3) < 1e-12, 'a w
 const after = cleanCandles([c(0, 1), { time: 60, open: 1, high: 50, low: 1, close: 50, volume: 1 }, { time: 120, open: 50, high: 50, low: 1, close: 1.05, volume: 1 }, c(180, 1)])
 ok(after[1].close === 1 && after[2].open === 1 && after[2].high <= 1.05 * 3, 'the bar after a bad print opens at the repaired price')
 
+console.log('trades priced far off the ones around them')
+const { cleanTicks } = await import('../src/arcdex/lib/candles')
+const tk = (prices: number[]) => prices.map((p, i) => ({ time: i * 1000, priceUsd: p, usd: 1 }))
+const kept = (ps: number[]) => cleanTicks(tk(ps)).map(t => t.priceUsd).join()
+ok(kept([1, 1.02, 2, 1.01, 0.2, 0.99, 1.03, 1, 1.01]) === '1,1.02,1.01,0.99,1.03,1,1.01', 'a bot’s 2× and 0.2× prints are left off (the ALLOX case)')
+ok(kept([1, 1.01, 1.02, 1.6, 1.62, 1.65, 1.7, 1.68, 1.72]).split(',').length === 9, 'a real 60% move: every trade kept')
+const rug = kept([1, 1, 1.01, 1, 0.99, 1, 0.05, 0.048, 0.05, 0.051, 0.049, 0.05, 0.05])
+ok(rug.endsWith('0.048,0.05,0.051,0.049,0.05,0.05'), 'a rug still shows: the trades after it are at the new low')
+ok(kept([1, 3, 1, 3]) === '1,3,1,3', 'under 5 trades: left as they are')
+
 console.log('\nall chart-frame checks passed')

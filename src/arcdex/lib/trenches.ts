@@ -44,6 +44,12 @@ export interface TrenchCoin {
   /** The pool's fee tier or the creator's tax, as known. */
   fee: string | null
   twitter: string | null
+  /** Its website and Telegram (DexScreener's coin info, lib/dexData.ts), when known. */
+  website?: string | null
+  telegram?: string | null
+  /** Its first moments (engine/src/trench/book.ts EARLY), for coins the engine saw launch: bundlers, snipers and the
+   * share of the creator's own buy sold (null: not known). */
+  early?: { bundlers: number; snipers: number; devSold: number | null } | null
   /** Trades in the last 15 minutes (the busiest coins). */
   hot?: number
   official?: boolean
@@ -52,7 +58,7 @@ export interface TrenchCoin {
   dupSame?: boolean
   /** Its launcher's last coins and how many it dumped early (Arc's scan). */
   launcher?: { coins: number; dumps: number } | null
-  /** The last hour's volume and trades (Arc, from the engine), for the 1h window. */
+  /** The last hour's volume and trades (Arc's from the engine, the others' from DexScreener), for the 1h window. */
   hour?: { vol: number; buys: number; sells: number } | null
   /** The newest thesis anyone posted on the coin (lib/latestTheses.ts). */
   thesis?: { body: string; author: string; at: number } | null

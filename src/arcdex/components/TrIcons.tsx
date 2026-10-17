@@ -25,3 +25,8 @@ export const IcTarget = () => <svg {...P} width={14} height={14}><circle cx="12"
 export const IcMin = () => <svg {...P} width={13} height={13}><path d="M15 5l-7 7 7 7" /></svg>
 export const IcMax = () => <svg {...P} width={13} height={13}><path d="M9 5l7 7-7 7" /></svg>
 export const IcFire = () => <svg {...P} width={13} height={13}><path d="M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5.5 1-8.5z" /></svg>
+export const IcGlobe = () => <svg {...P}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z" /></svg>
+export const IcTelegram = () => <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M21.5 3.6L2.9 10.8c-1.3.5-1.3 1.2-.2 1.6l4.8 1.5 1.8 5.6c.2.6.4.8.8.8.4 0 .6-.2.9-.5l2.3-2.2 4.7 3.5c.9.5 1.5.2 1.7-.8l3.1-14.6c.3-1.3-.5-1.9-1.3-1.5zM8.6 13.6l9.6-6.1c.5-.3.9-.1.5.2l-8.2 7.4-.3 3.4z" /></svg>
+export const IcCrosshair = () => <svg {...P}><circle cx="12" cy="12" r="7" /><path d="M12 2v5M12 17v5M2 12h5M17 12h5" /></svg>
+export const IcLayers = () => <svg {...P}><path d="M12 3l9 5-9 5-9-5z" /><path d="M3 13l9 5 9-5" /></svg>
+export const IcDev = () => <svg {...P}><path d="M8 7l-5 5 5 5M16 7l5 5-5 5" /></svg>

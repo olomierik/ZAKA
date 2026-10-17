@@ -1,6 +1,6 @@
 // The Trenches (2026-10-12, owner: "a trading terminal like motion.gift … with all the features we have"): the home of
 // the app. Pick a chain (Arc, Robinhood Chain, Solana, BNB Chain) and its coins stream into lanes: New, Almost bonded
-// and Migrated, and Smart money (the coins smart wallets are buying now and their trades). A row's Buy asks for the
+// and Migrated, and Trending now (what people are buying across every chain). A row's Buy asks for the
 // amount, then opens the coin's own trade form with it, where the coin's checks run before anything is signed.
 // $ARCDEX's contract, price and burned amount sit on top. Each lane can be minimized to a slim strip.
 //
@@ -11,13 +11,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Page } from '../App'
 import TrenchLane, { LANE_TITLE } from '../components/TrenchLane'
-import TrenchSmartLane from '../components/TrenchSmartLane'
+import TrenchTrendLane from '../components/TrenchTrendLane'
 import TrenchCoinBar from '../components/TrenchCoinBar'
 import TrenchBuyPop from '../components/TrenchBuyPop'
 import type { RowFlash } from '../components/TrenchRow'
 import { CustomizeModal, FilterModal } from '../components/TrenchModals'
 import ChainLogo from '../components/ChainLogo'
-import { IcSliders, IcStar, IcTarget } from '../components/TrIcons'
+import { IcSliders, IcStar } from '../components/TrIcons'
 import { trenchesPage } from '../components/NavBar'
 import { CHAINS, CHAIN_LIST, setChain, type TChain } from '../lib/chains'
 import { useHead } from '../lib/rpcSettings'
@@ -40,6 +40,7 @@ import { useIsMobile } from '../lib/useMobile'
 import { usePrefs } from '../lib/prefs'
 import { t as T } from '../lib/i18n'
 import { useLatestTheses } from '../lib/latestTheses'
+import { useDsCoins, useShownAddresses, withDs } from '../lib/useDexData'
 import { useMutes } from '../lib/mutes'
 import { useTrader } from '../lib/identity'
 
@@ -252,25 +253,28 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
   // Each coin's newest thesis, as fomo shows it, leaving out wallets this trader muted.
   const theses = useLatestTheses()
   const { muted } = useMutes(useTrader())
-  const coins = useMemo(() => {
-    const list = s.watchOnly ? data.coins.filter(c => watch.includes(c.address.toLowerCase())) : data.coins
-    if (!theses.size) return list
-    return list.map(c => {
-      const th = theses.get(c.address.toLowerCase())
-      return th && !muted.has(th.author) ? { ...c, thesis: th } : c
-    })
-  }, [data.coins, s.watchOnly, watch, theses, muted])
+  const listed = useMemo(() => (s.watchOnly ? data.coins.filter(c => watch.includes(c.address.toLowerCase())) : data.coins), [data.coins, s.watchOnly, watch])
+  // DexScreener's numbers, links and last hour for the coins the lanes show (lib/dexData.ts), and the engine's count of
+  // each launch's bundlers, snipers and dev sales (its feed).
+  const shown = useShownAddresses(useMemo(() => LANES.map(l => laneCoins(listed, l)), [listed]))
+  const ds = useDsCoins(chain, shown)
+  const early = useMemo(() => new Map(feed.launches.filter(w => w.bn !== undefined).map(w => [keyOf(chain, w.a), { bundlers: w.bn ?? 0, snipers: w.sn ?? 0, devSold: w.dv ?? null }])), [feed.launches, chain])
+  const coins = useMemo(() => listed.map(c => {
+    let out = withDs(c, ds.get(c.address))
+    const e = early.get(keyOf(chain, c.address))
+    if (e) out = { ...out, early: e }
+    const th = theses.get(c.address.toLowerCase())
+    return th && !muted.has(th.author) ? { ...out, thesis: th } : out
+  }), [listed, ds, early, chain, theses, muted])
   const lanes = useMemo(() => Object.fromEntries(LANES.map(l => [l, laneCoins(coins, l)])) as Record<LaneId, TrenchCoin[]>, [coins])
   const launchpads = useMemo(() => [...new Set(data.coins.map(c => c.launchpad).filter((x): x is string => !!x))].sort(), [data.coins])
-  const byKey = useMemo(() => new Map(data.coins.map(c => [keyOf(chain, c.address), c])), [data.coins, chain])
 
   const open = useCallback((c: TrenchCoin) => navigate(c.page), [navigate])
   // Buy asks for the amount; the coin's own trade form then opens with it (and on Arc the slippage), checks and all.
   const askBuy = useCallback((c: TrenchCoin, anchor: HTMLElement) => setBuyFor({ page: c.page, symbol: c.symbol, anchor }), [])
-  const askBuyPage = useCallback((c: { page: Page; symbol: string }, anchor: HTMLElement) => setBuyFor({ ...c, anchor }), [])
   const native = info.nativeHl ? mids[info.nativeHl] : null
   const coll = (l: MLane) => isCollapsed(s, chain, l)
-  // Minimized lanes take a slim strip; the smart lane is a little narrower than the coin lanes.
+  // Minimized lanes take a slim strip; the Trending lane is a little narrower than the coin lanes.
   const columns = [...LANES.map(l => (coll(l) ? '44px' : 'minmax(0, 1fr)')), coll('smart') ? '44px' : 'minmax(0, 0.92fr)'].join(' ')
   const perMin = data.perMin ?? (feed.on ? feed.perMin : undefined)
 
@@ -291,15 +295,14 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
             {SLIPS.map(v => <button key={v} className={s.slip === v ? 'on' : ''} onClick={() => setTrench({ slip: v })}>{v}%</button>)}
           </div>
         )}
-        <div className="tr-seg" role="group" aria-label={T('Window')} title={chain === 'arc' ? T('Volume, trades and the buy/sell bar over the last hour or day') : T('The last hour’s numbers are on Arc only for now')}>
-          {(['1h', '24h'] as const).map(w => <button key={w} className={(chain === 'arc' ? s.window : '24h') === w ? 'on' : ''} disabled={chain !== 'arc' && w === '1h'} onClick={() => setTrench({ window: w })}>{w}</button>)}
+        <div className="tr-seg" role="group" aria-label={T('Window')} title={T('Volume, trades and the buy/sell bar over the last hour or day')}>
+          {(['1h', '24h'] as const).map(w => <button key={w} className={s.window === w ? 'on' : ''} onClick={() => setTrench({ window: w })}>{w}</button>)}
         </div>
         <button className={`tr-watch${s.watchOnly ? ' on' : ''}`} onClick={() => setTrench({ watchOnly: !s.watchOnly })} title={T('Only the coins on your watchlist')}><IcStar on={s.watchOnly} /> {T('Watchlist')}</button>
         <span className="tr-grow" />
         <span className={`tr-live${data.live ? ' on' : ''}`}><i />{data.live ? T('Live') : T('Connecting…')}{perMin ? <small> · {T('{n} trades/min', { n: perMin })}</small> : null}</span>
         {head && <span className="tr-meta">{chain === 'sol' ? T('Slot') : T('Block')} <b>{head.head.toLocaleString()}</b></span>}
         {native ? <span className="tr-meta">{info.native} <b>${native.toLocaleString(undefined, { maximumFractionDigits: native >= 100 ? 0 : 2 })}</b></span> : null}
-        {feed.smart && feed.smart.smart > 0 && <span className="tr-meta tr-meta-smart" title={T('Wallets with a winning record on this chain, measured by ARCDEX')}><IcTarget /> <b>{feed.smart.smart}</b> {T('smart wallets')}</span>}
         <button className="tr-meta-btn tr-cust" onClick={() => setCustomize(true)}><IcSliders /> {T('Customize')}</button>
         <label className="tr-switch" title={T('Show how far each coin is along its curve instead of its market cap')}>
           <input type="checkbox" checked={s.pctMc} onChange={e => setTrench({ pctMc: e.target.checked })} /><i /><span>% MC</span>
@@ -322,7 +325,7 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
             </button>
           ))}
           <button role="tab" aria-selected={mLane === 'smart'} className={mLane === 'smart' ? 'on' : ''} onClick={() => setMLane('smart')}>
-            {T('Smart')} <span>{feed.smart?.buying.length ?? 0}</span>
+            {T('Trending')}
           </button>
         </div>
       )}
@@ -334,8 +337,8 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
             onOpen={open} onBuy={askBuy} onFilter={setFilterLane} />
         ))}
         {(!mobile || mLane === 'smart') && (
-          <TrenchSmartLane chain={chain} feed={feed} coins={byKey} now={now} collapsed={!mobile && coll('smart')} onCollapse={() => toggleCollapsed(chain, 'smart')}
-            onOpen={navigate} onBuy={askBuyPage} />
+          <TrenchTrendLane chain={chain} collapsed={!mobile && coll('smart')} onCollapse={() => toggleCollapsed(chain, 'smart')}
+            onOpen={navigate} onBuy={navigate} />
         )}
       </div>
 

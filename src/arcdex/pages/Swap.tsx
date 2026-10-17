@@ -10,7 +10,7 @@ import TokenSwap from '../components/TokenSwap'
 import { SolanaPayCard } from '../components/SolanaCross'
 import { PayFromCard } from '../components/PayFromChain'
 import { ARC_ID } from '../lib/relayQuote'
-import { ChainIcon, ChainStrip, UsdcIcon } from '../components/Chains'
+import { ChainIcon, ChainStrip, TokenChainLabel } from '../components/Chains'
 import { BRIDGE_NETWORKS } from '../lib/bridgeChains'
 import { COIN_IMAGE, COIN_LC, COIN_POOL, fmtPct, fmtSmallUsd, useCoin } from '../lib/coin'
 import type { Page } from '../App'
@@ -116,8 +116,8 @@ export default function Swap({ navigate }: Props) {
             {!picked ? (
               <>
                 <div className="xs-box">
-                  <div className="xs-box-h"><span>{T('From')}</span><span className="xs-net"><ChainIcon chain="Arc" size={16} /> Arc</span></div>
-                  <div className="xs-asset"><UsdcIcon size={30} /><b>USDC</b><small>{T('Pay with USDC, or sell a coin back to USDC')}</small></div>
+                  <div className="xs-box-h"><span>{T('From')}</span></div>
+                  <div className="xs-amount"><span className="xs-pay-note">{T('Pay with USDC, or sell a coin back to USDC')}</span><span className="xs-pill"><TokenChainLabel token="USDC" chain="Arc" /></span></div>
                 </div>
                 <div className="xs-arrow" aria-hidden>↓</div>
                 <div className="xs-box xs-box-to">

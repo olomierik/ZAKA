@@ -1,7 +1,7 @@
 // Networks for the multichain screens (Swap, Bridge): each chain's mark in its own colour, a strip of
 // every chain ARCDEX bridges USDC with, and a picker that opens a grid of them.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { BRIDGE_NETWORKS as BRIDGE_CHAINS } from '../lib/bridgeChains'
 import { t as T } from '../lib/i18n'
 
@@ -32,12 +32,36 @@ export function chainLabel(chain: string): string {
   return BRIDGE_CHAINS.find(c => c.chain === chain)?.label ?? chain
 }
 
+/** Each chain's logo on DefiLlama's icon CDN (2026-10-17, owner: "chain icons and symbols to be shown", as Across shows
+ * them); the coloured mark above stays until it loads, and if it can't. */
+const LLAMA: Record<string, string> = {
+  Arc: 'arc', Base: 'base', Ethereum: 'ethereum', Arbitrum: 'arbitrum', Optimism: 'optimism', Polygon: 'polygon', Avalanche: 'avalanche',
+  Linea: 'linea', Unichain: 'unichain', WorldChain: 'world%20chain', Sonic: 'sonic', Solana: 'solana', Robinhood: 'robinhood', BNB: 'bsc',
+  HL: 'hyperliquid',
+}
+export const chainLogoUrl = (chain: string): string | null => (LLAMA[chain] ? `https://icons.llamao.fi/icons/chains/rsz_${LLAMA[chain]}.jpg` : null)
+
 export function ChainIcon({ chain, size = 22 }: { chain: string; size?: number }) {
   const l = LOOK[chain] ?? { bg: '#2b3139', mark: chain.slice(0, 1) }
+  const url = chainLogoUrl(chain)
+  const [ok, setOk] = useState(false)
   return (
-    <span className="chain-icon" title={chainLabel(chain)} style={{ width: size, height: size, background: l.bg, color: l.fg ?? '#fff', fontSize: size * (l.mark.length > 1 ? 0.36 : 0.48) }}>
-      {l.mark}
+    <span className={`chain-icon${ok ? ' has-img' : ''}`} title={chainLabel(chain)} style={{ width: size, height: size, background: ok ? 'transparent' : l.bg, color: l.fg ?? '#fff', fontSize: size * (l.mark.length > 1 ? 0.36 : 0.48) }}>
+      {!ok && l.mark}
+      {/* Loaded invisibly: a lazy image that's display:none is never fetched. */}
+      {url && <img src={url} alt="" width={size} height={size} decoding="async" onLoad={() => setOk(true)} onError={() => setOk(false)} style={ok ? undefined : { position: 'absolute', opacity: 0, width: 1, height: 1 }} />}
     </span>
+  )
+}
+
+/** Across's token pill: the token's icon with its chain's logo on it, the token and "on {chain}" (a button when it
+ * opens a picker). */
+export function TokenChainLabel({ token, chain, icon }: { token: string; chain: string; icon?: ReactNode }) {
+  return (
+    <>
+      <span className="xs-tok-ic">{icon ?? <UsdcIcon size={30} />}<span className="xs-tok-chain"><ChainIcon chain={chain} size={15} /></span></span>
+      <span className="xs-tok-tx"><b>{token}</b><small>{T('on {chain}', { chain: chainLabel(chain) })}</small></span>
+    </>
   )
 }
 
@@ -55,12 +79,15 @@ export function ChainStrip({ size = 22, onPick }: { size?: number; onPick?: (cha
 }
 
 /** A network button that opens a grid of the chains to choose from (or shows Arc, fixed). */
-export function ChainPicker({ value, options, onChange, fixed }: {
+export function ChainPicker({ value, options, onChange, fixed, token, tokenIcon }: {
   value: string
   options: string[]
   onChange?: (chain: string) => void
   /** Arc's side of a transfer: shown, not chosen. */
   fixed?: boolean
+  /** Shown as Across's token pill (the token on its chain) instead of the network alone. */
+  token?: string
+  tokenIcon?: ReactNode
 }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
@@ -74,9 +101,8 @@ export function ChainPicker({ value, options, onChange, fixed }: {
   const list = options.filter(c => chainLabel(c).toLowerCase().includes(q.trim().toLowerCase()))
   return (
     <div className="chain-picker" ref={ref}>
-      <button className={`chain-picker-btn${fixed ? ' is-fixed' : ''}`} onClick={() => !fixed && setOpen(o => !o)} aria-expanded={open} disabled={fixed}>
-        <ChainIcon chain={value} size={24} />
-        <span>{chainLabel(value)}</span>
+      <button className={`chain-picker-btn${fixed ? ' is-fixed' : ''}${token ? ' xs-pill' : ''}`} onClick={() => !fixed && setOpen(o => !o)} aria-expanded={open} disabled={fixed}>
+        {token ? <TokenChainLabel token={token} chain={value} icon={tokenIcon} /> : <><ChainIcon chain={value} size={24} /><span>{chainLabel(value)}</span></>}
         {!fixed && <em>▾</em>}
       </button>
       {open && (

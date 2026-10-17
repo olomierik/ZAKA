@@ -88,7 +88,11 @@ function AdminSignInBar({ embedded, address, signer, setSigner, who, sign }: { e
   async function signIn() {
     if (!who) return
     setBusy(true); setMsg('')
-    try { await adminSignIn(who, sign) } catch (e) { setMsg(e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message).split('\n')[0] : String(e)) } finally { setBusy(false) }
+    try { await adminSignIn(who, sign) } catch (e) {
+      const why = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message).split('\n')[0] : String(e)
+      // The engine's admins are ADMIN_EVM_ADDRESSES on Railway: say which wallet tried, and where to add it.
+      setMsg(/not an admin/.test(why) ? T('{wallet} isn’t an admin wallet. Sign in with one that is, or add it to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine) and wait for the redeploy.', { wallet: who }) : why)
+    } finally { setBusy(false) }
   }
   const mins = session ? Math.max(0, Math.round((session.expiresAt - Date.now()) / 60_000)) : 0
   return (
