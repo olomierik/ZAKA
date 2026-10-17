@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { isKnownAdmin } from '../lib/adminSession'
 import { ConnectButton } from './ConnectWallet'
 import { useDisconnect } from 'wagmi'
 import Avatar from './Avatar'
@@ -89,6 +90,8 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
           {item('◌', t('Blur balances'), () => setPrefs(p => ({ blur: !p.blur })), <Toggle on={prefs.blur} />)}
           {item('✦', t('Rewards'), () => go({ name: 'rewards' }))}
           {item('⚑', t('Clans'), () => go({ name: 'clans' }))}
+          {item('☰', t('Feed'), () => go({ name: 'feed' }))}
+          {isKnownAdmin(trader.address) && item('🛡', t('Admin'), () => go({ name: 'admin' }))}
           {item('🌐', t('Language'), () => { setOpen(false); setSettings('language') }, <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{LANGS.find(l => l.code === lang)?.name}</span>)}
           {item('✉', t('Contact support'), () => { setOpen(false); setSupport(true) })}
           <div style={{ borderTop: '1px solid var(--adx-card-border)', margin: '6px 0' }} />

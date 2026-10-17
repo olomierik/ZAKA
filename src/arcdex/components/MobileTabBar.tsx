@@ -19,6 +19,8 @@ const MORE: { icon: string; label: string; to: Page }[] = [
   { icon: '◆', label: N_('Starknet'), to: { name: 'starknet' } },
   { icon: '♛', label: N_('Top futures traders'), to: { name: 'leaderboard', tab: 'futures' } },
   { icon: '◉', label: N_('Wallet tracker'), to: { name: 'tracker' } },
+  { icon: '☰', label: N_('Feed'), to: { name: 'feed' } },
+  { icon: '⚑', label: N_('Clans'), to: { name: 'clans' } },
   { icon: '🔥', label: N_('$ARCDEX burn'), to: { name: 'coin' } },
   { icon: '🧭', label: N_('Supported routes'), to: { name: 'routes' } },
 ]

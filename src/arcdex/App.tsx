@@ -66,7 +66,8 @@ import MobileTabBar from './components/MobileTabBar'
 import Sheet, { afterSheetClose } from './components/Sheet'
 import { sheetHistory } from './lib/sheetHistory'
 import { OPEN_TRADING_WALLET } from './lib/tradingWalletSheet'
-import { useEmbeddedAddress } from './lib/identity'
+import { useEmbeddedAddress, useTrader } from './lib/identity'
+import { isKnownAdmin } from './lib/adminSession'
 import { useFundingScan } from './lib/funding'
 import ProfitAlerts from './components/ProfitAlerts'
 import PageErrorBoundary from './components/PageErrorBoundary'
@@ -130,7 +131,8 @@ const MOBILE_NAV: [Page, string, string][] = [
   [{ name: 'terminal', chain: 'sol' }, '◎', N_('Trenches · Solana')], [{ name: 'terminal', chain: 'bnb' }, '◆', N_('Trenches · BNB Chain')],
   [{ name: 'perps' }, '📊', N_('Futures')], [{ name: 'predict' }, '🎯', N_('Predict')], [{ name: 'portfolio' }, '▤', N_('Portfolio')],
   [{ name: 'swap' }, '⇄', N_('Swap')], [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'starknet' }, '◆', N_('Starknet')],
-  [{ name: 'leaderboard', tab: 'futures' }, '♛', N_('Top futures traders')], [{ name: 'tracker' }, '◉', N_('Wallet tracker')], [{ name: 'routes' }, '🧭', N_('Supported routes')],
+  [{ name: 'leaderboard', tab: 'futures' }, '♛', N_('Top futures traders')], [{ name: 'tracker' }, '◉', N_('Wallet tracker')], [{ name: 'feed' }, '☰', N_('Feed')], [{ name: 'clans' }, '⚑', N_('Clans')],
+  [{ name: 'routes' }, '🧭', N_('Supported routes')],
 ]
 
 export default function App() {
@@ -143,7 +145,13 @@ export default function App() {
   const copyOn = useFlag('copyTrading')
   // Followed wallets with alerts on: their trades show a notice on any page (components/WalletAlertWatcher.tsx).
   const tracking = useTracked().some(w => w.alerts)
-  const drawer: [Page, string, string][] = copyOn ? [...MOBILE_NAV, [{ name: 'copy' }, '⧉', N_('Copy trading')]] : MOBILE_NAV
+  const me = useTrader().address
+  const drawer: [Page, string, string][] = [
+    ...MOBILE_NAV,
+    ...(copyOn ? [[{ name: 'copy' }, '⧉', N_('Copy trading')] as [Page, string, string]] : []),
+    // Admin, only for a wallet that signed in to /admin in this browser (lib/adminSession.ts).
+    ...(isKnownAdmin(me) ? [[{ name: 'admin' }, '🛡', N_('Admin')] as [Page, string, string]] : []),
+  ]
   useEffect(() => { if (activeAlerts(alerts).length) setWatchAlerts(true) }, [alerts])
   // Alerts by push (lib/push.ts): once they're on in this browser, the engine's copy is kept in step.
   const pushOn = !!usePush().sub

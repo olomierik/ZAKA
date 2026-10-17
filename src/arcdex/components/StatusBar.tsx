@@ -53,6 +53,8 @@ export default function StatusBar({ navigate, onAlerts }: { navigate: (p: Page) 
       <button className="tm-st-link" onClick={onAlerts}><IcBell />{T('Alerts')}</button>
       <button className={`tm-st-link${s.watchOnly ? ' on' : ''}`} onClick={() => { setTrench({ watchOnly: !s.watchOnly }); navigate(trenchesPage(chain)) }}><IcStar on={s.watchOnly} />{T('Watchlist')}</button>
       <button className="tm-st-link" onClick={() => navigate({ name: 'tracker' })}><IcUsers />{T('Wallets')}</button>
+      <button className="tm-st-link" onClick={() => navigate({ name: 'feed' })}>{T('Feed')}</button>
+      <button className="tm-st-link" onClick={() => navigate({ name: 'clans' })}>{T('Clans')}</button>
       <a className="tm-st-link" href={CHAINS[chain].explorer} target="_blank" rel="noopener noreferrer"><IcSearch />{T('Explorer')}</a>
 
       <div className="tm-st-tickers">

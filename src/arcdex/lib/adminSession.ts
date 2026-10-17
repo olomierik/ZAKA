@@ -22,7 +22,26 @@ let current: AdminSessionInfo | null = read()
 function set(s: AdminSessionInfo | null) {
   current = s
   try { if (s) sessionStorage.setItem(KEY, JSON.stringify(s)); else sessionStorage.removeItem(KEY) } catch { /* this page only */ }
+  if (s) rememberAdmin(s.address)
   for (const f of listeners) f()
+}
+
+// Wallets that signed in as admins in this browser: the menus show them an Admin link (owner, 2026-10-17: "I can't see
+// admin features"). Only a link: /admin itself still asks for the wallet's signature, and the engine decides who's admin.
+const ADMINS_KEY = 'arcdex:admin-wallets'
+function knownAdmins(): string[] {
+  try { const a = JSON.parse(localStorage.getItem(ADMINS_KEY) ?? '[]') as unknown; return Array.isArray(a) ? a.filter((x): x is string => typeof x === 'string') : [] } catch { return [] }
+}
+let admins = knownAdmins()
+function rememberAdmin(address: string) {
+  const a = address.toLowerCase()
+  if (admins.includes(a)) return
+  admins = [...admins, a].slice(-5)
+  try { localStorage.setItem(ADMINS_KEY, JSON.stringify(admins)) } catch { /* this page only */ }
+}
+/** Whether `address` has signed in as an admin in this browser (or is signed in now). */
+export function isKnownAdmin(address: string | null | undefined): boolean {
+  return !!address && (admins.includes(address.toLowerCase()) || current?.address.toLowerCase() === address.toLowerCase())
 }
 
 export function adminSession(): AdminSessionInfo | null {
