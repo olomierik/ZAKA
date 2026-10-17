@@ -109,7 +109,7 @@ export type Page =
   | { name: 'swap' }
   | { name: 'bridge'; dir?: 'in' | 'out' }
   | { name: 'deploy-curve-router' }
-  | { name: 'admin' }
+  | { name: 'admin'; tab?: 'analytics' }
   | { name: 'signals'; view?: 'market' | 'manage'; bot?: string }
   | { name: 'futures' }
   | { name: 'perps'; coin?: string }
@@ -260,7 +260,7 @@ export default function App() {
           {page.name === 'rewards'     && <RewardsPage navigate={navigate} />}
           {page.name === 'transfers'   && <TransfersPage navigate={navigate} />}
           {page.name === 'deploy-curve-router' && <DeployCurveRouter />}
-          {page.name === 'admin' && <AdminPage />}
+          {page.name === 'admin' && <AdminPage key={page.tab ?? 'admin'} initialTab={page.tab} />}
           {/* ARCDEX Algo, the futures agent (2026-10-10); owners of the old bots still reach them to manage and withdraw (/autotrade/manage). */}
           {page.name === 'signals'     && (page.view === 'manage' ? <SignalsPage navigate={navigate} manage /> : <AlgoPage navigate={navigate} />)}
           {page.name === 'robinhood'   && <Trenches chain="hood" navigate={navigate} />}

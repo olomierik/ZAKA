@@ -215,6 +215,17 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
 .tr-rp.s-danger { color: var(--red); background: var(--red-bg); }
 .tr-rp.s-checking { color: var(--text-muted); }
 .tr-buyw { grid-area: buy; display: flex; justify-content: flex-end; align-items: center; padding-top: 2px; }
+.tr-soc { grid-area: soc; display: flex; gap: 5px; align-items: center; min-width: 0; overflow: hidden; }
+.tr-sc { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border-radius: 6px; font-size: 11.5px; font-weight: 600; text-decoration: none; white-space: nowrap; flex-shrink: 0; background: var(--chip); color: var(--text-2); border: 1px solid transparent; }
+.tr-sc span { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.tr-sc:hover { border-color: var(--border-hi); color: var(--text); }
+.tr-sc.x { background: var(--blue-bg); color: var(--blue); }
+.tr-sc.web { color: var(--green-2); background: var(--green-bg); }
+.tr-sc.tg { color: #229ed9; background: color-mix(in srgb, #229ed9 12%, transparent); }
+.tr-sc.none { font-weight: 500; color: var(--text-dim); background: none; padding: 0 2px; }
+.tr-sc.srch { padding: 0 6px; background: none; color: var(--text-dim); }
+.tr-rp.warn { color: var(--amber); }
+.tr-rp.na { color: var(--text-dim); }
 .tr-buy { height: 32px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; border-radius: 3px; border: 1px solid transparent; background: var(--ink); color: var(--on-ink); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .tr-buy:hover { filter: brightness(1.18); }
 .tr-buy.sm { height: 26px; padding: 0 9px; font-size: 12px; }
@@ -317,14 +328,13 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
   .tr-mtabs button.on { color: var(--text); border-bottom-color: var(--ink); }
   .tr-lane-h b, .tr-lane-ic, .tr-count { display: none; }
   .tr-lane-h { padding: 0 8px; }
-  .tr-row { grid-template-columns: 52px minmax(0, 1fr) auto; grid-template-rows: auto auto; grid-template-areas: "lft mid rgt" "risk risk buy"; padding: 9px 10px; row-gap: 7px; }
+  .tr-row { grid-template-columns: 52px minmax(0, 1fr) auto; grid-template-rows: auto auto auto; grid-template-areas: "lft mid rgt" "risk risk risk" "soc soc buy"; padding: 9px 10px; row-gap: 7px; }
   .tr-lft { gap: 2px; }
   .tr-tile { width: 50px; height: 50px; }
   .tr-ca { display: none; }
   .tr-kv b { font-size: 13.5px; }
-  /* Chips that don't fit scroll sideways, and fade at the edge so the cut reads as more to see. */
-  .tr-risk { overflow-x: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); }
-  .tr-risk::-webkit-scrollbar { display: none; }
+  /* Every badge shows: they wrap onto a second line rather than scroll out of sight. */
+  .tr-risk { flex-wrap: wrap; row-gap: 4px; }
   .tr-fgrid2, .tr-fgrid3 { grid-template-columns: 1fr 1fr; }
   .rpc-table th:nth-child(3), .rpc-table td:nth-child(3) { display: none; }
 }
@@ -446,10 +456,14 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
 
 .tr-meta-smart { display: inline-flex; align-items: center; gap: 4px; color: var(--green-2); }
 
-/* Compact rows: four lanes side by side (owner: "minimize New, Almost bonded and Migrated"). */
+/* Rows with room for what a trader checks first (owner, 2026-10-17: "x, web, bundle, sniper to be visually seen; resize
+   the Trenches to accommodate"): the coin and its numbers, then its badges on a line of their own (wrapping, never cut
+   off), then its website, X and Telegram beside Buy. The three main lanes take the width; Trending is narrower. */
 @media (min-width: 768px) {
-  .tr-row { grid-template-columns: 50px minmax(0, 1fr) 116px; grid-template-rows: 46px 24px; column-gap: 8px; padding: 8px 10px; contain-intrinsic-size: auto 88px; }
-  .tr-row.small { grid-template-rows: 42px 22px; padding: 6px 10px; contain-intrinsic-size: auto 78px; }
+  .tr-row { grid-template-columns: 50px minmax(0, 1fr) 116px; grid-template-rows: 46px auto auto; grid-template-areas: "lft mid rgt" "risk risk risk" "soc soc buy"; column-gap: 8px; row-gap: 6px; padding: 9px 10px; contain-intrinsic-size: auto 132px; }
+  .tr-row.small { grid-template-rows: 42px auto auto; padding: 7px 10px; row-gap: 5px; contain-intrinsic-size: auto 120px; }
+  .tr-risk { flex-wrap: wrap; row-gap: 4px; overflow: visible; }
+  .tr-thesis { grid-column: 1 / -1; grid-row: 4; margin-top: 0; }
   .tr-tile { width: 46px; height: 46px; border-radius: 7px; }
   .tr-pic { border-radius: 5px; }
   .tr-ini { font-size: 14px; }

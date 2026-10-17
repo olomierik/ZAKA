@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { isKnownAdmin } from '../lib/adminSession'
+import { useAdminHint } from '../lib/adminSession'
+import { JITO_TIP } from '../lib/jito'
 import { ConnectButton, OPEN_DEPOSIT } from './ConnectWallet'
 import { markReturning } from '../lib/returning'
 import { useDisconnect } from 'wagmi'
@@ -33,6 +34,7 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
   const solOwner = trader.kind === 'trading-wallet' ? accountOwner() : null
   // An email or social sign-in (Privy): its wallet is the connected one.
   const privy = usePrivyState()
+  const isAdmin = useAdminHint(trader.address, privy.authenticated ? privy.label : null)
   const viaPrivy = trader.kind === 'wallet' && isPrivyWallet(trader.address)
   const prefs = usePrefs()
   const { cash } = useCash(trader.address)
@@ -90,7 +92,8 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
           {item('⇅', t('Transfers'), () => go({ name: 'transfers' }))}
           {item('◌', t('Blur balances'), () => setPrefs(p => ({ blur: !p.blur })), <Toggle on={prefs.blur} />)}
           {item('✦', t('Rewards'), () => go({ name: 'rewards' }))}
-          {isKnownAdmin(trader.address) && item('🛡', t('Admin'), () => go({ name: 'admin' }))}
+          {isAdmin && item('📈', t('Analytics'), () => go({ name: 'admin', tab: 'analytics' }))}
+          {isAdmin && item('🛡', t('Admin'), () => go({ name: 'admin' }))}
           {item('✉', t('Contact support'), () => { setOpen(false); setSupport(true) })}
           <div style={{ borderTop: '1px solid var(--adx-card-border)', margin: '6px 0' }} />
           {solOwner
@@ -176,6 +179,19 @@ export function SettingsModal({ onClose, initial = 'trading', onSupport }: { onC
               <button className="btn-primary" style={{ width: '100%', marginTop: 10 }} onClick={save}>{saved ? t('Saved ✓') : t('Save presets')}</button>
             </div>
             {toggleRow(t('Blur balances'), t('Hide your cash and PnL on screen (hover to peek)'), prefs.blur, v => setPrefs({ blur: v }))}
+            {/* Anti-MEV (lib/jito.ts): Solana trades ARCDEX sends go to Jito as a bundle only, with a tip. */}
+            {toggleRow(t('🛡 Anti-MEV on Solana (Jito)'), t('Sends your Solana trades to Jito as a private bundle instead of the public network, so sandwich bots can’t trade around them. Adds a small tip.'), prefs.antiMev, v => setPrefs({ antiMev: v }))}
+            {prefs.antiMev && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', flexWrap: 'wrap' }}>
+                <span style={{ color: 'var(--text-muted)' }}>{t('Jito tip')}</span>
+                {JITO_TIP.choices.map(l => (
+                  <button key={l} className={`disc-sub${prefs.jitoTipLamports === l ? ' active' : ''}`} onClick={() => setPrefs({ jitoTipLamports: l })}
+                    title={t('{sol} SOL per trade', { sol: (l / 1e9).toString() })}>
+                    {l === 10_000 ? t('Low') : l === 50_000 ? t('Normal') : t('Fast')} · {(l / 1e9).toFixed(5)} SOL
+                  </button>
+                ))}
+              </div>
+            )}
           </>
         )}
 

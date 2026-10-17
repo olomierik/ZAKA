@@ -27,7 +27,7 @@ export const ADMIN_AUTH = {
   chainId: 5042,
 }
 
-export interface AdminSession { address: Address; issuedAt: number; expiresAt: number; ip: string; ua: string }
+export interface AdminSession { address: Address; issuedAt: number; expiresAt: number; ip: string; ua: string; email?: string }
 interface Pending { address: Address; message: string; origin: string; expiresAt: number }
 
 export type SignedBy = (address: Address, message: string, signature: Hex) => Promise<boolean>
@@ -41,6 +41,12 @@ export interface AdminAuthOptions {
   signedBy: SignedBy
   audit: AuditStore
   alert?: (text: string) => void
+  /** Admins by email (admin/privyIdentity.ts): a Privy account with an admin email, signing with one of its own wallets. */
+  byEmail?: {
+    configured: boolean
+    isAdminEmail(email: string): boolean
+    adminEmailFor(token: string, address: string, now?: number): Promise<{ email: string } | { error: string }>
+  }
 }
 
 const sha = (s: string) => createHash('sha256').update(s).digest('hex')
@@ -74,7 +80,7 @@ export class AdminAuth {
     this.ttlMs = Math.max(5, Math.min(240, o.ttlMinutes || 30)) * 60_000
   }
 
-  get configured() { return this.o.admins.length > 0 }
+  get configured() { return this.o.admins.length > 0 || !!this.o.byEmail?.configured }
   isAdmin(address: string) { return this.o.admins.includes(address.toLowerCase()) }
 
   /** A nonce and the message to sign, or why not. */
@@ -100,7 +106,7 @@ export class AdminAuth {
 
   /** A session for a signed nonce, or why not. The nonce is spent either way. */
   async verify(body: unknown, origin: string | null, ip: string, ua: string | null, now = Date.now()): Promise<{ token: string; address: Address; expiresAt: number } | { status: number; error: string }> {
-    const b = (body ?? {}) as { nonce?: unknown; signature?: unknown }
+    const b = (body ?? {}) as { nonce?: unknown; signature?: unknown; identityToken?: unknown }
     if (typeof b.nonce !== 'string' || typeof b.signature !== 'string' || !isHex(b.signature) || b.signature.length < 132) return { status: 400, error: 'expected {nonce, signature}' }
     const p = this.pending.get(b.nonce)
     this.pending.delete(b.nonce)
@@ -111,23 +117,39 @@ export class AdminAuth {
     if (!p) return refuse(401, 'this sign-in request was already used or never issued; start again')
     if (now > p.expiresAt) return refuse(401, 'this sign-in request expired; start again', p.address)
     if (origin !== p.origin) return refuse(403, 'sign in from the same site that asked', p.address)
-    if (!this.isAdmin(p.address)) return refuse(403, 'this wallet is not an admin', p.address)
+    let email: string | undefined
+    if (!this.isAdmin(p.address)) {
+      const by = this.o.byEmail
+      if (!by?.configured || typeof b.identityToken !== 'string') return refuse(403, 'this wallet is not an admin', p.address)
+      const r = await by.adminEmailFor(b.identityToken, p.address, now)
+      if ('error' in r) return refuse(403, r.error, p.address)
+      email = r.email
+    }
     let ok = false
     try { ok = await this.o.signedBy(p.address, p.message, b.signature as Hex) } catch (e) { log.warn('admin sign-in: signature not checked', { error: errMsg(e) }) }
     if (!ok) return refuse(401, 'the signature does not match this wallet', p.address)
     const token = randomBytes(32).toString('base64url')
-    const s: AdminSession = { address: p.address, issuedAt: now, expiresAt: now + this.ttlMs, ip: clean(ip, 64), ua: clean(ua, 200) }
+    const s: AdminSession = { address: p.address, issuedAt: now, expiresAt: now + this.ttlMs, ip: clean(ip, 64), ua: clean(ua, 200), ...(email ? { email } : {}) }
     this.prune(now)
     if (this.sessions.size >= ADMIN_AUTH.maxSessions) {
       const oldest = [...this.sessions.entries()].sort((x, y) => x[1].issuedAt - y[1].issuedAt)[0]
       if (oldest) this.sessions.delete(oldest[0])
     }
     this.sessions.set(sha(token), s)
-    await this.o.audit.appendAudit({ at: now, actor: p.address.toLowerCase(), action: 'admin.login', detail: { ip: s.ip, device: s.ua, expiresAt: s.expiresAt } })
+    await this.o.audit.appendAudit({ at: now, actor: p.address.toLowerCase(), action: 'admin.login', detail: { ip: s.ip, device: s.ua, expiresAt: s.expiresAt, ...(email ? { by: 'email' } : {}) } })
       .catch(e => log.error('admin sign-in: not audited', { error: errMsg(e) }))
-    log.info('admin signed in', { address: p.address, ip })
-    this.o.alert?.(`ARCDEX admin sign-in: ${p.address} from ${s.ip} (${s.ua.slice(0, 80) || 'unknown device'})`)
+    log.info('admin signed in', { address: p.address, ip, byEmail: !!email })
+    this.o.alert?.(`ARCDEX admin sign-in${email ? ' (by email)' : ''}: ${p.address} from ${s.ip} (${s.ua.slice(0, 80) || 'unknown device'})`)
     return { token, address: p.address, expiresAt: s.expiresAt }
+  }
+
+  /** Still an admin: an admin wallet, or a session opened by an admin email that is still on the list. */
+  private stillAdmin(s: AdminSession) { return this.isAdmin(s.address) || (!!s.email && !!this.o.byEmail?.isAdminEmail(s.email)) }
+
+  /** Wallets signed in by admin email right now: their signatures run admin actions (flags, the sweeper, the switch). */
+  emailAdminWallets(now = Date.now()): string[] {
+    this.prune(now)
+    return [...new Set([...this.sessions.values()].filter(s => s.email && this.stillAdmin(s)).map(s => s.address.toLowerCase()))]
   }
 
   /** The session an Authorization header names, if it's live and its wallet is still an admin. */
@@ -137,7 +159,7 @@ export class AdminAuth {
     const key = sha(m[1])
     const s = this.sessions.get(key)
     if (!s) return null
-    if (now > s.expiresAt || !this.isAdmin(s.address)) { this.sessions.delete(key); return null }
+    if (now > s.expiresAt || !this.stillAdmin(s)) { this.sessions.delete(key); return null }
     return s
   }
 
@@ -161,7 +183,7 @@ export class AdminAuth {
   /** Live admin sessions (for the overview; no tokens). */
   active(now = Date.now()) {
     this.prune(now)
-    return [...this.sessions.values()].map(s => ({ address: s.address, issuedAt: s.issuedAt, expiresAt: s.expiresAt, ip: s.ip, device: s.ua }))
+    return [...this.sessions.values()].map(s => ({ address: s.address, issuedAt: s.issuedAt, expiresAt: s.expiresAt, ip: s.ip, device: s.ua, byEmail: !!s.email }))
   }
 
   private prune(now: number) {

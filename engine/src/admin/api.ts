@@ -67,7 +67,8 @@ export class AdminApi {
     const post = req.method === 'POST'
     if (post) {
       if (origin && !this.o.origins.includes(origin)) return { status: 403, body: { error: 'admin requests come from the site' } }
-      if (Number(req.headers.get('content-length') ?? 0) > 4_096) return { status: 413, body: { error: 'too large' } }
+      // A sign-in may carry Privy's identity token (admin by email), a few KB.
+      if (Number(req.headers.get('content-length') ?? 0) > (path === '/v1/admin/auth/verify' ? 20_000 : 4_096)) return { status: 413, body: { error: 'too large' } }
     }
     const body = post ? await req.json().catch(() => null) : null
     const auth = this.o.auth
@@ -87,7 +88,7 @@ export class AdminApi {
       if (!s) return { status: 401, body: { error: 'sign in as an admin first (or your session ended)' } }
 
       if (post && path === '/v1/admin/auth/logout-all') return { status: 200, body: { ended: await auth.logoutAll(s.address) } }
-      if (!post && path === '/v1/admin/me') return { status: 200, body: { address: s.address, expiresAt: s.expiresAt } }
+      if (!post && path === '/v1/admin/me') return { status: 200, body: { address: s.address, expiresAt: s.expiresAt, byEmail: !!s.email } }
       if (!post && path === '/v1/admin/live') {
         const t = this.o.traffic
         return {

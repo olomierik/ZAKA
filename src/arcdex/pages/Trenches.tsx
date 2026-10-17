@@ -275,7 +275,7 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
   const native = info.nativeHl ? mids[info.nativeHl] : null
   const coll = (l: MLane) => isCollapsed(s, chain, l)
   // Minimized lanes take a slim strip; the Trending lane is a little narrower than the coin lanes.
-  const columns = [...LANES.map(l => (coll(l) ? '44px' : 'minmax(0, 1fr)')), coll('smart') ? '44px' : 'minmax(0, 0.92fr)'].join(' ')
+  const columns = [...LANES.map(l => (coll(l) ? '44px' : 'minmax(0, 1fr)')), coll('smart') ? '44px' : 'minmax(240px, 0.72fr)'].join(' ')
   const perMin = data.perMin ?? (feed.on ? feed.perMin : undefined)
 
   return (

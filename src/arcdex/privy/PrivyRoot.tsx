@@ -7,7 +7,7 @@
 // lib/solanaWallet.ts the Solana wallet's signer.
 
 import { useEffect, useMemo } from 'react'
-import { PrivyProvider, useExportWallet, useLogin, useLogout, useMfa, useMfaEnrollment, usePrivy, useWallets, type PrivyClientConfig } from '@privy-io/react-auth'
+import { getIdentityToken, PrivyProvider, useExportWallet, useLogin, useLogout, useMfa, useMfaEnrollment, usePrivy, useWallets, type PrivyClientConfig } from '@privy-io/react-auth'
 import {
   defaultSolanaRpcsPlugin,
   useExportWallet as useExportSolana,
@@ -118,6 +118,7 @@ function Bridge() {
       exportSol: () => (sol ? exportSolana({ address: sol.address }) : Promise.reject(new Error(T('Your Solana wallet isn’t ready yet')))),
       promptMfa: () => promptMfa(),
       enrollMfa: () => showMfaEnrollmentModal(),
+      identityToken: () => getIdentityToken(),
     })
     return () => registerPrivy(null)
   }, [login, logout, exportWallet, exportSolana, promptMfa, showMfaEnrollmentModal, evmAddress, sol])

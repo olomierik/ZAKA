@@ -3,7 +3,7 @@
 // signature for a short session. The session token is kept in this tab only (sessionStorage) and sent as
 // Authorization: Bearer, never in a cookie, so other sites can't use it.
 
-import { useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { engineApiUrl } from '../api/marketStream'
 
 export interface AdminSessionInfo { token: string; address: `0x${string}`; expiresAt: number }
@@ -44,6 +44,29 @@ export function isKnownAdmin(address: string | null | undefined): boolean {
   return !!address && (admins.includes(address.toLowerCase()) || current?.address.toLowerCase() === address.toLowerCase())
 }
 
+// Admin emails (engine/src/admin/privyIdentity.ts): the owner's, as a SHA-256 hash (the repo is public), plus
+// VITE_ADMIN_EMAILS. Here only to show the Admin and Analytics links to someone signed in with Privy under one; the engine
+// checks the email itself, from Privy's signed identity token, before any admin session.
+const ADMIN_EMAIL_HASHES = ['81fd388ced02b13b2b76674c44c49b4c0a605184e2ad62f2ffa3e6eaf79cad32']
+const envEmails = ((((import.meta as unknown as { env?: Record<string, string | undefined> }).env) ?? {}).VITE_ADMIN_EMAILS ?? '')
+  .split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
+async function sha256Hex(s: string): Promise<string> {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))
+  return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join('')
+}
+export async function isAdminEmail(email: string | null | undefined): Promise<boolean> {
+  const e = (email ?? '').trim().toLowerCase()
+  if (!/^[^@\s]+@[^@\s]+$/.test(e)) return false
+  return envEmails.includes(e) || ADMIN_EMAIL_HASHES.includes(await sha256Hex(e).catch(() => ''))
+}
+/** Whether the account menu shows Admin and Analytics: a wallet that signed in as admin here, or an admin email. */
+export function useAdminHint(address: string | null | undefined, email: string | null | undefined): boolean {
+  const [byEmail, setByEmail] = useState(false)
+  useEffect(() => { let alive = true; void isAdminEmail(email).then(v => { if (alive) setByEmail(v) }); return () => { alive = false } }, [email])
+  useAdminSession()
+  return byEmail || isKnownAdmin(address)
+}
+
 export function adminSession(): AdminSessionInfo | null {
   if (current && current.expiresAt <= Date.now()) set(null)
   return current
@@ -73,14 +96,15 @@ async function post<T>(path: string, body: unknown, token?: string): Promise<T> 
   return j as T
 }
 
-/** Signs in `address` with `sign` (the wallet's personal_sign). */
-export async function adminSignIn(address: `0x${string}`, sign: (message: string) => Promise<`0x${string}`>): Promise<AdminSessionInfo> {
+/** Signs in `address` with `sign` (the wallet's personal_sign). `identityToken` (Privy's) lets an admin email sign in
+ * with that account's own wallet (engine/src/admin/privyIdentity.ts). */
+export async function adminSignIn(address: `0x${string}`, sign: (message: string) => Promise<`0x${string}`>, identityToken?: string | null): Promise<AdminSessionInfo> {
   if (!engineApiUrl) throw new Error('the engine isn’t configured on this build')
   const n = await post<{ nonce: string; message: string }>('/v1/admin/auth/nonce', { address })
   const bad = signInMessageProblem(n.message, address)
   if (bad) throw new Error(bad)
   const signature = await sign(n.message)
-  const s = await post<AdminSessionInfo>('/v1/admin/auth/verify', { nonce: n.nonce, signature })
+  const s = await post<AdminSessionInfo>('/v1/admin/auth/verify', { nonce: n.nonce, signature, ...(identityToken ? { identityToken } : {}) })
   set(s)
   return s
 }

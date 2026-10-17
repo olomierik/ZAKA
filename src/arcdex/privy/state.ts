@@ -55,6 +55,9 @@ export interface PrivyActions {
   exportSol: () => Promise<void>
   promptMfa: () => Promise<void>
   enrollMfa: () => void
+  /** Privy's identity token for the account (a JWT with its email and wallets), or null. The admin sign-in sends it
+   * so the engine can tell an admin email (engine/src/admin/privyIdentity.ts). */
+  identityToken: () => Promise<string | null>
 }
 
 const HINT = 'arcdex:privy:v1'
@@ -183,3 +186,9 @@ export async function privyExport(which: 'evm' | 'sol', refusal: string): Promis
 }
 
 export function privyEnrollMfa() { actions?.enrollMfa() }
+
+/** The identity token of the Privy account signed in here, for `address` (its EVM wallet), or null. */
+export async function privyIdentityFor(address: string): Promise<string | null> {
+  if (!actions || !state.authenticated || state.evm?.toLowerCase() !== address.toLowerCase()) return null
+  return actions.identityToken().catch(() => null)
+}

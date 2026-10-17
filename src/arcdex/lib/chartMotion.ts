@@ -40,12 +40,18 @@ export function followAfterRedraw(prevBars: number, bars: number): 'fit' | 'foll
  * and each step left still show (fomo's 15s chart drew them 4.7px wide). */
 export const MIN_FIT_SPACING = 3
 
-/** The visible logical range for a fit of `bars` bars in `width` px: null when
- * every bar fits at MIN_FIT_SPACING or wider (fitContent then), else the
- * latest bars that do, with RIGHT_OFFSET_BARS of room on the right. */
+/** The widest bars a fit draws, px (DexScreener's TradingView chart opens at about this): a coin with a few bars shows
+ * them at this width against the right edge, the rest empty, instead of two candles filling the chart (2026-10-17). */
+export const MAX_FIT_SPACING = 12
+
+/** The visible logical range for a fit of `bars` bars in `width` px: null when every bar fits between MIN_FIT_SPACING
+ * and MAX_FIT_SPACING (fitContent then); else the latest bars that fit at MIN_FIT_SPACING, or the few there are at
+ * MAX_FIT_SPACING. RIGHT_OFFSET_BARS of room on the right either way. */
 export function fitWindow(bars: number, width: number): { from: number; to: number } | null {
-  if (!(width > 0) || bars < 2) return null
+  if (!(width > 0) || bars < 1) return null
   const to = bars - 1 + RIGHT_OFFSET_BARS
   const from = to - width / MIN_FIT_SPACING
-  return from > 0 ? { from, to } : null
+  if (from > 0) return { from, to }
+  const few = to - width / MAX_FIT_SPACING
+  return few < -0.5 ? { from: few, to } : null
 }

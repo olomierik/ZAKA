@@ -587,13 +587,19 @@ html body {
   @keyframes trade-fade { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
 }
 /* Legend, top left: coin · timeframe, value under the crosshair, change */
+/* DexScreener's (TradingView's) legend: coin · timeframe, O / H / L / C and the change; the volume under it. */
 .chart-legend {
-  position: absolute; top: 6px; left: 8px; z-index: 4; pointer-events: none; display: flex; gap: 7px; align-items: baseline;
+  position: absolute; top: 6px; left: 8px; z-index: 4; pointer-events: none; display: flex; flex-direction: column; gap: 2px;
   font-size: 0.74rem; color: var(--text-muted); max-width: calc(100% - 80px); overflow: hidden; white-space: nowrap;
 }
+.chart-legend-l1 { display: flex; gap: 7px; align-items: baseline; }
 .chart-legend b { color: var(--text); font-weight: 700; }
-.chart-legend-val { color: var(--purple); font-family: var(--mono); font-weight: 700; }
-.chart-legend span:last-child { font-family: var(--mono); }
+.chart-legend-val { font-family: var(--mono); font-weight: 500; white-space: pre; }
+.chart-legend-chg { font-family: var(--mono); }
+.chart-legend-vol { font-family: var(--mono); color: var(--text-muted); }
+/* TradingView's top toolbar: one flat strip of text buttons, separated by hairlines. */
+.chart-tv-bar { display: flex; gap: 2px; margin-bottom: 0; flex-wrap: wrap; align-items: center; padding: 4px 6px; border-bottom: 1px solid var(--adx-border); }
+.chart-tv-bar > span[title] { border: none !important; }
 /* Under the chart: UTC clock and % / log / auto */
 .chart-footer { display: flex; align-items: center; gap: 4px; margin-top: 6px; font-size: 0.72rem; color: var(--text-muted); }
 .chart-clock { font-family: var(--mono); }

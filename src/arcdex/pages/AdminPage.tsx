@@ -26,6 +26,7 @@ import { pct } from '../lib/routerInfo'
 import { SN_FEE } from '../starknet/net'
 import { JUP_REFERRAL } from '../lib/jupiter'
 import { adminSignIn, adminSignOut, useAdminSession } from '../lib/adminSession'
+import { privyIdentityFor, usePrivyState } from '../privy/state'
 import AdminAnalytics from '../components/AdminAnalytics'
 import { AdminAudit, AdminCopy, AdminFlags, AdminOverview, AdminReports, AdminSweeper, AdminTrades } from '../components/AdminViews'
 
@@ -39,12 +40,15 @@ const TABS: { k: Tab; label: string }[] = [
   { k: 'copy', label: N_('Copy trading') }, { k: 'reports', label: N_('Reports') }, { k: 'audit', label: N_('Audit log') }, { k: 'flags', label: N_('Flags') }, { k: 'switch', label: N_('Kill switch') },
 ]
 
-export default function AdminPage() {
+export default function AdminPage({ initialTab }: { initialTab?: Tab } = {}) {
   const embedded = useEmbeddedAddress()
   const { address } = useAccount()
   const { signMessageAsync } = useSignMessage()
-  const [signer, setSigner] = useState<'embedded' | 'connected'>(embedded ? 'embedded' : 'connected')
-  const [tab, setTab] = useState<Tab>('analytics')
+  const privy = usePrivyState()
+  // Someone signed in with Privy signs with its wallet (the connected one): that's how an admin email signs in.
+  const privyWallet = privy.authenticated && !!address && privy.evm?.toLowerCase() === address.toLowerCase()
+  const [signer, setSigner] = useState<'embedded' | 'connected'>(embedded && !privyWallet ? 'embedded' : 'connected')
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'analytics')
   const who = signer === 'embedded' ? embedded : (address ?? null)
   const sign = useCallback(async (message: string) => (signer === 'embedded' ? getEmbeddedWalletClient().signMessage({ message }) : signMessageAsync({ message })), [signer, signMessageAsync])
   const session = useAdminSession()
@@ -88,10 +92,11 @@ function AdminSignInBar({ embedded, address, signer, setSigner, who, sign }: { e
   async function signIn() {
     if (!who) return
     setBusy(true); setMsg('')
-    try { await adminSignIn(who, sign) } catch (e) {
+    // Signing with the Privy wallet: its identity token goes too, so an admin email signs in (engine: admin/privyIdentity.ts).
+    try { await adminSignIn(who, sign, await privyIdentityFor(who)) } catch (e) {
       const why = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message).split('\n')[0] : String(e)
-      // The engine's admins are ADMIN_EVM_ADDRESSES on Railway: say which wallet tried, and where to add it.
-      setMsg(/not an admin/.test(why) ? T('{wallet} isn’t an admin wallet. Sign in with one that is, or add it to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine) and wait for the redeploy.', { wallet: who }) : why)
+      // The engine's admins are ADMIN_EVM_ADDRESSES and ADMIN_EMAILS on Railway: say which wallet tried, and how else.
+      setMsg(/not an admin/.test(why) ? T('{wallet} isn’t an admin wallet. Sign in with Privy under an admin email and sign with its wallet, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).', { wallet: who }) : why)
     } finally { setBusy(false) }
   }
   const mins = session ? Math.max(0, Math.round((session.expiresAt - Date.now()) / 60_000)) : 0

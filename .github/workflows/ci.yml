@@ -59,6 +59,8 @@ jobs:
         run: bun scripts/test-chart-frame.ts
       - name: DexScreener data, Trending lane, launchpad icons
         run: bun scripts/test-dex-data.ts
+      - name: Anti-MEV (Jito)
+        run: bun scripts/test-jito.ts
       - name: Paying from Ethereum, Base or Arbitrum (Relay quote checks)
         run: bun scripts/test-xevm.ts
       - name: Fast buys (approval and swap back to back)

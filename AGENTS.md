@@ -3133,6 +3133,38 @@ Owner: "the analytics page is not showing; redesign the landing page simple, lik
   - **Not checked live:** the engine's new counts (they show once it deploys).
 - **Every new string is in all six dictionaries** (51).
 
+## Admin by email, a DexScreener chart, Trenches badges in full, anti-MEV with Jito (2026-10-17)
+
+Owner: "make the analytics page available on the app; allow the user with email … to be admin; make the app chart like DexScreener's; the Trenches token info (X, web, bundle, sniper) visually seen, and resize the Trenches to accommodate it; anti-MEV mode with Jito to stop sandwich bots".
+
+- **Analytics in the app:** `/analytics` opens the admin panel on its Analytics tab (`Page` `{ name: 'admin', tab: 'analytics' }`). The account menu shows Analytics and Admin to admins (`useAdminHint` in `lib/adminSession.ts`): a wallet that signed in as admin in this browser, or a Privy account under an admin email. The links are a convenience; the engine still asks for the admin sign-in.
+- **Admin by email (`engine/src/admin/privyIdentity.ts`):** someone signed in with Privy under an admin email signs in to `/admin` with that account's own wallet.
+  - **The page** (`AdminPage`, `privyIdentityFor` in `privy/state.ts`): signing with the Privy wallet sends Privy's identity token (`getIdentityToken`) with the signed sign-in message. The Privy wallet is the default signer when it's connected.
+  - **The engine** checks the token against Privy's published keys for ARCDEX's app (`PRIVY_APP_ID`, default the site's public id `cmvac094l010r0gjyoqr36ooe`), its issuer, audience and expiry. Its linked accounts must include an admin email (email login, Google, Apple) and the wallet that signed. A token alone isn't a sign-in, nor a wallet alone.
+  - **Admin emails:** `ADMIN_EMAILS` on Railway (comma-separated), plus the owner's, kept in code only as a SHA-256 hash (the repo is public; the page has the same hash, for the menu links).
+  - **What an email admin can do:** everything a wallet admin can: its session's wallet signs flags, the sweeper, moderation and the kill switch (`emailAdminWallets`, added to `verifyAdmin` in `main.ts`). The session ends if the email leaves the list. Sign-ins are audited with `by: 'email'`.
+  - **Owner step:** in Privy's dashboard, turn on identity tokens ("Return user data in an identity token"). Without them `getIdentityToken` returns nothing and only `ADMIN_EVM_ADDRESSES` wallets can sign in.
+  - Tests: `engine/test/privyAdmin.test.ts` (a real ES256 token: an admin email signs in with its own wallet; refused for another email, another wallet, no token, a forged signature, another key, app or issuer, an expired token; the session ending when the email leaves the list; the keys read once an hour).
+- **The chart, DexScreener's (`lib/chartStyle.ts`, `components/PriceChart.tsx`):**
+  - Candles by default (Line is one click), in TradingView's colours (`#26a69a` / `#ef5350`, its dark and light palettes) with volume bars along the bottom; the candles keep clear of them (`scaleMargins`), and the axis shows no labels under zero.
+  - TradingView's legend: coin · timeframe · Price or MCap, then O / H / L / C of the bar under the crosshair (or the latest), its change, and its volume.
+  - A free crosshair with dashed lines; a flat toolbar of text buttons; the chart 440px tall on desktop (was 340).
+  - **A coin with few bars** draws them at most 12px wide against the right edge (`MAX_FIT_SPACING` in `lib/chartMotion.ts`): before, two 15s bars filled the whole chart.
+- **Trenches rows with everything visible (`components/TrenchRow.tsx`, `terminal.css`):**
+  - The badges have a line of their own that wraps instead of cutting off: holders, safety, 1h and 24h moves, dev (holds / sold N%), bundlers, snipers, the launcher's record. Coins the engine didn't see launch show "Dev ?", "Bundlers ?" and "Snipers ?" with why.
+  - The socials have a labelled line beside Buy: the website's domain, the X handle, TG, or "No socials", and a search for the contract on X.
+  - The three main lanes take the width; Trending is narrower (at least 240px). Phones wrap the badges too.
+- **Anti-MEV on Solana with Jito (`lib/jito.ts`, `lib/relay.ts`):** on by default (Settings → Trading → "Anti-MEV on Solana (Jito)", with a Low / Normal / Fast tip: 0.00001, 0.00005, 0.0002 SOL).
+  - **What it does:** a Solana transaction ARCDEX builds and sends itself (Relay's sales, SOL/USDC swaps and cross-chain buys paid from Solana) gets a tip to one of Jito's tip accounts as its last instruction. It goes to Jito's block engine as a bundle only (`bundleOnly=true`), never to a public node, so bots can't place trades around it, and a bundle that would fail lands nothing. A busy engine (429) hands it to the next region.
+  - **If it doesn't land:** Jito refusing it, or not landing it within 90 seconds (its blockhash has expired by then), says nothing was spent and suggests a higher tip or turning anti-MEV off.
+  - **Jupiter's swaps** are sent by Jupiter's `/execute`, which lands them itself with its own Jito tips; the form says so.
+  - **What it can't do:** a trade is bundled only when the slot's leader runs Jito (most stake, not all), and a validator with its own private mempool still sees what it's given. EVM chains (BNB Chain's sandwiches especially) aren't covered: that needs a private RPC for the trading wallet's sends.
+  - Jito's block engine answers browsers (CORS); its tip-floor feed doesn't, so the tip is a setting.
+  - The trade form's Details say which protection the trade has ("MEV protection": Jito bundle with its tip, Jupiter, or Off).
+  - Tests: `bun scripts/test-jito.ts` (in CI): the tip and its account, the transfer's encoding, bundle-only sends, the next engine on 429, a refusal not retried. `--live` sent a tipped transaction from an unfunded throwaway key to Jito's real block engine: accepted, with its signature back.
+- **Checked in the built-in browser** (local dev against the live engine): Solana's Trenches at 1440px and 375px (no sideways scroll, badges and socials on every row), ALLOX's chart (candles, volume, O/H/L/C), `/analytics`. Not checked: a real Privy sign-in with identity tokens, a real Jito-sent trade.
+- **Every new string is in all six dictionaries** (21).
+
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
 **Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**

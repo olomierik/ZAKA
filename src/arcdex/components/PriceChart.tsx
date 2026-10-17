@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createChart, type IChartApi, type ISeriesApi, type SeriesType, type CandlestickData, type MouseEventParams, LineSeries, HistogramSeries, PriceScaleMode } from 'lightweight-charts'
-import { addMainSeries, chartTheme, DEFAULT_CHART_STYLE, lineColors, onChartStyle, setChartStyle, type ChartStyle, type MainSeries } from '../lib/chartStyle'
+import { addMainSeries, chartTheme, DEFAULT_CHART_STYLE, lineColors, onChartStyle, setChartStyle, volumeColor, type ChartStyle, type MainSeries } from '../lib/chartStyle'
 import { getTheme, useTheme } from '../lib/theme'
 import { useIsMobile } from '../lib/useMobile'
 import { getPoolOhlcv } from '../api/gecko'
@@ -385,29 +385,38 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
     })
   }, [trades, thesisMarks, showBubbles, showThesis, friendsOnly, friends, minSize, candles, res, scale, mobile])
 
-  // fomo-style readout, top left: the value under the crosshair (or the
-  // latest), and its change from the bar before. Written straight to the
-  // DOM — crosshair moves come too fast to re-render the chart for each.
+  // DexScreener's (TradingView's) readout, top left: the bar under the crosshair (or the latest) as O / H / L / C, its
+  // change from the bar before, and its volume. Written straight to the DOM: crosshair moves come too fast to re-render
+  // the chart for each.
   const legendVal = useRef<HTMLSpanElement>(null)
   const legendChg = useRef<HTMLSpanElement>(null)
+  const legendVol = useRef<HTMLSpanElement>(null)
   const scaleRef = useRef(scale)
   scaleRef.current = scale
+  const candlesRef = useRef(candles)
+  candlesRef.current = candles
   const writeLegend = (time?: number) => {
-    const v = legendVal.current, c = legendChg.current, data = applied.current.data
+    const v = legendVal.current, c = legendChg.current, vo = legendVol.current, data = applied.current.data
     if (!v || !c) return
-    if (!data.length) { v.textContent = ''; c.textContent = ''; return }
+    if (!data.length) { v.textContent = ''; c.textContent = ''; if (vo) vo.textContent = ''; return }
     let i = data.length - 1
     if (time !== undefined) {
       let lo = 0, hi = data.length - 1
       while (lo < hi) { const mid = (lo + hi) >> 1; if ((data[mid].time as number) < time) lo = mid + 1; else hi = mid }
       if ((data[lo].time as number) === time) i = lo
     }
-    const cur = data[i].close, prev = i > 0 ? data[i - 1].close : data[i].open
+    const d = data[i]
+    const cur = d.close, prev = i > 0 ? data[i - 1].close : d.open
     const ch = cur - prev, pct = prev ? (ch / prev) * 100 : 0
     const fmt = (x: number) => scaleRef.current > 1 ? '$' + compactValue(x) : '$' + fmtPrice(x)
-    v.textContent = fmt(cur)
+    v.textContent = `O ${fmt(d.open)}  H ${fmt(d.high)}  L ${fmt(d.low)}  C ${fmt(cur)}`
+    v.style.color = d.close >= d.open ? '#26a69a' : '#ef5350'
     c.textContent = `${ch >= 0 ? '+' : '-'}${fmt(Math.abs(ch))} (${ch >= 0 ? '+' : ''}${pct.toFixed(2)}%)`
-    c.style.color = ch >= 0 ? 'var(--green)' : 'var(--red)'
+    c.style.color = ch >= 0 ? '#26a69a' : '#ef5350'
+    if (vo) {
+      const bar = candlesRef.current.find(x => x.time === (d.time as number))
+      vo.textContent = bar && bar.volume > 0 ? `${T('Vol')} $${compactValue(bar.volume)}` : ''
+    }
   }
   const writeLegendRef = useRef(writeLegend)
   writeLegendRef.current = writeLegend
@@ -535,12 +544,13 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
       const vol = volRef.current
       if (vol) for (let i = n - 1; i < candles.length; i++) {
         const c = candles[i]
-        vol.update({ time: c.time as never, value: c.volume, color: c.close >= c.open ? 'rgba(14,203,129,0.35)' : 'rgba(246,70,93,0.35)' })
+        vol.update({ time: c.time as never, value: c.volume, color: volumeColor(c.close >= c.open) })
       }
     } else {
       // Market caps under $100K in full dollars ($7,001): a new coin's moves are
       // a few dollars wide, and "$7.0K" on every gridline says nothing.
-      series.applyOptions({ priceFormat: scale > 1 ? { type: 'custom', formatter: (v: number) => v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : v >= 1e5 ? `$${(v / 1e3).toFixed(1)}K` : `$${Math.round(v).toLocaleString('en-US')}`, minMove: 1 } : { type: 'custom', formatter: fmtPrice, minMove: 1e-12 } })
+      // No labels under zero: the space under the candles is the volume bars'.
+      series.applyOptions({ priceFormat: scale > 1 ? { type: 'custom', formatter: (v: number) => v < 0 ? '' : v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : v >= 1e5 ? `$${(v / 1e3).toFixed(1)}K` : `$${Math.round(v).toLocaleString('en-US')}`, minMove: 1 } : { type: 'custom', formatter: (v: number) => (v < 0 ? '' : fmtPrice(v)), minMove: 1e-12 } })
       series.setData(data.map(point) as never)
     }
     applied.current = { key, data }
@@ -562,8 +572,6 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
   // Indicators: rebuilt when a bar is added, or the Price/MCap scale or
   // the selection changes — not on every tick (the draw effect keeps the
   // volume bar live; the lines catch up on the next bar).
-  const candlesRef = useRef(candles)
-  candlesRef.current = candles
   const barsKey = `${candles.length}|${candles[0]?.time ?? 0}`
   useEffect(() => {
     const chart = chartRef.current
@@ -571,6 +579,8 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
     if (!chart) return
     indSeries.current.forEach(x => { try { chart.removeSeries(x) } catch { /* already gone */ } })
     indSeries.current = []
+    // As on DexScreener: the candles keep clear of the volume bars along the bottom.
+    chart.priceScale('right').applyOptions({ scaleMargins: ind.has('volume') && hasVolume ? { top: 0.08, bottom: 0.24 } : { top: 0.08, bottom: 0.08 } })
     volRef.current = null
     while (chart.panes().length > 1) { try { chart.removePane(chart.panes().length - 1) } catch { break } }
     if (!candles.length || !ind.size) return
@@ -585,8 +595,8 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
     const color = (id: IndicatorId) => INDICATORS.find(i => i.id === id)!.color
     if (ind.has('volume') && hasVolume) {
       const v = chart.addSeries(HistogramSeries, { priceScaleId: 'vol', priceFormat: { type: 'volume' }, priceLineVisible: false, lastValueVisible: false })
-      chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } })
-      v.setData(candles.map(c => ({ time: c.time as never, value: c.volume, color: c.close >= c.open ? 'rgba(14,203,129,0.35)' : 'rgba(246,70,93,0.35)' })))
+      chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } })
+      v.setData(candles.map(c => ({ time: c.time as never, value: c.volume, color: volumeColor(c.close >= c.open) })))
       indSeries.current.push(v as ISeriesApi<SeriesType>)
       volRef.current = v
     }
@@ -674,11 +684,11 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
     else void el.requestFullscreen?.()
   }
 
+  // TradingView's top toolbar, as DexScreener shows it: flat text buttons, the one in use in the accent colour.
   const pill = (active: boolean): React.CSSProperties => ({
-    padding: '3px 10px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 600, border: '1px solid', cursor: 'pointer',
-    borderColor: active ? 'var(--adx-accent)' : 'var(--adx-card-border)',
-    background: active ? 'rgba(59,130,246,0.15)' : 'transparent',
-    color: active ? 'var(--adx-accent)' : 'var(--text-muted)',
+    padding: '4px 8px', borderRadius: 4, fontSize: '0.78rem', fontWeight: 600, border: 'none', cursor: 'pointer',
+    background: active ? 'color-mix(in srgb, #2962ff 14%, transparent)' : 'transparent',
+    color: active ? '#2962ff' : 'var(--text-muted)',
   })
   const check = (on: boolean, set: (v: boolean) => void, label: string) => (
     <label style={{ display: 'inline-flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}><input type="checkbox" checked={on} onChange={e => set(e.target.checked)} />{label}</label>
@@ -686,7 +696,7 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
 
   return (
     <div ref={wrapRef} className="price-chart" style={{ background: isFull ? 'var(--bg-2)' : undefined, display: 'flex', flexDirection: 'column', height: isFull ? '100%' : undefined, padding: isFull ? 16 : 0 }}>
-    <div className="chart-controls" style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+    <div className="chart-controls chart-tv-bar">
       {RESOLUTIONS.filter(r => (source?.resolutions ? source.resolutions.includes(r.value) : (hasTicks || !onChainOnly(r.value)) && (r.value !== '5s' || engineMode))).map(r => (
         <button key={r.value} onClick={() => { picked.current = true; setRes(r.value) }} style={pill(res === r.value)}>{r.label}</button>
       ))}
@@ -736,13 +746,16 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
       <button onClick={fullscreen} style={pill(false)} title={T("Fullscreen")}>⛶</button>
     </div>
     <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', flex: 1 }}>
-      <div ref={containerRef} style={{ height: isFull ? 'calc(100vh - 150px)' : (mobile ? 300 : height ?? 340) + (withRsi ? RSI_PANE : 0) }} />
-      {/* fomo-style legend: coin · timeframe, then the value under the crosshair and its change. */}
+      <div ref={containerRef} style={{ height: isFull ? 'calc(100vh - 150px)' : (mobile ? 320 : height ?? 440) + (withRsi ? RSI_PANE : 0) }} />
+      {/* DexScreener's legend: coin · timeframe · price or market cap, then O / H / L / C, the change and the volume. */}
       <div className="chart-legend">
-        {symbol && <b>{symbol}</b>}
-        <span className="chart-legend-res">{RESOLUTIONS.find(r => r.value === res)?.label}</span>
-        <span ref={legendVal} className="chart-legend-val" />
-        <span ref={legendChg} />
+        <span className="chart-legend-l1">
+          {symbol && <b>{symbol}</b>}
+          <span className="chart-legend-res">· {RESOLUTIONS.find(r => r.value === res)?.label} · {scale > 1 ? T('MCap') : T('Price')}</span>
+          <span ref={legendVal} className="chart-legend-val" />
+          <span ref={legendChg} className="chart-legend-chg" />
+        </span>
+        {ind.has('volume') && hasVolume && <span ref={legendVol} className="chart-legend-vol" />}
       </div>
       {labels.length > 0 && (
         // zIndex: the chart library layers its canvases with z-index 1–2,
@@ -756,7 +769,7 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
         </div>
       )}
       {!candles.length && (
-        <div style={{ position: 'absolute', inset: 0, height: mobile ? 300 : height ?? 340,
+        <div style={{ position: 'absolute', inset: 0, height: mobile ? 320 : height ?? 440,
           display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 16,
           background: 'color-mix(in srgb, var(--bg-2) 75%, transparent)', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{loading ? T("Loading chart…") : onChainOnly(res) ? T("No trades in the last few hours — try a longer timeframe.") : T("No chart data yet.")}</div>
       )}
