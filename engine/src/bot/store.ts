@@ -20,8 +20,9 @@ import { MemoryModerationStore, type CommentRow, type ModerationStore, type Mute
 import type { BookTrade } from '../social/pnl'
 import { MemoryCopyStore, type CopyExecRow, type CopyRuleRow, type CopyStore, type CopyWalletRow } from '../copy/engine'
 import { MemoryAnalyticsStore, type AnalyticsStore, type SigninRow, type SiteTradeRow, type TradeStatus } from '../analytics'
+import { MemoryPracticeStore, type PracticeAccount, type PracticeStore } from '../practice/predict'
 
-export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore, AuditStore, FeeLedgerStore, SweepStore, PushStore, SocialTradeStore, ModerationStore, CopyStore, AnalyticsStore {
+export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore, AuditStore, FeeLedgerStore, SweepStore, PushStore, SocialTradeStore, ModerationStore, CopyStore, AnalyticsStore, PracticeStore {
   readonly kind: 'memory' | 'postgres'
   saveSignal(s: Signal): void
   savePosition(p: Position): void
@@ -66,6 +67,9 @@ export class MemoryBotStore implements BotStore {
   private visitors = new Map<string, { first: number; last: number }>()
   visitorSeen(id: string, at: number) { const v = this.visitors.get(id); this.visitors.set(id, { first: v?.first ?? at, last: at }) }
   async visitorCounts(dayStart: number) { return { total: this.visitors.size, today: [...this.visitors.values()].filter(v => v.last >= dayStart).length } }
+  private practice = new MemoryPracticeStore()
+  practiceAccounts() { return this.practice.practiceAccounts() }
+  savePracticeAccount(a: PracticeAccount) { this.practice.savePracticeAccount(a) }
   private votes = new MemoryVoteStore()
   voteSet(chain: string, address: string, voter: string, kind: VoteKind | null, at: number) { return this.votes.voteSet(chain, address, voter, kind) }
   voteCounts(chain: string, address: string) { return this.votes.voteCounts(chain, address) }
@@ -124,6 +128,7 @@ create table if not exists arcdex_bot_positions (
 create index if not exists arcdex_bot_positions_open on arcdex_bot_positions (status, closed_at desc);
 create table if not exists arcdex_bot_settings (key text primary key, value text not null, at timestamptz not null default now());
 create table if not exists arcdex_paper_accounts (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
+create table if not exists arcdex_practice_accounts (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
 create table if not exists arcdex_paper_trades (id text primary key, account text not null, closed_at timestamptz not null, data jsonb not null);
 create index if not exists arcdex_paper_trades_account on arcdex_paper_trades (account, closed_at desc);
 create table if not exists arcdex_bot_users (id text primary key, email text not null unique, data jsonb not null, updated_at timestamptz not null default now());
@@ -278,6 +283,15 @@ export class PostgresBotStore implements BotStore {
   }
   savePaperAccount(a: PaperAccount) {
     this.write('paper account', () => this.sql`insert into arcdex_paper_accounts (id, data, updated_at) values (${a.id}, ${JSON.stringify(a)}::jsonb, now())
+      on conflict (id) do update set data = excluded.data, updated_at = excluded.updated_at`)
+  }
+  async practiceAccounts() {
+    await this.ready
+    const rows = await this.sql`select data from arcdex_practice_accounts`
+    return rows.map((r: { data: PracticeAccount | string }) => (typeof r.data === 'string' ? JSON.parse(r.data) : r.data) as PracticeAccount)
+  }
+  savePracticeAccount(a: PracticeAccount) {
+    this.write('practice account', () => this.sql`insert into arcdex_practice_accounts (id, data, updated_at) values (${a.id}, ${JSON.stringify(a)}::jsonb, now())
       on conflict (id) do update set data = excluded.data, updated_at = excluded.updated_at`)
   }
   savePaperTrade(accountId: string, p: Position) {

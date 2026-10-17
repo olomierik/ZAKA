@@ -3203,6 +3203,39 @@ Owner: "what is hindering me to see the analytics page as a normal user; put it 
 - **Checked:** `engine/test/analytics.test.ts` (the public view has the same totals and none of the wallets or transactions), both typechecks, and in the built-in browser the top-bar link, the page at 1440px and 375px (no sideways scroll), with the engine's answer stood in for until it deploys.
 - **Every new string is in all six dictionaries** (6).
 
+## Practice predictions, papertrade.xyz's way (2026-10-17)
+
+Owner: "take a look at papertrade.xyz and make the same thing for us on prediction markets". papertrade.xyz was toured in Chrome (read-only, its site, docs and exchange).
+- **What papertrade is:** a real-money exchange on Hyperliquid, not paper trading. Each trade is a synthetic bet against a pool at Hyperliquid's mid: no order book, no slippage, no funding, up to 1000×. The pool starts at $0 and fills from traders' losses. A win the pool can't pay waits in a first-in, first-out queue (the "Martingaler" design), and losers get its PAPER token, which earns the fees. Asked which version, the owner chose **practice first, real later**.
+- **Practice now (`/predict`, a Practice | Live switch, Practice by default while live trading is off; `arcdex:predict-mode`):** every Hyperliquid prediction market, with $10,000 of virtual USDC. No wallet is needed.
+  - **Trading:** one tap buys a side at its mid, with no slippage and no fee (papertrade's rules, and the ones a real pool would use). The amount is $1 at the least, with $10–$500, ½ and Max chips. A sale is 25%, 50% or all, at the mid. "Pays if right" is shown.
+  - **Settlement:** a position is held until sold or settled. Hyperliquid's own `settledOutcome` (found 2026-10-17; it answers null while a market is live) gives `settleFraction`: each contract of the first side gets it, of the second side 1 − it.
+  - **The page:** an account bar (balance, cash, in positions, P&L, win rate, the name shown on the leaderboard, Reset to $1K / $10K / $100K), and papertrade's ticker of everyone's latest fills. Then Positions, History, and a Leaderboard (24H / 7D / all time): top traders by realized P&L with 3+ closed trades, and the best trades, the top three rows tinted gold, silver and bronze.
+  - **Marked PRACTICE** on the switch, the bar, the panel, the trade form and the page's footnote.
+- **On the engine, so the leaderboard can't be written from a browser (`engine/src/practice/predict.ts`, shared rules in `api/_practiceProtocol.ts`):**
+  - **Accounts:** reached with a random key kept in the browser (`arcdex:practice-key`); only its SHA-256 is stored (`arcdex_practice_accounts`).
+  - **Fills:** every fill is at the mid the engine reads from Hyperliquid (`allMids`, at most 1.5s old), the complement of the other side when one side has no book. Buys need:
+    - the market in the latest `outcomeMeta`, and not past its end (the same fields the page reads, checked against all 345 recorded markets);
+    - a mid between 1¢ and 99¢.
+  - **Limits (`PRACTICE`):** 50 open positions, 120 orders a minute per account, 5 new accounts an hour per IP, the last 300 closed trades kept.
+  - **Settlement:** every 30 seconds, held outcomes that left `outcomeMeta` or passed their end are asked about, each at most once a minute.
+  - **Routes:**
+    - `POST /v1/practice/predict/accounts` (the key, once);
+    - `GET|POST /v1/practice/predict/account` (`X-Practice-Key`; buy, sell, reset, rename);
+    - `GET /v1/practice/predict/board?period=` (public; names only).
+    - Writes come from the site's own origins only. `PRACTICE=off` on Railway stops it.
+- **Real later (not built):** papertrade's design for predictions needs a pool contract on Arc that buys and sells sides at Hyperliquid's mid. Hyperliquid's prices would reach Arc only through the engine's signature, which makes the engine a point of trust. It needs the payout queue, a token minted from losses, testnet first, an independent audit and legal advice before any real money.
+- **Checked:**
+  - `engine/test/predictPractice.test.ts` (10): fills at the mid, the complement, every limit, sales, settlement both ways and once, a split result, the leaderboard (windows, 3 trades, no keys), names, resets, a restart, the routes (origin, key, CORS).
+  - `bun scripts/test-predict-practice.ts` (in CI): the engine's end time equals the page's for all 345 recorded markets, names, prices.
+  - The practice book against Hyperliquid's live API: $25 of a ZEC market bought and sold at its 50.3¢ mid.
+  - In the built-in browser, against `engine/scripts/practice-standin.ts` (the engine's own practice code in memory with live Hyperliquid data; other routes passed to production):
+    - start, a $100 Yes buy ("Bought 145 Yes at 69¢") and its sale at 66¢ (−$4.08);
+    - History and the ticker;
+    - 375px with no sideways scroll, with the account kept after a reload.
+  - The engine suite: 889 pass.
+- **Every new string is in all six dictionaries** (47, the engine's error messages included).
+
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
 **Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**

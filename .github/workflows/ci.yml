@@ -71,6 +71,8 @@ jobs:
         run: bun scripts/test-wallet-tracker.ts
       - name: Copy trading from the user's own wallet (sizing, checks, storage)
         run: bun scripts/test-copy-trade.ts
+      - name: Practice predictions (market ends, names, prices)
+        run: bun scripts/test-predict-practice.ts
 
   engine:
     name: Engine (typecheck, tests)
