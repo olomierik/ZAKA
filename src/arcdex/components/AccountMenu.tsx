@@ -179,8 +179,8 @@ export function SettingsModal({ onClose, initial = 'trading', onSupport }: { onC
               <button className="btn-primary" style={{ width: '100%', marginTop: 10 }} onClick={save}>{saved ? t('Saved ✓') : t('Save presets')}</button>
             </div>
             {toggleRow(t('Blur balances'), t('Hide your cash and PnL on screen (hover to peek)'), prefs.blur, v => setPrefs({ blur: v }))}
-            {/* Anti-MEV (lib/jito.ts): Solana trades ARCDEX sends go to Jito as a bundle only, with a tip. */}
-            {toggleRow(t('🛡 Anti-MEV on Solana (Jito)'), t('Sends your Solana trades to Jito as a private bundle instead of the public network, so sandwich bots can’t trade around them. Adds a small tip.'), prefs.antiMev, v => setPrefs({ antiMev: v }))}
+            {/* Anti-MEV: Solana trades ARCDEX sends go to Jito as a bundle only, with a tip (lib/jito.ts); the trading wallet's BNB Chain trades go to a private RPC (lib/bscPrivate.ts). */}
+            {toggleRow(t('🛡 Anti-MEV (Solana and BNB Chain)'), t('Sends your trades privately instead of through the public network, so sandwich bots can’t trade around them: Solana to Jito as a bundle (adds a small tip), BNB Chain through a private RPC (48 Club, bloXroute). Trading wallet only: a wallet app sends through its own RPC.'), prefs.antiMev, v => setPrefs({ antiMev: v }))}
             {prefs.antiMev && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', flexWrap: 'wrap' }}>
                 <span style={{ color: 'var(--text-muted)' }}>{t('Jito tip')}</span>

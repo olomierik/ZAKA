@@ -16,6 +16,7 @@ import { notifyBalances } from './balances'
 import type { TraderKind } from './identity'
 import { FOUR, BNB_NATIVE } from '../../../api/_bscCore'
 import { t as T } from './i18n'
+import { BscPrivateError } from './bscPrivate'
 import { assertTradingOn, TradingPausedError } from './tradeSwitch'
 
 const HELPER_ABI = parseAbi([
@@ -76,6 +77,7 @@ export function fourSellCall(q: FourSellQuote, minFunds: bigint): { to: Address;
 export function fourErrorText(e: unknown): string {
   if (e instanceof FourError || e instanceof TradingPausedError) return e.message
   const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
+  if (e instanceof BscPrivateError && !/insufficient funds/i.test(m)) return T('The private RPCs didn’t confirm they took the transaction ({why}). Try again (it can’t go through twice), or turn anti-MEV off in Settings to send it normally.', { why: m.slice(0, 160) })
   if (/User rejected|rejected the request|denied|cancel/i.test(m)) return T('You cancelled the transaction.')
   if (/insufficient funds|exceeds the balance|gas required exceeds/i.test(m)) return T('Not enough BNB for this trade and its gas.')
   if (/Slippage|amount too small|min/i.test(m)) return T('The price moved past your slippage: check the new quote and try again.')

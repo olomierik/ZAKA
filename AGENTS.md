@@ -3154,16 +3154,43 @@ Owner: "make the analytics page available on the app; allow the user with email 
   - The badges have a line of their own that wraps instead of cutting off: holders, safety, 1h and 24h moves, dev (holds / sold N%), bundlers, snipers, the launcher's record. Coins the engine didn't see launch show "Dev ?", "Bundlers ?" and "Snipers ?" with why.
   - The socials have a labelled line beside Buy: the website's domain, the X handle, TG, or "No socials", and a search for the contract on X.
   - The three main lanes take the width; Trending is narrower (at least 240px). Phones wrap the badges too.
-- **Anti-MEV on Solana with Jito (`lib/jito.ts`, `lib/relay.ts`):** on by default (Settings → Trading → "Anti-MEV on Solana (Jito)", with a Low / Normal / Fast tip: 0.00001, 0.00005, 0.0002 SOL).
+- **Anti-MEV on Solana with Jito (`lib/jito.ts`, `lib/relay.ts`):** on by default (Settings → Trading → "Anti-MEV (Solana and BNB Chain)", with a Low / Normal / Fast tip: 0.00001, 0.00005, 0.0002 SOL).
   - **What it does:** a Solana transaction ARCDEX builds and sends itself (Relay's sales, SOL/USDC swaps and cross-chain buys paid from Solana) gets a tip to one of Jito's tip accounts as its last instruction. It goes to Jito's block engine as a bundle only (`bundleOnly=true`), never to a public node, so bots can't place trades around it, and a bundle that would fail lands nothing. A busy engine (429) hands it to the next region.
   - **If it doesn't land:** Jito refusing it, or not landing it within 90 seconds (its blockhash has expired by then), says nothing was spent and suggests a higher tip or turning anti-MEV off.
   - **Jupiter's swaps** are sent by Jupiter's `/execute`, which lands them itself with its own Jito tips; the form says so.
-  - **What it can't do:** a trade is bundled only when the slot's leader runs Jito (most stake, not all), and a validator with its own private mempool still sees what it's given. EVM chains (BNB Chain's sandwiches especially) aren't covered: that needs a private RPC for the trading wallet's sends.
+  - **What it can't do:** a trade is bundled only when the slot's leader runs Jito (most stake, not all), and a validator with its own private mempool still sees what it's given. BNB Chain is covered for the trading wallet by a private RPC ("Anti-MEV on BNB Chain" below); other EVM chains aren't.
   - Jito's block engine answers browsers (CORS); its tip-floor feed doesn't, so the tip is a setting.
   - The trade form's Details say which protection the trade has ("MEV protection": Jito bundle with its tip, Jupiter, or Off).
   - Tests: `bun scripts/test-jito.ts` (in CI): the tip and its account, the transfer's encoding, bundle-only sends, the next engine on 429, a refusal not retried. `--live` sent a tipped transaction from an unfunded throwaway key to Jito's real block engine: accepted, with its signature back.
 - **Checked in the built-in browser** (local dev against the live engine): Solana's Trenches at 1440px and 375px (no sideways scroll, badges and socials on every row), ALLOX's chart (candles, volume, O/H/L/C), `/analytics`. Not checked: a real Privy sign-in with identity tokens, a real Jito-sent trade.
 - **Every new string is in all six dictionaries** (21).
+
+## Anti-MEV on BNB Chain: the trading wallet sends through a private RPC (2026-10-17)
+
+The same setting as Jito's (Settings → Trading → "🛡 Anti-MEV (Solana and BNB Chain)", `prefs.antiMev`, on by default) now covers BNB Chain, where sandwich bots watch the public mempool.
+
+- **Where (`lib/bscPrivate.ts`, `lib/bsc.ts` `bscWallet`):** the trading wallet's BNB Chain transport sends `eth_sendRawTransaction` to a private RPC while anti-MEV is on. That covers every trading-wallet transaction signed on BNB Chain: four.meme curve buys and sales (and their exact approvals), Relay sales and BNB/USDT swaps there, and gas top-ups' sales. Reads, gas estimates, simulations and nonces stay on the BNB Chain nodes in RPC settings.
+- **The private RPCs, in order:**
+  - 48 Club's privacy RPC, `https://rpc.48.club`: into the Puissant builder's private mempool, included without being broadcast publicly (docs.48.club).
+  - bloXroute's BSC Protect RPC, `https://bsc.rpc.blxrbdn.com`: its private relay straight to block proposers, out of the public mempool until confirmed (docs.bloxroute.com).
+  - Not used: PancakeSwap's MEV Guard (`bscrpc.pancakeswap.finance`), BlockRazor and Merkle also answered, but their docs couldn't be read to confirm what they do with a transaction.
+- **The rule, so nothing is spent twice or leaks:**
+  - The same signed bytes each time (one hash, one nonce): at most one copy can be mined. Nothing is re-signed.
+  - Busy (429), down (5xx), no answer, or an answer that isn't JSON-RPC: the next private RPC gets those same bytes.
+  - A refusal of the transaction itself (no funds, a bad nonce, too little gas) stops there; another node would refuse it too. "Already known" counts as sent. An RPC answering another transaction's hash is refused.
+  - **Never the public node from here.** With both private RPCs out, the trade stops with "The private RPCs didn't confirm they took the transaction (…). Try again (it can't go through twice), or turn anti-MEV off…".
+  - A send is recorded (`recordBroadcasts`) so the next transaction takes the next nonce, though the public node can't see a private transaction in its pool. An unconfirmed send isn't recorded: a retry signs the same nonce, so if the first copy did land, the retry can't.
+  - After a reload, a private transaction still pending isn't remembered: the next one may take its nonce, and only one of the two can land.
+- **The trade form (`components/BscTrade.tsx`):** Details has "MEV protection" whenever the trade is signed on BNB Chain (a curve trade, a swap there, or any sale): "Private RPC · 48 Club → bloXroute" (green), "Off (Settings → Trading)", or, for an external wallet, "Not covered: your wallet app sends it through its own RPC".
+- **Not covered:** external wallets (MetaMask and others) send through their own RPC; a trader can set a private RPC in the wallet itself. The builder that receives a transaction still sees it; the private RPCs promise only to keep it out of the public mempool until it's mined. bloXroute documents a rate limit (3 transactions a second on its protect RPCs).
+- **Verified live (2026-10-17, nothing funded):**
+  - Both answer CORS preflights from `https://arcsense.site` and `http://localhost:5173` (`Access-Control-Allow-Origin: *`, `content-type` allowed) and report chain id 56.
+  - Both take `eth_sendRawTransaction` and validate it like a node: a transaction signed by a throwaway, unfunded key was refused "insufficient funds for gas * price + value" (about 0.3 s each).
+  - The same from a real browser on arcsense.site, under its live CSP.
+  - bloXroute refused one connection in one of three runs, which the fallback order covers.
+- **Not checked:** a real funded trade through either RPC (the owner's first).
+- **Tests:** `bun scripts/test-bsc-private.ts` (in CI, fetch stubbed): the order, the same bytes on 429, 5xx, lost connections and non-JSON answers, refusals not retried, "already known", "nonce too low" not taken as sent, every RPC out never falling back to the public node, a wrong hash refused; a viem wallet client over the transport sending only the raw transaction privately (and through the public node with the setting off); the form's three states. `--live` runs the checks above against both RPCs.
+- Every new string is in all six dictionaries (5; the setting's two strings replaced).
 
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
