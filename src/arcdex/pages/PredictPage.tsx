@@ -24,6 +24,11 @@ import { buildOutcomeOrder, cancelOrders, MIN_ORDER_USD, NeedsEnable, outcomeBui
 import { BUILDER } from '../hl/access'
 import { HL_TRADING } from '../hl/client'
 import { EnableTradingModal, HlFundingModal, TradingSoon, errText, money, regionNote, useHlGate, type HlGate } from '../components/HlShared'
+import {
+  PRACTICE_NOTE, PracticeBar, PracticePanel, PracticeStart, PracticeTicker, PracticeTradePanel, PredictModeSwitch, readPredictMode, savePredictMode,
+  type PracticePick, type PredictMode,
+} from '../components/PredictPractice'
+import { practiceAvailable, startPractice, usePracticeAccount } from '../lib/predictPractice'
 
 const CATS: { id: OutcomeCategory | 'all' | 'mine'; label: string }[] = [
   { id: 'all', label: 'All' }, { id: 'mine', label: 'My predictions' }, { id: 'crypto', label: 'Crypto' }, { id: 'stocks', label: 'Stocks' },
@@ -40,6 +45,13 @@ function sidePx(m: OutcomeMarket, side: 0 | 1, mids: Readonly<Record<string, num
   if (own > 0) return own
   const other = mids[m.sides[side === 0 ? 1 : 0].coin]
   return other > 0 ? Math.max(0, 1 - other) : null
+}
+/** A side's price by outcome id, as sidePx reads it. */
+function sidePxOf(outcome: number, side: 0 | 1, mids: Readonly<Record<string, number>>): number | null {
+  const own = mids[`#${10 * outcome + side}`]
+  if (own > 0 && own < 1) return own
+  const other = mids[`#${10 * outcome + (side === 0 ? 1 : 0)}`]
+  return other > 0 && other < 1 ? 1 - other : null
 }
 const cents = (p: number | null) => (p == null ? '—' : p < 0.01 ? '<1¢' : p > 0.99 ? '>99¢' : `${Math.round(p * 100)}¢`)
 const pctOf = (p: number | null) => (p == null ? '—' : p < 0.01 ? '<1%' : p > 0.99 ? '>99%' : `${Math.round(p * 100)}%`)
@@ -368,6 +380,12 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
   const [detail, setDetail] = useState<OutcomeGroup | null>(null)
   const [funding, setFunding] = useState<'deposit' | 'withdraw' | null>(null)
   const [enabling, setEnabling] = useState(false)
+  // Practice (virtual USDC on the engine, lib/predictPractice.ts) or live (Hyperliquid itself), remembered here.
+  const [mode, setModeState] = useState<PredictMode>(() => (practiceAvailable ? readPredictMode(HL_TRADING) : 'live'))
+  const setMode = (m: PredictMode) => { setModeState(m); savePredictMode(m); setPick(null); setPPick(null) }
+  const practice = usePracticeAccount()
+  const [pPick, setPPick] = useState<PracticePick | null>(null)
+  const isPractice = mode === 'practice'
 
   useEffect(() => { const base = document.title; document.title = `${T('Predictions')} | ARCDEX`; return () => { document.title = base } }, [])
 
@@ -378,7 +396,8 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
   }, [groups])
   const holdings = acct.state?.outcomes ?? []
   const outcomeOrders = (acct.state?.orders ?? []).filter(o => o.coin.startsWith('#'))
-  const held = useMemo(() => new Set(holdings.map(h => h.outcome)), [holdings])
+  const practicePos = practice.account?.positions
+  const held = useMemo(() => new Set(isPractice ? (practicePos ?? []).map(p => p.outcome) : holdings.map(h => h.outcome)), [isPractice, practicePos, holdings])
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: groups?.length ?? 0, mine: 0 }
@@ -401,7 +420,21 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
           : b.members.length - a.members.length)
   }, [groups, cat, q, sort, held, now])
 
-  const openPick = (p: Pick) => { setDetail(null); setPick(p) }
+  const openPick = (p: Pick) => {
+    setDetail(null)
+    if (isPractice) setPPick({ outcome: p.member.outcome, title: p.member.label !== p.group.title ? `${p.group.title} · ${p.member.label}` : p.group.title, sides: [p.member.sides[0].name, p.member.sides[1].name], side: p.side, mode: p.mode })
+    else setPick(p)
+  }
+  // Positions, history and the leaderboard: above the markets on desktop, under them on phones.
+  const practicePanel = <PracticePanel key={practice.account ? 'acct' : 'none'} account={practice.account} onSell={p => setPPick(p)} />
+  const pPanel = pPick ? (
+    <PracticeTradePanel
+      pick={pPick} setPick={setPPick} account={practice.account}
+      px={[sidePxOf(pPick.outcome, 0, mids), sidePxOf(pPick.outcome, 1, mids)]}
+      onStart={() => { void startPractice().then(practice.set, () => practice.refresh()) }}
+      onDone={v => practice.set(v)}
+    />
+  ) : null
   const panel = pick ? (
     <TradePanel
       pick={pick} setPick={setPick} mids={mids} gate={gate} account={acct.state}
@@ -416,7 +449,8 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
           <h1 className="page-h">{T('Predictions')}</h1>
           <p className="pm-sub">{T('Trade on what happens next: crypto prices, stocks, sports and the economy. Each side pays $1 if it’s right, settled by Hyperliquid.')}</p>
         </div>
-        <div className="pm-acct">
+        {practiceAvailable && <PredictModeSwitch mode={mode} liveOn={HL_TRADING} onChange={setMode} />}
+        {!isPractice && <div className="pm-acct">
           {gate.access ? (
             <>
               <div><span>{T('Account value')}</span><b>{acct.state ? money(acct.state.accountValue) : '…'}</b></div>
@@ -429,10 +463,18 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
               <button className="link-btn" onClick={openTradingWallet}>{T('Trading wallet')}</button>
             </>
           )}
-        </div>
+        </div>}
       </div>
 
-      {gate.access && (holdings.length > 0 || outcomeOrders.length > 0 || cat === 'mine') && (
+      {isPractice && (
+        <>
+          {practice.account ? <PracticeBar account={practice.account} onChange={practice.set} /> : <PracticeStart onStarted={practice.set} />}
+          <PracticeTicker />
+          {!mobile && practicePanel}
+        </>
+      )}
+
+      {!isPractice && gate.access && (holdings.length > 0 || outcomeOrders.length > 0 || cat === 'mine') && (
         <div className="spot-panel pm-holdings">
           <div className="spot-panel-h"><span>{T('Your predictions')}</span></div>
           <Holdings holdings={holdings} orders={outcomeOrders} byOutcome={byOutcome} mids={mids} gate={gate} onSell={openPick} onDone={() => acct.refresh()} />
@@ -467,7 +509,10 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
         </div>
       )}
 
+      {isPractice && mobile && practicePanel}
+
       <div className="hl-foot fx-fine">
+        {isPractice && <>{T(PRACTICE_NOTE)}{' '}</>}
         {T('Markets, prices and settlement are Hyperliquid’s: orders are signed in your browser and go straight to it. ARCDEX never holds your money.')}{' '}
         {BUILDER.outcomeF > 0 && T('ARCDEX’s fee applies only when you sell, as a Hyperliquid builder fee you approve once.')}{' '}
         <button className="link-btn" onClick={() => navigate({ name: 'perps' })}>{T('Trade futures')}</button>
@@ -481,6 +526,16 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
           <div className="modal-card hl-modal pm-trade-modal fxb" onClick={e => e.stopPropagation()}>
             <div className="hl-modal-h"><b>{T('Trade')}</b><button className="fxb-x" onClick={() => setPick(null)} aria-label={T('Close')}>✕</button></div>
             {panel}
+          </div>
+        </div>
+      ))}
+      {pPick && (mobile ? (
+        <Sheet open onClose={() => setPPick(null)} title={T('Practice')}><div className="fxb">{pPanel}</div></Sheet>
+      ) : (
+        <div className="modal-back" onClick={() => setPPick(null)}>
+          <div className="modal-card hl-modal pm-trade-modal fxb" onClick={e => e.stopPropagation()}>
+            <div className="hl-modal-h"><b>{T('Practice')}</b><button className="fxb-x" onClick={() => setPPick(null)} aria-label={T('Close')}>✕</button></div>
+            {pPanel}
           </div>
         </div>
       ))}

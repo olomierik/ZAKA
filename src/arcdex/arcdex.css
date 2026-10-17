@@ -3135,3 +3135,53 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .xs-amount .chain-pop input { font-size: 0.86rem; font-weight: 400; letter-spacing: 0; flex: none; width: 100%; }
 .xs-amount .chain-pop { right: 0; left: auto; }
 .xs-amount-out .xs-pill b, .xs-amount .xs-pill b { flex: none; font-size: 0.98rem; font-weight: 600; letter-spacing: 0; overflow: visible; }
+
+/* ── Practice predictions on /predict (components/PredictPractice.tsx): papertrade.xyz's one-tap trading with
+   virtual USDC, its leaderboard and its ticker. ─────────────────────────────────────────────────────────────── */
+.pm-head .pr-mode { width: 220px; flex-shrink: 0; }
+.pr-start { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 14px 16px; border: 1px dashed rgba(240,185,11,0.5); border-radius: 10px; background: rgba(240,185,11,0.06); }
+.pr-start > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pr-start b { font-size: 0.95rem; }
+.pr-start span { font-size: 0.8rem; color: var(--text-muted); }
+.pr-start .fx-hint-bad { flex-basis: 100%; }
+.pr-bar { position: relative; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid rgba(240,185,11,0.35); border-radius: 10px; background: var(--bg-2); }
+.pr-bar > div { display: flex; flex-direction: column; min-width: 0; }
+.pr-bar > div span { font-size: 0.68rem; color: var(--text-muted); }
+.pr-bar > div b { font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pr-bar > div small { font-size: 0.66rem; color: var(--text-muted); }
+.pr-bar-name { margin-left: auto; flex-direction: row !important; align-items: center; gap: 12px; }
+.pr-pop { flex-basis: 100%; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.8rem; }
+.pr-pop .field { max-width: 220px; }
+.pr-bar-err { flex-basis: 100%; }
+.pr-trade .pp-banner { margin-bottom: 2px; }
+.pr-fracs { grid-template-columns: repeat(3, 1fr); }
+.pr-panel { padding-bottom: 6px; }
+.pr-tabs { display: flex; align-items: center; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--adx-border); overflow-x: auto; }
+.pr-tabs button { background: none; border: none; color: var(--text-muted); font: inherit; font-size: 0.82rem; font-weight: 600; padding: 6px 10px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.pr-tabs button.active { color: var(--text); background: var(--bg-3); }
+.pr-periods { display: flex; align-items: center; gap: 6px; padding: 10px 12px 4px; flex-wrap: wrap; }
+.pr-periods button { background: var(--bg-3); border: 1px solid var(--adx-border); color: var(--text-muted); border-radius: 14px; padding: 3px 11px; font: inherit; font-size: 0.74rem; font-weight: 600; cursor: pointer; }
+.pr-periods button.active { color: var(--text); border-color: var(--adx-accent); }
+.pr-periods small { margin-left: auto; color: var(--text-muted); font-size: 0.72rem; }
+.pr-board { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 14px; padding: 6px 10px; }
+.pr-board-h { display: block; font-size: 0.8rem; margin: 6px 4px 6px; }
+.pr-board td small { color: var(--text-muted); }
+.pr-top td { font-weight: 600; }
+.pr-top0 { background: linear-gradient(90deg, rgba(240,185,11,0.20), rgba(240,185,11,0.03)); }
+.pr-top1 { background: linear-gradient(90deg, rgba(180,190,205,0.22), rgba(180,190,205,0.03)); }
+.pr-top2 { background: linear-gradient(90deg, rgba(205,127,50,0.20), rgba(205,127,50,0.03)); }
+.pr-ticker { overflow: hidden; border: 1px solid var(--adx-border); border-radius: 8px; background: var(--bg-2); padding: 6px 0; mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent); }
+.pr-ticker-run { display: inline-flex; gap: 28px; white-space: nowrap; padding-left: 12px; animation: pr-tick 60s linear infinite; }
+.pr-ticker:hover .pr-ticker-run { animation-play-state: paused; }
+.pr-tick { font-size: 0.76rem; color: var(--text-muted); }
+.pr-tick b { color: var(--text); font-weight: 600; }
+.pr-tick em { font-style: normal; font-weight: 600; }
+@keyframes pr-tick { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) { .pr-ticker-run { animation: none; } }
+@media (max-width: 900px) { .pr-board { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 767px) {
+  .pm-head .pr-mode { width: 100%; }
+  .pr-bar { gap: 10px 16px; }
+  .pr-bar > div b { font-size: 0.92rem; }
+  .pr-bar-name { margin-left: 0; flex-basis: 100%; }
+}

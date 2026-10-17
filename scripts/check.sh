@@ -28,6 +28,7 @@ echo "== pay from chains"; bun scripts/test-xevm.ts
 echo "== fast buys";      bun scripts/test-fast-buy.ts
 echo "== wallet tracker"; bun scripts/test-wallet-tracker.ts
 echo "== copy trading";   bun scripts/test-copy-trade.ts
+echo "== practice";       bun scripts/test-predict-practice.ts
 if command -v gitleaks >/dev/null; then
   echo "== secrets"; gitleaks dir . --config .gitleaks.toml --no-banner --redact
 else
