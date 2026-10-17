@@ -76,6 +76,10 @@ jobs:
         with:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
+      # The engine's own packages (engine/package.json: the algo agent's Anthropic SDK and zod), as Railway installs them.
+      - name: Install the engine's packages
+        working-directory: engine
+        run: bun install --frozen-lockfile
       - name: Typecheck
         working-directory: engine
         run: bunx tsc --noEmit -p .
