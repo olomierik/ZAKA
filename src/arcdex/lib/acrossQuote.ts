@@ -24,6 +24,7 @@
 import { decodeFunctionData, formatUnits, parseAbi, type Address, type Hex } from 'viem'
 import { FEE_WALLET } from './platform'
 import { t as T } from './i18n'
+import { GUARDRAILS, minOutProblem } from './guardrails'
 
 export const ACROSS_API = 'https://app.across.to/api'
 export const ARC_ID = 5042
@@ -235,6 +236,7 @@ export function checkQuote(r: QuoteRequest, j: ApiQuote): AcrossQuote {
   const minOut = big(j.minOutputAmount)
   const expectedOut = big(j.expectedOutputAmount)
   if (minOut <= 0n || expectedOut < minOut) fail('the quote has no minimum received')
+  if (minOutProblem(expectedOut, minOut)) fail('its minimum received is more than 15% under its price')
 
   const gas = big(tx.gas)
   return {
@@ -300,7 +302,7 @@ export function quoteValue(q: Pick<AcrossQuote, 'side' | 'expectedOut' | 'appFee
 /** Where a quote stops: a tick box from 15% (impact or all costs), refused
  * from 50% of price impact, and refused when it pays over 25% more than the
  * market price (a route through an off-market pool, however good it looks). */
-export const QUOTE_LIMITS = { confirm: 0.15, refuse: 0.5, offMarket: 0.25 }
+export const QUOTE_LIMITS = { confirm: GUARDRAILS.confirm, refuse: GUARDRAILS.refuse, offMarket: GUARDRAILS.offMarket }
 
 export type QuoteVerdict = 'ok' | 'confirm' | 'refuse' | 'off-market' | 'unpriced'
 

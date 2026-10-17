@@ -17,6 +17,8 @@ export interface ArcToken {
   marketCap:       number
   liquidity:       number
   ageMs:           number
+  /** When it launched (ms), where known: a stable clock for its age (ageMs is as of the read). */
+  createdAt?:      number
   launchpad:       string
   poolAddress:     string
   txCount24h:      number

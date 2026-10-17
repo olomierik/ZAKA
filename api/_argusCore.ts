@@ -132,6 +132,27 @@ async function fillCaps(pools: ArgusPool[], gt: GtFetcher) {
   }
 }
 
+// ── coins the market engine knows that the stored list lacks (2026-10-06) ──
+
+/** The engine's own Arc rows and caps (engine/src/market/established.ts); unset where no engine runs (Netlify, the browser). */
+let arcExtra: { rows: () => ArgusPool[]; capOf: (token: string) => number | null } | null = null
+export function setArcExtra(x: typeof arcExtra) { arcExtra = x }
+
+/** The stored list plus the engine's established coins it lacks, and the engine's market cap on rows GeckoTerminal
+ * left without one (or the established rule can't see them). GeckoTerminal's row wins wherever it has one. */
+export function withArcExtra<T extends ArgusPool>(pools: T[]): (T | ArgusPool)[] {
+  if (!arcExtra) return pools
+  const have = new Set<string>()
+  const out: (T | ArgusPool)[] = pools.map(p => {
+    have.add(p.token.address)
+    if (p.marketCapUsd != null || p.fdvUsd != null) return p
+    const mc = arcExtra!.capOf(p.token.address)
+    return mc ? { ...p, marketCapUsd: mc } : p
+  })
+  for (const e of arcExtra.rows()) if (!have.has(e.token.address)) out.push(e)
+  return out
+}
+
 /** One row per token: its deepest pool (the one a buy routes through),
  * sorted by 24h volume. A coin keeps its launchpad's badge when its deepest
  * pool is a plain DEX's (a graduated launch, or one listed through Arc's top

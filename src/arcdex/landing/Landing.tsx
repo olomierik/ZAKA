@@ -113,16 +113,29 @@ function useMarkets() {
           key: l.token, href: `/token/${l.token}${l.pool ? `?pool=${l.pool}` : ''}`, symbol: l.symbol, name: l.name, image: l.image ?? null, price: l.priceUsd ?? null, change: null, tag: l.launchpad ?? t('New'),
         })))
       })
-      void get('/v1/perps/prices').then((j: { feeds?: Record<string, { price: number; change24h: number | null }> } | null) => {
-        if (!j?.feeds) return
-        setPerps(['BTC', 'ETH', 'SOL'].filter(s => j.feeds![s]).map(s => ({
-          key: s, href: '/futures', symbol: `${s}USDC`, name: t('Perpetual'), image: null, price: j.feeds![s].price, change: j.feeds![s].change24h, tag: t('Up to 10×'),
-        })))
-      })
     }
+    // Futures trade on Hyperliquid (2026-10-11): BTC, ETH and SOL, then the busiest stocks, commodities and indices.
+    const hl = (dex: string) => fetch('https://api.hyperliquid.xyz/info', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dex ? { type: 'metaAndAssetCtxs', dex } : { type: 'metaAndAssetCtxs' }),
+      signal: AbortSignal.timeout(8_000),
+    }).then(r => (r.ok ? r.json() : null)).catch(() => null) as Promise<[{ universe: { name: string; maxLeverage: number; isDelisted?: boolean }[] }, { markPx: string; prevDayPx: string; dayNtlVlm: string }[]] | null>
+    const loadPerps = () => void Promise.all([hl(''), hl('xyz')]).then(([core, xyz]) => {
+      const rows = (r: typeof core) => (r ? r[0].universe.map((u, i) => ({ u, c: r[1][i] })).filter(x => x.c && !x.u.isDelisted) : [])
+      const row = ({ u, c }: ReturnType<typeof rows>[number]): Row => {
+        const sym = u.name.includes(':') ? u.name.split(':')[1] : u.name
+        const px = Number(c.markPx), prev = Number(c.prevDayPx)
+        return { key: u.name, href: u.name === 'BTC' ? '/futures' : `/futures/${u.name}`, symbol: `${sym}-USD`, name: t('Perpetual'), image: null, price: px, change: prev > 0 ? (px / prev - 1) * 100 : null, tag: t('Up to {n}× leverage', { n: u.maxLeverage }) }
+      }
+      const crypto = rows(core).filter(x => ['BTC', 'ETH', 'SOL'].includes(x.u.name))
+      const tradfi = rows(xyz).sort((a, b) => Number(b.c.dayNtlVlm) - Number(a.c.dayNtlVlm)).slice(0, 3)
+      const list = [...crypto, ...tradfi].map(row)
+      if (list.length) setPerps(list)
+    })
+    loadPerps()
+    const perpsId = setInterval(() => { if (!document.hidden) loadPerps() }, 30_000)
     load()
     const id = setInterval(() => { if (!document.hidden) load() }, 20_000)
-    return () => clearInterval(id)
+    return () => { clearInterval(id); clearInterval(perpsId) }
   }, [])
   return { popular, fresh, perps }
 }
@@ -194,18 +207,19 @@ export default function Landing() {
   const PLATFORM: [string, string, string, string][] = [
     ['📈', t('Markets'), t('Every listed coin, live, with a safety rating.'), '/app'],
     ['◆', t('Spot'), t('Buy and sell in one tap, no pop-ups.'), '/spot'],
-    ['📊', t('Futures'), t('BTC, ETH and SOL perpetuals, up to 10×.'), '/futures'],
+    ['📊', t('Futures'), t('Crypto, stocks, gold and indices, up to 40× leverage.'), '/futures'],
+    ['🎯', t('Predictions'), t('Trade on what happens next, from $10.'), '/predict'],
     ['⇄', t('Swap'), t('Any listed coin for USDC, in one step.'), '/swap'],
     ['🌉', t('Bridge'), t('Move USDC in and out in about a minute.'), '/bridge'],
     ['▤', t('Portfolio'), t('Every coin you hold, valued live.'), '/portfolio'],
   ]
 
   const FAQ: [string, string][] = [
-    [t('What is ARCDEX?'), t('A multichain decentralized exchange: spot trading, one-tap swaps, a USDC bridge, and BTC, ETH and SOL perpetual futures, now on testnet.')],
+    [t('What is ARCDEX?'), t('A multichain decentralized exchange: spot trading, one-tap swaps, a USDC bridge, perpetual futures on crypto, stocks and commodities, and prediction markets.')],
     [t('What is $ARCDEX?'), t('ARCDEX’s platform coin. 30% of ARCDEX’s fees buy back $ARCDEX and burn it, and 70% go to liquidity pools. Every buyback and burn is on-chain and shown live on this page.')],
     [t('How do I buy $ARCDEX?'), t('Open the app, create a trading wallet or connect your own, add USDC, then buy $ARCDEX on its trading page. Always check the contract address: {ca}.', { ca: short(COIN) })],
     [t('Which coins can I trade?'), t('Launchpad coins and established coins with $15K or more of market cap, and stock tokens. Every coin carries a safety rating; coins rated Danger, coins from unknown contracts and coins that have rugged aren’t in the lists.')],
-    [t('When do futures launch?'), t('They’re on testnet now: try them with free test USDC, without risk. Mainnet follows an independent security audit; the date will be announced.')],
+    [t('Where do futures and predictions trade?'), t('On Hyperliquid, the largest on-chain futures exchange. Your orders are signed in your browser and go straight to it, and ARCDEX never holds your money. Not available to US persons or in sanctioned regions.')],
     [t('Is my money at risk?'), t('Yes. Meme coins are very volatile, and futures with leverage can lose money quickly. Trade only what you can afford to lose. Nothing here is financial advice.')],
   ]
 
@@ -218,7 +232,8 @@ export default function Landing() {
         <a href="/" className="ld-brand"><img src="/arcdex-mark.png" alt="" width={30} height={30} /><span className="ld-word">arc<span>dex</span></span></a>
         <nav className={`ld-links${menu ? ' open' : ''}`} onClick={() => setMenu(false)}>
           <a href="/app">{t('Markets')}</a>
-          <a href="/futures">{t('Futures')} <small className="ld-tag">{t('Testnet')}</small></a>
+          <a href="/futures">{t('Futures')}</a>
+          <a href="/predict">{t('Predict')} <small className="ld-tag">{t('New')}</small></a>
           <a href="/swap">{t('Swap')}</a>
           <a href="/bridge">{t('Bridge')}</a>
           <a href="#burn" className="ld-link-arcdex">🔥 $ARCDEX</a>
@@ -265,7 +280,7 @@ export default function Landing() {
           </div>
           <div className="ld-hero-links">
             <a className="ld-btn ld-btn-blue-ghost ld-btn-sm" href="/app">{t('Explore markets')} →</a>
-            <a className="ld-btn ld-btn-ghost ld-btn-sm" href="/futures">{t('Try futures free')}</a>
+            <a className="ld-btn ld-btn-ghost ld-btn-sm" href="/futures">{t('Trade futures')}</a>
           </div>
         </div>
 
@@ -348,16 +363,16 @@ export default function Landing() {
         <div className="ld-split-head">
           <div>
             <h2>{t('Perpetual futures')}</h2>
-            <p className="ld-sub">{t('Long or short BTC, ETH and SOL with up to 10× leverage, settled in USDC at RedStone’s signed oracle prices. On testnet now; mainnet after an independent audit.')}</p>
+            <p className="ld-sub">{t('Long or short crypto, stocks, gold, oil and indices with up to 40× leverage, on Hyperliquid’s order books. Orders are signed in your browser; ARCDEX never holds your money.')}</p>
           </div>
           <a className="ld-btn ld-btn-primary" href="/futures">{t('Trade futures')} →</a>
         </div>
         <div className="ld-perps">
-          {(markets.perps ?? ['BTC', 'ETH', 'SOL'].map(s => ({ key: s, symbol: `${s}USDC`, price: null, change: null } as Row))).map(p => (
-            <a key={p.key} className="ld-card ld-perp" href="/futures">
+          {(markets.perps ?? ['BTC', 'ETH', 'SOL'].map(s => ({ key: s, href: '/futures', symbol: `${s}-USD`, price: null, change: null } as Row))).map(p => (
+            <a key={p.key} className="ld-card ld-perp" href={p.href}>
               <span className="ld-perp-sym">{p.symbol} <small>{t('Perp')}</small></span>
               <b>{price(p.price)}</b>
-              <span className="ld-muted">{t('Long or short')} · {t('Up to 10× leverage')}</span>
+              <span className="ld-muted">{t('Long or short')}{p.tag ? ` · ${p.tag}` : ''}</span>
             </a>
           ))}
         </div>
@@ -415,6 +430,7 @@ export default function Landing() {
             <a href="/app">{t('Markets')}</a>
             <a href="/spot">{t('Spot')}</a>
             <a href="/futures">{t('Futures')}</a>
+            <a href="/predict">{t('Predict')}</a>
             <a href="/swap">{t('Swap')}</a>
             <a href="/bridge">{t('Bridge')}</a>
             <a href="/burn">{t('$ARCDEX burn')}</a>

@@ -61,7 +61,7 @@ Everything runs in one Bun process by default. For scale-out, split it into `ENG
 | `../api/_curves.ts` | Mercuri/SolonPad addresses, events and trade decoding, shared with the site |
 | `src/site/siteApi.ts` | The site's read and write functions served at `/api/*` (market lists for every chain, `trending` for the home page, `coinmeta` for coin pages' titles and link previews, search, holders, sign-in) |
 
-The `../api/*.ts` files the engine imports are copied by `Dockerfile`. Railway redeploys only on its service's Watch Paths: a change to one of those files alone needs it listed there (`railway.toml` `watchPatterns` is the record), or the next push touching `engine/**` ships it.
+The `../api/*.ts` files the engine imports are copied by `Dockerfile`. Railway redeploys on its service's Watch Paths, set on 2026-10-12 to `/engine/**`, `/api/**` and `/railway.toml` (`railway.toml` `watchPatterns` is the record). Each pattern is its own entry: from about 2026-10-06 one entry held five file names joined by commas, and no push created a deployment (not even a skipped one) until it was replaced.
 
 ## Run locally
 

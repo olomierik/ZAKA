@@ -169,12 +169,12 @@ ok(['US', 'CA', 'GB', 'CH', 'AE', 'IR', 'KP'].every(c => STOCK_RESTRICTED.has(c)
 
 console.log('routes')
 const v4 = '0x5291cfd042d8a771a510534ee31090bc4f4dc72724871e8f321aecfd12332a9a'
-ok(JSON.stringify(pathToPage('/robinhood', '')) === JSON.stringify({ name: 'robinhood' }), '/robinhood')
+ok(JSON.stringify(pathToPage('/robinhood', '')) === JSON.stringify({ name: 'terminal', chain: 'hood' }) && pageToPath({ name: 'terminal', chain: 'hood' }) === '/robinhood', '/robinhood is its Trenches (2026-10-12), and back')
 const pg = pathToPage(`/robinhood/token/${MOW.toUpperCase().replace('0X', '0x')}`, `?pool=${v4}`)
 ok(pg?.name === 'rh-token' && pg.address === MOW && pg.pool === v4, 'a coin with its v4 pool (32-byte id)')
 ok(pageToPath(pg!) === `/robinhood/token/${MOW}?pool=${v4}`, 'and back')
 ok((pathToPage(`/robinhood/token/${MOW}`, '?pool=junk') as { pool?: string }).pool === '', 'a bad pool is dropped')
-ok(pathToPage('/robinhood/token/0x12', '')?.name === 'robinhood', 'a bad address opens the markets')
+ok(JSON.stringify(pathToPage('/robinhood/token/0x12', '')) === JSON.stringify({ name: 'terminal', chain: 'hood' }), 'a bad address opens its Trenches')
 ok(pathToPage(`/token/${MOW}`, '')?.name === 'argus', 'Arc’s /token links are unchanged')
 
 console.log('the /across proxy (netlify/edge-functions/across.ts)')
@@ -191,6 +191,14 @@ ok('error' in okReq(buyPath, new Headers({ 'sec-fetch-site': 'cross-site' })) &&
 ok('error' in okReq(buyPath.replace('originChainId=5042', 'originChainId=1')), 'refuses a route that isn’t Arc ⇄ Robinhood Chain')
 ok('error' in okReq(buyPath.replace(FEE_WALLET, ATTACKER)), 'refuses a fee to anyone but the fee wallet')
 ok('error' in okReq(buyPath.replace('appFee=0.02', 'appFee=0.5')), 'refuses a fee over 2%')
+{
+  // The fee wallet moved by VITE_FEE_RECIPIENT_EVM (docs/REPO_MAP.md D4): the proxy follows it; a typo keeps the default.
+  const moved = '0x' + '5a'.repeat(20)
+  const movedPath = buyPath.replace(FEE_WALLET, moved)
+  ok('path' in proxy.acrossRequest(new URL(site + '/across' + movedPath), same, proxy.feeWalletFrom(moved.toUpperCase().replace('0X', '0x'))), 'a fee wallet set in the environment is the one it accepts')
+  ok('error' in proxy.acrossRequest(new URL(site + '/across' + buyPath), same, proxy.feeWalletFrom(moved)), 'and the old one is then refused')
+  ok(proxy.feeWalletFrom('0x123') === FEE_WALLET && proxy.feeWalletFrom(undefined) === FEE_WALLET, 'a typo or nothing set keeps the default')
+}
 ok('error' in okReq('/deposits?depositor=' + BUYER) && 'error' in okReq('/deposit/status?depositTxnRef=0x12'), 'refuses anything else')
 {
   const realFetch = globalThis.fetch

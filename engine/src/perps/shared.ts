@@ -53,7 +53,8 @@ export const REDSTONE = {
 } as const
 
 /** Who owns the contracts (the owner's deploy wallet, as for the launchpad and routers) and
- * where ARCSENSE's fees go (the platform's one fee wallet, unchanged). */
+ * where ARCSENSE's fees go by default (the platform's one fee wallet). A deployment pays the engine's
+ * FEE_RECIPIENT_EVM when it's set (engine/src/feeWallet.ts); this file is shared with the site, so no env here. */
 export const PERPS_OWNER = '0x414B6Be4CF906739FbF7D49165beCa5F4CeEC3dA'
 export const FEE_WALLET = '0x274262A0321A0701b0A46a3576e07aE881c286Bb'
 

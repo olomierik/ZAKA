@@ -30,8 +30,11 @@ import { solBalance, waitSolTx, rememberSol } from './solana'
 import { rememberBsc } from './bsc'
 import { rememberHolding } from './held'
 import { rememberRh } from './robinhood'
-import { SOL_RPC_BROWSER } from '../../../api/_solCore'
+import { primaryOf } from './rpcSettings'
+import { isPayChain } from './payChains'
 import { t as T } from './i18n'
+import { assertTradingOn, TradingPausedError } from './tradeSwitch'
+import { sizeProblem } from './guardrails'
 
 export { RelayError }
 
@@ -45,7 +48,7 @@ const DRIFT = 0.03
 const MAX_SOL_COST = 0.01
 
 export function relayErrorText(e: unknown): string {
-  if (e instanceof RelayError) return e.message
+  if (e instanceof RelayError || e instanceof TradingPausedError) return e.message
   const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
   if (/User rejected|rejected the request|denied|cancel/i.test(m)) return T('You cancelled the transaction.')
   if (/insufficient lamports|Attempt to debit an account but found no record of a prior credit|insufficient funds for fee/i.test(m)) return T('Not enough SOL for fees on Solana: add SOL first.')
@@ -57,6 +60,9 @@ async function freshQuote(req: RelayRequest, shown: RelayQuote | null): Promise<
   const q = await getRelayQuote(req)
   if (shown && Number(q.expectedOut) < Number(shown.expectedOut) * (1 - DRIFT)) throw new RelayError(T('The price moved since your quote: check the new quote and try again.'))
   if (shown && Number(q.expectedOut) > Number(shown.expectedOut) * (1 + QUOTE_LIMITS.offMarket)) throw new RelayError(T('Relay’s route changed since your quote: check the new quote and try again.'))
+  // The size cap (lib/guardrails.ts): Relay's own dollar value of what goes in.
+  const tooBig = req.side === 'gas' ? null : sizeProblem(q.inUsd || null)
+  if (tooBig) throw new RelayError(tooBig)
   return q
 }
 
@@ -75,14 +81,20 @@ async function follow(q: RelayQuote, tx: string, onStep: (p: RelayProgress) => v
   }
 }
 
+/** The trade switch's venue for a Relay trade: the chain its coin is on. */
+const relayVenue = (req: RelayRequest) => (req.side === 'xevm'
+  ? (req.evmChain === BSC_ID ? 'bnb' as const : req.evmChain === RH_ID ? 'robinhood' as const : 'arc' as const)
+  : req.chain === 'bsc' ? 'bnb' as const : 'solana' as const)
+
 /** A trade signed on an EVM chain: paid on Arc (a buy or gas top-up), on BNB Chain (a sale to Arc, or a swap there), or
  * from the trader's account on Arc, BNB Chain or Robinhood Chain to a Solana wallet (xout). */
 export async function runRelayEvm(kind: TraderKind, req: RelayRequest, shown: RelayQuote | null, onStep: (p: RelayProgress) => void): Promise<RelayResult> {
+  if (req.side !== 'gas') await assertTradingOn(relayVenue(req))
   const trader = req.evm as Address
   onStep({ step: 'quote' })
   let q = await freshQuote(req, shown)
   const chainId = q.signChain
-  if (chainId !== ARC_ID && chainId !== BSC_ID && chainId !== RH_ID) throw new RelayError(T('An unexpected chain to sign on.'))
+  if (chainId !== ARC_ID && chainId !== BSC_ID && chainId !== RH_ID && !(req.side === 'xevm' && isPayChain(chainId))) throw new RelayError(T('An unexpected chain to sign on.'))
   const reader = evmReader(chainId)
   // What goes in, and who must be allowed to take it, as the checked quote says (Relay's depository for Arc's USDC, its
   // approval proxy for any other token; native coins go with the call, no approval).
@@ -108,6 +120,12 @@ export async function runRelayEvm(kind: TraderKind, req: RelayRequest, shown: Re
   if (req.side === 'buy' && req.chain === 'bsc') rememberBsc(req.evm, req.mint)
   if (req.side === 'buy' && (req.chain ?? 'solana') === 'solana') rememberSol(req.sol, req.mint)
   if (req.side === 'swap' && req.chain === 'bsc' && req.outToken) rememberBsc(req.evm, req.outToken)
+  // A coin paid for from Ethereum, Base or Arbitrum: Portfolio checks it first on its chain.
+  if (req.side === 'xevm') {
+    if (req.evmChain === BSC_ID) rememberBsc(req.evm, req.mint)
+    else if (req.evmChain === RH_ID) rememberRh(req.evm, req.mint)
+    else rememberHolding(req.evm, req.mint)
+  }
   return follow(q, tx, onStep)
 }
 
@@ -117,7 +135,7 @@ export const runRelayBuy = runRelayEvm
 /** Relay's instructions as one transaction, paid for by the trader. */
 async function buildSolana(q: RelayQuote): Promise<VersionedTransaction> {
   const { Connection, PublicKey, TransactionInstruction, TransactionMessage, VersionedTransaction } = await import('@solana/web3.js')
-  const conn = new Connection(SOL_RPC_BROWSER, 'confirmed')
+  const conn = new Connection(primaryOf('sol').url, 'confirmed')
   const tables = (await Promise.all(q.solTx!.lookupTables.map(a => conn.getAddressLookupTable(new PublicKey(a)).then(r => r.value))))
   if (tables.some(t => !t)) throw new RelayError(T('Relay’s transaction couldn’t be built: try again.'))
   const { blockhash } = await conn.getLatestBlockhash('confirmed')
@@ -133,7 +151,7 @@ async function buildSolana(q: RelayQuote): Promise<VersionedTransaction> {
 /** The trade run on Solana's node first: it must succeed, and cost the trader no more SOL than `maxSol`. */
 async function simulateSolana(tx: VersionedTransaction, trader: string, maxSol: number): Promise<void> {
   const { Connection } = await import('@solana/web3.js')
-  const conn = new Connection(SOL_RPC_BROWSER, 'confirmed')
+  const conn = new Connection(primaryOf('sol').url, 'confirmed')
   const before = await solBalance(trader).catch(() => null)
   const sim = await conn.simulateTransaction(tx, { sigVerify: false, replaceRecentBlockhash: true, commitment: 'confirmed', accounts: { encoding: 'base64', addresses: [trader] } })
   if (sim.value.err) {
@@ -147,6 +165,7 @@ async function simulateSolana(tx: VersionedTransaction, trader: string, maxSol: 
 /** A trade signed on Solana by `signer` (the trading wallet or the Solana wallet app): a sale to Arc, a swap there, or
  * SOL or USDC into another chain's coin (xin). */
 export async function runRelaySolana(signer: SolSigner, req: RelayRequest, shown: RelayQuote | null, onStep: (p: RelayProgress) => void): Promise<RelayResult> {
+  if (req.side !== 'gas') await assertTradingOn(relayVenue(req))
   const solIn = (req.side === 'swap' || req.side === 'xin') && req.inToken === SOL_NATIVE ? Number(req.amount) / 1e9 : 0
   const sol = await solBalance(req.sol).catch(() => null)
   if (sol !== null && sol < solIn + 0.0003) throw new RelayError(T('Not enough SOL for this trade and its fees.'))
@@ -157,7 +176,7 @@ export async function runRelaySolana(signer: SolSigner, req: RelayRequest, shown
   onStep({ step: 'sign' })
   const signed = await signSolana(signer, tx)
   const { Connection } = await import('@solana/web3.js')
-  const conn = new Connection(SOL_RPC_BROWSER, 'confirmed')
+  const conn = new Connection(primaryOf('sol').url, 'confirmed')
   const sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: true, maxRetries: 3 })
   onStep({ step: 'send', tx: sig })
   const s = await waitSolTx(sig)

@@ -22,11 +22,16 @@ export interface VisitorStore {
 export interface TrafficCounts { online: number; today: number; total: number; at: number }
 
 export const TRAFFIC = { onlineMs: 75_000, newIdsPerIpHour: 20, writeEveryMs: 30 * 60_000, countsEveryMs: 15_000 }
+/** The part of the site a page is on (sent with each beat; the admin panel's Live sessions). Anything else is 'other'. */
+export const SECTIONS = ['trenches', 'token', 'futures', 'predict', 'portfolio', 'swap', 'bridge', 'admin', 'landing', 'other'] as const
+export type Section = typeof SECTIONS[number]
+const isSection = (s: unknown): s is Section => typeof s === 'string' && (SECTIONS as readonly string[]).includes(s)
 const ID = /^[A-Za-z0-9-]{16,64}$/
 const dayStart = (t: number) => t - (t % 86_400_000)
 
 export class Traffic {
   private online = new Map<string, number>()
+  private where = new Map<string, Section>()
   /** When each id was last written (this process), to write it at most every 30 minutes. */
   private written = new Map<string, number>()
   private newIds = new Map<string, { hour: number; n: number }>()
@@ -37,7 +42,7 @@ export class Traffic {
   constructor(private store: VisitorStore) {}
 
   /** A page's heartbeat. False when it isn't counted (a malformed id, or too many new ids from one IP). */
-  beat(id: string, ip: string, now = Date.now()): boolean {
+  beat(id: string, ip: string, now = Date.now(), section?: unknown): boolean {
     if (!ID.test(id)) return false
     if (!this.online.has(id) && !this.written.has(id)) {
       const hour = Math.floor(now / 3_600_000)
@@ -48,6 +53,7 @@ export class Traffic {
       this.newIds.set(ip, { hour, n: n + 1 })
     }
     this.online.set(id, now)
+    this.where.set(id, isSection(section) ? section : 'other')
     const w = this.written.get(id)
     if (w === undefined || w < dayStart(now) || now - w >= TRAFFIC.writeEveryMs) {
       this.written.set(id, now)
@@ -60,7 +66,7 @@ export class Traffic {
 
   /** Online now, visitors today and ever. The stored counts are read at most every 15 seconds. */
   async counts(now = Date.now()): Promise<TrafficCounts> {
-    for (const [id, t] of this.online) if (now - t > TRAFFIC.onlineMs) this.online.delete(id)
+    this.prune(now)
     if (now - this.prunedAt > 60_000) {
       this.prunedAt = now
       for (const [id, t] of this.written) if (now - t > 86_400_000) this.written.delete(id)
@@ -74,5 +80,17 @@ export class Traffic {
     const c = this.cached && this.cached.day === day ? this.cached : { today: 0, total: this.cached?.total ?? 0 }
     // A write not read back yet still counts: never fewer visitors than people online.
     return { online, today: Math.max(c.today, online), total: Math.max(c.total, online), at: now }
+  }
+
+  /** Who's online now, by the part of the site they're on. */
+  sections(now = Date.now()): Record<Section, number> {
+    this.prune(now)
+    const out = Object.fromEntries(SECTIONS.map(s => [s, 0])) as Record<Section, number>
+    for (const id of this.online.keys()) out[this.where.get(id) ?? 'other']++
+    return out
+  }
+
+  private prune(now: number) {
+    for (const [id, t] of this.online) if (now - t > TRAFFIC.onlineMs) { this.online.delete(id); this.where.delete(id) }
   }
 }

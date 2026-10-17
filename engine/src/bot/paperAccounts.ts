@@ -368,6 +368,7 @@ export class PaperAccounts {
 
   get count() { return this.accounts.size }
   get running() { let n = 0; for (const a of this.accounts.values()) if (a.running) n++; return n }
+  get liveCount() { let n = 0; for (const a of this.accounts.values()) if (a.mode === 'live') n++; return n }
 
   /** A new bot and its browser key (shown once); an error in words; or null at capacity. `ownerId`: a signed-in owner's. */
   create(now = Date.now(), o: Partial<NewPaperAccount> = {}, ownerId: string | null = null): { key: string; account: PaperAccount } | { error: string } | null {
@@ -646,6 +647,34 @@ export class PaperAccounts {
       if (fee > 0) void this.sendFee(a, p)
     }
     this.save(a, now)
+  }
+
+  /** Fees live bots still owe the fee wallet (a transfer that hasn't gone through yet): the fee sweeper's 'bot-fees'. */
+  owedFees(): { bot: string; position: string; usd: number }[] {
+    const out: { bot: string; position: string; usd: number }[] = []
+    for (const a of this.accounts.values()) for (const p of a.positions) if ((p.feeDue ?? 0) > 0) out.push({ bot: a.slug || a.id, position: p.id, usd: p.feeDue! })
+    return out
+  }
+
+  /** Sends every owed fee now (the sweeper); what went and what didn't. A sent fee is cleared, so none goes twice. */
+  async sendOwedFees(): Promise<{ position: string; usd: number; tx?: string; error?: string }[]> {
+    const out: { position: string; usd: number; tx?: string; error?: string }[] = []
+    for (const a of this.accounts.values()) {
+      for (const p of a.positions) {
+        const usd = p.feeDue ?? 0
+        if (!(usd > 0)) continue
+        const t = this.trader(a)
+        if (!t || !this.o.live) { out.push({ position: p.id, usd, error: 'this bot has no live wallet here' }); continue }
+        this.lastFeeTry.set(p.id, Date.now())
+        try {
+          const tx = await this.o.live.payFee(t, p)
+          this.o.store.savePaperTrade(a.id, p)
+          this.save(a)
+          out.push({ position: p.id, usd, tx })
+        } catch (e) { out.push({ position: p.id, usd, error: errMsg(e).slice(0, 200) }) }
+      }
+    }
+    return out
   }
 
   private async sendFee(a: PaperAccount, p: Position) {

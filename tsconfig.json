@@ -31,6 +31,9 @@
       ]
     }
   },
-  "include": ["src", "scripts"]
+  "include": ["src", "scripts"],
+  // Arc Studio's deploy scaffold imports @circlefin/compass-chains, which isn't published on npm: it can't be
+  // installed here or in CI, so it's left out of the typecheck (bun run compass:deploy still runs it in Arc Studio).
+  "exclude": ["scripts/compass-deploy.ts"]
 }
 

@@ -1,31 +1,7 @@
-// Small pieces shared by the Robinhood Chain screens and the Markets page:
-// the Arc ⇄ Robinhood Chain switch, a coin's logo and the stock-token tag.
+// Small pieces shared by the Robinhood Chain screens: a coin's logo and the stock-token tag.
 
-import { useState } from 'react'
-import type { Page } from '../App'
-import { ChainIcon } from './Chains'
 import { t as T } from '../lib/i18n'
 import { useLogo } from '../lib/logo'
-
-/** Markets on Arc, Robinhood Chain or Solana. */
-export function ChainSwitch({ chain, navigate }: { chain: 'arc' | 'robinhood' | 'solana' | 'bsc'; navigate: (p: Page) => void }) {
-  return (
-    <div className="chain-switch" role="tablist" aria-label={T('Network')}>
-      <button role="tab" aria-selected={chain === 'arc'} className={chain === 'arc' ? 'on' : ''} onClick={() => chain !== 'arc' && navigate({ name: 'terminal' })}>
-        <ChainIcon chain="Arc" size={16} /> Arc
-      </button>
-      <button role="tab" aria-selected={chain === 'robinhood'} className={chain === 'robinhood' ? 'on' : ''} onClick={() => chain !== 'robinhood' && navigate({ name: 'robinhood' })}>
-        <ChainIcon chain="Robinhood" size={16} /> <span className="cs-full">{T('Robinhood Chain')}</span><span className="cs-short">Robinhood</span>
-      </button>
-      <button role="tab" aria-selected={chain === 'solana'} className={chain === 'solana' ? 'on' : ''} onClick={() => chain !== 'solana' && navigate({ name: 'solana' })}>
-        <ChainIcon chain="Solana" size={16} /> Solana
-      </button>
-      <button role="tab" aria-selected={chain === 'bsc'} className={chain === 'bsc' ? 'on' : ''} onClick={() => chain !== 'bsc' && navigate({ name: 'bsc' })}>
-        <ChainIcon chain="BNB" size={16} /> <span className="cs-full">{T('BNB Chain')}</span><span className="cs-short">BNB</span>
-      </button>
-    </div>
-  )
-}
 
 export function RhLogo({ src, symbol, size = 28 }: { src: string | null; symbol: string; size?: number }) {
   const { url, onError } = useLogo(src, size)

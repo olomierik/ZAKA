@@ -593,7 +593,7 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
 - **Files in `public/`:** `arcdex-whitepaper.pdf`, `arcdex-whitepaper-x.png` (also the link-preview image) and `arcdex-roadmap-x.png`. They're committed, not built, so regenerate them after editing the whitepaper or the roadmap:
   - build, run `vite preview --port 4173`, then `node scripts/whitepaper-assets.mjs` (options in its header);
   - check the PDF has no near-empty page (v1.0 is 8 pages).
-- **Phase 1 needs the owner:** the 2% → 1% swap fee is `setFeeBps(100)` on the swap router (owner key), and cashback is paid from the fee wallet. The site doesn't do either by itself.
+- **Phase 1 needs the owner:** the swap fee cut (now 2% → 0.5%, the owner's decision D2 on 2026-10-15) is `setFeeBps(50)` on both Arc routers, by their owners, from `/admin` → Fees ("Fees: 0.5% on spot" below). Cashback is paid from the fee wallet. The site doesn't do either by itself.
 
 ## Speed + live data (2026-09-25)
 
@@ -1222,6 +1222,8 @@ Owner: ARCDEX becomes **ARCSENSE**, spot and futures trading on Arc, at www.arcs
 
 ## ARCSENSE looks like Binance, in blue (2026-10-04)
 
+**Superseded on 2026-10-12** by motion.gift's layout ("The trading terminal, in motion.gift's layout" below): the top bar, Markets, the spot screen and the palette described here are gone.
+
 Owner: "the app should behave like Binance where we're in common, spot and futures included; layout and UX like Binance but blue; not everything; a site that makes people want to buy $SENSE; the landing page can go, but $SENSE must be visible". Binance's spot, futures and home pages were studied in Chrome (read-only).
 - **Theme (`arcdex.css` `:root`, `landing.css`):**
   - Binance's dark palette: page `#0b0e11`, panels `#181a20`, raised `#1e2329`, lines `#2b3139`, text `#eaecef`, muted `#848e9c`, green `#0ecb81`, red `#f6465d`.
@@ -1780,14 +1782,27 @@ Owner: "we have no users; compare us with DexScreener on platform quality and ho
 - **Engine:** `engine/Dockerfile` copies `api/trending.ts` and `api/coinmeta.ts`, and `railway.toml` watches them. **Add both to the service's own Watch Paths on Railway.**
   - Railway's service doesn't watch `api/_argusCore.ts` or `api/trending.ts` either: 47862dd, which changed only those, never deployed (the engine stayed on 019452d). The next commit touched `engine/README.md` to ship it. Copy `railway.toml`'s `watchPatterns` into the service's Watch Paths.
 - **Not changed, for the owner (switching costs a screener user feels):**
-  - **The 2% fee** is about twice what trading terminals charge (around 1%); Uniswap direct is only the pool's fee. The roadmap's Phase 1 already plans `setFeeBps(100)` on the swap router (owner key).
+  - **The 2% fee** is about twice what trading terminals charge (around 1%); Uniswap direct is only the pool's fee. Since 2026-10-15 the plan is 0.5% (D2): `setFeeBps(50)` on both Arc routers, by their owners ("Fees: 0.5% on spot").
   - **The name:** the domain is arcsense.site and the brand ARCDEX. arcdex.online now points at Netlify, so making it the primary domain (Netlify → Domain management) would match.
   - **Phone wallets:** no WalletConnect project id (cloud.reown.com), so phone wallets can't connect by QR code.
   - **Card deposits** aren't live (Circle key).
   - **Distribution:** listing in Arc's ecosystem directories, DefiLlama and on X/Telegram, where DexScreener's traffic comes from.
+- **Arc's established coins from the engine's own trades (2026-10-06, `engine/src/market/established.ts`):**
+  - **Why:** GeckoTerminal answered nearly every call from the engine's IP with 429, so the Arc list's builds were cut short and its top coins came and went. In one build 17 of 19 calls failed.
+  - **What:** the engine already sees every Arc swap. `EstablishedBook` keeps the coins with no launch record that meet the established rule on its own numbers (liquidity, market cap, 24h trades).
+    - It reads each one's `name()`/`symbol()` and the block its contract was created in (`creationBlock`, a binary search on `getCode`), once, three coins a round every 20s. The results are kept in the bot settings (`arc-established`).
+    - `api/_argusCore.ts` `setArcExtra` / `withArcExtra` add the coins the stored list lacks to `/api/argus`, trending and coin titles, and fill a market cap GeckoTerminal left out. GeckoTerminal's row wins wherever it has one (it has the logo).
+  - **The trade count matters:** some deep pools are wash-traded copies. One "TOLLY" (`0xf1ee…`) showed $9.5M of liquidity and $381K of volume from 5 trades a day; the real coin trades thousands of times. The engine's chain count agrees with GeckoTerminal's, and the 25-trades rule keeps such copies out.
+  - **The spot pair list** now applies the same rule as Markets (launchpad or established, `$15K`, not rugged), leaves copycat tickers out as Swap does, and keeps established coins when the engine's activity list (launch records only) arrives. Before, its first paint showed the wash-traded copies and a stablecoin.
+  - Tests: `engine/test/established.test.ts` (which coins are read, the rows, old coins, nothing read twice after a restart, the merge).
+- **Community sentiment, as DexScreener shows it (2026-10-06, `engine/src/votes.ts`, `components/CoinVotes.tsx`):** 🚀 🔥 💩 🚩 on every coin page on every chain (not on $ARCDEX's, which carries no rating).
+  - One vote per visitor per coin: pick another to switch, the same again to take it back. The visitor is the traffic counter's random browser id (`lib/traffic.ts` `visitorId`); this browser remembers its own picks (`arcdex:votes`).
+  - **Engine:** `GET /v1/votes?chain=&address=`, `POST /v1/votes` (text/plain, the site's own origins only). One IP gets 30 votes an hour; counts are read at most every 15s per coin. Stored in `arcdex_coin_votes` (one row per chain, coin and voter).
+  - It's a sentiment signal, not a vote anyone can rely on: a script can make new ids.
+  - **Checked** in the local production build against a stand-in running the engine's `Votes`: vote, switch, take back, the bar, the pick lit up after a reload, and a 375px phone with no sideways scroll. A tab opened in the background reads the counts at once (the first draft waited for it to be visible).
+  - Tests: `engine/test/votes.test.ts` (one vote each, switching and taking back, bad input, 30 an hour, the 15s cache, the route refusing other sites).
 - **DexScreener features still missing here:**
   - multicharts;
-  - community sentiment votes (🚀🔥💩🚩);
   - liquidity providers and bubble maps;
   - paid boosts and ads (DexScreener's revenue);
   - a public API;
@@ -1795,6 +1810,132 @@ Owner: "we have no users; compare us with DexScreener on platform quality and ho
 - **Tests:**
   - `bun scripts/test-dex-parity.ts`: established coins, badges kept through the pool merge, trending rules and totals, each coin page's head (escaping included), sitemap paths and logo links.
   - `engine/test/market.test.ts`: the ARGUS case, across a restart and with slots saved the old way.
+
+## Hyperliquid: futures on every market, and predictions (2026-10-11)
+
+Owner: "READ THE FILES [the ArcSense Upgrade Build Pack] and improve everything; take a look at liquid.trade … WE WANT TO COMPETE WITH THEM". Liquid is a front end to Hyperliquid: perpetuals on crypto, stocks, commodities, indices and FX (Hyperliquid's builder dexes), and Hyperliquid's prediction markets (HIP-4). ARCDEX now offers both, from the browser, with nothing new on the engine: Hyperliquid's API allows any origin and rate-limits by the visitor's own IP. The audit, the Liquid comparison and the plan: `docs/UPGRADE-2026-10.md`.
+
+- **Trading is off until the owner switches it on (`VITE_HL_TRADING=on`).** The build pack says "no live trading or mainnet execution by default until explicit enablement" and "do not deploy live trading … without my explicit approval".
+  - Off, every market, price, book, chart, prediction and account shows. Nothing reaches Hyperliquid's `/exchange` (`hlExchange` refuses) and no money moves: no orders, closes, cancels, approvals, deposits or withdrawals.
+  - "Trading opens soon" stands where the order buttons are. The money buttons are hidden.
+- **Code (`src/arcdex/hl/`):**
+  - `client.ts`: `/info` (retried on 429 and 5xx), `/exchange` (never retried), and one shared WebSocket routed by channel and coin, user, dex or interval.
+  - `signing.ts`, `msgpack.ts`, `wire.ts`: written from the official Python SDK and checked against its own test vectors.
+    - L1 actions: msgpack(action) ‖ nonce ‖ vault ‖ expiry, hashed into a phantom agent signed with the Exchange domain (chain 1337).
+    - User-signed actions: the HyperliquidSignTransaction domain; the wallet's current chain as `signatureChainId`.
+    - Order wires and rounding: prices to 5 significant figures and the decimals rule; sizes floored to the lot.
+    - Asset ids: core perps by index; builder dexes 100000 + dex × 10000 + index; outcome sides 100000000 + 10 × outcome + side.
+  - `markets.ts`: the core dex and the USDC-settled builder dexes `xyz` and `io` (301 markets on 2026-10-11: 178 crypto, 114 on xyz, 9 on io), their categories, and outcome markets with readable titles from their templates.
+  - `access.ts`: who signs, what the account still needs (a deposit, unified mode, the builder fee, an agent), "Enable trading", and the location gate.
+    - The trading wallet, or a Solana wallet's ARCDEX account, signs everything itself: no pop-ups.
+    - An external wallet approves an agent key once. The key is made and kept in the browser; Hyperliquid lets it trade but never withdraw. Withdrawals are signed by the wallet itself.
+  - `account.ts`: the account across every dex, spot USDC, outcome holdings, open orders and fills, kept up to date by the account's own streams.
+  - `exec.ts`: every order carries a client id; when an answer is lost, each order is looked up by its id and reported as the venue has it, never re-sent and never assumed filled.
+  - `live.ts`: the shared market list (30s, kept in the browser), mids for every dex, a coin's live numbers, its book, trades and candles, and what the account can trade.
+  - `funding.ts`, `fundingQuote.ts`: Arc USDC ↔ the Hyperliquid account through Relay.
+- **Futures (`/futures`, a market at `/futures/<coin>` such as `/futures/xyz:NVDA`; `pages/PerpsPage.tsx`):** Liquid's layout in ARCDEX's colours.
+  - A strip of the busiest markets (one per ticker: four stocks trade on both xyz and io), and the pair bar: price, mark, oracle, 24h change and volume, open interest, funding with the countdown to the hour, max leverage.
+  - The market picker: All, Favourites, Crypto, Stocks, Pre-IPO, Indices, Commodities and FX, with search and sorting by volume, 24h change, funding or open interest.
+  - The chart (`PriceChart` with Hyperliquid's candles and candle stream; the last bar moves with every trade; large trades and your own fills pop), the order book (price grouping, coin or USD, a click fills the limit price) and trades.
+  - The order panel: Cross or Isolated (isolated only where the market says so), leverage up to the market's maximum, starting at 3× unless a position is open there (`DEFAULT_LEVERAGE`). Market (IOC, 1/3/5% price cap) or Limit (post-only option), size in USD with a share-of-balance slider, reduce-only, TP/SL, the estimated liquidation price for isolated, the margin, and the fees (Hyperliquid's rate for the account plus ARCDEX's). $10 at the least.
+  - Underneath: positions (P&L and ROE, liquidation price, funding, TP/SL editing, Close), open orders (Cancel, Cancel all), trade history and balances.
+  - Phones: chart, book and trades, the account, and a Buy / Long · Sell / Short bar that opens the order panel in a sheet.
+- **Predictions (`/predict`, `pages/PredictPage.tsx`):** 218 markets on 2026-10-11, in Crypto, Stocks, Indices, Commodities, FX, Sports, Economics, Companies and Culture.
+  - Each card: the question, the odds bar, both sides' prices (named as the market names them: Yes/No, the teams, Over/Under), the countdown, and the underlying's price for price markets. A question with several outcomes lists its leaders.
+  - A market's full view: every outcome, the underlying's chart, and how it settles (the market's own terms).
+  - Trading: buy or sell either side, market or limit (in cents), whole contracts, $10 at the least, "Pays if right" shown. Settlement is Hyperliquid's own.
+  - Your predictions: contracts, average price, value and P&L, Sell; and open orders with Cancel.
+- **Top traders (Leaderboard → Futures, `/leaderboard/futures`; a trader at `/futures/trader/0x…`):** Liquid's leaderboard and trader profiles.
+  - Hyperliquid publishes its whole leaderboard as one file: 47,349 traders and 39 MB on 2026-10-11, too big for a browser. The engine's `/api/hlleaders` (`api/hlleaders.ts`) reads it at most every 10 minutes while someone is looking, keeps the top 100 of each window (24H, 7D, 30D, all time) by P&L among accounts worth $10K or more, and serves ~51 KB (`arcdex_kv` `hl:leaders:v1` keeps the last good copy).
+  - Ranked by P&L only, as Hyperliquid's own board is. Its return figure is measured against what an account started the window with, so accounts that grew from small deposits read millions of percent: the return is a column, shown capped at ">1,000%".
+  - Display names are Hyperliquid's own, except anything that looks like an email address or a link, which shows as the address.
+  - The first build downloads the whole file, longer than the engine lets a request wait (10 seconds). The first answer waits at most 8 seconds and then says "loading" (503, `Retry-After`), the page asks again every 10 seconds, and the engine warms the board when it starts.
+  - A trader's page (`pages/HlTraderPage.tsx`, `hl/leaders.ts`): account value, unrealized P&L, P&L for each window and its chart (Hyperliquid's `portfolio`), open positions with a Trade button for each market, and the latest 60 trades. All public venue data; ARCDEX never copies a trade by itself.
+  - Linked from the futures page ("Top futures traders").
+  - Tests: `engine/test/hlleaders.test.ts` (what's kept, names, the first answer, a slow first build, a failed refresh keeping the last copy). Checked in the browser against the real leaderboard through a local copy of the route: the board, a trader's page and its trades, and a 375px phone.
+  - Railway: the Dockerfile copies `api/hlleaders.ts` and `railway.toml` watches it; add it to the service's own Watch Paths.
+- **Supported routes (`/routes`, `pages/RoutesPage.tsx`, the registry in `lib/routes.ts`):** the build pack's "transparent supported-route registry".
+  - Every way to trade or move money on ARCDEX, in four groups (spot on Arc, cross-chain trades, bridge, futures and predictions): what goes in and out, the provider, ARCDEX's fee, the usual time, the limits, and whether it's live, switched off or testnet. Then what isn't supported (other tokens through the bridge, coins on the bridge networks, Starknet, Hyperliquid's spot tokens and vaults).
+  - Each provider's health, checked from the visitor's own browser: Arc, the engine, Hyperliquid, Relay, Across, Circle CCTP, Robinhood Chain, Solana and BNB Chain, three calls each (never from the browser's cache), the middle time shown, with block heights where a chain answers.
+  - Keep `lib/routes.ts` in step when a route changes. In More, the drawer and the sitemap.
+  - Tests: `bun scripts/test-routes.ts` (every route complete, its providers checked on the page, its page one the app has, Hyperliquid's routes off while trading is).
+- **Paper trading (2026-10-12; `hl/paper.ts`, `components/HlPaper.tsx`):** a Live | Paper switch above the futures order panel. The build pack's Strategy Lab phase starts with "alerts and paper trading".
+  - **Who and what:** anyone, no wallet, on every Hyperliquid market, with virtual USDC: $10,000 to start, reset to $1K, $10K or $100K.
+  - **Where it starts:** while live trading is off, the page opens on Paper, and "Trading opens soon" offers it too.
+  - **Fills:** a market order fills against Hyperliquid's full-precision book (a fresh `l2Book`), level by level, within the 1/3/5% price cap.
+    - A limit that would cross fills the same way, whole or not at all; post-only ones are refused.
+    - The rest wait, holding back their margin and fee as Hyperliquid does, and fill at their own price once the price reaches it.
+  - **Fees:** what a real order through ARCDEX pays. Hyperliquid's base 0.045% taker / 0.015% maker, plus ARCDEX's 0.05% builder fee (`paperFees`).
+  - **Positions:**
+    - Isolated margin: a loss stops at the margin.
+    - Adding to a position uses its own leverage.
+    - Liquidation at the maintenance margin: half the initial margin at the market's maximum leverage.
+    - Take-profit and stop-loss close the whole position.
+  - **Funding:** Hyperliquid's own hourly rate for each market (`fundingHistory`), paid from the position's margin: size × price × rate, so longs pay a positive rate. An hour waits until every market held has its rate, 15 minutes at most.
+  - **The price path (`step`):** each pass moves a market's price from where it was to where it is, and fires what it crosses in the order the price reaches it. A buy at 97 fills before a stop at 95.
+    - Something already crossed (a gap) fires at the price after the gap; a resting limit fills at its own price.
+  - **Nothing is missed while away (`replay`):** the account remembers when it was last checked.
+    - After a gap of 15s or more (a closed page, a throttled background tab), Hyperliquid's candles in between are replayed, with funding in time order. They're the finest that fit one request: 1m for up to 3.3 days.
+    - Each candle runs open → the side against it → the other side → close.
+    - An order or position only meets candles that opened after it.
+    - One notice says what happened ("While you were away (18 min), from Hyperliquid’s candles: …").
+  - **In this browser:** the account is kept in localStorage (`arcdex:hl-paper:v1`). One tab drives it at a time (a 4-second lease) and the others follow it.
+  - **Notices:** a limit filled, a take-profit or stop-loss hit, a liquidation, an order cancelled.
+  - **Labelled PAPER everywhere:** the switch, the order panel's banner, the account box and tabs, the phone's sheet and bar, and every notice.
+    - The note under the panel says what's simulated, what isn't (your own orders' market impact, partial fills), and that nothing goes to Hyperliquid.
+  - **Tests:** `bun scripts/test-paper.ts`: fills, closes and flips, held-back margin, liquidation, limits and gaps, TP/SL, the price path, funding, the candle replay. 22 of 22 planted bugs failed it.
+  - **Checked in the browser** against live Hyperliquid data:
+    - A $1,000 ETH long filled at the book's price: margin $333.28, liquidation 1,726.3.
+    - A take-profit fired as the price crossed it.
+    - A resting buy filled at its own price, at the maker fee.
+    - With the stored account rewound 18 minutes, the reload replayed the real 1m candles and fired a stop at exactly its price, in the bar that dipped through it.
+    - A 375px phone.
+  - **Every new string is in all six dictionaries** (50).
+- **Price alerts (2026-10-12; `hl/alerts.ts`, `components/HlAlerts.tsx`, `components/PriceAlertWatcher.tsx`):** the other half of the Strategy Lab's start.
+  - **Setting one:** the 🔔 beside a market's price on `/futures` opens a dialog: a level (typed, or ±1/2/5/10% from now), the move it means, sound, and system notifications (asked for when ticked).
+    - An alert fires once, when the price gets to its level from where it was: up to a level above, down to one below.
+    - Up to 50 wait at a time; the newest 100 that fired are kept.
+  - **The list:** an Alerts tab under the chart, in Live and Paper alike (no wallet needed): level, price now, when and where it was set, waiting or reached, Set again, Delete, Clear reached.
+  - **Watched on every page:** the app loads the watcher (`PriceAlertWatcher`, its own small chunk) once an alert exists.
+    - While alerts wait, it follows Hyperliquid's mids over its WebSocket and checks once a second.
+    - One tab drives it (a 4-second lease); every open tab shows the notice.
+    - Notices sit top right (top on phones), and a click opens the market. The driving tab also plays the sound and sends the system notification.
+  - **Nothing is missed while away:** after a gap of 15s or more, the candles in between are read first. A level a candle reached fires with that candle's time ("While you were away, at 03:32 (from Hyperliquid’s candles)").
+    - Only candles that opened after the alert was set count.
+    - Live checks use the mid, while candles are made of trades, so a brief trade print past a level counts after a gap.
+  - **Kept in this browser** (`arcdex:hl-alerts:v1`). Nothing is sent anywhere, so with every ARCDEX tab closed there's no notification until the next visit (that needs web push).
+  - **Tests:** `bun scripts/test-alerts.ts`: direction, live firing, the candle replay, limits, the watch starting fresh. 13 of 13 planted bugs failed it.
+  - **Checked in the browser** against live data:
+    - An alert set from the dialog fired on the Markets page within seconds of BTC reaching it.
+    - With an alert rewound 20 minutes, the reload fired it at the candle that reached its level.
+    - Set again, the Alerts tab, and a 375px phone.
+  - **Every new string is in all six dictionaries** (29).
+- **Funding through Relay:** Arc USDC → the Hyperliquid perps balance (an exact approval to Relay's depository, then its deposit), and back to Arc (Relay's authorization, then a Hyperliquid `sendAsset` to Relay's depository there). No ARCDEX fee on either.
+  - A quote is refused unless it's exactly what was asked: the same account on both sides, the currencies and amount, Relay's own contracts, an approval of exactly the amount, Relay's order paying only the account and refunding only to it, with no calls, and at least 97% of the money arriving.
+  - Measured on 2026-10-11: $25 in, $24.97 out; $25 back, $24.97.
+- **ARCDEX's fee is a Hyperliquid builder fee:** 0.05% on futures orders and 0.1% on prediction sells (Hyperliquid charges builder fees on outcome sells only), approved by the trader once, up to 0.1%.
+  - Hyperliquid pays a builder only while it has 100+ USDC in its perps account. The fee wallet has none, so until the owner funds it orders go out without ARCDEX's fee and nobody is asked to approve one (checked live, `builderReady`).
+- **Location gate (`hlEligibility`):** Hyperliquid's terms exclude US persons, Ontario and sanctioned territories (Cuba, Iran, North Korea, Syria, Russia, Belarus, Crimea, Donetsk, Luhansk). Opening positions and depositing are off there, and wherever the country can't be told; closing, cancelling and withdrawing never are. The edge's `/geo` now also returns the subdivision (`?geo=XX-YY` in local dev).
+- **Elsewhere:**
+  - The testnet futures moved to `/futures/testnet`, linked from the futures page.
+  - Top bar: Futures and Predict. Phones: Futures in the tab bar, Predict in More. The drawer has both.
+  - Portfolio: "On Hyperliquid" (`components/HlHoldings.tsx`): the account's value, counted in the total, its positions and its predictions.
+  - Landing: the futures cards are Hyperliquid's (BTC, ETH, SOL, then the busiest xyz markets, each with its maximum leverage), and the nav, tiles, questions and footer name futures and predictions as they now are.
+  - The sitemap lists `/futures`, `/predict` and the busiest markets' pages.
+- **Tests:**
+  - `bun scripts/test-hyperliquid.ts` (offline): msgpack, every SDK signing vector, wire numbers, rounding and asset ids; real Relay quotes passing and 21 tampered ones refused; 224 recorded outcome markets with readable titles; orders built from the panel's inputs; the builder-fee rules.
+  - `VITE_HL_TRADING=on bun scripts/check-hyperliquid.ts` (live, nothing at stake): a throwaway key's order, cancel and builder approval are refused because the account doesn't exist, and the venue's error names the address it recovered, the key's. Also the WebSocket's message shapes.
+- **Checked in the browser** (local dev, live Hyperliquid data):
+  - BTC and xyz:NVDA: chart, book, trades, the picker and its categories, the strip.
+  - Predict: the cards, and the trade dialog's numbers ($25 at 59¢ buys 42 contracts for $24.74 and pays $42).
+  - Phones at 375px: no sideways scroll, and the order sheet.
+  - The switched-off state.
+- **Not checked:** a real order, deposit or withdrawal; they need funds and the switch.
+- **Every new string is in all six dictionaries** (236).
+- **Owner steps:**
+  1. When ready, set `VITE_HL_TRADING=on` in Netlify (`arcsense-app` → environment variables) and redeploy. Try it with a small amount first.
+  2. Send 100+ USDC to the fee wallet `0x2742…86Bb`'s Hyperliquid perps account and keep it in standard mode; from then on orders carry ARCDEX's fee.
+  3. Take legal advice on offering leveraged perpetuals and prediction markets: the location gate is a minimum, not clearance.
 
 ## ARCSENSE: spot and futures first (2026-10-03)
 
@@ -1920,6 +2061,629 @@ The owner's new site, www.arcsense.site, is hosted on Netlify and serves only th
     3. Netlify then issues the certificate by itself, and the rules take effect.
   - **Done by the owner on 2026-10-04:** both names resolve to Netlify (checked through Google's and Namecheap's DNS). Until Netlify issued the arcdex.online certificate, https answered with Netlify's generic `*.netlify.app` certificate, and http went to https on the same host first.
 
+## Security baseline and the trade switch (2026-10-15)
+
+The build pack's Phase 0 (`docs/REPO_MAP.md`: the repo map, gaps against the pack, security findings and the owner's
+decisions D1–D5), then the security baseline it called for first.
+
+- **Security headers (`netlify.toml` `[[headers]]`):** a Content-Security-Policy whose `script-src` allows the site's
+  own files and two hashed inline pieces of `index.html` (the theme script; the fonts' `onload`, via `'unsafe-hashes'`),
+  no framing, HSTS, nosniff, Referrer-Policy, Permissions-Policy. `connect-src` still allows any https/wss host (the
+  app's many RPCs, and the ones a visitor picks in RPC settings).
+  - Checked in Chromium on 17 pages with no violations; an injected inline script, a foreign script and an inline handler
+    are refused.
+  - `bun scripts/check-csp.ts` fails when an inline script or handler in the HTML no longer matches its hash: update the
+    hash in `netlify.toml` whenever `index.html`'s inline code changes.
+- **CI (`.github/workflows/ci.yml`):** on every pull request and push to main, the site typecheck and build, the header
+  check, the engine typecheck and tests, and gitleaks over the files and the new commits (`.gitleaks.toml` allows only
+  addresses, event topics, Anvil's published test keys and the Supabase anon key). `bun run check` runs the same locally
+  (`scripts/check.sh`; it pointed to a missing file before). `scripts/compass-deploy.ts` is left out of the typecheck: it
+  imports Arc Studio's `@circlefin/compass-chains`, which isn't on npm.
+- **The trade switch (the pack's kill switch):** trading off everywhere or on one venue (`arc`, `robinhood`, `solana`,
+  `bnb`, `starknet`, `hyperliquid`, `ethereum`, `arbitrum`).
+  - **Engine (`engine/src/site/tradeSwitch.ts`):** `GET /v1/trading/status` (public, `no-store`) and `POST
+    /v1/trading/control` `{scope, on, reason, at, signature}`. The signature is an admin wallet's
+    (`ADMIN_EVM_ADDRESSES`, else `BOT_OWNER_ADDRESS`; `ControlVerifier.verifyAnyOf`) over `tradeSwitchMessage`
+    (`api/_marketProtocol.ts`: names the site, the change, the reason and the time), valid 5 minutes and once. A reason
+    is required. The change applies at once, then is saved (`arcdex_bot_settings`, key `trade-switch`) and written to
+    `arcdex_admin_audit`; if the database is down it still applies and the answer says it wasn't saved.
+    `GLOBAL_KILL_SWITCH=true` / `KILL_SWITCH_VENUES` keep trading off whatever a wallet signs.
+  - **Audit (`arcdex_admin_audit`):** append-only. Triggers refuse every update, delete and truncate, whoever runs
+    them (checked on Postgres 16). Only accepted changes are recorded; refusals are logged and counted
+    (`trade_switch_refused`).
+  - **Site (`src/arcdex/lib/tradeSwitch.ts`):** `assertTradingOn(venue)` runs before anything is signed in every trade
+    path:
+    - the Arc swap widget (router, Universal Router and curve routes) and the launchpad's widget, quick buy and launch
+      (checked before the $3 fee);
+    - Relay (Solana, BNB Chain; not gas top-ups), Across (Robinhood Chain; not gas top-ups) and four.meme;
+    - Hyperliquid (new positions only: reduce-only orders that close one always go through) and AVNU (Starknet).
+  - **What isn't a trade:** withdrawals, transfers, the bridge and closing positions keep working.
+  - **Reading the status:** read again when over 30s old; an open page polls every 30s. When the engine can't be
+    reached, the last state read decides; with nothing read, trades go ahead, so trading doesn't depend on the engine.
+  - **Banner (`components/TradePausedBar.tsx`):** on every page while anything is off, with where and why.
+  - **`/admin` (`pages/AdminPage.tsx`, not linked):** each venue's state, turn off or on with a reason, signed by the
+    trading wallet or a connected wallet, and the recent changes.
+  - Every new string is in all six dictionaries.
+- **Checked:**
+  - In Chromium, against a stand-in engine running the real switch: no banner while on; Solana off showed its banner
+    and `/admin` tile; "everything off" reached an already-open page in 28s; both back on cleared it; `/admin` at 390px
+    with no sideways scroll; no CSP violations.
+  - Tests: `engine/test/tradeSwitch.test.ts` (14: the request, the message, admins from env, per-venue and global off,
+    a stranger's, replayed, old and altered signatures refused, a restart, the env switches, a failing database, the
+    HTTP routes; the audit triggers and persistence with `PG_TEST_URL`) and `bun scripts/test-trade-switch.ts`. With the
+    site gate ignoring "everything off", 6 checks fail.
+- **Owner setup (Railway, arcdex-engine):** optionally `ADMIN_EVM_ADDRESSES` (comma-separated). Until it's set, the
+  owner wallet (`BOT_OWNER_ADDRESS`) is the admin.
+
+## Fees: 0.5% on spot, the fee wallet from env (2026-10-15)
+
+The owner's decisions D2 ("0.5% everywhere" on spot) and D4 (keep `0x2742…86Bb` for now, but the fee recipient and the
+admins in environment variables, so a move to a multisig is a setting) in `docs/REPO_MAP.md`.
+
+- **Off Arc, in the site's code (live on the next deploy):** Relay's app fee (Solana, BNB Chain, and the Solana-wallet
+  account) and Across's (Robinhood Chain) are `SPOT_FEE_BPS` = 50 in `lib/platform.ts`. Before, those widgets copied the
+  Arc swap router's `feeBps` (2%, `?? 200` while unread). Deposits and withdrawals through Relay stay 0.5% (the bridge's).
+- **On Arc, on-chain (needs the owners):** ArcDexSwapRouter and ArcDexCurveRouter were deployed at 2% (their constructor
+  sets it) and only their owner can lower it: `setFeeBps(50)`. The swap widget, the Universal Router routes (they read
+  the swap router's fee) and the curve routes follow the chain, so nothing else changes.
+  - **`/admin` → Fees (`lib/routerFees.ts`):** each router's fee, referral share, owner and fee wallet, read from the
+    chain; "Set to 0.5%" for the router's owner, signed by the trading wallet or a connected wallet. The change is
+    refused before signing for a wallet that isn't the owner (it says whose it is) or a fee over the router's 2% cap, and
+    is simulated as that wallet first. The swap router's owner is the deploy wallet `0x414B…C3dA`; the curve router's
+    is the wallet that deployed it from `/deploy/curve-router`.
+  - From a terminal instead: `cast send <router> "setFeeBps(uint256)" 50 --rpc-url https://rpc.mainnet.arc.io --interactive`
+    (it asks for the key; never put it in the command).
+  - `/routes` shows the Arc rows' fee as read from the routers, so it says 2% until the owners sign.
+- **Starknet:** 0.5% by default once `VITE_STARKNET_FEE_RECIPIENT` (a Starknet address) is set; `VITE_STARKNET_FEE_BPS`
+  still overrides it. Without a recipient there's no fee (ARCDEX's fee wallet is an EVM address).
+- **Not changed:** ArcLaunchpad's 1% and 40% of creator tax are fixed in its contract; the $3 launch fee; the bridge's
+  0.5% ($0.05–$50); Hyperliquid's builder fee (perps, not spot); four.meme curve trades (no ARCDEX fee); a new curve
+  router deployed from `/deploy/curve-router` still starts at 2% (the contract's constructor) and is then set from `/admin`.
+- **The fee wallet (D4):**
+  - **Site:** `VITE_FEE_RECIPIENT_EVM` on Netlify (`FEE_WALLET` in `lib/platform.ts`): Relay and Across app fees, the
+    bridge fee, the $3 launch fee, Hyperliquid's builder address, a new curve router's fee wallet, and the fee-wallet
+    views. The Across edge function reads the same variable, so the proxy accepts the new recipient.
+  - **Engine:** `FEE_RECIPIENT_EVM` on Railway (`engine/src/feeWallet.ts`): the live bots' 15% profit fee and the
+    $ARCDEX program's fee wallet, and a new futures deployment's.
+  - Unset or not an address, both keep `0x2742…86Bb`, so a typo never sends fees elsewhere (the engine logs a warning).
+  - **Set both to the same wallet.** The Arc routers' own fee wallet is on-chain: their owner changes it with
+    `setFeeWallet` (`/admin` flags a router whose fee wallet isn't the site's).
+  - **Before moving it to a multisig:** Relay pays app fees out on a claim signed by the recipient, and Hyperliquid
+    needs the builder address to sign and hold $100 in its perps account; check both work from the new wallet. A new
+    builder address also means traders approve it again.
+  - Admins were already in env: `ADMIN_EVM_ADDRESSES` (the trade switch, above).
+- **Checked:**
+  - In Chromium with Arc's RPC answered in the page (Multicall3 included): `/admin` → Fees at 1280px and 390px, with
+    both routers at 2%, "Set to 0.5%" disabled for a wallet that isn't the owner (the tooltip names it), every venue's
+    fee, the fee wallet, no sideways scroll and no page errors. `/routes`: the Arc rows at the routers' 2%, Relay and
+    Across at 0.5%.
+  - Tests: `bun scripts/test-fees.ts` (in CI: the level, `/routes`, the fee wallet from env, the owner control's
+    refusals), `bun scripts/test-robinhood.ts` (the Across proxy follows the fee wallet), `engine/test/feeWallet.test.ts`.
+- **Roadmap:** Phase 1's "Swap fee cut from 2% to 1%" now reads 0.5%, in every language.
+
+## Phase 1: your wallets on every chain, and safer withdrawals (2026-10-15)
+
+The build pack's Phase 1 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`), the parts that don't wait on Privy. Status against its
+acceptance list: `docs/REPO_MAP.md` §8.
+
+- **Feature flags (`lib/flags.ts`):** `flag(name)` reads `VITE_FLAG_<NAME>` (`on` / `off`), else the default: `withdrawLimits` on, `walletsCard` on, `privy` off. A flag change takes effect on the next build.
+- **Your wallets (Portfolio, `components/WalletsCard.tsx`):**
+  - The EVM address with Copy, marked as the same address on Arc, Ethereum, Arbitrum, BNB Chain and Robinhood Chain.
+  - The Solana address (the trading wallet's, or the connected Solana wallet's).
+  - A tile per chain with what's held there:
+    - Arc's cash shows at once, and its coins join once priced;
+    - Ethereum and Arbitrum (D3) are read here (`lib/chainBalances.ts`): ETH and USDC by plain JSON-RPC from public nodes, the next node on failure, 6 seconds each. ETH is priced from Robinhood Chain's WETH/USDG pool.
+    - BNB Chain, Robinhood Chain, Solana and Hyperliquid come from Portfolio's own sections.
+  - Ethereum and Arbitrum count in Portfolio's total.
+  - Amounts stay in base units (bigint) until shown. Arc's native balance (18 decimals) and its USDC ERC-20 (6) are the same money (`arcUsdcSame`).
+  - The wallet's security notices.
+- **Withdrawals (`lib/withdrawPolicy.ts`, `components/WithdrawGuard.tsx`, `components/CashModals.tsx`):**
+  - **Checks as you type:** an address that isn't 0x + 40 hex, the zero address, the wallet itself, or a token's contract (USDC's, or the coin being sent) is refused. A contract address gets a warning. The amount must be above zero and no more than the wallet holds.
+  - **A review step:** what leaves, its worth, the full address, the network, and whether the address funded the wallet, was paid before, or is new. Then the passcode and Confirm.
+  - **Limits, wherever the passcode is asked** (the trading wallet sending anywhere but a wallet that funded it):
+    - a new address takes at most $250 (all new addresses together) until 24 hours after it's saved or first paid. "Save this address" starts its 24 hours.
+    - at most $2,500 a day leaves for such addresses.
+    - The numbers are `WITHDRAW_POLICY`.
+  - **Where the limits apply:** withdraw, sending a coin, Send cash, the bridge's Send from Arc, Solana and cross-chain sales paid elsewhere, and funding a live bot. A refusal says when the money can go, or how (in parts; back to the funding wallet, which has no limit).
+  - **The record:** kept in this browser, signed by the trading wallet's key (an edited one is dropped), and merged with the wallet's USDC sends read from Arc's logs. Clearing the browser doesn't reset the limits for what Arc's recent logs still hold.
+  - **Notices:** each send and each saved address writes a notice (and a system notification when allowed): "If this wasn't you, move your funds back to the wallet that funded it."
+  - **What they can't do:** the limits are client-side. They slow down someone with an unlocked browser; they can't stop the key's owner, who can export the key. Enforcing them against the owner needs Privy's policies or a contract wallet.
+  - `VITE_FLAG_WITHDRAW_LIMITS=off` turns the limits off; the checks and the review step stay.
+- **Privy sign-in and its hosted export behind step-up (D1):** done on 2026-10-16, see "Privy: sign in with email or a social account" below.
+- **Tests:**
+  - `bun scripts/test-withdraw-policy.ts`: new addresses, the daily limit, sends read from logs in both decimals and counted once, the signed record, address checks, flags.
+  - `bun scripts/test-chain-balances.ts`: the requests, the next node, base units, dollars, Arc's two decimals.
+  - Both are in CI.
+- **Checked in Chromium** (local dev, every chain's RPC stubbed in the page; Arc is out of the sandbox's reach), at 1280px and 390px:
+  - the card's addresses and tiles;
+  - each address check;
+  - $300 to a new address refused before signing, with Confirm off;
+  - Save address, then $200 allowed with the passcode;
+  - the notice on the card;
+  - no sideways scroll and no page errors.
+- Every new string is in all six dictionaries (50).
+
+## Phase 2: Solana through Jupiter, shared guardrails, the fee ledger (2026-10-15)
+
+The build pack's Phase 2 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`), the parts that can be built and checked from the
+sandbox. Status against its acceptance list: `docs/REPO_MAP.md` §9.
+
+- **Solana swaps through Jupiter (`lib/jupiter.ts`, `netlify/edge-functions/jupiter.ts`):** SOL or Solana USDC for a
+  coin, or back, through Jupiter's Swap API V2 (`/order`, then `/execute`), with ARCDEX's 0.5% as Jupiter's referral
+  fee, paid in the swap itself. Checked against Jupiter's OpenAPI spec and referral docs in `jup-ag/docs` (Jupiter's
+  own sites are out of the sandbox's reach).
+  - **The proxy** (`/jup/swap/v2/*`) holds `JUPITER_API_KEY` (a Netlify secret, never in the page). It passes only
+    the site's own pages' requests:
+    - orders with whitelisted parameters, ARCDEX's referral account (`VITE_JUP_REFERRAL_ACCOUNT`) at 50–255 bps, and no
+      receiver or payer;
+    - executions that are exactly a signed transaction and its request id.
+  - **Before signing (`checkJupOrder`, `txProblem`, `simProblem`):**
+    - the order: the mints and amount asked for, the taker, a minimum within the slippage ceiling, no one else's
+      referral account, and the fee as shown;
+    - the transaction: the taker signs; the fee payer is the taker, or the payer Jupiter named; ARCDEX's referral
+      token account is in it when its fee applies; no approval or authority change on the taker's tokens;
+    - a simulation on Solana: the input goes down by at most the amount, the output up by at least the minimum, and
+      the trader spends at most 0.01 SOL more.
+  - **Sending:** `/execute` is retried with the same signed transaction (up to 4 tries on 429, 5xx or a lost
+    connection), never signed again. Jupiter runs the same request once.
+  - **The fee:** Jupiter keeps 20% of a referral fee. A mint whose referral token account doesn't exist yet falls back
+    to Jupiter's own fee, and the form says "None on this trade".
+  - **Relay instead** when the site has no key, Jupiter is throttled or down, the proxy answers with something that
+    isn't JSON (local dev), or `VITE_FLAG_JUPITER=off`. After such an answer Relay quotes for 5 minutes. USDC on Arc
+    in or out still goes through Relay.
+- **`lib/execution.ts`:** the `ExecutionProvider` interface (quote → checks → simulate → sign → submit), with the
+  providers and their fees listed. Solana swaps pick their provider there.
+- **Guardrails (`lib/guardrails.ts`):** the price-impact limits, a 15% slippage ceiling, the minimum received, a
+  $25,000 size cap and the drift check before signing, in one place. Applied to Jupiter, Relay, Across, and Arc's swap,
+  curve and quick-buy paths.
+- **The fee ledger (`engine/src/fees`):** every fee the engine reads on-chain, in `arcdex_fee_ledger`. Amounts are
+  exact decimal strings in the token's units.
+  - **Append-only:** triggers refuse updates, deletes and truncates; a row seen again (same id) is ignored.
+  - **Arc:** USDC that ARCDEX's contracts paid the fee wallet in someone else's transaction (the swap and curve
+    routers, the Universal Router, the launchpad, Across's handler), from the $ARCDEX program's scan (`onFeeLogs`).
+    One row per transaction and paying contract. A transfer logged twice (USDC's 6 decimals and the native logger's
+    18) counts once, and the fee wallet's own trades are left out.
+  - **Relay:** what Relay's balance for the fee wallet grew by is `accrued`, what it fell by `claimed`; the balance
+    first seen is `opening`.
+  - **Jupiter (`fees/jupiterWatch.ts`):** the referral account's token accounts, every 10 minutes: each transaction
+    into one is `received`, each out `claimed`.
+  - **Reconciliation, nightly after 00:30 UTC (`fees/service.ts`):**
+    - Arc: the blocks since the last run, scanned again on their own (the archive-aware log scan), against the
+      ledger's rows, to the unit;
+    - Relay and Jupiter: each balance against opening + received − claimed.
+    - Each result is kept in `arcdex_fee_reconciliations` (append-only). A mismatch is logged, counted
+      (`fee_reconcile_mismatch`) and posted to `ALERT_WEBHOOK_URL` when set.
+  - **Read it:** `GET /v1/fees/summary` and `/v1/fees/ledger?limit=&source=` (public: every row is on-chain data), and
+    `/admin` → Fee ledger.
+- **`/admin` → Fees** lists Solana swaps through Jupiter, on once `VITE_JUP_REFERRAL_ACCOUNT` is set.
+- **`/routes`:** a "Solana swaps" route (Jupiter, Relay while Jupiter isn't on), and Jupiter's health through the
+  proxy.
+- **Not built:**
+  - Ethereum and Arbitrum spot (D3): Relay's contracts on those chains couldn't be checked from the sandbox.
+  - Jito: Jupiter's `/execute` sends the transaction itself.
+  - A real funded trade through Jupiter (the owner's first, once the key is set).
+- **Tests:**
+  - `bun scripts/test-jupiter.ts` (in CI): orders and transactions, real mainnet referral token accounts, tampered
+    orders and transactions refused, simulation, `/execute` retries, the proxy and the provider choice.
+  - `engine/test/feeLedger.test.ts`: exact amounts, each transfer once, Relay and Jupiter rows, reconciliation (equal,
+    short, extra, held balances), the nightly run, alerts; the Postgres table's triggers with `PG_TEST_URL`.
+  - `engine/test/coinProgram.test.ts`: the program's scan feeding the ledger.
+- **Checked in Chromium** (local dev, the engine, GeckoTerminal and Jupiter stubbed in the page), at 1280px and 390px:
+  - `/admin` → Fee ledger: totals by source, a mismatch named, the latest rows.
+  - A Solana coin page quoting 0.05 SOL through Jupiter: route "Jupiter · iris", platform fee 0.5% in SOL, ARCDEX's
+    referral account at 50 bps in the request.
+  - No sideways scroll and no page errors.
+- Every new string is in all six dictionaries (69, and one reworded).
+- **Owner steps:**
+  1. Netlify (`arcsense-app`): `JUPITER_API_KEY` (from developers.jup.ag, marked secret) and
+     `VITE_JUP_REFERRAL_ACCOUNT` (ARCDEX's referral account from referral.jup.ag, with token accounts for SOL and USDC
+     at least). Redeploy.
+  2. Railway (arcdex-engine): `JUP_REFERRAL_ACCOUNT` (the same account), and optionally `ALERT_WEBHOOK_URL`.
+  3. Jupiter's referral fees build up in those token accounts; claim them from referral.jup.ag.
+
+## Phase 4: the admin panel and the fee sweeper (2026-10-16)
+
+The build pack's Phase 4 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`). Status against its acceptance list: `docs/REPO_MAP.md`
+§10. `/admin` stays unlinked.
+
+- **Sign-in (`engine/src/admin/auth.ts`, `src/arcdex/lib/adminSession.ts`):** an admin wallet signs an EIP-4361 message
+  that the engine builds: this site, the wallet, a single-use nonce, an expiry 5 minutes out.
+  - **Replay:** a nonce is spent on its first use, whether the signature checks out or not.
+  - **Allowlist:** `ADMIN_EVM_ADDRESSES`, else `BOT_OWNER_ADDRESS`.
+  - **Domain:** both requests must come from the same allowed site (its Origin), and the page refuses to sign a
+    message that names another site or wallet.
+  - **Limits:** 10 nonces a minute per IP.
+  - **Sessions:** last `ADMIN_SESSION_TTL_MINUTES` (30). They're kept in this tab only (sessionStorage) and sent as
+    `Authorization: Bearer`, so no cookie and no CSRF. The engine keeps them in memory as hashes, so a restart signs
+    every admin out. "Sign out every admin" ends them all.
+  - **Recorded:** sign-ins and sign-outs go in the audit log with IP and device, and a sign-in is posted to
+    `ALERT_WEBHOOK_URL`.
+  - Contract wallets can sign in too (ERC-1271/6492, checked on Arc).
+- **The routes (`engine/src/admin/api.ts`):**
+  - `POST /v1/admin/auth/nonce|verify|logout|logout-all`.
+  - `GET /v1/admin/me|live|fees|trades|audit`.
+  - `POST /v1/admin/sweep` (`/v1/admin/fees/claim` is a real run).
+  - `POST /v1/admin/flags`, and `GET /v1/flags` (public).
+  - Everything under `/v1/admin` needs the session, except signing in. Reads change nothing.
+  - A change (a real sweep, a flag) also needs the admin's signature of exactly that change: the second confirmation
+    04 asks for. The kill switch (`/v1/trading/control`) needs no session, so it works in an emergency.
+- **Live sessions:** online now (pages that beat in the last 75s), visitors today and in all, and open WebSocket
+  connections. Also where people are on the site, admins signed in (IP, device), bots running and live, and the switch.
+  - Each heartbeat now carries the section of the site (`sectionOf` in `lib/traffic.ts`: Trenches, coin pages,
+    Futures…); nothing else about the visitor.
+- **The fee sweeper (`engine/src/admin/sweeper.ts`):** fees are paid to the fee wallet inside each trade. The sweeper
+  lists what still sits elsewhere:
+  - fees live bots owe, when their transfer didn't go through: the engine sends them;
+  - Relay's balance for the fee wallet, and Jupiter's referral token accounts: the owner claims those with that
+    wallet's key, which the engine never holds.
+  - **Runs:** daily after `SWEEPER_CRON` (03:00 UTC), and from `/admin` → Fees. Items under `SWEEPER_MIN_USD` ($10)
+    are listed and left alone. A dry run acts on nothing, and its totals equal a real run's on the same state (the
+    same plan function).
+  - **Idempotent:** once a real run of a UTC day goes through, another that day is a no-op. A partial or failed run can
+    go again, and an owed fee is cleared when it's sent, so nothing goes twice.
+  - **Pauses:** "everything off" on the trade switch, or `SWEEPER=off`.
+  - **Recorded:** every run in `arcdex_sweep_runs` (append-only), real runs in the audit log, and a real run's report,
+    a failure or a pause to `ALERT_WEBHOOK_URL`.
+- **Trades:** ARCDEX's router trades from Supabase's `arcdex_trades` (100 newest, and the last 24 hours' count,
+  volume and fees). Without Supabase's key on the engine, the fee ledger's rows stand in.
+- **Audit log:** the append-only `arcdex_admin_audit`: sign-ins, sign-outs, the trade switch, flags and sweeps.
+- **Runtime flags (`engine/src/admin/flags.ts`, `src/arcdex/lib/flags.ts`):** `/admin` → Flags turns a feature on or off
+  for everyone without a deploy. Kept in the engine's settings (`feature-flags`), and audited.
+  - **Which wins:** a flag set on Netlify (`VITE_FLAG_…`) still wins. A protective flag (`withdrawLimits`) can only be
+    turned on there, never off: loosening a protection takes a deploy, so a stolen admin session can't.
+  - **On the site:** pages read the flags when the app starts and every 5 minutes, and keep them for the next visit (a
+    day at most). The admin's own browser follows a change at once.
+  - The flag list is `SITE_FLAGS` in `api/_marketProtocol.ts`.
+- **`/admin`:** a sign-in bar (sign with the trading wallet or a connected one), then tabs: Overview, Fees (the routers'
+  fee, the ledger, the sweeper), Trades, Audit log, Flags, and Kill switch. Kill switch and the routers' fee work
+  without signing in.
+- **Tests:**
+  - `engine/test/admin.test.ts`, 26 tests (and 1 more with `PG_TEST_URL`):
+    - sign-in: the message, replay, expiry, the allowlist, another key, another site, the nonce limit, sessions
+      ending, the audit;
+    - flags: a signed change, the protective rule, a stranger, another admin's session, a replay, a tampered change;
+    - the sweeper: dry equals real, the same-day no-op, failures, pauses, the threshold, the daily run;
+    - the routes (two admins: a real sweep is signed by the one signed in), and the sweep table's triggers.
+    - 14 of 14 planted bugs failed it.
+  - `scripts/test-withdraw-policy.ts`: runtime flags (followed, a build-time pin wins, protective flags never turned
+    off from the panel).
+- **Checked in Chromium** against `engine/scripts/admin-standin.ts` (the engine's own admin code in memory), with an
+  in-page test wallet signing with Anvil's published test key, at 1280px and 390px:
+  - the panel locked before sign-in, then signing in;
+  - Overview, a dry run then a real one ($12.50 sent, $42.50 to claim), and a second real run the same day a no-op;
+  - the protective flag's Off disabled, Jupiter toggled and followed in that browser at once;
+  - Trades, the audit log with each action, Kill switch, and signing out;
+  - no sideways scroll and no page errors.
+- Every new string is in all six dictionaries (82).
+- **Owner steps (Railway, arcdex-engine):**
+  - `ADMIN_EVM_ADDRESSES`: the admin wallets, a hardware wallet preferably.
+  - `ALERT_WEBHOOK_URL`: a Slack or Discord webhook, for sign-in, sweep and mismatch alerts.
+  - Optionally `SWEEPER_MIN_USD` and `SWEEPER_CRON`.
+  - Then redeploy (Deploy latest commit).
+
+## Phase 5: safety above Buy, referral rebates in the ledger, alerts by push (2026-10-16)
+
+The build pack's Phase 5 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`). Status against its acceptance list: `docs/REPO_MAP.md` §11.
+Trending and new pairs were already the Trenches.
+
+- **A safety rating above Buy (`lib/buyRisk.tsx`):** every trade form shows the coin's rating right above its Buy
+  button, on desktop and in the phone's trade sheet.
+  - **Which forms:** Arc's swap and curve widgets, Solana, BNB Chain, Robinhood Chain, and paying from a Solana wallet.
+  - **Where the rating comes from:** each coin page (and the Swap page, for the coin picked) gives it with
+    `<BuyRiskProvider>`, rated as the Trenches rate it: `arcSafety` with the engine's scan, `solSafety`, `bscSafety`,
+    `rhSafety`. A Robinhood stock name Robinhood didn't issue is Danger.
+  - **Danger:** the buy waits for a tick ("I understand this coin is rated Danger and I could lose everything I put
+    in"); the button is disabled and the submit refuses until then. Selling is never held up.
+  - **Other cases:** $ARCDEX shows "Official". A form no page rated says so ("Not rated here"). Starknet labels the token
+    bought as on AVNU's verified list. GeckoTerminal's honeypot flag now rates Danger (it was Risky).
+  - **Portfolio:** its Sell sheets (Arc, Solana, BNB Chain, Robinhood Chain) are sell-only now, so there's no buy path
+    there without the coin's rating.
+  - Behind the protective flag `buyRisk` (only `VITE_FLAG_BUY_RISK=off` and a deploy turn it off).
+- **Referral rebates in the fee ledger (`engine/src/fees/referrals.ts`):** the Arc routers pay a trader's referrer their
+  share of the fee inside the trade (`ReferralPaid`).
+  - **Recording:** each one is a ledger row (`arc-referral`, status `rebate`) with the trader, the whole fee (from the
+    trade's `Swapped`) and the share in force at that block (1500 from the constructors, then `ReferralShareUpdated`).
+    Read every minute from block 22,548,761 on.
+  - **Nightly check (after 00:40 UTC),** from a scan of its own, each rebate against:
+    - the routers' events, one to one;
+    - the transfer that paid the referrer;
+    - the share of the fee (exact on the swap router; one unit on the curve router, which cuts both from 18 decimals);
+    - the referrer the router holds for that trader (`referrerOf`, read then: bindings never change);
+    - the fee wallet's receipt for the same trade.
+    Results go to `arcdex_fee_reconciliations` (source `referral`); a mismatch alerts.
+  - **Elsewhere in the ledger:** the Arc fee reconciliation now ignores rebate rows, and per-source totals round once
+    (row-by-row rounding drifted). `/admin` → Fees shows rebates and how far they're read; `/v1/fees/summary` has
+    `rebates` (exact USDC) and `rebatesScannedTo`.
+  - **Off Arc:** there's no referral share to record: Relay's, Across's and Jupiter's fees have none (Jupiter's smallest
+    referral fee is ARCDEX's whole 0.5%).
+- **Alerts by web push (`engine/src/alerts`, `lib/push.ts`, `public/sw.js`):** alerts reach a phone or desktop with every
+  ARCDEX tab closed.
+  - **Web push with no library:** VAPID (RFC 8292) and aes128gcm encryption (RFC 8291). It matches RFC 8291's own
+    example byte for byte; the reference `web-push`/`http_ece` decrypt it and verify its tokens. Only the browsers' push
+    services are called (FCM, Mozilla, Apple, Windows), so a subscription can't point the engine at any other host.
+  - **What can be watched:**
+    - Hyperliquid price alerts: the ones set on `/futures` are mirrored to the engine while push is on, in the visitor's
+      language;
+    - Arc coin price levels;
+    - Arc whale trades (a single trade of at least an amount, any side, buys or sells).
+    A price alert fires once; a whale alert at most once a minute. Arc alerts are checked on every streamed trade;
+    Hyperliquid's mids every 2 seconds while an alert waits on them.
+  - **Delivery time:** each delivery's time from the trigger (the trade's block, or the mid's read) to the push service
+    accepting it is kept: `GET /v1/push/stats` gives p50, p95 and the share within 10 seconds, never a subscription.
+  - **Subscriptions:** by id and a secret token (only its hash is stored), from the site's own pages only, ten new ones
+    an hour per address, 50 alerts each. Gone endpoints are dropped, and so is one that fails 10 times. A push service
+    asking to wait gets one retry. Kept in `arcdex_push_subs`.
+  - **Routes:** `GET /v1/push/key|stats`; `POST /v1/push/subscribe|alerts|state|unsubscribe|test`.
+  - **The site:**
+    - a 🔔 on Arc coin pages opens the alerts dialog (price level with ± chips, whale size and side);
+    - the futures alert dialog has the same "Get alerts with ARCDEX closed" switch, with Send a test and Turn off;
+    - the service worker shows notifications and opens the page an alert names. It caches nothing and answers no
+      requests; Netlify serves it no-cache.
+  - **The flag:** `pushAlerts` (on; `/admin` can turn it off). `PUSH=off` on Railway stops the engine's side.
+- **Checked:**
+  - **Tests (in CI):**
+    - `scripts/test-buy-risk.tsx`: 9 of 9 planted bugs caught.
+    - `scripts/test-push.ts`: every alert the page builds is one the engine takes.
+    - `engine/test/referrals.test.ts`: 15 of 15 planted bugs caught; Postgres columns checked.
+    - `engine/test/pushAlerts.test.ts`: 20 of 20 planted bugs caught; Postgres checked.
+  - **In Chromium** (full Chromium in its new headless mode: the headless shell reports notifications as denied),
+    against `engine/scripts/push-standin.ts` (the engine's server and alert code in memory):
+    - the label above Buy; turning alerts on (the service worker registered, the subscription with the engine);
+    - setting a price and a whale alert;
+    - trades that shouldn't and should fire them; each push decrypted with the browser's own key;
+    - delivered to the real service worker through Chromium's DevTools protocol: both notifications shown, each opening
+      its coin page, and the open tab marking the alert reached;
+    - a Hyperliquid alert set on `/futures` pushed 0.8–2.3 s after the move;
+    - 390px with no sideways scroll, no page errors.
+  - **Not checked:** a real push service (FCM and the others are out of the sandbox's reach) and a real phone.
+- **Every new string is in all six dictionaries** (39).
+- **Owner steps (Railway, arcdex-engine), optional:** `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` (from
+  `npx web-push generate-vapid-keys`) and `VAPID_SUBJECT`. Without them the engine makes a pair and keeps it in its
+  database. Then Deploy latest commit.
+
+## Privy: sign in with email or a social account (2026-10-16)
+
+The build pack's Phase 1 (decision D1). The owner set `VITE_PRIVY_APP_ID` on Netlify, and the admin wallets (`ADMIN_EVM_ADDRESSES`) on Railway, on 2026-10-16. Status against the pack: `docs/REPO_MAP.md` §8.
+
+- **What it is:** "Email or social account" at the top of Connect Wallet (`components/ConnectWallet.tsx`).
+  - Privy signs the person in and makes an EVM wallet and a Solana wallet for the account (`createOnLogin: 'all-users'`).
+  - Their keys stay with Privy: ARCDEX's code never sees one.
+- **Loaded only when used (`privy/PrivyHost.tsx`, `privy/PrivyRoot.tsx`):**
+  - Privy's SDK (`@privy-io/react-auth`, pinned) is 1.3 MB (370 KB gzipped) in its own chunk.
+  - It's fetched when someone picks the option, or when this browser was signed in before: `arcdex:privy:v1`, or wagmi's last connector being `privy` (`initPrivy`, called from `lib/reconnect.ts`).
+  - Other visitors load none of it. The app's own files grew about 6 KB gzipped.
+- **The EVM wallet is the connected wallet:**
+  - wagmi's connector `privy` (`wagmi.ts`) is an injected connector over the wallet's EIP-1193 provider. PrivyRoot connects it after a sign-in.
+  - Trade forms, Portfolio, withdrawals and the bridge then use it as they use MetaMask. Privy confirms each transaction in its own window.
+  - Arc is Privy's default chain, and every chain in wagmi's config is in its `supportedChains`.
+  - Another account signing in on the same tab reconnects, so the app never trades from the one before.
+- **The Solana wallet** signs wherever a Solana wallet app would (`lib/solanaWallet.ts` `setPrivySolana`) when no app is connected. It's shown as "Privy", and signs versioned transactions only.
+- **Step-up (`privy/stepUp.ts`; 04: "step-up auth for export and withdraw"):**
+  - **With two-step verification on** (Manage account → Two-step verification, Privy's own enrollment): Privy asks for the code before every export, and before every send to an address that isn't the account's own.
+  - **Without it:** the account must have signed in on this tab within 5 minutes for an export, or 15 minutes for a send.
+    - The sign-in time is kept in memory only, so a reload or another tab needs a fresh sign-in.
+    - "Sign in again" signs out and back in through Privy. The withdraw window then comes back on its first step.
+  - **Sends to the account's own EVM or Solana address** need neither.
+  - **Where:** the withdraw guard (`components/WithdrawGuard.tsx`, `privyStep`) covers every send it already covers, and the bridge's "Send from Arc" for this wallet too.
+  - **What it can't do:**
+    - The sign-in time is checked in the page. It stops someone who finds the site open, not someone using the browser's developer tools; two-step verification is enforced by Privy.
+    - The withdraw limits (`lib/withdrawPolicy.ts`) apply to the trading wallet only, since their ledger is signed by its key.
+- **Export (Manage account → Export keys):** Privy's own window for each key (`useExportWallet`), after the step-up.
+- **Account menu:** "✉ <email>" in the header, Export keys, and Sign out, which also disconnects the wallet from the app.
+- **Flag `privy`:** on by default, but offered only with `VITE_PRIVY_APP_ID` set: lowercase letters and digits, anything else keeps it off. /admin → Flags turns it off without a deploy.
+- **CSP:** Turnstile (`https://challenges.cloudflare.com`) is in `script-src`, for Privy's bot check. Privy's frames were already allowed (`frame-src https:`).
+- **Bug found by the browser check:** signing out left the wallet connected in the app, because Privy's provider was dropped before wagmi could disconnect through it. Now wagmi disconnects first, and drops the connection itself if it can't.
+- **Checked:**
+  - `bun scripts/test-privy.tsx` (in CI): the step-up rules, the sign-in and export calls, the Solana signer, the wagmi connector, the withdraw guard rendered, and the source. The source checks: Privy's SDK is imported only by PrivyRoot, lazily; the connect window; the bridge; the CSP; the pinned version. 12 of 12 planted bugs failed it.
+  - In Chromium, 23 checks against a stand-in for Privy's SDK (`scripts/privy-mock`, run with `scripts/vite.privy-mock.config.ts`), with Arc's RPC answered in the page. Privy's servers are out of the sandbox's reach.
+    - A first visit loads none of Privy's code.
+    - After signing in, the wallet connects in about 0.4 s, and both addresses show on Portfolio within a second of a reload.
+    - After a reload, a send elsewhere is held for the step-up. After "Sign in again" it goes to Privy's wallet as `USDC.transfer(that address, $1)`.
+    - Export is refused after a reload; with two-step verification on, Privy's code comes first, then its export window, for each key.
+    - Sign out, a cancelled sign-in, the flag off, and 390px with no sideways scroll.
+  - Not checked: Privy's real servers, a real sign-in, a real transaction.
+- **Owner steps:**
+  1. In the Privy dashboard (dashboard.privy.io → the app):
+     - allowed origins `https://arcsense.site`, `https://www.arcsense.site`, `https://arcdex.online` and `http://localhost:5173`;
+     - the login methods to offer (email, Google, X, Apple…);
+     - embedded wallets for Ethereum and Solana;
+     - MFA methods (authenticator app, passkey), so users can turn on two-step verification.
+  2. The App ID is already in Netlify. A deploy builds it in: merging to `main` does.
+  3. On Railway, the admin wallets take effect once the service redeploys: Railway does that by itself after a variable changes, and on every merge to `main`.
+  4. Try a sign-in and a $1 withdrawal on arcsense.site.
+- Every new string is in all six dictionaries (31).
+
+## Phase 3, first part: the page shows at once on phones (2026-10-16)
+
+The build pack's Phase 3 asks for Lighthouse performance 85+ on a mid-range mobile profile. Status against its other tasks: `docs/REPO_MAP.md` §12.
+
+- **Measured first:** Lighthouse 12 (mobile: simulated slow 4G and a 4× slower CPU) on the production build, served locally, with outside hosts unreachable.
+  - Before: home 70, Portfolio 74.
+  - Nothing showed until the app's code had loaded and run: first paint at about 3 s.
+- **The app shell (`index.html`):** the top bar is drawn by the HTML itself, plus the Trenches frame (coin strip, chain chips, lane tabs and lanes) on their paths. The app replaces it when it starts.
+  - It copies the app's own layout from `terminal.css`: the same heights, colours and breakpoints, in light and dark.
+  - The theme script also sets:
+    - `data-boot="tr"` on the Trenches' paths;
+    - `data-boot-c`, the chain whose chip is marked (the path's, else the last picked, `arcdex:chain`);
+    - `data-boot-en` when the app will be in English (stored language, else the browser's, as `lib/i18n.ts` picks it). Other languages get the frame without English labels.
+  - Its hash in the CSP changed with it (`scripts/check-csp.ts`).
+- **Less code before the first page:**
+  - The account menu's Deposit, Withdraw and Support windows load when opened. They used to bring the Solana cross-chain form, Jupiter, Relay and the withdraw code (about 60 KB) into every first load.
+  - The trading-wallet sheet and the share card (profit notifications) load the same way.
+  - `enableAlertNotifications` moved to `lib/notify.ts`, so the account menu no longer loads the discovery panel for one function.
+- **The logo:** a 48 px copy (`public/arcdex-mark-48.png`, 3.5 KB) for the top bar and the status bar. The 256 px original (40 KB) stays for the landing page and link previews.
+- **The coin strip on phones:** the contract-address pill was squeezed and its text ran into "Price".
+  - The pill no longer shrinks.
+  - Under 440 px the burned figure is left out (it's on `/burn`), and under 360 px the price too.
+  - Checked at 320, 360, 390, 412 and 768 px: no overlap, nothing cut off.
+- **After:**
+  - Home 84–86 over three runs (median 85).
+  - Portfolio 78; a coin page 70.
+  - First paint 0.9 s everywhere.
+  - Home now loads 341 KB of JavaScript (it was about 400 KB).
+- **What's left:**
+  - LCP is the app's own first render, about 4 s on that profile. Most of it is the wallet libraries (viem, wagmi, react-query) every page starts with.
+  - Rendering before them would mean loading wagmi after the first page: a bigger change, for later.
+  - Coin pages wait on their chart and data.
+- **Tests:**
+  - `bun scripts/test-app-shell.ts` (in CI): the boot script on every Trenches path and the others, chains, languages and blocked storage, and the frame's labels, chains, heights and breakpoints against the app's own source.
+  - The Privy browser check (23 checks) was run again after the windows became lazy: all passed.
+
+## Phase 3, second part: one-field Buy/Sell with a Details drawer (2026-10-16)
+
+The build pack's "single-field Buy/Sell, collapsed Details drawer". The owner chose to do it on coin pages and keep the Trenches and futures as they are ("proceed with your recommendations", 2026-10-16).
+
+- **What a form shows:** Buy / Sell, the one amount field with its presets, what the trade gets, the safety rating and the button.
+- **The drawer (`components/TradeDetails.tsx`):** "Details ▾" with a short hint while closed ("0.5% fee · 3% slippage", "0.5% fee · Relay"). Inside: the route, minimum received, fees, creator tax, slippage, when it arrives, which wallet trades, and the form's note.
+  - Collapsed by default. Open or closed is one setting for every form, kept in this browser (`arcdex:trade-details`).
+- **Never in the drawer:** a price impact from 5% or a total cost from 6% (`HOT`, in amber, red at the confirm limit), a snipe tax, the ticks that confirm them, the safety rating, errors, and the notes that say why a coin can't be bought.
+- **Forms:** Arc (`ArgusSwapWidget`, curves included), ARCDEX's launchpad (`CurveSwapWidget`), Solana, BNB Chain, Robinhood Chain, and paying from a Solana wallet (`SolanaCross`). The futures order panel and the Starknet page are unchanged.
+- **Tests:** `bun scripts/test-trade-details.tsx` (in CI): the drawer closed, open and remembered; in each form, one amount field, what the trade gets outside, the route, fees and slippage inside, and the warnings, ticks and rating outside. Hiding the high-impact row, or moving "You receive" into the drawer, each fails it.
+- **Checked in Chromium** (every form mounted with the app's providers, other hosts refused), at 1280px and 390px:
+  - each form with one field and Details collapsed;
+  - opening one opens them all, and it's remembered after a reload;
+  - no sideways scroll.
+- Every new string is in all six dictionaries (4).
+
+## Phase 6: verified PnL, the wash-trade filter, comments and moderation (2026-10-16)
+
+The build pack's Phase 6 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`): "PnL on profiles matches an independent on-chain recomputation; wash-trade test wallets are filtered; reports and mutes work", and its test matrix's "XSS on user content". Status against its tasks: `docs/REPO_MAP.md` §13. Profiles, follows, the feed, theses on charts and share links were already there.
+
+- **The trade book (`engine/src/social/book.ts`):** every `Swapped` event of ARCDEX's Arc routers, read from the chain every minute, 50 blocks behind the head.
+  - **Routers:** ArcDexSwapRouter v1 and v2, and ArcDexCurveRouter, from block 22,548,761 (`SOCIAL_ROUTERS` in `api/_socialProtocol.ts`).
+  - **Stored:** in the engine's Postgres, `arcdex_social_trades`, append-only (triggers refuse updates and deletes). Also kept in memory for the boards.
+  - **Sources:** never the Supabase index, and nothing a browser sends.
+- **Verified PnL (`engine/src/social/pnl.ts`, `PNL_METHOD`):**
+  - **Method:** average cost per coin, in chain order. A buy costs the USDC it paid, fee included. A sale realizes the USDC it received less the average cost of what it sold.
+  - **Tokens with no cost here:** tokens sold beyond what was bought through ARCDEX (sent in from elsewhere) are "unmatched". Their proceeds aren't profit.
+  - **Units:** every amount is a micro-USDC integer.
+  - **Windows:** a window (24H, 7D, 30D, All) counts the sales in it, against costs from any time before them.
+- **The wash-trade filter (`engine/src/social/wash.ts`, numbers in `WASH`):** over the last 30 days of router trades.
+  - **Round trips:** a coin bought and sold back within 5 minutes, tokens within 10% and USDC within 5%. A wallet is flagged with 5+ of them making half or more of its volume.
+  - **Mirrors:** two wallets trading the same coin in opposite directions within 3 blocks, tokens within 10%. Flagged at 3+.
+  - **What a flag does:** the wallet is left out of every board, and the board lists it with the reason and the PnL it would have claimed. Its profile says so. It's left out of the site's points list too.
+  - **Board minimum (`BOARD_MIN`):** 3 trades and 1 sale with a cost.
+- **Nightly check, after 00:50 UTC:**
+  - **What it does:** the blocks recorded since the last check are scanned again on their own and compared with the book, trade by trade, to the unit (missing, extra, changed).
+  - **On a mismatch:** it's logged, counted and posted to `ALERT_WEBHOOK_URL`. `checkedTo` advances only to blocks that matched.
+  - **The Supabase index:** where it can be read, `arcdex_trades` is compared over the same range. The profile's swaps and positions lists still come from it.
+- **Comments, reports, mutes, moderation (`engine/src/social/moderation.ts`):**
+  - **Comments:** on a thesis (its thread) or a coin, by a signed-in wallet (the site's wallet session).
+    - Plain text, cleaned of control, direction and zero-width characters (`cleanText`).
+    - 280 characters at most, 30 a day, one every 10 seconds. An author can delete their own.
+  - **Reports:** a comment, thesis or profile, once per wallet, 20 a day, with a reason. A comment or thesis that 3 different wallets report is hidden until an admin looks. The author's and banned wallets' reports don't count.
+  - **Mutes:** a wallet hides another's theses, comments and feed items for itself (1,000 at most). Kept on the engine, with a copy in the browser (`lib/mutes.ts`).
+  - **Admins (`/admin` → Reports):** hide, restore, dismiss, ban and unban.
+    - Each is signed (`moderationMessage`) by the admin signed in, and audited.
+    - A restored or dismissed item isn't hidden by reports again.
+  - **Banned wallets:** can't comment or report, and what they posted is hidden. `/api/social` (on the engine) refuses their theses, profile, clan and transfer-note writes (`setSocialGuard`).
+  - **Storage:** rows in the engine's Postgres (`arcdex_social_comments`, `_reports`, `_mutes`); the moderation state is the setting `social-moderation`. Theses stay in Supabase, and the site leaves out the ones hidden here.
+- **Routes (`engine/src/social/api.ts`):**
+  - Reads: `GET /v1/social/board?period=`, `/trader/:address`, `/flags`, `/checks`, `/comments?target=`, `/counts?targets=`, `/moderation`, `/me`.
+  - Writes: `POST /v1/social/comment`, `/comment/delete`, `/report`, `/mute`. Each needs the site's own origin and a wallet session.
+  - Admin: `GET /v1/admin/reports`, `POST /v1/admin/moderate`.
+  - `SOCIAL=off` on Railway stops all of it.
+- **The site:**
+  - **Leaderboard:** the verified board first, with a Win rate column. A footnote reads "Verified on-chain", with the last block read and the wallets the filter left out.
+  - **Profiles:** "✓ Verified on-chain" and the rank beside the PnL. The period numbers and the chart come from the book. A flagged wallet carries its note.
+  - **Where comments are:** a Comments tab on coin pages, and a 💬 thread under each thesis. Shown as text, never HTML.
+  - **The ⋯ menu:** on comments, theses and profiles: Report, Mute this wallet, Delete (your own).
+  - **Fallback:** without the engine, the old Supabase numbers show.
+  - **Flag:** `comments` (on; `/admin` can turn it off).
+- **The independent check (`scripts/verify-pnl.ts`):**
+  - **What's its own:** a scan (plain JSON-RPC, and every slice must answer), a decoder (viem's, on the event as the contracts declare it), and exact fractions.
+  - **What it compares:** the engine's numbers for each window. Counts and volume must match exactly. Realized PnL and unmatched proceeds must be within the engine's rounding (2 micro-USDC a sale) and to the cent.
+  - **Running it:** `bun scripts/verify-pnl.ts` checks the 10 best traders of the all-time board; `--top N` or addresses check others. It exits 1 on any mismatch.
+- **Fixed on the way:**
+  - **A reload signed some wallets out (`lib/reconnect.ts`):** with `reconnectOnMount={false}`, wagmi's provider clears every connection while it first renders. The app started its own reconnect before that, so a wallet that answers at once was reconnected and then wiped. It now starts from an effect inside the provider (`<ReconnectLastWallet />`).
+  - **The profile's Share, 𝕏 and Send cash buttons** were white on white in the light theme.
+- **Tests:**
+  - `engine/test/social.test.ts` (30, with Postgres when `PG_TEST_URL` is set) covers:
+    - decoding;
+    - PnL against an independent exact computation on 300 random histories;
+    - unmatched tokens and windows;
+    - wash test wallets (a farmer, mirrored twins) left out while honest scalpers stay;
+    - the book across a restart, and the nightly check;
+    - comments, reports and auto-hide, mutes, signed moderation and the audit, the routes;
+    - the tables' append-only triggers.
+  - `bun scripts/test-social.tsx` (in CI) covers:
+    - the independent check against the engine, on the same events: 600 windows agree, and it catches a cent off or a missing trade;
+    - comment markup escaped, with no raw HTML in any social component;
+    - a banned wallet refused by `/api/social`;
+    - the flag.
+  - `bun scripts/test-reconnect.tsx` (in CI): wagmi's clearing, the reconnect order, and both entry files.
+- **Checked:**
+  - **In Chromium,** against `engine/scripts/social-standin.ts` (the engine's social and admin code in memory, seeded with honest traders, a farmer and mirrored twins), with an in-page test wallet, at 1280px and 390px:
+    - the board, the wash list, a twin's note and Alice's verified profile;
+    - mute, report and unmute;
+    - a coin's comments with `<img onerror>` shown as text (no alert), posting, reporting a comment, and a thesis thread;
+    - `/admin` → Reports: hiding the scam comment, then gone from the coin page;
+    - no sideways scroll.
+  - **verify-pnl end to end,** against a stand-in Arc RPC (9k-block slices, 429s) and the engine's boards over the same 190 events: every number matched, and a cent off exited 1.
+- **Not in the book:**
+  - Arc trades through Uniswap's Universal Router (native-USDC pools): they carry no ARCDEX event.
+  - Trades on other chains (Relay, Across, Jupiter, AVNU) and Hyperliquid.
+  - Clan boards and points still come from Supabase. Points leave out flagged wallets.
+- **Owner steps:**
+  1. Once the engine has read the routers' history (`GET /v1/social/board` shows `scannedTo`), run `bun scripts/verify-pnl.ts` from a machine that reaches Arc. It should end "Every number matches the chain."
+  2. Railway: the Dockerfile copies `api/_socialProtocol.ts`, and the service's Watch Paths (`/api/**`) already cover it.
+
+## Phase 7: copy trading from engine-held copy wallets (2026-10-16)
+
+The build pack's Phase 7 (`06_BUILD_PLAN_AND_ACCEPTANCE.md`). Custody, asked and chosen by the owner ("proceed with your recommendations", 2026-10-16): **engine-held copy wallets**. Status against the pack: `docs/REPO_MAP.md` §14.
+
+- **Switched off the same day (owner, 2026-10-16: "I don't want ARCDEX to hold users' copy trade wallets"):** `main.ts` gives the copy engine no vault, so no copy wallet can be made or opened, whatever the flag says; `/copy` says copying isn't available. The rest below (leaders, rules, the screen, caps, the stop switch, fees) stays for a non-custodial design to reuse.
+
+- **Off until the owner turns it on:** the `copyTrading` flag (`/admin` → Flags; off by default on the site and the engine). `COPY=off` on Railway stops it whatever the flag says.
+- **The copy wallet (`engine/src/copy/engine.ts`):** one per follower (a wallet signed in on the site).
+  - **Made only after the terms are signed:** the follower's wallet signs the six risk notices (`COPY_TERMS` in `api/_copyProtocol.ts`): copied losses, slippage and skips, custody, withdrawals, fees, no advice. Valid 5 minutes. A new terms version asks again and keeps the wallet.
+  - **Custody:** its key is made on the engine and encrypted under `BOT_WALLET_SECRET` (`WalletVault`, as live bots'). The engine holds what followers deposit, and the page says so first.
+  - **Money in:** USDC on Arc to its address. The page's Fund sends it from the trading wallet (with its passcode rule and withdraw limits) or a connected wallet.
+  - **Money out:** signed by the follower's wallet (`copyWithdrawMessage`, 5 minutes, once), only to that wallet or one that funded the copy wallet (`bot/funders.ts`). Fees owed are sent first, and $0.05 stays for gas.
+- **Leaders:** wallets on the verified board (Phase 6) with 10+ trades over 3+ days, 3+ sales with a cost here and no wash-trading flag (`LEADER_MIN`, `copy/rules.ts` `leaderVerdict`). Checked when a rule is made and before every copied buy. Copy wallets can't be leaders.
+- **Rules (`copy/rules.ts` `parseRule`), one per leader, 10 at most:**
+  - the most per trade, $1–$500;
+  - a slippage cap, 0.5–15% (3% by default);
+  - safety: skip Danger (default), or Safe coins only;
+  - on or paused.
+- **Copying (`CopyEngine.onLeaderTrade`):**
+  - **The feed:** the chain stream also subscribes to ARCDEX's routers' `Swapped` events (`main.ts`), decoded as the trade book does. They're copied before the batch is parsed. A trade seen over 60 s after its block (a restart, a lag) isn't copied (`COPY.staleMs`).
+  - **Once per trade, for every follower:** the leader's standing and the coin's rating are asked once. Then each follower's copy runs in its own queue, in an order that changes with every trade.
+  - **Buys, through the bot executor (`trading/live.ts`):** Uniswap's Universal Router, the coin's v4 USDC pool, the pre-flight round trip first.
+    - **Size:** the leader's own size (what reached the pool), at most the rule's most and what the wallet can spend after a $0.30 gas reserve, fees owed and the fee on this copy. Copies under $1 aren't made.
+    - **Crowd:** all followers of one leader trade together buy at most 2% of the pool (`COPY.crowdPoolShare`).
+    - **Price:** the leader's price less the rule's cap is the swap's on-chain minimum (`buyFloor`, the executor's `floor`). A quote under it is refused before anything is signed.
+  - **Sales:** the share of the follower's lot of that coin (bought through this leader's copies) that the leader sold of its own holding, read at the trade's block. The whole lot when the leader sold out (1% or less left) or its balance can't be read. Coins from elsewhere are never sold.
+  - **Safety (`copy/rules.ts` `screen`):** the scanner's report (the full scan for "Safe only") and the rug guard. Danger and unrated coins are skipped, and Risky ones under "Safe only". A coin the scanner doesn't track can't be rated, so it isn't copied. The pre-flight's round trip over 20% skips it too.
+  - **Stops:** the follower's stop switch, a rule paused or deleted, the flag and `COPY=off`, and for buys ARCDEX's trade switch (sales still follow the leader out). Each is asked before a copy starts and again right before every transaction is signed (`SendGuard` in `trading/live.ts`), so a stop halts copies already under way.
+  - **Recorded:** every copy, filled, skipped or failed, with why, its transaction, and its time from the leader's block to its receipt (target 30 s, `COPY.windowMs`). `/v1/copy/status` and `/admin` show the share within it, p50 and p95, and one outside it is logged.
+- **Fees:** every copy owes the swap router's `feeBps` (read from the chain every 10 minutes, so 0.5% once the owners set it) on what it spent or received. Sent to the fee wallet once $0.25 is owed (every minute) and before any withdrawal. Recorded in the fee ledger as `arc-copy` (left out of the Arc reconciliation: they're the copy wallets' own transfers).
+- **Storage:** `arcdex_copy_wallets`, `arcdex_copy_rules` and `arcdex_copy_executions` (append-only, like the fee ledger), in the engine's Postgres.
+- **Routes (`copy/api.ts`):**
+  - Public: `GET /v1/copy/status|leaders`.
+  - Signed in (the site's wallet session): `GET /v1/copy/me|destinations`; `POST /v1/copy/open|rules|rules/delete|stop|withdraw`. Writes come from the site's own origins only.
+  - Admin: `GET /v1/admin/copy`.
+- **The site:** `/copy` (`pages/CopyPage.tsx`, `/copy/<leader>` opens with that leader in the form).
+  - The risk notices first, then: open the wallet, the wallet (USDC, fees owed and paid, coins held, Fund, Withdraw, **Stop all copying**), the leaders you follow, your copies with every skip and why, and the leaders you can copy.
+  - Linked from the drawer, the phones' More sheet and a **Copy** button on trader profiles, all while the flag is on.
+  - `/admin` → Copy trading: wallets, rules, copies, the share within 30 s, fees, the latest copies.
+- **Tests:**
+  - `engine/test/copy.test.ts` (33, Postgres with `PG_TEST_URL`): the rules and screen, the wallet and terms, every cap, safety skips, the stop switch before and during a copy (stop, delete, pause, flag), the trade switch, proportional sales, fees and the ledger, withdrawals, a restart, the routes.
+  - `engine/test/preflight.test.ts`: the executor's floor and its guard before simulating and before signing.
+- **Checked in Chromium** against `engine/scripts/copy-standin.ts` (the engine's copy, social-board and admin code in memory, a simulated executor), with an in-page test wallet, at 1280px and 390px:
+  - signing in and opening the wallet (the button waits for the tick);
+  - following Alice, a buy copied at the rule's $25 about 4 s after her, a Danger coin skipped;
+  - stop before a trade, and stop pressed while a copy was filling (nothing bought);
+  - her sale of half her holding copied as half the lot;
+  - a $10 withdrawal (the fee owed paid first), `/admin` → Copy trading;
+  - no sideways scroll.
+- **Not checked:** a real copy on mainnet (nothing is copied until the flag is on).
+- **Every new string is in all six dictionaries** (87).
+- **Owner steps:**
+  1. Read the terms on `/copy` (they say ARCDEX is the custodian of copy wallets) and take advice on offering custodial copy trading where your users are.
+  2. When ready: `/admin` → Flags → copyTrading on. Try it with a small amount first. `COPY=off` on Railway stops it at once.
+  3. `BOT_WALLET_SECRET` must already be set on Railway (it is, for live bots); without it copy wallets can't be made.
+
 ## Autotrade paused (2026-10-03)
 
 Owner: the platform becomes ARCSENSE (spot and futures trading), and "the auto trade functionality will have to be paused for now".
@@ -1950,7 +2714,7 @@ Owner: "Algo trade in this app is what will make this app have more users; let's
 - **Settings (Railway, arcdex-engine):**
   - `ALGO=off` stops it.
   - `ANTHROPIC_API_KEY` connects the brain: about a review a day and at most 24 escalations a day, with `fallbacks: "default"`.
-  - The Dockerfile copies `api/_algoProtocol.ts`, and `railway.toml` watches it. **Add it to the service's own Watch Paths on Railway.**
+  - The Dockerfile copies `api/_algoProtocol.ts`; the service's Watch Paths (`/api/**`) cover it.
 - **Site:** `/autotrade` is now ARCDEX Algo (`pages/AlgoPage.tsx`; `AutotradeSoon.tsx` is gone).
   - It shows each market's live decision (regime, direction, quality, confidence against the 0.80 line, and every gate check with the snapshot), equity, trades with testnet transaction links, every decision, the reliability diagram, the replay, the nightly reviews and the owner's signed controls.
   - Owners of the old Autotrade bots keep "Manage and withdraw". Every new string is in all six dictionaries.
@@ -1982,16 +2746,280 @@ A 100-point meme-coin signal engine built into the market engine, beside the exi
 - **Tests:** `engine/test/quantCore.test.ts`, `quantTrading.test.ts`, `quantEngine.test.ts` (55 tests). The store's SQL was run against PGlite (schema, batched upserts, the dataset join).
 - **Railway:** the Dockerfile copies `api/_quantProtocol.ts`, and `railway.toml` watches it. Railway's own service settings (Watch Paths) should get it too, or a change to that file alone won't redeploy the engine.
 
-## Hosting — arcdex.online only
+## Starknet: swaps through AVNU (2026-10-12)
 
-**Every commit to `main` deploys to arcdex.online, and nowhere else** (owner decision, 2026-09-24).
+The build pack's Phase 2, "Starknet native". `/starknet` (`pages/StarknetPage.tsx`, code in `src/arcdex/starknet/`), in More, the drawer and the sitemap.
+- **Verified first, as the pack asks** (docs.avnu.fi and live answers, 2026-10-12):
+  - **AVNU's API is v3:** quotes at `/swap/v3/quotes`, calls at `/swap/v3/build`.
+  - **The Exchange is `0x0427…3b0f`**, the only contract a swap may approve or call (`AVNU_EXCHANGE`).
+  - **The integrator fee must be sent in hex.** The live API refuses "100" ("integratorFees must start with 0x"), though its docs show "30".
+  - **The wallet API** (starknet-io/types-js `wallet-api`): `wallet_requestAccounts`, `wallet_requestChainId`, `wallet_switchStarknetChain`, `wallet_addInvokeTransaction`.
+- **Testnet first, where it can be:** AVNU's Sepolia API has no liquidity sources and no tokens (`/swap/v3/sources` and `/v1/starknet/tokens` both empty).
+  - So swaps are quoted on mainnet, and **sending them is off until the owner sets `VITE_STARKNET_SWAPS=on`**. Quotes, routes and balances still show.
+  - **"Check your wallet on testnet"** signs a 0 STRK transfer to yourself on Sepolia and follows it to its receipt: the pack's "signed testnet transaction". It works with the switch off.
+- **No starknet.js:** wallets are the injected `window.starknet_*` objects (Ready/Argent X, Braavos) speaking the wallet API.
+  - Reads are plain JSON-RPC (`starknet/rpc.ts`) to PublicNode, then dRPC, then ZAN (Lava, Blast and Nethermind's free RPC are discontinued). All three allow browser origins.
+  - Selectors are Starknet's keccak through viem (`starknet/felt.ts`), checked against their well-known values.
+- **Checked before the wallet sees anything (`starknet/avnu.ts`):**
+  - **The quote:** the chain, both tokens, the amount, the fee asked for, routes adding up to the whole amount.
+  - **The build:** at most two calls.
+    - The approval: exactly the amount, on the sell token, to the Exchange.
+    - Then the Exchange's `multi_route_swap`: the tokens and amounts as quoted, a minimum within the slippage chosen, the trader as beneficiary, the fee rate and recipient as configured.
+  - **Price impact** (AVNU's, in bps, negative a loss): 50%+ is refused and 15%+ needs a tick.
+  - **Right before signing:** a fresh quote. It stops if it pays 3% less than the one shown.
+  - **After signing:** the receipt is polled every 2 seconds for up to 3 minutes, with Voyager links.
+- **What the page shows:** amounts, rate, minimum received, price impact, slippage (0.5/1/2%), the route ("JediSwap → Ekubo 100%": a multi-hop route is its first hop with the next ones nested), AVNU's 0.1%, ARCDEX's fee, the network fee, the quote's age, the approval and both token addresses.
+- **Tokens:** AVNU's verified list (76), busiest first. A "verified" token whose ticker has control characters in it is left out.
+- **ARCDEX's fee:** none by default. ARCDEX's fee wallet is an EVM address, which Starknet can't pay.
+  - With `VITE_STARKNET_FEE_RECIPIENT` (a Starknet address) and `VITE_STARKNET_FEE_BPS` (1–200) set, it's AVNU's integrator fee, paid on-chain in the swap.
+- **`/routes`:** a Starknet group, with AVNU and Starknet's RPC in the health checks. "Starknet" left the not-supported list; moving money to or from Starknet replaced it.
+- **Tests:**
+  - `bun scripts/test-starknet.ts`, offline on real answers (`scripts/fixtures/avnu.json`, from `bun scripts/capture-avnu.ts`).
+    - It covers selectors and u256, quotes and builds passing, and 8 tampered quotes and 20 tampered builds refused, among them an extra call slipped in before the swap and a hidden fee rate.
+    - It also covers the price-impact rule and the wallet API calls. 16 of 16 planted bugs failed it.
+  - `bun scripts/check-avnu.ts`, live on mainnet with nothing sent:
+    - It finds an account holding STRK and quotes and builds 10 STRK → ETH for it, both through the checks.
+    - It simulates the exact transaction from that account (`starknet_simulateTransactions`, signature and fee skipped): it pays exactly 10 STRK and receives at least the minimum.
+    - A minimum the route can't meet is refused by AVNU's contract. It passed on a single-hop and a multi-hop route.
+- **Checked in the browser** (local dev):
+  - Live quotes and their details; the token picker; a 375px phone with no sideways scroll; `/routes`.
+  - With swaps switched on locally and a test wallet injected (it presents a real funded mainnet account and simulates instead of signing): connecting, on-chain balances, and Swap.
+    - Swap ran a fresh quote and the checked build, then `wallet_addInvokeTransaction` with the approval and the swap.
+    - The test wallet's mainnet simulation of exactly those calls succeeded.
+- **Not done:** a real signed transaction (the owner's first, with their wallet: the Sepolia check first); bridging to or from Starknet; AVNU's DCA and paymaster (the pack: only after review).
+- **Owner steps:**
+  1. With a Starknet wallet, run "Send a 0 STRK test transaction" on `/starknet` (Sepolia STRK from faucet.starknet.io).
+  2. When ready, set `VITE_STARKNET_SWAPS=on` in Netlify (`arcsense-app`) and redeploy. Try a small swap first.
+  3. Optionally, a Starknet address for ARCDEX's fee (`VITE_STARKNET_FEE_RECIPIENT`, `VITE_STARKNET_FEE_BPS`).
+- Every new string is in all six dictionaries (59).
 
-- **Project:** Vercel project `app` (`prj_cvHmYqjjLNXDMycZfQTbV4JKmkW2`), serving **arcdex.online** and `www.arcdex.online`. It builds automatically from GitHub `olomierik/ZAKA` `main`, so to ship you commit and push, then check the new `app` deployment (`vercel ls app`). Don't use `vercel --prod` for normal releases.
-- **Local link:** `.vercel/project.json` is linked to `app`, so any Vercel CLI command run here targets arcdex.online.
-- **Env vars:** only `app`'s Vercel settings are used. `.env` isn't committed, so GitHub builds never see it. `app` production has `VITE_ARC_LAUNCHPAD_ADDRESS`, `VITE_ARCDEX_SWAP_ROUTER_ADDRESS`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_WC_PROJECT_ID`. `VITE_ARCDEX_CURVE_ROUTER_ADDRESS` isn't needed: the deployed curve router is the default (`api/_curves.ts`). Set it only to name another router, or to `off`. `VITE_ARC_RPC_URL` / `VITE_ARC_WSS_URL` switch on the dedicated Arc endpoint ("Dedicated Arc RPC"). A new `VITE_*` var must be added there, and it only takes effect on the next build.
-  - To verify a var reached the site, fetch the live JS chunks and grep for the value. `vercel env pull` shows sensitive vars as empty.
-- **Retired project:** `zaka_app` (`zakaapp-drab.vercel.app`) is disconnected from GitHub. Its production deployment is only a 307 redirect of every path to the same path on arcdex.online. The source for that deployment isn't in this repo; it's just a `vercel.json` with `redirects`.
-  - History: until 2026-09-24, every push built **both** projects, and CLI deploys went to `zaka_app` with `.env` baked in. arcdex.online had no env vars, so the Launchpad showed "contract not configured".
+## After a deploy: pages left open, and pages that fail (2026-10-12)
+
+The build pack's production-readiness phase.
+- **Why:** Netlify deploys are atomic, so a new build's code files have new names and the old ones are gone. A page left open asked for the old name the first time someone opened a part of the app it hadn't loaded yet. Netlify's catch-all rewrite answers that with the HTML page, the import failed, and with no error boundary the whole app went blank.
+- **Now (`lib/chunkReload.ts`):** such a failure reloads the page once, which loads the new version.
+  - It's caught three ways: Vite's `vite:preloadError`, the entry imports in `main.tsx`, and the page boundary below.
+  - At most one reload in 30 seconds, so a file that's really missing can't loop.
+- **The page boundary (`components/PageErrorBoundary.tsx`):** wraps the app's pages (reset when the path changes) and the price-alert watcher (silently).
+  - A page that throws shows what happened, with Reload and Go to Markets; the rest of the app keeps working.
+  - A missing file within the 30 seconds says "ARCDEX was just updated".
+- **Checked** on the production build (`vite preview`, the `arcdex-build-preview` launch config, now run through bun):
+  - With the Routes page's file removed, opening Routes from Markets reloaded once, then showed the panel.
+  - With the file back, Reload opened the page.
+- **Tests:** `bun scripts/test-chunk-reload.ts`: each browser's wording of the failure, and ordinary errors left alone.
+- Every new string is in all six dictionaries (7).
+
+## The trading terminal, in motion.gift's layout (2026-10-12)
+
+Owner: "a trading terminal like motion.gift, with all the features that we have; remove the features that don't fit the new direction; the design and the UI resembling motion.gift, plus data and RPC fast for all chains and assets; motion has no prediction or futures market: that is our advantage." motion.gift was toured in Chrome (read-only) for its layout, palette and behaviour.
+
+- **Where things are now:**
+  - `/` opens the Trenches on the chain last picked; `/arc`, `/robinhood`, `/solana` and `/bnb` open a chain's (`lib/router.ts`). `/app`, `/markets` and `/trenches` open the last chain, and `/launchpad` opens Arc's. The old home page is at `/about` (`src/main.tsx`).
+  - **Removed:** the Markets pages (`pages/Terminal.tsx`, `RobinhoodMarkets.tsx`, `SolanaMarkets.tsx`, `BscMarkets.tsx`), `CoinBoard`, `MobileHome`, `FoundOnArc`, `Rails` (the side panels and ticker bar) and `SpotPanels`.
+  - **Out of the menus:** Feed, the spot leaderboard, Autotrade and the launchpad. Their pages still open by link, and the account menu keeps Profile, Transfers, Rewards and Clans.
+- **Theme (`lib/theme.ts`, the palettes at the top of `arcdex.css`, `terminal.css`):**
+  - motion's light palette by default (page `#f3f4f0`, white panels, ink `#0d1410`, green `#0a8f4f`) and its dark one (`#0a0f0c`, mint `#00ec97`), in Geist.
+  - The moon button switches. The choice is kept (`arcdex:theme`) and set before the page paints (inline script in `index.html`); charts follow (`lib/chartStyle.ts` `chartTheme`).
+  - Text on the accent is `--on-accent` (white on light, dark on mint), on amber `--on-amber`. White text on the dark theme's mint is unreadable, so buttons in the trade forms, share bars and leaderboard use them.
+- **Top bar (`components/NavBar.tsx`):** Trenches · Futures · Predict · Portfolio · Swap · Bridge, with Futures and Predict in green (what motion doesn't have). Then the search ("Search name or CA", `/` to focus), the chain menu (chains, Starknet, RPC settings with its speed test), the alerts bell and Log in.
+- **Status bar (`components/StatusBar.tsx`):** Positions, Alerts, Watchlist and Explorer, then BTC, ETH, SOL and BNB perpetuals and $ARCDEX, live. Then the chain's RPC: its answer time, Fast / OK / Slow, and the node in use (a click opens RPC settings). Then frames per second, Routes and About.
+- **The Trenches (`pages/Trenches.tsx`, `lib/trenches.ts`, `components/TrenchLane.tsx`, `TrenchRow.tsx`, `TrenchModals.tsx`):**
+  - The bar: chain tabs (ARC, HOOD, SOL, BNB), the quick-buy amount, Arc's slippage (1 / 3 / 5 / 10%), Watchlist, live status (trades a minute, block or slot), $ARCDEX's price, Customize, % MC and the count.
+  - **Lanes:** New (under an hour, newest first); Almost bonded (near bond closest first, then the rest on their curve); Migrated (off the curve or launched into a pool, youngest first). Each lane has its own quick-buy preset (P1–P3), a beep for new coins, and filters: keywords in and out, launchpads, market cap, liquidity, trades, age and bonding %, for one lane or all.
+  - **Rows, as motion's:**
+    - left: the picture in a ring that fills along the curve;
+    - middle: ticker, name, copy, star, then the tags (Official, OG, Duplicate, quote, BC %, migrated, launchpad), then age, X link and search;
+    - right: volume, market cap (or % of the curve), liquidity, trades and the buy/sell bar;
+    - underneath: holders (or wallets trading), the safety rating, the 1h and 24h moves, the launcher's record, and the quick-buy button.
+    - Rows flash on trades, and a lane holds still under the mouse.
+  - **Customize:** metrics size, image shape, bonding ring, button size, pause on hover, MC or % in Almost bonded, Arc's slippage, Fresh launches in New, and the listing rules (Hide them / Show everything).
+  - **Phones:** one lane at a time behind tabs, and a tab bar (Trenches, Futures, Predict, Portfolio, More).
+- **The listing rules still decide what shows (`shownInLanes` in `lib/trenches.ts`):** $15K of market cap and not rugged, then the safety standard; $ARCDEX always.
+  - **For the owner to confirm:** "Fresh launches in New" (on by default) shows coins under an hour old in New below $15K, unless rugged or rated Danger. Every launch starts under $15K, so without it New was empty. It's a switch in Customize.
+  - The note above the lanes counts every coin left out, which is exactly what "Show everything" brings back (269 on Arc when checked). Before, coins under $15K weren't counted, though the note named them.
+- **Quick buy:** a row's button opens the coin page with the form filled in (the amount, and on Arc the slippage). The trader still presses Buy, and every check runs as before: simulation, exact approvals, the price guard.
+  - motion's Fast / Turbo / Eco speeds aren't copied. Arc's blocks were measured about 2% full, so paying more gas buys no speed; the presets set slippage instead.
+- **Coin pages (`components/TokenLayout.tsx`):** every chain's coin page on desktop, in motion's layout.
+  - Left: the header (picture, ticker, tags, links, market cap, price, liquidity, 24h volume, holders, top 10, supply, pools), the chart, and the trades and holders tabs.
+  - Right: the 5M / 1H / 6H / 24H moves, the day's flow (volume, buys, sells, buy share), the trade form and the coin's checks.
+  - Phones keep each page's own layout.
+  - On Arc, when GeckoTerminal lists no pool for a coin, the engine's numbers fill the header, refreshed every 15s.
+- **RPC (`lib/rpcSettings.ts`, `components/RpcSettings.tsx`):** each chain's reads (balances, quotes, simulations) go through its nodes in order.
+  - **Nodes:**
+    - Arc: the dedicated node, Blockdaemon, Arc's public RPC, Beam, dRPC.
+    - Robinhood Chain: its own RPC, then PublicNode.
+    - Solana: PublicNode.
+    - BNB Chain: PublicNode, then BNB Chain's own.
+  - **Failover:** a node that throttles, errors or times out is skipped for 30 seconds and the next answers the same request. A revert is an answer and is never asked of another node. The dedicated Arc node keeps its own rules (`lib/rpc.ts`).
+  - **RPC settings (chain menu):** each node's latency, call time and distance from the head, measured from this browser (Test all), and Use first. Up to two nodes of your own: HTTPS, from a known provider only, because a node can lie about balances and simulations.
+  - **Not changed:** transactions are sent as before (a fallback could send one twice), and the live trade feeds keep their tested endpoints.
+  - The status bar reads the head every 3 seconds from the first node that isn't the dedicated one (paid by the call).
+- **Futures P&L cards (`components/FuturesShare.tsx`, `renderFuturesCard` in `lib/shareCard.ts`):** Share on every futures position, live or paper. The card shows the market, side, leverage, ROE, entry, mark and P&L, and PAPER TRADING on paper ones. The share bar reads on both themes.
+- **Tests:**
+  - `bun scripts/test-trenches.ts`: the listing rules, lanes, filters, settings and numbers. 14 of 14 planted bugs failed it.
+  - `bun scripts/test-rpc-settings.ts`: which nodes can be added, their order, failover (viem reads and plain JSON-RPC), reverts and the speed test. 12 of 12 planted bugs failed it.
+  - Updated for the new routes: `test-robinhood`, `test-solana`, `test-bsc`.
+  - `test-launchpads` now expects the list build's order since 2026-10-05 ("Arc's top coins read second"). It was already failing on the commit before this one.
+- **Checked in Chrome** (local dev against the live engine):
+  - Arc's and Solana's Trenches in both themes.
+  - A quick buy from Arc's Trenches, opening the form with $5 and 3%.
+  - Arc, Robinhood Chain and Solana coin pages.
+  - Futures, predictions, portfolio, swap and bridge in the light theme.
+  - A paper position's share card in both themes; the test position was closed and the paper account reset after.
+  - 375px phones with no sideways scroll.
+  - The production build loads.
+- **Every new string is in all six dictionaries** (111).
+- **Not done yet:**
+  - motion's wallet Tracker.
+  - The older coin pages (`CurveTokenPage` for ARCDEX's own launchpad coins, `TokenPage`) keep the previous look.
+  - Paper trading and price alerts still live in one browser.
+
+## Alchemy RPC, fastest node first, and Railway deploys (2026-10-12)
+
+Owner: "I have provided you with Alchemy endpoints for the chains we support, to be faster"; "Railway is not deploying".
+- **Alchemy through the site (`netlify/edge-functions/rpc.ts`, `/rpc/<chain>`):** Arc, Robinhood Chain, BNB Chain, Solana and Starknet (spec 0.10; Alchemy's 0.8 path answers 503).
+  - The key is a Netlify secret, `ALCHEMY_API_KEY`, never in the page or the repo. **Owner step:** add it in Netlify (`arcsense-app` → environment variables, secret) and redeploy. Until then the function answers 503 `x-arcdex-rpc: unconfigured` and pages read through the public nodes, as before.
+  - Only the site's own pages, and only read and simulation methods (plus Solana's `sendTransaction`). No EVM sends and no `eth_getLogs` (Alchemy's free plan serves 10-block ranges); the page skips Alchemy for those.
+  - Local dev: `ALCHEMY_API_KEY` and `VITE_ALCHEMY=on` in `.env.development.local` (gitignored); `vite.config.ts` proxies `/rpc`.
+- **Fastest first (`lib/rpcSettings.ts`):** each browser measures every node of a chain (a head read, every 2 minutes while the chain is in use) and reads through the fastest one that is up to date. A node that hasn't answered yet is never first, so Alchemy leads only once it has answered. Pinning, own nodes and failover are unchanged.
+  - The status bar shows the real time of reads through the node in use. Its block number never polls the paid nodes.
+  - Measured from the owner's region (2026-10-12, median of 7): Alchemy 175 ms vs 225 (Robinhood Chain), 155 vs 230 (BNB Chain), 159 vs 230 (Solana); on Arc, Arc's public RPC was faster (195 vs 239). Starknet's Alchemy node answered in 0.7–2 s, so it is Starknet's last fallback.
+  - Found by the new test and fixed: when every node was stepping aside, the one that answered stayed marked as failing.
+- **Railway:** the engine's last deploy was 2026-10-06. The service's Watch Paths held five file names joined by commas in one entry, plus `railway.tom`. Now `/engine/**`, `/api/**`, `/railway.toml`. The latest commit was deployed from the dashboard and is healthy.
+  - GitHub pushes didn't reach Railway on 2026-10-12. They do again: since 2026-10-15 GitHub's deployment records show Railway deploying every merge to `main` (`railway-app[bot]`, environment `arcdex / production`). A variable changed on Railway redeploys the service too.
+- **Tests:** `bun scripts/test-rpc-settings.ts` (ordering, Alchemy's methods, unconfigured, failover, the edge function: same-origin, methods, batches, size, the key never echoed).
+
+## The chart, framed by the coin's own trading (2026-10-16)
+
+Owner: "the chart for my app is messy". Seen on the live spot page: $ARCDEX (a few trades a day) opened on 15s bars, the chart library squeezed out the hours with no bar, and the time axis jumped (4:45, 18:52, 18:50, 5, 6, 10…) under a jagged line.
+- **Opening timeframe (`lib/chartFrame.ts` `pickOpenRes`):** the finest of 15s, 1m, 5m, 15m, 1H, 4H whose last 120 bars hold 40+ of the coin's trades (about one every three bars), else 4H. Picked from the trades the page has read; for 8 seconds after a coin opens the pick may only get finer (older trades still arriving), then it holds. A timeframe someone picks holds while the coin is open. This replaces "every coin opens on 15s" (round 8): busy coins still open on 15s.
+- **Even time (`fillGaps`):** every bar between trades is drawn flat at the last close (no volume), up to the current bar, which a clock adds as time passes. At most ~3,000–3,500 bars, the window moving in 500-bar steps so the first bar moves rarely (a moving first bar would redraw the chart on every new bar).
+- **Market cap first** (as fomo and GMGN), wherever the coin has a supply; Price is one click.
+- **The overlay checkboxes** (Trades, My swaps, Thesis, Friends only, Min size) moved into a ⚙ menu beside Indicators.
+- **Checked** in the production build against the live engine: FTR (766 trades a day) opened on 1m with an even 15-minute axis; $ARCDEX on 4H with its whole history since launch.
+- **Tests:** `bun scripts/test-chart-frame.ts` (in CI).
+
+## Buying from Ethereum, Base or Arbitrum, no Arc needed (2026-10-16)
+
+Owner: "the limitation of having to be on Arc to trade". A trader holding USDC or ETH on Ethereum, Base or Arbitrum buys a coin on Arc, BNB Chain or Robinhood Chain in one signature on the chain the money is on; the coin lands at the same address on the coin's chain in about a second. No bridge first, no switching the wallet to Arc.
+- **Route (`lib/relayQuote.ts` side `xevm`, `lib/payChains.ts`):** Relay. Its depository is the same contract at the same address (`0x4cd0…bc31`) on Ethereum, Base, Arbitrum and Arc (same code size on all four, checked 2026-10-16). USDC: an approval of exactly the amount to it, then `depositErc20(trader, USDC, amount, id)`. ETH: `depositNative(trader, id)` with exactly the amount. With no gas on the coin's chain, $0.50 of it is added (Relay's top-up), as for Solana wallets.
+- **Checks (a quote is refused unless it's exactly the trade asked for):** a pay chain and its own USDC or ETH, a coin chain ARCDEX trades, the trader as sender and recipient, the coin and amount, Relay's depository only, the deposit word by word (depositor, token, amount; ETH's value exactly the amount), an exact approval, ARCDEX's fee, no gas top-up not asked for, Relay's order paying only the trader. The price guard values ETH from Robinhood Chain's WETH/USDG pool (else Relay's own value), the coin at its market price. The call is simulated from the trader before signing. The trade switch's venue is the coin's chain.
+- **Fee:** ARCDEX's 0.5% as Relay's app fee (`SPOT_FEE_BPS`), accruing at Relay for the fee wallet with the other Relay fees. Measured: $5 of Base USDC → $ARCDEX, Relay ~$0.04 and ARCDEX $0.025, about 1 second.
+- **Where (`components/PayFromChain.tsx`):** "⇄ Pay from Ethereum, Base or Arbitrum" above the Solana card on Arc, BNB Chain and Robinhood Chain coin pages (in the phone sheet on Buy only) and the Swap page. It opens by itself when the wallet has under $1 of USDC on Arc, and picks the chain and currency the wallet holds most of. Before a wallet connects it quotes for a placeholder address that is never paid. The signing helpers (`lib/across.ts`) and `runRelayEvm` now take these chains; a wallet is switched to the pay chain by wagmi (all three are in its config).
+- **Not built yet:** selling back to those chains (sales still pay out on Arc or Solana).
+- **Tests:** `bun scripts/test-xevm.ts` (in CI), on real quotes recorded by `bun scripts/capture-relay-xevm.ts` (quotes only): every route passing, 24 tampered quotes refused; planting a missing depositor or token check fails it. `test-xsol`, `test-solana` and `test-bsc` still pass.
+
+## Faster buys: approval and swap back to back (2026-10-16)
+
+Owner: "trading speed". A trading-wallet buy through ArcDexSwapRouter used to wait for its approval: the receipt, then until the node showed the allowance, and only then simulate and send the swap.
+- **Now (`lib/fastBuy.ts`, `ArgusSwapWidget` submit):** the swap is simulated, and its gas measured, as though the approval had already landed, with a read-only override of Arc USDC's allowance. Then the approval and the swap are signed and sent back to back, and both receipts are awaited together.
+  - **The slot:** Arc's USDC keeps allowances in Circle's FiatToken layout, `allowed` at base slot 10. It was found by reading overrides back on mainnet; Arc's nodes accept overrides on `eth_call` and `eth_estimateGas`.
+  - **The second transaction** carries its own gas (the measured gas plus 30%), fees and chain id, so viem asks the node nothing it can't answer yet. Its nonce comes from the trading wallet's own count (`walletNonces`: one past the last broadcast).
+- **Unchanged:** the approval is still exactly the amount, the swap still carries its minimum received, and the price-impact hold now runs before anything is signed. If the approval somehow failed, the swap would revert for want of allowance and cost only its gas.
+- **Where:** trading-wallet buys paid in USDC through the router. External wallets confirm each transaction themselves, and sales, curves and native-USDC pools keep their own paths.
+- **Tests:**
+  - `bun scripts/test-fast-buy.ts` (in CI): the slot; the trading wallet's real client against a stand-in node still reporting the old count, giving consecutive nonces with nothing estimated or filled for the swap.
+  - `bun scripts/check-fast-buy.ts` (live, nothing sent): a $1 $ARCDEX buy from an address that never approved the router is refused without the override and goes through with it (gas measured). One unit short is refused.
+
+## Trenches: GMGN's 1h window, fomo's latest thesis (2026-10-16)
+
+Owner: "adjust GMGN's UI and functionalities without changing our UX; combine with fomo's best features".
+- **1h | 24h (GMGN's window), in the Trenches bar, Arc only for now:** each row's volume, trade count and buy/sell bar over the last hour or the day (`TrenchSettings.window`, 24h by default).
+  - **Where the hour comes from:** the engine's activity feed (`/v1/tokens/active`, `vol1h`, `buys1h`, `sells1h`; `useArcMarket` `hourOf`), now asked for 300 coins, its most.
+  - **A coin missing from the feed:** when the feed came back shorter than asked, every coin that traded in the hour is in it, so the missing coin shows zeros. When it's full, the missing coin shows dashes, never the day's numbers under the 1h label.
+  - **Other chains:** their lists carry 24h numbers only, so they stay on 24h.
+- **Latest thesis (fomo's column) (`lib/latestTheses.ts`):** a quiet line under any coin someone wrote a thesis on. It shows the newest thesis, its author and age, read once a minute for the whole page.
+  - **What's left out:** moderation-hidden theses and banned wallets (`getTheses`), and wallets this trader muted.
+  - **Layout:** an implicit third grid row under the middle and right columns, the full width on phones.
+- **Tests:** `bun scripts/test-trenches.ts` (the default window, the newest thesis per coin).
+- **Checked** in the production build against the live engine: UBI read $18 and 4 trades on 1h against $26.6K and 387 on 24h; ARGUS's thesis line sits under its row with nothing overlapping; a 390px phone with no sideways scroll.
+
+## The wallet tracker (2026-10-16/17, GMGN's wallet tracking)
+
+Owner: "adjust GMGN's UI and functionalities in our app". Follow any wallet on Arc, Robinhood Chain, Solana or BNB Chain and see its buys and sells as they happen.
+- **The engine (`engine/src/trench/walletWatch.ts`, the `wallet` channel in `api/_marketProtocol.ts`, types in `api/_trenchProtocol.ts`):**
+  - **What it sees:** every trade the Trenches' books read passes through `TrenchBook.onAnyTrade`. That covers Arc's whole stream, Solana's pump.fun and PumpSwap, four.meme and the listed PancakeSwap pools on BNB Chain, and the listed pools on Robinhood Chain.
+  - **Topics:** one per wallet. An EVM address is one topic for Arc, Robinhood Chain and BNB Chain together (`wallet:evm:<lower>`); a Solana address keeps its case (`wallet:sol:<base58>`).
+  - **When it works:** a trade goes out as `WTRADE` only while someone is subscribed (`wants(topic)`). A watched wallet's last 100 trades are kept from the first time it's watched (a subscription or a page view) until a day without watchers, 5,000 wallets at most.
+  - **`GET /v1/wallet/<address>` (`WalletView`):** the wallet's record on each chain from the smart-wallet book (closed trades, share won, realized P&L, coins, open positions, smart or not) and its kept trades. For an EVM address it adds Arc's stored trades (`HistoryStore.walletTrades`, served by the `(wallet, ts)` index; the last 72 hours), named from the engine's launch records (`TrenchService.arcCoin`).
+  - **Measured live (2026-10-17):** Solana trades by followed wallets arrived 8–16 seconds after they happened (the Solana feed's own delay).
+- **The site:**
+  - **`/tracker` and `/tracker/<address>` (`pages/TrackerPage.tsx`):** follow by address with a label, 50 wallets at most, kept in this browser (`lib/walletTracker.ts`, `arcdex:tracked:v1`).
+    - Each wallet shows its record per chain, with copy, rename, alerts and remove.
+    - The feed shows every followed wallet's trades, newest first, filtered by side, size or one wallet; a trade opens its coin's page on its chain.
+    - A linked wallet not followed yet is shown with a Track button. The chain's smart wallets are suggested.
+  - **Alerts (`components/WalletAlertWatcher.tsx`):** while ARCDEX is open on any page, a trade by a wallet with alerts on shows a notice. A system notification is added when the tab is hidden and notifications are allowed. There is no web push for these yet.
+  - **Track buttons:** on every trade in the Trenches' smart-money lane, and on trader profiles.
+  - **Links:** Tracker in the top bar, Wallets in the status bar, and the phone's More sheet and drawer.
+- **The engine refuses messages past 20 a second per connection (`WS_MAX_MSGS_PER_SEC`).** Subscribing to 57 wallets at once had 37 refused, and nothing retried them. The site's socket (`api/marketStream.ts`) now sends at most 15 a second (`SEND_RATE`), queueing the rest, reconnects included: 49 subscriptions, 49 accepted.
+- **Tests:**
+  - `engine/test/walletWatch.test.ts`: topics, the channel, keeping and pushing only watched wallets, the cap, idle cleanup, the service's view and Arc coin names. The engine suite: 809 pass.
+  - `bun scripts/test-wallet-tracker.ts` (in CI): addresses, following and the limit, matching a trade to its wallet, coin pages, routes.
+- **Checked** in the production build against the live engine:
+  - a linked Arc wallet's 51 stored trades and its record;
+  - following it and a Solana smart wallet, whose trades were kept from then on;
+  - Track from the smart-money lane, with a notice two seconds later on another page;
+  - a 390px phone with no sideways scroll.
+
+## Menus: Admin in admins' browsers, Feed and Clans back (2026-10-17)
+
+Owner: "I can't see admin features, copy trade and all that the previous build did".
+- **Admin:** a 🛡 Admin link in the account menu and the drawer, shown only in a browser where an admin wallet has signed in to `/admin` before (`isKnownAdmin` in `lib/adminSession.ts`: up to 5 addresses in `arcdex:admin-wallets`), or is signed in now. It's a convenience, not a gate: `/admin` still needs the admin's signature, and visitors never see the link.
+- **Feed and Clans** are back in the account menu, the drawer, the phone's More sheet and the status bar, beside the wallet tracker.
+
+## Copy trading from the user's own wallet (2026-10-17)
+
+Owner: "copy trade" is missing; asked how it should work, the owner chose **from the user's own wallet**, non-custodial. It replaces the engine-held copy wallets of Phase 7 (switched off on 2026-10-16: "I don't want ARCDEX to hold users' copy trade wallets"); `pages/CopyPage.tsx` is gone, and `/copy` opens the new page. Nothing here promises a profit.
+
+- **How it works:** while ARCDEX is open in a tab, the built-in trading wallet (it signs locally, with no pop-ups) copies the Arc trades of the wallets it follows, under the follower's rules. The money never leaves the follower's own wallet, and ARCDEX holds nothing. With every ARCDEX tab closed, nothing is copied.
+  - **The feed:** the wallet tracker's live channel (`lib/walletTracker.ts` `onWalletTrades`). Each trade now carries its pool (`WalletTradeWire.p`, from `FeedTrade.pool` in `engine/src/trench/book.ts`), so a copy trades in the same pool as the leader.
+  - **The runner (`components/CopyRunner.tsx`):** mounted in `App.tsx` while copying is on. Trades are copied one at a time. One tab copies at a time (a lease in `arcdex:copy:lease`, renewed every 2s), so two open tabs never copy a trade twice. A notice shows each filled or failed copy; skips go to the log only.
+  - **Only for the trading wallet:** an external wallet would ask its owner to confirm every copy.
+- **A buy (`lib/copyTrade.ts` `copyBuy`):**
+  - **Size (`planBuy`):** a fixed amount, or the leader's own size up to the rule's most ($1–$500). Never past the day's budget (default $50, at most $5,000, counted from 00:00 UTC), or what the wallet can spend after a $0.30 gas reserve. Under $1, skipped.
+  - **Fresh:** a leader's trade over a minute old when it reaches the browser isn't copied.
+  - **Rating:** as the Trenches rate the coin (`ratingOf`): the engine's scan where it has one (`/v1/safety`, waited on up to ~6s), else the coin's market data (`tokenRisk` from this browser's market list, else the engine's live numbers). Danger never; "Safe coins only" skips Risky; a coin with neither isn't copied.
+  - **Route:** the leader's pool. Through ArcDexSwapRouter for v4 and v3 pools against USDC or ARGUS, exactly as the swap widget calls it (`lib/routerCalls.ts`, now shared). Through Uniswap's Universal Router for a native-USDC v4 pool, with ARCDEX's fee and the referrer's share as `submitNative` pays them (`sharesFor`; no approval: the USDC goes in as value). Coins on a launchpad's curve aren't copied yet.
+  - **Before signing:** the trade switch (`assertTradingOn('arc')`). The exact swap is simulated (router routes as though the exact approval had landed, `lib/fastBuy.ts`). Its price, ARCDEX's fee aside, must be no worse than the leader's by more than the rule's slippage (`priceAllows`, 0.5–15%, 3% by default). The minimum received is set from the simulation. `stillOn` (the flag, the master switch, the rule) is asked again before each transaction.
+  - **Sending:** an approval of exactly the amount and the swap, back to back, as the fast buy does.
+  - **A dry pool:** a pool with no liquidity at its price is a skip, not a failure (`dryPool`: the V4Quoter's `NotEnoughLiquidity` inside `UnexpectedRevertBytes`). On 2026-10-17, 11 of the 22 most active Arc coins were such pools: their only position had just been withdrawn.
+- **A sale (`copySell`):** when a leader sells, the same share of the coins copied from that leader is sold (`sellAmount`: the share of its holding it sold, read from the chain; all of them once it has 1% or less left). Coins that came from elsewhere are never sold. Router sales approve exactly the amount; native-pool sales go through Permit2 (exact amounts, 30 minutes). "Copy sells" can be turned off per leader.
+- **Kept in this browser:** the settings (`arcdex:copy:v1`, `lib/copySettings.ts`, small so the app's shell can read it), the coins copied per leader (`arcdex:copy-lots:v1:<wallet>`) and the log of the last 200 copies, skips and failures, with why (`arcdex:copy-log:v1:<wallet>`). Reasons are kept as English keys with their numbers apart (`whyVars`), so the log reads in the viewer's language.
+- **The page (`pages/CopyTradePage.tsx`, `/copy`, `/copy/<leader>`):**
+  - Start or stop all copying, with the daily budget and what it has spent today.
+  - The risks, to read and tick once before the first start: losses are copied too, copies come later at another price, the wallet signs by itself, only Arc pools for now, no advice.
+  - Leaders: add an Arc wallet (it's followed in the wallet tracker too), up to 20, each with its size, slippage, coin safety, copy sells and pause. Suggestions come from followed wallets and Arc's smart wallets.
+  - The coins copied, and the activity log with explorer links.
+  - Linked from trader profiles (Copy), the drawer and the phone's More sheet.
+- **The flag `walletCopy`** (on; `/admin` → Flags turns it off for everyone). The old `copyTrading` flag stays for the engine's switched-off copy wallets.
+- **Tests:**
+  - `bun scripts/test-copy-trade.ts` (in CI, offline, 40 checks): sizing and the budget, the safety and fee-aware price checks, proportional sales, the dry-pool revert (recorded from mainnet), the rules' bounds, storage.
+  - `VITE_ARCDEX_WS_URL=wss://arcdex-engine-production.up.railway.app/ws bun scripts/check-copy-trade.ts` (live, nothing sent): recent real buys from the engine, each routed, rated and simulated as a $1 copy from an address holding USDC. On 2026-10-17:
+    - 19 coins routed and rated, 12 simulated;
+    - router copies came within 0–1.2% of the leader's price, fee aside;
+    - MAGA was copied through the Universal Router at 1.1%;
+    - FAZE, AF, SOLD and STULTUS, the deepest native-USDC pools, simulated through Universal Router 2.1.2.
+  - `engine/test/walletWatch.test.ts`: the pool on each pushed trade.
+- **Checked in the production build** against the live engine, with a throwaway, unfunded trading wallet and the six busiest Arc wallets as leaders:
+  - their real trades reached the copier 0.3–0.9 s after they happened;
+  - buys were skipped ("not enough USDC"), and sales of coins never copied were skipped too; nothing was sent;
+  - an invalid address was refused, and Arc's smart wallets were suggested;
+  - typed amounts were saved within bounds when the field was left;
+  - the reasons read in French;
+  - a reload left the wallet locked: "Copying is paused until your trading wallet is unlocked", with Stop still there;
+  - Stop worked, the phone's More sheet links the page, and a 390px phone had no sideways scroll.
+  - **Found and fixed on the way:**
+    - Coins the engine has no launch record for arrive without a ticker; it's now read from the coin's contract.
+    - Number fields clamped on every keystroke (typing 0.5 jumped to the floor).
+- **Not checked:** a real funded copy (the owner's first).
+
+## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
+
+**Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**
+
+- **Vercel is gone (owner, 2026-10-16: "Remove vercel").** Vercel project `app` was disconnected from GitHub (`vercel git disconnect`), so commits no longer get a failing Vercel check. `vercel.json` and `.vercel/` were removed from the repo. The account had been blocked since 2026-10-03 (402), which is why every commit showed Vercel ✗.
+- The `api/` functions run on the engine (`/api/*`, "The site's read functions run on the engine"); Netlify serves only the built files and its edge functions (`netlify/edge-functions`).
+- **Env vars:** the site's `VITE_*` values are in `netlify.toml` or Netlify's environment (secrets such as `ALCHEMY_API_KEY`, `JUPITER_API_KEY`, `ACROSS_API_KEY`); the engine's are on Railway. A new `VITE_*` var takes effect on the next build.
 
 ## What This App Does
 

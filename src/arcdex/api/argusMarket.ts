@@ -170,6 +170,7 @@ export function argusPoolToArcToken(p: ArgusPool): ArcToken {
     marketCap: p.marketCapUsd ?? p.fdvUsd ?? 0,
     liquidity: p.liquidityUsd,
     ageMs: Number.isFinite(created) ? Math.max(0, Date.now() - created) : 0,
+    createdAt: Number.isFinite(created) ? created : undefined,
     launchpad: p.launchpad ?? 'Argus',
     poolAddress: p.pool,
     txCount24h: p.txns24h.buys + p.txns24h.sells,

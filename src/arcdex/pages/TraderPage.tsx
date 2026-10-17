@@ -10,6 +10,10 @@ import {
   type Clan, type PointsRow, type IndexedTrade, type Period, type PnlPoint, type PositionRow, type Profile, type Thesis, type TraderStats,
 } from '../api/social'
 import { ARC_EXPLORER } from '../api/arcRpc'
+import { getVerifiedTrader } from '../api/socialEngine'
+import SocialMenu from '../components/SocialMenu'
+import { useMutes } from '../lib/mutes'
+import type { SocialTrader, WashFlag } from '../../../api/_socialProtocol'
 import { shortAddr, useTrader } from '../lib/identity'
 import { referralLink } from '../lib/referral'
 import { tweetUrl } from '../lib/shareCard'
@@ -17,6 +21,8 @@ import { useCash } from '../lib/usdc'
 import { useTokenMeta, type TokenMeta } from '../lib/tokenMeta'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import { useFlag } from '../lib/flags'
+import { normWallet, trackWallet, useTracked } from '../lib/walletTracker'
 
 // A trader's public page (fomo parity): banner, identity, mutuals, clan,
 // avg hold / trades / joined, top trades, PnL chart by window, cash with
@@ -63,6 +69,7 @@ function Profile_({ addr, navigate }: { addr: string; navigate: (p: Page) => voi
   const [profile, setProfile] = useState<Profile | null>(null)
   const [stats, setStats] = useState({ followers: 0, following: 0 })
   const [iFollow, setIFollow] = useState(false)
+  const copyOn = useFlag('walletCopy')
   const [mutuals, setMutuals] = useState<Profile[]>([])
   const [clan, setClan] = useState<Clan | null>(null)
   const [positions, setPositions] = useState<PositionRow[]>([])
@@ -82,7 +89,10 @@ function Profile_({ addr, navigate }: { addr: string; navigate: (p: Page) => voi
   const [dust, setDust] = useState(false)
   const [swapTab, setSwapTab] = useState<'all' | 'buy' | 'sell'>('all')
   const [points, setPoints] = useState<PointsRow | null>(null)
+  const [verified, setVerified] = useState<SocialTrader | null>(null)
+  const { isMuted, toggle: toggleMute } = useMutes(trader)
   const seasonNow = currentSeason()
+  useEffect(() => { setVerified(null); void getVerifiedTrader(addr).then(setVerified) }, [addr])
   useEffect(() => { void getPointsOf(addr, currentSeason()).then(setPoints).catch(() => setPoints(null)) }, [addr])
 
   const load = useCallback(async () => {
@@ -170,6 +180,9 @@ function Profile_({ addr, navigate }: { addr: string; navigate: (p: Page) => voi
               <>
                 <button onClick={() => me ? setModal('send') : setErr(T("Connect or unlock a wallet to send cash"))} style={btn('var(--bg-2)')}>{T("Send cash")}</button>
                 <button onClick={() => void toggleFollow()} disabled={busy} style={btn(iFollow ? 'var(--bg-2)' : 'var(--adx-accent)')}>{iFollow ? T("Following") : T("Follow")}</button>
+                <TrackButton address={addr} navigate={navigate} style={btn('var(--bg-2)')} />
+                {copyOn && <button onClick={() => navigate({ name: 'copy', leader: addr })} style={btn('var(--bg-2)')} title={T('Mirror this trader’s trades from a copy wallet')}>⧉ {T('Copy')}</button>}
+                <span style={{ ...btn('var(--bg-2)'), padding: '6px 8px', display: 'inline-flex', alignItems: 'center' }}><SocialMenu target={`profile:${addr}`} author={addr} trader={trader} onError={setErr} label={T('More about this trader')} /></span>
               </>
             )}
           </div>
@@ -199,6 +212,13 @@ function Profile_({ addr, navigate }: { addr: string; navigate: (p: Page) => voi
             </div>
           )}
           {err && <div style={{ fontSize: '0.78rem', color: '#fca5a5', marginTop: 6 }}>{err}</div>}
+          {!isMe && isMuted(addr) && (
+            <div className="social-note" style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {T('You muted this wallet: its theses and comments are hidden for you.')}
+              <button className="disc-link" onClick={() => void toggleMute(addr).catch(e => setErr(e instanceof Error ? e.message : T('Could not update')))}>{T('Unmute')}</button>
+            </div>
+          )}
+          {verified?.wash && <WashNote flag={verified.wash} navigate={navigate} />}
         </div>
 
         {best.length > 0 && (
@@ -223,7 +243,11 @@ function Profile_({ addr, navigate }: { addr: string; navigate: (p: Page) => voi
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ ...card, padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
-              <b style={{ fontSize: '0.85rem' }}>{T("PnL")}</b>
+              <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <b style={{ fontSize: '0.85rem' }}>{T("PnL")}</b>
+                {verified && <VerifiedBadge v={verified} />}
+                {verified?.ranks[period] && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--amber)' }}>#{verified.ranks[period]} · {T(since.label)}</span>}
+              </span>
               <div style={{ display: 'flex', gap: 4 }}>
                 {PERIODS.map(p => <button key={p.k} onClick={() => setPeriod(p.k)} className={`disc-sub${period === p.k ? ' active' : ''}`}>{T(p.label)}</button>)}
               </div>
@@ -360,5 +384,36 @@ function Empty({ children }: { children: React.ReactNode }) {
 }
 
 function btn(bg: string): React.CSSProperties {
-  return { padding: '8px 14px', borderRadius: 8, border: '1px solid var(--adx-card-border)', background: bg, color: '#fff', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }
+  // Text on the accent is --on-accent; on a plain button it's the theme's text (white was unreadable on the light theme).
+  return { padding: '8px 14px', borderRadius: 8, border: '1px solid var(--adx-card-border)', background: bg, color: bg === 'var(--adx-accent)' ? 'var(--on-accent)' : 'var(--text)', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }
+}
+
+/** "Verified on-chain": the numbers come from the engine's own record of ARCDEX's router trades on Arc. */
+function VerifiedBadge({ v }: { v: SocialTrader }) {
+  const tip = T('Recomputed from {n} trades through ARCDEX’s routers on Arc, read from the chain to block {block}. Average cost per coin; tokens sold without a cost here don’t count.', { n: v.tradeCount.toLocaleString(), block: v.scannedTo.toLocaleString() })
+  return <span className="verified-badge" title={tip} aria-label={tip} style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 7px', borderRadius: 999, background: 'rgba(16,185,129,0.14)', color: 'var(--green)', whiteSpace: 'nowrap' }}>✓ {T('Verified on-chain')}</span>
+}
+
+/** Why the wash-trade filter leaves this wallet out of the leaderboards. */
+function WashNote({ flag, navigate }: { flag: WashFlag; navigate: (p: Page) => void }) {
+  return (
+    <div className="wash-note" role="note" style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: 'var(--amber-bg)', border: '1px solid var(--amber-line)', color: 'var(--amber)', fontSize: '0.78rem', lineHeight: 1.5 }}>
+      <b>⚠ {T('Left out of the leaderboards')}</b>
+      {flag.reasons.includes('round-trips') && <div>{T('{n} round trips in 30 days, {pct}% of its volume: coins bought and sold straight back for about the same.', { n: flag.roundTrips, pct: Math.round(flag.roundTripShare * 100) })}</div>}
+      {flag.reasons.includes('mirror') && flag.mirrors.slice(0, 3).map(m => (
+        <div key={m.with}>{T('Traded against')}{' '}<button className="disc-link" onClick={() => navigate({ name: 'trader', address: m.with })} style={{ fontFamily: 'var(--mono)' }}>{shortAddr(m.with)}</button>{' '}{T('{n} times: the same coin, the other way, within a few blocks.', { n: m.count })}</div>
+      ))}
+    </div>
+  )
+}
+
+/** Follow this wallet in the wallet tracker (its trades on every chain, live), and open it there. */
+function TrackButton({ address, navigate, style }: { address: string; navigate: (p: Page) => void; style: React.CSSProperties }) {
+  const on = useTracked().some(w => w.address === normWallet(address))
+  return (
+    <button style={style} title={on ? T('Open in the wallet tracker') : T('Follow this wallet’s trades on every chain, live')}
+      onClick={() => { try { if (!on) trackWallet(address) } catch { /* the limit: the tracker page says so */ } navigate({ name: 'tracker', address }) }}>
+      ◉ {on ? T('Tracking') : T('Track')}
+    </button>
+  )
 }

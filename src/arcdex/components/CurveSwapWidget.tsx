@@ -10,6 +10,10 @@ import { rememberHolding } from '../lib/held'
 import { t as T } from '../lib/i18n'
 import { waitForReceipt } from '../lib/receipts'
 import { onBalances } from '../lib/balances'
+import { assertTradingOn } from '../lib/tradeSwitch'
+import { sizeProblem } from '../lib/guardrails'
+import TradeDetails from './TradeDetails'
+import { useBuyRisk } from '../lib/buyRisk'
 
 const USDC_ADDR = '0x3600000000000000000000000000000000000000' as const
 
@@ -33,16 +37,18 @@ const BUY_PRESETS = [10, 25, 50, 100]
 const SELL_PRESETS = [25, 50, 100]
 
 type Step = 'idle' | 'approving' | 'checking' | 'swapping' | 'done' | 'error'
-interface Props { token: LaunchpadToken; onTraded?: () => void; initialMode?: 'buy' | 'sell' }
+interface Props { token: LaunchpadToken; onTraded?: () => void; initialMode?: 'buy' | 'sell'; /** One side only, with no Buy/Sell switch (Portfolio's Sell sheet). */ side?: 'buy' | 'sell'; /** A quick buy: amount and slippage filled in. */ initialAmount?: number; initialSlip?: number }
 
 const fmtTok = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toFixed(2)
 
-export default function CurveSwapWidget({ token, onTraded, initialMode }: Props) {
+export default function CurveSwapWidget({ token, onTraded, initialMode, side, initialAmount, initialSlip }: Props) {
   const trader = useTrader()
   const me = trader.address
-  const [mode, setMode] = useState<'buy' | 'sell'>(initialMode ?? 'buy')
-  const [amount, setAmount] = useState('')
-  const [slippage, setSlippage] = useState(3)
+  const [mode, setMode] = useState<'buy' | 'sell'>(side ?? initialMode ?? 'buy')
+  // The coin's safety rating, right above Buy (lib/buyRisk.tsx): a Danger coin waits for a tick.
+  const buyRisk = useBuyRisk(mode === 'buy')
+  const [amount, setAmount] = useState(initialAmount && initialAmount > 0 ? String(initialAmount) : '')
+  const [slippage, setSlippage] = useState(initialSlip && initialSlip > 0 ? initialSlip : 3)
   const [step, setStep] = useState<Step>('idle')
   const [msg, setMsg] = useState('')
   const [balance, setBalance] = useState<bigint | null>(null)
@@ -93,9 +99,14 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
   const send = (req: { address: Address; abi: unknown; functionName: string; args: unknown[] }): Promise<Hex> => sendArc(trader.kind, req as never)
 
   async function submit() {
-    if (!me || !estimate || amountIn === 0n || !configured) return
+    if (!me || !estimate || amountIn === 0n || !configured || buyRisk.blocks) return
     setMsg('')
     try {
+      // The trade switch (lib/tradeSwitch.ts): nothing is signed while trading on Arc is off.
+      await assertTradingOn('arc')
+      // The size cap (lib/guardrails.ts): USDC paid, or the USDC a sale is expected to bring.
+      const tooBig = sizeProblem(mode === 'buy' ? Number(formatUnits(amountIn, 6)) : Number(formatUnits(estimate.out, estimate.decimals)))
+      if (tooBig) throw new Error(tooBig)
       if (needsApprove) {
         setStep('approving')
         // Exactly this trade's amount — the launchpad never gets more.
@@ -151,15 +162,15 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
 
   return (
     <div className="swap-box">
-      <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--adx-card-border)', background: 'var(--bg-2)' }}>
+      {!side && <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--adx-card-border)', background: 'var(--bg-2)' }}>
         {(['buy', 'sell'] as const).map(m => (
           <button key={m} onClick={() => { setMode(m); setAmount(''); setStep('idle'); setMsg('') }} style={{
             flex: 1, padding: 8, fontSize: '0.82rem', fontWeight: 700, border: 'none', cursor: 'pointer',
             background: mode === m ? (m === 'buy' ? 'var(--green)' : 'var(--red)') : 'transparent',
-            color: mode === m ? '#fff' : 'var(--text-muted)',
+            color: mode === m ? (m === 'buy' ? 'var(--on-accent)' : '#fff') : 'var(--text-muted)',
           }}>{m === 'buy' ? T("Buy") : T("Sell")} {token.symbol}</button>
         ))}
-      </div>
+      </div>}
 
       {!token.curve.graduated && (
         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T("Bonding curve ·")}{' '}{token.bondingProgress.toFixed(1)}{T("% to graduation")}
@@ -182,26 +193,29 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
         </div>
       </div>
 
-      {estimate && (
-        <div className="swap-info">
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--orange)' }}>
-            <span>{T("Fee (1% +")}{' '}{(token.curve.creatorTaxBps / 100).toFixed(1)}{T("% creator tax)")}</span>
-            <span className="mono">{Number(formatUnits(estimate.fee, 6)).toFixed(4)}{' '}{T("USDC")}</span>
-          </div>
+      <div className="swap-info">
+        <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text)' }}>
+          <span>{T("You receive (~)")}</span>
+          <span className="mono" style={{ color: estimate ? 'var(--green)' : undefined }}>
+            {!estimate ? '—' : mode === 'buy' ? `${fmtTok(Number(formatUnits(estimate.out, 18)))} ${token.symbol}` : `$${Number(formatUnits(estimate.out, 6)).toFixed(2)}`}
+          </span>
+        </div>
+        <TradeDetails hint={T('{fee} fee · {s}% slippage', { fee: `${(1 + token.curve.creatorTaxBps / 100).toFixed(1)}%`, s: slippage })}>
+          {estimate && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--orange)' }}>
+              <span>{T("Fee (1% +")}{' '}{(token.curve.creatorTaxBps / 100).toFixed(1)}{T("% creator tax)")}</span>
+              <span className="mono">{Number(formatUnits(estimate.fee, 6)).toFixed(4)}{' '}{T("USDC")}</span>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <span style={{ color: 'var(--text-muted)' }}>{T("Max slippage")}</span>
             <span style={{ display: 'flex', gap: 4 }}>
               {[1, 3, 5, 10].map(s => <button key={s} onClick={() => setSlippage(s)} style={{ ...pill(slippage === s), flex: 'none', padding: '2px 8px', fontSize: '0.72rem' }}>{s}%</button>)}
             </span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--adx-card-border)', paddingTop: 6, color: 'var(--text)' }}>
-            <span>{T("You receive (~)")}</span>
-            <span className="mono" style={{ color: 'var(--green)' }}>
-              {mode === 'buy' ? `${fmtTok(Number(formatUnits(estimate.out, 18)))} ${token.symbol}` : `$${Number(formatUnits(estimate.out, 6)).toFixed(2)}`}
-            </span>
-          </div>
-        </div>
-      )}
+          <p className="swap-note">{T("1% platform fee +")}{' '}{(token.curve.creatorTaxBps / 100).toFixed(1)}{T("% creator tax (60% of that goes straight to the creator). Liquidity lives permanently in the curve — no LP to rug.")}{' '}{T("Approvals are for the exact trade amount only.")}</p>
+        </TradeDetails>
+      </div>
 
       {msg && (
         <div style={{ padding: '10px 14px', borderRadius: 8, fontSize: '0.8125rem',
@@ -209,13 +223,15 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
           color: step === 'done' ? '#86efac' : '#fca5a5' }}>{msg}</div>
       )}
 
+      {buyRisk.node}
+
       {!me ? (
-        <button onClick={openConnectModal} style={{ padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%' }}>{T("Connect Wallet")}</button>
+        <button onClick={openConnectModal} style={{ padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, background: 'var(--adx-accent)', color: 'var(--on-accent)', border: 'none', cursor: 'pointer', width: '100%' }}>{T("Connect Wallet")}</button>
       ) : (
-        <button onClick={() => void submit()} disabled={!configured || amountIn === 0n || insufficient || busy}
+        <button onClick={() => void submit()} disabled={!configured || amountIn === 0n || insufficient || busy || buyRisk.blocks}
           style={{ padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, width: '100%', border: 'none', cursor: 'pointer',
-            background: needsApprove ? 'var(--orange)' : mode === 'buy' ? 'var(--green)' : 'var(--red)', color: '#fff',
-            opacity: amountIn === 0n || insufficient || busy ? 0.55 : 1 }}>
+            background: needsApprove ? 'var(--orange)' : mode === 'buy' ? 'var(--green)' : 'var(--red)', color: needsApprove ? 'var(--on-amber)' : mode === 'buy' ? 'var(--on-accent)' : '#fff',
+            opacity: amountIn === 0n || insufficient || busy || buyRisk.blocks ? 0.55 : 1 }}>
           {step === 'approving' ? T("Approving…") : step === 'checking' ? T("Checking…") : step === 'swapping' ? T("Swapping…")
             : insufficient ? T("Insufficient balance")
             : needsApprove ? T('Approve {symbol}', { symbol: mode === 'buy' ? 'USDC' : token.symbol })
@@ -223,7 +239,6 @@ export default function CurveSwapWidget({ token, onTraded, initialMode }: Props)
         </button>
       )}
 
-      <p className="swap-note">{T("1% platform fee +")}{' '}{(token.curve.creatorTaxBps / 100).toFixed(1)}{T("% creator tax (60% of that goes straight to the creator). Liquidity lives permanently in the curve — no LP to rug.")}{' '}{T("Approvals are for the exact trade amount only.")}</p>
     </div>
   )
 }

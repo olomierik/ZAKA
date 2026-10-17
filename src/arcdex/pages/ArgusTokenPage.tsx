@@ -9,7 +9,7 @@ import { getCurve, type CurveInfo } from '../api/curves'
 import { NATIVE } from '../../../api/_arcSwaps'
 import { useChainHolders, useLiveHolderCount } from '../api/holders'
 import { engineEnabled, getEngineToken, getEngineTrades, marketStream } from '../api/marketStream'
-import type { LaunchInfo, WireTrade } from '../../../api/_marketProtocol'
+import type { LaunchInfo, TokenStats, WireTrade } from '../../../api/_marketProtocol'
 import type { Tick } from '../lib/candles'
 import PriceChart, { type ChartTrade } from '../components/PriceChart'
 import ArgusSwapWidget from '../components/ArgusSwapWidget'
@@ -25,14 +25,20 @@ import { useTrader } from '../lib/identity'
 import { useIsMobile } from '../lib/useMobile'
 import Sheet, { TradeBar } from '../components/Sheet'
 import { SolanaPayCard } from '../components/SolanaCross'
+import { PayFromCard } from '../components/PayFromChain'
 import { ARC_ID } from '../lib/relayQuote'
-import type { Page } from '../App'
+import type { BuyIntent, Page } from '../App'
 import { t as T } from '../lib/i18n'
 import { getLaunchpadColor } from '../api/radardex'
 import { launchpadLabel, launchpadNamed } from '../../../api/_launchpads'
-import { MarketTrades, PairList } from '../components/SpotPanels'
-import { COIN_IMAGE, COIN_LC, COIN_POOL, fmtPct as fmtPctCoin, fmtSmallUsd, useCoin } from '../lib/coin'
+import { COIN_IMAGE, COIN_LC } from '../lib/coin'
 import { useLogo } from '../lib/logo'
+import CoinVotes from '../components/CoinVotes'
+import TokenLayout from '../components/TokenLayout'
+import { BuyRiskProvider, type ProvidedRisk } from '../lib/buyRisk'
+import { arcSafety } from '../lib/safety'
+import { useCoinSafety } from '../api/coinSafety'
+import { CoinAlertBell } from '../components/PushAlerts'
 
 // Full page for one Argus launch. What moves is read straight from the
 // chain: every swap in the pool (history from the logs, then each new one
@@ -43,7 +49,7 @@ import { useLogo } from '../lib/logo'
 // read. Arc RPC also gives what GeckoTerminal doesn't carry (creator
 // wallet, Portal, hook, taxes).
 
-interface Props { address: string; pool: string; navigate: (p: Page) => void }
+interface Props { address: string; pool: string; navigate: (p: Page) => void; buy?: BuyIntent }
 
 // live = pushed over the WebSocket during this visit
 type Row = TradeRow
@@ -77,29 +83,14 @@ function pct(n: number) { return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%` }
 function TokenImage({ src, symbol, size = 44 }: { src: string | null; symbol: string; size?: number }) {
   const { url, onError } = useLogo(src, size)
   if (!url) return (
-    <div style={{ width: size, height: size, borderRadius: '50%', background: 'linear-gradient(135deg,#2b3139,#1e2329)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.28, fontWeight: 700, color: '#6ea2ff', flexShrink: 0 }}>
+    <div style={{ width: size, height: size, borderRadius: '50%', background: 'var(--tile-ini)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.28, fontWeight: 700, color: 'var(--text-2)', flexShrink: 0 }}>
       {symbol.slice(0, 3)}
     </div>
   )
   return <img src={url} alt={symbol} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} onError={onError} />
 }
 
-/** On every other coin's page: $ARCDEX, one line, with the way to it. */
-function CoinStrip({ navigate }: { navigate: (p: Page) => void }) {
-  const coinQ = useCoin()
-  return (
-    <button className="arcdex-strip" onClick={() => navigate({ name: 'argus', address: COIN_LC, pool: COIN_POOL })}>
-      <img src={COIN_IMAGE} alt="" width={18} height={18} />
-      <b>$ARCDEX</b>
-      <span>{fmtSmallUsd(coinQ?.priceUsd)}</span>
-      {coinQ?.change24h != null && <span className={coinQ.change24h >= 0 ? 'up-txt' : 'down-txt'}>{fmtPctCoin(coinQ.change24h)}</span>}
-      <span className="arcdex-strip-note">{T('ARCDEX’s coin: 30% of every platform fee buys it back and burns it.')}</span>
-      <span className="arcdex-strip-go">{T('Buy $ARCDEX')} →</span>
-    </button>
-  )
-}
-
-export default function ArgusTokenPage({ address, pool, navigate }: Props) {
+export default function ArgusTokenPage({ address, pool, navigate, buy }: Props) {
   const mobile = useIsMobile()
   const [tradeSheet, setTradeSheet] = useState<'buy' | 'sell' | null>(null)
   const [pools, setPools] = useState<ArgusPool[] | null>(null)
@@ -116,14 +107,18 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   const [qUsd, setQUsd] = useState<number | null>(null)
   const [makersTick, setMakersTick] = useState(0)
   // The engine's record of this launch — names a coin opened seconds after
-  // it launched, before GeckoTerminal has indexed it.
+  // it launched, before GeckoTerminal has indexed it — and its live numbers (every 15s), which stand in for
+  // GeckoTerminal's when it lists no pool for the coin (2026-10-12).
   const [engineMeta, setEngineMeta] = useState<LaunchInfo | null>(null)
+  const [engineStats, setEngineStats] = useState<TokenStats | null>(null)
   useEffect(() => {
-    setEngineMeta(null)
+    setEngineMeta(null); setEngineStats(null)
     if (!engineEnabled) return
     let alive = true
-    getEngineToken(address).then(r => { if (alive) setEngineMeta(r.meta) }).catch(() => {})
-    return () => { alive = false }
+    const read = () => getEngineToken(address).then(r => { if (alive) { setEngineMeta(r.meta); setEngineStats(r.stats) } }).catch(() => {})
+    void read()
+    const id = setInterval(() => { if (!document.hidden) void read() }, 15_000)
+    return () => { alive = false; clearInterval(id) }
   }, [address])
   const [, tick] = useState(0)
   const trader = useTrader()
@@ -439,7 +434,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   // A live curve's own price: Mercuri's trades carry it exactly; SolonPad's
   // carry what each trade paid, so its reserves (re-read after each trade) lead.
   const curveSpot = liveCurve?.priceUsd || null
-  const priceUsd = (liveCurve?.venue === 'SolonPad' ? curveSpot : null) ?? livePrice ?? curveSpot ?? active?.priceUsd ?? 0
+  const priceUsd = (liveCurve?.venue === 'SolonPad' ? curveSpot : null) ?? livePrice ?? curveSpot ?? active?.priceUsd ?? engineStats?.priceUsd ?? 0
   const copy = symbol === '…' ? null : copycatOf(symbol, address)
   // Where the coin launched (its pool's GeckoTerminal dex), for the badge,
   // the notes and — when ARCDEX can't route it — a link to trade it there.
@@ -450,7 +445,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   const gtMcap = active?.marketCapUsd ?? active?.fdvUsd ?? null
   // Circulating supply, for MCap-at-trade and the chart's MCap mode.
   const supply = gtMcap && active?.priceUsd ? gtMcap / active.priceUsd : liveCurve?.supply ?? null
-  const mcap = supply && priceUsd ? supply * priceUsd : gtMcap
+  const mcap = supply && priceUsd ? supply * priceUsd : gtMcap ?? engineStats?.marketCapUsd ?? null
 
   // Tick the header price green/red as it moves.
   const lastPrice = useRef(0)
@@ -507,6 +502,11 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   // GeckoTerminal's API or the market engine, every swap live on top, trade
   // labels, theses and indicators. A live curve charts the curve's trades.
   const isCoin = address.toLowerCase() === COIN_LC
+  // The rating every buy form on this page shows right above Buy (lib/buyRisk.tsx): the engine's on-chain scan with this
+  // page's market data, as the Trenches rate it; $ARCDEX is marked Official instead.
+  const scan = useCoinSafety(isCoin ? [] : [address]).get(address.toLowerCase())
+  const buyRating = useMemo<ProvidedRisk>(() => isCoin ? 'official' : arcSafety({ symbol, address }, risk, scan, !!liveCurve || chain?.bonded === false),
+    [isCoin, symbol, address, risk, scan, liveCurve, chain])
   const stats: [string, string, string][] = active ? [
     ['5m', pct(active.change.m5), active.change.m5 >= 0 ? 'var(--green)' : 'var(--red)'],
     ['1h', pct(active.change.h1), active.change.h1 >= 0 ? 'var(--green)' : 'var(--red)'],
@@ -528,10 +528,12 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         onTraderClick={a => navigate({ name: 'trader', address: a })} />
     </div>
   )
+  // A quick buy from the Trenches opens the form with its amount and slippage filled in.
   const swapWidget = (mode?: 'buy' | 'sell', side?: boolean) => (
     <ArgusSwapWidget key={`${mode ?? 'inline'}${side ? '-side' : ''}`} token={address as Address} symbol={symbol} tokenImage={image} priceUsd={priceUsd}
       marketCapUsd={mcap} route={tradeRoute} routeLoading={tradeRouteLoading} initialMode={mode} side={side ? mode : undefined} compact={side}
-      buyTaxBps={chain?.buyTaxBps} sellTaxBps={chain?.sellTaxBps} onTraded={onTraded} unverified={info ? !info.verified : false} venue={venue} />
+      buyTaxBps={chain?.buyTaxBps} sellTaxBps={chain?.sellTaxBps} onTraded={onTraded} unverified={info ? !info.verified : false} venue={venue}
+      initialAmount={mode !== 'sell' ? buy?.amount : undefined} initialSlip={buy?.slip} />
   )
   const socialTabs = (
     <TokenSocialTabs token={address} symbol={symbol} rows={rows} tradesLoaded={tradesLoaded} profiles={profiles} chainHolders={chainHolders} holderCount={holderCount}
@@ -544,6 +546,8 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         refreshKey={refreshKey} onPositionUsd={setPositionUsd} />
       {/* ARCDEX's own coin carries no safety rating (owner, 2026-10-04). */}
       {!isCoin && <SafetyPanel info={infoLive} chain={chain} liquidityUsd={active?.liquidityUsd ?? null} rows={rows} devPct={devPct} risk={risk} />}
+      {/* …nor community votes on it. */}
+      {!isCoin && <CoinVotes chain="arc" address={address} />}
       <AboutPanel address={address} symbol={symbol} info={infoLive} pool={active} chain={chain} rows={rows} supply={supply} profiles={profiles} navigate={navigate} />
     </>
   )
@@ -556,6 +560,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
   const headActions = (
     <div className="token-head-actions">
       <button title={starred ? T("Remove from watchlist") : T("Add to watchlist")} onClick={() => toggleWatch(address)} className={`head-icon${starred ? ' on' : ''}`}>{starred ? '★' : '☆'}</button>
+      <CoinAlertBell address={address} symbol={symbol} priceUsd={priceUsd ?? null} />
       <button title={T("Copy contract address")} className="head-icon" onClick={() => { void navigator.clipboard?.writeText(address); setCopiedCa(true); setTimeout(() => setCopiedCa(false), 1200) }}>{copiedCa ? '✓' : '⧉'}</button>
       {info?.websites[0] && /^https?:\/\//i.test(info.websites[0]) && <a title={T("Website")} className="head-icon" href={info.websites[0]} target="_blank" rel="noopener noreferrer">🌐</a>}
       {info?.twitter && <a title={T("X / Twitter")} className="head-icon" href={`https://x.com/${info.twitter}`} target="_blank" rel="noopener noreferrer">𝕏</a>}
@@ -580,6 +585,7 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
 
   // Phones: the app layout (price, chart, stats, tabs, and a Buy / Sell bar opening the trade sheet).
   if (mobile) return (
+    <BuyRiskProvider view={buyRating}>
     <div className="token-page coin-mobile">
       <div className="token-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
@@ -617,77 +623,78 @@ export default function ArgusTokenPage({ address, pool, navigate }: Props) {
         <TradeBar symbol={symbol} onTrade={setTradeSheet} />
         <Sheet open={tradeSheet !== null} onClose={() => setTradeSheet(null)}>
           {tradeSheet && swapWidget(tradeSheet)}
-          {tradeSheet && <div style={{ padding: '0 14px 14px' }}><SolanaPayCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} initialMode={tradeSheet} /></div>}
+          {tradeSheet && <div style={{ padding: '0 14px 14px' }}>{tradeSheet === 'buy' && <PayFromCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} />}<SolanaPayCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} initialMode={tradeSheet} /></div>}
         </Sheet>
       </div>
     </div>
+    </BuyRiskProvider>
   )
 
-  // Desktop: Binance's spot screen. The pair bar; market trades where Binance has its order book; the
-  // chart, and under it a buy form and a sell form side by side; the pair list on the right; the
-  // trades, holders and theses underneath.
-  const change24 = active?.change.h24 ?? null
+  // Desktop: motion.gift's coin screen (components/TokenLayout.tsx): the header and its numbers, the chart, the trades,
+  // holders and theses underneath; on the right the moves, the day's flow, the trade form and the coin's checks.
+  const taxText = chain?.buyTaxBps != null && chain?.sellTaxBps != null && (chain.buyTaxBps > 0 || chain.sellTaxBps > 0)
+    ? `${T('Tax')} ${chain.buyTaxBps / 100}%/${chain.sellTaxBps / 100}%` : null
   return (
-    <div className="token-page spot-page">
-      <div className="spot-bar">
-        <div className="spot-bar-pair">
-          <TokenImage src={image} symbol={symbol} size={32} />
-          <div style={{ minWidth: 0 }}>
-            <div className="spot-bar-sym">{symbol}<span>/{active?.quote.symbol ?? 'USDC'}</span>{isCoin && <span className="mk-official">{T('Official')}</span>}</div>
-            <div className="spot-bar-name">{name}{name && ' · '}{badge}</div>
-          </div>
-        </div>
-        <div className="spot-bar-price">
-          <b key={priceUsd} className={`${priceDir ? `price-tick ${priceDir} ` : ''}${(change24 ?? 0) >= 0 ? 'up-txt' : 'down-txt'}`}>{priceUsd ? fmtPrice(priceUsd) : '…'}</b>
-          <span>{mcap ? T('MCap {v}', { v: fmt(mcap, '$') }) : ''}</span>
-        </div>
-        <div className="spot-bar-stats">
-          {stats.slice(3).map(([label, val, color]) => (
-            <div key={label}><span>{label}</span><b style={{ color }}>{val}</b></div>
-          ))}
-          {active && !isCoin && <div><span>{T('Risk')}</span><b><RiskBadge risk={risk} /></b></div>}
-        </div>
-        {headActions}
-      </div>
-      {!isCoin && <CoinStrip navigate={navigate} />}
-      {notices}
-
-      <div className="spot-grid">
-        <div className="spot-book">
-          <MarketTrades rows={rows} priceUsd={priceUsd} change24h={change24} symbol={symbol} loaded={tradesLoaded}
-            buys24h={active?.txns24h.buys ?? null} sells24h={active?.txns24h.sells ?? null} />
-        </div>
-        <div className="spot-main">
-          <div className="spot-panel spot-chart">
-            <PriceChart poolAddress={activePool || null} engineToken={address} ticks={onchainFailed ? undefined : ticks} live={streaming} trades={chartTrades} thesisMarks={thesisMarks} friends={friends} supply={supply} symbol={symbol}
-              height={420} onTraderClick={a => navigate({ name: 'trader', address: a })} />
-          </div>
-          <div className="spot-panel spot-form">
-            <div className="spot-form-tabs">
-              <span className="active">{T('Spot')}</span>
-              <span className="spot-form-kind">{T('Market')}</span>
-              <span className="spot-form-hint">{T('Fills at once against the pool, at the best price on Arc.')}</span>
-            </div>
-            <div className="spot-form-sides">
-              {swapWidget('buy', true)}
-              {swapWidget('sell', true)}
-            </div>
-            <p className="spot-form-note">
-              {trader.address
-                ? <>{T("Trading as")}{' '}{trader.kind === 'trading-wallet' ? T("⚡ trading wallet") : T("wallet")} <span className="spot-addr">{trader.address.slice(0, 6)}…{trader.address.slice(-4)}</span>{trader.kind === 'trading-wallet' ? T(" · one-tap, no pop-ups") : ''} · </>
-                : null}
-              {T("Every trade is simulated before it's sent.")}
-            </p>
-            <SolanaPayCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} />
-          </div>
-        </div>
-        <div className="spot-side">
-          <PairList current={address.toLowerCase()} navigate={navigate} />
-          {sidePanels}
-        </div>
-        <div className="spot-bottom spot-panel">{socialTabs}</div>
-      </div>
-    </div>
+    <BuyRiskProvider view={buyRating}>
+    <TokenLayout
+      chain="arc" image={image} symbol={symbol} name={name} mc={mcap ?? null} dir={priceDir}
+      tags={<>
+        {isCoin && <span className="tk-tag ok">{T('Official')}</span>}
+        {taxText && <span className="tk-tag">{taxText}</span>}
+        <span className="tk-tag">{active?.quote.symbol ?? 'USDC'}</span>
+        {liveCurve && <span className="tk-tag bc">BC {(liveCurve.progress * 100).toFixed(1)}%</span>}
+        {chain?.bonded && <span className="tk-tag mig">{T('migrated')}</span>}
+        {(chain?.portal || lpName) && <span className="tk-tag lp" style={{ color: lpColor }}>{chain?.portal ? `Argus · P${chain.portal}` : lpName}</span>}
+        {active && !isCoin && <RiskBadge risk={risk} />}
+      </>}
+      links={<span className="tk-links">
+        <button className="tk-link" title={T('Copy contract address')} onClick={() => { void navigator.clipboard?.writeText(address); setCopiedCa(true); setTimeout(() => setCopiedCa(false), 1200) }}>{copiedCa ? '✓' : '⧉'}</button>
+        <button className={`tk-link${starred ? ' on' : ''}`} title={starred ? T('Remove from watchlist') : T('Add to watchlist')} onClick={() => toggleWatch(address)}>{starred ? '★' : '☆'}</button>
+        <CoinAlertBell address={address} symbol={symbol} priceUsd={priceUsd ?? null} />
+        {info?.websites[0] && /^https?:\/\//i.test(info.websites[0]) && <a className="tk-link" title={T('Website')} href={info.websites[0]} target="_blank" rel="noopener noreferrer">🌐</a>}
+        {info?.twitter && <a className="tk-link" title={T('X / Twitter')} href={`https://x.com/${info.twitter}`} target="_blank" rel="noopener noreferrer">𝕏</a>}
+        <a className="tk-link" title={T('Search on X')} href={`https://x.com/search?q=${encodeURIComponent(`${address} OR $${symbol}`)}&f=live`} target="_blank" rel="noopener noreferrer">🔍</a>
+        <a className="tk-link" title={T('Explorer')} href={`https://explorer.arc.io/address/${address}`} target="_blank" rel="noopener noreferrer">↗</a>
+      </span>}
+      stats={[
+        { label: T('Price'), value: priceUsd ? fmtPrice(priceUsd) : '—' },
+        { label: T('Liquidity'), value: fmt(active?.liquidityUsd ?? engineStats?.liquidityUsd ?? null, '$') },
+        { label: T('24h vol'), value: fmt(active?.volume24h ?? engineStats?.vol24 ?? null, '$') },
+        { label: T('Holders'), value: holdersLabel },
+        { label: T('Top 10'), value: infoLive?.top10Pct != null ? `${infoLive.top10Pct.toFixed(1)}%` : '—' },
+        ...(supply ? [{ label: T('Supply'), value: fmt(supply) }] : []),
+      ]}
+      pools={pools && pools.length > 1 ? (
+        <select className="tk-pool-sel" value={activePool} onChange={e => navigate({ name: 'argus', address, pool: e.target.value })} aria-label={T('Pools')}>
+          {pools.slice(0, 8).map(p => <option key={p.pool} value={p.pool}>{symbol}/{p.quote.symbol} · {p.launchpad ?? launchpadLabel(p.dex)} · {fmt(p.liquidityUsd, '$')}</option>)}
+        </select>
+      ) : null}
+      notices={notices}
+      chart={
+        <PriceChart poolAddress={activePool || null} engineToken={address} ticks={onchainFailed ? undefined : ticks} live={streaming} trades={chartTrades} thesisMarks={thesisMarks} friends={friends} supply={supply} symbol={symbol}
+          height={420} onTraderClick={a => navigate({ name: 'trader', address: a })} />
+      }
+      tabs={[]}
+      bottom={socialTabs}
+      changes={active ? [
+        { label: '5M', pct: active.change.m5 }, { label: '1H', pct: active.change.h1 }, { label: '6H', pct: active.change.h6 }, { label: '24H', pct: active.change.h24 },
+      ] : [
+        { label: '5M', pct: engineStats?.chg.m5 ?? null }, { label: '1H', pct: engineStats?.chg.h1 ?? null }, { label: '6H', pct: engineStats?.chg.h6 ?? null }, { label: '24H', pct: engineStats?.chg.h24 ?? null },
+      ]}
+      flow={active
+        ? { volume: active.volume24h, buys: active.txns24h.buys, sells: active.txns24h.sells }
+        : { volume: engineStats?.vol24 ?? null, buys: engineStats?.buys24 ?? null, sells: engineStats?.sells24 ?? null }}
+      trade={<>
+        {swapWidget(buy ? 'buy' : undefined)}
+        {trader.address && (
+          <p className="tk-note">
+            {T('Trading as')}{' '}{trader.kind === 'trading-wallet' ? T('⚡ trading wallet') : T('wallet')} <span className="spot-addr">{trader.address.slice(0, 6)}…{trader.address.slice(-4)}</span>{trader.kind === 'trading-wallet' ? T(' · one-tap, no pop-ups') : ''}
+          </p>
+        )}
+        <div className="tk-note"><PayFromCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} /><SolanaPayCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} /></div>
+      </>}
+      side={sidePanels}
+    />
+    </BuyRiskProvider>
   )
 }
-

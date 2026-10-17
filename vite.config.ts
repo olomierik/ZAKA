@@ -1,11 +1,26 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv, type ProxyOptions } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
+/** /rpc/<chain> to Alchemy with the key from the local environment (dev only; Netlify serves it in production). */
+function alchemyDevProxy(): Record<string, ProxyOptions> {
+  const key = loadEnv('development', process.cwd(), '').ALCHEMY_API_KEY?.trim()
+  if (!key) return {}
+  const nets: Record<string, string> = { arc: 'arc-mainnet', hood: 'robinhood-mainnet', bnb: 'bnb-mainnet', sol: 'solana-mainnet', starknet: 'starknet-mainnet' }
+  return Object.fromEntries(Object.entries(nets).map(([chain, host]) => [`/rpc/${chain}`, {
+    target: `https://${host}.g.alchemy.com`,
+    changeOrigin: true,
+    rewrite: () => (chain === 'starknet' ? `/starknet/version/rpc/v0_10/${key}` : `/v2/${key}`),
+  }]))
+}
+
 export default defineConfig({
   plugins: [react(), nodePolyfills()],
   build: {
+    // The gzip size of every file in the build log: ~465 files since Privy's SDK (2026-10-16), and memory the build
+    // needs elsewhere (netlify.toml's note on the build's heap).
+    reportCompressedSize: false,
     rollupOptions: {
       input: {
         main:   path.resolve(__dirname, 'index.html'),
@@ -54,6 +69,10 @@ export default defineConfig({
         headers: { origin: 'https://arcsense.site' },
         rewrite: (path) => path.replace(/^\/__engine/, ''),
       },
+      // ARCDEX's Alchemy nodes in local dev, as netlify/edge-functions/rpc.ts serves them in production: the key comes
+      // from ALCHEMY_API_KEY in .env.development.local (never a VITE_ variable, so it never reaches the page) and the
+      // page uses them with VITE_ALCHEMY=on there.
+      ...alchemyDevProxy(),
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,

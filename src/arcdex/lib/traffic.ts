@@ -16,7 +16,7 @@ function newId(): string {
 }
 
 /** This browser's visitor id; a fresh one per page load where storage is blocked. */
-function visitorId(): string {
+export function visitorId(): string {
   try {
     const have = localStorage.getItem(KEY)
     if (have && ID.test(have)) return have
@@ -24,6 +24,20 @@ function visitorId(): string {
     localStorage.setItem(KEY, id)
     return id
   } catch { return newId() }
+}
+
+/** The part of the site this page is on (the engine counts who's where for the admin panel; nothing else is sent). */
+export function sectionOf(path: string): string {
+  if (/^\/((arc|robinhood|solana|bnb|bsc|app|markets|trenches|launchpad)\/?)?$/.test(path)) return 'trenches'
+  if (/^\/((solana|bnb|bsc|robinhood)\/)?token\/|^\/spot/.test(path)) return 'token'
+  if (path.startsWith('/futures')) return 'futures'
+  if (path.startsWith('/predict')) return 'predict'
+  if (path.startsWith('/portfolio')) return 'portfolio'
+  if (path.startsWith('/swap')) return 'swap'
+  if (path.startsWith('/bridge')) return 'bridge'
+  if (path.startsWith('/admin')) return 'admin'
+  if (path.startsWith('/about')) return 'landing'
+  return 'other'
 }
 
 const listeners = new Set<(c: TrafficCounts) => void>()
@@ -38,7 +52,7 @@ export function startTraffic(engine: string) {
   const beat = () => {
     if (document.visibilityState !== 'visible') return
     // text/plain keeps it a simple request: no preflight.
-    fetch(`${engine}/v1/traffic/beat`, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ id }), keepalive: true })
+    fetch(`${engine}/v1/traffic/beat`, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ id, p: sectionOf(location.pathname) }), keepalive: true })
       .then(r => (r.ok ? (r.json() as Promise<TrafficCounts>) : null))
       .then(c => {
         if (!c || typeof c.online !== 'number') return

@@ -7,6 +7,10 @@ import { tweetUrl } from '../lib/shareCard'
 import { PointsBoard } from '../components/PointsPanel'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
+import HlLeaderBoard from '../components/HlLeaderBoard'
+import type { HlWindow } from '../hl/leaders'
+import { getVerifiedBoard } from '../api/socialEngine'
+import type { SocialBoard } from '../../../api/_socialProtocol'
 
 // Top traders on ARCDEX by realized PnL — the competition that keeps
 // traders coming back (and trading through our router).
@@ -14,13 +18,18 @@ import { t as T } from '../lib/i18n'
 const money = (n: number) => `${n < 0 ? '-' : n > 0 ? '+' : ''}$${Math.abs(n) >= 1e6 ? (Math.abs(n) / 1e6).toFixed(2) + 'M' : Math.abs(n) >= 1e3 ? (Math.abs(n) / 1e3).toFixed(1) + 'K' : Math.abs(n).toFixed(2)}`
 const plain = (n: number) => `$${n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : n.toFixed(2)}`
 
-export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => void }) {
+/** The board's periods as Hyperliquid's windows (the Futures tab). */
+const HL_WINDOW: Record<Period, HlWindow> = { '24h': 'day', '7d': 'week', '30d': 'month', all: 'allTime' }
+
+export default function LeaderboardPage({ navigate, initialKind }: { navigate: (p: Page) => void; initialKind?: 'futures' }) {
   const me = useTrader().address?.toLowerCase() ?? null
   const [period, setPeriod] = useState<Period>('7d')
   const [rows, setRows] = useState<LeaderRow[] | null>(null)
   const [profiles, setProfiles] = useState<Map<string, Profile>>(new Map())
-  const [kind, setKind] = useState<'traders' | 'clans' | 'points'>('traders')
+  const [kind, setKind] = useState<'traders' | 'futures' | 'clans' | 'points'>(initialKind ?? 'traders')
   const [clans, setClans] = useState<ClanRank[] | null>(null)
+  const [board, setBoard] = useState<SocialBoard | null>(null)
+  const [showOut, setShowOut] = useState(false)
 
   useEffect(() => {
     if (kind !== 'clans') return
@@ -42,10 +51,15 @@ export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => v
     setRows(null)
     triggerIndex()
     const load = async () => {
-      const r = await getLeaderboard(period, 100).catch(() => [])
+      // The engine's verified board first (exact, from the routers' own trades, wash trading left out); else the index's.
+      const v = await getVerifiedBoard(period, 100)
+      const r: LeaderRow[] = v
+        ? v.rows.map(x => ({ trader: x.trader, volume_usdc: Number(x.stats.volume), realized_pnl: Number(x.stats.realized), trades: x.stats.trades, coins: x.stats.coins, verified: true, wins: x.stats.wins, counted: x.stats.counted }))
+        : await getLeaderboard(period, 100).catch(() => [])
       if (!alive) return
+      setBoard(v)
       setRows(r)
-      setProfiles(await getProfiles(r.map(x => x.trader)).catch(() => new Map()))
+      setProfiles(await getProfiles([...r.map(x => x.trader), ...(v?.excluded ?? []).map(x => x.trader)]).catch(() => new Map()))
     }
     void load()
     const id = setInterval(() => { if (!document.hidden) void load() }, 30_000)
@@ -54,7 +68,7 @@ export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => v
 
   const myRank = rows && me ? rows.findIndex(r => r.trader === me) : -1
   const tab = (p: Period, label: string) => (
-    <button onClick={() => setPeriod(p)} style={{ padding: '5px 12px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', border: '1px solid var(--adx-card-border)', background: period === p ? 'var(--adx-accent)' : 'transparent', color: period === p ? '#fff' : 'var(--text-muted)' }}>{label}</button>
+    <button onClick={() => setPeriod(p)} style={{ padding: '5px 12px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', border: '1px solid var(--adx-card-border)', background: period === p ? 'var(--adx-accent)' : 'transparent', color: period === p ? 'var(--on-accent)' : 'var(--text-muted)' }}>{label}</button>
   )
 
   return (
@@ -62,15 +76,16 @@ export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => v
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <div style={{ display: 'flex', gap: 14, alignItems: 'baseline' }}>
-            {(['traders', 'clans', 'points'] as const).map(k => (
-              <button key={k} onClick={() => setKind(k)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: kind === k ? '1.4rem' : '1.05rem', fontWeight: 800, color: kind === k ? 'var(--text)' : 'var(--text-muted)' }}>{k === 'traders' ? T("Traders") : k === 'clans' ? T("Clans") : T("★ Points")}</button>
+            {(['traders', 'futures', 'clans', 'points'] as const).map(k => (
+              <button key={k} onClick={() => setKind(k)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: kind === k ? '1.4rem' : '1.05rem', fontWeight: 800, color: kind === k ? 'var(--text)' : 'var(--text-muted)' }}>{k === 'traders' ? T("Traders") : k === 'futures' ? T('Futures') : k === 'clans' ? T("Clans") : T("★ Points")}</button>
             ))}
           </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>{T("Realized profit from trades made on ARCDEX. Trade here to climb it.")}</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>{kind === 'futures' ? T('Hyperliquid’s most profitable futures traders. Open one to see their positions and trades.') : T("Realized profit from trades made on ARCDEX. Trade here to climb it.")}</div>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>{tab('24h', '24H')}{tab('7d', '7D')}{tab('30d', '30D')}{tab('all', T('All'))}</div>
       </div>
 
+      {kind === 'futures' && <HlLeaderBoard window={HL_WINDOW[period]} navigate={navigate} />}
       {kind === 'clans' && <ClanBoard clans={clans} navigate={navigate} />}
       {kind === 'points' && <PointsBoard me={me} navigate={navigate} />}
 
@@ -79,7 +94,7 @@ export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => v
           <span>{T("Your rank")}</span>
           <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <b>{myRank >= 0 ? `#${myRank + 1} · ${money(rows[myRank].realized_pnl)}` : T("Not ranked yet — make a trade")}</b>
-            {myRank >= 0 && <button onClick={() => void shareRank(myRank + 1, rows[myRank].realized_pnl)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--adx-accent)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>{T("Share")}</button>}
+            {myRank >= 0 && <button onClick={() => void shareRank(myRank + 1, rows[myRank].realized_pnl)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--adx-accent)', color: 'var(--on-accent)', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>{T("Share")}</button>}
           </span>
         </div>
       )}
@@ -88,7 +103,7 @@ export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => v
         {rows === null ? <Empty>{T("Loading…")}</Empty> : rows.length === 0 ? <Empty>{T("No trades in this period yet. The first trader to take profit on ARCDEX tops this board.")}</Empty> : (
           <table className="lb-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
             <thead><tr style={{ borderBottom: '1px solid var(--adx-card-border)' }}>
-              {['#', T('Trader'), T('Realized PnL'), T('Volume'), T('Trades')].map((h, i) => <th key={h} style={{ padding: '10px 16px', textAlign: i >= 2 ? 'right' : 'left', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{h}</th>)}
+              {['#', T('Trader'), T('Realized PnL'), T('Win rate'), T('Volume'), T('Trades')].map((h, i) => <th key={h} className={i === 3 ? 'lb-win' : undefined} style={{ padding: '10px 16px', textAlign: i >= 2 ? 'right' : 'left', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{h}</th>)}
             </tr></thead>
             <tbody>
               {rows.map((r, i) => {
@@ -106,6 +121,7 @@ export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => v
                       </div>
                     </td>
                     <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: r.realized_pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{money(r.realized_pnl)}</td>
+                    <td className="lb-win" style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>{r.counted ? `${Math.round(((r.wins ?? 0) / r.counted) * 100)}%` : '—'}</td>
                     <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'var(--mono)' }}>{plain(r.volume_usdc)}</td>
                     <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>{r.trades}</td>
                   </tr>
@@ -115,6 +131,32 @@ export default function LeaderboardPage({ navigate }: { navigate: (p: Page) => v
           </table>
         )}
       </div>}
+
+      {kind === 'traders' && rows !== null && (
+        <div className="lb-verified" style={{ marginTop: 10, fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          {board ? (
+            <>
+              <span style={{ color: 'var(--green)', fontWeight: 700 }}>✓ {T('Verified on-chain')}</span>{' · '}
+              {T('Realized PnL recomputed from ARCDEX’s router trades on Arc (average cost per coin), read from the chain to block {block}.', { block: board.scannedTo.toLocaleString() })}
+              {board.excluded.length > 0 && (
+                <>
+                  {' '}<button className="disc-link" onClick={() => setShowOut(o => !o)} aria-expanded={showOut}>{board.excluded.length === 1 ? T('1 wallet left out by the wash-trade filter') : T('{n} wallets left out by the wash-trade filter', { n: board.excluded.length })}</button>
+                  {showOut && (
+                    <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                      {board.excluded.map(x => (
+                        <li key={x.trader}>
+                          <button className="disc-link" onClick={() => navigate({ name: 'trader', address: x.trader })} style={{ fontFamily: 'var(--mono)' }}>{profiles.get(x.trader)?.username ? `@${profiles.get(x.trader)!.username}` : shortAddr(x.trader)}</button>
+                          {' · '}{x.reasons.map(r => r === 'round-trips' ? T('round trips') : T('mirrored trades')).join(', ')}{' · '}{T('claimed {pnl}', { pnl: money(Number(x.realized)) })}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </>
+          ) : T('From the trade index; the verified board shows when the engine answers.')}
+        </div>
+      )}
     </div>
   )
 }

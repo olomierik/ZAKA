@@ -14,11 +14,12 @@
 //   bun engine/src/main.ts          (see engine/README.md)
 
 import { Traffic } from './traffic'
+import { Votes } from './votes'
 import { DOLLAR_PLAN } from './bot/dollarPlan'
 import { every, keepAliveOnUnhandled, startWithRetry } from './lifecycle'
 import { randomBytes } from 'node:crypto'
 import { RedisClient } from 'bun'
-import { scanLogs, setLogEndpoints, type RawLog } from '../../api/_arcLogs'
+import { scanLogs, setLogEndpoints, type LogFilter, type RawLog } from '../../api/_arcLogs'
 import { POOL_MANAGER, V3_SWAP, V4_INITIALIZE, V4_SWAP } from '../../api/_arcSwaps'
 import type { ServerMessage } from '../../api/_marketProtocol'
 import { HttpRpc } from './chain/http'
@@ -43,6 +44,7 @@ import { PostgresHistoryStore } from './store/postgresHistory'
 import { MemoryHotStore, RedisHotStore, type HotStore } from './store/hot'
 import { Bot } from './bot/bot'
 import { ControlVerifier } from './bot/control'
+import { toFunctionSelector, type Address } from 'viem'
 import { DEFAULT_LIMITS, LiveTrader } from './bot/liveTrader'
 import { mailerFromEnv } from './bot/mailer'
 import { PaperAccounts } from './bot/paperAccounts'
@@ -51,16 +53,45 @@ import { Users } from './bot/users'
 import { Tiers } from './bot/tiers'
 import { MemoryBotStore, PostgresBotStore } from './bot/store'
 import { PerpsService } from './perps/service'
-import { CoinProgram } from './coin/program'
+import { CoinProgram, FEE_SOURCES, FEE_WALLET, fetchRelayBalances } from './coin/program'
+import { FeeLedger } from './fees/ledger'
+import { FeeLedgerService, webhookAlert } from './fees/service'
+import { REFERRER_OF, ReferralWatcher } from './fees/referrals'
+import { PushAlerts } from './alerts/service'
+import { generateVapidKeys, vapidValid, type VapidKeys } from './alerts/webpush'
+import { JupiterFeeWatcher, type SolCall } from './fees/jupiterWatch'
+import { AdminAuth } from './admin/auth'
+import { FeatureFlags } from './admin/flags'
+import { Sweeper, cronMinuteOfDay } from './admin/sweeper'
+import { AdminApi, type AdminTrades } from './admin/api'
+import { adminReady, db, sessionRevoked } from '../../api/_supabaseAdmin'
+import { TradeBook, type IndexRow } from './social/book'
+import { SocialBoards } from './social/boards'
+import { Moderation } from './social/moderation'
+import { SocialApi } from './social/api'
+import { CopyEngine } from './copy/engine'
+import { CopyApi } from './copy/api'
+import { leaderVerdict, screen as copyScreen } from './copy/rules'
+import { decodeTrades, T_SWAPPED, type RouterLog } from './social/pnl'
+import { emptyLedger, FUNDER, knownFunders, scanFunding } from './bot/funders'
+import { FEE_RECIPIENT } from './feeWallet'
+import { SOCIAL_ROUTERS } from '../../api/_socialProtocol'
+import { setSocialGuard } from '../../api/social'
+import type { VerifyAdmin } from './site/tradeSwitch'
+import { SOL_RPC_SERVER } from '../../api/_solCore'
 import { BondingBook } from './market/bonding'
 import { PostgresCandleStore } from './perps/store'
 import { MemoryCandleStore } from './perps/candles'
 import { LiveExecutor } from './trading/live'
 import { DataApi, startServer } from './ws/server'
+import { TradeSwitch } from './site/tradeSwitch'
 import { startSignalEngine, type QuantBoot } from './quant/boot'
 import { AlgoAgent } from './algo/agent'
 import { Brain } from './algo/brain'
 import { createSiteApi } from './site/siteApi'
+import { EstablishedBook } from './market/established'
+import { setArcExtra } from '../../api/_argusCore'
+import { TrenchService } from './trench/service'
 
 const cfg = loadConfig()
 setLogLevel(cfg.logLevel)
@@ -84,6 +115,7 @@ let botsHealth: (() => { email: boolean; userLive: boolean; ownerWallet: boolean
 let stream: ChainStream | null = null
 let quant: QuantBoot | null = null
 let algo: AlgoAgent | null = null
+let trench: TrenchService | null = null
 let redisOk = hot.kind === 'memory'
 
 const health = () => {
@@ -117,6 +149,8 @@ const health = () => {
     quant: quant?.health() ?? null,
     // ARCDEX Algo (engine/src/algo): mode, running, open positions, kill switch, brain.
     algo: algo?.health() ?? null,
+    // The Trenches' live feed (trench/service.ts): each chain live or not, trades a minute, launches kept, smart wallets.
+    trench: trench?.health() ?? null,
   }
 }
 
@@ -228,6 +262,45 @@ async function main() {
   const botStore = cfg.databaseUrl ? new PostgresBotStore(cfg.databaseUrl) : new MemoryBotStore()
   // The site's traffic counter (traffic.ts): online now, visitors today and ever, kept with the bots' data.
   if (dataApi) dataApi.traffic = new Traffic(botStore)
+  // Community sentiment on each coin (votes.ts), kept beside it.
+  if (dataApi) dataApi.votes = new Votes(botStore)
+  // Price and activity alerts by web push (alerts/service.ts): Arc coins on every trade, Hyperliquid every 2 seconds.
+  if (dataApi && !/^(0|off|false|no)$/i.test(process.env.PUSH?.trim() ?? '')) {
+    let keys: VapidKeys | null = null
+    const envKeys = { publicKey: process.env.VAPID_PUBLIC_KEY?.trim() ?? '', privateKey: process.env.VAPID_PRIVATE_KEY?.trim() ?? '' }
+    if (envKeys.publicKey && await vapidValid(envKeys)) keys = envKeys
+    else {
+      if (envKeys.publicKey) log.warn('push: VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY aren’t a matching pair; using the stored keys')
+      const stored = await botStore.getSetting('push-vapid').catch(() => null)
+      const k = stored ? JSON.parse(stored) as VapidKeys : null
+      if (k && await vapidValid(k)) keys = k
+      else { keys = await generateVapidKeys(); await botStore.setSetting('push-vapid', JSON.stringify(keys)).catch(e => log.error('push: keys not saved', { error: errMsg(e) })) }
+    }
+    const push = new PushAlerts({
+      store: botStore, keys, subject: process.env.VAPID_SUBJECT?.trim() || 'https://arcsense.site',
+      hlMids: async dex => {
+        const r = await fetch('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(dex ? { type: 'allMids', dex } : { type: 'allMids' }), signal: AbortSignal.timeout(4_000) })
+        if (!r.ok) throw new Error(`hyperliquid allMids ${r.status}`)
+        const j = await r.json() as Record<string, string>
+        return Object.fromEntries(Object.entries(j).map(([k, v]) => [k, Number(v)]))
+      },
+    })
+    await push.load()
+    dataApi.push = push
+    eng.observers.push({ onTrade: (t, ctx) => { if (!ctx.replay) push.onTrade(t) } })
+    every(2_000, 'push alerts', () => { void push.tickHl().catch(e => log.warn('push: hyperliquid check failed', { error: errMsg(e) })) })
+  }
+  // The trade switch (site/tradeSwitch.ts): trading off everywhere or on one venue, by an admin wallet's signature or
+  // GLOBAL_KILL_SWITCH / KILL_SWITCH_VENUES; every change in the append-only audit log.
+  // One verifier for every admin signature (the switch, flags, the sweeper), so a signature is used once across all of them.
+  const adminCheck = new ControlVerifier(null, cfg.httpUrls)
+  const verifyAdmin: VerifyAdmin = (m, at, sig, now) => adminCheck.verifyAnyOf(cfg.admins, m, at, sig, now)
+  if (dataApi) {
+    const tradeSwitch = new TradeSwitch({ settings: botStore, audit: botStore, env: cfg.killSwitch, verify: verifyAdmin })
+    await tradeSwitch.load()
+    dataApi.tradeSwitch = tradeSwitch
+    log.info('trade switch', { admins: cfg.admins.length, on: tradeSwitch.state().on, envAll: cfg.killSwitch.all, envVenues: cfg.killSwitch.venues })
+  }
   // Visitors' bots live on: accounts (email + passcode, Resend for email), and
   // live trading from each bot's own wallet once BOT_WALLET_SECRET is set.
   // Secrets are read here only and never logged.
@@ -258,16 +331,80 @@ async function main() {
   // $ARCDEX buyback, burns and liquidity (coin/program.ts): the fee wallet's activity, 30% / 70% of
   // fees, and every burn. The SENSE_* names still work (the program bought $SENSE until 2026-10-04).
   const env = (name: string) => process.env[`COIN_${name}`] ?? process.env[`SENSE_${name}`]
+  let feeRefs: { ledger: FeeLedger; jupiter: JupiterFeeWatcher | null } | null = null
   if (dataApi && !/^(0|off|false|no)$/i.test(env('PROGRAM')?.trim() ?? '')) {
     const list = (v: string | undefined) => (v ?? '').split(',').map(s => s.trim()).filter(s => /^0x[0-9a-fA-F]{40}$/.test(s))
+    // The fee ledger (fees/ledger.ts): every fee from on-chain evidence, append-only, reconciled every night.
+    const feeLedger = new FeeLedger(botStore, () => metrics.inc('fee_reconcile_mismatch'))
+    const jupRef = (process.env.JUP_REFERRAL_ACCOUNT ?? process.env.VITE_JUP_REFERRAL_ACCOUNT ?? '').trim()
+    const solCall: SolCall = async <T>(method: string, params: unknown[]) => {
+      let last: unknown = new Error('no Solana RPC')
+      for (const url of SOL_RPC_SERVER) {
+        try {
+          const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(15_000) })
+          const j = await r.json() as { result?: T; error?: { message?: string } }
+          if (j.error) throw new Error(j.error.message ?? 'rpc error')
+          return j.result as T
+        } catch (e) { last = e }
+      }
+      throw last
+    }
+    const jupiterFees = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(jupRef) ? new JupiterFeeWatcher({ referral: jupRef, call: solCall, ledger: feeLedger, settings: botStore }) : null
+    let programRef: CoinProgram | null = null
+    const feeSources = [...FEE_SOURCES, ...list(env('FEE_SOURCES'))]
+    const fees = new FeeLedgerService({
+      ledger: feeLedger, settings: botStore, wallet: FEE_WALLET, sources: feeSources,
+      scanArc: async (from, to) => {
+        const filter: LogFilter = { address: ['0x3600000000000000000000000000000000000000', '0xfffffffffffffffffffffffffffffffffffffffe'], topics: ['0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef', null, `0x${FEE_WALLET.slice(2).padStart(64, '0')}`] }
+        const r = await scanLogs(filter, from, to, { head: to, reduce: (logs: RawLog[]) => logs, deadline: Date.now() + 5 * 60_000 })
+        if (r.scannedTo < to) throw new Error(`scanned to ${r.scannedTo} of ${to}`)
+        return r.parts.flat()
+      },
+      ownTxs: async hashes => {
+        if (!hashes.length) return new Set()
+        const txs = await rpc.batch<{ from: string } | null>(hashes.map(h => ({ method: 'eth_getTransactionByHash', params: [h] })))
+        return new Set(hashes.filter((_, i) => txs[i]?.from?.toLowerCase() === FEE_WALLET))
+      },
+      arcScannedTo: () => programRef?.scannedTo ?? 0,
+      relayBalances: () => fetchRelayBalances(FEE_WALLET),
+      jupiter: jupiterFees,
+      alert: webhookAlert(process.env.ALERT_WEBHOOK_URL),
+    })
     const program = new CoinProgram({
       rpc, settings: botStore, priceOf: t => eng.tokens.get(t)?.priceUsd ?? null,
       // More contracts whose payments are fees (the futures contract on mainnet), and where liquidity goes.
       feeSources: list(env('FEE_SOURCES')),
       liquidityTargets: list(env('LIQUIDITY_TARGETS')),
+      onFeeLogs: (logs, timeOf, own) => fees.onArcLogs(logs, timeOf, own),
+      onRelayBalances: (balances, at) => fees.onRelayBalances(balances, at),
     })
+    programRef = program
     dataApi.coin = program
-    void program.start().catch(e => log.error('coin program: did not start', { error: errMsg(e) }))
+    dataApi.fees = { ledger: feeLedger, service: fees }
+    feeRefs = { ledger: feeLedger, jupiter: jupiterFees }
+    void program.start().then(() => fees.begin()).catch(e => log.error('coin program: did not start', { error: errMsg(e) }))
+    every(10 * 60_000, 'fee ledger', () => { void jupiterFees?.tick(); void fees.tick().catch(e => log.warn('fee ledger: reconciliation failed', { error: errMsg(e) })) })
+    // Referral rebates (fees/referrals.ts): the routers' ReferralPaid events into the ledger every minute, reconciled nightly.
+    const referrals = new ReferralWatcher({
+      ledger: feeLedger, settings: botStore,
+      scan: async (filter, from, to) => {
+        const head = Number(BigInt(await rpc.call<string>('eth_blockNumber', [])))
+        const r = await scanLogs(filter as LogFilter, from, to, { head, reduce: (logs: RawLog[]) => logs, deadline: Date.now() + 60_000 })
+        return { logs: r.parts.flat(), scannedTo: r.scannedTo }
+      },
+      head: async () => Number(BigInt(await rpc.call<string>('eth_blockNumber', []))),
+      times: async blocks => {
+        const got = await rpc.batch<{ timestamp: string } | null>(blocks.map(b => ({ method: 'eth_getBlockByNumber', params: [`0x${b.toString(16)}`, false] })))
+        return new Map(blocks.map((b, i) => [b, got[i] ? Number(BigInt(got[i]!.timestamp)) * 1000 : null]))
+      },
+      referrerOf: async pairs => {
+        const got = await rpc.batch<string>(pairs.map(p => ({ method: 'eth_call', params: [{ to: p.router, data: `${REFERRER_OF}${p.trader.slice(2).padStart(64, '0')}` }, 'latest'] })))
+        return got.map(h => (h && h.length >= 42 ? `0x${h.slice(-40)}`.toLowerCase() : null)).map(a => (a && !/^0x0{40}$/.test(a) ? a : null))
+      },
+      alert: webhookAlert(process.env.ALERT_WEBHOOK_URL),
+    })
+    dataApi.fees.referrals = referrals
+    every(60_000, 'referral rebates', () => { void referrals.tick() })
   }
   // Every Argus coin on its launch curve and how close it is to graduating (market/bonding.ts), for the Near bond column.
   if (dataApi) { const book = new BondingBook({ rpc, engine: eng }); dataApi.bonding = book; book.start() }
@@ -282,6 +419,105 @@ async function main() {
   every(10 * 60_000, 'tier holdings', readHoldings)
   const accounts = cfg.botMode === 'off' ? null : new PaperAccounts({ store: botStore, priceOf: token => botRef?.priceOf(token) ?? eng.tokens.get(token)?.priceUsd ?? null, params: s => botRef!.params(s), live: userLive, paperSignals: cfg.botSignals.paper, access: ownerId => tiers.access(users?.get(ownerId) ?? null), liveRouting: cfg.liveGrades === 'board' ? 'board' : cfg.liveGrades === 'dollar' ? 'dollar' : 'grades', paused: cfg.autotradePaused })
   if (accounts) await accounts.load().catch(e => log.error('paper accounts: load failed', { error: errMsg(e) }))
+  // The social layer (social/*): verified PnL from the routers' own trades, the wash-trade filter, comments, reports
+  // and mutes. SOCIAL=off stops it.
+  let moderation: Moderation | null = null
+  let socialBoards: SocialBoards | null = null
+  let siteFlags: FeatureFlags | null = null
+  let copyRef: CopyEngine | null = null
+  if (dataApi && !/^(0|off|false|no)$/i.test(process.env.SOCIAL?.trim() ?? '')) {
+    const headNow = async () => Number(BigInt(await rpc.call<string>('eth_blockNumber', [])))
+    const book = new TradeBook({
+      store: botStore, settings: botStore,
+      scan: async (filter, from, to) => {
+        const r = await scanLogs(filter as LogFilter, from, to, { head: await headNow(), reduce: (logs: RawLog[]) => logs, deadline: Date.now() + 60_000 })
+        return { logs: r.parts.flat(), scannedTo: r.scannedTo }
+      },
+      head: headNow,
+      times: async blocks => {
+        const got = await rpc.batch<{ timestamp: string } | null>(blocks.map(b => ({ method: 'eth_getBlockByNumber', params: [`0x${b.toString(16)}`, false] })))
+        return new Map(blocks.map((b, i) => [b, got[i] ? Number(BigInt(got[i]!.timestamp)) * 1000 : null]))
+      },
+      indexRows: adminReady ? async (from, to) => {
+        const out: IndexRow[] = []
+        for (let offset = 0; ; offset += 1000) {
+          const page = await db<IndexRow[]>(`arcdex_trades?select=tx_hash,log_index,trader,token,side,usdc,token_amount,block_number&block_number=gte.${from}&block_number=lte.${to}&order=block_number,log_index&limit=1000&offset=${offset}`)
+          out.push(...page)
+          if (page.length < 1000) return out
+        }
+      } : null,
+      alert: webhookAlert(process.env.ALERT_WEBHOOK_URL),
+    })
+    await book.load()
+    every(60_000, 'social book', () => { void book.tick() })
+    void book.tick()
+    moderation = new Moderation({
+      store: botStore, settings: botStore, audit: botStore, verify: verifyAdmin,
+      thesis: adminReady ? async id => (await db<{ author: string; body: string }[]>(`arcdex_theses?id=eq.${id}&select=author,body`))[0] ?? null : null,
+    })
+    await moderation.load()
+    // A banned wallet can't post a thesis, edit its profile or make a clan either (api/social.ts).
+    const mod = moderation
+    setSocialGuard(me => (mod.isBanned(me) ? 'This wallet can’t post on ARCDEX' : null))
+    socialBoards = new SocialBoards(book)
+    dataApi.social = new SocialApi({ book, boards: socialBoards, moderation, origins: cfg.allowedOrigins, revoked: adminReady ? sessionRevoked : undefined })
+    log.info('social layer', { trades: book.size, scannedTo: await book.scannedTo() })
+  }
+  // The admin panel (admin/*): sign-in, live sessions, fees and the sweeper, trades, the audit log, runtime flags.
+  if (dataApi) {
+    const alert = webhookAlert(process.env.ALERT_WEBHOOK_URL)
+    const off = (v: string | undefined) => /^(0|off|false|no)$/i.test(v?.trim() ?? '')
+    const auth = new AdminAuth({ admins: cfg.admins, origins: cfg.allowedOrigins, ttlMinutes: Number(process.env.ADMIN_SESSION_TTL_MINUTES) || 30, signedBy: (a, m, sig) => adminCheck.signedBy(a, m, sig), audit: botStore, alert })
+    const flags = new FeatureFlags({ settings: botStore, audit: botStore, verify: verifyAdmin })
+    siteFlags = flags
+    await flags.load()
+    const minute = cronMinuteOfDay(process.env.SWEEPER_CRON ?? '0 3 * * *')
+    const jup = feeRefs?.jupiter ?? null
+    const SOL_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', WSOL = 'So11111111111111111111111111111111111111112'
+    const sweeper = new Sweeper({
+      store: botStore, settings: botStore, audit: botStore,
+      minUsd: Math.max(0, Number(process.env.SWEEPER_MIN_USD ?? 10) || 0),
+      owedFees: () => accounts?.owedFees() ?? [],
+      sendOwedFees: () => accounts?.sendOwedFees() ?? Promise.resolve([]),
+      relayBalances: async () => (await fetchRelayBalances(FEE_WALLET)).map(b => ({ holder: `Relay ${b.key}`, token: b.symbol, amount: String(b.amount), usd: b.usd })),
+      jupiterBalances: jup ? async () => (await jup.accounts()).map(a => ({ holder: a.account, token: a.mint === SOL_USDC ? 'USDC' : a.mint === WSOL ? 'SOL' : a.mint.slice(0, 6), amount: a.amount, usd: a.mint === SOL_USDC ? Number(a.amount) : null })) : null,
+      paused: () => off(process.env.SWEEPER) ? 'SWEEPER=off on the engine' : dataApi.tradeSwitch && !dataApi.tradeSwitch.state().on ? 'trading is off everywhere (the trade switch)' : null,
+      alert,
+      schedule: off(process.env.SWEEPER) || minute === null ? 'off' : { minuteOfDay: minute, mode: process.env.SWEEPER_MODE === 'dry' ? 'dry' : 'real' },
+    })
+    every(5 * 60_000, 'fee sweeper', () => { void sweeper.tick() })
+    const ledgerTrades = async (): Promise<AdminTrades> => {
+      const rows = (await feeRefs?.ledger.store.feeRows({ limit: 100 })) ?? []
+      const since = Date.now() - 86_400_000
+      const day = rows.filter(r => r.at >= since && (r.status === 'received' || r.status === 'accrued'))
+      return {
+        source: 'ledger',
+        rows: rows.filter(r => r.tx).map(r => ({ tx: r.tx!, at: r.at, trader: '', token: r.token, side: 'buy' as const, usd: 0, feeUsd: r.amountUsd ?? 0, venue: r.source })),
+        day: { trades: day.length, volumeUsd: 0, feesUsd: Math.round(day.reduce((t, r) => t + (r.amountUsd ?? 0), 0) * 100) / 100 },
+      }
+    }
+    const trades = async (): Promise<AdminTrades> => {
+      if (!adminReady) return ledgerTrades()
+      type Row = { tx_hash: string; block_time: string; trader: string; token: string; side: 'buy' | 'sell'; usdc: string; fee_usdc: string; router: string }
+      const since = new Date(Date.now() - 86_400_000).toISOString()
+      const [rows, day] = await Promise.all([
+        db<Row[]>('arcdex_trades?select=tx_hash,block_time,trader,token,side,usdc,fee_usdc,router&order=block_time.desc&limit=100'),
+        db<{ usdc: string; fee_usdc: string }[]>(`arcdex_trades?select=usdc,fee_usdc&block_time=gte.${encodeURIComponent(since)}&limit=10000`),
+      ])
+      const sum = (xs: string[]) => Math.round(xs.reduce((t, x) => t + (Number(x) || 0), 0) * 100) / 100
+      return {
+        source: 'supabase',
+        rows: rows.map(r => ({ tx: r.tx_hash, at: Date.parse(r.block_time), trader: r.trader, token: r.token, side: r.side, usd: Number(r.usdc) || 0, feeUsd: Number(r.fee_usdc) || 0, venue: r.router })),
+        day: { trades: day.length, volumeUsd: sum(day.map(d => d.usdc)), feesUsd: sum(day.map(d => d.fee_usdc)) },
+      }
+    }
+    dataApi.admin = new AdminApi({
+      auth, origins: cfg.allowedOrigins, audit: botStore, verify: verifyAdmin, flags, sweeper, ledger: feeRefs?.ledger ?? null,
+      traffic: dataApi.traffic, tradeSwitch: dataApi.tradeSwitch, trades, moderation, copy: () => copyRef,
+      bots: accounts ? () => ({ bots: accounts.count, running: accounts.running, live: accounts.liveCount }) : null,
+    })
+    log.info('admin panel', { admins: cfg.admins.length, sweeper: minute === null || off(process.env.SWEEPER) ? 'off' : `daily after ${Math.floor(minute / 60)}:${String(minute % 60).padStart(2, '0')} UTC`, alerts: !!alert })
+  }
   const bot = cfg.botMode === 'off' ? null : new Bot({
     rpc, engine: eng, pools, mode: cfg.botMode, sizeUsd: cfg.botSizeUsd ?? undefined, scalpSizeUsd: cfg.botScalpSizeUsd ?? undefined,
     store: botStore, accounts,
@@ -294,6 +530,69 @@ async function main() {
     eng.observers.push(bot)
     await bot.start()
     dataApi?.attachBot(bot, control, accounts, users, tiers)
+  }
+  // Copy trading (copy/*, the build pack's Phase 7): engine-held copy wallets mirror the verified leaders' router trades.
+  // On only once an admin turns the copyTrading flag on (/admin → Flags); COPY=off stops it whatever the flag says.
+  if (dataApi && socialBoards && !/^(0|off|false|no)$/i.test(process.env.COPY?.trim() ?? '')) {
+    const boards = socialBoards
+    const SWAP_ROUTER_V2 = '0xd07583f7db671521aacfda2b4612ad187aa2924e'
+    let feeBps: number | null = null
+    const readFee = async () => {
+      const r = await rpc.call<string>('eth_call', [{ to: SWAP_ROUTER_V2, data: toFunctionSelector('feeBps()') }, 'latest'])
+      const n = Number(BigInt(r))
+      if (Number.isInteger(n) && n >= 0 && n <= 1_000) feeBps = n
+    }
+    await readFee().catch(e => log.warn('copy: router fee not read', { error: errMsg(e) }))
+    every(10 * 60_000, 'copy fee', () => { void readFee().catch(e => log.warn('copy: router fee not read', { error: errMsg(e) })) })
+    const BALANCE_OF = '0x70a08231'
+    const copy = new CopyEngine({
+      // No engine-held copy wallets (owner, 2026-10-16: "I don't want ARCDEX to hold users' copy trade wallets"): without a
+      // vault none can be made or opened, whatever the copyTrading flag says, until a non-custodial design replaces it.
+      store: botStore, vault: null,
+      makeExec: key => new LiveExecutor({ privateKey: key, readUrls: cfg.httpUrls, sendUrl: cfg.live.sendUrl }),
+      pool: token => { const k = eng.tokens.get(token)?.mainPool; return k ? pools.get(k) ?? null : null },
+      liquidityUsd: token => eng.tokens.get(token)?.liquidityUsd ?? null,
+      symbol: token => eng.metas.get(token)?.symbol ?? null,
+      // The scanner's report (a fresh one, or a scan now: the full one for safe-only rules, whose holders must be known),
+      // and the rug guard. A coin the scanner doesn't track (no launch record) can't be rated, so it isn't copied.
+      screen: async (token, level) => {
+        if (!bot) return { rating: 'unknown', why: 'the safety scanner isn’t running' }
+        const deep = level === 'safe-only'
+        const hit = bot.reportCached(token, 10 * 60_000)
+        const r = hit && (!deep || hit.checks.some(c => c.id === 'holders' && c.ok !== null)) ? hit
+          : await Promise.race([bot.report(token, deep), new Promise<null>(res => setTimeout(() => res(null), 20_000))]).catch(() => null)
+        return copyScreen(r, bot.rug.recentAlarm(token)?.text ?? null)
+      },
+      leader: async address => leaderVerdict(await boards.trader(address), Date.now()),
+      leaders: async limit => {
+        const b = await boards.board('all', 200)
+        return b.rows.filter(r => !copy.isCopyWallet(r.trader) && !leaderVerdict({ periods: { all: r.stats }, wash: null }, Date.now())).slice(0, limit)
+          .map(r => ({ address: r.trader, realized: r.stats.realized, volume: r.stats.volume, trades: r.stats.trades, winRate: r.stats.counted ? r.stats.wins / r.stats.counted : null, first: r.stats.first }))
+      },
+      leaderBalanceAt: async (token, leader, block) => {
+        const r = await rpc.call<string>('eth_call', [{ to: token, data: `${BALANCE_OF}${leader.slice(2).padStart(64, '0')}` }, `0x${block.toString(16)}`])
+        return BigInt(r)
+      },
+      feeBps: () => feeBps,
+      feeWallet: FEE_RECIPIENT,
+      on: () => (siteFlags?.state().flags.copyTrading === true ? null : 'copy trading is off: an admin turns it on from /admin → Flags'),
+      tradingOn: () => !dataApi.tradeSwitch?.offWhy('arc'),
+      verify: (a, m, sig) => adminCheck.signedBy(a as Address, m, sig),
+      funders: async w => {
+        const l = w.funding ?? emptyLedger()
+        const head = l.scannedTo ? 0 : Number(BigInt(await rpc.call<string>('eth_blockNumber', [])))
+        const start = l.scannedTo ? l.scannedTo + 1 : Math.max(0, head - Math.ceil((Date.now() - w.createdAt) / FUNDER.msPerBlock) - FUNDER.margin)
+        const ledger = await scanFunding(rpc, w.address, l, start)
+        return { list: knownFunders(ledger), ledger }
+      },
+      ledger: rows => feeRefs ? feeRefs.ledger.record(rows) : Promise.resolve(0),
+      alert: webhookAlert(process.env.ALERT_WEBHOOK_URL),
+    })
+    await copy.load().catch(e => log.error('copy: load failed', { error: errMsg(e) }))
+    copyRef = copy
+    dataApi.copy = new CopyApi({ engine: copy, origins: cfg.allowedOrigins, revoked: adminReady ? sessionRevoked : undefined })
+    every(60_000, 'copy fees', () => { void copy.settleFees().catch(e => log.warn('copy: fee settlement failed', { error: errMsg(e) })) })
+    log.info('copy trading', { on: !copy.why(), why: copy.why(), feeBps })
   }
   // The signal engine (engine/src/quant): its own scoring, strategies, paper book and validation; live orders only
   // behind its live gate (SIG_LIVE_ALLOWED, the owner's switch, walk-forward and paper records).
@@ -319,6 +618,29 @@ async function main() {
       hotTokens: () => eng.active(30).map(r => ({ token: r.token, createdSec: r.meta ? Math.floor(r.meta.timestamp / 1000) : undefined })),
     })
     log.info('site api: serving', { functions: dataApi.site.names })
+    // Arc's established coins from the engine's own trades, named and dated on-chain once (market/established.ts):
+    // the list, trending and coin titles add those GeckoTerminal's throttled builds miss.
+    const established = new EstablishedBook({
+      tokens: eng.tokens, hasMeta: t => eng.metas.has(t), pool: p => pools.get(p), rpc,
+      load: () => botStore.getSetting('arc-established'), save: j => botStore.setSetting('arc-established', j),
+    })
+    setArcExtra({ rows: () => established.rows(), capOf: t => established.capOf(t) })
+    every(20_000, 'established coins', () => { void established.refresh().catch(e => log.debug('established: round failed', { error: errMsg(e) })) })
+  }
+  // The Trenches' live feed (trench/service.ts): Solana's pump.fun and PumpSwap, BNB Chain's four.meme and PancakeSwap,
+  // Robinhood Chain's listed pools and Arc's own trades, with each chain's smart wallets. TRENCH=off stops it.
+  if (dataApi && !/^(0|off|false|no)$/i.test(process.env.TRENCH?.trim() ?? '')) {
+    const off = (name: string) => /^(0|off|false|no)$/i.test(process.env[name]?.trim() ?? '')
+    trench = new TrenchService({
+      publish: (topics, msg) => publisher.publish(topics, msg), wants: topic => publisher.wants(topic),
+      settings: botStore, listBase: `http://127.0.0.1:${cfg.port}`,
+      arcMeta: token => { const m = eng.metas.get(token); return m ? { symbol: m.symbol, name: m.name, image: m.image ?? null, launchedAt: m.timestamp } : null },
+      feeds: { sol: !off('TRENCH_SOL'), bnb: !off('TRENCH_BNB'), hood: !off('TRENCH_HOOD') },
+      solWss: (process.env.TRENCH_SOL_WSS ?? '').split(',').map(s => s.trim()).filter(s => /^wss:\/\//.test(s)),
+    })
+    dataApi.trench = trench
+    eng.observers.push(trench)
+    void trench.start().catch(e => log.error('trench: did not start', { error: errMsg(e) }))
   }
   await eng.warmStart()
   // The scanner lists every launch of the last 48h at once, not only coins that trade after a restart.
@@ -362,6 +684,11 @@ async function main() {
   const PARSE_WINDOW = 2_000
   const handler = async (logs: RawLog[], ctx: { replay: boolean }) => {
     const receivedAt = Date.now()
+    // A leader's trade through ARCDEX's routers is copied first, before the batch is parsed (copy/engine.ts).
+    if (copyRef && !ctx.replay) {
+      const routerLogs = logs.filter(l => SOCIAL_ROUTERS[l.address.toLowerCase()] && l.topics[0]?.toLowerCase() === T_SWAPPED)
+      for (const t of decodeTrades(routerLogs as RouterLog[], () => receivedAt)) void copyRef.onLeaderTrade(t, receivedAt).catch(e => log.error('copy: leader trade not handled', { tx: t.tx, error: errMsg(e) }))
+    }
     // Pools created in this batch first, so their swaps find them registered
     // instead of each scanning the chain for the Initialize.
     await Promise.all(logs.filter(isInitialize).map(l => pools.fromInitialize(l).catch(e => {
@@ -394,6 +721,8 @@ async function main() {
     { address: POOL_MANAGER, topics: [[V4_SWAP, V4_INITIALIZE]] },
     { topics: [V3_SWAP] },
     ...adapters.filters(),
+    // ARCDEX's routers' Swapped events: leaders' trades for copy trading.
+    ...(copyRef ? [{ address: Object.keys(SOCIAL_ROUTERS), topics: [T_SWAPPED] }] : []),
   ]
   const fetchLogs: FetchLogs = async (f, from, to, head) => {
     const r = await scanLogs<RawLog[]>({ address: f.address, topics: f.topics ?? [] }, from, to, { head, reduce: l => l, deadline: Date.now() + 20_000, concurrency: 4 })

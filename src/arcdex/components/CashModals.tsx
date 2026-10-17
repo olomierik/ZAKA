@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import QRCode from 'qrcode'
-import { formatUnits, parseAbi, type Address } from 'viem'
+import { formatUnits, isAddress, parseAbi, type Address } from 'viem'
 import { client } from '../api/launchpad'
 import { socialWrite } from '../api/social'
 import CardDeposit from './CardDeposit'
 import { shortAddr, type Trader } from '../lib/identity'
 import { USDC, useCash, useSendToken, useSendUsdc } from '../lib/usdc'
 import { txErrorText } from '../lib/tx'
-import { FunderChips, PasscodeField, useWithdrawGuard } from './WithdrawGuard'
+import { FunderChips, PasscodeField, WithdrawLimits, useWithdrawGuard } from './WithdrawGuard'
+import { isAccountCode } from '../lib/funding'
+import { destinationProblem } from '../lib/withdrawPolicy'
 import type { Page } from '../App'
 import { t as T } from '../lib/i18n'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
@@ -88,11 +90,10 @@ export function DepositModal({ trader, navigate, onClose, initial }: { trader: T
   )
 }
 
-/** A coin to send instead of USDC (Portfolio → Send). */
-export interface WithdrawAsset { address: Address; symbol: string; decimals: number }
+/** A coin to send instead of USDC (Portfolio → Send). `priceUsd` values it for the withdraw limits. */
+export interface WithdrawAsset { address: Address; symbol: string; decimals: number; priceUsd?: number }
 
 const BALANCE_ABI = parseAbi(['function balanceOf(address) view returns (uint256)'])
-
 export function WithdrawModal({ trader, onClose, asset, onSent }: { trader: Trader; onClose: () => void; asset?: WithdrawAsset; onSent?: () => void }) {
   const coin = asset && asset.address.toLowerCase() !== USDC.toLowerCase() ? asset : null
   const { cash, refresh } = useCash(trader.address)
@@ -107,9 +108,12 @@ export function WithdrawModal({ trader, onClose, asset, onSent }: { trader: Trad
   const [to, setTo] = useState('')
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
+  const [review, setReview] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
-  // Anywhere but back to the wallet that funded it needs the passcode.
-  const guard = useWithdrawGuard(trader, to)
+  const amountNum = Number(amount)
+  const amountUsd = coin ? (amountNum > 0 ? amountNum * (coin.priceUsd ?? 0) : 0) : (amountNum > 0 ? amountNum : 0)
+  // Anywhere but back to the wallet that funded it needs the passcode, and is held to the withdraw limits.
+  const guard = useWithdrawGuard(trader, to, amountUsd)
   // USDC to an Arc address, or to a Solana wallet as SOL or USDC (an account from a Solana wallet starts there).
   const [dest, setDest] = useState<'arc' | 'sol'>(accountOwner() ? 'sol' : 'arc')
   const destTabs = (
@@ -119,14 +123,29 @@ export function WithdrawModal({ trader, onClose, asset, onSent }: { trader: Trad
     </div>
   )
 
+  // The address: its format, and nothing that loses the money (a token's contract, the zero address, itself).
+  const problem = destinationProblem(to, trader.address, coin ? [USDC, coin.address] : [USDC])
+  const [isContract, setIsContract] = useState(false)
+  useEffect(() => {
+    setIsContract(false)
+    if (!to || problem || !isAddress(to.trim(), { strict: false })) return
+    let alive = true
+    void client.getCode({ address: to.trim() as Address }).then(c => { if (alive) setIsContract(!isAccountCode(c)) }).catch(() => {})
+    return () => { alive = false }
+  }, [to, problem])
+  const have = coin ? (coinBal === null ? null : Number(formatUnits(coinBal, coin.decimals))) : cash
+  const tooMuch = have !== null && amountNum > have + 1e-12
+  const amountProblem = amount !== '' && !(amountNum > 0) ? T('Enter an amount above zero.') : tooMuch ? T('More than this wallet holds.') : null
+
   async function go() {
     if (busy) return
     setBusy(true); setMsg(null)
     try {
       await guard.confirm()
       const h = coin ? await send(coin.address, coin.decimals, to.trim(), amount) : await send(USDC, 6, to.trim(), amount)
-      setMsg({ ok: true, text: coin ? `Sent ${amount} ${coin.symbol} — tx ${shortAddr(h)}` : `Sent $${amount} — tx ${shortAddr(h)}` })
-      setAmount(''); guard.setPasscode(''); refresh(); refreshCoin(); onSent?.()
+      guard.record(h, amountUsd, coin ? `${amount} ${coin.symbol}` : `$${amount}`)
+      setMsg({ ok: true, text: coin ? T('Sent {amount} {symbol} — tx {tx}', { amount, symbol: coin.symbol, tx: shortAddr(h) }) : T('Sent ${amount} — tx {tx}', { amount, tx: shortAddr(h) }) })
+      setAmount(''); setReview(false); guard.setPasscode(''); refresh(); refreshCoin(); onSent?.()
     } catch (e) {
       setMsg({ ok: false, text: txErrorText(e) })
     } finally { setBusy(false) }
@@ -139,7 +158,8 @@ export function WithdrawModal({ trader, onClose, asset, onSent }: { trader: Trad
     if (coin) { if (coinBal !== null) setAmount(formatUnits(coinBal, coin.decimals)) }
     else if (cash !== null) setAmount(Math.max(0, cash - 0.05).toFixed(2))
   }
-  const blocked = busy || !to || !amount || guard.missing
+  const formOk = !!to && !!amount && !problem && !amountProblem
+  const blocked = busy || !formOk || guard.missing || guard.overLimit || guard.limitsLoading
 
   if (!coin && dest === 'sol') return (
     <Modal title={T("Withdraw USDC")} onClose={onClose}>
@@ -147,20 +167,44 @@ export function WithdrawModal({ trader, onClose, asset, onSent }: { trader: Trad
       {solUsdc('withdraw', () => { refresh(); onSent?.() })}
     </Modal>
   )
+  const what = coin ? `${amount} ${coin.symbol}` : `$${amount} USDC`
+  if (review && formOk) return (
+    <Modal title={T('Check and send')} onClose={onClose}>
+      <div className="wd-review">
+        <div><span>{T('You send')}</span><b className="mono">{what}</b></div>
+        {coin && coin.priceUsd ? <div><span>{T('Worth about')}</span><b className="mono">${amountUsd.toFixed(2)}</b></div> : null}
+        <div><span>{T('To')}</span><b className="mono wd-addr">{to.trim()}</b></div>
+        <div><span>{T('Network')}</span><b>Arc</b></div>
+        <div><span>{T('Address')}</span><b>{guard.isFunder ? T('✓ The wallet that funded this one') : guard.limits?.isNew ? T('New: you haven’t sent here before') : guard.guarded ? T('Sent to before') : guard.privy ? T('Privy confirms it') : T('Your wallet confirms it')}</b></div>
+      </div>
+      {isContract && <div className="wd-warn">{T('This address is a contract. Exchanges and smart wallets can be; make sure it takes USDC on Arc.')}</div>}
+      <WithdrawLimits guard={guard} />
+      <PasscodeField guard={guard} onEnter={() => { if (!blocked) void go() }} />
+      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{T('Transfers on Arc can’t be reversed. Check the address matches the one you meant, character by character at the ends.')}</div>
+      {msg && <div style={{ fontSize: '0.78rem', color: msg.ok ? 'var(--green)' : 'var(--red)' }}>{msg.text}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="btn-ghost" style={{ flex: 1 }} disabled={busy} onClick={() => { setReview(false); setMsg(null) }}>{T('Back')}</button>
+        <button className="btn-primary" style={{ flex: 2, opacity: blocked ? 0.5 : 1 }} disabled={blocked} onClick={() => void go()}>{busy ? T("Sending…") : T('Confirm and send')}</button>
+      </div>
+    </Modal>
+  )
   return (
     <Modal title={coin ? T('Send {symbol}', { symbol: coin.symbol }) : T("Withdraw USDC")} onClose={onClose}>
       {!coin && destTabs}
       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{T("Available:")}{' '}<b className="sensitive" style={{ color: 'var(--text)' }}>{available}</b></div>
       <FunderChips guard={guard} onPick={a => setTo(a)} />
-      <input className="field" placeholder={T("Arc address 0x…")} value={to} onChange={e => setTo(e.target.value.trim())} />
+      <input className="field" placeholder={T("Arc address 0x…")} value={to} onChange={e => setTo(e.target.value.trim())} aria-invalid={!!problem} />
+      {problem && <div className="wd-error">{problem}</div>}
+      {!problem && isContract && <div className="wd-warn">{T('This address is a contract. Exchanges and smart wallets can be; make sure it takes USDC on Arc.')}</div>}
       <div style={{ display: 'flex', gap: 8 }}>
         <input className="field" type="number" min="0" placeholder={coin ? T('Amount ({symbol})', { symbol: coin.symbol }) : T("Amount (USDC)")} value={amount} onChange={e => setAmount(e.target.value)} />
         <button className="btn-ghost" onClick={max}>{T("Max")}</button>
       </div>
+      {amountProblem && <div className="wd-error">{amountProblem}</div>}
       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{coin ? T("Arc gas is paid in USDC, so keep a little USDC for it. Only send to an address on the Arc network.") : T("Arc gas is paid in USDC — Max leaves $0.05 for it. Only send to an address on the Arc network.")}</div>
-      <PasscodeField guard={guard} onEnter={() => { if (!blocked) void go() }} />
-      {msg && <div style={{ fontSize: '0.78rem', color: msg.ok ? '#86efac' : '#fca5a5' }}>{msg.text}</div>}
-      <button className="btn-primary" disabled={blocked} onClick={() => void go()} style={{ opacity: blocked ? 0.5 : 1 }}>{busy ? T("Sending…") : coin ? T('Send {symbol}', { symbol: coin.symbol }) : T("Withdraw")}</button>
+      {formOk && <WithdrawLimits guard={guard} />}
+      {msg && <div style={{ fontSize: '0.78rem', color: msg.ok ? 'var(--green)' : 'var(--red)' }}>{msg.text}</div>}
+      <button className="btn-primary" disabled={!formOk || busy} onClick={() => { setMsg(null); setReview(true) }} style={{ opacity: !formOk ? 0.5 : 1 }}>{T('Review')}</button>
     </Modal>
   )
 }
@@ -172,8 +216,8 @@ export function SendCashModal({ trader, to, toName, onClose }: { trader: Trader;
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
-  // Cash leaving the trading wallet for someone else needs the passcode.
-  const guard = useWithdrawGuard(trader, to)
+  // Cash leaving the trading wallet for someone else needs the passcode, and is held to the withdraw limits.
+  const guard = useWithdrawGuard(trader, to, Number(amount) > 0 ? Number(amount) : 0)
 
   async function go() {
     if (busy) return
@@ -181,13 +225,14 @@ export function SendCashModal({ trader, to, toName, onClose }: { trader: Trader;
     try {
       await guard.confirm()
       const h = await send(to, amount)
+      guard.record(h, Number(amount), `$${amount}`)
       if (note.trim()) await socialWrite(trader, 'transfer.note', { tx_hash: h, note: note.trim() }).catch(() => {})
       setMsg({ ok: true, text: `Sent $${amount} to ${toName}` }); setAmount(''); setNote(''); guard.setPasscode(''); refresh()
     } catch (e) {
       setMsg({ ok: false, text: txErrorText(e) })
     } finally { setBusy(false) }
   }
-  const blocked = busy || !amount || !trader.address || guard.missing
+  const blocked = busy || !amount || !trader.address || guard.missing || guard.overLimit || guard.limitsLoading
 
   return (
     <Modal title={T('Send cash to {name}', { name: toName })} onClose={onClose}>
@@ -195,8 +240,9 @@ export function SendCashModal({ trader, to, toName, onClose }: { trader: Trader;
       <input className="field" type="number" min="0" placeholder="$0" value={amount} onChange={e => setAmount(e.target.value)} style={{ fontSize: '1.2rem', fontFamily: 'var(--mono)' }} />
       <textarea className="field" placeholder={T("Add a note (optional)")} maxLength={200} rows={2} value={note} onChange={e => setNote(e.target.value)} style={{ resize: 'vertical', fontFamily: 'inherit' }} />
       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{note.length}{T("/200 · Sent instantly as USDC on Arc to")}{' '}{shortAddr(to)}.</div>
+      {Number(amount) > 0 && <WithdrawLimits guard={guard} />}
       <PasscodeField guard={guard} onEnter={() => { if (!blocked) void go() }} />
-      {msg && <div style={{ fontSize: '0.78rem', color: msg.ok ? '#86efac' : '#fca5a5' }}>{msg.text}</div>}
+      {msg && <div style={{ fontSize: '0.78rem', color: msg.ok ? 'var(--green)' : 'var(--red)' }}>{msg.text}</div>}
       <button className="btn-primary" disabled={blocked} onClick={() => void go()} style={{ opacity: blocked ? 0.5 : 1 }}>{!trader.address ? T("Connect a wallet to send") : busy ? T("Sending…") : T("Send")}</button>
     </Modal>
   )

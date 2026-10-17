@@ -8,21 +8,21 @@
 //   deposit   SOL or USDC on Solana → USDC on Arc (the account's cash).
 //   withdraw  USDC on Arc → SOL or USDC in the Solana wallet.
 // All through Relay (lib/relayQuote.ts `xin` / `xout`): every quote checked before signing, valued at the market for the
-// price guard, approvals for the exact amount. ARCDEX's fee is Relay's app fee: 2% on trades, 0.5% on deposits and
+// price guard, approvals for the exact amount. ARCDEX's fee is Relay's app fee: 0.5% on trades (SPOT_FEE_BPS), 0.5% on deposits and
 // withdrawals (as the bridge's).
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { erc20Abi, formatUnits, parseUnits, type Address } from 'viem'
 import { openConnectModal } from './ConnectWallet'
-import { PasscodeField, useWithdrawGuard } from './WithdrawGuard'
+import { PasscodeField, WithdrawLimits, useWithdrawGuard } from './WithdrawGuard'
 import { SolanaWalletBar, solSignerOf } from './SolanaTrade'
 import { client as arcClient } from '../api/launchpad'
 import { solUsd } from '../api/solanaMarket'
 import { useTrader } from '../lib/identity'
 import { useCash } from '../lib/usdc'
-import { useRouterInfo, pct } from '../lib/routerInfo'
+import { pct } from '../lib/routerInfo'
 import { onBalances } from '../lib/balances'
-import { ARC_EXPLORER } from '../lib/platform'
+import { ARC_EXPLORER, SPOT_FEE_BPS } from '../lib/platform'
 import { accountOwner, isUnlocked } from '../lib/embeddedWallet'
 import { solBalance, solTokenBalance, solTx, type SolHolding } from '../lib/solana'
 import { connectSolanaWallet, phantomLink, pickSolSigner, useSolanaWallets } from '../lib/solanaWallet'
@@ -33,6 +33,8 @@ import { getRelayQuote, quoteVerdict, relayValueUsd, QUOTE_LIMITS, ARC_ID, BSC_I
 import { ARC_USDC } from '../lib/acrossQuote'
 import { relayErrorText, runRelayEvm, runRelaySolana, type RelayProgress } from '../lib/relay'
 import { t as T } from '../lib/i18n'
+import { useBuyRisk } from '../lib/buyRisk'
+import TradeDetails, { HOT } from './TradeDetails'
 
 export type CrossMode = 'buy' | 'sell' | 'deposit' | 'withdraw'
 
@@ -100,7 +102,6 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
   const sol = useSolanaWallets()
   const signer = solSignerOf(sol, trader.kind)
   const solAddr = signer === 'trading' ? sol.trading : signer === 'external' ? sol.external?.address ?? null : null
-  const info = useRouterInfo()
   const [mode, setMode] = useState<CrossMode>(initialMode ?? modes[0])
   const [cur, setCur] = useState<'sol' | 'usdc'>('sol')
   const [amount, setAmount] = useState('')
@@ -120,8 +121,10 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
   const { cash, refresh: refreshCash } = useCash(chainId === ARC_ID ? me : null)
   const busy = step === 'working'
   const paying = mode === 'buy' || mode === 'deposit'
+  // The coin's safety rating, right above Buy (lib/buyRisk.tsx): a Danger coin waits for a tick.
+  const buyRisk = useBuyRisk(mode === 'buy')
   const bridging = mode === 'deposit' || mode === 'withdraw'
-  const feeBps = bridging ? BRIDGE_FEE_BPS : info?.feeBps ?? 200
+  const feeBps = bridging ? BRIDGE_FEE_BPS : SPOT_FEE_BPS
 
   useEffect(() => {
     if (solPrice > 0) return
@@ -202,18 +205,19 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
   const refused = verdict === 'refuse' || verdict === 'off-market'
   const impactPct = value ? Math.max(0, value.impact * 100) : null
   const cost = value ? Math.max(0, value.cost * 100) : null
+  const impactHot = refused || (impactPct ?? 0) >= HOT.impactPct
   const needsTick = verdict === 'confirm' || verdict === 'unpriced'
 
   // Money leaving the account for a Solana wallet that isn't its own asks as any other send does.
   const ownSol = !!solAddr && (solAddr === accountOwner() || solAddr === sol.trading)
-  const guard = useWithdrawGuard(trader, !paying && !ownSol && solAddr ? solAddr : '')
+  const guard = useWithdrawGuard(trader, !paying && !ownSol && solAddr ? solAddr : '', !paying && inputUsd > 0 ? inputUsd : 0)
   const noSolFees = paying && cur === 'usdc' && solBal !== null && solBal < 0.0005
   // A withdrawal of Arc's USDC pays its gas from the same USDC.
   const noGasToSell = mode === 'sell' && lowGas && (gas ?? 0) <= 0
   const noBuy = mode === 'buy' && !!buyBlocked
   // A sale needs the coin's decimals: unknown until the chain answers.
   const decimalsKnown = given != null || readDecimals !== null
-  const blocked = (!paying && !decimalsKnown) || busy || !quote || quoting || insufficient || refused || noBuy || (needsTick && !costOk) || noSolFees || noGasToSell || guard.missing
+  const blocked = (!paying && !decimalsKnown) || busy || !quote || quoting || insufficient || refused || noBuy || (needsTick && !costOk) || noSolFees || noGasToSell || guard.missing || guard.overLimit || guard.limitsLoading || buyRisk.blocks
 
   async function openAccount() {
     setOpening(true); setStep('idle'); setMsg('')
@@ -222,7 +226,7 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
 
   async function submit() {
     const r = request()
-    if (!r || !quote || !signer) return
+    if (!r || !quote || !signer || buyRisk.blocks) return
     setStep('working'); setLinks([])
     const say = (p: RelayProgress) => setMsg(p.step === 'quote' ? T('Checking the trade…')
       : p.step === 'approve' ? T('Approving exactly the amount…')
@@ -242,6 +246,7 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
       setMsg(res.status === 'pending' ? T('Still on its way: it lands by itself in a few minutes.')
         : paying ? T('Done: ≈{out} is in your ARCDEX account on {chain}.', { out: outText, chain: CHAIN_NAME[chainId] })
         : T('Done: ≈{out} is in your Solana wallet.', { out: outText }))
+      if (!paying) guard.record(res.tx, inputUsd, outText)
       setStep('done'); setAmount('')
       refresh(); refreshCash(); onDone?.()
     } catch (e) {
@@ -296,13 +301,18 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
 
       <div className="swap-info">
         <Row label={T('You receive (est.)')} value={quote ? outLabel(out) : quoting ? '…' : '—'} sub={quote && outUsd > 0 ? `≈ ${fmtUsd(outUsd)}` : undefined} />
-        <Row label={T('Minimum received')} value={quote ? outLabel(minOut) : '—'} />
-        <Row label={T('Platform fee')} value={pct(feeBps)} />
-        <Row label={T('Relay')} value={quote ? fmtUsd(Math.max(0, quote.relayFeeUsd - topup)) : '—'} />
-        {addGas && <Row label={T('Gas added on {chain}', { chain: CHAIN_NAME[chainId] })} value={T('{usd} of {coin}', { usd: fmtUsd(quote && topup > 0 ? topup : GAS_TOPUP_USD), coin: GAS_NAME[chainId] })} />}
-        {value && <Row label={T('Price impact')} value={impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`} color={refused || impactPct! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : impactPct! >= 5 ? 'var(--amber)' : 'var(--green)'} />}
-        {value && !refused && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} />}
-        <Row label={T('Arrives')} value={quote ? (paying ? T('on {chain} in ~{s}s', { chain: CHAIN_NAME[chainId], s: Math.max(2, quote.fillSeconds) }) : T('in your Solana wallet in seconds')) : '—'} />
+        {/* A high price impact stays out of Details. */}
+        {value && impactHot && <Row label={T('Price impact')} value={impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`} color={refused || impactPct! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : 'var(--amber)'} />}
+        <TradeDetails hint={T('{fee} fee · {via}', { fee: pct(feeBps), via: 'Relay' })}>
+          <Row label={T('Minimum received')} value={quote ? outLabel(minOut) : '—'} />
+          <Row label={T('Platform fee')} value={pct(feeBps)} />
+          <Row label={T('Relay')} value={quote ? fmtUsd(Math.max(0, quote.relayFeeUsd - topup)) : '—'} />
+          {addGas && <Row label={T('Gas added on {chain}', { chain: CHAIN_NAME[chainId] })} value={T('{usd} of {coin}', { usd: fmtUsd(quote && topup > 0 ? topup : GAS_TOPUP_USD), coin: GAS_NAME[chainId] })} />}
+          {value && !impactHot && <Row label={T('Price impact')} value={impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`} color="var(--green)" />}
+          {value && !refused && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} />}
+          <Row label={T('Arrives')} value={quote ? (paying ? T('on {chain} in ~{s}s', { chain: CHAIN_NAME[chainId], s: Math.max(2, quote.fillSeconds) }) : T('in your Solana wallet in seconds')) : '—'} />
+          {!compact && <p className="swap-note">{bridging ? T('Through Relay: SOL or USDC on Solana in, USDC on Arc out, or back. 0.5% fee. Every transfer is checked and simulated before it’s sent.') : T('Pay with SOL or USDC from your Solana wallet: the coin lands in your ARCDEX account on {chain} in seconds. Sell it back for SOL or USDC any time. Every trade is checked and simulated before it’s sent.', { chain: CHAIN_NAME[chainId] })}</p>}
+        </TradeDetails>
       </div>
 
       {quoteErr && !busy && <div className="rh-msg error">{quoteErr}</div>}
@@ -317,6 +327,7 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
       {noSolFees && <div className="rh-msg error">{T('Add a little SOL to this wallet first.')}</div>}
       {noGasToSell && <div className="rh-msg error">{T('Selling on {chain} needs a little {coin} for gas: buy with SOL once and it’s added, or deposit some.', { chain: CHAIN_NAME[chainId], coin: GAS_NAME[chainId] })}</div>}
       {noBuy && <div className="rh-msg error">{buyBlocked}</div>}
+      {!paying && <WithdrawLimits guard={guard} />}
       {!paying && <PasscodeField guard={guard} />}
 
       {msg && (
@@ -325,6 +336,8 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
           {links.length > 0 && <span className="rh-links">{links.map(l => <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer">{l.label} ↗</a>)}</span>}
         </div>
       )}
+
+      {buyRisk.node}
 
       {!solAddr ? (
         sol.available.length > 0
@@ -339,7 +352,6 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
       )}
       {solAddr && !me && sol.external && <p className="swap-note">{T('Your ARCDEX account holds what you buy on Arc, BNB Chain and Robinhood Chain. {wallet} signs once to open it; the same wallet opens it on any device.', { wallet: sol.external.name })}</p>}
       {solAddr && !compact && <SolanaWalletBar solBal={solBal} />}
-      {!compact && <p className="swap-note">{bridging ? T('Through Relay: SOL or USDC on Solana in, USDC on Arc out, or back. 0.5% fee. Every transfer is checked and simulated before it’s sent.') : T('Pay with SOL or USDC from your Solana wallet: the coin lands in your ARCDEX account on {chain} in seconds. Sell it back for SOL or USDC any time. Every trade is checked and simulated before it’s sent.', { chain: CHAIN_NAME[chainId] })}</p>}
     </div>
   )
 }

@@ -87,7 +87,7 @@ export default function PositionCard({ token, symbol, image, priceUsd, trader, r
       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--adx-card-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 700, fontSize: '0.85rem' }}>
         <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{T("Your position")}<span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: closed ? 'rgba(148,163,184,0.15)' : 'rgba(34,197,94,0.15)', color: closed ? 'var(--text-muted)' : 'var(--green)' }}>{closed ? T("Closed") : T("Open")}</span>
         </span>
-        {pnlPct !== null && <button onClick={() => void openShare()} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: up ? 'var(--green)' : 'var(--adx-accent)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>{T("Share PnL")}</button>}
+        {pnlPct !== null && <button onClick={() => void openShare()} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: up ? 'var(--green)' : 'var(--adx-accent)', color: 'var(--on-accent)', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>{T("Share PnL")}</button>}
       </div>
       <div style={{ padding: '12px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: '0.8rem' }}>
         <Stat label={T("Value")} value={value !== null ? money(value) : '—'} />

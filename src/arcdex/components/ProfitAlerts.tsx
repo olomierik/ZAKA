@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import type { BotProfit } from '../../../api/_marketProtocol'
 import type { Page } from '../App'
 import { botProfits, botSession, engineEnabled, getMarketBot } from '../api/marketStream'
 import { t as T } from '../lib/i18n'
-import { BotShareModal, cardFromMarket } from './BotShare'
 import type { BotCardData } from '../lib/shareCard'
+
+// The share card (and its drawing code) loads when someone shares, not with every page.
+const BotShareModal = lazy(() => import('./BotShare').then(m => ({ default: m.BotShareModal })))
 
 // Profit notifications (owner's request, 2026-10-01: "notifications for each
 // profit realized on each trade"). While ARCDEX is open, on any page and in
@@ -102,7 +104,7 @@ export default function ProfitAlerts({ navigate }: { navigate: (p: Page) => void
   }, [shown.length])
 
   const openShare = async (p: BotProfit) => {
-    try { setShare(cardFromMarket(await getMarketBot(p.slug))) } catch { navigate({ name: 'signals', view: 'market', bot: p.slug }) }
+    try { const [{ cardFromMarket }, bot] = await Promise.all([import('./BotShare'), getMarketBot(p.slug)]); setShare(cardFromMarket(bot)) } catch { navigate({ name: 'signals', view: 'market', bot: p.slug }) }
   }
 
   return (
@@ -125,7 +127,7 @@ export default function ProfitAlerts({ navigate }: { navigate: (p: Page) => void
           ))}
         </div>
       )}
-      {share && <BotShareModal data={share} mine onClose={() => setShare(null)} />}
+      {share && <Suspense fallback={null}><BotShareModal data={share} mine onClose={() => setShare(null)} /></Suspense>}
     </>
   )
 }

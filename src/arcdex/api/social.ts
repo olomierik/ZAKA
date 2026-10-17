@@ -10,6 +10,8 @@ import { createPostgrest, type PostgrestClient } from '../lib/postgrest'
 import type { Trader } from '../lib/identity'
 import { engineEnabled } from './marketStream'
 import { siteFetch } from './siteFetch'
+import { forgetModeration, getModeration, getVerifiedBoard, getVerifiedTrader, getWashFlags } from './socialEngine'
+import type { CommentV, MyView, ReportReason } from '../../../api/_socialProtocol'
 
 const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -56,7 +58,13 @@ export interface IndexedTrade {
   fee_usdc: number
 }
 
-export interface LeaderRow { trader: string; volume_usdc: number; realized_pnl: number; trades: number; coins: number }
+export interface LeaderRow {
+  trader: string; volume_usdc: number; realized_pnl: number; trades: number; coins: number
+  /** From the engine's verified trade book (engine/src/social), not the Supabase index. */
+  verified?: boolean
+  /** Sales with a cost here that made money, of all such sales. */
+  wins?: number; counted?: number
+}
 export interface PositionRow { token: string; bought_usdc: number; bought_tok: number; sold_usdc: number; sold_tok: number; trades: number; last_trade: string }
 export interface ReferralStats { referred_users: number; earned_usdc: number; payouts: number }
 
@@ -179,8 +187,11 @@ export async function getTheses(opts: { token?: string; authors?: string[]; limi
     if (opts.authors.length === 0) return []
     q = q.in('author', opts.authors.map(lc))
   }
-  const { data } = await q
+  const [{ data }, mod] = await Promise.all([q, getModeration()])
+  // Theses hidden by reports or an admin, and banned wallets' (engine/src/social/moderation.ts), are left out everywhere.
+  const hidden = new Set(mod.theses), banned = new Set(mod.banned)
   return (data ?? []).map(t => ({ ...(t as Thesis), likes: num(t.likes), position_usd: t.position_usd == null ? null : num(t.position_usd) }))
+    .filter(t => !hidden.has(Number(t.id)) && !banned.has(lc(t.author)))
 }
 
 export async function getMyLikes(me: string, ids: number[]): Promise<Set<number>> {
@@ -192,11 +203,15 @@ export async function getMyLikes(me: string, ids: number[]): Promise<Set<number>
 
 // ── indexed trades, leaderboard, positions, referrals ─────────────────
 
+/** The board by realized PnL: the engine's verified board (exact, from the routers' own trades, wash trading left out),
+ * else the Supabase index's (with the wash-trade flagged wallets left out when the flags can be read). */
 export async function getLeaderboard(period: Period, limit = 100): Promise<LeaderRow[]> {
+  const v = await getVerifiedBoard(period, limit)
+  if (v) return v.rows.map(r => ({ trader: r.trader, volume_usdc: Number(r.stats.volume), realized_pnl: Number(r.stats.realized), trades: r.stats.trades, coins: r.stats.coins, verified: true, wins: r.stats.wins, counted: r.stats.counted }))
   const c = client()
   if (!c) return []
-  const { data } = await c.rpc('arcdex_leaderboard', { p_since: since(period), p_limit: limit })
-  return ((data ?? []) as LeaderRow[]).map(r => ({ ...r, volume_usdc: num(r.volume_usdc), realized_pnl: num(r.realized_pnl), trades: num(r.trades), coins: num(r.coins) }))
+  const [{ data }, flags] = await Promise.all([c.rpc('arcdex_leaderboard', { p_since: since(period), p_limit: limit }), getWashFlags()])
+  return ((data ?? []) as LeaderRow[]).filter(r => !flags.has(lc(r.trader))).map(r => ({ ...r, volume_usdc: num(r.volume_usdc), realized_pnl: num(r.realized_pnl), trades: num(r.trades), coins: num(r.coins) }))
 }
 
 export async function getTraderPositions(address: string): Promise<PositionRow[]> {
@@ -289,6 +304,11 @@ function storedSession(address: string): string | null {
   }
 }
 
+/** The wallet's stored session token, when it has one that hasn't expired (no signature asked). */
+export function sessionToken(address: string | null): string | null {
+  return address ? storedSession(address) : null
+}
+
 export function isSignedIn(address: string | null): boolean {
   return !!address && storedSession(address) !== null
 }
@@ -343,6 +363,34 @@ export async function socialWrite<T = unknown>(trader: Trader, action: string, p
   return j
 }
 
+// ── comments, reports, mutes (the market engine: engine/src/social) ───
+
+/** Comments a thesis (`thesis:<id>`) or a coin (`coin:<chain>:<address>`) as `trader`. */
+export function postComment(trader: Trader, target: string, body: string): Promise<CommentV> {
+  return authedPost<CommentV>(trader, '/v1/social/comment', { target, body })
+}
+export function deleteComment(trader: Trader, id: string): Promise<CommentV> {
+  return authedPost<CommentV>(trader, '/v1/social/comment/delete', { id })
+}
+/** Reports a comment (`comment:<id>`), a thesis (`thesis:<id>`) or a profile (`profile:<address>`). */
+export async function reportContent(trader: Trader, target: string, reason: ReportReason, note?: string): Promise<{ hidden: boolean }> {
+  const r = await authedPost<{ hidden: boolean }>(trader, '/v1/social/report', { target, reason, ...(note ? { note } : {}) })
+  forgetModeration()
+  return r
+}
+export function setMute(trader: Trader, address: string, on: boolean): Promise<MyView> {
+  return authedPost<MyView>(trader, '/v1/social/mute', { address, on })
+}
+/** The wallet's mutes and reports, when it's signed in (no signature asked); null otherwise. */
+export async function getMyView(address: string | null): Promise<MyView | null> {
+  const token = sessionToken(address)
+  if (!token) return null
+  try {
+    const r = await siteFetch('/v1/social/me', { headers: { Authorization: `Bearer ${token}` } })
+    return r.ok ? await r.json() as MyView : null
+  } catch { return null }
+}
+
 // ── account: sign out everywhere, support ─────────────────────────────
 
 /** Invalidates every ARCDEX session for this wallet on every device
@@ -387,8 +435,10 @@ export function currentSeason(): Season {
 }
 
 const pointsNums = (r: PointsRow) => nums(r, ['trade_pts', 'referral_pts', 'day_pts', 'social_pts', 'active_days', 'total', 'rank'])
+/** A season's points board, wash-trade flagged wallets left out (their volume is the farming) and the rest ranked again. */
 export async function getPoints(s: Season, limit = 100): Promise<PointsRow[]> {
-  return (await rpc<PointsRow>('arcdex_points', { p_since: s.start.toISOString(), p_until: s.end.toISOString(), p_limit: limit })).map(pointsNums)
+  const [rows, flags] = await Promise.all([rpc<PointsRow>('arcdex_points', { p_since: s.start.toISOString(), p_until: s.end.toISOString(), p_limit: limit }), getWashFlags()])
+  return rows.map(pointsNums).filter(r => !flags.has(lc(r.trader))).map((r, i) => ({ ...r, rank: i + 1 }))
 }
 export async function getPointsOf(address: string, s: Season): Promise<PointsRow | null> {
   const r = (await rpc<PointsRow>('arcdex_points_of', { p_trader: lc(address), p_since: s.start.toISOString(), p_until: s.end.toISOString() }))[0]
@@ -399,7 +449,7 @@ export async function getPointsOf(address: string, s: Season): Promise<PointsRow
 
 export interface HolderRow extends PositionRow { trader: string; first_buy: string | null }
 export interface MostHeldRow { token: string; holders: number; invested_usdc: number }
-export interface TraderStats { realized_pnl: number; volume_usdc: number; trades: number; avg_hold_seconds: number | null; first_trade: string | null }
+export interface TraderStats { realized_pnl: number; volume_usdc: number; trades: number; avg_hold_seconds: number | null; first_trade: string | null; verified?: boolean }
 export interface PnlPoint { t: string; pnl: number; cumulative: number }
 export interface ClosedPosition { trader: string; token: string; bought_usdc: number; sold_usdc: number; pnl: number; closed_at: string }
 export interface MultiBuy { token: string; buyers: number; usdc: number; traders: string[]; last_buy: string }
@@ -431,12 +481,20 @@ export async function getMostHeld(limit = 50): Promise<MostHeldRow[]> {
   return (await rpc<MostHeldRow>('arcdex_most_held', { p_limit: limit })).map(r => nums(r, ['holders', 'invested_usdc']))
 }
 
+/** A trader's numbers over a period: realized PnL, volume and trades from the engine's verified trade book when it
+ * answers (`verified`), the hold time and first trade from the Supabase index. */
 export async function getTraderStats(address: string, period: Period = 'all'): Promise<TraderStats> {
-  const r = (await rpc<TraderStats>('arcdex_trader_stats', { p_trader: lc(address), p_since: since(period) }))[0]
-  return r ? nums(r, ['realized_pnl', 'volume_usdc', 'trades', 'avg_hold_seconds']) : { realized_pnl: 0, volume_usdc: 0, trades: 0, avg_hold_seconds: null, first_trade: null }
+  const [r0, v] = await Promise.all([rpc<TraderStats>('arcdex_trader_stats', { p_trader: lc(address), p_since: since(period) }).catch(() => []), getVerifiedTrader(address)])
+  const r = r0[0] ? nums(r0[0], ['realized_pnl', 'volume_usdc', 'trades', 'avg_hold_seconds']) : { realized_pnl: 0, volume_usdc: 0, trades: 0, avg_hold_seconds: null, first_trade: null }
+  if (!v) return r
+  const p = v.periods[period]
+  return { ...r, realized_pnl: Number(p.realized), volume_usdc: Number(p.volume), trades: p.trades, first_trade: r.first_trade ?? (v.periods.all.first ? new Date(v.periods.all.first).toISOString() : null), verified: true }
 }
 
+/** Realized PnL after every sale, cumulative: the engine's verified history, else the Supabase index's. */
 export async function getPnlHistory(address: string): Promise<PnlPoint[]> {
+  const v = await getVerifiedTrader(address)
+  if (v) return v.history.map(h => ({ t: new Date(h.at).toISOString(), pnl: Number(h.pnl), cumulative: Number(h.cumulative) }))
   return (await rpc<PnlPoint>('arcdex_pnl_history', { p_trader: lc(address) })).map(r => nums(r, ['pnl', 'cumulative']))
 }
 

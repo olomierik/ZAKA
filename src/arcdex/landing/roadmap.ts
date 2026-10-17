@@ -28,7 +28,7 @@ export const LIVE_NOW: string[] = [
 
 export const PHASES: Phase[] = [
   { n: 1, title: N_('Fair fees'), items: [
-    { text: N_('Swap fee cut from 2% to 1%') },
+    { text: N_('Swap fee cut from 2% to 0.5%') },
     { text: N_('USDC cashback on every trade, 5–25% of the fee by 30-day volume') },
     { text: N_('Automatic profit cards with your invite link') },
   ] },

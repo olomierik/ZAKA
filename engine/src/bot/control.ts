@@ -56,6 +56,25 @@ export class ControlVerifier {
     return this.verifyText(botControlMessage(r.control, r.at), r.at, r.signature, now)
   }
 
+  /**
+   * Which of `admins` signed `message` (made at `at`, within 5 minutes, used once), or why none did: the admin actions
+   * (the trade switch) take a list of wallets (ADMIN_EVM_ADDRESSES), not only the owner.
+   */
+  async verifyAnyOf(admins: readonly string[], message: string, at: number, signature: Hex, now = Date.now()): Promise<{ by: Address } | string> {
+    const list = admins.filter(a => isAddress(a)) as Address[]
+    if (!list.length) return 'no admin wallet is configured on the engine (ADMIN_EVM_ADDRESSES or BOT_OWNER_ADDRESS)'
+    if (Math.abs(now - at) > MAX_AGE_MS) return 'the signature is too old (or the clock is off); sign again'
+    const key = signature.toLowerCase()
+    if (this.used.has(key)) return 'this signature was already used; sign again'
+    for (const address of list) {
+      if (!await this.verifyMessage({ address, message, signature }).catch(() => false)) continue
+      this.used.set(key, now)
+      for (const [k, t] of this.used) if (now - t > MAX_AGE_MS * 2) this.used.delete(k)
+      return { by: address }
+    }
+    return 'not signed by an admin wallet'
+  }
+
   /** null when the owner signed `message` (made at `at`, within 5 minutes, used once); otherwise why not. The signal engine's controls use it too. */
   async verifyText(message: string, at: number, signature: Hex, now = Date.now()): Promise<string | null> {
     if (!this.owner || !isAddress(this.owner)) return 'no owner wallet is configured on the engine (BOT_OWNER_ADDRESS)'

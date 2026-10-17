@@ -1,0 +1,60 @@
+# Secret scanning (CI runs gitleaks with this file; locally: gitleaks dir . --config .gitleaks.toml).
+# gitleaks' default rules, plus allowlists for public values that look like secrets. Kept narrow on purpose: a private
+# key has the same shape as an event topic (0x + 64 hex), so 64-hex values are allowed only on lines that name them
+# as topics or events, never in general.
+
+[extend]
+useDefault = true
+
+# Recorded mainnet data used by tests (transactions, logs, quotes: public chain data) and build output.
+[[allowlists]]
+description = "Public chain data and build output"
+paths = [
+  '''^dist/''',
+  '''(^|/)node_modules/''',
+  '''^engine/test/fixtures/''',
+  '''^scripts/fixtures/''',
+]
+
+# Contract and token addresses (20 bytes) are public; Anvil's default account keys are published test keys.
+[[allowlists]]
+description = "Addresses and published test keys"
+regexTarget = "secret"
+regexes = [
+  '''^0x[0-9a-fA-F]{40}$''',
+  '''^0x(ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80|59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d)$''',
+]
+
+# RFC 8291's published Web Push example (its Appendix A): the auth secret and keys every implementation tests against
+# (engine/test/pushAlerts.test.ts). Only those exact values.
+[[allowlists]]
+description = "RFC 8291 test vector"
+regexTarget = "secret"
+regexes = [
+  '''^(BTBZMqHH6r4Tts7J_aSIgg|yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw|q1dXpw3UpT5VOmu_cf_v6ih07Aems3njxI-JWgLcM94|DGv6ra1nlYgDCS1FRnbzlw)$''',
+]
+
+# Event topics: a 64-hex constant on a line that names it as an event.
+[[allowlists]]
+description = "Event topic constants"
+regexTarget = "line"
+regexes = [
+  '''(?i)\b[A-Z0-9_]*(TOKEN_CREATED|TOKEN_LAUNCHED|LAUNCHED|CREATED|TOPIC|EVENT|TRANSFER|SWAP|INITIALIZE|BUY|SELL)[A-Z0-9_]*\s*[:=]\s*['"]0x[0-9a-fA-F]{64}['"]''',
+]
+
+# Supabase's anon key for this project (role "anon", every table behind row-level security) ships in the page by
+# design. Only the anon role is allowed: a service-role key has a different payload and is still caught.
+[[allowlists]]
+description = "Supabase anon key (public)"
+regexTarget = "secret"
+regexes = [
+  '''^eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwY2FhY2h6dW1ycGNjZHRhamtzIiwicm9sZSI6ImFub24i[A-Za-z0-9_.-]*$''',
+]
+
+# The contract's name: "LaunchToken is ERC20, ERC20Burnable" reads like `token = …` to the generic rule.
+[[allowlists]]
+description = "Solidity inheritance lists"
+regexTarget = "line"
+regexes = [
+  '''^\s*contract\s+\w+\s+is\s+''',
+]

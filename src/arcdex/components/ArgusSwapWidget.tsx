@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { openConnectModal } from './ConnectWallet'
-import { parseUnits, formatUnits, type Address, type Hex } from 'viem'
+import { encodeFunctionData, parseUnits, formatUnits, type Address, type Hex } from 'viem'
 import { client } from '../api/launchpad'
 import { USDC_ADDRESS, type SwapRoute } from '../api/argusMarket'
 import { useTrader, shortAddr } from '../lib/identity'
@@ -14,13 +14,22 @@ import { rememberHolding } from '../lib/held'
 import ShareCardModal from './ShareCardModal'
 import type { CardData } from '../lib/shareCard'
 import { setPrefs, usePrefs } from '../lib/prefs'
+import TradeDetails from './TradeDetails'
 import { t as T } from '../lib/i18n'
 import { waitForReceipt } from '../lib/receipts'
 import { onBalances } from '../lib/balances'
 import { PERMIT2, PERMIT2_ABI, UR_ABI, encodeNativeBuy, encodeNativeSell, feeShares, netAfterFees, permit2Allowance, quoteExactIn, universalRouter } from '../api/universalRouter'
 import { curveBuyCall, curveRouterConfigured, curveSellCall, curveSpender, loadCurveRouter, quoteCurveBuy, quoteCurveSell, quoteRouterBuy, quoteRouterSell, routerBuyCall, routerSellCall, type CurveCall, type CurveInfo, type CurveRouter } from '../api/curves'
+import { assertTradingOn } from '../lib/tradeSwitch'
+import { sizeProblem } from '../lib/guardrails'
+import { useBuyRisk } from '../lib/buyRisk'
+import { gasWithAllowance, usdcAllowanceOverride } from '../lib/fastBuy'
+import { ARC_USDC } from '../lib/acrossQuote'
+import { arc } from '../wagmi'
+// ArcDexSwapRouter's v1 and v2 swap functions, shared with copy trading.
+import { ROUTER_FEES, ROUTER_V1, ROUTER_V2 } from '../lib/routerCalls'
 
-export { SWAP_ROUTER_ADDRESS }
+export { SWAP_ROUTER_ADDRESS, ROUTER_V2 }
 
 const ERC20_ABI = [
   { name: 'allowance', type: 'function', stateMutability: 'view', inputs: [{ name: 'o', type: 'address' }, { name: 's', type: 'address' }], outputs: [{ type: 'uint256' }] },
@@ -28,31 +37,9 @@ const ERC20_ABI = [
   { name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 's', type: 'address' }, { name: 'a', type: 'uint256' }], outputs: [{ type: 'bool' }] },
 ] as const
 
-const KEY = [
-  { name: 'currency0', type: 'address' }, { name: 'currency1', type: 'address' },
-  { name: 'fee', type: 'uint24' }, { name: 'tickSpacing', type: 'int24' }, { name: 'hooks', type: 'address' },
-] as const
-const OUT = [{ name: 'amountOut', type: 'uint256' }] as const
-const V4_IN = [{ name: 'keys', type: 'tuple[]', components: KEY }, { name: 'tokenIn', type: 'address' }, { name: 'amountIn', type: 'uint256' }, { name: 'minAmountOut', type: 'uint256' }, { name: 'deadline', type: 'uint256' }] as const
-const V3_IN = [{ name: 'tokenIn', type: 'address' }, { name: 'tokenOut', type: 'address' }, { name: 'poolFee', type: 'uint24' }, { name: 'amountIn', type: 'uint256' }, { name: 'minAmountOut', type: 'uint256' }, { name: 'deadline', type: 'uint256' }] as const
-const REF = { name: 'referrer', type: 'address' } as const
-
-// v1 and v2 differ only by v2's trailing `referrer` argument.
-const ROUTER_V1 = [
-  { name: 'swapExactInV4', type: 'function', stateMutability: 'nonpayable', inputs: V4_IN, outputs: OUT },
-  { name: 'swapExactInV3', type: 'function', stateMutability: 'nonpayable', inputs: V3_IN, outputs: OUT },
-] as const
-const ROUTER_V2 = [
-  { name: 'swapExactInV4', type: 'function', stateMutability: 'nonpayable', inputs: [...V4_IN, REF], outputs: OUT },
-  { name: 'swapExactInV3', type: 'function', stateMutability: 'nonpayable', inputs: [...V3_IN, REF], outputs: OUT },
-] as const
 
 // ArcDexSwapRouter's fee wallet and on-chain referrer bindings, which the
 // Universal Router path (native-USDC pools) pays the same way.
-const ROUTER_FEES = [
-  { name: 'feeWallet', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
-  { name: 'referrerOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'a', type: 'address' }], outputs: [{ type: 'address' }] },
-] as const
 /** USDC that Cash (max) leaves on a buy, for gas (6 decimals). Arc's gas is
  * paid from the same USDC balance, charged up front (gas limit × max fee)
  * before the trade runs, so a buy of all of it passes the simulation, then
@@ -84,6 +71,10 @@ interface Props {
   side?: 'buy' | 'sell'
   /** Leave out the notes under the button (the spot screen shows them once, under both forms). */
   compact?: boolean
+  /** A quick buy from the Trenches: the form opens with this amount filled in. */
+  initialAmount?: number
+  /** …and this slippage (%). */
+  initialSlip?: number
 }
 
 type Step = 'idle' | 'approving' | 'quoting' | 'swapping' | 'done' | 'error'
@@ -91,14 +82,16 @@ type Step = 'idle' | 'approving' | 'quoting' | 'swapping' | 'done' | 'error'
 const fmtUsd = (n: number) => n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(2)}`
 const fmtTok = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toFixed(2)
 
-export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, marketCapUsd, route, routeLoading, buyTaxBps, sellTaxBps, onTraded, unverified, initialMode, venue, side, compact }: Props) {
+export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, marketCapUsd, route, routeLoading, buyTaxBps, sellTaxBps, onTraded, unverified, initialMode, venue, side, compact, initialAmount, initialSlip }: Props) {
   const trader = useTrader()
   const me = trader.address
   const info = useRouterInfo()
 
   const [mode, setMode] = useState<'buy' | 'sell'>(side ?? initialMode ?? 'buy')
-  const [amount, setAmount] = useState('')
-  const [slippage, setSlippage] = useState(3)
+  // The coin's safety rating, right above Buy (lib/buyRisk.tsx): a Danger coin waits for a tick.
+  const buyRisk = useBuyRisk(mode === 'buy')
+  const [amount, setAmount] = useState(initialAmount && initialAmount > 0 ? String(initialAmount) : '')
+  const [slippage, setSlippage] = useState(initialSlip && initialSlip > 0 ? initialSlip : 3)
   const [step, setStep] = useState<Step>('idle')
   const [msg, setMsg] = useState('')
   const [balance, setBalance] = useState<bigint | null>(null)
@@ -201,7 +194,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
 
   // One-tap with the trading wallet (signs locally, no pop-up); an external
   // wallet is put on Arc first (lib/tx.ts).
-  const send = (req: { address: Address; abi: unknown; functionName: string; args: unknown[]; value?: bigint }): Promise<Hex> => sendArc(trader.kind, req as never)
+  const send = (req: { address: Address; abi: unknown; functionName: string; args: unknown[]; value?: bigint; gas?: bigint; maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint; chainId?: number }): Promise<Hex> => sendArc(trader.kind, req as never)
 
   /** The trade's outcome, shown and remembered the same way for both routers. */
   function finish(outNum: number) {
@@ -353,12 +346,20 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
   }
 
   async function submit() {
-    if (!me || !info || !route || amountIn === 0n) return
+    if (!me || !info || !route || amountIn === 0n || buyRisk.blocks) return
     setMsg('')
     try {
+      // The trade switch (lib/tradeSwitch.ts): nothing is signed while trading on Arc is off.
+      await assertTradingOn('arc')
+      // The size cap (lib/guardrails.ts): USDC paid, or the coin's worth at its price.
+      const tooBig = sizeProblem(mode === 'buy' ? Number(formatUnits(amountIn, 6)) : priceUsd > 0 ? Number(formatUnits(amountIn, 18)) * priceUsd : null)
+      if (tooBig) throw new Error(tooBig)
       if (route.kind === 'curve') { await submitCurve(route.curve); return }
       if (route.kind === 'v4native') { await submitNative(info, route.key); return }
-      if (needsApprove) {
+      // The trading wallet buys without waiting for its approval (lib/fastBuy.ts): the swap is simulated as though the
+      // approval had landed, then both are sent back to back.
+      const fast = needsApprove && trader.kind === 'trading-wallet' && mode === 'buy' && tokenIn.toLowerCase() === ARC_USDC
+      if (needsApprove && !fast) {
         setStep('approving')
         // Exact amount only — the router never needs more than this trade.
         const h = await send({ address: tokenIn, abi: ERC20_ABI, functionName: 'approve', args: [SWAP_ROUTER_ADDRESS, amountIn] })
@@ -375,7 +376,8 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       // the coin's tax hook and price impact — and it catches a trade that
       // would revert before anything is signed.
       const sim = callFor(info, 1n, referrer)
-      const { result } = await client.simulateContract({ address: SWAP_ROUTER_ADDRESS, abi: sim.abi, functionName: sim.functionName, args: sim.args, account: me } as never)
+      const override = fast ? usdcAllowanceOverride(me, SWAP_ROUTER_ADDRESS, amountIn) : undefined
+      const { result } = await client.simulateContract({ address: SWAP_ROUTER_ADDRESS, abi: sim.abi, functionName: sim.functionName, args: sim.args, account: me, ...(override ? { stateOverride: override } : {}) } as never)
       const out = result as bigint
 
       // Price impact vs. the market price (after fee and tax, so it's the
@@ -386,6 +388,19 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
       const minOut = (out * BigInt(Math.round((100 - slippage) * 100))) / 10_000n
       setStep('swapping')
       const call = callFor(info, minOut, referrer)
+      if (fast) {
+        // Gas and fees are set here, so nothing asks a node to fill the swap before its approval lands.
+        const data = (encodeFunctionData as (p: unknown) => Hex)({ abi: call.abi, functionName: call.functionName, args: call.args })
+        const [gas, fees] = await Promise.all([gasWithAllowance(client as never, me, SWAP_ROUTER_ADDRESS, data, SWAP_ROUTER_ADDRESS, amountIn), client.estimateFeesPerGas()])
+        const a = await send({ address: tokenIn, abi: ERC20_ABI, functionName: 'approve', args: [SWAP_ROUTER_ADDRESS, amountIn] })
+        const h = await send({ address: SWAP_ROUTER_ADDRESS, abi: call.abi, functionName: call.functionName, args: call.args, gas, maxFeePerGas: fees.maxFeePerGas, maxPriorityFeePerGas: fees.maxPriorityFeePerGas, chainId: arc.id })
+        const [ra, rs] = await Promise.all([waitForReceipt(a), waitForReceipt(h)])
+        if (ra.status !== 'success') throw new Error(T('Approval failed'))
+        if (rs.status !== 'success') throw new Error(T('Swap reverted'))
+        setAllowance(0n)
+        finish(outNum)
+        return
+      }
       const h = await send({ address: SWAP_ROUTER_ADDRESS, abi: call.abi, functionName: call.functionName, args: call.args })
       const rc = await waitForReceipt(h)
       if (rc.status !== 'success') throw new Error(T('Swap reverted'))
@@ -425,7 +440,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
   const needsSnipeTick = mode === 'buy' && !!snipe
   // A Mercuri curve that has sold out takes sells only while it graduates.
   const buyClosed = mode === 'buy' && !!curve && !curve.canBuy
-  const blocked = busy || amountIn === 0n || !route || insufficient || !info || (needsRiskTick && !riskOk) || (needsSnipeTick && !snipeOk) || buyClosed
+  const blocked = busy || amountIn === 0n || !route || insufficient || !info || (needsRiskTick && !riskOk) || (needsSnipeTick && !snipeOk) || buyClosed || buyRisk.blocks
 
   return (
     <div className={`swap-box${side ? ` swap-side-${side}` : ''}`}>
@@ -434,7 +449,7 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
           <button key={m} onClick={() => { setMode(m); setAmount(''); setStep('idle'); setMsg(''); setEditing(null) }} style={{
             flex: 1, padding: 8, fontSize: '0.82rem', fontWeight: 700, border: 'none', cursor: 'pointer',
             background: mode === m ? (m === 'buy' ? 'var(--green)' : 'var(--red)') : 'transparent',
-            color: mode === m ? '#fff' : 'var(--text-muted)',
+            color: mode === m ? (m === 'buy' ? 'var(--on-accent)' : '#fff') : 'var(--text-muted)',
           }}>{m === 'buy' ? T("Buy") : T("Sell")} {symbol}</button>
         ))}
       </div>}
@@ -472,23 +487,39 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
 
       <div className="swap-info">
         <Row label={T("You receive (est.)")} value={estimate > 0 ? (mode === 'buy' ? `${fmtTok(estimate)} ${symbol}` : fmtUsd(estimate)) : '—'} />
-        <Row label={T("Route")} value={routeLoading ? T('Finding route…') : route ? routeText : T('No routable pool')} />
-        <Row label={T("Platform fee")} value={platformBps === null ? '…' : curve && !curveRouterConfigured ? '0%' : T('{pct} (in USDC)', { pct: pct(platformBps) })} />
-        {curve && <Row label={T("Curve fee")} value={pct(curve.feeBps)} />}
-        {/* An Argus creator tax; other launchpads charge through their pool's own fee (the note below). */}
-        {(!venue || taxBps > 0) && <Row label={T("Creator tax")} value={taxBps ? pct(taxBps) : '0%'} />}
+        {/* What needs attention stays out of Details: a high price impact and a snipe tax. */}
         {needsSnipeTick && <Row label={T("Snipe tax")} value={pct(snipe ?? 0)} color="var(--red)" />}
-        {impact !== null && (
-          <Row label={T("Price impact")} value={`${impact.toFixed(2)}%`} color={impact >= CONFIRM_IMPACT ? 'var(--red)' : impact >= WARN_IMPACT ? 'var(--amber)' : undefined} />
+        {impact !== null && impact >= WARN_IMPACT && (
+          <Row label={T("Price impact")} value={`${impact.toFixed(2)}%`} color={impact >= CONFIRM_IMPACT ? 'var(--red)' : 'var(--amber)'} />
         )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ color: 'var(--text-muted)' }}>{T("Max slippage")}</span>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {[1, 3, 5, 10].map(s => (
-              <button key={s} onClick={() => setSlippage(s)} style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.7rem', cursor: 'pointer', border: '1px solid var(--adx-card-border)', background: slippage === s ? 'var(--adx-accent)' : 'transparent', color: slippage === s ? '#fff' : 'var(--text-muted)' }}>{s}%</button>
-            ))}
+        <TradeDetails hint={T('{fee} fee · {s}% slippage', { fee: platformBps === null ? '…' : curve && !curveRouterConfigured ? '0%' : pct(platformBps), s: slippage })}>
+          <Row label={T("Route")} value={routeLoading ? T('Finding route…') : route ? routeText : T('No routable pool')} />
+          <Row label={T("Platform fee")} value={platformBps === null ? '…' : curve && !curveRouterConfigured ? '0%' : T('{pct} (in USDC)', { pct: pct(platformBps) })} />
+          {curve && <Row label={T("Curve fee")} value={pct(curve.feeBps)} />}
+          {/* An Argus creator tax; other launchpads charge through their pool's own fee (the note below). */}
+          {(!venue || taxBps > 0) && <Row label={T("Creator tax")} value={taxBps ? pct(taxBps) : '0%'} />}
+          {impact !== null && impact < WARN_IMPACT && <Row label={T("Price impact")} value={`${impact.toFixed(2)}%`} />}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: 'var(--text-muted)' }}>{T("Max slippage")}</span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {[1, 3, 5, 10].map(s => (
+                <button key={s} onClick={() => setSlippage(s)} style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.7rem', cursor: 'pointer', border: '1px solid var(--adx-card-border)', background: slippage === s ? 'var(--adx-accent)' : 'transparent', color: slippage === s ? 'var(--on-accent)' : 'var(--text-muted)' }}>{s}%</button>
+              ))}
+            </div>
           </div>
-        </div>
+          {me && !compact && (
+            <div className="swap-note">{T("Trading as")}{' '}{trader.kind === 'trading-wallet' ? T("⚡ trading wallet") : T("wallet")} <span style={{ fontFamily: 'var(--mono)' }}>{shortAddr(me)}</span>
+              {trader.kind === 'trading-wallet' ? T(" · one-tap, no pop-ups") : ''}
+            </div>
+          )}
+          {!compact && <p className="swap-note">{curve
+            ? curveRouterConfigured
+              ? T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee on top of the platform fee.", { launchpad: curve.venue })
+              : T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee; ARCDEX adds none.", { launchpad: curve.venue })
+            : venue
+              ? T("Every trade is simulated before it's sent. The pool's own fee, set by {launchpad}, applies on top of the platform fee.", { launchpad: venue.name })
+              : T("Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.")}</p>}
+        </TradeDetails>
       </div>
 
       {needsRiskTick && (
@@ -506,20 +537,22 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
           border: `1px solid ${step === 'error' ? 'rgba(239,68,68,0.3)' : step === 'done' ? 'rgba(34,197,94,0.3)' : 'rgba(245,158,11,0.35)'}`,
           color: step === 'error' ? '#fca5a5' : step === 'done' ? '#86efac' : '#fcd34d', display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
           <span>{msg}</span>
-          {step === 'done' && lastTrade && <button onClick={() => void openShare()} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--green)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>{T("Share")}</button>}
+          {step === 'done' && lastTrade && <button onClick={() => void openShare()} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--green)', color: 'var(--on-accent)', fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>{T("Share")}</button>}
         </div>
       )}
+
+      {buyRisk.node}
 
       {!routerConfigured ? (
         <Note>{T("Trading opens once the ARCDEX swap router is deployed.")}</Note>
       ) : !me ? (
         <>
-          <button onClick={openConnectModal} style={btn('var(--adx-accent)')}>{T("Connect Wallet")}</button>
+          <button onClick={openConnectModal} style={btn('var(--adx-accent)', 'var(--on-accent)')}>{T("Connect Wallet")}</button>
           <Note>{T("Or unlock your")}{' '}<button className="link-btn" onClick={openTradingWallet}>{T("trading wallet")}</button>{' '}{T("for one-tap trades with no pop-ups.")}</Note>
         </>
       ) : (
         <button onClick={() => void submit()} disabled={blocked}
-          style={{ ...btn(needsApprove ? 'var(--amber)' : mode === 'buy' ? 'var(--green)' : 'var(--red)'), opacity: blocked ? 0.5 : 1 }}>
+          style={{ ...(needsApprove ? btn('var(--amber)', 'var(--on-amber)') : mode === 'buy' ? btn('var(--green)', 'var(--on-accent)') : btn('var(--red)', '#fff')), opacity: blocked ? 0.5 : 1 }}>
           {insufficient ? T("Insufficient balance")
             : step === 'approving' ? T("Approving…")
             : step === 'quoting' ? T("Checking trade…")
@@ -538,23 +571,10 @@ export default function ArgusSwapWidget({ token, symbol, tokenImage, priceUsd, m
         </Note>
       )}
 
-      {me && !compact && (
-        <div className="swap-note">{T("Trading as")}{' '}{trader.kind === 'trading-wallet' ? T("⚡ trading wallet") : T("wallet")} <span style={{ fontFamily: 'var(--mono)' }}>{shortAddr(me)}</span>
-          {trader.kind === 'trading-wallet' ? T(" · one-tap, no pop-ups") : ''}
-        </div>
-      )}
-
       {unverified && (
         <div style={{ fontSize: '0.7rem', color: '#fcd34d', textAlign: 'center' }}>{T("⚠ Unverified token — anyone can launch a coin with any name. Check the contract before trading.")}</div>
       )}
 
-      {!compact && <p className="swap-note">{curve
-        ? curveRouterConfigured
-          ? T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee on top of the platform fee.", { launchpad: curve.venue })
-          : T("Every trade is simulated before it's sent. {launchpad}'s curve charges its own fee; ARCDEX adds none.", { launchpad: curve.venue })
-        : venue
-          ? T("Every trade is simulated before it's sent. The pool's own fee, set by {launchpad}, applies on top of the platform fee.", { launchpad: venue.name })
-          : T("Every trade is simulated before it's sent. The coin's creator tax (set on Argus) applies on top of the platform fee.")}</p>}
 
       {share && <ShareCardModal card={share.card} text={share.text} referralsLive={info?.version === 2} onClose={() => setShare(null)} />}
     </div>
@@ -580,6 +600,7 @@ function Note({ children }: { children: React.ReactNode }) {
   return <div style={{ padding: 8, borderRadius: 8, fontSize: '0.74rem', background: 'var(--bg-2)', border: '1px dashed var(--adx-card-border)', color: 'var(--text-muted)', textAlign: 'center' }}>{children}</div>
 }
 
-function btn(bg: string): React.CSSProperties {
-  return { width: '100%', padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, background: bg, color: '#fff', border: 'none', cursor: 'pointer' }
+/** A full-width button with its own text colour, so it reads on the light and the dark theme. */
+function btn(bg: string, color: string): React.CSSProperties {
+  return { width: '100%', padding: 11, borderRadius: 9, fontSize: '0.88rem', fontWeight: 700, background: bg, color, border: 'none', cursor: 'pointer' }
 }

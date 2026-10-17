@@ -16,6 +16,7 @@ import { notifyBalances } from './balances'
 import type { TraderKind } from './identity'
 import { FOUR, BNB_NATIVE } from '../../../api/_bscCore'
 import { t as T } from './i18n'
+import { assertTradingOn, TradingPausedError } from './tradeSwitch'
 
 const HELPER_ABI = parseAbi([
   'function tryBuy(address token, uint256 amount, uint256 funds) view returns (address tokenManager, address quote, uint256 estimatedAmount, uint256 estimatedCost, uint256 estimatedFee, uint256 amountMsgValue, uint256 amountApproval, uint256 amountFunds)',
@@ -73,7 +74,7 @@ export function fourSellCall(q: FourSellQuote, minFunds: bigint): { to: Address;
 }
 
 export function fourErrorText(e: unknown): string {
-  if (e instanceof FourError) return e.message
+  if (e instanceof FourError || e instanceof TradingPausedError) return e.message
   const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
   if (/User rejected|rejected the request|denied|cancel/i.test(m)) return T('You cancelled the transaction.')
   if (/insufficient funds|exceeds the balance|gas required exceeds/i.test(m)) return T('Not enough BNB for this trade and its gas.')
@@ -102,6 +103,7 @@ async function simulateAndSend(kind: TraderKind, trader: Address, call: { to: Ad
 /** Buy on the curve: a fresh quote for the same funds (refused if it gives `drift` less than the one shown), the USDT
  * approved exactly if the coin is USDT-quoted, the buy simulated, sent and mined. */
 export async function runFourBuy(kind: TraderKind, trader: string, token: string, funds: bigint, shown: FourBuyQuote, slippageBps: number, onStep: (s: FourStep, tx?: string) => void): Promise<Hash> {
+  await assertTradingOn('bnb')
   onStep('quote')
   const q = await fourQuoteBuy(token, funds)
   if (q.tokens * 10_000n < shown.tokens * BigInt(10_000 - slippageBps)) throw new FourError(T('The price moved since your quote: check the new quote and try again.'))
@@ -118,6 +120,7 @@ export async function runFourBuy(kind: TraderKind, trader: string, token: string
 
 /** Sell on the curve: exactly the tokens approved to the manager, a fresh quote, the sale simulated, sent and mined. */
 export async function runFourSell(kind: TraderKind, trader: string, token: string, amount: bigint, shown: FourSellQuote, slippageBps: number, onStep: (s: FourStep, tx?: string) => void): Promise<Hash> {
+  await assertTradingOn('bnb')
   onStep('quote')
   await approveExact(kind, trader as Address, token as Address, amount, onStep)
   const q = await fourQuoteSell(token, amount)

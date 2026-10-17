@@ -13,3 +13,4 @@ contracts/cache/
 ZAKA/
 !.env.example
 .gstack/
+.vercel

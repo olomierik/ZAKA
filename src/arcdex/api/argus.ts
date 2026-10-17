@@ -622,6 +622,7 @@ async function getArgusLegacyTokens(): Promise<ArcToken[]> {
       marketCap: priceUsd * totalSupply,
       liquidity: 0, // not built yet — same as Portal 8, see file header
       ageMs: s.launchedAt !== undefined ? Math.max(0, Date.now() - Number(s.launchedAt) * 1000) : 0,
+      createdAt: s.launchedAt !== undefined ? Number(s.launchedAt) * 1000 : undefined,
       launchpad: 'Argus',
       poolAddress: pool,
       txCount24h: stats?.txCount ?? 0, holderCount: 0, buys24h: stats?.buys ?? 0, sells24h: stats?.sells ?? 0,

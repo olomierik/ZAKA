@@ -109,7 +109,7 @@ export default function TradingWalletPanel({ navigate }: { navigate?: (p: Page) 
   }
   const btnStyle: React.CSSProperties = {
     padding: '9px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 700,
-    background: 'var(--adx-accent)', color: '#fff', border: 'none', cursor: 'pointer', width: '100%',
+    background: 'var(--adx-accent)', color: 'var(--on-accent)', border: 'none', cursor: 'pointer', width: '100%',
   }
 
   // An account opened from a Solana wallet (lib/solAccount.ts): no passcode, key or passkey to manage here.

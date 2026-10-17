@@ -82,6 +82,7 @@ export function curveRowToArcToken(c: CurveMarketRow, now = Date.now()): ArcToke
     marketCap: c.marketCapUsd ?? 0,
     liquidity: c.liquidityUsd ?? 0,
     ageMs: c.launchedAt ? Math.max(0, now - c.launchedAt) : 0,
+    createdAt: c.launchedAt || undefined,
     launchpad: c.launchpad,
     poolAddress: c.pool,
     txCount24h: c.buys24h + c.sells24h,

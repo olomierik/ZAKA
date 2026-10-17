@@ -54,6 +54,7 @@ import solmarket from '../../../api/solmarket'
 import bscmarket from '../../../api/bscmarket'
 import chainsearch from '../../../api/chainsearch'
 import trendingHandler from '../../../api/trending'
+import hlleaders from '../../../api/hlleaders'
 import coinmeta from '../../../api/coinmeta'
 import session from '../../../api/session'
 import social from '../../../api/social'
@@ -251,7 +252,7 @@ export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number
   const holders = o.holders ?? (adminReady ? supabaseHolders : sql ? pgHolders(sql, ready) : memoryHolders())
   const handlers: Record<string, Handler> = o.handlers ?? {
     argus: (r, c) => argus(r, c), gecko: (r, c) => gecko(r, c), launchpad: (r, c) => launchpad(r, c),
-    radar: r => radar(r), dex: r => dex(r), holders: holdersHandler(holders), rhmarket: (r, c) => rhmarket(r, c), solmarket: (r, c) => solmarket(r, c), bscmarket: (r, c) => bscmarket(r, c), chainsearch: r => chainsearch(r), trending: () => trendingHandler(), coinmeta: r => coinmeta(r),
+    radar: r => radar(r), dex: r => dex(r), holders: holdersHandler(holders), rhmarket: (r, c) => rhmarket(r, c), solmarket: (r, c) => solmarket(r, c), bscmarket: (r, c) => bscmarket(r, c), chainsearch: r => chainsearch(r), trending: () => trendingHandler(), coinmeta: r => coinmeta(r), hlleaders: r => hlleaders(r),
     session: r => session(r), social: r => social(r), upload: r => upload(r), 'index-trades': () => indexTrades(),
   }
   const cache = new ResponseCache()
@@ -328,6 +329,8 @@ export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number
     }
     void warm('launchpad', '/api/launchpad')
     void warm('launchpad', '/api/launchpad?of=curves')
+    // Hyperliquid's leaderboard (api/hlleaders.ts): its first build downloads 39 MB, longer than a request may wait.
+    void warm('hlleaders', '/api/hlleaders')
   }
 
   return {

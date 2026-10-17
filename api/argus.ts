@@ -8,7 +8,7 @@
 // the browser rebuilds it from its own IP — see argusMarket.ts.
 
 import { gtFetch, gtUpstream } from './_geckoterminal'
-import { buildMarket, discoverLaunchpads, type ArgusPool, type GtDex, type GtList } from './_argusCore'
+import { buildMarket, discoverLaunchpads, withArcExtra, type ArgusPool, type GtDex, type GtList } from './_argusCore'
 import { KNOWN_LAUNCHPAD_DEXES } from './_launchpads'
 import { launchStatus, type LaunchStatus } from './_argusBonded'
 import { kvGet, kvSet } from './_supabaseAdmin'
@@ -112,7 +112,8 @@ async function build(prev: Snapshot | null): Promise<Snapshot | null> {
 }
 
 function respond(s: Snapshot, cache: string): Response {
-  return new Response(JSON.stringify(s), {
+  // On the engine, its own established coins join the list (withArcExtra); elsewhere it's the stored list as it is.
+  return new Response(JSON.stringify({ ...s, pools: withArcExtra(s.pools) }), {
     status: 200,
     headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': cache, 'X-Arcdex-Upstream': gtUpstream() },
   })

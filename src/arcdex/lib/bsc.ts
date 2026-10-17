@@ -5,6 +5,7 @@
 import { createPublicClient, erc20Abi, formatUnits, type Address } from 'viem'
 import { bsc } from 'viem/chains'
 import { chainTransport } from './rpc'
+import { readTransport } from './rpcSettings'
 import { getEmbeddedWalletClientOn, recordBroadcasts } from './embeddedWallet'
 import { BSC_RPC_BROWSER } from '../../../api/_bscCore'
 
@@ -17,7 +18,8 @@ export const bscTx = (h: string) => `${BSC_EXPLORER}/tx/${h}`
 /** BNB a sale or swap needs for gas there: about $0.10. */
 export const SELL_GAS_BNB = 0.0002
 
-export const bscClient = createPublicClient({ chain: bsc, transport: chainTransport(BSC_RPC_BROWSER), batch: { multicall: true } })
+/** Reads on BNB Chain through the nodes picked in RPC settings (PublicNode first by default). */
+export const bscClient = createPublicClient({ chain: bsc, transport: readTransport('bnb'), batch: { multicall: true } })
 
 /** The trading wallet on BNB Chain (same key, same address). Throws if locked. */
 export const bscWallet = () => getEmbeddedWalletClientOn(bsc, recordBroadcasts(chainTransport(BSC_RPC_BROWSER)))

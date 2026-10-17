@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Ago, { AgoText } from './Ago'
 import Avatar from './Avatar'
 import TraderHover from './TraderHover'
+import CommentThread from './CommentThread'
+import SocialMenu from './SocialMenu'
 import { ARC_EXPLORER } from '../api/arcRpc'
+import { getCommentCounts, socialAvailable } from '../api/socialEngine'
+import { useFlag } from '../lib/flags'
+import { useMutes } from '../lib/mutes'
 import { getMyLikes, getTheses, getTokenHolders, socialWrite, type HolderRow, type Profile, type Thesis } from '../api/social'
 import { shortAddr, type Trader } from '../lib/identity'
 import type { ChainHolders } from '../api/holders'
@@ -45,7 +50,7 @@ interface Props {
   onThesesLoaded?: (theses: Thesis[]) => void
 }
 
-type Tab = 'holders' | 'swaps' | 'thesis' | 'traders'
+type Tab = 'holders' | 'swaps' | 'thesis' | 'comments' | 'traders'
 
 const fmt = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n >= 1 ? n.toFixed(2) : n.toFixed(4)
 const usd = (n: number) => (n < 0 ? '-' : '') + '$' + fmt(Math.abs(n))
@@ -80,14 +85,22 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
   const [minSwap, setMinSwap] = useState(0)
   const [thesisOnly, setThesisOnly] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [openThread, setOpenThread] = useState<number | null>(null)
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({})
+  const [coinComments, setCoinComments] = useState<number | null>(null)
+  const { isMuted, muted } = useMutes(trader)
+  const comments = useFlag('comments') && socialAvailable()
 
   const loadTheses = useCallback(async () => {
-    const t = await getTheses({ token, limit: 200 }).catch(() => [] as Thesis[])
+    const all = await getTheses({ token, limit: 200 }).catch(() => [] as Thesis[])
+    const t = all.filter(x => !isMuted(x.author))
     setTheses(t)
     onThesesLoaded?.(t)
     onProfilesNeeded(t.map(x => x.author))
+    void getCommentCounts(t.map(x => `thesis:${x.id}`)).then(setCommentCounts)
     if (trader.address) setLiked(await getMyLikes(trader.address, t.map(x => x.id)).catch(() => new Set<number>()))
-  }, [token, trader.address, onProfilesNeeded, onThesesLoaded])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, trader.address, onProfilesNeeded, onThesesLoaded, muted])
   useEffect(() => { void loadTheses() }, [loadTheses])
   useEffect(() => {
     let alive = true
@@ -150,6 +163,11 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
       await loadTheses()
     } catch (e) { setErr(e instanceof Error ? e.message : T("Could not post")) } finally { setPosting(false) }
   }
+  async function removeThesis(t: Thesis) {
+    setErr('')
+    try { await socialWrite(trader, 'thesis.delete', { id: t.id }); await loadTheses() }
+    catch (e) { setErr(e instanceof Error ? e.message : T("Could not update")) }
+  }
   async function toggleLike(t: Thesis) {
     if (!trader.address) { setErr(T("Connect or unlock a wallet to like")); return }
     const isLiked = liked.has(t.id)
@@ -181,9 +199,18 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
             {!older && pos && <span className="sensitive" style={{ fontSize: '0.74rem', fontFamily: 'var(--mono)' }}>{usd(pos.value)} {pos.pct !== null && <span style={{ color: pos.pct >= 0 ? 'var(--green)' : 'var(--red)' }}>({pos.pct >= 0 ? '▲' : '▼'}{Math.abs(pos.pct).toFixed(2)}%)</span>}</span>}
             {!older && !pos && t.position_usd != null && t.position_usd > 0 && <span style={{ fontSize: '0.68rem', fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>{T("held $")}{fmt(t.position_usd)}{' '}{T("when posted")}</span>}
             <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 'auto' }}><Ago ts={Date.parse(t.created_at)} /></span>
+            <SocialMenu target={`thesis:${t.id}`} author={t.author} trader={trader} onDelete={() => void removeThesis(t)} onError={setErr} />
           </div>
           <div style={{ fontSize: '0.86rem', margin: '6px 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{t.body}</div>
-          <button onClick={() => void toggleLike(t)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: liked.has(t.id) ? '#f472b6' : 'var(--text-muted)', fontSize: '0.76rem' }}>{liked.has(t.id) ? '♥' : '♡'} {t.likes}</button>
+          <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+            <button onClick={() => void toggleLike(t)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: liked.has(t.id) ? '#f472b6' : 'var(--text-muted)', fontSize: '0.76rem' }}>{liked.has(t.id) ? '♥' : '♡'} {t.likes}</button>
+            {comments && <button onClick={() => setOpenThread(o => (o === t.id ? null : t.id))} aria-expanded={openThread === t.id} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: openThread === t.id ? 'var(--adx-accent)' : 'var(--text-muted)', fontSize: '0.76rem' }}>💬 {commentCounts[`thesis:${t.id}`] ?? 0}</button>}
+          </div>
+          {comments && openThread === t.id && (
+            <div style={{ marginTop: 8, paddingLeft: 10, borderLeft: '2px solid var(--adx-card-border)' }}>
+              <CommentThread target={`thesis:${t.id}`} trader={trader} navigate={navigate} compact onCount={n => setCommentCounts(c => (c[`thesis:${t.id}`] === n ? c : { ...c, [`thesis:${t.id}`]: n }))} />
+            </div>
+          )}
         </div>
       </div>
     )
@@ -195,6 +222,7 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
         {tabBtn('swaps', T('Swaps'))}
         {tabBtn('holders', T('Holders') + (holderCount ? ` (${holderCount.toLocaleString()}${chainHolders && !chainHolders.complete ? '…' : ''})` : ''))}
         {tabBtn('thesis', T('Thesis') + (theses?.length ? ` (${theses.length})` : ''))}
+        {comments && tabBtn('comments', T('Comments') + (coinComments ? ` (${coinComments})` : ''))}
         {tabBtn('traders', T('Top traders'))}
         <span style={{ flex: 1 }} />
         {tab === 'swaps' && (
@@ -319,7 +347,7 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
                   style={{ width: '100%', resize: 'vertical', padding: 10, borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--adx-card-border)', color: 'var(--text)', fontSize: '0.85rem', fontFamily: 'inherit' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
                   <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{draft.length}/280{positionUsd ? ' · ' + T('shows your live {usd} position', { usd: '$' + fmt(positionUsd) }) : ''}</span>
-                  <button onClick={() => void post()} disabled={posting || !draft.trim()} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--adx-accent)', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: posting || !draft.trim() ? 0.5 : 1 }}>{posting ? T("Posting…") : T("Post")}</button>
+                  <button onClick={() => void post()} disabled={posting || !draft.trim()} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--adx-accent)', color: 'var(--on-accent)', fontWeight: 700, cursor: 'pointer', opacity: posting || !draft.trim() ? 0.5 : 1 }}>{posting ? T("Posting…") : T("Post")}</button>
                 </div>
               </div>
             </div>
@@ -333,6 +361,12 @@ export default function TokenSocialTabs({ token, symbol, rows, tradesLoaded, pro
                 : <button onClick={() => setExpanded(s => new Set(s).add(head.author))} style={{ marginLeft: 42, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.72rem' }}>↳ {older.length}{' '}{T("older")}</button>)}
             </div>
           ))}
+        </div>
+      )}
+
+      {comments && tab === 'comments' && (
+        <div style={{ padding: 16 }}>
+          <CommentThread target={`coin:arc:${token.toLowerCase()}`} trader={trader} navigate={navigate} onCount={setCoinComments} />
         </div>
       )}
 

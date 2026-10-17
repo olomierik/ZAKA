@@ -17,13 +17,15 @@ const WS_URL = (import.meta.env.VITE_ARCDEX_WS_URL as string | undefined) || und
 const API_URL = ((import.meta.env.VITE_ARCDEX_API_URL as string | undefined) || (WS_URL ? WS_URL.replace(/^ws/, 'http').replace(/\/ws\/?$/, '') : '')).replace(/\/$/, '')
 
 export const engineEnabled = Boolean(WS_URL)
+/** Messages a second the client sends the engine at most (its limit is 20). */
+export const SEND_RATE = 15
 /** The engine's REST base ('' without an engine). */
 export const engineApiUrl = API_URL
 
-type Sub = { channel: 'token' | 'candles' | 'new_tokens' | 'market' | 'signals' | 'scan'; token?: string; interval?: Interval }
+type Sub = { channel: 'token' | 'candles' | 'new_tokens' | 'market' | 'signals' | 'scan' | 'trench_arc' | 'trench_hood' | 'trench_sol' | 'trench_bnb' | 'wallet'; token?: string; interval?: Interval; wallet?: string }
 export type EngineStatus = 'off' | 'connecting' | 'open' | 'closed'
 
-const keyOf = (s: Sub) => s.channel === 'candles' ? `candles:${s.token}:${s.interval}` : s.token ? `${s.channel}:${s.token}` : s.channel
+const keyOf = (s: Sub) => s.channel === 'wallet' ? (s.wallet!.startsWith('0x') ? `wallet:evm:${s.wallet}` : `wallet:sol:${s.wallet}`) : s.channel === 'candles' ? `candles:${s.token}:${s.interval}` : s.token ? `${s.channel}:${s.token}` : s.channel
 
 class MarketStream {
   status: EngineStatus = engineEnabled ? 'closed' : 'off'
@@ -36,7 +38,7 @@ class MarketStream {
 
   subscribe(sub: Sub, handler: (m: ServerMessage) => void): () => void {
     if (!engineEnabled) return () => {}
-    const s: Sub = { ...sub, token: sub.token?.toLowerCase() }
+    const s: Sub = { ...sub, token: sub.token?.toLowerCase(), ...(sub.wallet ? { wallet: sub.wallet.startsWith('0x') ? sub.wallet.toLowerCase() : sub.wallet } : {}) }
     const k = keyOf(s)
     let e = this.subs.get(k)
     if (!e) {
@@ -63,7 +65,25 @@ class MarketStream {
 
   private setStatus(s: EngineStatus) { if (this.status !== s) { this.status = s; this.statusSubs.forEach(f => f()) } }
 
-  private send(msg: object) { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg)) }
+  // The engine takes 20 messages a second per connection and refuses the rest (WS_MAX_MSGS_PER_SEC): a page that
+  // subscribes to many topics at once (the wallet tracker's wallets, a reconnect) sends them at most SEND_RATE a second.
+  private queue: string[] = []
+  private tokens = SEND_RATE
+  private refilled = Date.now()
+  private pump: ReturnType<typeof setTimeout> | null = null
+  private send(msg: object) {
+    if (this.ws?.readyState !== WebSocket.OPEN) return
+    this.queue.push(JSON.stringify(msg))
+    this.flush()
+  }
+  private flush() {
+    const now = Date.now()
+    this.tokens = Math.min(SEND_RATE, this.tokens + ((now - this.refilled) / 1000) * SEND_RATE)
+    this.refilled = now
+    while (this.queue.length && this.tokens >= 1 && this.ws?.readyState === WebSocket.OPEN) { this.ws.send(this.queue.shift()!); this.tokens -= 1 }
+    if (this.ws?.readyState !== WebSocket.OPEN) this.queue = []
+    if (this.queue.length && !this.pump) this.pump = setTimeout(() => { this.pump = null; this.flush() }, Math.ceil(1000 / SEND_RATE))
+  }
 
   private ensure() {
     if (this.idle) { clearTimeout(this.idle); this.idle = null }
@@ -86,6 +106,8 @@ class MarketStream {
         : m.t === 'TICKS' ? 'market'
         : m.t === 'SIGNAL' || m.t === 'BOT_POSITION' ? 'signals'
         : m.t === 'SCAN' ? 'scan'
+        : m.t === 'TLAUNCH' || m.t === 'TTICKS' || m.t === 'TSMART' || m.t === 'TMETA' ? `trench_${m.c}`
+        : m.t === 'WTRADE' ? (m.d.c === 'sol' ? `wallet:sol:${m.d.w}` : `wallet:evm:${m.d.w.toLowerCase()}`)
         : k ? `token:${k}` : null
       if (target) this.subs.get(target)?.handlers.forEach(h => h(m))
     }

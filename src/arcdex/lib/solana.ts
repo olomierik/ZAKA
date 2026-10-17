@@ -2,7 +2,8 @@
 // refuses them), balances, what a wallet holds, transactions' status, and explorer links. Trading is lib/relay.ts;
 // the wallets are lib/solanaWallet.ts; the market list is api/solanaMarket.ts.
 
-import { SOL_RPC_BROWSER, SOL_USDC, isSolAddress, PROGRAMS } from '../../../api/_solCore'
+import { SOL_USDC, isSolAddress, PROGRAMS } from '../../../api/_solCore'
+import { rpcRequest } from './rpcSettings'
 
 export { isSolAddress }
 export const SOL_EXPLORER = 'https://solscan.io'
@@ -13,19 +14,9 @@ export const solTx = (sig: string) => `${SOL_EXPLORER}/tx/${sig}`
 /** SOL a sale needs for its fees (a signature plus priority, and a token account now and then): about $0.30. */
 export const SELL_GAS_SOL = 0.002
 
-let rpcId = 0
-/** One JSON-RPC call to Solana, retried once on a throttle. */
+/** One JSON-RPC call to Solana, through the nodes picked in RPC settings (a throttled node hands over to the next). */
 export async function solRpc<T>(method: string, params: unknown[], signal?: AbortSignal): Promise<T> {
-  for (let attempt = 0; ; attempt++) {
-    const res = await fetch(SOL_RPC_BROWSER, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: signal ?? AbortSignal.timeout(12_000),
-      body: JSON.stringify({ jsonrpc: '2.0', id: ++rpcId, method, params }),
-    })
-    if (res.status === 429 && attempt === 0) { await new Promise(r => setTimeout(r, 800)); continue }
-    const j = await res.json() as { result?: T; error?: { message?: string } }
-    if (j.error) throw new Error(j.error.message ?? 'Solana RPC error')
-    return j.result as T
-  }
+  return rpcRequest<T>('sol', method, params, 12_000, signal)
 }
 
 /** SOL held, in SOL. */

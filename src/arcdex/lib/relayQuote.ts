@@ -19,12 +19,17 @@
 //  • xin:  SOL or USDC on Solana → a coin (or USDC) on the EVM chain, signed in the Solana wallet, delivered to the
 //          trader's EVM address (their ARCDEX account), with an optional gas top-up there.
 //  • xout: a coin (or USDC) on the EVM chain → SOL or USDC on Solana, signed by that EVM account, paid to the Solana wallet.
+// From Ethereum, Base or Arbitrum (2026-10-16, owner: "the limitation of having to be on Arc to trade"; lib/payChains.ts):
+//  • xevm: USDC or ETH on `fromChain` → a coin on `evmChain` (Arc, BNB Chain or Robinhood Chain), signed on `fromChain`
+//          by the trader, delivered to the same address. Relay's depository there (the same 0x4cd0…bc31 as on Arc):
+//          USDC approved for exactly the amount and deposited (depositErc20), ETH deposited with the call (depositNative).
 // Relay's newer orders (`protocol.v2`) describe the order a deposit funds: its id is in the Solana deposit's data, and
 // its payments, refunds and calls are checked against the request.
 //
-// ARCDEX's fee is Relay's app fee: 2% (the swap router's feeBps) of what goes in, accrued for the fee wallet
-// 0x2742…86Bb as a USDC balance at Relay and claimed from there (Relay pays app fees out on a claim, signed by that
-// wallet; https://docs.relay.link/features/app-fees). The gas top-ups carry no fee.
+// ARCDEX's fee is Relay's app fee: 0.5% (SPOT_FEE_BPS in lib/platform.ts; 2% until 2026-10-15) of what goes in,
+// accrued for the fee wallet (FEE_WALLET: VITE_FEE_RECIPIENT_EVM, else 0x2742…86Bb) as a USDC balance at Relay and
+// claimed from there (Relay pays app fees out on a claim, signed by that wallet; https://docs.relay.link/features/app-fees).
+// The gas top-ups carry no fee.
 //
 // A quote is refused unless it's exactly the trade asked for: who pays and who receives, the coins, the amount, only
 // Relay's own contracts as Relay publishes them (GET /chains) with approvals for exactly the amount, and on Solana only
@@ -36,6 +41,8 @@ import { decodeFunctionData, erc20Abi, formatUnits, type Hex } from 'viem'
 import { FEE_WALLET } from './platform'
 import { ARC_USDC, QUOTE_LIMITS, quoteVerdict, type QuoteValue, type QuoteVerdict } from './acrossQuote'
 import { t as T } from './i18n'
+import { minOutProblem } from './guardrails'
+import { isPayChain, payChain } from './payChains'
 
 export const RELAY_API = 'https://api.relay.link'
 export const ARC_ID = 5042
@@ -57,6 +64,8 @@ export const RELAY_BSC = { router: '0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f',
 export const RELAY_SOL_SOLVERS = new Set(['F7p3dFrjRTbtRp8FRF6qHLomXbKRBzpvBLjtQcfcgmNe', 'DNLbQ4t95LLPevvLdcFzN8RHNN83ntQJLt26E8VTnE7p'])
 /** depositErc20(address depositor, address token, uint256 amount, bytes32 id). */
 const DEPOSIT_SELECTOR = '0xe8017952'
+/** depositNative(address depositor, bytes32 id), with the amount as the call's value. */
+const DEPOSIT_NATIVE_SELECTOR = '0x49290c1c'
 
 /** The only programs a Solana trade's transaction may call: Solana's token accounts, the swap aggregators Relay routes
  * through (DFlow, Jupiter), Relay's depository, and the memo naming the quote. Plus the system's own. */
@@ -83,7 +92,7 @@ export const RELAY_EVM = RELAY_BSC
 const MEMO = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'
 const SYSTEM = '11111111111111111111111111111111'
 
-export type RelaySide = 'buy' | 'sell' | 'gas' | 'swap' | 'xin' | 'xout'
+export type RelaySide = 'buy' | 'sell' | 'gas' | 'swap' | 'xin' | 'xout' | 'xevm'
 export type RelayChain = 'solana' | 'bsc'
 
 export interface RelayRequest {
@@ -106,8 +115,10 @@ export interface RelayRequest {
   outToken?: string
   /** xin / xout: the EVM chain (Arc, BNB Chain or Robinhood Chain); `mint` is the token there. */
   evmChain?: number
-  /** xin: dollars of the EVM chain's gas coin delivered with the trade (so the coin can be sold later). */
+  /** xin / xevm: dollars of the EVM chain's gas coin delivered with the trade (so the coin can be sold later). */
   gasUsd?: number
+  /** xevm: the chain paid from (Ethereum, Base or Arbitrum); `inToken` is its USDC or ETH (EVM_NATIVE). */
+  fromChain?: number
 }
 
 export interface SolInstruction { programId: string; keys: { pubkey: string; isSigner: boolean; isWritable: boolean }[]; data: string }
@@ -163,6 +174,7 @@ function shape(r: RelayRequest) {
     case 'swap': return { user: me, recipient: me, origin: other, dest: other, inCur: r.inToken ?? '', outCur: r.outToken ?? '' }
     case 'xin': return { user: r.sol, recipient: r.evm, origin: SOLANA_ID, dest: r.evmChain ?? 0, inCur: r.inToken ?? '', outCur: r.mint }
     case 'xout': return { user: r.evm, recipient: r.sol, origin: r.evmChain ?? 0, dest: SOLANA_ID, inCur: r.mint, outCur: r.outToken ?? '' }
+    case 'xevm': return { user: r.evm, recipient: r.evm, origin: r.fromChain ?? 0, dest: r.evmChain ?? 0, inCur: r.inToken ?? '', outCur: r.mint }
   }
 }
 
@@ -179,7 +191,7 @@ export function quoteBody(r: RelayRequest): Record<string, unknown> {
     amount: r.amount.toString(),
     tradeType: 'EXACT_INPUT',
     ...(r.side !== 'gas' && r.feeBps > 0 ? { appFees: [{ recipient: FEE_WALLET, fee: String(r.feeBps) }] } : {}),
-    ...(r.side === 'xin' && r.gasUsd ? { topupGas: true, topupGasAmount: String(Math.round(r.gasUsd * 1e6)) } : {}),
+    ...((r.side === 'xin' || r.side === 'xevm') && r.gasUsd ? { topupGas: true, topupGasAmount: String(Math.round(r.gasUsd * 1e6)) } : {}),
   }
 }
 
@@ -220,6 +232,11 @@ export function checkRelayQuote(r: RelayRequest, j: ApiQuote): RelayQuote {
   if ((r.side === 'xin' || r.side === 'xout') && !(XSOL_CHAINS as readonly number[]).includes(r.evmChain ?? 0)) fail('a chain ARCDEX doesn’t trade with Solana')
   if (r.side === 'xin' && r.inToken !== SOL_NATIVE && r.inToken !== SOL_USDC) fail('only SOL or USDC go in from Solana')
   if (r.side === 'xout' && r.outToken !== SOL_NATIVE && r.outToken !== SOL_USDC) fail('only SOL or USDC come out on Solana')
+  if (r.side === 'xevm') {
+    if (!isPayChain(r.fromChain ?? 0)) fail('a chain ARCDEX doesn’t take payments from')
+    if (!(XSOL_CHAINS as readonly number[]).includes(r.evmChain ?? 0)) fail('a chain ARCDEX doesn’t trade')
+    if (lc(r.inToken) !== EVM_NATIVE && lc(r.inToken) !== lc(payChain(r.fromChain!)!.usdc)) fail('only USDC or ETH go in')
+  }
   // Who pays and who's paid: addresses on Solana are case-sensitive, on EVM chains not.
   const addrOk = (chain: number, a: string | undefined, b: string) => (chain === SOLANA_ID ? a === b : lc(a) === lc(b))
   if (!addrOk(s.origin, d.sender, s.user)) fail(s.origin === SOLANA_ID ? 'the trade isn’t from your Solana wallet' : 'the trade isn’t from you')
@@ -229,6 +246,7 @@ export function checkRelayQuote(r: RelayRequest, j: ApiQuote): RelayQuote {
   if (big(cin.amount) !== r.amount) fail('the quote spends another amount')
   const expectedOut = big(cout.amount), minOut = big(cout.minimumAmount)
   if (minOut <= 0n || expectedOut < minOut) fail('the quote has no minimum received')
+  if (minOutProblem(expectedOut, minOut)) fail('its minimum received is more than 15% under its price')
 
   const app = j.fees?.app
   const appFee = big(app?.amount)
@@ -238,10 +256,10 @@ export function checkRelayQuote(r: RelayRequest, j: ApiQuote): RelayQuote {
     const want = (r.amount * BigInt(r.feeBps)) / 10_000n
     if (Number(app?.currency?.chainId) !== ARC_ID || appFee < want - 1n || appFee > want + 1n) fail('the fee isn’t ARCDEX’s')
   }
-  if ((r.side === 'sell' || r.side === 'swap' || r.side === 'xin' || r.side === 'xout') && r.feeBps > 0 && appFee <= 0n) fail('the fee isn’t ARCDEX’s')
-  if (r.side === 'xin' && !r.gasUsd && d.currencyGasTopup) fail('gas that wasn’t asked for')
+  if ((r.side === 'sell' || r.side === 'swap' || r.side === 'xin' || r.side === 'xout' || r.side === 'xevm') && r.feeBps > 0 && appFee <= 0n) fail('the fee isn’t ARCDEX’s')
+  if ((r.side === 'xin' || r.side === 'xevm') && !r.gasUsd && d.currencyGasTopup) fail('gas that wasn’t asked for')
   const topupUsd = parseFloat(String(d.currencyGasTopup?.amountUsd ?? '0')) || 0
-  if (r.side === 'xin' && r.gasUsd && topupUsd > r.gasUsd * 1.5) fail('more gas than was asked for')
+  if ((r.side === 'xin' || r.side === 'xevm') && r.gasUsd && topupUsd > r.gasUsd * 1.5) fail('more gas than was asked for')
 
   const ids = new Set(steps.map(x => x.requestId).filter(Boolean))
   if (ids.size !== 1) fail('the quote names no single request')
@@ -251,7 +269,7 @@ export function checkRelayQuote(r: RelayRequest, j: ApiQuote): RelayQuote {
   if (s.origin === SOLANA_ID) solTx = checkSolSteps(r, steps, id, c, j.protocol?.v2, s)
   else evmTx = checkEvmSteps(r, steps, s.origin, s.user, s.inCur)
   // Relay's v2 order, where it gives one for an EVM-side trade to Solana: it pays only the trader, makes no calls.
-  if (r.side === 'xout' && j.protocol?.v2?.orderData) checkOrderOutput(j.protocol.v2, s)
+  if ((r.side === 'xout' || r.side === 'xevm') && j.protocol?.v2?.orderData) checkOrderOutput(j.protocol.v2, s)
 
   const usd = (k: string) => parseFloat(String(j.fees?.[k]?.amountUsd ?? '0')) || 0
   return {
@@ -273,8 +291,10 @@ export function checkRelayQuote(r: RelayRequest, j: ApiQuote): RelayQuote {
  * approval, if any, is for exactly the amount, to the contract that then takes it. */
 function checkEvmSteps(r: RelayRequest, steps: ApiStep[], chainId: number, user: string, inCur: string): NonNullable<RelayQuote['evmTx']> {
   const native = lc(inCur) === EVM_NATIVE
-  // Arc's USDC goes into Relay's depository (depositErc20); any other token, on any chain, through the approval proxy.
-  const viaDepository = chainId === ARC_ID && lc(inCur) === ARC_USDC
+  // Arc's USDC goes into Relay's depository (depositErc20), and so does a payment from Ethereum, Base or Arbitrum (its
+  // USDC by depositErc20, ETH by depositNative); any other token, on any chain, through the approval proxy.
+  const fromPay = r.side === 'xevm' && isPayChain(chainId)
+  const viaDepository = (chainId === ARC_ID && lc(inCur) === ARC_USDC) || fromPay
   let approve: { token: Hex; spender: Hex; amount: bigint } | null = null, call: { to: Hex; data: Hex; value: bigint } | null = null
   for (const st of steps) {
     if (st.id !== 'approve' && st.id !== 'deposit' && st.id !== 'swap') fail(`an unexpected step (${st.id ?? '?'})`)
@@ -294,13 +314,19 @@ function checkEvmSteps(r: RelayRequest, steps: ApiStep[], chainId: number, user:
       if (amount !== r.amount) fail('the approval isn’t for exactly the amount')
       approve = { token: to, spender: lc(spender) as Hex, amount }
     } else {
-      if (viaDepository) {
-        // Arc's USDC: Relay's depository, word by word.
+      if (viaDepository && native) {
+        // ETH from a pay chain: Relay's depository, with exactly the amount, for the trader.
+        if (to !== RELAY_ARC_DEPOSITORY) fail('the deposit goes to a contract ARCDEX doesn’t know')
+        if (value !== r.amount) fail('the deposit sends another amount of ETH')
+        if (!data.startsWith(DEPOSIT_NATIVE_SELECTOR) || data.length !== 10 + 64 * 2) fail('an unexpected deposit')
+        if (`0x${word(data, 0).slice(24)}` !== lc(r.evm)) fail('the deposit isn’t from you')
+      } else if (viaDepository) {
+        // USDC (Arc's, or a pay chain's): Relay's depository, word by word.
         if (to !== RELAY_ARC_DEPOSITORY) fail('the deposit goes to a contract ARCDEX doesn’t know')
         if (value !== 0n) fail('the transaction would send native funds')
         if (!data.startsWith(DEPOSIT_SELECTOR) || data.length !== 10 + 64 * 4) fail('an unexpected deposit')
         if (`0x${word(data, 0).slice(24)}` !== lc(r.evm)) fail('the deposit isn’t from you')
-        if (`0x${word(data, 1).slice(24)}` !== ARC_USDC) fail('the deposit isn’t USDC')
+        if (`0x${word(data, 1).slice(24)}` !== lc(inCur)) fail('the deposit isn’t USDC')
         if (BigInt(`0x${word(data, 2)}`) !== r.amount) fail('the deposit isn’t the amount asked for')
       } else {
         // Native gas coin to Relay's router with exactly the amount; an ERC-20 through its approval proxy (BNB Chain,
@@ -385,7 +411,7 @@ function decodeHexAscii(h: string): string {
 /** A buy or sale through Arc, valued at the coin's market price. `input` is what's paid: dollars for a buy, coins for a
  * sale. */
 export function relayValue(q: Pick<RelayQuote, 'side' | 'expectedOut' | 'outDecimals' | 'appFeeUsd' | 'relayFeeUsd'>, input: number, priceUsd: number): QuoteValue | null {
-  if (q.side === 'gas' || q.side === 'swap' || q.side === 'xin' || q.side === 'xout' || !(priceUsd > 0) || !(input > 0)) return null
+  if (q.side === 'gas' || q.side === 'swap' || q.side === 'xin' || q.side === 'xout' || q.side === 'xevm' || !(priceUsd > 0) || !(input > 0)) return null
   const out = Number(formatUnits(q.expectedOut, q.outDecimals))
   if (q.side === 'buy') {
     const swapIn = input - q.appFeeUsd - q.relayFeeUsd

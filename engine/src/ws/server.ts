@@ -17,6 +17,7 @@
 //   GET /v1/safety/:token                       a coin's latest safety report
 //   GET /v1/safety?tokens=0x…,0x…               the coin board's safety for up to 120 coins (bot/boardSafety.ts)
 //   GET /v1/bonding?limit=200                   Argus coins on their curve, progress by market cap (market/bonding.ts)
+//   GET /v1/trench/:chain                       a chain's latest launches and its smart wallets (trench/service.ts)
 //   GET /v1/bot/stats                           paper and live trading results
 //   GET /v1/bot/positions?status=open|closed|all&limit=100
 //   GET /v1/bot/status                          mode, bot wallet, live limits and activity
@@ -31,6 +32,7 @@
 //   /v1/auth/*, /v1/me…, /v1/bots…               accounts, owners' bots, the marketplace (ws/botApi.ts)
 //   GET /v1/coin/program                        $ARCDEX buyback, burns and liquidity: fees in, bought, burned, added (coin/program.ts)
 //   GET /v1/perps/status|prices|candles|state   futures: deployment, keeper, signed prices, chart, contract state (perps/service.ts)
+//   /v1/social/*                                verified PnL and boards, comments, reports, mutes (social/api.ts)
 //   /v1/quant/*                                 the signal engine: signals, radar, positions, wallets, validation, controls (quant/api.ts)
 //   /v1/algo/*                                  ARCDEX Algo, the futures agent: status, decisions, trades, reviews, controls (algo/api.ts)
 //   /api/argus|gecko|holders|launchpad|radar|dex|rhmarket|session|social|upload   the site's functions, moved off Vercel (site/siteApi.ts)
@@ -56,6 +58,7 @@ import type { MarketEngine, Publisher } from '../market/engine'
 import type { HistoryStore } from '../store/history'
 import type { HotStore } from '../store/hot'
 import type { Traffic } from '../traffic'
+import type { Votes } from '../votes'
 import { quantApi, type QuantApiDeps } from '../quant/api'
 import { algoApi } from '../algo/api'
 import type { AlgoAgent } from '../algo/agent'
@@ -63,6 +66,16 @@ import type { SiteApi } from '../site/siteApi'
 import type { PerpsService } from '../perps/service'
 import type { CoinProgram } from '../coin/program'
 import type { BondingBook } from '../market/bonding'
+import type { TradeSwitch } from '../site/tradeSwitch'
+import type { TrenchService } from '../trench/service'
+import { isEvmWallet, isTrenchChain, type WalletView } from '../../../api/_trenchProtocol'
+import type { FeeLedger, FeeSource } from '../fees/ledger'
+import type { FeeLedgerService } from '../fees/service'
+import type { ReferralWatcher } from '../fees/referrals'
+import type { PushAlerts } from '../alerts/service'
+import type { AdminApi } from '../admin/api'
+import type { SocialApi } from '../social/api'
+import type { CopyApi } from '../copy/api'
 
 interface Conn { id: number; ip: string; subs: Set<string>; allowance: number; last: number }
 
@@ -81,6 +94,10 @@ export class DataApi {
   tiers: Tiers | null = null
   /** The site's traffic counter (traffic.ts). */
   traffic: Traffic | null = null
+  /** Community sentiment on each coin (votes.ts). */
+  votes: Votes | null = null
+  /** Alerts by web push (alerts/service.ts). */
+  push: PushAlerts | null = null
   /** The signal engine (engine/src/quant), when this process runs it. */
   quant: QuantApiDeps | null = null
   /** The site's read functions (engine/src/site/siteApi.ts), served here instead of on Vercel. */
@@ -92,9 +109,40 @@ export class DataApi {
   algoControl: ControlVerifier | null = null
   /** $ARCDEX buyback, burns and liquidity: the fee wallet's ledger (engine/src/coin/program.ts). */
   coin: CoinProgram | null = null
+  /** The fee ledger and its nightly reconciliation (engine/src/fees). */
+  fees: { ledger: FeeLedger; service: FeeLedgerService; referrals?: ReferralWatcher } | null = null
+  /** The admin panel: sign-in, live sessions, fees and the sweeper, trades, audit, flags (admin/api.ts). */
+  admin: AdminApi | null = null
+  /** The social layer: verified PnL, the wash-trade filter, comments, reports and mutes (social/api.ts). */
+  social: SocialApi | null = null
+  copy: CopyApi | null = null
   /** Argus coins on their launch curve, with their progress by market cap (market/bonding.ts). */
   bonding: BondingBook | null = null
+  /** The Trenches' live feed: every chain's launches, trades and smart wallets (trench/service.ts). */
+  trench: TrenchService | null = null
+  /** The trade switch: trading off everywhere or per venue (site/tradeSwitch.ts). */
+  tradeSwitch: TradeSwitch | null = null
   attachBot(b: Bot, control: ControlVerifier | null = null, accounts: PaperAccounts | null = null, users: Users | null = null, tiers: Tiers | null = null) { this.bot = b; this.control = control; this.accounts = accounts; this.users = users; this.tiers = tiers }
+
+  /** The wallet tracker's view of a wallet: the trench books' record and kept trades, with Arc's stored trades. */
+  async walletView(address: string): Promise<WalletView | null> {
+    const base = this.trench?.walletView(address)
+    if (!base) return null
+    let trades = base.trades
+    if (isEvmWallet(address) && this.history.walletTrades) {
+      const kept = new Set(trades.map(t => `${t.c}:${t.t}:${t.ts}:${t.side}`))
+      const stored = await this.history.walletTrades(address.toLowerCase(), 100).catch(() => [])
+      for (const t of stored) {
+        if (t.side === 'UNKNOWN' || !(t.usdValue && t.usdValue > 0)) continue
+        const side = t.side === 'BUY' ? 'B' as const : 'S' as const
+        if (kept.has(`arc:${t.token}:${t.timestamp}:${side}`)) continue
+        const meta = this.trench?.arcCoin(t.token)
+        trades.push({ c: 'arc', w: address.toLowerCase(), t: t.token, s: meta?.symbol ?? '', i: meta?.image ?? null, side, u: Math.round(t.usdValue * 100) / 100, n: t.tokenAmount, ts: t.timestamp, m: 0 })
+      }
+      trades = trades.sort((a, b) => b.ts - a.ts).slice(0, 150)
+    }
+    return { address, at: Date.now(), records: base.records, trades }
+  }
 
   async tokenSnapshot(token: string, limit = 50): Promise<{ stats: TokenStats | null; trades: WireTrade[] }> {
     if (this.engine?.tokens.has(token)) return { stats: this.engine.statsOf(token), trades: this.engine.recentTrades(token, limit) }
@@ -253,6 +301,35 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         return ok ? undefined : new Response('websocket upgrade expected', { status: 400 })
       }
       if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors(req), 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Content-Type, X-Paper-Key, Authorization', 'Access-Control-Max-Age': '600' } })
+      // The admin panel (admin/api.ts): its own sign-in; every other /v1/admin route needs that session.
+      if (api.admin && (url.pathname.startsWith('/v1/admin/') || url.pathname === '/v1/flags')) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        const r = await api.admin.handle(req, url, ip, { wsClients: clients })
+        if (r) {
+          if (url.pathname === '/v1/admin/auth/verify') metrics.inc(r.status === 200 ? 'admin_logins' : 'admin_login_refused')
+          return json(req, r.status, r.body, r.cache)
+        }
+      }
+      // The social layer (social/api.ts): verified PnL and boards, comments, reports and mutes.
+      if (url.pathname.startsWith('/v1/social/')) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        if (!api.social) return json(req, 503, { error: 'the social layer is not running in this process' })
+        const r = await api.social.handle(req, url)
+        if (r) {
+          if (req.method === 'POST') metrics.inc(r.status === 200 ? 'social_writes' : 'social_writes_refused')
+          return json(req, r.status, r.body, r.cache)
+        }
+      }
+      // Copy trading (copy/api.ts): copy wallets, rules, the stop switch and withdrawals.
+      if (url.pathname.startsWith('/v1/copy/')) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        if (!api.copy) return json(req, 503, { error: 'copy trading is not running in this process' })
+        const r = await api.copy.handle(req, url)
+        if (r) {
+          if (req.method === 'POST') metrics.inc(r.status === 200 ? 'copy_writes' : 'copy_writes_refused')
+          return json(req, r.status, r.body, r.cache)
+        }
+      }
       // The site's traffic counter (traffic.ts): each open page's heartbeat, and the counts.
       if (url.pathname === '/v1/traffic' || url.pathname === '/v1/traffic/beat') {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
@@ -262,11 +339,56 @@ export function startServer({ cfg, api, health }: ServerDeps) {
           if (Number(req.headers.get('content-length') ?? 0) > 512) return json(req, 413, { error: 'too large' })
           // Sent as text/plain (no preflight); only the site's own pages count.
           const origin = req.headers.get('origin')
-          const body = await req.text().then(t => JSON.parse(t) as { id?: unknown }, () => null).catch(() => null)
-          if (!origin || cfg.allowedOrigins.includes(origin)) traffic.beat(typeof body?.id === 'string' ? body.id : '', ip)
+          const body = await req.text().then(t => JSON.parse(t) as { id?: unknown; p?: unknown }, () => null).catch(() => null)
+          if (!origin || cfg.allowedOrigins.includes(origin)) traffic.beat(typeof body?.id === 'string' ? body.id : '', ip, Date.now(), body?.p)
           return json(req, 200, await traffic.counts(), 'no-store')
         }
         if (req.method === 'GET') return json(req, 200, await traffic.counts(), 'public, max-age=5')
+        return json(req, 405, { error: 'method not allowed' })
+      }
+      // Alerts by web push (alerts/service.ts): the public key and delivery times for anyone; a browser's subscription
+      // and its alerts by its id and token, from the site's own pages only (sent as text/plain, so no preflight).
+      if (url.pathname.startsWith('/v1/push/')) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        const push = api.push
+        if (!push) return json(req, 503, { error: 'alerts aren’t switched on in this engine' })
+        const action = url.pathname.slice('/v1/push/'.length)
+        if (req.method === 'GET' && action === 'key') return json(req, 200, { publicKey: push.publicKey }, 'public, max-age=300')
+        if (req.method === 'GET' && action === 'stats') return json(req, 200, push.stats(), 'public, max-age=5')
+        if (req.method !== 'POST') return json(req, 405, { error: 'method not allowed' })
+        const origin = req.headers.get('origin')
+        if (!origin || !cfg.allowedOrigins.includes(origin)) return json(req, 403, { error: 'alerts are set from the site' })
+        if (Number(req.headers.get('content-length') ?? 0) > 64 * 1024) return json(req, 413, { error: 'too large' })
+        const body = await req.text().then(t => JSON.parse(t) as Record<string, unknown>, () => null).catch(() => null)
+        const r = action === 'subscribe' ? await push.subscribe(body, ip)
+          : action === 'alerts' ? await push.setAlerts(body)
+          : action === 'state' ? push.read(body)
+          : action === 'unsubscribe' ? await push.unsubscribe(body)
+          : action === 'test' ? await push.test(body)
+          : { status: 404, body: { error: 'not found' } }
+        return json(req, r.status, r.body, 'no-store')
+      }
+      // Community sentiment on each coin (votes.ts): the counts, and a visitor's vote.
+      if (url.pathname === '/v1/votes') {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        const votes = api.votes
+        if (!votes) return json(req, 503, { error: 'no votes here' })
+        if (req.method === 'GET') {
+          const counts = await votes.counts(url.searchParams.get('chain'), url.searchParams.get('address'))
+          return counts ? json(req, 200, { counts }, 'public, max-age=10') : json(req, 400, { error: 'unknown coin' })
+        }
+        if (req.method === 'POST') {
+          if (Number(req.headers.get('content-length') ?? 0) > 1024) return json(req, 413, { error: 'too large' })
+          // Sent as text/plain (no preflight), from the site's own pages only.
+          const origin = req.headers.get('origin')
+          if (!origin || !cfg.allowedOrigins.includes(origin)) return json(req, 403, { error: 'votes come from the site' })
+          const body = await req.text().then(t => JSON.parse(t) as Record<string, unknown>, () => null).catch(() => null)
+          if (!body) return json(req, 400, { error: 'bad request' })
+          const r = await votes.vote(body.chain, body.address, body.id, body.vote ?? null, ip)
+          if ('error' in r) return json(req, r.error.startsWith('too many') ? 429 : 400, r)
+          metrics.inc('coin_votes')
+          return json(req, 200, r, 'no-store')
+        }
         return json(req, 405, { error: 'method not allowed' })
       }
       // The site's read functions (site/siteApi.ts): /api/argus, /api/gecko, /api/holders, /api/launchpad, …
@@ -290,6 +412,15 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         if (!api.coin) return json(req, 503, { error: 'the program ledger is not running in this process' })
         return json(req, 200, api.coin.view(), 'public, max-age=15')
       }
+      // The fee ledger (fees/ledger.ts): totals by source, the latest rows and reconciliations; every row is on-chain data.
+      if (url.pathname === '/v1/fees/summary' || url.pathname === '/v1/fees/ledger') {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        if (!api.fees) return json(req, 503, { error: 'the fee ledger is not running in this process' })
+        if (url.pathname === '/v1/fees/summary') return json(req, 200, { ...await api.fees.ledger.summary(), rebatesScannedTo: api.fees.referrals ? await api.fees.referrals.scannedTo() : null }, 'public, max-age=30')
+        const source = url.searchParams.get('source') as FeeSource | null
+        const lim = Math.max(1, Math.min(500, Number(url.searchParams.get('limit')) || 100))
+        return json(req, 200, { rows: await api.fees.ledger.store.feeRows({ limit: lim, ...(source ? { source } : {}) }) }, 'public, max-age=30')
+      }
       // Argus coins on their curve, closest to graduating first (market/bonding.ts).
       if (url.pathname === '/v1/bonding') {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
@@ -303,6 +434,22 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         if (!api.algo) return json(req, 503, { error: 'the algo agent is not running in this process' })
         try { return await algoApi(req, url, api.algo, api.algoControl, (status, body, cache) => json(req, status, body, cache)) }
         catch (e) { log.warn('algo api error', { path: url.pathname, error: errMsg(e) }); return json(req, 500, { error: 'internal error' }) }
+      }
+      // The wallet tracker (trench/walletWatch.ts): a wallet's record on each chain and its trades, newest first.
+      const wm = /^\/v1\/wallet\/([0-9a-zA-Z]{32,44})$/.exec(url.pathname)
+      if (wm) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        if (!api.trench) return json(req, 503, { error: 'the trenches feed is not running in this process' })
+        const v = await api.walletView(wm[1])
+        return v ? json(req, 200, v, 'no-store') : json(req, 400, { error: 'not an EVM or Solana address' })
+      }
+      // The Trenches' live feed (trench/service.ts): a chain's latest launches and its smart wallets.
+      const tm = /^\/v1\/trench\/([a-z]+)$/.exec(url.pathname)
+      if (tm) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        if (!isTrenchChain(tm[1])) return json(req, 404, { error: 'unknown chain', chains: ['arc', 'hood', 'sol', 'bnb'] })
+        if (!api.trench) return json(req, 503, { error: 'the trenches feed is not running in this process' })
+        return json(req, 200, api.trench.snapshot(tm[1]), 'public, max-age=2')
       }
       // Futures (perps/service.ts): status, prices, candles, the contract's state.
       if (url.pathname.startsWith('/v1/perps/')) {
@@ -359,6 +506,15 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         }
         return json(req, 404, { error: 'not found' })
       }
+      // The trade switch (site/tradeSwitch.ts): an admin wallet's signed change, applied at once and audited.
+      if (req.method === 'POST' && url.pathname === '/v1/trading/control') {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        if (!api.tradeSwitch) return json(req, 503, { error: 'the trade switch is not running in this process' })
+        if (Number(req.headers.get('content-length') ?? 0) > 2_048) return json(req, 413, { error: 'too large' })
+        const r = await api.tradeSwitch.control(await req.json().catch(() => null))
+        metrics.inc(r.status === 200 ? 'trade_switch_changed' : 'trade_switch_refused')
+        return json(req, r.status, r.body)
+      }
       if (req.method === 'POST' && url.pathname === '/v1/bot/control') {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
         const bot = api.bot, control = api.control
@@ -390,6 +546,11 @@ export function startServer({ cfg, api, health }: ServerDeps) {
       const limit = (d: number, max: number) => Math.max(1, Math.min(max, Number(url.searchParams.get('limit')) || d))
       const before = Number(url.searchParams.get('before')) || undefined
       try {
+        // What trading is off, and why: the site reads it before every trade (no-store: a switch must reach it at once).
+        if (url.pathname === '/v1/trading/status') {
+          if (!api.tradeSwitch) return json(req, 503, { error: 'the trade switch is not running in this process' })
+          return json(req, 200, api.tradeSwitch.state(), 'no-store')
+        }
         if (url.pathname === '/v1/tokens/new') return json(req, 200, { launches: await api.launches(limit(50, 500)) }, 'public, max-age=1')
         if (url.pathname === '/v1/tokens/active') return json(req, 200, { at: Date.now(), tokens: api.active(limit(100, 300)) }, 'public, max-age=5')
         if (url.pathname === '/v1/market') return json(req, 200, { tokens: await api.market(limit(100, 1_000)) }, 'public, max-age=2')
@@ -469,7 +630,7 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         const m = parseClientMessage(typeof raw === 'string' ? raw : new TextDecoder().decode(raw))
         if ('error' in m) { metrics.inc('ws_bad_messages'); send(ws, { t: 'ERROR', d: { code: m.error } }); return }
         if (m.action === 'ping') { send(ws, { t: 'PONG', ts: now }); return }
-        const topic = topicOf({ channel: m.channel!, token: m.token, interval: m.interval })
+        const topic = topicOf({ channel: m.channel!, token: m.token, interval: m.interval, wallet: m.wallet })
         if (m.action === 'unsubscribe') {
           if (ws.data.subs.delete(topic)) { ws.unsubscribe(topic); counts.set(topic, (counts.get(topic) ?? 1) - 1); if (!counts.get(topic)) counts.delete(topic) }
           send(ws, { t: 'UNSUBSCRIBED', c: topic })

@@ -47,7 +47,7 @@ export default function ProfileEditor({ trader, profile, onSaved, onClose }: { t
         <div><span style={label}>{T("Bio")}</span><textarea value={bio} onChange={e => setBio(e.target.value)} maxLength={160} rows={2} style={{ ...input, resize: 'vertical', fontFamily: 'inherit' }} /></div>
         <div><span style={label}>{T("X handle")}</span><input value={x} onChange={e => setX(e.target.value.replace(/^@/, '').replace(/[^A-Za-z0-9_]/g, ''))} maxLength={15} placeholder={T("handle")} style={input} /></div>
         {err && <div style={{ fontSize: '0.78rem', color: '#fca5a5' }}>{err}</div>}
-        <button onClick={() => void save()} disabled={saving} style={{ padding: 12, borderRadius: 10, border: 'none', background: 'var(--adx-accent)', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
+        <button onClick={() => void save()} disabled={saving} style={{ padding: 12, borderRadius: 10, border: 'none', background: 'var(--adx-accent)', color: 'var(--on-accent)', fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
           {saving ? T("Saving…") : T("Save profile")}
         </button>
         <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{T("The first save asks your wallet to sign a free message proving this profile is yours. No transaction, no gas.")}</div>

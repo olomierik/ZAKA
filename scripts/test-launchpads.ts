@@ -105,7 +105,7 @@ const partials: number[] = []
 const lps = [{ id: 'minara-fun', name: 'Minara.fun' }, { id: 'tolly-arc', name: 'Tolly' }, { id: 'radardex', name: 'RadarDEX' }]
 const market = await buildMarket(fake, p => partials.push(p.length), { launchpads: lps, concurrency: 2 })
 const by = new Map(market.map(p => [p.token.symbol, p]))
-ok(calls[0].startsWith(`/networks/arc/tokens/${ARGUS_TOKEN}/pools`) && calls[1].startsWith('/networks/arc/dexes/argus/pools?page=1'), 'Argus first: $ARGUS, then its top 20 by volume')
+ok(calls[0].startsWith(`/networks/arc/tokens/${ARGUS_TOKEN}/pools`) && calls[1].startsWith('/networks/arc/pools?page=1&sort=h24_volume_usd_desc') && calls[2].startsWith('/networks/arc/dexes/argus/pools?page=1'), 'Argus first: $ARGUS, then Arc’s top pools on every DEX (since 2026-10-05), then Argus’s top 20 by volume')
 ok(lps.every(d => calls.some(c => c.startsWith(`/networks/arc/dexes/${d.id}/pools?page=1&sort=h24_volume_usd_desc`))), 'then each other launchpad\'s top 20 by volume')
 ok(maxLaunchpadInFlight === 2, `launchpads fetched ${maxLaunchpadInFlight} at a time (asked for 2)`)
 ok(by.get('ARGUS')?.launchpad === 'Argus' && by.get('ARG1')?.launchpad === 'Argus' && by.get('MIN1')?.launchpad === 'Minara' && by.get('TOL1')?.launchpad === 'Tolly' && by.get('RAD1')?.launchpad === 'RadarDEX', '$ARGUS and every coin labelled with its launchpad')

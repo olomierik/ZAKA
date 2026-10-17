@@ -2,7 +2,7 @@
 // trading wallet signs on BNB Chain with the same key (no pop-ups), a connected wallet is switched to BNB Chain.
 //
 //   • Graduated (PancakeSwap): through Relay (lib/relay.ts), paid with USDC on Arc (the coin lands on BNB Chain in
-//     seconds), BNB or USDT; sold for any of the three. ARCDEX's 2% is Relay's app fee.
+//     seconds), BNB or USDT; sold for any of the three. ARCDEX's 0.5% (SPOT_FEE_BPS) is Relay's app fee.
 //   • On its curve: four.meme's own TokenManager2 (lib/fourMeme.ts), paid with the coin's quote (BNB, or USDT for a
 //     USDT coin) and sold for it. ARCDEX takes no fee there; four.meme takes its own (about 1%).
 // Gas on BNB Chain is BNB: "Add BNB" turns Arc USDC into BNB at the same address (Relay, no ARCDEX fee).
@@ -12,10 +12,10 @@ import { formatUnits, parseUnits } from 'viem'
 import { openConnectModal } from './ConnectWallet'
 import { useTrader } from '../lib/identity'
 import { useCash } from '../lib/usdc'
-import { useRouterInfo, pct } from '../lib/routerInfo'
+import { pct } from '../lib/routerInfo'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { onBalances } from '../lib/balances'
-import { ARC_EXPLORER, FEE_WALLET } from '../lib/platform'
+import { ARC_EXPLORER, FEE_WALLET, SPOT_FEE_BPS } from '../lib/platform'
 import { bnbBalance, bscTokenBalance, bscTx, bscAddress, SELL_GAS_BNB, type BscHolding } from '../lib/bsc'
 import { getRelayQuote, QUOTE_LIMITS, quoteVerdict, relayValue, relayValueUsd, EVM_NATIVE, type RelayQuote, type RelayRequest } from '../lib/relayQuote'
 import { relayErrorText, runRelayEvm, type RelayProgress } from '../lib/relay'
@@ -23,6 +23,8 @@ import { fourErrorText, fourQuoteBuy, fourQuoteSell, fourMinOut, runFourBuy, run
 import { isContractWallet } from '../lib/across'
 import { bnbUsd, BSC_USDT, type FourInfo } from '../api/bscMarket'
 import { t as T } from '../lib/i18n'
+import { useBuyRisk } from '../lib/buyRisk'
+import TradeDetails, { HOT } from './TradeDetails'
 
 interface Props {
   token: string
@@ -36,6 +38,10 @@ interface Props {
   compact?: boolean
   buyBlocked?: string
   onTraded?: () => void
+  /** A quick buy from the Trenches: the form opens paying with this (BNB) and this amount filled in, when the coin
+   * can be paid for that way (a curve quoted in USDT can't take BNB). */
+  initialRoute?: 'arc' | 'bnb' | 'usdt'
+  initialAmount?: number
 }
 
 type Route = 'arc' | 'bnb' | 'usdt'
@@ -60,18 +66,19 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 
 type Step = 'idle' | 'working' | 'done' | 'error'
 
-export default function BscTrade({ token, symbol, decimals, priceUsd, four, side, initialMode, compact, buyBlocked, onTraded }: Props) {
+export default function BscTrade({ token, symbol, decimals, priceUsd, four, side, initialMode, compact, buyBlocked, onTraded, initialRoute, initialAmount }: Props) {
   const trader = useTrader()
   const me = trader.address
   const kind = trader.kind ?? 'wallet'
-  const info = useRouterInfo()
-  const feeBps = info?.feeBps ?? 200
+  const feeBps = SPOT_FEE_BPS
   const curve = !!four && !four.graduated
   const curveRoute: Route = four?.quote === BSC_USDT ? 'usdt' : 'bnb'
   const [mode, setMode] = useState<'buy' | 'sell'>(side ?? initialMode ?? 'buy')
-  const [picked, setPicked] = useState<Route | null>(null)
+  // The coin's safety rating, right above Buy (lib/buyRisk.tsx): a Danger coin waits for a tick.
+  const buyRisk = useBuyRisk(mode === 'buy')
+  const [picked, setPicked] = useState<Route | null>(initialRoute ?? null)
   const route: Route = curve ? curveRoute : picked ?? 'arc'
-  const [amount, setAmount] = useState('')
+  const [amount, setAmount] = useState(initialAmount && initialAmount > 0 && initialRoute && (curve ? curveRoute === initialRoute : true) ? String(initialAmount) : '')
   const [quote, setQuote] = useState<RelayQuote | null>(null)
   const [fq, setFq] = useState<FourQuote | null>(null)
   const [quoting, setQuoting] = useState(false)
@@ -180,10 +187,12 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
   const refused = verdict === 'refuse' || verdict === 'off-market'
   const impactPct = value ? Math.max(0, value.impact * 100) : null
   const cost = value ? Math.max(0, value.cost * 100) : null
+  const impactHot = refused || (impactPct ?? 0) >= HOT.impactPct
+  const costHot = (cost ?? 0) >= HOT.costPct
   const needsCostTick = verdict === 'confirm' || verdict === 'unpriced'
 
   const noBuy = mode === 'buy' && !!buyBlocked
-  const blocked = busy || !me || !haveQuote || quoting || insufficient || refused || noBuy || (needsCostTick && !costOk) || needsGas
+  const blocked = busy || !me || !haveQuote || quoting || insufficient || refused || noBuy || (needsCostTick && !costOk) || needsGas || buyRisk.blocks
 
   async function addBnb(usd: number) {
     if (!me) return
@@ -198,7 +207,7 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
   }
 
   async function submit() {
-    if (!me || !haveQuote) return
+    if (!me || !haveQuote || buyRisk.blocks) return
     setStep('working'); setLinks([])
     try {
       if (curve && fq) {
@@ -290,23 +299,29 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
       <div className="swap-info">
         <Row label={T('You receive (est.)')} value={haveQuote ? outText(outAmount) : quoting ? '…' : '—'}
           sub={haveQuote && outUsd > 0 && verdict !== 'off-market' && mode === 'buy' ? `≈ ${fmtUsd(outUsd)}` : undefined} />
-        <Row label={T('Minimum received')} value={haveQuote ? outText(minAmount) : '—'} />
-        {curve ? (
-          <>
-            <Row label={T('Platform fee')} value="0%" />
-            <Row label={T('four.meme fee')} value={fq ? `${fmtTok(Number(formatUnits(fq.fee, 18)))} ${ROUTE_LABEL[curveRoute]}` : '≈1%'} />
-            <Row label={T('Max slippage')} value={`${CURVE_SLIPPAGE_BPS / 100}%`} />
-          </>
-        ) : (
-          <>
-            <Row label={T('Platform fee')} value={T('{pct} (in {c})', { pct: pct(feeBps), c: route === 'arc' ? 'USDC' : ROUTE_LABEL[route] })} />
-            <Row label={route === 'arc' ? T('Bridge & delivery (Relay)') : T('Swap (Relay)')} value={quote ? fmtUsd(relayFee) : '—'} />
-          </>
-        )}
-        {value && <Row label={T('Price impact')} value={verdict === 'off-market' ? T('{x}× the market price', { x: fmtTimes(value.rate) }) : impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`}
-          color={refused || impactPct! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : impactPct! >= 5 ? 'var(--amber)' : 'var(--green)'} />}
-        {value && !refused && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} color={cost! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : cost! >= 6 ? 'var(--amber)' : undefined} />}
-        <Row label={T('Arrives')} value={!haveQuote ? '—' : route === 'arc' && quote ? (mode === 'buy' ? T('on BNB Chain in ~{s}s', { s: Math.max(2, quote.fillSeconds) }) : T('on Arc in ~{s}s', { s: Math.max(2, quote.fillSeconds) })) : T('in your wallet in seconds')} />
+        {/* A high price impact or cost stays out of Details. */}
+        {value && impactHot && <Row label={T('Price impact')} value={verdict === 'off-market' ? T('{x}× the market price', { x: fmtTimes(value.rate) }) : impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`}
+          color={refused || impactPct! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : 'var(--amber)'} />}
+        {value && !refused && costHot && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} color={cost! >= QUOTE_LIMITS.confirm * 100 ? 'var(--red)' : 'var(--amber)'} />}
+        <TradeDetails hint={curve ? T('{fee} fee · {via}', { fee: '0%', via: 'four.meme' }) : T('{fee} fee · {via}', { fee: pct(feeBps), via: 'Relay' })}>
+          <Row label={T('Minimum received')} value={haveQuote ? outText(minAmount) : '—'} />
+          {curve ? (
+            <>
+              <Row label={T('Platform fee')} value="0%" />
+              <Row label={T('four.meme fee')} value={fq ? `${fmtTok(Number(formatUnits(fq.fee, 18)))} ${ROUTE_LABEL[curveRoute]}` : '≈1%'} />
+              <Row label={T('Max slippage')} value={`${CURVE_SLIPPAGE_BPS / 100}%`} />
+            </>
+          ) : (
+            <>
+              <Row label={T('Platform fee')} value={T('{pct} (in {c})', { pct: pct(feeBps), c: route === 'arc' ? 'USDC' : ROUTE_LABEL[route] })} />
+              <Row label={route === 'arc' ? T('Bridge & delivery (Relay)') : T('Swap (Relay)')} value={quote ? fmtUsd(relayFee) : '—'} />
+            </>
+          )}
+          {value && !impactHot && <Row label={T('Price impact')} value={impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`} color="var(--green)" />}
+          {value && !refused && !costHot && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} />}
+          <Row label={T('Arrives')} value={!haveQuote ? '—' : route === 'arc' && quote ? (mode === 'buy' ? T('on BNB Chain in ~{s}s', { s: Math.max(2, quote.fillSeconds) }) : T('on Arc in ~{s}s', { s: Math.max(2, quote.fillSeconds) })) : T('in your wallet in seconds')} />
+          {!compact && <p className="swap-note">{BSC_NOTE()}</p>}
+        </TradeDetails>
       </div>
 
       {quoteErr && !busy && <div className="rh-msg error">{quoteErr}</div>}
@@ -341,6 +356,8 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
         </div>
       )}
 
+      {buyRisk.node}
+
       {!me ? (
         <>
           <button className="rh-btn" onClick={openConnectModal}>{T('Connect Wallet')}</button>
@@ -357,7 +374,6 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
           {bnb !== null && <> · BNB {bnb < 0.00001 ? '0' : bnb.toPrecision(2)}</>}
         </div>
       )}
-      {!compact && <p className="swap-note">{BSC_NOTE()}</p>}
     </div>
   )
 }

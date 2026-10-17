@@ -108,7 +108,7 @@ export default function SearchBox({ navigate, mobileOpen = false }: { navigate: 
 
   return (
     <div ref={box} className={`navbar-search-wrap${mobileOpen ? ' open' : ''}`}>
-      <input ref={input} className="navbar-search" value={q} placeholder={T("Search tokens or traders…   /")}
+      <input ref={input} className="navbar-search" value={q} placeholder={T('Search name or CA')}
         onFocus={() => setOpen(true)} onChange={e => { setQ(e.target.value); setOpen(true) }}
         onKeyDown={e => {
           if (e.key !== 'Enter') return

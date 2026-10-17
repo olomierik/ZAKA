@@ -35,6 +35,7 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import type { BotReadiness } from '../../../api/_marketProtocol'
 import type { Rpc } from '../chain/http'
 import type { PoolInfo } from '../dex/pools'
+import { FEE_RECIPIENT } from '../feeWallet'
 import { errMsg, log } from '../log'
 import type { LiveExecutor } from '../trading/live'
 import { stats, type Position } from '../trading/paper'
@@ -71,9 +72,10 @@ export const USER_LIVE = {
 /**
  * The platform's share of each winning trade's profit, sent to the fee wallet
  * when the trade closes (15% since 2026-09-30, the owner's decision; it was
- * 2%). Losing trades pay nothing, and the swaps themselves pay no fee.
+ * 2%). Losing trades pay nothing, and the swaps themselves pay no fee. The
+ * wallet is FEE_RECIPIENT_EVM, else the fee wallet since ARCDEX (feeWallet.ts).
  */
-export const PROFIT_FEE = { bps: 1_500, wallet: '0x274262A0321A0701b0A46a3576e07aE881c286Bb' as Address }
+export const PROFIT_FEE = { bps: 1_500, wallet: FEE_RECIPIENT as Address }
 /** The fee as a percentage, for words ("15%"). */
 export const PROFIT_FEE_PCT = PROFIT_FEE.bps / 100
 

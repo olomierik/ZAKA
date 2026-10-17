@@ -1,10 +1,14 @@
 import { isEstablishedCoin, isLaunchpadCoin } from '../../../api/_launchpads'
-import { isListable, isRugged, LISTING } from '../lib/safety'
+import { arcSafety, isListable, isRugged, LISTING } from '../lib/safety'
+import { riskOf, type Risk } from '../lib/risk'
+import { BuyRiskProvider, type ProvidedRisk } from '../lib/buyRisk'
+import { useCoinSafety } from '../api/coinSafety'
 import { useEffect, useMemo, useState } from 'react'
 import { cachedArgusMarket, copycatOf, getArgusMarket, type ArgusPool } from '../api/argusMarket'
 import { getAllLaunchpadTokens } from '../api/launchpad'
 import TokenSwap from '../components/TokenSwap'
 import { SolanaPayCard } from '../components/SolanaCross'
+import { PayFromCard } from '../components/PayFromChain'
 import { ARC_ID } from '../lib/relayQuote'
 import { ChainIcon, ChainStrip, UsdcIcon } from '../components/Chains'
 import { BRIDGE_NETWORKS } from '../lib/bridgeChains'
@@ -20,7 +24,9 @@ interface Props { navigate: (p: Page) => void }
 
 interface Coin { address: string; symbol: string; name: string; image: string | null; priceUsd: number; volume24h: number; pool?: string; launchpad: boolean
   /** Listed (lib/safety.ts isListable): $15K or more of market cap and not rugged. Searching still finds the rest. */
-  listed: boolean }
+  listed: boolean
+  /** Its market risk and whether it's on its launchpad's curve, for the rating above Buy (lib/buyRisk.tsx). */
+  risk: Risk; onCurve: boolean }
 
 const fromMarket = (list: ArgusPool[]): Coin[] => {
   const best = new Map<string, ArgusPool>()
@@ -38,7 +44,10 @@ const fromMarket = (list: ArgusPool[]): Coin[] => {
     const mc = p.marketCapUsd ?? p.fdvUsd ?? 0
     return {
       address: p.token.address.toLowerCase(), symbol: p.token.symbol, name: p.token.name, image: p.token.image,
-      priceUsd: p.priceUsd, volume24h: p.volume24h, pool: p.pool, launchpad: false,
+      priceUsd: p.priceUsd, volume24h: p.volume24h, pool: p.pool, launchpad: false, onCurve,
+      risk: riskOf({ liquidityUsd: p.liquidityUsd, marketCapUsd: mc, launchedAt: p.createdAt ? Date.parse(p.createdAt) : null,
+        txns24h: p.txns24h.buys + p.txns24h.sells, buys24h: p.txns24h.buys, sells24h: p.txns24h.sells, change24h: p.change.h24,
+        bonded: p.bonded ?? null, copycat: copycatOf(p.token.symbol, p.token.address) }),
       listed: isListable({ official: false, marketCapUsd: mc, rugged: isRugged({ change24h: p.change.h24, liquidityUsd: p.liquidityUsd, onCurve }) }),
     }
   })
@@ -56,7 +65,10 @@ export default function Swap({ navigate }: Props) {
   const [query, setQuery] = useState('')
   const [picked, setPicked] = useState<Coin | null>(null)
   const coinQ = useCoin()
-  const coinPick: Coin = { address: COIN_LC, symbol: 'ARCDEX', name: 'ARCDEX', image: COIN_IMAGE, priceUsd: coinQ?.priceUsd ?? 0, volume24h: coinQ?.volume24h ?? 0, pool: COIN_POOL, launchpad: false, listed: true }
+  const coinPick: Coin = { address: COIN_LC, symbol: 'ARCDEX', name: 'ARCDEX', image: COIN_IMAGE, priceUsd: coinQ?.priceUsd ?? 0, volume24h: coinQ?.volume24h ?? 0, pool: COIN_POOL, launchpad: false, listed: true, risk: riskOf({}), onCurve: false }
+  // The picked coin's rating, right above Buy (lib/buyRisk.tsx): the engine's scan with its market data; $ARCDEX is Official.
+  const scan = useCoinSafety(picked && picked.address !== COIN_LC ? [picked.address] : []).get(picked?.address ?? '')
+  const buyRating = useMemo<ProvidedRisk>(() => !picked ? null : picked.address === COIN_LC ? 'official' : arcSafety(picked, picked.risk, scan, picked.onCurve), [picked, scan])
 
   useEffect(() => {
     let cancelled = false
@@ -66,6 +78,8 @@ export default function Swap({ navigate }: Props) {
       getAllLaunchpadTokens().then(ts => ts.map((t): Coin => ({
         address: t.address.toLowerCase(), symbol: t.symbol, name: t.name, image: t.metadata?.image ?? null,
         priceUsd: t.priceUsd, volume24h: 0, launchpad: true, listed: t.priceUsd * 1e9 >= LISTING.minMarketCapUsd,
+        onCurve: !t.curve.graduated, risk: riskOf({ liquidityUsd: Number(t.curve.rUsdc) / 1e6, marketCapUsd: t.priceUsd * 1e9, launchedAt: t.curve.launchedAt * 1000,
+          curve: true, bonded: t.curve.graduated, copycat: copycatOf(t.symbol, t.address) }),
       }))).catch(() => [] as Coin[]),
     ]).then(([market, curve]) => {
       if (cancelled) return
@@ -143,11 +157,13 @@ export default function Swap({ navigate }: Props) {
                   <button className="xs-link" onClick={() => navigate(picked.launchpad ? { name: 'token', address: picked.address, symbol: picked.symbol } : { name: 'argus', address: picked.address, pool: picked.pool ?? '' })}>{T("View chart →")}</button>
                   <button className="xs-change" onClick={() => { setPicked(null); setQuery('') }}>{T('Change')}</button>
                 </div>
+                <BuyRiskProvider view={buyRating}>
                 <div className="xs-widget">
                   <TokenSwap address={picked.address} pool={picked.pool} fallback={{ symbol: picked.symbol, image: picked.image, priceUsd: picked.priceUsd }} />
                   {/* Or straight from a Solana wallet, with SOL or USDC on Solana. */}
-                  <SolanaPayCard chainId={ARC_ID} token={picked.address} symbol={picked.symbol} priceUsd={picked.priceUsd} />
+                  <PayFromCard chainId={ARC_ID} token={picked.address} symbol={picked.symbol} priceUsd={picked.priceUsd} /><SolanaPayCard chainId={ARC_ID} token={picked.address} symbol={picked.symbol} priceUsd={picked.priceUsd} />
                 </div>
+                </BuyRiskProvider>
               </>
             )}
           </div>

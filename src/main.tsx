@@ -1,15 +1,18 @@
 import { captureReferral } from './arcdex/lib/referral'
+import { isChunkError, reloadForNewVersion, watchChunkErrors } from './arcdex/lib/chunkReload'
 
-// arcsense.site/ is the landing page — a small bundle with no wallet
-// libraries, so it loads fast for new visitors. Every other path
-// (/app, /token/…, /profile/…, …) is the trading app. /r/<name> referral
-// links are remembered first, then land on the landing page.
+// arcsense.site/ is the trading terminal (the Trenches, motion.gift's layout, 2026-10-12). /about is the old landing
+// page: a small bundle with no wallet libraries ($ARCDEX, the fee split, the roadmap). /r/<name> referral links are
+// remembered first, then open the terminal.
 captureReferral()
+// A page left open across a deploy reloads to get the new version instead of going blank (lib/chunkReload.ts).
+watchChunkErrors()
+const failed = (e: unknown) => { if (isChunkError(e)) reloadForNewVersion(); else throw e }
 
 const root = document.getElementById('root')!
 const path = window.location.pathname
-if (path === '/' || path === '/index.html') {
-  void import('./arcdex/landing/Landing').then(m => m.mountLanding(root))
+if (path === '/about' || path === '/about/') {
+  void import('./arcdex/landing/Landing').then(m => m.mountLanding(root), failed)
 } else {
   // The page's own code starts loading with the app's, not after it (2026-10-05): a coin page loaded six files one after
   // another (main → app → App → CoinPage → ArgusTokenPage → chart), ~9s on a fast connection. The app's lazy routes
@@ -19,13 +22,13 @@ if (path === '/' || path === '/index.html') {
     [/^\/solana\/token\//, () => import('./arcdex/pages/SolanaTokenPage')],
     [/^\/(bnb|bsc)\/token\//, () => import('./arcdex/pages/BscTokenPage')],
     [/^\/robinhood\/token\//, () => import('./arcdex/pages/RobinhoodTokenPage')],
-    [/^\/solana\/?$/, () => import('./arcdex/pages/SolanaMarkets')],
-    [/^\/(bnb|bsc)\/?$/, () => import('./arcdex/pages/BscMarkets')],
-    [/^\/robinhood\/?$/, () => import('./arcdex/pages/RobinhoodMarkets')],
-    [/^\/futures/, () => import('./arcdex/pages/FuturesPage')],
+    [/^\/futures\/testnet/, () => import('./arcdex/pages/FuturesPage')],
+    [/^\/(futures|perps|trade)\b/, () => Promise.all([import('./arcdex/pages/PerpsPage'), import('./arcdex/components/PriceChart')])],
+    [/^\/predict/, () => import('./arcdex/pages/PredictPage')],
+    [/^\/starknet/, () => import('./arcdex/pages/StarknetPage')],
     [/^\/swap/, () => import('./arcdex/pages/Swap')],
     [/^\/portfolio/, () => import('./arcdex/pages/Portfolio')],
   ]
   for (const [re, load] of route) if (re.test(path)) { void load().catch(() => {}); break }
-  void import('./appMain').then(m => m.mountApp(root))
+  void import('./appMain').then(m => m.mountApp(root), failed)
 }

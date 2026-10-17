@@ -8,6 +8,7 @@
 //                     {"action":"subscribe","channel":"candles","token":"0x…","interval":"1m"}
 //                     {"action":"subscribe","channel":"new_tokens"}
 //                     {"action":"subscribe","channel":"signals"}   trading signals and the bot's positions
+//                     {"action":"subscribe","channel":"trench_sol"}  a chain's launches, trades and smart wallets (api/_trenchProtocol.ts)
 //                     {"action":"unsubscribe", …same fields}
 //                     {"action":"ping"}
 //   server → client   {"t":"TRADE","k":"0x…token","d":{…WireTrade}}
@@ -18,7 +19,9 @@
 // subscribe to one or the other, or events arrive twice. NEW_TOKEN goes to
 // `new_tokens`; `market` carries TICKS (all tokens, once a second).
 
-export const CHANNELS = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles', 'new_tokens', 'market', 'signals', 'scan'] as const
+import type { TrenchMessage, WalletMessage } from './_trenchProtocol'
+
+export const CHANNELS = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles', 'new_tokens', 'market', 'signals', 'scan', 'trench_arc', 'trench_hood', 'trench_sol', 'trench_bnb', 'wallet'] as const
 export type Channel = (typeof CHANNELS)[number]
 /** Channels that need a token address. */
 export const TOKEN_CHANNELS: readonly Channel[] = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles']
@@ -35,6 +38,8 @@ export interface ClientMessage {
   channel?: Channel
   token?: string
   interval?: Interval
+  /** The `wallet` channel: an EVM or Solana address. */
+  wallet?: string
 }
 
 /** Validates a raw client message. Returns the message or an error code. */
@@ -57,12 +62,18 @@ export function parseClientMessage(raw: unknown): ClientMessage | { error: strin
     if (!isInterval(o.interval)) return { error: 'bad_interval' }
     out.interval = o.interval
   }
+  if (channel === 'wallet') {
+    const w = typeof o.wallet === 'string' ? o.wallet : ''
+    if (!/^0x[0-9a-fA-F]{40}$/.test(w) && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(w)) return { error: 'bad_wallet' }
+    out.wallet = w.startsWith('0x') ? w.toLowerCase() : w
+  }
   return out
 }
 
 /** The pub/sub topic a subscription maps to. */
-export function topicOf(m: { channel: Channel; token?: string; interval?: string }): string {
-  if (m.channel === 'new_tokens' || m.channel === 'market' || m.channel === 'signals' || m.channel === 'scan') return m.channel
+export function topicOf(m: { channel: Channel; token?: string; interval?: string; wallet?: string }): string {
+  if (m.channel === 'wallet') return m.wallet!.startsWith('0x') ? `wallet:evm:${m.wallet}` : `wallet:sol:${m.wallet}`
+  if (m.channel === 'new_tokens' || m.channel === 'market' || m.channel === 'signals' || m.channel === 'scan' || m.channel.startsWith('trench_')) return m.channel
   if (m.channel === 'candles') return `candles:${m.token}:${m.interval}`
   return `${m.channel}:${m.token}`
 }
@@ -839,6 +850,109 @@ export function botControlMessage(c: BotControl, at: number): string {
   return `ARCDEX signal bot\n${what}\nAt: ${new Date(at).toISOString()}`
 }
 
+/**
+ * The trade switch (the build pack's kill switch; engine/src/site/tradeSwitch.ts, src/arcdex/lib/tradeSwitch.ts): trading
+ * on every venue at once, or one venue, turned off and on by an admin wallet's signed message. Off stops new trades
+ * before they're signed; withdrawals, transfers, the bridge and open positions' management are not trades and go on.
+ */
+export const TRADE_VENUES = ['arc', 'robinhood', 'solana', 'bnb', 'starknet', 'hyperliquid', 'ethereum', 'arbitrum'] as const
+export type TradeVenue = (typeof TRADE_VENUES)[number]
+export const TRADE_VENUE_LABEL: Record<TradeVenue, string> = { arc: 'Arc', robinhood: 'Robinhood Chain', solana: 'Solana', bnb: 'BNB Chain', starknet: 'Starknet', hyperliquid: 'Hyperliquid', ethereum: 'Ethereum', arbitrum: 'Arbitrum' }
+export const isTradeVenue = (v: unknown): v is TradeVenue => typeof v === 'string' && (TRADE_VENUES as readonly string[]).includes(v)
+
+/** One switch: everything, or one venue. */
+export type TradeScope = 'all' | TradeVenue
+export interface TradeSwitchControl { scope: TradeScope; on: boolean; reason: string }
+/** Why a scope is off, and since when. */
+export interface TradeOff { reason: string; at: number }
+
+export interface TradeSwitchState {
+  at: number
+  /** Trading as a whole: off when the switch for everything is off, or the engine's GLOBAL_KILL_SWITCH is set. */
+  on: boolean
+  all: TradeOff | null
+  venues: Partial<Record<TradeVenue, TradeOff>>
+  /** Set on the engine (GLOBAL_KILL_SWITCH, KILL_SWITCH_VENUES): only a change there turns these back on. */
+  env: { all: boolean; venues: TradeVenue[] }
+  /** The last changes, newest first (who made them is in the engine's audit log only). */
+  history: { at: number; scope: TradeScope; on: boolean; reason: string }[]
+}
+
+/** The exact text an admin wallet signs to change the trade switch (nonce: the time, valid 5 minutes, once). */
+export function tradeSwitchMessage(c: TradeSwitchControl, at: number): string {
+  const where = c.scope === 'all' ? 'on every venue' : `on ${TRADE_VENUE_LABEL[c.scope]}`
+  return `ARCDEX trade switch\nSite: arcsense.site\nTurn trading ${c.on ? 'ON' : 'OFF'} ${where}\nReason: ${c.reason}\nAt: ${new Date(at).toISOString()}`
+}
+
+// ── The admin panel (engine/src/admin, /admin) ────────────────────────────
+
+/**
+ * Site feature flags an admin can set while the site runs (engine/src/admin/flags.ts; the site's src/arcdex/lib/flags.ts
+ * reads them). A flag set at build time (VITE_FLAG_<NAME> on Netlify) always wins. A protective flag can only be turned
+ * on at runtime, never off: loosening a protection takes a deploy, so a stolen admin session can't.
+ */
+export const SITE_FLAGS = {
+  withdrawLimits: { protective: true, label: 'Withdrawal limits and the new-address hold' },
+  buyRisk: { protective: true, label: 'Safety rating above Buy, and the tick a Danger coin needs' },
+  walletsCard: { protective: false, label: 'Wallets card on Portfolio' },
+  jupiter: { protective: false, label: 'Solana swaps through Jupiter' },
+  privy: { protective: false, label: 'Sign-in with Privy' },
+  pushAlerts: { protective: false, label: 'Alerts by push, with ARCDEX closed' },
+  comments: { protective: false, label: 'Comments on theses and coins' },
+  copyTrading: { protective: false, label: 'Copy trading (engine-held copy wallets on Arc)' },
+  walletCopy: { protective: false, label: 'Copy trading from the user’s own trading wallet (in the browser)' },
+} as const
+export type SiteFlag = keyof typeof SITE_FLAGS
+export const isSiteFlag = (f: unknown): f is SiteFlag => typeof f === 'string' && Object.prototype.hasOwnProperty.call(SITE_FLAGS, f)
+
+export interface FlagsState {
+  at: number
+  /** Only flags an admin has set; the rest follow the site's defaults. */
+  flags: Partial<Record<SiteFlag, boolean>>
+  history: { at: number; flag: SiteFlag; on: boolean; reason: string }[]
+}
+
+/** The exact text an admin wallet signs to change a flag (valid 5 minutes, once). */
+export function flagChangeMessage(flag: SiteFlag, on: boolean, reason: string, at: number): string {
+  return `ARCDEX feature flag\nSite: arcsense.site\nTurn ${flag} ${on ? 'ON' : 'OFF'}\nReason: ${reason}\nAt: ${new Date(at).toISOString()}`
+}
+
+/** The exact text an admin wallet signs to run the fee sweeper for real (a dry run needs no signature). */
+export function sweepRunMessage(at: number): string {
+  return `ARCDEX fee sweeper\nSite: arcsense.site\nRun the sweep for real (fees owed by bot wallets are sent to the fee wallet)\nAt: ${new Date(at).toISOString()}`
+}
+
+/** One thing the sweeper found: fees still held somewhere other than the fee wallet. */
+export interface SweepItem {
+  id: string
+  /** relay: Relay's balance for the fee wallet; jupiter: a referral token account; bot-fees: fees live bots still owe. */
+  source: 'relay' | 'jupiter' | 'bot-fees'
+  holder: string
+  token: string
+  amount: string
+  usd: number | null
+  /** engine: the engine sends it; owner: the owner claims it with the fee wallet's (or referral account's) key. */
+  action: 'engine' | 'owner'
+  /** Under the threshold: listed, not acted on. */
+  below: boolean
+  outcome?: { ok: boolean; tx?: string; error?: string }
+  how?: string
+}
+
+export interface SweepRun {
+  id: string
+  at: number
+  day: string
+  mode: 'dry' | 'real'
+  by: string
+  status: 'ok' | 'partial' | 'failed' | 'paused' | 'noop'
+  /** What the plan holds over the threshold: the same for a dry run and a real run of the same state. */
+  totals: { engineUsd: number; ownerUsd: number; belowUsd: number; items: number }
+  sentUsd: number
+  items: SweepItem[]
+  note?: string
+}
+
 export type ServerMessage =
   | { t: 'SCAN'; d: { rows: ScanRow[]; stats: ScanStats } }
   | { t: 'TRADE'; k: string; d: WireTrade }
@@ -853,6 +967,9 @@ export type ServerMessage =
   | { t: 'BOT_POSITION'; d: BotPosition }
   /** market channel, once a second: [token, priceUsd, chg24 %, vol24 USD, mcap USD, trades24] for tokens that traded */
   | { t: 'TICKS'; d: [string, number | null, number | null, number, number | null, number][] }
+  /** trench_<chain> channels: launches, trades once a second, smart wallets' trades (api/_trenchProtocol.ts) */
+  | TrenchMessage
+  | WalletMessage
   | { t: 'SUBSCRIBED' | 'UNSUBSCRIBED'; c: string }
   | { t: 'PONG'; ts: number }
   | { t: 'ERROR'; d: { code: string; msg?: string } }

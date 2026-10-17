@@ -1,20 +1,22 @@
-// Shareable URLs for every page (fomo-style): /token/0x…, /profile/name,
-// /clans/slug, /r/name (referral). The app keeps its page state object;
-// this maps it to and from the address bar. vercel.json already serves
-// the SPA for every path; / itself is the landing page (src/main.tsx).
+// Shareable URLs for every page: /token/0x…, /futures/BTC, /r/name (referral). The app keeps its page state
+// object; this maps it to and from the address bar. Netlify serves the SPA for every path. Since 2026-10-12 / is the
+// Trenches (the chain last picked), /arc, /robinhood, /solana and /bnb a chain's own, and /about the old landing page.
 
 import type { Page } from '../App'
 import { COIN_LC, COIN_POOL } from './coin'
+import type { TChain } from './chains'
+
+const TRENCH_PATH: Record<TChain, string> = { arc: '/arc', hood: '/robinhood', sol: '/solana', bnb: '/bnb' }
 
 export function pageToPath(p: Page): string {
   switch (p.name) {
-    case 'terminal':    return '/app'
+    case 'terminal':    return p.chain ? TRENCH_PATH[p.chain] : '/'
     case 'argus':       return `/token/${p.address}${p.pool ? `?pool=${p.pool}` : ''}`
     case 'token':       return `/token/${p.address}`
     case 'trader':      return `/profile/${p.address}`
     case 'clan':        return `/clans/${p.slug}`
     case 'clans':       return '/clans'
-    case 'leaderboard': return '/leaderboard'
+    case 'leaderboard': return p.tab === 'futures' ? '/leaderboard/futures' : '/leaderboard'
     case 'feed':        return '/feed'
     case 'alerts':      return '/alerts'
     case 'rewards':     return '/rewards'
@@ -24,8 +26,17 @@ export function pageToPath(p: Page): string {
     case 'swap':        return '/swap'
     case 'bridge':      return p.dir === 'in' ? '/bridge?dir=in' : '/bridge'
     case 'deploy-curve-router': return '/deploy/curve-router'
+    case 'admin':       return '/admin'
     case 'signals':     return p.bot ? `/bots/${encodeURIComponent(p.bot)}` : p.view === 'market' ? '/bots' : p.view === 'manage' ? '/autotrade/manage' : '/autotrade'
-    case 'futures':     return '/futures'
+    // Hyperliquid's futures are /futures (BTC) and /futures/<coin>; ARCDEX's own testnet futures moved to /futures/testnet.
+    case 'perps':       return `/futures${p.coin && p.coin !== 'BTC' ? `/${p.coin}` : ''}`
+    case 'futures':     return '/futures/testnet'
+    case 'predict':     return '/predict'
+    case 'hl-trader':   return `/futures/trader/${p.address}`
+    case 'routes':      return '/routes'
+    case 'tracker':     return p.address ? `/tracker/${p.address}` : '/tracker'
+    case 'copy':        return p.leader ? `/copy/${p.leader}` : '/copy'
+    case 'starknet':    return '/starknet'
     case 'coin':        return '/burn'
     case 'robinhood':   return '/robinhood'
     case 'rh-token':    return `/robinhood/token/${p.address}${p.pool ? `?pool=${p.pool}` : ''}`
@@ -53,23 +64,35 @@ export function pathToPage(pathname: string, search: string): Page | null {
     case 'profile':     return b ? { name: 'trader', address: b } : null
     case 'clans':       return b ? { name: 'clan', slug: b } : { name: 'clans' }
     case 'app':
-    case 'markets':     return { name: 'terminal' }
+    case 'markets':
+    case 'trenches':    return { name: 'terminal' }
+    case 'arc':         return { name: 'terminal', chain: 'arc' }
     // Spot opens on $ARCDEX/USDC, as Binance's opens on its own pair.
     case 'spot':        return { name: 'argus', address: COIN_LC, pool: COIN_POOL }
-    case 'leaderboard': return { name: 'leaderboard' }
+    case 'leaderboard': return b === 'futures' ? { name: 'leaderboard', tab: 'futures' } : { name: 'leaderboard' }
     case 'feed':        return { name: 'feed' }
     case 'alerts':      return { name: 'alerts' }
     case 'rewards':
     case 'earn':        return { name: 'rewards' }
     case 'transfers':   return { name: 'transfers' }
     case 'portfolio':   return { name: 'portfolio' }
-    case 'launchpad':   return { name: 'launchpad' }
+    case 'launchpad':   return { name: 'terminal', chain: 'arc' }
     case 'swap':        return { name: 'swap' }
     case 'bridge':      return { name: 'bridge', dir: q.get('dir') === 'in' ? 'in' : 'out' }
     case 'signals':
     case 'autotrade':   return b === 'manage' ? { name: 'signals', view: 'manage' } : { name: 'signals' }
     case 'futures':
-    case 'perps':       return { name: 'futures' }
+    case 'perps':
+    case 'trade':
+      if (b === 'trader' && parts[2] && /^0x[0-9a-fA-F]{40}$/.test(parts[2])) return { name: 'hl-trader', address: parts[2].toLowerCase() }
+      return b === 'testnet' ? { name: 'futures' } : b ? { name: 'perps', coin: b } : { name: 'perps' }
+    case 'predict':
+    case 'predictions': return { name: 'predict' }
+    case 'routes':      return { name: 'routes' }
+    case 'tracker':
+    case 'track':       return b && (/^0x[0-9a-fA-F]{40}$/.test(b) || /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(b)) ? { name: 'tracker', address: b.startsWith('0x') ? b.toLowerCase() : b } : { name: 'tracker' }
+    case 'copy':        return b && /^0x[0-9a-fA-F]{40}$/.test(b) ? { name: 'copy', leader: b.toLowerCase() } : { name: 'copy' }
+    case 'starknet':    return { name: 'starknet' }
     // $ARCDEX: its burns, buybacks and the fee ledger (/sense was $SENSE's, before 2026-10-04).
     case 'sense':
     case 'burn':        return { name: 'coin' }
@@ -81,14 +104,14 @@ export function pathToPage(pathname: string, search: string): Page | null {
         const pool = (q.get('pool') ?? '').toLowerCase()
         return { name: 'rh-token', address: parts[2].toLowerCase(), pool: /^0x([0-9a-f]{40}|[0-9a-f]{64})$/.test(pool) ? pool : '' }
       }
-      return { name: 'robinhood' }
+      return { name: 'terminal', chain: 'hood' }
     // Solana's markets, and one of its coins (base58 mints and pools: case kept).
     case 'solana':
       if (b === 'token' && parts[2] && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(parts[2])) {
         const pool = q.get('pool') ?? ''
         return { name: 'sol-token', address: parts[2], pool: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(pool) ? pool : '' }
       }
-      return { name: 'solana' }
+      return { name: 'terminal', chain: 'sol' }
     // BNB Chain's markets (four.meme), and one of its coins (/bsc works too).
     case 'bnb':
     case 'bsc':
@@ -96,7 +119,9 @@ export function pathToPage(pathname: string, search: string): Page | null {
         const pool = (q.get('pool') ?? '').toLowerCase()
         return { name: 'bsc-token', address: parts[2].toLowerCase(), pool: /^0x([0-9a-f]{40}|[0-9a-f]{64})$/.test(pool) ? pool : '' }
       }
-      return { name: 'bsc' }
+      return { name: 'terminal', chain: 'bnb' }
+    // Not linked anywhere: the trade switch (pages/AdminPage.tsx).
+    case 'admin':       return { name: 'admin' }
     // Not linked anywhere: the owner deploys ArcDexCurveRouter here.
     case 'deploy':      return b === 'curve-router' ? { name: 'deploy-curve-router' } : null
     default:            return null
