@@ -10,7 +10,7 @@ import type { WireCandle } from '../../../api/_marketProtocol'
 import { INDICATORS, bollinger, ema, rsi, sma, vwap, type IndicatorId } from '../lib/indicators'
 import { t as T } from '../lib/i18n'
 import { RIGHT_OFFSET_BARS, fitWindow, flightOf, followAfterRedraw } from '../lib/chartMotion'
-import { OPEN_CHOICES, fillGaps, pickOpenRes } from '../lib/chartFrame'
+import { OPEN_CHOICES, cleanCandles, fillGaps, pickOpenRes } from '../lib/chartFrame'
 
 const IND_KEY = 'arcdex:chart-indicators'
 const RSI_PANE = 110
@@ -100,6 +100,8 @@ interface Props {
   onTraderClick?: (address: string) => void
   /** The chart's height on desktop (default 340). */
   height?: number
+  /** When the coin launched (ms), when known: a young coin opens on a timeframe its whole life fits (pickOpenRes). */
+  launchedAt?: number
 }
 
 /** fx/fy: where a pop flies to (px from where it starts) as it fades. */
@@ -126,7 +128,7 @@ const SCALE_MODES = { normal: PriceScaleMode.Normal, log: PriceScaleMode.Logarit
 // Price axis: 2 decimals for $1+ coins, 4 significant digits for micro-caps.
 const fmtPrice = (v: number) => v >= 1000 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v === 0 ? '0' : v.toPrecision(4)
 
-export default function PriceChart({ poolAddress, source, liveTitle, ticks, live, engineToken, trades, thesisMarks, friends, supply, symbol, onTraderClick, height }: Props) {
+export default function PriceChart({ poolAddress, source, liveTitle, ticks, live, engineToken, trades, thesisMarks, friends, supply, symbol, onTraderClick, height, launchedAt }: Props) {
   const mobile = useIsMobile()
   const engineStatus = useEngineStatus()
   const engineMode = engineEnabled && !!engineToken && engineStatus === 'open' && !source
@@ -252,8 +254,9 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
       const base = mergeCandles(onChainOnly(res) ? [] : history, recent)
       raw = engineMode ? overlay(base, liveCandles) : base
     }
-    // Every bar between trades, flat at the last price, up to now: time runs evenly on the axis.
-    return fillGaps(raw, step, nowBucket)
+    // Bad prints out (one silly swap squashed a low-cap coin's chart flat), then every bar between trades, flat
+    // at the last price, up to now: time runs evenly on the axis.
+    return fillGaps(cleanCandles(raw), step, nowBucket)
   }, [engineMode, engineHistory, history, liveCandles, recent, res, step, nowBucket])
   const loading = candles.length === 0 && (!historyLoaded || (hasTicks && ticks === null))
   // A new coin, timeframe, Price/MCap view or chart style starts fitted:
@@ -274,7 +277,7 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
     if (picked.current || !ticks?.length) return
     const a = auto.current
     if (a.done && Date.now() - a.at > AUTO_SETTLE_MS) return
-    const choice = pickOpenRes(ticks.map(t => t.time), Date.now(), choicesKey.split(',').filter(Boolean) as Resolution[])
+    const choice = pickOpenRes(ticks.map(t => t.time), Date.now(), choicesKey.split(',').filter(Boolean) as Resolution[], launchedAt)
     if (!choice) return
     if (!a.done) { auto.current = { done: true, at: Date.now() }; if (choice !== res) setRes(choice) }
     else if (RES_SECONDS[choice] < RES_SECONDS[res]) setRes(choice)
@@ -521,12 +524,13 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
     const n = prev.data.length
     const same = (a: CandlestickData | undefined, b: CandlestickData | undefined) => !!a && !!b && a.time === b.time && a.open === b.open && a.high === b.high && a.low === b.low && a.close === b.close
     const tailOnly = prev.key === key && n > 1 && data.length >= n && data.length - n <= 2 && data[0].time === prev.data[0].time && same(data[n - 2], prev.data[n - 2])
-    // A line only needs each bar's close.
-    const point = (d: CandlestickData) => (style === 'candles' ? d : { time: d.time, value: d.close })
+    // A line only needs each bar's close. Candles leave a bar no one traded in empty (its slot keeps time even):
+    // a row of flat dashes read as noise on quiet coins.
+    const point = (d: CandlestickData, i: number) => (style === 'candles' ? (candles[i]?.fill ? { time: d.time } : d) : { time: d.time, value: d.close })
     if (tailOnly) {
       // Each trade moves the last point at once (as on fomo: every buy and
       // sell is a bend in the line), and a new bar slides the chart a bar left.
-      for (let i = n - 1; i < data.length; i++) series.update(point(data[i]))
+      for (let i = n - 1; i < data.length; i++) series.update(point(data[i], i) as never)
       const vol = volRef.current
       if (vol) for (let i = n - 1; i < candles.length; i++) {
         const c = candles[i]
@@ -536,7 +540,7 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
       // Market caps under $100K in full dollars ($7,001): a new coin's moves are
       // a few dollars wide, and "$7.0K" on every gridline says nothing.
       series.applyOptions({ priceFormat: scale > 1 ? { type: 'custom', formatter: (v: number) => v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : v >= 1e5 ? `$${(v / 1e3).toFixed(1)}K` : `$${Math.round(v).toLocaleString('en-US')}`, minMove: 1 } : { type: 'custom', formatter: fmtPrice, minMove: 1e-12 } })
-      series.setData(data.map(point))
+      series.setData(data.map(point) as never)
     }
     applied.current = { key, data }
     // Every bar in the window for a new timeframe, coin or view. After that the

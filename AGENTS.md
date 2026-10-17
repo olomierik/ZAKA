@@ -2906,6 +2906,20 @@ Owner: "the chart for my app is messy". Seen on the live spot page: $ARCDEX (a f
 - **The overlay checkboxes** (Trades, My swaps, Thesis, Friends only, Min size) moved into a ⚙ menu beside Indicators.
 - **Checked** in the production build against the live engine: FTR (766 trades a day) opened on 1m with an even 15-minute axis; $ARCDEX on 4H with its whole history since launch.
 - **Tests:** `bun scripts/test-chart-frame.ts` (in CI).
+- **Low-cap coins, every chain (2026-10-17, owner: "on coins that have low market cap the chart, either line or candles, is messy; fix it for all in Trenches").** What was found, coin by coin:
+  - **Arc (ELON):** one bar near $0 squashed the price axis, so the line ran flat along the top.
+  - **Any young coin:** under 40 trades opened on 4H (`pickOpenRes`), so a coin minutes old drew one or two huge candles. Candle view drew a flat dash for every bar no one traded in.
+  - **Robinhood Chain (Pons coins):** GeckoTerminal names native ETH `0xeeee…eeee`, which the page couldn't price or size. So it never read the curve, and the chart sat on two 15-minute bars. The reader didn't know a Pons curve's events either.
+  - **Solana and BNB Chain (coins GeckoTerminal doesn't list yet):** the header read "?", and Solana trades had no dollar price whenever GeckoTerminal's SOL price was throttled, so the chart stayed empty.
+- **What changed:**
+  - **Bad prints (`cleanCandles` in `lib/chartFrame.ts`):** a bar more than 5× off both bars beside it (`SPIKE_X`), while they agree with each other, is drawn at the bar before it. The bar after it opens there. Up to 3 leading bars more than 100× off the series' median (`LEAD_X`: a pool's opening tick) are dropped. Wicks past 3× the body are cut (`WICK_X`). A real pump or rug moves the bars after it too, so it stays, and the last bar is never touched.
+  - **Opening timeframe:** a young coin (every trade read inside the window) needs 5 trades (`OPEN_MIN_YOUNG`) and one every three bars since its first. With the coin's launch time (`PriceChart` `launchedAt`, from the Solana, BNB Chain and Robinhood pages), the finest timeframe whose 120 bars hold its whole life will do: a coin 2 minutes old with one trade opens on 15s, one 20 hours old on 15m. Busy coins still open on 15s.
+  - **Candles leave empty slots:** a bar no one traded in (`Candle.fill`, from `fillGaps`) is drawn as whitespace in candle view; the line still runs through it, and time stays even.
+  - **Pons curves (`api/rhSwaps.ts`):** `PONS_BUY` / `PONS_SELL` on the curve's address, decoded as the engine does (the trader is the maker). `0xeeee…eeee` is ETH. A curve opened before GeckoTerminal lists it is known by its `realQuoteReserve()` answer (`rhIsPonsCurve`) and read against ETH.
+  - **Solana's SOL price:** Hyperliquid's SOL mid when GeckoTerminal doesn't answer (`solUsd`). A pool GeckoTerminal doesn't list is read as SOL-quoted; a wrong guess reads no trades.
+  - **Coins GeckoTerminal doesn't list (Solana, BNB Chain):** the page takes the engine's launch record, the Trenches row it came from (`trenchLaunch` in `api/trenchFeed.ts`, the chain's snapshot at most every 15s). That gives the name, launchpad, curve, market cap and supply.
+- **Checked in Chrome** (local dev against the live engine): ELON on Arc (line and candles, no squashed axis); OILCEO, a Pons coin on Robinhood Chain (15s, live, every curve trade seconds old, where it had two 15m bars); LMAO on Solana and FTA on BNB Chain, minutes old (named, curve progress, a 15s chart from launch).
+- **Tests:** `test-chart-frame.ts` (bad prints, young coins, launch times, empty slots), `test-robinhood.ts` (a recorded Pons buy and sale decoded).
 
 ## Buying from Ethereum, Base or Arbitrum, no Arc needed (2026-10-16)
 
