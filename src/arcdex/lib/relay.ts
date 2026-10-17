@@ -33,6 +33,7 @@ import { rememberRh } from './robinhood'
 import { primaryOf } from './rpcSettings'
 import { isPayChain } from './payChains'
 import { t as T } from './i18n'
+import { BscPrivateError } from './bscPrivate'
 import { assertTradingOn, TradingPausedError } from './tradeSwitch'
 import { sizeProblem } from './guardrails'
 import { getPrefs } from './prefs'
@@ -52,6 +53,7 @@ const MAX_SOL_COST = 0.01
 export function relayErrorText(e: unknown): string {
   if (e instanceof RelayError || e instanceof TradingPausedError) return e.message
   const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
+  if (e instanceof BscPrivateError && !/insufficient funds/i.test(m)) return T('The private RPCs didn’t confirm they took the transaction ({why}). Try again (it can’t go through twice), or turn anti-MEV off in Settings to send it normally.', { why: m.slice(0, 160) })
   if (/User rejected|rejected the request|denied|cancel/i.test(m)) return T('You cancelled the transaction.')
   if (/insufficient lamports|Attempt to debit an account but found no record of a prior credit|insufficient funds for fee/i.test(m)) return T('Not enough SOL for fees on Solana: add SOL first.')
   if (/insufficient funds|exceeds the balance|gas required exceeds/i.test(m)) return T('Not enough gas for this trade on its chain (USDC on Arc, BNB on BNB Chain, ETH on Robinhood Chain): add some first.')

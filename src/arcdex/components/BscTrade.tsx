@@ -26,6 +26,8 @@ import { bnbUsd, BSC_USDT, type FourInfo } from '../api/bscMarket'
 import { t as T } from '../lib/i18n'
 import { useBuyRisk } from '../lib/buyRisk'
 import TradeDetails, { HOT } from './TradeDetails'
+import { usePrefs } from '../lib/prefs'
+import { BSC_PRIVATE_RPCS, bscMevStatus } from '../lib/bscPrivate'
 
 interface Props {
   token: string
@@ -71,6 +73,8 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
   const trader = useTrader()
   const me = trader.address
   const kind = trader.kind ?? 'wallet'
+  const { antiMev } = usePrefs()
+  const mev = bscMevStatus(trader.kind, antiMev)
   const feeBps = SPOT_FEE_BPS
   const curve = !!four && !four.graduated
   const curveRoute: Route = four?.quote === BSC_USDT ? 'usdt' : 'bnb'
@@ -324,6 +328,10 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
           {value && !impactHot && <Row label={T('Price impact')} value={impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`} color="var(--green)" />}
           {value && !refused && !costHot && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} />}
           <Row label={T('Arrives')} value={!haveQuote ? '—' : route === 'arc' && quote ? (mode === 'buy' ? T('on BNB Chain in ~{s}s', { s: Math.max(2, quote.fillSeconds) }) : T('on Arc in ~{s}s', { s: Math.max(2, quote.fillSeconds) })) : T('in your wallet in seconds')} />
+          {/* Signed on BNB Chain (a curve trade, a swap there, or a sale): who sends it, and whether privately (lib/bscPrivate.ts). */}
+          {(curve || route !== 'arc' || mode === 'sell') && <Row label={T('MEV protection')}
+            value={mev === 'private' ? T('Private RPC · {via}', { via: BSC_PRIVATE_RPCS.map(r => r.name).join(' → ') }) : mev === 'off' ? T('Off (Settings → Trading)') : T('Not covered: your wallet app sends it through its own RPC')}
+            color={mev === 'private' ? 'var(--green)' : undefined} />}
           {!compact && <p className="swap-note">{BSC_NOTE()}</p>}
         </TradeDetails>
       </div>

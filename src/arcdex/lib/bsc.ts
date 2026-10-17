@@ -8,6 +8,8 @@ import { chainTransport } from './rpc'
 import { readTransport } from './rpcSettings'
 import { getEmbeddedWalletClientOn, recordBroadcasts } from './embeddedWallet'
 import { BSC_RPC_BROWSER } from '../../../api/_bscCore'
+import { privateSendTransport } from './bscPrivate'
+import { getPrefs } from './prefs'
 
 export { bsc }
 export const BSC_EXPLORER = 'https://bscscan.com'
@@ -21,8 +23,11 @@ export const SELL_GAS_BNB = 0.0002
 /** Reads on BNB Chain through the nodes picked in RPC settings (PublicNode first by default). */
 export const bscClient = createPublicClient({ chain: bsc, transport: readTransport('bnb'), batch: { multicall: true } })
 
-/** The trading wallet on BNB Chain (same key, same address). Throws if locked. */
-export const bscWallet = () => getEmbeddedWalletClientOn(bsc, recordBroadcasts(chainTransport(BSC_RPC_BROWSER)))
+/** The trading wallet on BNB Chain (same key, same address). Throws if locked. With anti-MEV on (Settings → Trading),
+ * its signed transactions go to a private RPC, never the public mempool (lib/bscPrivate.ts); reads, estimates and
+ * nonces stay on the public node. A send it makes is recorded either way, so the next transaction takes the next
+ * nonce even though the public node can't see a private one yet. */
+export const bscWallet = () => getEmbeddedWalletClientOn(bsc, recordBroadcasts(privateSendTransport(chainTransport(BSC_RPC_BROWSER), () => getPrefs().antiMev)))
 
 export async function bnbBalance(owner: string): Promise<number> {
   return Number(formatUnits(await bscClient.getBalance({ address: owner as Address }), 18))
