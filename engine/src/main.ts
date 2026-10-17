@@ -264,7 +264,9 @@ async function main() {
   if (dataApi) dataApi.traffic = new Traffic(botStore)
   // Community sentiment on each coin (votes.ts), kept beside it.
   if (dataApi) dataApi.votes = new Votes(botStore)
-  // Price and activity alerts by web push (alerts/service.ts): Arc coins on every trade, Hyperliquid every 2 seconds.
+  // Price and activity alerts by web push (alerts/service.ts): Arc coins on every trade, Hyperliquid every 2 seconds;
+  // followed wallets from the wallet tracker (the Trenches' service, below).
+  let pushAlerts: PushAlerts | null = null
   if (dataApi && !/^(0|off|false|no)$/i.test(process.env.PUSH?.trim() ?? '')) {
     let keys: VapidKeys | null = null
     const envKeys = { publicKey: process.env.VAPID_PUBLIC_KEY?.trim() ?? '', privateKey: process.env.VAPID_PRIVATE_KEY?.trim() ?? '' }
@@ -287,6 +289,7 @@ async function main() {
     })
     await push.load()
     dataApi.push = push
+    pushAlerts = push
     eng.observers.push({ onTrade: (t, ctx) => { if (!ctx.replay) push.onTrade(t) } })
     every(2_000, 'push alerts', () => { void push.tickHl().catch(e => log.warn('push: hyperliquid check failed', { error: errMsg(e) })) })
   }
@@ -632,7 +635,9 @@ async function main() {
   if (dataApi && !/^(0|off|false|no)$/i.test(process.env.TRENCH?.trim() ?? '')) {
     const off = (name: string) => /^(0|off|false|no)$/i.test(process.env[name]?.trim() ?? '')
     trench = new TrenchService({
-      publish: (topics, msg) => publisher.publish(topics, msg), wants: topic => publisher.wants(topic),
+      // A followed wallet's trade goes to the pages watching it and to its push alerts (alerts/service.ts).
+      publish: (topics, msg) => { publisher.publish(topics, msg); if (msg.t === 'WTRADE') pushAlerts?.onWalletTrade(msg.d) },
+      wants: topic => publisher.wants(topic) || (pushAlerts?.wantsWallet(topic) ?? false),
       settings: botStore, listBase: `http://127.0.0.1:${cfg.port}`,
       arcMeta: token => { const m = eng.metas.get(token); return m ? { symbol: m.symbol, name: m.name, image: m.image ?? null, launchedAt: m.timestamp } : null },
       feeds: { sol: !off('TRENCH_SOL'), bnb: !off('TRENCH_BNB'), hood: !off('TRENCH_HOOD') },

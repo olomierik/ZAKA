@@ -1,12 +1,14 @@
 // Notices for followed wallets' trades (the wallet tracker, lib/walletTracker.ts): while ARCDEX is open on any page, each
 // trade by a wallet with alerts on shows a notice (top right, as price alerts do; a click opens the coin), and a system
-// notification when the tab is in the background and notifications are allowed.
+// notification when the tab is in the background and notifications are allowed. With alerts by push on (lib/push.ts),
+// the engine sends that notification itself, with every tab closed too, so this one isn't shown twice.
 
 import { useEffect, useRef, useState } from 'react'
 import type { Page } from '../App'
 import { CHAIN_LABEL, coinPageOf, onWalletTrades, ownerOf, useTracked } from '../lib/walletTracker'
 import type { WalletTradeWire } from '../../../api/_trenchProtocol'
 import { t as T } from '../lib/i18n'
+import { pushState } from '../lib/push'
 
 const SHOW_MS = 8_000
 const short = (a: string) => (a.startsWith('0x') ? `${a.slice(0, 6)}…${a.slice(-4)}` : `${a.slice(0, 4)}…${a.slice(-4)}`)
@@ -31,7 +33,7 @@ export default function WalletAlertWatcher({ navigate }: { navigate: (p: Page) =
       const who = o.label || short(o.address)
       const line = T('{who} {side} {usd} of {coin} on {chain}', { who, side: t.side === 'B' ? T('bought') : T('sold'), usd: usd(t.u), coin: t.s || short(t.t), chain: CHAIN_LABEL[t.c] })
       setShown(list => [{ id: `${t.c}:${t.w}:${t.ts}:${t.t}:${t.side}`, t, who, until: Date.now() + SHOW_MS }, ...list].slice(0, 4))
-      if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+      if (document.hidden && !pushState().sub && 'Notification' in window && Notification.permission === 'granted') {
         try { new Notification(T('Wallet tracker'), { body: line, tag: `wt:${t.w}:${t.ts}` }) } catch { /* not allowed here */ }
       }
     })

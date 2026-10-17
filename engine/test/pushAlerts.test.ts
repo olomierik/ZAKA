@@ -6,6 +6,8 @@ import {
   b64u, encryptPush, generateVapidKeys, sendPush, subscriptionProblem, vapidAuthorization, vapidValid, type Subscription, type VapidKeys,
 } from '../src/alerts/webpush'
 import { MemoryPushStore, PUSH, PushAlerts, cleanAlert, priceMet } from '../src/alerts/service'
+import { WalletWatch } from '../src/trench/walletWatch'
+import type { WalletTradeWire } from '../../api/_trenchProtocol'
 import type { Trade } from '../../api/_marketProtocol'
 import type { Config } from '../src/config'
 import { setLogLevel } from '../src/log'
@@ -215,6 +217,69 @@ describe('alerts firing', () => {
     t.push.onTrade(trade({ at: t.now(), side: 'SELL', usdValue: 9_000 }))
     await flush()
     expect(t.sent).toHaveLength(2)
+  })
+
+  test('a followed wallet’s trade, on any chain: words filled in, size and side kept to, 10 seconds between', async () => {
+    const t = await setup()
+    const EVM = '0xAbCdEf0123456789abcdef0123456789ABCDEF01'
+    const SOL = 'H8sMJSCQxfKiFTCfDR3DUMLPwcRbM61LGFJ8N4dK3WjS'
+    const wallet = (o: Record<string, unknown>) => ({ id: 'w-0001', kind: 'wallet', venue: 'wallet', market: EVM, title: 'Wallet tracker', body: 'Alice {side} {usd} of {coin} on {chain}', url: `/tracker/${EVM.toLowerCase()}`, buyWord: 'a acheté', sellWord: 'a vendu', ...o })
+    expect(cleanAlert(wallet({}))).toMatchObject({ kind: 'wallet', market: EVM.toLowerCase(), minUsd: 0, side: 'any' })
+    expect(cleanAlert(wallet({ market: SOL }))).toMatchObject({ market: SOL })
+    expect(cleanAlert(wallet({ market: 'not-a-wallet' }))).toBe('bad wallet')
+    expect(cleanAlert(wallet({ minUsd: -5 }))).toMatch(/amount/)
+    const auth = (await t.push.subscribe({ subscription: t.subscription, alerts: [wallet({}), wallet({ id: 'w-0002', market: SOL, side: 'buy', minUsd: 50 })] }, '1.1.1.1')).body as { id: string; token: string }
+    // One EVM wallet on Arc, Robinhood Chain and BNB Chain; a Solana one on Solana.
+    expect(t.push.wantsWallet(`wallet:evm:${EVM.toLowerCase()}`)).toBe(true)
+    expect(t.push.wantsWallet(`wallet:sol:${SOL}`)).toBe(true)
+    expect(t.push.wantsWallet('wallet:evm:0x0000000000000000000000000000000000000001')).toBe(false)
+    const wt = (o: Partial<WalletTradeWire>): WalletTradeWire => ({ c: 'bnb', w: EVM, t: '0x1111111111111111111111111111111111111111', s: 'LOBSTER', i: null, side: 'B', u: 250, n: 1000, ts: t.now() - 800, m: 50_000, ...o })
+    t.push.onWalletTrade(wt({}))
+    await flush()
+    expect(t.sent).toHaveLength(1)
+    expect(await t.read(0)).toMatchObject({ title: 'Wallet tracker', body: 'Alice a acheté $250 of LOBSTER on BNB Chain', url: `/tracker/${EVM.toLowerCase()}`, tag: 'w-0001' })
+    // Within 10 seconds: held back.
+    t.tick(4_000)
+    t.push.onWalletTrade(wt({ c: 'arc', side: 'S', u: 99 }))
+    await flush()
+    expect(t.sent).toHaveLength(1)
+    t.tick(PUSH.walletCooldownMs)
+    t.push.onWalletTrade(wt({ c: 'arc', side: 'S', u: 99, s: '' }))
+    await flush()
+    expect(await t.read(1)).toMatchObject({ body: 'Alice a vendu $99 of 0x1111…1111 on Arc' })
+    // The Solana alert takes buys of $50 or more only; Solana addresses keep their case.
+    t.push.onWalletTrade(wt({ c: 'sol', w: SOL, side: 'S', u: 500 }))
+    t.push.onWalletTrade(wt({ c: 'sol', w: SOL, side: 'B', u: 20 }))
+    t.push.onWalletTrade(wt({ c: 'sol', w: SOL.toLowerCase(), side: 'B', u: 500 }))
+    await flush()
+    expect(t.sent).toHaveLength(2)
+    t.push.onWalletTrade(wt({ c: 'sol', w: SOL, side: 'B', u: 500, s: 'BONK' }))
+    await flush()
+    expect(await t.read(2)).toMatchObject({ body: 'Alice a acheté $500 of BONK on Solana', tag: 'w-0002' })
+    // Sent again by the page, an alert keeps its last time (no burst after a sync).
+    await t.push.setAlerts({ ...auth, alerts: [wallet({})] })
+    t.tick(2_000)
+    t.push.onWalletTrade(wt({}))
+    await flush()
+    expect(t.sent).toHaveLength(3)
+  })
+
+  test('the wallet tracker keeps and hands over a wallet’s trades while only an alert wants them', async () => {
+    const t = await setup()
+    const EVM = '0x2222222222222222222222222222222222222222'
+    await t.push.subscribe({ subscription: t.subscription, alerts: [{ id: 'w-0009', kind: 'wallet', venue: 'wallet', market: EVM, title: 'Wallet tracker', body: '{side} {usd} {coin}', url: '/tracker', buyWord: 'bought', sellWord: 'sold' }] }, '1.1.1.1')
+    const pages = new Set<string>()
+    const ws = new WalletWatch({
+      wants: topic => pages.has(topic) || t.push.wantsWallet(topic),
+      publish: (_topic, d) => t.push.onWalletTrade(d),
+    })
+    const feed = (wallet: string, usd: number) => ({ wallet, token: '0x3333333333333333333333333333333333333333', side: 'buy' as const, usd, tokens: 10, ts: t.now(), mcapUsd: null, meta: { symbol: 'PEPE', image: null } })
+    ws.record('hood', feed('0x4444444444444444444444444444444444444444', 75) as never, null)
+    ws.record('hood', feed(EVM, 75) as never, null)
+    await flush()
+    expect(t.sent).toHaveLength(1)
+    expect(await t.read(0)).toMatchObject({ body: 'bought $75 PEPE' })
+    expect(ws.view(EVM)?.length).toBe(1)
   })
 
   test('Hyperliquid: only the dexes alerts wait on are read, above and below, each once', async () => {

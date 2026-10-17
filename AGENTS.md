@@ -2952,7 +2952,12 @@ Owner: "adjust GMGN's UI and functionalities in our app". Follow any wallet on A
     - Each wallet shows its record per chain, with copy, rename, alerts and remove.
     - The feed shows every followed wallet's trades, newest first, filtered by side, size or one wallet; a trade opens its coin's page on its chain.
     - A linked wallet not followed yet is shown with a Track button. The chain's smart wallets are suggested.
-  - **Alerts (`components/WalletAlertWatcher.tsx`):** while ARCDEX is open on any page, a trade by a wallet with alerts on shows a notice. A system notification is added when the tab is hidden and notifications are allowed. There is no web push for these yet.
+  - **Alerts (`components/WalletAlertWatcher.tsx`):** while ARCDEX is open on any page, a trade by a wallet with alerts on shows a notice. A system notification is added when the tab is hidden and notifications are allowed.
+  - **By web push, with ARCDEX closed (2026-10-17):** once alerts by push are on in this browser (the 🔔 dialogs, `lib/push.ts`), every followed wallet with alerts on is handed to the engine as a `wallet` alert (`walletServerAlert`, mirrored by `components/PushSync.tsx`).
+    - **The engine side (`engine/src/alerts/service.ts`):** the push service tells the wallet tracker which wallets it wants (`wantsWallet`). The tracker then keeps their trades and hands each one over (`onWalletTrade`, wired in `main.ts`), as it does for a page subscribed to the wallet.
+    - **The notification:** the page's words in the visitor's language, with {side}, {usd}, {coin} and {chain} filled in by the engine. It opens the wallet's tracker page. At most one every 10 seconds per wallet (`PUSH.walletCooldownMs`), so a bot trading every second doesn't flood a phone.
+    - **No doubles:** with push on, the page leaves the system notification to the engine.
+    - **Tests:** `engine/test/pushAlerts.test.ts` (the alert's checks, firing on every chain with its words, size, side and the 10 seconds, the tracker handing over a wallet only an alert wants) and `scripts/test-push.ts` (the page's wallet alerts accepted by the engine, the longest ids an address makes).
   - **Track buttons:** on every trade in the Trenches' smart-money lane, and on trader profiles.
   - **Links:** Tracker in the top bar, Wallets in the status bar, and the phone's More sheet and drawer.
 - **The engine refuses messages past 20 a second per connection (`WS_MAX_MSGS_PER_SEC`).** Subscribing to 57 wallets at once had 37 refused, and nothing retried them. The site's socket (`api/marketStream.ts`) now sends at most 15 a second (`SEND_RATE`), queueing the rest, reconnects included: 49 subscriptions, 49 accepted.

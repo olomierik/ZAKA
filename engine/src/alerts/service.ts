@@ -5,9 +5,13 @@
 //              side the price was on when it was set. Fires once.
 //   activity   a single trade on an Arc coin of at least an amount (any side, buys or sells): a whale. Fires each time,
 //              at most once a minute per alert.
+//   wallet     a trade by a wallet the visitor follows (the wallet tracker, 2026-10-17), on Arc, Robinhood Chain, Solana
+//              or BNB Chain: every trade the Trenches' books read for it (trench/walletWatch.ts), at most one every 10
+//              seconds per alert, optionally from a size up and on one side.
 //
 // Watching: Arc coins on every trade the engine streams (onTrade); Hyperliquid markets from its mid prices, read every
-// two seconds while any alert waits on them. Delivery starts the moment an alert is met, and every delivery's time is
+// two seconds while any alert waits on them; wallets from the wallet tracker, which keeps a wallet's trades while an
+// alert wants them (wantsWallet) as it does while a page is subscribed. Delivery starts the moment an alert is met, and every delivery's time is
 // kept: from when the condition was met on the venue (the trade's block time; the mid's read) to the push service
 // accepting the message (stats(): the share within 10 seconds, p50 and p95). What the push service then takes to reach
 // the device is its own (usually under a second; not measurable from here).
@@ -18,6 +22,7 @@
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { Trade } from '../../../api/_marketProtocol'
+import { tradeTopic, walletTopic, type TrenchChain, type WalletTradeWire } from '../../../api/_trenchProtocol'
 import { sendPush, subscriptionProblem, type PushResult, type Subscription, type VapidKeys } from './webpush'
 import { log, errMsg } from '../log'
 import { metrics } from '../metrics'
@@ -27,6 +32,8 @@ export const PUSH = {
   maxSubs: 20_000,
   subsPerIpHour: 10,
   activityCooldownMs: 60_000,
+  /** A wallet alert fires at most this often: a bot trading every second shouldn't flood a phone. */
+  walletCooldownMs: 10_000,
   hlEveryMs: 2_000,
   /** A subscription that failed this many times in a row (not "gone") is dropped. */
   maxFails: 10,
@@ -37,6 +44,7 @@ export const PUSH = {
 export type ServerAlert =
   | { id: string; kind: 'price'; venue: 'hl' | 'arc'; market: string; dir: 'above' | 'below'; px: number; title: string; body: string; url: string; firedAt?: number | null }
   | { id: string; kind: 'activity'; venue: 'arc'; market: string; minUsd: number; side: 'any' | 'buy' | 'sell'; title: string; body: string; url: string; buyWord: string; sellWord: string; lastAt?: number | null }
+  | { id: string; kind: 'wallet'; venue: 'wallet'; market: string; minUsd: number; side: 'any' | 'buy' | 'sell'; title: string; body: string; url: string; buyWord: string; sellWord: string; lastAt?: number | null }
 
 export interface PushSubRow {
   id: string
@@ -81,6 +89,17 @@ export function cleanAlert(raw: unknown): ServerAlert | string {
   if (!/^\/(?!\/)[A-Za-z0-9/_:.?=&%-]*$/.test(url)) return 'bad url'
   const title = text(a.title, 120), body = text(a.body, 160)
   if (!title) return 'no title'
+  const side = a.side === 'buy' || a.side === 'sell' ? a.side : 'any'
+  const words = { buyWord: text(a.buyWord, 20) || 'buy', sellWord: text(a.sellWord, 20) || 'sell' }
+  if (a.kind === 'wallet') {
+    // An EVM address (one wallet on Arc, Robinhood Chain and BNB Chain) or a Solana one, as the wallet tracker keys them.
+    const raw = text(a.market, 44)
+    const market = /^0x[0-9a-fA-F]{40}$/.test(raw) ? raw.toLowerCase() : raw
+    if (!walletTopic(market)) return 'bad wallet'
+    const minUsd = a.minUsd === undefined || a.minUsd === null ? 0 : Number(a.minUsd)
+    if (!(minUsd >= 0 && minUsd <= 10_000_000)) return 'the amount must be between $0 and $10M'
+    return { id, kind: 'wallet', venue: 'wallet', market, minUsd, side, title, body, url, ...words, lastAt: null }
+  }
   const venue = a.venue === 'hl' ? 'hl' : a.venue === 'arc' ? 'arc' : null
   const market = venue === 'arc' ? text(a.market, 42).toLowerCase() : text(a.market, 30)
   if (!venue || !(venue === 'arc' ? isAddr(market) : isHlCoin(market))) return 'bad market'
@@ -93,8 +112,7 @@ export function cleanAlert(raw: unknown): ServerAlert | string {
     if (venue !== 'arc') return 'activity alerts are for Arc coins'
     const minUsd = Number(a.minUsd)
     if (!(minUsd >= 10 && minUsd <= 10_000_000)) return 'the amount must be between $10 and $10M'
-    const side = a.side === 'buy' || a.side === 'sell' ? a.side : 'any'
-    return { id, kind: 'activity', venue, market, minUsd, side, title, body, url, buyWord: text(a.buyWord, 20) || 'buy', sellWord: text(a.sellWord, 20) || 'sell', lastAt: null }
+    return { id, kind: 'activity', venue, market, minUsd, side, title, body, url, ...words, lastAt: null }
   }
   return 'unknown kind'
 }
@@ -102,6 +120,8 @@ export function cleanAlert(raw: unknown): ServerAlert | string {
 /** Whether a price meets a price alert. */
 export const priceMet = (a: { dir: 'above' | 'below'; px: number }, price: number) => (a.dir === 'above' ? price >= a.px : price <= a.px)
 
+const CHAIN_NAME: Record<TrenchChain, string> = { arc: 'Arc', hood: 'Robinhood Chain', sol: 'Solana', bnb: 'BNB Chain' }
+const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 const fmtUsd = (n: number) => `$${n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toFixed(0)}`
 
 export interface Delivery { at: number; sinceTriggerMs: number; detectMs: number; ok: boolean; status: number }
@@ -120,6 +140,8 @@ export interface PushAlertsOptions {
 export class PushAlerts {
   private subs = new Map<string, PushSubRow>()
   private arcIndex = new Map<string, { sub: string; alert: string }[]>()
+  /** Wallet alerts by the wallet tracker's topic (wallet:evm:… / wallet:sol:…). */
+  private walletIndex = new Map<string, { sub: string; alert: string }[]>()
   private hlDexes = new Set<string>()
   private ipNew = new Map<string, number[]>()
   private deliveries: Delivery[] = []
@@ -138,10 +160,11 @@ export class PushAlerts {
   get publicKey() { return this.o.keys.publicKey }
 
   private reindex() {
-    this.arcIndex.clear(); this.hlDexes.clear()
+    this.arcIndex.clear(); this.hlDexes.clear(); this.walletIndex.clear()
     for (const s of this.subs.values()) for (const a of s.alerts) {
       if (a.kind === 'price' && a.firedAt) continue
-      if (a.venue === 'arc') { const l = this.arcIndex.get(a.market) ?? []; l.push({ sub: s.id, alert: a.id }); this.arcIndex.set(a.market, l) }
+      if (a.kind === 'wallet') { const k = walletTopic(a.market); if (k) { const l = this.walletIndex.get(k) ?? []; l.push({ sub: s.id, alert: a.id }); this.walletIndex.set(k, l) } }
+      else if (a.venue === 'arc') { const l = this.arcIndex.get(a.market) ?? []; l.push({ sub: s.id, alert: a.id }); this.arcIndex.set(a.market, l) }
       else this.hlDexes.add(a.market.includes(':') ? a.market.split(':')[0] : '')
     }
   }
@@ -199,7 +222,7 @@ export class PushAlerts {
     for (const a of alerts) {
       const was = s.alerts.find(x => x.id === a.id)
       if (was?.kind === 'price' && a.kind === 'price' && was.firedAt && was.px === a.px && was.dir === a.dir && was.market === a.market) a.firedAt = was.firedAt
-      if (was?.kind === 'activity' && a.kind === 'activity') a.lastAt = was.lastAt ?? null
+      if ((was?.kind === 'activity' && a.kind === 'activity') || (was?.kind === 'wallet' && a.kind === 'wallet')) a.lastAt = was.lastAt ?? null
     }
     s.alerts = alerts
     s.updated = this.now()
@@ -257,6 +280,28 @@ export class PushAlerts {
         const fill = (s: string) => s.replace(/\{usd\}/g, fmtUsd(usd)).replace(/\{side\}/g, side === 'sell' ? a.sellWord : a.buyWord)
         void this.fire(s, a, { title: fill(a.title), body: fill(a.body) }, t.timestamp, detected)
       }
+    }
+  }
+
+  /** Whether any alert follows a wallet tracker topic: the tracker then keeps and hands over that wallet's trades. */
+  wantsWallet(topic: string): boolean { return this.walletIndex.has(topic) }
+
+  /** A trade by a followed wallet, from the wallet tracker: each wallet alert on it, at most every 10 seconds. */
+  onWalletTrade(d: WalletTradeWire) {
+    const list = this.walletIndex.get(tradeTopic(d.c, d.w))
+    if (!list?.length) return
+    const detected = this.now()
+    const side = d.side === 'B' ? 'buy' : 'sell'
+    for (const { sub, alert } of list) {
+      const s = this.subs.get(sub)
+      const a = s?.alerts.find(x => x.id === alert)
+      if (!s || !a || a.kind !== 'wallet') continue
+      if (d.u < a.minUsd || (a.side !== 'any' && a.side !== side)) continue
+      if (a.lastAt && detected - a.lastAt < PUSH.walletCooldownMs) continue
+      a.lastAt = detected
+      const fill = (x: string) => x.replace(/\{usd\}/g, fmtUsd(d.u)).replace(/\{side\}/g, side === 'sell' ? a.sellWord : a.buyWord)
+        .replace(/\{coin\}/g, (d.s || short(d.t)).slice(0, 24)).replace(/\{chain\}/g, CHAIN_NAME[d.c] ?? d.c)
+      void this.fire(s, a, { title: fill(a.title), body: fill(a.body) }, d.ts, detected)
     }
   }
 

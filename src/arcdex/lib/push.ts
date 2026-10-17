@@ -2,8 +2,9 @@
 // a web push (engine/src/alerts), which public/sw.js shows as a notification.
 //
 // Turning them on asks the browser's permission, subscribes this browser to the engine's public key, and hands the
-// engine the alerts set here: every waiting Hyperliquid price alert (hl/alerts.ts, mirrored on each change) and the
-// Arc coin alerts set on coin pages (price levels, and single trades of at least an amount). The engine gives this
+// engine the alerts set here: every waiting Hyperliquid price alert (hl/alerts.ts, mirrored on each change), the
+// Arc coin alerts set on coin pages (price levels, and single trades of at least an amount), and every followed wallet
+// with alerts on (the wallet tracker, 2026-10-17: its trades on any chain). The engine gives this
 // browser an id and a secret token, kept here; nothing else about the visitor is sent. The words are written here, in the
 // visitor's language; the engine only fills in a trade's dollars and side.
 //
@@ -36,7 +37,7 @@ export interface CoinAlert {
 }
 
 /** What the engine takes for one alert (engine/src/alerts/service.ts cleanAlert). */
-export type ServerAlertIn = Omit<CoinAlert, 'symbol' | 'created' | 'firedAt' | 'lastAt' | 'venue'> & { venue: 'arc' | 'hl' }
+export type ServerAlertIn = Omit<CoinAlert, 'symbol' | 'created' | 'firedAt' | 'lastAt' | 'venue' | 'kind'> & { kind: CoinAlert['kind'] | 'wallet'; venue: 'arc' | 'hl' | 'wallet' }
 
 interface Sub { id: string; token: string; endpoint: string }
 interface State { sub: Sub | null; coin: CoinAlert[]; error: string | null; busy: boolean }
@@ -79,17 +80,27 @@ const keyBytes = (b64u: string) => { const s = atob(b64u.replace(/-/g, '+').repl
 /** Every alert the engine should watch: the coin alerts, and the Hyperliquid ones still waiting. */
 let hlSource: () => ServerAlertIn[] = () => []
 export function setHlAlertSource(f: () => ServerAlertIn[]) { hlSource = f }
+let walletSource: () => ServerAlertIn[] = () => []
+export function setWalletAlertSource(f: () => ServerAlertIn[]) { walletSource = f }
 const toServer = (a: CoinAlert): ServerAlertIn => {
   const { symbol: _s, created: _c, firedAt: _f, lastAt: _l, ...rest } = a
   return rest
 }
-/** What the engine is handed: the coin alerts not yet reached, then the waiting Hyperliquid ones; 50 at most. */
-export const outgoing = (): ServerAlertIn[] => [...state.coin.filter(a => !(a.kind === 'price' && a.firedAt)).map(toServer), ...hlSource()].slice(0, 50)
+/** What the engine is handed: the coin alerts not yet reached, the followed wallets, then the waiting Hyperliquid ones;
+ * 50 at most. */
+export const outgoing = (): ServerAlertIn[] => [...state.coin.filter(a => !(a.kind === 'price' && a.firedAt)).map(toServer), ...walletSource(), ...hlSource()].slice(0, 50)
 const wanted = outgoing
 
 /** A Hyperliquid price alert (hl/alerts.ts) as the engine takes it, with its words. */
 export const hlServerAlert = (a: { id: string; coin: string; dir: 'above' | 'below'; px: number }, title: string, body: string): ServerAlertIn =>
   ({ id: a.id, kind: 'price', venue: 'hl', market: a.coin, dir: a.dir, px: a.px, title, body, url: `/futures/${a.coin}` })
+
+/** A followed wallet as the engine takes it: every trade by it, on any chain. The engine fills in {side} (with these
+ * words), {usd}, {coin} and {chain}; the id stays within the engine's 40 characters for any address. */
+export const walletServerAlert = (w: { address: string }, title: string, body: string, buyWord: string, sellWord: string): ServerAlertIn => {
+  const a = w.address.replace(/^0x/i, '')
+  return { id: `w-${a.slice(0, 18)}${a.slice(-10)}`, kind: 'wallet', venue: 'wallet', market: w.address, title, body, url: `/tracker/${w.address}`, buyWord, sellWord }
+}
 
 /** Asks permission and subscribes this browser; then hands the engine the alerts. */
 export async function enablePush(): Promise<boolean> {

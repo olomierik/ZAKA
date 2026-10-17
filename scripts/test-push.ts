@@ -4,7 +4,7 @@
 //   bun scripts/test-push.ts
 import { readFileSync } from 'node:fs'
 import { cleanAlert } from '../engine/src/alerts/service'
-import { addCoinAlert, hlServerAlert, outgoing, pushState, removeCoinAlert, setHlAlertSource } from '../src/arcdex/lib/push'
+import { addCoinAlert, hlServerAlert, outgoing, pushState, removeCoinAlert, setHlAlertSource, setWalletAlertSource, walletServerAlert } from '../src/arcdex/lib/push'
 import { flag } from '../src/arcdex/lib/flags'
 
 let fails = 0
@@ -18,8 +18,13 @@ setHlAlertSource(() => [
   hlServerAlert({ id: crypto.randomUUID(), coin: 'BTC', dir: 'above', px: 70000 }, 'BTC monte à 70 000', 'Alerte de prix sur ARCDEX'),
   hlServerAlert({ id: crypto.randomUUID(), coin: 'xyz:NVDA', dir: 'below', px: 120.5 }, 'NVDA fällt auf 120,5', 'Preisalarm auf ARCDEX'),
 ])
+// Followed wallets (the wallet tracker): an EVM one and a Solana one, the longest ids an address makes.
+setWalletAlertSource(() => [
+  walletServerAlert({ address: '0x' + 'cd'.repeat(20) }, 'Wallet tracker', 'Alice {side} {usd} of {coin} on {chain}', 'a acheté', 'a vendu'),
+  walletServerAlert({ address: 'H8sMJSCQxfKiFTCfDR3DUMLPwcRbM61LGFJ8N4dK3WjS' }, 'Wallet tracker', 'Bob {side} {usd} of {coin} on {chain}', 'bought', 'sold'),
+])
 const out = outgoing()
-check(out.length === 4, `four alerts handed over (${out.length})`)
+check(out.length === 6, `six alerts handed over (${out.length})`)
 for (const a of out) {
   const r = cleanAlert(a)
   check(typeof r !== 'string', `${a.kind} on ${a.venue} ${a.market}: taken${typeof r === 'string' ? ` (refused: ${r})` : ''}`)
