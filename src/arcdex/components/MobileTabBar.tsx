@@ -8,32 +8,18 @@ import type { Page } from '../App'
 import { trenchesPage } from './NavBar'
 import { useChain } from '../lib/chains'
 import { OPEN_RPC_SETTINGS } from '../lib/rpcSettings'
-import { t as T, N_ } from '../lib/i18n'
-import { useFlag } from '../lib/flags'
+import { t as T } from '../lib/i18n'
+import { useMoreItems } from '../lib/navItems'
 
 const TRENCHES = new Set<Page['name']>(['terminal', 'launchpad', 'robinhood', 'solana', 'bsc'])
-
-const MORE: { icon: string; label: string; to: Page }[] = [
-  { icon: '⇄', label: N_('Swap'), to: { name: 'swap' } },
-  { icon: '◎', label: N_('Bridge'), to: { name: 'bridge' } },
-  { icon: '◆', label: N_('Starknet'), to: { name: 'starknet' } },
-  { icon: '⚙', label: N_('ARCDEX Algo'), to: { name: 'signals' } },
-  { icon: '♛', label: N_('Top futures traders'), to: { name: 'leaderboard', tab: 'futures' } },
-  { icon: '◉', label: N_('Wallet tracker'), to: { name: 'tracker' } },
-  { icon: '☰', label: N_('Feed'), to: { name: 'feed' } },
-  { icon: '⚑', label: N_('Clans'), to: { name: 'clans' } },
-  { icon: '🔥', label: N_('$ARCDEX burn'), to: { name: 'coin' } },
-  { icon: '🧭', label: N_('Supported routes'), to: { name: 'routes' } },
-]
 
 interface Props { page: Page; navigate: (p: Page) => void; onOpenLists: () => void }
 
 export default function MobileTabBar({ page, navigate }: Props) {
   const chain = useChain()
   const [more, setMore] = useState(false)
-  // Copy trading from the user's own trading wallet (the walletCopy flag, /admin → Flags).
-  const copyOn = useFlag('walletCopy')
-  const items = copyOn ? [{ icon: '⧉', label: N_('Copy trading'), to: { name: 'copy' } as Page }, ...MORE] : MORE
+  // The pages beyond the tabs, the same list as the desktop More menu (lib/navItems.ts).
+  const items = useMoreItems()
   const tabs: { key: string; icon: string; label: string; to: Page; on: boolean }[] = [
     { key: 'trenches', icon: '◈', label: T('Trenches'), to: trenchesPage(chain), on: TRENCHES.has(page.name) },
     { key: 'futures', icon: '📊', label: T('Futures'), to: { name: 'perps' }, on: page.name === 'perps' || page.name === 'futures' },

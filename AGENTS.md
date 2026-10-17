@@ -2966,6 +2966,12 @@ Owner: "adjust GMGN's UI and functionalities in our app". Follow any wallet on A
 Owner: "I can't see admin features, copy trade and all that the previous build did".
 - **Admin:** a 🛡 Admin link in the account menu and the drawer, shown only in a browser where an admin wallet has signed in to `/admin` before (`isKnownAdmin` in `lib/adminSession.ts`: up to 5 addresses in `arcdex:admin-wallets`), or is signed in now. It's a convenience, not a gate: `/admin` still needs the admin's signature, and visitors never see the link.
 - **Feed and Clans** are back in the account menu, the drawer, the phone's More sheet and the status bar, beside the wallet tracker.
+- **Desktop More menu (owner: "copy trade button not seen; some buttons are seen on phone but not on desktop"):**
+  - **One list (`lib/navItems.ts` `useMoreItems`)** fills both the phone's More sheet and a More menu in the desktop top bar (`NavBar.tsx`). So a page added to one shows on both.
+    - **What's in it:** Copy trading (with its flag), Swap, Bridge, Starknet, ARCDEX Algo, Top futures traders, Wallet tracker, Feed, Clans, $ARCDEX burn and Supported routes; Admin for admins.
+  - **The top bar** also has a Copy link while copying's flag is on.
+  - **Narrow screens:** the link strip used to scroll sideways with no scrollbar, so Bridge (and at 920px Swap too) sat out of sight. Now Swap and Bridge drop out at 1360px and Tracker at 1100px (`fold`). All three are in More.
+  - **Checked** at 1440, 1280, 1100, 1000 and 920px: no link cut off, More always there, no sideways scroll.
 
 ## Copy trading from the user's own wallet (2026-10-17)
 

@@ -8,6 +8,8 @@ import { COIN_LC, COIN_POOL } from '../lib/coin'
 import { CHAINS, CHAIN_LIST, setChain, useChain, type TChain } from '../lib/chains'
 import { toggleTheme, useTheme } from '../lib/theme'
 import { OPEN_RPC_SETTINGS } from '../lib/rpcSettings'
+import { useFlag } from '../lib/flags'
+import { useMoreItems } from '../lib/navItems'
 
 interface Props { page: Page; navigate: (p: Page) => void; onMenuClick: () => void; onBack?: () => void; onBell: () => void; bellCount: number }
 
@@ -49,17 +51,24 @@ export default function NavBar({ page, navigate, onMenuClick, onBack, onBell, be
   const [searchOpen, setSearchOpen] = useState(false)
   const [langOpen, setLangOpen] = useState(false)
   const [netOpen, setNetOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
   const langRef = useOutside(langOpen, () => setLangOpen(false))
   const netRef = useOutside(netOpen, () => setNetOpen(false))
+  const moreRef = useOutside(moreOpen, () => setMoreOpen(false))
+  // Every page beyond the links, the same list as the phone's More sheet (lib/navItems.ts).
+  const more = useMoreItems()
+  const copyOn = useFlag('walletCopy')
 
-  const links: { label: string; page: Page; active: boolean; hot?: boolean }[] = [
+  // Links that don't fit drop out as the screen narrows (`fold`: 'wide' at 1360px, 'mid' at 1100px); every one is also in More.
+  const links: { label: string; page: Page; active: boolean; hot?: boolean; fold?: 'wide' | 'mid' }[] = [
     { label: T('Trenches'), page: trenchesPage(chain), active: TRENCHES.has(page.name) },
     { label: T('Futures'), page: { name: 'perps' }, active: page.name === 'perps' || page.name === 'futures' || page.name === 'hl-trader', hot: true },
     { label: T('Predict'), page: { name: 'predict' }, active: page.name === 'predict', hot: true },
     { label: T('Portfolio'), page: { name: 'portfolio' }, active: page.name === 'portfolio' },
-    { label: T('Tracker'), page: { name: 'tracker' }, active: page.name === 'tracker' },
-    { label: T('Swap'), page: { name: 'swap' }, active: page.name === 'swap' },
-    { label: T('Bridge'), page: { name: 'bridge' }, active: page.name === 'bridge' },
+    ...(copyOn ? [{ label: T('Copy'), page: { name: 'copy' } as Page, active: page.name === 'copy' }] : []),
+    { label: T('Tracker'), page: { name: 'tracker' }, active: page.name === 'tracker', fold: 'mid' },
+    { label: T('Swap'), page: { name: 'swap' }, active: page.name === 'swap', fold: 'wide' },
+    { label: T('Bridge'), page: { name: 'bridge' }, active: page.name === 'bridge', fold: 'wide' },
   ]
   const pickChain = (c: TChain) => { setChain(c); setNetOpen(false); navigate(trenchesPage(c)) }
 
@@ -89,9 +98,23 @@ export default function NavBar({ page, navigate, onMenuClick, onBack, onBell, be
 
       <nav className="tm-links">
         {links.map(l => (
-          <button key={l.label} className={`tm-link${l.active ? ' on' : ''}${l.hot ? ' hot' : ''}`} onClick={() => navigate(l.page)}>{l.label}</button>
+          <button key={l.label} className={`tm-link${l.active ? ' on' : ''}${l.hot ? ' hot' : ''}${l.fold ? ` fold-${l.fold}` : ''}`} onClick={() => navigate(l.page)}>{l.label}</button>
         ))}
       </nav>
+      <div className="tm-pop-wrap tm-more" ref={moreRef}>
+        <button className={`tm-link${more.some(m => m.to.name === page.name) && !links.some(l => l.active && !l.fold) ? ' on' : ''}`} onClick={() => setMoreOpen(o => !o)} aria-expanded={moreOpen} aria-haspopup="menu">
+          {T('More')} <Chevron />
+        </button>
+        {moreOpen && (
+          <div className="tm-pop tm-more-pop" role="menu">
+            {more.map(m => (
+              <button key={m.label} role="menuitem" className={`tm-pop-item${page.name === m.to.name ? ' on' : ''}`} onClick={() => { setMoreOpen(false); navigate(m.to) }}>
+                <span className="tm-more-icon" aria-hidden>{m.icon}</span><span>{T(m.label)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       <SearchBox navigate={navigate} mobileOpen={searchOpen} />
       <button className="tm-round tm-search-toggle" onClick={() => setSearchOpen(o => !o)} aria-label={T('Search')}>
