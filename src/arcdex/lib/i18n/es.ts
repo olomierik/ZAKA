@@ -3963,5 +3963,12 @@ const d: Record<string, string> = {
   "{u} tUSDC, {g} USDC for gas": "{u} tUSDC, {g} USDC para gas",
   "Futures carry risk. ARCDEX Algo trades test USDC; its results are measured, not promised, and past results say little about the future.": "Los futuros conllevan riesgo. ARCDEX Algo opera con USDC de prueba; sus resultados se miden, no se prometen, y los resultados pasados dicen poco del futuro.",
   "Why it closed": "Por qué se cerró",
+  "Buy or sell": "Comprar o vender",
+  "Receive on": "Recibir en",
+  "You sell ({c})": "Vendes ({c})",
+  "Sell where the coin is: one signature on {chain}, and {cur} lands in the same wallet on {to} in seconds. No bridging. Every trade is checked and simulated before it’s sent.": "Vende donde está la moneda: una firma en {chain}, y {cur} llega a la misma billetera en {to} en segundos. Sin puentes. Cada operación se verifica y simula antes de enviarse.",
+  "Add a little {coin} on {chain} for the transaction’s gas.": "Agrega un poco de {coin} en {chain} para el gas de la transacción.",
+  "Ethereum, Base or Arbitrum": "Ethereum, Base o Arbitrum",
+  "Buy with USDC or ETH there, or sell back · one signature · no bridging": "Compra con USDC o ETH allí, o vende de vuelta · una firma · sin puentes",
 }
 export default d

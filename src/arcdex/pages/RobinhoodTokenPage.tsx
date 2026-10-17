@@ -375,7 +375,7 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate,
         {!notToken && <TradeBar symbol={symbol} onTrade={setSheet} />}
         <Sheet open={sheet !== null} onClose={() => setSheet(null)}>
           {sheet && trade(undefined, false, sheet)}
-          {sheet && solPay && <div style={{ padding: '0 14px 14px' }}>{sheet === 'buy' && <PayFromCard chainId={RH_ID} token={address} symbol={symbol} priceUsd={guardPrice} buyBlocked={buyBlocked} />}<SolanaPayCard chainId={RH_ID} token={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked} initialMode={sheet} /></div>}
+          {sheet && solPay && <div style={{ padding: '0 14px 14px' }}><PayFromCard chainId={RH_ID} token={address} symbol={symbol} priceUsd={guardPrice} buyBlocked={buyBlocked} initialMode={sheet} /><SolanaPayCard chainId={RH_ID} token={address} symbol={symbol} decimals={decimals} priceUsd={guardPrice} buyBlocked={buyBlocked} initialMode={sheet} /></div>}
         </Sheet>
       </div>
     </div>

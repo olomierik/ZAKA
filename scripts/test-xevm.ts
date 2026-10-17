@@ -1,11 +1,11 @@
 // Paying from Ethereum, Base or Arbitrum, offline (2026-10-16): Relay's quotes for USDC or ETH there into $ARCDEX on Arc
-// (and Base USDC into a BNB Chain coin), recorded by scripts/capture-relay-xevm.ts. Real quotes pass; tampered ones are
-// refused before anything is signed.
+// (and Base USDC into a BNB Chain coin), and back (2026-10-17: the coins into USDC or ETH there), recorded by
+// scripts/capture-relay-xevm.ts. Real quotes pass; tampered ones are refused before anything is signed.
 // Run: bun scripts/test-xevm.ts
 
 import fx from './fixtures/relay-xevm.json'
 
-const { checkRelayQuote, quoteBody, relayValueUsd, quoteVerdict, ARC_ID, BSC_ID, EVM_NATIVE, RELAY_ARC_DEPOSITORY } = await import('../src/arcdex/lib/relayQuote')
+const { checkRelayQuote, quoteBody, relayValueUsd, quoteVerdict, ARC_ID, BSC_ID, EVM_NATIVE, RELAY_ARC_DEPOSITORY, RELAY_EVM } = await import('../src/arcdex/lib/relayQuote')
 const { FEE_WALLET } = await import('../src/arcdex/lib/platform')
 const { PAY_CHAINS, payChain } = await import('../src/arcdex/lib/payChains')
 
@@ -106,5 +106,47 @@ const trap = relayValueUsd(q, 5, out * marketPrice * 300)
 ok(trap && quoteVerdict(trap) === 'off-market', 'a route paying 300× the market price is refused as off-market')
 const bad = relayValueUsd(q, 5, out * marketPrice * 0.4)
 ok(bad && quoteVerdict(bad) === 'refuse', 'a route losing 60% is refused')
+
+console.log('selling back to Ethereum, Base or Arbitrum')
+const xout = (evmChain: number, toChain: number, mint: string, outToken: string, amount: bigint) =>
+  ({ side: 'xevmout' as const, evmChain, toChain, mint, outToken, amount, evm: EVM, sol: '', feeBps: 50 })
+const sells = {
+  'arc-base-usdc': xout(ARC_ID, 8453, ARCD, usdc(8453), 10n ** 24n),
+  'arc-base-eth': xout(ARC_ID, 8453, ARCD, EVM_NATIVE, 10n ** 24n),
+  'arc-arb-usdc': xout(ARC_ID, 42161, ARCD, usdc(42161), 10n ** 24n),
+  'bsc-base-usdc': xout(BSC_ID, 8453, LOBSTER, usdc(8453), 10n ** 20n),
+}
+for (const [name, req] of Object.entries(sells)) {
+  const body = quoteBody(req), rec = F[name].body
+  ok(['user', 'recipient', 'originChainId', 'destinationChainId', 'originCurrency', 'destinationCurrency', 'amount'].every(k => String(body[k]).toLowerCase() === String(rec[k]).toLowerCase())
+    && JSON.stringify(body.appFees).toLowerCase() === JSON.stringify(rec.appFees).toLowerCase() && !body.topupGas,
+    `${name}: built as recorded (${body.originChainId} → ${body.destinationChainId}), from and to the same address`)
+  const q = checkRelayQuote(req, F[name].quote)
+  ok(q.evmTx && !q.solTx && q.signChain === req.evmChain && q.evmTx.call.to === RELAY_EVM.approvalProxy && q.evmTx.call.value === 0n,
+    `${name}: signed on the coin's chain (${req.evmChain}), through Relay's approval proxy, no native value`)
+  ok(q.evmTx!.approve?.token === req.mint && q.evmTx!.approve.spender === RELAY_EVM.approvalProxy && q.evmTx!.approve.amount === req.amount,
+    `${name}: the coin approved for exactly the amount, to the approval proxy`)
+}
+const S = sells['arc-base-usdc'], sQ = F['arc-base-usdc'].quote
+const sellCases: [string, (j: any) => void][] = [
+  ['an approval to another contract', j => { const d = step(j, 'approve'); d.data = swapWord(d.data, 0, addr64(EVIL)) }],
+  ['an approval for more than the amount', j => { const d = step(j, 'approve'); d.data = swapWord(d.data, 1, (10n ** 30n).toString(16).padStart(64, '0')) }],
+  ['an approval on another token', j => { step(j, 'approve').to = EVIL }],
+  ['the trade through another contract', j => { step(j, 'deposit').to = EVIL }],
+  ['native funds sent with the sale', j => { step(j, 'deposit').value = '1' }],
+  ['instructions that don’t name the seller', j => { const d = step(j, 'deposit'); d.data = d.data.split(EVM.slice(2)).join(EVIL.slice(2)) }],
+  ['a transaction for another chain', j => { step(j, 'deposit').chainId = 8453 }],
+  ['paying another address', j => { j.details.recipient = EVIL }],
+  ['paying out another token', j => { j.details.currencyOut.currency.address = EVIL }],
+  ['paying out on another chain', j => { j.details.currencyOut.currency.chainId = 10 }],
+  ['selling another amount', j => { j.details.currencyIn.amount = '1' }],
+  ['no minimum received', j => { j.details.currencyOut.minimumAmount = '0' }],
+  ['without ARCDEX’s fee', j => { delete j.fees.app }],
+  ['an order paying someone else', j => { if (j.protocol?.v2?.orderData) j.protocol.v2.orderData.output.payments[0].recipient = EVIL; else j.details.recipient = EVIL }],
+]
+for (const [what, mutate] of sellCases) { const j = clone(sQ); mutate(j); throws(() => checkRelayQuote(S, j), `sale: ${what}`) }
+throws(() => checkRelayQuote({ ...S, toChain: 10 }, sQ), 'paying out on a chain ARCDEX doesn’t pay out on', /pay out/)
+throws(() => checkRelayQuote({ ...S, outToken: EVIL }, sQ), 'paying out a token other than USDC or ETH', /USDC or ETH/)
+throws(() => checkRelayQuote({ ...S, evmChain: 8453 }, sQ), 'selling a coin on a chain ARCDEX doesn’t trade', /doesn’t trade/)
 
 console.log('\nall pay-from-another-chain checks passed')

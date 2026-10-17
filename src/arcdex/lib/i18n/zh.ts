@@ -3963,5 +3963,12 @@ const d: Record<string, string> = {
   "{u} tUSDC, {g} USDC for gas": "{u} tUSDC，{g} USDC 用作 gas",
   "Futures carry risk. ARCDEX Algo trades test USDC; its results are measured, not promised, and past results say little about the future.": "期货有风险。ARCDEX Algo 使用测试 USDC 交易；其结果是测量得出的而非承诺，过往表现难以预示未来。",
   "Why it closed": "平仓原因",
+  "Buy or sell": "买入或卖出",
+  "Receive on": "接收链",
+  "You sell ({c})": "你卖出（{c}）",
+  "Sell where the coin is: one signature on {chain}, and {cur} lands in the same wallet on {to} in seconds. No bridging. Every trade is checked and simulated before it’s sent.": "在币所在的链上卖出：在 {chain} 上签名一次，{cur} 几秒内到达你在 {to} 上的同一钱包。无需跨链桥。每笔交易在发送前都会经过检查和模拟。",
+  "Add a little {coin} on {chain} for the transaction’s gas.": "请在 {chain} 上准备少量 {coin} 作为交易的 gas。",
+  "Ethereum, Base or Arbitrum": "Ethereum、Base 或 Arbitrum",
+  "Buy with USDC or ETH there, or sell back · one signature · no bridging": "用那里的 USDC 或 ETH 买入，或卖回 · 一次签名 · 无需跨链桥",
 }
 export default d

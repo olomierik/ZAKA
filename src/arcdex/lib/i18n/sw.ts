@@ -3963,5 +3963,12 @@ const d: Record<string, string> = {
   "{u} tUSDC, {g} USDC for gas": "{u} tUSDC, {g} USDC kwa gesi",
   "Futures carry risk. ARCDEX Algo trades test USDC; its results are measured, not promised, and past results say little about the future.": "Futures zina hatari. ARCDEX Algo hufanya biashara kwa USDC ya majaribio; matokeo yake hupimwa, hayaahidiwi, na matokeo ya zamani hayasemi mengi kuhusu siku zijazo.",
   "Why it closed": "Kwa nini ilifungwa",
+  "Buy or sell": "Nunua au uza",
+  "Receive on": "Pokea kwenye",
+  "You sell ({c})": "Unauza ({c})",
+  "Sell where the coin is: one signature on {chain}, and {cur} lands in the same wallet on {to} in seconds. No bridging. Every trade is checked and simulated before it’s sent.": "Uza pale sarafu ilipo: saini moja kwenye {chain}, na {cur} inafika kwenye pochi ileile kwenye {to} ndani ya sekunde. Bila bridge. Kila biashara hukaguliwa na kuigwa kabla ya kutumwa.",
+  "Add a little {coin} on {chain} for the transaction’s gas.": "Ongeza {coin} kidogo kwenye {chain} kwa gas ya muamala.",
+  "Ethereum, Base or Arbitrum": "Ethereum, Base au Arbitrum",
+  "Buy with USDC or ETH there, or sell back · one signature · no bridging": "Nunua kwa USDC au ETH ulizonazo huko, au uza kurudisha · saini moja · bila bridge",
 }
 export default d

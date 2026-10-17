@@ -1,6 +1,7 @@
 // Records Relay's quotes for paying from Ethereum, Base or Arbitrum (2026-10-16, owner: "the limitation of having to be
 // on Arc to trade"), as fixtures for scripts/test-xevm.ts: USDC or ETH there into $ARCDEX on Arc (one with a gas
-// top-up), and Base USDC into a BNB Chain coin. Quotes only: nothing is signed or sent.
+// top-up), and Base USDC into a BNB Chain coin; and back, the coins into USDC or ETH there. Quotes only: nothing is
+// signed or sent.
 // Run: bun scripts/capture-relay-xevm.ts
 
 import { writeFileSync } from 'node:fs'
@@ -24,6 +25,11 @@ const cases: Record<string, ReturnType<typeof q>> = {
   'eth-usdc-arc': q(1, 5042, USDC[1], ARCD, '5000000', 50),
   'base-usdc-arc-gas': q(8453, 5042, USDC[8453], ARCD, '5000000', 50, 0.5),
   'base-usdc-bsc': q(8453, 56, USDC[8453], LOBSTER, '5000000', 50),
+  // Back (2026-10-17): a coin on Arc or BNB Chain into USDC or ETH on Base, Arbitrum or Ethereum.
+  'arc-base-usdc': q(5042, 8453, ARCD, USDC[8453], '1000000000000000000000000', 50),
+  'arc-base-eth': q(5042, 8453, ARCD, NATIVE, '1000000000000000000000000', 50),
+  'arc-arb-usdc': q(5042, 42161, ARCD, USDC[42161], '1000000000000000000000000', 50),
+  'bsc-base-usdc': q(56, 8453, LOBSTER, USDC[8453], '100000000000000000000', 50),
 }
 const out: Record<string, unknown> = { at: new Date().toISOString() }
 for (const [name, body] of Object.entries(cases)) {

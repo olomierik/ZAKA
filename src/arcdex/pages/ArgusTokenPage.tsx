@@ -623,7 +623,7 @@ export default function ArgusTokenPage({ address, pool, navigate, buy }: Props) 
         <TradeBar symbol={symbol} onTrade={setTradeSheet} />
         <Sheet open={tradeSheet !== null} onClose={() => setTradeSheet(null)}>
           {tradeSheet && swapWidget(tradeSheet)}
-          {tradeSheet && <div style={{ padding: '0 14px 14px' }}>{tradeSheet === 'buy' && <PayFromCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} />}<SolanaPayCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} initialMode={tradeSheet} /></div>}
+          {tradeSheet && <div style={{ padding: '0 14px 14px' }}><PayFromCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} initialMode={tradeSheet} /><SolanaPayCard chainId={ARC_ID} token={address} symbol={symbol} priceUsd={priceUsd ?? 0} initialMode={tradeSheet} /></div>}
         </Sheet>
       </div>
     </div>

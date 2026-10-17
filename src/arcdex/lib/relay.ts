@@ -82,12 +82,13 @@ async function follow(q: RelayQuote, tx: string, onStep: (p: RelayProgress) => v
 }
 
 /** The trade switch's venue for a Relay trade: the chain its coin is on. */
-const relayVenue = (req: RelayRequest) => (req.side === 'xevm'
+const relayVenue = (req: RelayRequest) => (req.side === 'xevm' || req.side === 'xevmout'
   ? (req.evmChain === BSC_ID ? 'bnb' as const : req.evmChain === RH_ID ? 'robinhood' as const : 'arc' as const)
   : req.chain === 'bsc' ? 'bnb' as const : 'solana' as const)
 
 /** A trade signed on an EVM chain: paid on Arc (a buy or gas top-up), on BNB Chain (a sale to Arc, or a swap there), or
- * from the trader's account on Arc, BNB Chain or Robinhood Chain to a Solana wallet (xout). */
+ * from the trader's account on Arc, BNB Chain or Robinhood Chain to a Solana wallet (xout) or to Ethereum, Base or
+ * Arbitrum (xevmout). */
 export async function runRelayEvm(kind: TraderKind, req: RelayRequest, shown: RelayQuote | null, onStep: (p: RelayProgress) => void): Promise<RelayResult> {
   if (req.side !== 'gas') await assertTradingOn(relayVenue(req))
   const trader = req.evm as Address
