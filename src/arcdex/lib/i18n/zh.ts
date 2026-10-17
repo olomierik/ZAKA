@@ -4135,5 +4135,12 @@ const d: Record<string, string> = {
   "too many new accounts from here, try again later": "此处新建账户过多，请稍后再试",
   "Practice isn’t available on this build.": "此版本无法使用练习。",
   "Start practising first.": "请先开始练习。",
+  "Exploring on paper": "模拟盘探索中",
+  "Until its confidence is calibrated and proven, Algo trades every sound setup small on paper, risking {r}% of the book a trade. Only trades that pass every gate would run on testnet.": "在其置信度完成校准并得到验证之前，Algo 会在模拟盘上以小仓位交易每个稳健的形态，每笔风险为账户的 {r}%。只有通过所有关卡的交易才会在测试网运行。",
+  "Gated": "通过关卡",
+  "Exploring": "探索",
+  "Opened a trade (exploring)": "已开仓（探索）",
+  "No trades yet. It opens one when a setup is sound.": "还没有交易。出现稳健形态时会开仓。",
+  "Paper exploration: a sound setup the calibration hasn’t proven yet, traded small": "模拟盘探索：校准尚未验证的稳健形态，以小仓位交易",
 }
 export default d

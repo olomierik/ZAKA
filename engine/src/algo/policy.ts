@@ -60,8 +60,36 @@ export function planTrade(i: PlanInput): { gate: AlgoGate; plan: AlgoPlan | null
   add('edge', kelly > 0 && ev > 0, `expected ${ev.toFixed(3)}% a trade after costs, Kelly ${kelly.toFixed(3)}`)
 
   if (!checks.every(c => c.ok) || d.direction === 'neutral') return { gate: { passed: false, checks }, plan: null }
+  const plan = sizePlan(i, tpPct, slPct, cost, kelly, Math.min(g.kellyFraction * kelly, L.maxRiskPerTradePct / 100), ev, 'gated', checks)
+  return { gate: { passed: !!plan, checks }, plan }
+}
 
-  const fraction = Math.min(g.kellyFraction * kelly, L.maxRiskPerTradePct / 100)
+/** The structural checks the exploration lane needs: everything but calibration, confidence and edge. */
+const STRUCTURAL = ['direction', 'regime', 'toxic', 'quality', 'risk_state', 'volatility'] as const
+
+/** Paper exploration: when the gated lane said no only for statistical reasons (calibration, confidence, edge), a
+ * small trade risking `explore.riskPct`% of the book, if the target still clears `minTargetCosts`× the costs. Null
+ * when the setup isn't sound enough to explore. The caller decides the lane is allowed (paper, switched on). */
+export function planExplore(i: PlanInput, gate: AlgoGate): AlgoPlan | null {
+  const ex = i.cfg.explore
+  if (!ex?.on || gate.passed || i.decision.direction === 'neutral') return null
+  for (const id of STRUCTURAL) if (!gate.checks.find(c => c.id === id)?.ok) return null
+  const sigma = i.state.sigmaH
+  if (!sigma) return null
+  const cost = costPct(i.cfg)
+  const tpPct = i.cfg.geometry.tpSigma * sigma
+  const slPct = i.cfg.geometry.slSigma * sigma
+  if (tpPct < ex.minTargetCosts * cost) return null
+  const b = slPct > 0 ? (tpPct - cost) / (slPct + cost) : 0
+  const p = i.decision.confidence
+  const ev = p * (tpPct - cost) - (1 - p) * (slPct + cost)
+  return sizePlan(i, tpPct, slPct, cost, kellyOf(p, b), ex.riskPct / 100, ev, 'explore', null)
+}
+
+function sizePlan(i: PlanInput, tpPct: number, slPct: number, cost: number, kelly: number, fraction: number, ev: number, lane: 'gated' | 'explore', checks: AlgoGate['checks'] | null): AlgoPlan | null {
+  const { state: s, cfg } = i
+  const L = cfg.limits
+
   const riskUsd = fraction * i.equityUsd
   let sizeUsd = riskUsd / ((slPct + cost) / 100)
   sizeUsd = Math.min(sizeUsd, (L.maxPositionPct / 100) * i.equityUsd)
@@ -71,12 +99,10 @@ export function planTrade(i: PlanInput): { gate: AlgoGate; plan: AlgoPlan | null
   const collateralUsd = sizeUsd / leverage
   const minCol = i.minCollateralUsd ?? 1
   const sized = collateralUsd >= minCol
-  checks.push({ id: 'size', ok: sized, detail: sized ? `$${sizeUsd.toFixed(2)} at ${leverage}×` : `collateral $${collateralUsd.toFixed(2)} under the contract's minimum $${minCol}` })
-  if (!sized) return { gate: { passed: false, checks }, plan: null }
-  const long = d.direction === 'long'
+  checks?.push({ id: 'size', ok: sized, detail: sized ? `$${sizeUsd.toFixed(2)} at ${leverage}×` : `collateral $${collateralUsd.toFixed(2)} under the contract's minimum $${minCol}` })
+  if (!sized) return null
+  const long = i.decision.direction === 'long'
   return {
-    gate: { passed: true, checks },
-    plan: {
       side: long ? 'long' : 'short',
       entry: s.px,
       tp: r(long ? s.px * (1 + tpPct / 100) : s.px * (1 - tpPct / 100), 6),
@@ -85,6 +111,6 @@ export function planTrade(i: PlanInput): { gate: AlgoGate; plan: AlgoPlan | null
       kelly: r(kelly), fraction: r(fraction, 5),
       riskUsd: r(riskUsd, 2), sizeUsd: r(sizeUsd, 2), collateralUsd: r(collateralUsd, 2), leverage,
       expectedValuePct: r(ev),
-    },
+      lane,
   }
 }

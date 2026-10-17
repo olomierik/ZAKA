@@ -16,7 +16,7 @@ import { Book, pnlAt } from './book'
 import { Calibrator } from './calibration'
 import type { AlgoConfig } from './config'
 import { Labeler, type ResolvedLabel } from './labels'
-import { planTrade } from './policy'
+import { planExplore, planTrade } from './policy'
 import { familyOf, type Reflex } from './reflex'
 import { RiskLayer } from './risk'
 import { buildState, closedUpTo, MIN, snapshotText } from './state'
@@ -97,7 +97,18 @@ export class AlgoCore {
       const cal = fam && out.decision.direction !== 'neutral' ? this.calibrators[fam] : null
       const confidence = cal ? Math.round(cal.map(out.raw) * 10_000) / 10_000 : 0
       const decision: AlgoDecision = { ...out.decision, risk_state: this.risk.riskState(this.book), confidence }
-      const { gate, plan } = planTrade({ state: s, decision, calibrated: !!fam && this.calibrated(fam), equityUsd: this.book.markedUsd, cfg: this.cfg, minCollateralUsd: ctx.minCollateralUsd })
+      const input = { state: s, decision, calibrated: !!fam && this.calibrated(fam), equityUsd: this.book.markedUsd, cfg: this.cfg, minCollateralUsd: ctx.minCollateralUsd }
+      const { gate, plan: gated } = planTrade(input)
+      let plan = gated
+      // Paper exploration (config.ts `explore`): a sound setup the statistics haven't proven, traded small on paper.
+      if (!plan && !pos && this.book.mode === 'paper' && this.cfg.explore?.on) {
+        const cooled = !this.book.trades.some(x => x.market === m && x.lane === 'explore' && x.closedAt != null && t - x.closedAt < this.cfg.explore.cooldownMin * MIN)
+        const ex = cooled ? planExplore(input, gate) : null
+        if (ex) {
+          plan = ex
+          gate.checks.push({ id: 'explore', ok: true, detail: `paper exploration: a sound setup the calibration hasn't proven yet, risking ${this.cfg.explore.riskPct}% of the book` })
+        }
+      }
       const row: AlgoDecisionRow = {
         id: newId(m, t), at: t, market: m, decision, raw: out.raw, why: out.why, gate, action: 'none',
         snapshot: snapshotText(s), provider: this.reflex.provider, latencyMs: 0, plan,
@@ -113,12 +124,12 @@ export class AlgoCore {
         if (decision.regime === 'crisis') {
           res.closeNow.push({ trade: pos, reason: 'crisis: closed by the risk code' })
           row.action = 'close'
-        } else if (flipped || decision.regime === 'high_vol' || (sameSide && confidence < g.escalateBelow)) {
+        } else if (flipped || decision.regime === 'high_vol' || (sameSide && confidence < g.escalateBelow && pos.lane !== 'explore')) {
           const trigger = flipped ? `the reflex now says ${decision.direction}` : decision.regime === 'high_vol' ? 'volatility spiked' : `confidence fell to ${confidence.toFixed(2)} (under ${g.escalateBelow})`
           res.escalate.push({ trade: pos, row, trigger })
           row.action = 'escalate'
         } else row.action = 'hold'
-      } else if (!pos && gate.passed && plan) {
+      } else if (!pos && plan) {
         const why = this.risk.checkOpen({ plan, market: m, book: this.book, priceAgeMs: ctx.priceAgeOf ? ctx.priceAgeOf(m) : 0, staleMs: this.cfg.staleMs })
         if (why) {
           gate.checks.push({ id: 'risk', ok: false, detail: why })
@@ -129,7 +140,7 @@ export class AlgoCore {
             id: newId(`T${m}`, t), mode: this.book.mode, market: m, side: plan.side, status: 'pending', decisionId: row.id,
             openedAt: t, entry: plan.entry, tp: plan.tp, sl: plan.sl, tpPct: plan.tpPct, slPct: plan.slPct, sizeUsd: plan.sizeUsd, collateralUsd: plan.collateralUsd, leverage: plan.leverage,
             confidence, kelly: plan.kelly, regime: decision.regime, closedAt: null, exit: null, pnlUsd: null, pnlPct: null, feesUsd: 0, reason: null,
-            positionId: null, txOpen: null, txClose: null, escalations: [],
+            positionId: null, txOpen: null, txClose: null, escalations: [], lane: plan.lane ?? 'gated',
           }
           this.book.trades.push(trade)
           this.fillAfter.set(trade.id, t + this.cfg.costs.fillDelayMs)
