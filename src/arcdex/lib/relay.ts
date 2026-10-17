@@ -35,6 +35,8 @@ import { isPayChain } from './payChains'
 import { t as T } from './i18n'
 import { assertTradingOn, TradingPausedError } from './tradeSwitch'
 import { sizeProblem } from './guardrails'
+import { getPrefs } from './prefs'
+import { clampTip, sendViaJito, tipInstruction } from './jito'
 
 export { RelayError }
 
@@ -134,7 +136,7 @@ export async function runRelayEvm(kind: TraderKind, req: RelayRequest, shown: Re
 export const runRelayBuy = runRelayEvm
 
 /** Relay's instructions as one transaction, paid for by the trader. */
-async function buildSolana(q: RelayQuote): Promise<VersionedTransaction> {
+async function buildSolana(q: RelayQuote, tipLamports = 0): Promise<VersionedTransaction> {
   const { Connection, PublicKey, TransactionInstruction, TransactionMessage, VersionedTransaction } = await import('@solana/web3.js')
   const conn = new Connection(primaryOf('sol').url, 'confirmed')
   const tables = (await Promise.all(q.solTx!.lookupTables.map(a => conn.getAddressLookupTable(new PublicKey(a)).then(r => r.value))))
@@ -145,6 +147,8 @@ async function buildSolana(q: RelayQuote): Promise<VersionedTransaction> {
     keys: i.keys.map(k => ({ pubkey: new PublicKey(k.pubkey), isSigner: k.isSigner, isWritable: k.isWritable })),
     data: Buffer.from(i.data, 'hex'),
   }))
+  // Anti-MEV (lib/jito.ts): Jito's tip goes in the same transaction, last, from the trader.
+  if (tipLamports > 0) instructions.push(await tipInstruction(new PublicKey(q.sol), tipLamports))
   const msg = new TransactionMessage({ payerKey: new PublicKey(q.sol), recentBlockhash: blockhash, instructions }).compileToV0Message(tables.filter(t => t !== null))
   return new VersionedTransaction(msg)
 }
@@ -172,16 +176,27 @@ export async function runRelaySolana(signer: SolSigner, req: RelayRequest, shown
   if (sol !== null && sol < solIn + 0.0003) throw new RelayError(T('Not enough SOL for this trade and its fees.'))
   onStep({ step: 'quote' })
   const q = await freshQuote(req, shown)
-  const tx = await buildSolana(q)
-  await simulateSolana(tx, req.sol, solIn + MAX_SOL_COST)
+  // Anti-MEV (Settings → Trading, on by default): a bundle to Jito, with its tip, instead of a public node.
+  const { antiMev, jitoTipLamports } = getPrefs()
+  const tip = antiMev ? clampTip(jitoTipLamports) : 0
+  const tx = await buildSolana(q, tip)
+  await simulateSolana(tx, req.sol, solIn + MAX_SOL_COST + tip / 1e9)
   onStep({ step: 'sign' })
   const signed = await signSolana(signer, tx)
-  const { Connection } = await import('@solana/web3.js')
-  const conn = new Connection(primaryOf('sol').url, 'confirmed')
-  const sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: true, maxRetries: 3 })
+  let sig: string
+  if (antiMev) {
+    try { sig = await sendViaJito(Buffer.from(signed.serialize()).toString('base64')) }
+    catch (e) { throw new RelayError(T('Jito didn’t take the transaction ({why}). Nothing was sent; try again, or turn anti-MEV off in Settings to send it normally.', { why: e instanceof Error ? e.message : String(e) })) }
+  } else {
+    const { Connection } = await import('@solana/web3.js')
+    const conn = new Connection(primaryOf('sol').url, 'confirmed')
+    sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: true, maxRetries: 3 })
+  }
   onStep({ step: 'send', tx: sig })
   const s = await waitSolTx(sig)
   if (s === 'failed') throw new RelayError(T('The transaction failed on-chain.'))
+  // A bundle that wasn't picked up never lands, and its blockhash has expired by now: nothing was spent.
+  if (s === 'unknown' && antiMev) throw new RelayError(T('Jito didn’t land the trade in time, so nothing was spent. Try again, or raise the Jito tip in Settings.'))
   if (req.side === 'swap' && req.outToken && req.outToken !== SOL_NATIVE) rememberSol(req.sol, req.outToken)
   // A coin bought on another chain: Portfolio checks it first.
   if (req.side === 'xin') {

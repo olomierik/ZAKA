@@ -18,6 +18,10 @@ export interface Prefs {
   alertMinUsd: number
   discoveryCollapsed: boolean
   discoverySplit: boolean
+  /** Anti-MEV on Solana: transactions ARCDEX sends go to Jito as a bundle only, with a tip (lib/jito.ts). On by default. */
+  antiMev: boolean
+  /** The Jito tip, lamports (lib/jito.ts JITO_TIP). */
+  jitoTipLamports: number
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -31,6 +35,8 @@ export const DEFAULT_PREFS: Prefs = {
   alertMinUsd: 10,
   discoveryCollapsed: false,
   discoverySplit: false,
+  antiMev: true,
+  jitoTipLamports: 50_000,
 }
 
 const KEY = 'arcdex:prefs:v1'

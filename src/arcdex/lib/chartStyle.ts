@@ -1,16 +1,15 @@
 // Line or candlesticks, for every price chart (PriceChart).
-// Every coin opens on Line (owner's choice): one price line with a soft
-// fill, green while the chart's window is up and red while it's down, the
-// way fomo draws it — with a pulsing dot on its last point and a dotted line
-// from there to the price on the axis. A switch to candles holds while the
-// coin is open.
+// DexScreener's chart (owner, 2026-10-17: "make the app chart like the ones on DexScreener"): TradingView's candles, in
+// TradingView's own colours, with volume bars under them. Line is one click away: one price line with a soft fill, green
+// while the chart's window is up and red while it's down, a pulsing dot on its last point and a dotted line from there
+// to the price on the axis. A switch holds while the coin is open.
 import { AreaSeries, CandlestickSeries, LastPriceAnimationMode, LineStyle, type IChartApi, type ISeriesApi } from 'lightweight-charts'
 import type { Candle } from './candles'
 
 export type ChartStyle = 'line' | 'candles'
 export type MainSeries = ISeriesApi<'Area' | 'Candlestick'>
 
-export const DEFAULT_CHART_STYLE: ChartStyle = 'line'
+export const DEFAULT_CHART_STYLE: ChartStyle = 'candles'
 const EVENT = 'arcdex:chart-style'
 
 /** Switches every chart on the page. */
@@ -24,18 +23,23 @@ export function onChartStyle(cb: (s: ChartStyle) => void): () => void {
   return () => window.removeEventListener(EVENT, h)
 }
 
-const UP = '#0ecb81', DOWN = '#f6465d'
+// TradingView's (and DexScreener's) candle colours.
+const UP = '#26a69a', DOWN = '#ef5350'
+/** Volume bars, as TradingView draws them under the candles. */
+export const volumeColor = (up: boolean) => (up ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)')
 
 /** The chart's own colours for the page's theme (lib/theme.ts): lightweight-charts draws on a canvas, so it can't
  * read the page's CSS variables. */
 export function chartTheme(theme: 'light' | 'dark') {
   const t = theme === 'dark'
-    ? { bg: '#101713', text: '#8a968f', grid: '#172019', cross: '#56625b', label: '#2b3831', border: '#1f2a24' }
-    : { bg: '#ffffff', text: '#67726b', grid: '#eff1eb', cross: '#a3aba4', label: '#39443e', border: '#dadfd5' }
+    // TradingView's dark and light palettes, which DexScreener's chart uses.
+    ? { bg: '#131722', text: '#b2b5be', grid: 'rgba(42,46,57,0.6)', cross: '#9598a1', label: '#363a45', border: '#2a2e39' }
+    : { bg: '#ffffff', text: '#131722', grid: 'rgba(42,46,57,0.06)', cross: '#9598a1', label: '#131722', border: '#e0e3eb' }
   return {
     layout: { background: { color: t.bg }, textColor: t.text },
     grid: { vertLines: { color: t.grid }, horzLines: { color: t.grid } },
-    crosshair: { vertLine: { color: t.cross, labelBackgroundColor: t.label }, horzLine: { color: t.cross, labelBackgroundColor: t.label } },
+    // A free crosshair with dashed lines, as on TradingView (lightweight-charts snaps to the close by default).
+    crosshair: { mode: 0, vertLine: { color: t.cross, labelBackgroundColor: t.label, style: 2 }, horzLine: { color: t.cross, labelBackgroundColor: t.label, style: 2 } },
     rightPriceScale: { borderColor: t.border },
     timeScale: { borderColor: t.border },
   }
@@ -44,8 +48,8 @@ export function chartTheme(theme: 'light' | 'dark') {
 /** Line colours for a chart that is up (or down) over its window. */
 export const lineColors = (up: boolean) => ({
   lineColor: up ? UP : DOWN,
-  topColor: up ? 'rgba(14,203,129,0.24)' : 'rgba(246,70,93,0.24)',
-  bottomColor: up ? 'rgba(14,203,129,0)' : 'rgba(246,70,93,0)',
+  topColor: up ? 'rgba(38,166,154,0.24)' : 'rgba(239,83,80,0.24)',
+  bottomColor: up ? 'rgba(38,166,154,0)' : 'rgba(239,83,80,0)',
 })
 
 export function addMainSeries(chart: IChartApi, style: ChartStyle): MainSeries {

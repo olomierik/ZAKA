@@ -42,9 +42,12 @@ const actions = {
   exportSol: async () => { calls.push('export-sol') },
   promptMfa: async () => { calls.push('mfa') },
   enrollMfa: () => { calls.push('enroll') },
+  identityToken: async () => 'id.token.here',
 }
 S.registerPrivy(actions)
 S.setPrivyState({ ready: true, authenticated: true, evm: EVM, sol: SOL, mfa: false, lastAuthAt: null })
+// The admin sign-in sends Privy's identity token only for the account's own EVM wallet (engine/src/admin/privyIdentity.ts).
+check(await S.privyIdentityFor(EVM) === 'id.token.here' && await S.privyIdentityFor('0x000000000000000000000000000000000000dEaD') === null, 'identity token: for the Privy wallet only')
 const stale = await rejects(S.privyExport('evm', 'sign in again first'))
 check(stale instanceof S.StepUpRequired && (stale as Error).message === 'sign in again first' && !calls.includes('export-evm'), 'export without a fresh sign-in: refused, nothing exported')
 S.markSignedIn()

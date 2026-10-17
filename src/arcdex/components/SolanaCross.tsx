@@ -36,6 +36,8 @@ import { relayErrorText, runRelayEvm, runRelaySolana, type RelayProgress } from 
 import { t as T } from '../lib/i18n'
 import { useBuyRisk } from '../lib/buyRisk'
 import TradeDetails, { HOT } from './TradeDetails'
+import { usePrefs } from '../lib/prefs'
+import { clampTip } from '../lib/jito'
 
 export type CrossMode = 'buy' | 'sell' | 'deposit' | 'withdraw'
 
@@ -104,6 +106,7 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
   const signer = solSignerOf(sol, trader.kind)
   const solAddr = signer === 'trading' ? sol.trading : signer === 'external' ? sol.external?.address ?? null : null
   const [mode, setMode] = useState<CrossMode>(initialMode ?? modes[0])
+  const { antiMev, jitoTipLamports } = usePrefs()
   const [cur, setCur] = useState<'sol' | 'usdc'>('sol')
   const [amount, setAmount] = useState('')
   const [quote, setQuote] = useState<RelayQuote | null>(null)
@@ -314,6 +317,8 @@ export default function SolanaCross({ chainId, token, symbol, decimals: given, p
           {value && !impactHot && <Row label={T('Price impact')} value={impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`} color="var(--green)" />}
           {value && !refused && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} />}
           <Row label={T('Arrives')} value={quote ? (paying ? T('on {chain} in ~{s}s', { chain: CHAIN_NAME[chainId], s: Math.max(2, quote.fillSeconds) }) : T('in your Solana wallet in seconds')) : '—'} />
+          {/* Paying from Solana: signed there, so Jito's bundle applies (anti-MEV, lib/jito.ts). */}
+          {paying && <Row label={T('MEV protection')} value={antiMev ? T('Jito bundle · tip {sol} SOL', { sol: (clampTip(jitoTipLamports) / 1e9).toFixed(5) }) : T('Off (Settings → Trading)')} color={antiMev ? 'var(--green)' : undefined} />}
           {!compact && <p className="swap-note">{bridging ? T('Through Relay: SOL or USDC on Solana in, USDC on Arc out, or back. 0.5% fee. Every transfer is checked and simulated before it’s sent.') : T('Pay with SOL or USDC from your Solana wallet: the coin lands in your ARCDEX account on {chain} in seconds. Sell it back for SOL or USDC any time. Every trade is checked and simulated before it’s sent.', { chain: CHAIN_NAME[chainId] })}</p>}
         </TradeDetails>
       </div>

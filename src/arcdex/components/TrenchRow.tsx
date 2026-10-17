@@ -109,14 +109,6 @@ function Row({ c, s, flash, fresh, now, onOpen, onBuy }: Props) {
         </div>
         <div className="tr-l3">
           <span className={`tr-age${fresh1h ? ' young' : ''}`}>{ageOf(c.createdAt, now)}</span>
-          {c.website && <a className="tr-st" href={c.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} title={T('Website')}><IcGlobe /></a>}
-          {c.twitter && (
-            <a className="tr-xh" href={c.twitter.startsWith('http') ? c.twitter : `https://x.com/${c.twitter.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} title="X">
-              <IcX /><span>{c.twitter.replace(/^https?:\/\/(www\.)?(x|twitter)\.com\//, '@').replace(/\/.*$/, '').slice(0, 18)}</span>
-            </a>
-          )}
-          {c.telegram && <a className="tr-st" href={c.telegram} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} title="Telegram"><IcTelegram /></a>}
-          <a className="tr-st" href={xUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} title={T('Search the contract on X')}><IcSearch /></a>
           {c.hot ? <span className="tr-hot" title={T('{n} trades in the last 15 minutes', { n: c.hot })}>🔥 {c.hot}</span> : null}
         </div>
       </div>
@@ -138,7 +130,7 @@ function Row({ c, s, flash, fresh, now, onOpen, onBuy }: Props) {
         {lvl && <span className={`tr-rp s-${lvl}`} title={c.safety.reasons.join(' · ') || T(SAFETY_LABEL[lvl])}><IcShield />{T(SAFETY_LABEL[lvl])}</span>}
         {c.change1h !== null && <span className={`tr-rp ${c.change1h >= 0 ? 'up' : 'down'}`} title={T('1h change')}><IcPulse />{pct(c.change1h)}</span>}
         <span className={`tr-rp ${c.change24h >= 0 ? 'up' : 'down'}`} title={T('24h change')}>24h {pct(c.change24h)}</span>
-        {c.early && <EarlyChips e={c.early} />}
+        <EarlyChips e={c.early} />
         {c.launcher && c.launcher.coins > 0 && (
           <span className={`tr-rp${c.launcher.dumps > 0 ? ' down' : ''}`} title={T('Its launcher’s last {n} coins: {d} dumped early', { n: c.launcher.coins, d: c.launcher.dumps })}><IcRocket />{c.launcher.dumps}/{c.launcher.coins}</span>
         )}
@@ -149,6 +141,8 @@ function Row({ c, s, flash, fresh, now, onOpen, onBuy }: Props) {
           <span aria-hidden>💬</span><q>{c.thesis.body}</q><small>{short(c.thesis.author)} · {ageOf(c.thesis.at, now)}</small>
         </div>
       )}
+
+      <Socials c={c} xSearch={xUrl} />
 
       <div className="tr-buyw">
         <button className={`tr-buy${s.buttonSize === 'small' ? ' sm' : ''}`} onClick={e => { e.stopPropagation(); onBuy(c, e.currentTarget) }} title={T('Buy {sym}', { sym: c.symbol })}>
@@ -172,17 +166,45 @@ function LaunchpadBadge({ name, color }: { name: string; color?: string }) {
   )
 }
 
-/** GMGN's and fomo's first-moments chips: the creator's sales of its own buy, bundlers and snipers. */
-function EarlyChips({ e }: { e: NonNullable<TrenchCoin['early']> }) {
+/** The website, X and Telegram, labelled (owner, 2026-10-17: "x, web … to be visually seen"), then a search for the
+ * contract on X. */
+function Socials({ c, xSearch }: { c: TrenchCoin; xSearch: string }) {
+  const stop = (e: React.MouseEvent) => e.stopPropagation()
+  const handle = c.twitter ? c.twitter.replace(/^https?:\/\/(www\.)?(x|twitter)\.com\//, '@').replace(/\/.*$/, '').replace(/\?.*$/, '').slice(0, 16) : ''
+  const site = c.website ? c.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*$/, '').slice(0, 18) : ''
+  return (
+    <div className="tr-soc">
+      {c.website && <a className="tr-sc web" href={c.website} target="_blank" rel="noopener noreferrer" onClick={stop} title={c.website}><IcGlobe /><span>{site || T('Website')}</span></a>}
+      {c.twitter && <a className="tr-sc x" href={c.twitter.startsWith('http') ? c.twitter : `https://x.com/${c.twitter.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" onClick={stop} title="X"><IcX /><span>{handle.startsWith('@') && handle !== '@i' ? handle : 'X'}</span></a>}
+      {c.telegram && <a className="tr-sc tg" href={c.telegram} target="_blank" rel="noopener noreferrer" onClick={stop} title="Telegram"><IcTelegram /><span>TG</span></a>}
+      {!c.website && !c.twitter && !c.telegram && <span className="tr-sc none" title={T('This coin lists no website, X or Telegram')}>{T('No socials')}</span>}
+      <a className="tr-sc srch" href={xSearch} target="_blank" rel="noopener noreferrer" onClick={stop} title={T('Search the contract on X')}><IcSearch /></a>
+    </div>
+  )
+}
+
+/** GMGN's and fomo's first-moments chips, labelled: the creator's sales of its own buy, bundlers and snipers. Coins the
+ * engine didn't see launch (they came in through the lists) show them as not known. */
+function EarlyChips({ e }: { e: TrenchCoin['early'] }) {
+  if (!e) {
+    const why = T('Not known: ARCDEX’s engine didn’t see this coin launch')
+    return (
+      <>
+        <span className="tr-rp na" title={why}><IcDev />{T('Dev ?')}</span>
+        <span className="tr-rp na" title={why}><IcLayers />{T('Bundlers ?')}</span>
+        <span className="tr-rp na" title={why}><IcCrosshair />{T('Snipers ?')}</span>
+      </>
+    )
+  }
   const dv = e.devSold
   return (
     <>
-      <span className={`tr-rp${dv === null ? '' : dv >= 50 ? ' down' : dv > 0 ? ' warn' : ' up'}`}
+      <span className={`tr-rp${dv === null ? ' na' : dv >= 50 ? ' down' : dv > 0 ? ' warn' : ' up'}`}
         title={dv === null ? T('Dev sold: not known') : dv === 0 ? T('The dev hasn’t sold any of its buy') : T('The dev sold {p}% of its buy', { p: dv })}>
-        <IcDev />{dv === null ? T('DS ?') : dv === 0 ? T('DH') : `DS ${dv}%`}
+        <IcDev />{dv === null ? T('Dev ?') : dv === 0 ? T('Dev holds') : T('Dev sold {p}%', { p: dv })}
       </span>
-      <span className={`tr-rp${e.bundlers >= 3 ? ' down' : ''}`} title={T('{n} wallets bought in the launch’s own second (bundlers)', { n: e.bundlers })}><IcLayers />{e.bundlers}</span>
-      <span className={`tr-rp${e.snipers >= 10 ? ' warn' : ''}`} title={T('{n} wallets bought in its first 15 seconds (snipers)', { n: e.snipers })}><IcCrosshair />{e.snipers}</span>
+      <span className={`tr-rp${e.bundlers >= 3 ? ' down' : e.bundlers > 0 ? ' warn' : ' up'}`} title={T('{n} wallets bought in the launch’s own second (bundlers)', { n: e.bundlers })}><IcLayers />{T('Bundlers {n}', { n: e.bundlers })}</span>
+      <span className={`tr-rp${e.snipers >= 10 ? ' down' : e.snipers >= 4 ? ' warn' : ''}`} title={T('{n} wallets bought in its first 15 seconds (snipers)', { n: e.snipers })}><IcCrosshair />{T('Snipers {n}', { n: e.snipers })}</span>
     </>
   )
 }

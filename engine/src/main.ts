@@ -61,6 +61,7 @@ import { PushAlerts } from './alerts/service'
 import { generateVapidKeys, vapidValid, type VapidKeys } from './alerts/webpush'
 import { JupiterFeeWatcher, type SolCall } from './fees/jupiterWatch'
 import { AdminAuth } from './admin/auth'
+import { adminEmails, DEFAULT_PRIVY_APP_ID, PrivyIdentityCheck } from './admin/privyIdentity'
 import { FeatureFlags } from './admin/flags'
 import { Sweeper, cronMinuteOfDay } from './admin/sweeper'
 import { AdminApi, type AdminTrades } from './admin/api'
@@ -299,7 +300,9 @@ async function main() {
   // GLOBAL_KILL_SWITCH / KILL_SWITCH_VENUES; every change in the append-only audit log.
   // One verifier for every admin signature (the switch, flags, the sweeper), so a signature is used once across all of them.
   const adminCheck = new ControlVerifier(null, cfg.httpUrls)
-  const verifyAdmin: VerifyAdmin = (m, at, sig, now) => adminCheck.verifyAnyOf(cfg.admins, m, at, sig, now)
+  // Admins signed in by email (admin/privyIdentity.ts) sign with their Privy wallet, which isn't in cfg.admins.
+  let emailAdminWallets: () => string[] = () => []
+  const verifyAdmin: VerifyAdmin = (m, at, sig, now) => adminCheck.verifyAnyOf([...cfg.admins, ...emailAdminWallets()], m, at, sig, now)
   if (dataApi) {
     const tradeSwitch = new TradeSwitch({ settings: botStore, audit: botStore, env: cfg.killSwitch, verify: verifyAdmin })
     await tradeSwitch.load()
@@ -474,7 +477,9 @@ async function main() {
   if (dataApi) {
     const alert = webhookAlert(process.env.ALERT_WEBHOOK_URL)
     const off = (v: string | undefined) => /^(0|off|false|no)$/i.test(v?.trim() ?? '')
-    const auth = new AdminAuth({ admins: cfg.admins, origins: cfg.allowedOrigins, ttlMinutes: Number(process.env.ADMIN_SESSION_TTL_MINUTES) || 30, signedBy: (a, m, sig) => adminCheck.signedBy(a, m, sig), audit: botStore, alert })
+    const byEmail = new PrivyIdentityCheck({ appId: (process.env.PRIVY_APP_ID ?? DEFAULT_PRIVY_APP_ID).trim(), emails: adminEmails(process.env.ADMIN_EMAILS) })
+    const auth = new AdminAuth({ admins: cfg.admins, origins: cfg.allowedOrigins, ttlMinutes: Number(process.env.ADMIN_SESSION_TTL_MINUTES) || 30, signedBy: (a, m, sig) => adminCheck.signedBy(a, m, sig), audit: botStore, alert, byEmail })
+    emailAdminWallets = () => auth.emailAdminWallets()
     const flags = new FeatureFlags({ settings: botStore, audit: botStore, verify: verifyAdmin })
     siteFlags = flags
     await flags.load()

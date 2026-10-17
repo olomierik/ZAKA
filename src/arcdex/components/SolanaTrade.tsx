@@ -30,6 +30,8 @@ import { ed25519 } from '@noble/curves/ed25519'
 import { base58 } from '../../../api/_solCore'
 import { useBuyRisk } from '../lib/buyRisk'
 import TradeDetails, { HOT } from './TradeDetails'
+import { usePrefs } from '../lib/prefs'
+import { clampTip } from '../lib/jito'
 
 interface Props {
   mint: string
@@ -77,6 +79,7 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
   const sol = useSolanaWallets()
   const feeBps = SPOT_FEE_BPS
   const [mode, setMode] = useState<'buy' | 'sell'>(side ?? initialMode ?? 'buy')
+  const { antiMev, jitoTipLamports } = usePrefs()
   // The coin's safety rating, right above Buy (lib/buyRisk.tsx): a Danger coin waits for a tick.
   const buyRisk = useBuyRisk(mode === 'buy')
   const signer = solSignerOf(sol, trader.kind)
@@ -370,6 +373,8 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
           {value && !impactHot && <Row label={T('Price impact')} value={impactPct! < 0.1 ? '< 0.1%' : `${impactPct!.toFixed(1)}%`} color="var(--green)" />}
           {value && !refused && !costHot && <Row label={T('Total cost (fees and price impact)')} value={`${cost!.toFixed(1)}%`} />}
           <Row label={T('Arrives')} value={!quote ? '—' : route !== 'arc' ? T('in your Solana wallet in seconds') : mode === 'buy' ? T('on Solana in ~{s}s', { s: Math.max(2, quote.fillSeconds) }) : T('on Arc in ~{s}s', { s: Math.max(2, quote.fillSeconds) })} />
+          {/* Signed on Solana: Jito's bundle (anti-MEV, lib/jito.ts), or Jupiter's own landing. A buy paid on Arc isn't. */}
+          {(route !== 'arc' || mode === 'sell') && <Row label={T('MEV protection')} value={quote && isJup(quote) ? T('Jupiter lands it, with Jito tips') : antiMev ? T('Jito bundle · tip {sol} SOL', { sol: (clampTip(jitoTipLamports) / 1e9).toFixed(5) }) : T('Off (Settings → Trading)')} color={antiMev || (quote && isJup(quote)) ? 'var(--green)' : undefined} />}
           {!compact && <p className="swap-note">{SOL_NOTE()}</p>}
         </TradeDetails>
       </div>
