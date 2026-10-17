@@ -19,8 +19,9 @@ import { MemorySocialTradeStore, type SocialTradeStore } from '../social/book'
 import { MemoryModerationStore, type CommentRow, type ModerationStore, type MuteRow, type ReportRow } from '../social/moderation'
 import type { BookTrade } from '../social/pnl'
 import { MemoryCopyStore, type CopyExecRow, type CopyRuleRow, type CopyStore, type CopyWalletRow } from '../copy/engine'
+import { MemoryAnalyticsStore, type AnalyticsStore, type SigninRow, type SiteTradeRow, type TradeStatus } from '../analytics'
 
-export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore, AuditStore, FeeLedgerStore, SweepStore, PushStore, SocialTradeStore, ModerationStore, CopyStore {
+export interface BotStore extends PaperAccountStore, UserStore, VisitorStore, VoteStore, AuditStore, FeeLedgerStore, SweepStore, PushStore, SocialTradeStore, ModerationStore, CopyStore, AnalyticsStore {
   readonly kind: 'memory' | 'postgres'
   saveSignal(s: Signal): void
   savePosition(p: Position): void
@@ -96,6 +97,12 @@ export class MemoryBotStore implements BotStore {
   socialMutes() { return this.mod.socialMutes() }
   setMute(m: MuteRow, on: boolean) { return this.mod.setMute(m, on) }
   private copy = new MemoryCopyStore()
+  private an = new MemoryAnalyticsStore()
+  signinSeen(r: SigninRow) { this.an.signinSeen(r) }
+  siteTradeAdd(t: SiteTradeRow) { return this.an.siteTradeAdd(t) }
+  siteTradeChecked(id: string, status: TradeStatus, at: number) { this.an.siteTradeChecked(id, status, at) }
+  siteTradesPending(limit: number) { return this.an.siteTradesPending(limit) }
+  analyticsSince(since: number) { return this.an.analyticsSince(since) }
   copyWallets() { return this.copy.copyWallets() }
   saveCopyWallet(w: CopyWalletRow) { return this.copy.saveCopyWallet(w) }
   copyRules() { return this.copy.copyRules() }
@@ -204,6 +211,15 @@ drop trigger if exists arcdex_copy_executions_no_change on arcdex_copy_execution
 create trigger arcdex_copy_executions_no_change before update or delete on arcdex_copy_executions for each row execute function arcdex_fee_append_only();
 drop trigger if exists arcdex_copy_executions_no_truncate on arcdex_copy_executions;
 create trigger arcdex_copy_executions_no_truncate before truncate on arcdex_copy_executions for each statement execute function arcdex_fee_append_only();
+-- The owner's analytics (analytics.ts): wallets that signed in on the site, and the trades it sent, each checked on its chain.
+create table if not exists arcdex_users (address text primary key, kind text not null, first_seen timestamptz not null, last_seen timestamptz not null, sign_ins int not null default 1);
+create index if not exists arcdex_users_last on arcdex_users (last_seen);
+create table if not exists arcdex_site_trades (
+  id text primary key, chain text not null, venue text not null, side text not null, address text not null, usd double precision not null,
+  fee_usd double precision not null, coin text not null, tx text not null, at timestamptz not null, status text not null, checked_at timestamptz
+);
+create index if not exists arcdex_site_trades_pending on arcdex_site_trades (at) where status = 'pending';
+create index if not exists arcdex_site_trades_at on arcdex_site_trades (at desc);
 `
 
 export class PostgresBotStore implements BotStore {
@@ -280,6 +296,36 @@ export class PostgresBotStore implements BotStore {
   visitorSeen(id: string, at: number) {
     this.write('visitor', () => this.sql`insert into arcdex_visitors (id, first_seen, last_seen) values (${id}, ${new Date(at)}, ${new Date(at)})
       on conflict (id) do update set last_seen = excluded.last_seen`)
+  }
+  signinSeen(r: SigninRow) {
+    this.write('sign-in', () => this.sql`insert into arcdex_users (address, kind, first_seen, last_seen, sign_ins) values (${r.address}, ${r.kind}, ${new Date(r.firstAt)}, ${new Date(r.lastAt)}, 1)
+      on conflict (address) do update set last_seen = excluded.last_seen, kind = excluded.kind, sign_ins = arcdex_users.sign_ins + 1`)
+  }
+  async siteTradeAdd(t: SiteTradeRow) {
+    await this.ready
+    const rows = await this.sql`insert into arcdex_site_trades (id, chain, venue, side, address, usd, fee_usd, coin, tx, at, status, checked_at)
+      values (${t.id}, ${t.chain}, ${t.venue}, ${t.side}, ${t.address}, ${t.usd}, ${t.feeUsd}, ${t.coin}, ${t.tx}, ${new Date(t.at)}, ${t.status}, ${t.checkedAt ? new Date(t.checkedAt) : null})
+      on conflict (id) do nothing returning id`
+    return rows.length > 0
+  }
+  siteTradeChecked(id: string, status: TradeStatus, at: number) {
+    this.write('trade check', () => this.sql`update arcdex_site_trades set status = ${status}, checked_at = ${new Date(at)} where id = ${id}`)
+  }
+  async siteTradesPending(limit: number) {
+    await this.ready
+    const rows = await this.sql`select * from arcdex_site_trades where status = 'pending' order by at limit ${limit}`
+    return (rows as SiteTradeDb[]).map(fromSiteTradeDb)
+  }
+  async analyticsSince(since: number) {
+    await this.ready
+    const [u, t] = await Promise.all([
+      this.sql`select address, kind, first_seen, last_seen, sign_ins from arcdex_users where last_seen >= ${new Date(since)}`,
+      this.sql`select * from arcdex_site_trades where at >= ${new Date(since)} order by at desc limit 200000`,
+    ])
+    return {
+      users: (u as { address: string; kind: SigninRow['kind']; first_seen: Date; last_seen: Date; sign_ins: number }[]).map(r => ({ address: r.address, kind: r.kind, firstAt: new Date(r.first_seen).getTime(), lastAt: new Date(r.last_seen).getTime(), signIns: Number(r.sign_ins) })),
+      trades: (t as SiteTradeDb[]).map(fromSiteTradeDb),
+    }
   }
   async voteSet(chain: string, address: string, voter: string, kind: VoteKind | null, at: number) {
     await this.ready
@@ -482,3 +528,9 @@ export class PostgresBotStore implements BotStore {
       on conflict (id) do nothing`
   }
 }
+
+interface SiteTradeDb { id: string; chain: SiteTradeRow['chain']; venue: string; side: 'buy' | 'sell'; address: string; usd: number; fee_usd: number; coin: string; tx: string; at: Date; status: TradeStatus; checked_at: Date | null }
+const fromSiteTradeDb = (r: SiteTradeDb): SiteTradeRow => ({
+  id: r.id, chain: r.chain, venue: r.venue, side: r.side, address: r.address, usd: Number(r.usd), feeUsd: Number(r.fee_usd), coin: r.coin, tx: r.tx,
+  at: new Date(r.at).getTime(), status: r.status, checkedAt: r.checked_at ? new Date(r.checked_at).getTime() : null,
+})

@@ -92,6 +92,8 @@ import { createSiteApi } from './site/siteApi'
 import { EstablishedBook } from './market/established'
 import { setArcExtra } from '../../api/_argusCore'
 import { TrenchService } from './trench/service'
+import { Analytics, ANALYTICS, ANALYTICS_RPCS, type ChainTrade } from './analytics'
+import { jsonRpc as chainJsonRpc } from './trench/bsc'
 
 const cfg = loadConfig()
 setLogLevel(cfg.logLevel)
@@ -428,6 +430,7 @@ async function main() {
   let socialBoards: SocialBoards | null = null
   let siteFlags: FeatureFlags | null = null
   let copyRef: CopyEngine | null = null
+  let socialBookRef: TradeBook | null = null
   if (dataApi && !/^(0|off|false|no)$/i.test(process.env.SOCIAL?.trim() ?? '')) {
     const headNow = async () => Number(BigInt(await rpc.call<string>('eth_blockNumber', [])))
     const book = new TradeBook({
@@ -452,6 +455,7 @@ async function main() {
       alert: webhookAlert(process.env.ALERT_WEBHOOK_URL),
     })
     await book.load()
+    socialBookRef = book
     every(60_000, 'social book', () => { void book.tick() })
     void book.tick()
     moderation = new Moderation({
@@ -514,9 +518,23 @@ async function main() {
         day: { trades: day.length, volumeUsd: sum(day.map(d => d.usdc)), feesUsd: sum(day.map(d => d.fee_usdc)) },
       }
     }
+    // The owner's analytics (analytics.ts): sign-ins and trades the site sends, each trade checked on its chain, ARCDEX's
+    // router trades from the book, the fee ledger and the traffic counter. ANALYTICS=off stops it.
+    if (!off(process.env.ANALYTICS)) {
+      const rpcs = Object.fromEntries(Object.entries(ANALYTICS_RPCS).map(([c, urls]) => [c, chainJsonRpc(urls)]))
+      const analytics = new Analytics({
+        store: botStore,
+        call: (chain, method, params) => { const r = rpcs[chain]; return r ? r.call(method, params) : Promise.resolve(null) },
+        fees: feeRefs ? () => botStore.allFees() : undefined,
+        chainTrades: () => (socialBookRef?.all() ?? []).map((t): ChainTrade => ({ tx: t.tx, at: t.at, trader: t.trader, usd: Number(t.usdc) / 1e6, feeUsd: Number(t.fee) / 1e6, side: t.side, token: t.token })),
+        traffic: dataApi.traffic ? () => dataApi.traffic!.counts() : undefined,
+      })
+      dataApi.analytics = analytics
+      every(ANALYTICS.checkEveryMs, 'analytics checks', () => { void analytics.checkPending().catch(e => log.warn('analytics: checks failed', { error: errMsg(e) })) })
+    }
     dataApi.admin = new AdminApi({
       auth, origins: cfg.allowedOrigins, audit: botStore, verify: verifyAdmin, flags, sweeper, ledger: feeRefs?.ledger ?? null,
-      traffic: dataApi.traffic, tradeSwitch: dataApi.tradeSwitch, trades, moderation, copy: () => copyRef,
+      traffic: dataApi.traffic, tradeSwitch: dataApi.tradeSwitch, trades, moderation, copy: () => copyRef, analytics: dataApi.analytics,
       bots: accounts ? () => ({ bots: accounts.count, running: accounts.running, live: accounts.liveCount }) : null,
     })
     log.info('admin panel', { admins: cfg.admins.length, sweeper: minute === null || off(process.env.SWEEPER) ? 'off' : `daily after ${Math.floor(minute / 60)}:${String(minute % 60).padStart(2, '0')} UTC`, alerts: !!alert })

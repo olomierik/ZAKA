@@ -764,6 +764,10 @@ html body {
    used to appear behind it. WalletConnect's own modal sits above (1300). */
 .modal-back { position: fixed; inset: 0; background: var(--backdrop); z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 16px; }
 .modal-card { width: min(440px, 100%); max-height: 90vh; overflow-y: auto; background: var(--adx-card-bg); border: 1px solid var(--adx-card-border); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+/* Right after a first sign-in: the wallet is ready, add money next (CashModals.tsx DepositModal `welcome`). */
+.welcome-ready { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--green) 12%, transparent); border: 1px solid color-mix(in srgb, var(--green) 40%, transparent); font-size: 0.8rem; }
+.welcome-ready b { color: var(--green); font-size: 0.88rem; }
+.welcome-ready span { color: var(--text-muted); }
 .field { width: 100%; padding: 9px 11px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--adx-card-border); color: var(--text); font-size: 0.86rem; }
 .btn-primary { padding: 11px; border-radius: 10px; border: none; background: var(--adx-accent); color: var(--on-accent); font-weight: 700; cursor: pointer; }
 .btn-ghost { padding: 9px 12px; border-radius: 8px; border: 1px solid var(--adx-card-border); background: var(--bg-2); color: var(--text); font-weight: 600; cursor: pointer; }
@@ -3036,3 +3040,35 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 @media (max-width: 1100px) { .algo-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .algo-markets, .algo-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 480px) { .algo-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .algo-conf { max-width: none; } }
+
+/* ── /admin → Analytics (components/AdminAnalytics.tsx) ── */
+.an { display: flex; flex-direction: column; gap: 12px; }
+.an-days { display: inline-flex; border: 1px solid var(--adx-card-border); border-radius: 8px; overflow: hidden; }
+.an-days button { background: none; border: none; color: var(--text-muted); font: inherit; font-size: 0.76rem; padding: 4px 10px; cursor: pointer; }
+.an-days button.on { background: var(--bg-3); color: var(--text); font-weight: 700; }
+.an-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.an-kpi { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--bg-2); border: 1px solid var(--adx-card-border); min-width: 0; }
+.an-kpi span { font-size: 0.72rem; color: var(--text-muted); }
+.an-kpi b { font-size: 1.25rem; font-family: var(--mono); }
+.an-kpi.up b { color: var(--green); }
+.an-kpi small { font-size: 0.68rem; color: var(--text-muted); }
+.an-funnel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-muted); }
+.an-funnel b { color: var(--text); font-family: var(--mono); }
+.an-funnel i { font-style: normal; }
+.an-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.an-chart { padding: 10px; border-radius: 10px; background: var(--bg-2); border: 1px solid var(--adx-card-border); }
+.an-chart-h { display: flex; justify-content: space-between; font-size: 0.76rem; margin-bottom: 6px; }
+.an-chart-h span { font-family: var(--mono); color: var(--text-muted); }
+.an-chart svg { width: 100%; height: 64px; display: block; }
+.an-chart rect { fill: var(--green); opacity: 0.85; }
+.an-chart-x { display: flex; justify-content: space-between; font-size: 0.64rem; color: var(--text-muted); margin-top: 3px; }
+.an-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.an-h { display: block; font-size: 0.8rem; margin: 2px 0 6px; }
+.an-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--adx-card-border); font-size: 0.78rem; min-width: 0; }
+.an-row > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.an-row b { font-family: var(--mono); }
+.an-row .up { color: var(--green); } .an-row .down { color: var(--red); }
+.an-table { display: flex; flex-direction: column; overflow-x: auto; }
+.an-st { font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; background: var(--bg-3); }
+.an-st.ok { color: var(--green); } .an-st.failed, .an-st.mismatch { color: var(--red); }
+@media (max-width: 600px) { .an-row { font-size: 0.72rem; gap: 6px; } .an-kpi b { font-size: 1.05rem; } }

@@ -26,15 +26,16 @@ import { pct } from '../lib/routerInfo'
 import { SN_FEE } from '../starknet/net'
 import { JUP_REFERRAL } from '../lib/jupiter'
 import { adminSignIn, adminSignOut, useAdminSession } from '../lib/adminSession'
+import AdminAnalytics from '../components/AdminAnalytics'
 import { AdminAudit, AdminCopy, AdminFlags, AdminOverview, AdminReports, AdminSweeper, AdminTrades } from '../components/AdminViews'
 
 const SCOPES: TradeScope[] = ['all', ...TRADE_VENUES]
 const label = (s: TradeScope) => (s === 'all' ? T('Every venue') : TRADE_VENUE_LABEL[s])
 const ago = (at: number) => new Date(at).toLocaleString()
 
-type Tab = 'overview' | 'fees' | 'trades' | 'copy' | 'reports' | 'audit' | 'flags' | 'switch'
+type Tab = 'analytics' | 'overview' | 'fees' | 'trades' | 'copy' | 'reports' | 'audit' | 'flags' | 'switch'
 const TABS: { k: Tab; label: string }[] = [
-  { k: 'overview', label: N_('Overview') }, { k: 'fees', label: N_('Fees') }, { k: 'trades', label: N_('Trades') },
+  { k: 'analytics', label: N_('Analytics') }, { k: 'overview', label: N_('Overview') }, { k: 'fees', label: N_('Fees') }, { k: 'trades', label: N_('Trades') },
   { k: 'copy', label: N_('Copy trading') }, { k: 'reports', label: N_('Reports') }, { k: 'audit', label: N_('Audit log') }, { k: 'flags', label: N_('Flags') }, { k: 'switch', label: N_('Kill switch') },
 ]
 
@@ -43,7 +44,7 @@ export default function AdminPage() {
   const { address } = useAccount()
   const { signMessageAsync } = useSignMessage()
   const [signer, setSigner] = useState<'embedded' | 'connected'>(embedded ? 'embedded' : 'connected')
-  const [tab, setTab] = useState<Tab>('overview')
+  const [tab, setTab] = useState<Tab>('analytics')
   const who = signer === 'embedded' ? embedded : (address ?? null)
   const sign = useCallback(async (message: string) => (signer === 'embedded' ? getEmbeddedWalletClient().signMessage({ message }) : signMessageAsync({ message })), [signer, signMessageAsync])
   const session = useAdminSession()
@@ -58,6 +59,7 @@ export default function AdminPage() {
           <button key={x.k} role="tab" aria-selected={tab === x.k} className={`at-tab${tab === x.k ? ' on' : ''}`} onClick={() => setTab(x.k)}>{T(x.label)}</button>
         ))}
       </div>
+      {tab === 'analytics' && (session ? <AdminAnalytics /> : <SignInFirst />)}
       {tab === 'overview' && (session ? <AdminOverview /> : <SignInFirst />)}
       {tab === 'fees' && (
         <>

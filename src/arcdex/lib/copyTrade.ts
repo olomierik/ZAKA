@@ -31,6 +31,9 @@ import { ROUTER_FEES, routerCall } from './routerCalls'
 import { gasWithAllowance, usdcAllowanceOverride } from './fastBuy'
 import { sendArc } from './tx'
 import { waitForReceipt } from './receipts'
+import { reportTrade } from './analytics'
+// For analytics only: copies pay the router's fee (0.5% once the owners set it; the ledger has the exact amounts).
+const COPY_FEE_GUESS = 0.005
 import { waitForAllowance } from './rpc'
 import { referrerFor } from './referral'
 import { assertTradingOn } from './tradeSwitch'
@@ -304,6 +307,7 @@ async function copyBuy(t: WalletTradeWire, rule: CopyRule, settings: CopySetting
   setLots(ctx.me, lots)
   rememberHolding(ctx.me, token)
   notifyBalances()
+  reportTrade({ chain: 'arc', venue: 'copy', side: 'buy', address: ctx.me, usd: plan.usd, feeUsd: plan.usd * COPY_FEE_GUESS, coin: token, tx })
   return done({ status: 'filled', usd: plan.usd, tx, lagMs: Date.now() - t.ts })
 }
 
@@ -380,5 +384,6 @@ async function copySell(t: WalletTradeWire, rule: CopyRule, ctx: CopyContext, do
   if (j >= 0) left[j] = { ...left[j], raw: (BigInt(left[j].raw) > amount ? BigInt(left[j].raw) - amount : 0n).toString(), at: Date.now() }
   setLots(ctx.me, left)
   notifyBalances()
+  reportTrade({ chain: 'arc', venue: 'copy', side: 'sell', address: ctx.me, usd, feeUsd: usd * COPY_FEE_GUESS, coin: token, tx })
   return done({ status: 'filled', usd, tx, lagMs: Date.now() - t.ts })
 }

@@ -68,7 +68,7 @@ function TrendingCard({ data }: { data: TrendingAnswer | null }) {
     <div className="ld-card ld-trend">
       <div className="ld-trend-h">
         <b><span className="ld-live-dot" />{t('Trending now')}</b>
-        <a href="/app">{t('All markets')} ›</a>
+        <a href="/trenches">{t('All markets')} ›</a>
       </div>
       <div className="ld-trend-cols"><span>{t('Coin')}</span><span>{t('Price')}</span><span>24h</span><span className="ld-hide-xs">{t('Volume')}</span></div>
       {!rows && <div className="ld-mkts-empty">{t('Loading markets…')}</div>}
@@ -170,6 +170,9 @@ function Laurel({ flip }: { flip?: boolean }) {
   )
 }
 
+/** Log in: the app at the Trenches, which opens Privy's sign-in at once (App.tsx). */
+const LOGIN = '/trenches?login=1'
+
 const price = (p: number | null) => (p == null ? '—' : p >= 1000 ? `$${p.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : fmtSmallUsd(p))
 
 export default function Landing() {
@@ -205,7 +208,7 @@ export default function Landing() {
   const rows = tab === 'gainers' ? gainers : tab === 'new' ? markets.fresh : markets.perps
 
   const PLATFORM: [string, string, string, string][] = [
-    ['📈', t('Markets'), t('Every listed coin, live, with a safety rating.'), '/app'],
+    ['📈', t('Markets'), t('Every listed coin, live, with a safety rating.'), '/trenches'],
     ['◆', t('Spot'), t('Buy and sell in one tap, no pop-ups.'), '/spot'],
     ['📊', t('Futures'), t('Crypto, stocks, gold and indices, up to 40× leverage.'), '/futures'],
     ['🎯', t('Predictions'), t('Trade on what happens next, from $10.'), '/predict'],
@@ -217,7 +220,7 @@ export default function Landing() {
   const FAQ: [string, string][] = [
     [t('What is ARCDEX?'), t('A multichain decentralized exchange: spot trading, one-tap swaps, a USDC bridge, perpetual futures on crypto, stocks and commodities, and prediction markets.')],
     [t('What is $ARCDEX?'), t('ARCDEX’s platform coin. 30% of ARCDEX’s fees buy back $ARCDEX and burn it, and 70% go to liquidity pools. Every buyback and burn is on-chain and shown live on this page.')],
-    [t('How do I buy $ARCDEX?'), t('Open the app, create a trading wallet or connect your own, add USDC, then buy $ARCDEX on its trading page. Always check the contract address: {ca}.', { ca: short(COIN) })],
+    [t('How do I buy $ARCDEX?'), t('Log in with your email, add USDC, then buy $ARCDEX on its trading page. Always check the contract address: {ca}.', { ca: short(COIN) })],
     [t('Which coins can I trade?'), t('Launchpad coins and established coins with $15K or more of market cap, and stock tokens. Every coin carries a safety rating; coins rated Danger, coins from unknown contracts and coins that have rugged aren’t in the lists.')],
     [t('Where do futures and predictions trade?'), t('On Hyperliquid, the largest on-chain futures exchange. Your orders are signed in your browser and go straight to it, and ARCDEX never holds your money. Not available to US persons or in sanctioned regions.')],
     [t('Is my money at risk?'), t('Yes. Meme coins are very volatile, and futures with leverage can lose money quickly. Trade only what you can afford to lose. Nothing here is financial advice.')],
@@ -231,7 +234,7 @@ export default function Landing() {
       <header className="ld-nav" ref={navRef}>
         <a href="/" className="ld-brand"><img src="/arcdex-mark.png" alt="" width={30} height={30} /><span className="ld-word">arc<span>dex</span></span></a>
         <nav className={`ld-links${menu ? ' open' : ''}`} onClick={() => setMenu(false)}>
-          <a href="/app">{t('Markets')}</a>
+          <a href="/trenches">{t('Markets')}</a>
           <a href="/futures">{t('Futures')}</a>
           <a href="/predict">{t('Predict')} <small className="ld-tag">{t('New')}</small></a>
           <a href="/swap">{t('Swap')}</a>
@@ -247,8 +250,9 @@ export default function Landing() {
           <select className="ld-lang ld-lang-top" value={lang} onChange={e => void setLang(e.target.value as Lang)} aria-label={t('Language')}>
             {LANGS.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
           </select>
-          <a className="ld-btn ld-btn-ghost ld-btn-sm ld-hide-sm" href="/app">{t('Launch app')}</a>
-          <a className="ld-btn ld-btn-primary ld-btn-sm" href={COIN_PATH}>{t('Buy $ARCDEX')}</a>
+          <a className="ld-btn ld-btn-ghost ld-btn-sm ld-hide-sm" href={COIN_PATH}>{t('Buy $ARCDEX')}</a>
+          {/* Log in (owner, 2026-10-17): the app opens with Privy's sign-in, which makes the wallets (lib/returning.ts). */}
+          <a className="ld-btn ld-btn-primary ld-btn-sm" href={LOGIN} data-testid="landing-login">{t('Log in')}</a>
           <button className="ld-burger" onClick={() => setMenu(o => !o)} aria-label={t('Menu')}>☰</button>
         </div>
       </header>
@@ -258,7 +262,12 @@ export default function Landing() {
         <div className="ld-hero-text">
           <div className="ld-pill"><span className="ld-live-dot" />{t('Multichain DEX · spot & futures')}</div>
           <h1 className="ld-h1-name"><span className="ld-hero-blue">ARCDEX</span></h1>
-          <p className="ld-lead">{t('Find any coin, see whether it’s safe, and buy it in one tap: live markets, a safety rating on every coin, and a wallet that needs no sign-up. Spot and futures.')}</p>
+          <p className="ld-lead">{t('Find any coin, see whether it’s safe, and buy it in one tap: live markets on four chains, a safety rating on every coin, futures and predictions. Log in with your email or Google: your wallet is made for you.')}</p>
+          <div className="ld-hero-start">
+            <a className="ld-btn ld-btn-primary" href={LOGIN}>{t('Log in and start trading')} →</a>
+            <a className="ld-btn ld-btn-ghost" href="/trenches">{t('Explore markets')}</a>
+          </div>
+          <a className="ld-wallet-link" href="/trenches?connect=wallet">{t('Use MetaMask, Phantom or another wallet app instead')}</a>
           <div className="ld-laurels">
             <div className="ld-laurel"><Laurel /><div><b>{coinsLive == null ? '…' : coinsLive.toLocaleString()}</b><span>{t('Coins live now')}</span></div><Laurel flip /></div>
             <div className="ld-laurel"><Laurel /><div><b>{volLive == null ? '…' : usdShort(volLive)}</b><span>{t('24h volume in our markets')}</span></div><Laurel flip /></div>
@@ -278,10 +287,6 @@ export default function Landing() {
             </div>
             <a className="ld-btn ld-btn-primary ld-buy" href={COIN_PATH}>{t('Buy $ARCDEX')}</a>
           </div>
-          <div className="ld-hero-links">
-            <a className="ld-btn ld-btn-blue-ghost ld-btn-sm" href="/app">{t('Explore markets')} →</a>
-            <a className="ld-btn ld-btn-ghost ld-btn-sm" href="/futures">{t('Trade futures')}</a>
-          </div>
         </div>
 
         <div className="ld-hero-side">
@@ -295,7 +300,7 @@ export default function Landing() {
         <p className="ld-sub">{t('A screener shows you the chart, then sends you somewhere else to buy. ARCDEX does both, and checks the coin first.')}</p>
         <div className="ld-why">
           {([
-            ['⚡', t('Buy in one tap'), t('A trading wallet in your browser: no sign-up, no pop-ups, no switching apps.')],
+            ['⚡', t('Buy in one tap'), t('Log in with your email or Google and your wallet is made for you: no app to install, no seed phrase to write down.')],
             ['🛡', t('A safety rating on every coin'), t('A sell test, the contract, the creator and the buyers, checked for every coin, with the reasons in words.')],
             ['◎', t('Pay from any wallet'), t('Pay with SOL or USDC from Phantom, Solflare or Backpack, or USDC from your EVM wallet.')],
             ['🧹', t('Rugs filtered out'), t('Only launchpad coins and established coins with $15K or more of market cap. Coins that rugged drop out.')],
@@ -309,7 +314,7 @@ export default function Landing() {
       <section className="ld-section" id="markets">
         <div className="ld-split-head">
           <div><h2>{t('Live markets')}</h2></div>
-          <a className="ld-btn ld-btn-ghost" href="/app">{t('Explore markets')} →</a>
+          <a className="ld-btn ld-btn-ghost" href="/trenches">{t('Explore markets')} →</a>
         </div>
         <div className="ld-mkts-solo">
           <div className="ld-card ld-mkts">
@@ -317,7 +322,7 @@ export default function Landing() {
               {([['gainers', t('Top gainers')], ['new', t('New listing')], ['futures', t('Futures')]] as const).map(([k, l]) => (
                 <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>{l}</button>
               ))}
-              <a className="ld-mkts-all" href={tab === 'futures' ? '/futures' : '/app'}>{t('View all')} ›</a>
+              <a className="ld-mkts-all" href={tab === 'futures' ? '/futures' : '/trenches'}>{t('View all')} ›</a>
             </div>
             {!rows && <div className="ld-mkts-empty">{t('Loading markets…')}</div>}
             {rows?.length === 0 && <div className="ld-mkts-empty">{tab === 'gainers' ? t('No coin is up today yet.') : t('No new coin has reached $15K of market cap yet.')}</div>}
@@ -416,10 +421,10 @@ export default function Landing() {
       <section className="ld-final">
         <img src="/arcdex-mark.png" alt="" width={56} height={56} />
         <h2>{t('Trade every chain. Hold $ARCDEX.')}</h2>
-        <p>{t('Create a trading wallet in seconds. No sign-up.')}</p>
+        <p>{t('Log in with your email: your wallet is ready in seconds.')}</p>
         <div className="ld-cta ld-center">
-          <a className="ld-btn ld-btn-primary" href={COIN_PATH}>{t('Buy $ARCDEX')}</a>
-          <a className="ld-btn ld-btn-ghost" href="/app">{t('Launch app')} →</a>
+          <a className="ld-btn ld-btn-primary" href={LOGIN}>{t('Log in and start trading')} →</a>
+          <a className="ld-btn ld-btn-ghost" href={COIN_PATH}>{t('Buy $ARCDEX')}</a>
         </div>
       </section>
 
@@ -427,7 +432,7 @@ export default function Landing() {
         <div className="ld-foot-top">
           <a href="/" className="ld-brand"><img src="/arcdex-mark.png" alt="" width={24} height={24} /><span className="ld-word">arc<span>dex</span></span></a>
           <nav>
-            <a href="/app">{t('Markets')}</a>
+            <a href="/trenches">{t('Markets')}</a>
             <a href="/spot">{t('Spot')}</a>
             <a href="/futures">{t('Futures')}</a>
             <a href="/predict">{t('Predict')}</a>

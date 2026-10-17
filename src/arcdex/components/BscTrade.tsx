@@ -16,6 +16,7 @@ import { pct } from '../lib/routerInfo'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { onBalances } from '../lib/balances'
 import { ARC_EXPLORER, FEE_WALLET, SPOT_FEE_BPS } from '../lib/platform'
+import { reportTrade } from '../lib/analytics'
 import { bnbBalance, bscTokenBalance, bscTx, bscAddress, SELL_GAS_BNB, type BscHolding } from '../lib/bsc'
 import { getRelayQuote, QUOTE_LIMITS, quoteVerdict, relayValue, relayValueUsd, EVM_NATIVE, type RelayQuote, type RelayRequest } from '../lib/relayQuote'
 import { relayErrorText, runRelayEvm, type RelayProgress } from '../lib/relay'
@@ -216,6 +217,8 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
           ? await runFourBuy(kind, me, token, amountIn, fq, CURVE_SLIPPAGE_BPS, say)
           : await runFourSell(kind, me, token, amountIn, fq, CURVE_SLIPPAGE_BPS, say)
         setLinks([{ label: T('BNB Chain transaction'), href: bscTx(tx) }])
+        // four.meme's curve: no ARCDEX fee (lib/fourMeme.ts).
+        reportTrade({ chain: 'bnb', venue: 'four', side: mode, address: me, usd: inputUsd, feeUsd: 0, coin: token, tx })
         setMsg(mode === 'buy' ? T('Bought ≈{out} on four.meme’s curve.', { out: `${fmtTok(outAmount)} ${symbol}` }) : T('Sold for ≈{out}.', { out: `${fmtTok(outAmount)} ${ROUTE_LABEL[route]}` }))
       } else {
         const r = request()
@@ -232,6 +235,7 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
         const l = [{ label: paidOnArc ? T('Arc transaction') : T('BNB Chain transaction'), href: paidOnArc ? arcTx(res.tx) : bscTx(res.tx) }]
         if (res.outTx && res.outTx !== res.tx) l.push({ label: T('Delivered'), href: mode === 'sell' && route === 'arc' ? arcTx(res.outTx) : bscTx(res.outTx) })
         setLinks(l)
+        if (res.status !== 'refunded') reportTrade({ chain: paidOnArc ? 'arc' : 'bnb', venue: 'relay', side: mode, address: me, usd: inputUsd, feeUsd: inputUsd * feeBps / 10_000, coin: token, tx: res.tx })
         if (res.status === 'refunded') throw new Error(paidOnArc ? T('Relay couldn’t fill this buy: your USDC was refunded on Arc.') : T('Relay couldn’t fill this trade: it was refunded on BNB Chain.'))
         setMsg(res.status === 'pending' ? T('Still on its way: it lands by itself in a few minutes.')
           : mode === 'buy' ? T('Bought ≈{out}: it’s in your wallet on BNB Chain.', { out: `${fmtTok(got)} ${symbol}` })

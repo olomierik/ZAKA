@@ -21,6 +21,8 @@ html body { font-size: 13px; letter-spacing: -0.005em; }
 .tm-more > .tm-link { display: inline-flex; align-items: center; gap: 4px; }
 .tm-more-pop { min-width: 220px; max-height: calc(100vh - 80px); overflow-y: auto; }
 .tm-more-icon { width: 18px; text-align: center; }
+/* Swap and Bridge show in More only once their top-bar links have dropped out (lib/navItems.ts `fold`). */
+.tm-pop-item.fold-wide-in { display: none; }
 .tm-burger, .tm-back, .tm-search-toggle { display: none; }
 .tm-burger { width: 32px; height: 32px; flex-direction: column; justify-content: center; gap: 4px; padding: 0 8px; background: none; border: none; cursor: pointer; flex-shrink: 0; }
 .tm-burger span { display: block; height: 2px; background: var(--text); border-radius: 2px; }
@@ -276,6 +278,7 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
 @media (max-width: 1360px) {
   .tm-link { padding: 6px 9px; font-size: 13.5px; }
   .tm-link.fold-wide { display: none; }
+  .tm-pop-item.fold-wide-in { display: flex; }
   .tr-row { grid-template-columns: 62px minmax(0, 1fr) 128px; column-gap: 8px; padding: 9px 10px; }
   .tr-tile { width: 56px; height: 56px; }
 }
@@ -284,7 +287,6 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
   .tm-nav .navbar-search-wrap { flex-basis: 200px; min-width: 120px; }
 }
 @media (max-width: 1100px) {
-  .tm-link.fold-mid { display: none; }
   .tm-nav .navbar-search-wrap { display: none; }
   .tm-nav .navbar-search-wrap.open { display: block; position: absolute; top: 50px; left: 0; right: 0; max-width: none; padding: 8px 12px; background: var(--bg-2); border-bottom: 1px solid var(--adx-border); }
   .tm-nav .navbar-search-wrap.open::after { right: 19px; top: 15px; }
@@ -301,7 +303,8 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
 @media (max-width: 767px) {
   .tm-status { display: none; }
   .is-detail .tm-back { display: block; }
-  .is-detail .tm-burger { display: none; }
+  /* Phones have the tab bar and its More sheet: no second list of the same pages behind ☰. */
+  .tm-burger, .is-detail .tm-burger { display: none; }
   .tm-lang, .tm-net { display: none; }
   .tm-logo { font-size: 18px; padding: 0 4px 0 0; }
   .tm-nav { padding: 0 8px; gap: 5px; padding-top: env(safe-area-inset-top); height: calc(50px + env(safe-area-inset-top)); }

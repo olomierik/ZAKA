@@ -3036,6 +3036,41 @@ Owner: "copy trade" is missing; asked how it should work, the owner chose **from
     - Number fields clamped on every keystroke (typing 0.5 jumped to the floor).
 - **Not checked:** a real funded copy (the owner's first).
 
+## Against GMGN and fomo: landing, Privy log-in, one menu, analytics, Robinhood launches (2026-10-17)
+
+Owner: "compare GMGN and fomo, implement the best; our latency is slow, Robinhood coins especially; an analytics page (users logged in, trading, volume, fees) and an admin to monitor the money; from our URL a landing page, Log in to Privy, the wallet made, then trade; remove repeated buttons". The comparison, the measurements from the owner's connection in Dar es Salaam and the owner's next steps: `docs/COMPETITORS-2026-10-17.md`.
+
+- **The first screen (`lib/returning.ts`, `src/main.tsx`, `index.html`'s boot script):**
+  - `/` is the landing page for a visitor who has never signed in here, and the Trenches for one who has (the key `arcdex:returning`, set by `App.tsx` whenever a wallet is in use, cleared on Sign out / Disconnect). A returning trader's `/` becomes `/trenches` before the app starts. `/about` is always the landing page.
+  - The boot script sets `data-boot="ld"` for the landing page, which hides the app frame. Its CSP hash changed with it.
+  - `pageToPath({ name: 'terminal' })` is `/trenches` now (was `/`).
+- **Log in (`ConnectWallet.tsx` `logIn`, `openConnectModal`):** every "Log in" and "Connect wallet" prompt opens Privy's sign-in directly. The wallet-app list (`openWalletChooser`) opens only where Privy isn't on or couldn't be reached; a sign-in the person closed does nothing.
+  - **The landing page:** "Log in" in its top bar, "Log in and start trading" in the hero and the closing section (`/trenches?login=1`), "Explore markets" (`/trenches`), and a quiet "Use MetaMask, Phantom or another wallet app instead" (`/trenches?connect=wallet`). `App.tsx` reads both, takes them out of the address bar and opens the right window.
+  - **After a first sign-in in this browser** (`arcdex:welcomed`) the deposit window opens titled "Fund your wallet", with "✓ Your wallet is ready" (`DepositModal` `welcome`, the `OPEN_DEPOSIT` event).
+- **Every page in one place (`lib/navItems.ts`):**
+  - Top bar: Trenches, Futures, Predict, Portfolio, Swap, Bridge (`PRIMARY`), then More (`MORE_ITEMS`: Copy trading with its flag, Wallet tracker, Top futures traders, Feed, Clans, ARCDEX Algo, Starknet, $ARCDEX burn, Supported routes). Swap and Bridge show in More only once their links drop out (≤1360px, `fold-wide-in`).
+  - Phones: the tab bar and its More sheet (`allPages`); the ☰ drawer is for 768–900px only, from the same list. The burger is hidden on phones.
+  - Account menu: profile, account, settings, withdraw, transfers, rewards, Admin (admins' browsers), support, sign out. Portfolio, Feed, Clans and Language left it; the Settings window's Language tab too (the top bar's EN is the one picker). The logged-out language select beside Log in is gone.
+  - Network menu: the chains only (Starknet moved to More; RPC settings open from the status line's speed, and More on phones).
+  - Status line: Explorer, the live prices, the RPC speed, FPS and About. Its Positions, Alerts, Watchlist, Wallets, Feed, Clans and Routes links are gone (each has its place above).
+- **Caching (`netlify.toml`):** `/assets/*` is `public, max-age=31536000, immutable` (it was `max-age=0, must-revalidate`, so every visit asked for every file again). A missing `/assets/*` file is a 404, not the app's HTML, so a page left open across a deploy reloads at once.
+- **Analytics (`engine/src/analytics.ts`, `/admin` → Analytics, the panel's first tab):**
+  - **Sign-ins:** the site sends each wallet in use once per page load (`lib/analytics.ts` `reportSignin`: Privy, wallet app, trading wallet or Solana wallet). `POST /v1/analytics/signin`; 30 new wallets an hour per IP. Stored in `arcdex_users`.
+  - **Trades:** every trade form reports its trade after it goes through (`reportTrade`: chain, venue, side, dollars, ARCDEX's fee, transaction). Arc's swap, curve and Universal Router routes, the launchpad, Solana (Jupiter and Relay), BNB Chain (Relay and four.meme), Robinhood Chain (Across), paying with SOL, paying from Ethereum/Base/Arbitrum, and copy trades. `POST /v1/analytics/trade`; 240 an hour per IP; stored in `arcdex_site_trades`.
+  - **Checked on the chain:** every 15 seconds, pending trades are looked up on their own chain (`verifyTrade`: an EVM receipt that succeeded and was sent by that wallet; a Solana transaction without error, signed by it). Only those count. Not found in 20 minutes: unverifiable. Hyperliquid and Starknet aren't looked up.
+  - **ARCDEX's router trades** come from the trade book (Phase 6), read from the chain; a trade both sent and read counts once.
+  - **Fees** are the fee ledger's (received or accrued). **Visitors** are the traffic counter's.
+  - **`GET /v1/admin/analytics?days=`** (admin session): users (total, new, active, by sign-in kind), traders, trades and volume (today, 7 and 30 days, by chain and venue), fees (by source), the funnel (visitors → signed in → traded), the checks, a day-by-day series, top traders and the latest trades. The view (`components/AdminAnalytics.tsx`) shows them with bars per day and reloads every minute. `ANALYTICS=off` stops it.
+  - Tests: `engine/test/analytics.test.ts`.
+- **Robinhood Chain launches from the chain (`engine/src/trench/hoodLaunches.ts`, `hood.ts`):** before, new Robinhood coins reached the Trenches only from the list, read about every 6 minutes: the New lane showed coins 5–16 minutes old while GMGN's showed 46 s. Now the Robinhood feed's one-second poll also reads:
+  - **Pons:** its launcher `0x7ed5…ec7e` logs each launch (coin, curve, creator, the 4.2 ETH graduation threshold); about 25 an hour. Each curve's buys and sales (`PONS_BUY`, `PONS_SELL`) are read too, for coins launched while watching and for the list's `pons-v2` curves (which never ticked before). Progress is the curve's ETH against its threshold, read from `realQuoteReserve()` at most every 5 s.
+  - **Clanker and Bankr:** a v4 pool initialized with Clanker's hook `0x48b8…e8cc` or Bankr's `0x4e34…a544` against ETH, WETH or USDG, for a coin minted in that transaction or in the last ~10 minutes (Bankr's hook also opens pools for old coins: 480 of 488 seen). The opening price from the pool's starting price only when it gives a launch-sized market cap; otherwise the first trade sets it.
+  - Each launch shows at once (`TLAUNCH`, named from the coin's contract), and its pool or curve joins the trades read for two hours; the list carries it after.
+  - Traced on mainnet first (scripts kept outside the repo). `bun engine/scripts/check-hood-launches.ts [minutesBack] [seconds]` runs the reader live, nothing sent: 9 launches in 8 minutes (Pons and Bankr) when checked.
+  - Tests: `engine/test/hoodLaunches.test.ts` (recorded events).
+- **Checked:** the engine suite (870 pass), every site test script, both typechecks. In Chrome on local dev: the landing page at `/`, its Log in links, `/trenches?login=1` cleaning the address and opening sign-in (the wallet list locally, where Privy's id isn't set), the top bar, More and the status line. Not checked: Privy's real window, a real sign-in, and the Analytics tab with real data (it needs an admin's signature).
+- **Every new string is in all six dictionaries** (37).
+
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
 **Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**

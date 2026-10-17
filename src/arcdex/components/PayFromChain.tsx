@@ -15,6 +15,7 @@ import { useCash } from '../lib/usdc'
 import { pct } from '../lib/routerInfo'
 import { onBalances } from '../lib/balances'
 import { ARC_EXPLORER, SPOT_FEE_BPS } from '../lib/platform'
+import { chainOfId, reportTrade } from '../lib/analytics'
 import { bnbBalance, bscTx } from '../lib/bsc'
 import { rhEthBalance, rhTx } from '../lib/robinhood'
 import { rhEthUsd } from '../api/rhSwaps'
@@ -199,6 +200,7 @@ export default function PayFromChain({ chainId, token, symbol, priceUsd, buyBloc
       if (res.outTx && res.outTx !== res.tx) l.push({ label: T('Delivered'), href: selling ? payTx(from, res.outTx) : coinTx(chainId, res.outTx) })
       setLinks(l)
       if (res.status === 'refunded') throw new Error(T('Relay couldn’t fill this trade: it was refunded on {chain}.', { chain: signOn }))
+      { const c = chainOfId(selling ? chainId : from); if (c) reportTrade({ chain: c, venue: 'relay', side: selling ? 'sell' : 'buy', address: me, usd: inputUsd, feeUsd: inputUsd * SPOT_FEE_BPS / 10_000, coin: token, tx: res.tx }) }
       const got = Number(formatUnits(res.quote.expectedOut, res.quote.outDecimals))
       setMsg(res.status === 'pending' ? T('Still on its way: it lands by itself in a few minutes.')
         : T('Done: ≈{out} is in your wallet on {chain}.', { out: `${fmtTok(got)} ${selling ? curName : symbol}`, chain: landOn }))

@@ -1,6 +1,7 @@
 // Shareable URLs for every page: /token/0x…, /futures/BTC, /r/name (referral). The app keeps its page state
-// object; this maps it to and from the address bar. Netlify serves the SPA for every path. Since 2026-10-12 / is the
-// Trenches (the chain last picked), /arc, /robinhood, /solana and /bnb a chain's own, and /about the old landing page.
+// object; this maps it to and from the address bar. Netlify serves the SPA for every path. /trenches is the Trenches (the
+// chain last picked), /arc, /robinhood, /solana and /bnb a chain's own. / is the landing page for a first visit and the
+// Trenches for a returning trader (2026-10-17, lib/returning.ts); /about is always the landing page.
 
 import type { Page } from '../App'
 import { COIN_LC, COIN_POOL } from './coin'
@@ -10,7 +11,7 @@ const TRENCH_PATH: Record<TChain, string> = { arc: '/arc', hood: '/robinhood', s
 
 export function pageToPath(p: Page): string {
   switch (p.name) {
-    case 'terminal':    return p.chain ? TRENCH_PATH[p.chain] : '/'
+    case 'terminal':    return p.chain ? TRENCH_PATH[p.chain] : '/trenches'
     case 'argus':       return `/token/${p.address}${p.pool ? `?pool=${p.pool}` : ''}`
     case 'token':       return `/token/${p.address}`
     case 'trader':      return `/profile/${p.address}`

@@ -60,6 +60,14 @@
   status = 404
   force = true
 
+# A code file that isn't there (an old build's, asked for by a page left open across a deploy) is a 404, not the app's
+# HTML: the page then reloads to the new version at once (lib/chunkReload.ts). Files that exist are served as usual
+# (no force).
+[[redirects]]
+  from = "/assets/*"
+  to = "/404.html"
+  status = 404
+
 [[redirects]]
   from = "/arcdex"
   to = "/arcdex.html"
@@ -90,7 +98,7 @@
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'sha256-zhY0Xc/Db6MZsKr0fVYGPsbzIE07OvhG3SW1fbK3bB4=' 'unsafe-hashes' 'sha256-MhtPZXr7+LpJUY5qtMutB+qWfQtMaPccfe7QXtCcEYc=' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'sha256-372lrFz/GILdClwef+aj224hca2rs/+aT5IP5j/YnzI=' 'unsafe-hashes' 'sha256-MhtPZXr7+LpJUY5qtMutB+qWfQtMaPccfe7QXtCcEYc=' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
     X-Content-Type-Options = "nosniff"
     X-Frame-Options = "DENY"
@@ -104,3 +112,12 @@
   for = "/sw.js"
   [headers.values]
     Cache-Control = "no-cache"
+
+# The app's code and styles (2026-10-17): Vite names each file by its content, so a file never changes under its name.
+# They were served with max-age=0, must-revalidate: every visit asked again for every file, ~0.4-1.4 s each from Dar es
+# Salaam (docs/COMPETITORS-2026-10-17.md). Now the browser keeps them for a year and a return visit starts at once.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+

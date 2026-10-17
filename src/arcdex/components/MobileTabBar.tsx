@@ -9,7 +9,7 @@ import { trenchesPage } from './NavBar'
 import { useChain } from '../lib/chains'
 import { OPEN_RPC_SETTINGS } from '../lib/rpcSettings'
 import { t as T } from '../lib/i18n'
-import { useMoreItems } from '../lib/navItems'
+import { PRIMARY, allPages, useMoreItems } from '../lib/navItems'
 
 const TRENCHES = new Set<Page['name']>(['terminal', 'launchpad', 'robinhood', 'solana', 'bsc'])
 
@@ -18,8 +18,9 @@ interface Props { page: Page; navigate: (p: Page) => void; onOpenLists: () => vo
 export default function MobileTabBar({ page, navigate }: Props) {
   const chain = useChain()
   const [more, setMore] = useState(false)
-  // The pages beyond the tabs, the same list as the desktop More menu (lib/navItems.ts).
-  const items = useMoreItems()
+  // The pages beyond the tabs: the top bar's that have no tab here (Swap, Bridge), then the desktop More menu's
+  // (lib/navItems.ts), each once.
+  const items = allPages(useMoreItems(), PRIMARY.filter(i => i.fold))
   const tabs: { key: string; icon: string; label: string; to: Page; on: boolean }[] = [
     { key: 'trenches', icon: '◈', label: T('Trenches'), to: trenchesPage(chain), on: TRENCHES.has(page.name) },
     { key: 'futures', icon: '📊', label: T('Futures'), to: { name: 'perps' }, on: page.name === 'perps' || page.name === 'futures' },

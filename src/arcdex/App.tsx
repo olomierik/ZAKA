@@ -59,7 +59,12 @@ import './arcdex.css'
 // The terminal's own styles (motion.gift's layout, 2026-10-12), after the base so they win.
 import './terminal.css'
 import { t as T, N_, useLang } from './lib/i18n'
-import { ConnectModalHost } from './components/ConnectWallet'
+import { ConnectModalHost, logIn, openWalletChooser } from './components/ConnectWallet'
+import { markReturning } from './lib/returning'
+import { reportSignin } from './lib/analytics'
+import { accountOwner } from './lib/embeddedWallet'
+import { isPrivyWallet } from './privy/state'
+import { allPages, useMoreItems } from './lib/navItems'
 import PrivyHost from './privy/PrivyHost'
 import { NetworkGuard, WalletPromptHost } from './components/WalletPrompt'
 import { TradePausedBar } from './components/TradePausedBar'
@@ -68,7 +73,6 @@ import Sheet, { afterSheetClose } from './components/Sheet'
 import { sheetHistory } from './lib/sheetHistory'
 import { OPEN_TRADING_WALLET } from './lib/tradingWalletSheet'
 import { useEmbeddedAddress, useTrader } from './lib/identity'
-import { isKnownAdmin } from './lib/adminSession'
 import { useFundingScan } from './lib/funding'
 import ProfitAlerts from './components/ProfitAlerts'
 import PageErrorBoundary from './components/PageErrorBoundary'
@@ -125,18 +129,6 @@ export type Page =
 
 const fromUrl = (): Page => pathToPage(window.location.pathname, window.location.search) ?? { name: 'terminal' }
 
-// The drawer (the menu button on narrow screens): the terminal's pages. The social pages, the launchpad, Autotrade and
-// the old market list are no longer linked (owner, 2026-10-12: "remove the features that don't fit"); their links
-// still open.
-const MOBILE_NAV: [Page, string, string][] = [
-  [{ name: 'terminal', chain: 'arc' }, '◈', N_('Trenches · Arc')], [{ name: 'terminal', chain: 'hood' }, '🏹', N_('Trenches · Robinhood Chain')],
-  [{ name: 'terminal', chain: 'sol' }, '◎', N_('Trenches · Solana')], [{ name: 'terminal', chain: 'bnb' }, '◆', N_('Trenches · BNB Chain')],
-  [{ name: 'perps' }, '📊', N_('Futures')], [{ name: 'predict' }, '🎯', N_('Predict')], [{ name: 'portfolio' }, '▤', N_('Portfolio')],
-  [{ name: 'swap' }, '⇄', N_('Swap')], [{ name: 'bridge' }, '◎', N_('Bridge')], [{ name: 'starknet' }, '◆', N_('Starknet')],
-  [{ name: 'signals' }, '⚙', N_('ARCDEX Algo')], [{ name: 'leaderboard', tab: 'futures' }, '♛', N_('Top futures traders')], [{ name: 'tracker' }, '◉', N_('Wallet tracker')], [{ name: 'feed' }, '☰', N_('Feed')], [{ name: 'clans' }, '⚑', N_('Clans')],
-  [{ name: 'routes' }, '🧭', N_('Supported routes')],
-]
-
 export default function App() {
   const [page, setPage]       = useState<Page>(fromUrl)
   const [navOpen, setNavOpen] = useState(false)
@@ -149,13 +141,27 @@ export default function App() {
   const copying = useCopySettings().on && copyOn
   // Followed wallets with alerts on: their trades show a notice on any page (components/WalletAlertWatcher.tsx).
   const tracking = useTracked().some(w => w.alerts)
-  const me = useTrader().address
-  const drawer: [Page, string, string][] = [
-    ...MOBILE_NAV,
-    ...(copyOn ? [[{ name: 'copy' }, '⧉', N_('Copy trading')] as [Page, string, string]] : []),
-    // Admin, only for a wallet that signed in to /admin in this browser (lib/adminSession.ts).
-    ...(isKnownAdmin(me) ? [[{ name: 'admin' }, '🛡', N_('Admin')] as [Page, string, string]] : []),
-  ]
+  const trader = useTrader()
+  const me = trader.address
+  // The ☰ drawer (768-900px, where the top bar has no room for links): every page once, from lib/navItems.ts.
+  const drawer = [{ icon: '◈', label: N_('Trenches'), to: trenchesPage(getChain()) }, ...allPages(useMoreItems())]
+  // A trader who has signed in here goes straight to the Trenches next time, not the landing page (lib/returning.ts).
+  // Each wallet in use is counted once for the owner's analytics (lib/analytics.ts).
+  useEffect(() => {
+    if (!me) return
+    markReturning(true)
+    reportSignin(me, trader.kind === 'trading-wallet' ? (accountOwner() ? 'solana' : 'trading') : isPrivyWallet(me) ? 'privy' : 'wallet')
+  }, [me, trader.kind])
+  // From the landing page's Log in (/trenches?login=1): Privy's sign-in at once; ?connect=wallet: the wallet apps.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    const login = q.get('login'), connect = q.get('connect')
+    if (!login && !connect) return
+    q.delete('login'); q.delete('connect')
+    window.history.replaceState(null, '', window.location.pathname + (q.size ? `?${q}` : '') + window.location.hash)
+    if (connect === 'wallet') openWalletChooser()
+    else void logIn()
+  }, [])
   useEffect(() => { if (activeAlerts(alerts).length) setWatchAlerts(true) }, [alerts])
   // Alerts by push (lib/push.ts): once they're on in this browser, the engine's copy is kept in step.
   const pushOn = !!usePush().sub
@@ -217,8 +223,8 @@ export default function App() {
         {navOpen && (
           <aside className="sidebar with-discovery sidebar-open">
             <nav className="mobile-nav" style={{ flexWrap: 'wrap', gap: 4, padding: 8 }}>
-              {drawer.map(([p, icon, label]) => (
-                <button key={label} className={`disc-sub${pageToPath(page) === pageToPath(p) ? ' active' : ''}`} onClick={() => navigate(p)}>{icon} {T(label)}</button>
+              {drawer.map(({ to, icon, label }) => (
+                <button key={label} className={`disc-sub${pageToPath(page) === pageToPath(to) ? ' active' : ''}`} onClick={() => navigate(to)}>{icon} {T(label)}</button>
               ))}
               <a className="disc-sub" href="/about">ⓘ {T('About ARCDEX')}</a>
             </nav>
@@ -269,7 +275,7 @@ export default function App() {
 
       </div>
 
-      <StatusBar navigate={navigate} onAlerts={() => setBell(o => !o)} />
+      <StatusBar navigate={navigate} />
       {bell && <PageErrorBoundary resetKey="bell" fallback={null}><Suspense fallback={null}><AlertsPanel navigate={navigate} onClose={() => setBell(false)} /></Suspense></PageErrorBoundary>}
       <RpcSettingsHost />
       {!detail && <MobileTabBar page={page} navigate={navigate} onOpenLists={() => setNavOpen(true)} />}

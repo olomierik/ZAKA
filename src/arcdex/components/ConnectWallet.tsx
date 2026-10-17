@@ -1,12 +1,13 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useAccount, useConnect, type Connector } from 'wagmi'
-import { arc } from '../wagmi'
+import { getAccount } from 'wagmi/actions'
+import { arc, wagmiConfig } from '../wagmi'
 import { t as T } from '../lib/i18n'
 import { openTradingWallet } from '../lib/tradingWalletSheet'
 import { isUnlocked } from '../lib/embeddedWallet'
 import { connectSolanaWallet, phantomLink, pickSolSigner, useSolanaWallets } from '../lib/solanaWallet'
 import { openSolAccount } from '../lib/solAccount'
-import { privySignIn, usePrivyOn } from '../privy/state'
+import { privyOn, privySignIn, usePrivyOn } from '../privy/state'
 
 // "Connect wallet" for the whole app — a small modal over wagmi's own
 // connectors, in place of ConnectKit (which, with its Aave account kit,
@@ -27,10 +28,38 @@ import { privySignIn, usePrivyOn } from '../privy/state'
 let isOpen = false
 const subs = new Set<() => void>()
 const setOpen = (v: boolean) => { isOpen = v; subs.forEach(f => f()) }
-export const openConnectModal = () => setOpen(true)
+/** The list of wallet apps (MetaMask, Phantom, WalletConnect, the trading wallet…). */
+export const openWalletChooser = () => setOpen(true)
+
+/** Opened once, after a first sign-in: the deposit window with "your wallet is ready" (components/AccountMenu.tsx). */
+export const OPEN_DEPOSIT = 'arcdex:open-deposit'
+const WELCOMED = 'arcdex:welcomed'
+const welcomedOnce = () => { try { if (localStorage.getItem(WELCOMED) === '1') return true; localStorage.setItem(WELCOMED, '1') } catch { /* storage blocked */ } return false }
+
+/**
+ * Log in (owner, 2026-10-17: "when he clicks Log in he has to be taken to Privy, not wallet connect; then the wallet is
+ * created, then he can start trading"): Privy's own sign-in, email or a social account, which makes the EVM and Solana
+ * wallets. After a first sign-in in this browser the deposit window opens, so the next step is adding money. The
+ * wallet-app list opens only where Privy isn't on, or couldn't be reached; a sign-in the person closed does nothing.
+ */
+export async function logIn(): Promise<void> {
+  if (!privyOn()) { openWalletChooser(); return }
+  try {
+    await privySignIn()
+    // The wallet connects to the app a moment after Privy says yes (privy/PrivyRoot.tsx).
+    const t0 = Date.now()
+    while (!getAccount(wagmiConfig).address && Date.now() - t0 < 10_000) await new Promise(r => setTimeout(r, 150))
+    if (getAccount(wagmiConfig).address && !welcomedOnce()) window.dispatchEvent(new CustomEvent(OPEN_DEPOSIT, { detail: { welcome: true } }))
+  } catch (e) {
+    if (!(e as { cancelled?: boolean }).cancelled) openWalletChooser()
+  }
+}
+
+/** Every "Log in" / "Connect wallet" prompt in the app: Privy first (logIn). */
+export const openConnectModal = () => { void logIn() }
 
 export function ConnectButton({ label, style }: { label?: string; style?: React.CSSProperties }) {
-  return <button className="connect-btn" onClick={openConnectModal} style={style}>{label ?? T("Connect Wallet")}</button>
+  return <button className="connect-btn" onClick={openConnectModal} style={style}>{label ?? T("Log in")}</button>
 }
 
 const WC_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="10" fill="#3B99FC"/><path d="M12.3 15.6c4.3-4.2 11.2-4.2 15.4 0l.5.5c.2.2.2.6 0 .8l-1.8 1.7c-.1.1-.3.1-.4 0l-.7-.7c-3-2.9-7.8-2.9-10.8 0l-.8.7c-.1.1-.3.1-.4 0l-1.8-1.7c-.2-.2-.2-.6 0-.8l.8-.5zm19 3.5 1.6 1.6c.2.2.2.6 0 .8l-7.2 7c-.2.2-.6.2-.8 0l-5.1-5c-.1-.1-.1-.1-.2 0l-5.1 5c-.2.2-.6.2-.8 0l-7.2-7c-.2-.2-.2-.6 0-.8l1.6-1.6c.2-.2.6-.2.8 0l5.1 5c.1.1.1.1.2 0l5.1-5c.2-.2.6-.2.8 0l5.1 5c.1.1.1.1.2 0l5.1-5c.2-.2.6-.2.8 0z" fill="#fff"/></svg>')

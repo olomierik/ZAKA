@@ -43,7 +43,9 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   )
 }
 
-export function DepositModal({ trader, navigate, onClose, initial }: { trader: Trader; navigate: (p: Page) => void; onClose: () => void; initial?: 'crypto' | 'solana' | 'bridge' | 'card' }) {
+/** `welcome`: right after a first sign-in (ConnectWallet.tsx logIn), the window says the wallet is ready and that adding
+ * money is the next step. */
+export function DepositModal({ trader, navigate, onClose, initial, welcome }: { trader: Trader; navigate: (p: Page) => void; onClose: () => void; initial?: 'crypto' | 'solana' | 'bridge' | 'card'; welcome?: boolean }) {
   // An account opened from a Solana wallet deposits from that wallet first.
   const [mode, setMode] = useState<'crypto' | 'solana' | 'bridge' | 'card'>(initial ?? (accountOwner() ? 'solana' : 'crypto'))
   const { refresh } = useCash(trader.address)
@@ -60,12 +62,18 @@ export function DepositModal({ trader, navigate, onClose, initial }: { trader: T
   )
 
   return (
-    <Modal title={T("Deposit with")} onClose={onClose}>
+    <Modal title={welcome ? T("Fund your wallet") : T("Deposit with")} onClose={onClose}>
+      {welcome && addr && (
+        <div className="welcome-ready" data-testid="welcome-ready">
+          <b>✓ {T("Your wallet is ready")}</b>
+          <span>{T("Add USDC to start trading. Pick how you want to pay:")}</span>
+        </div>
+      )}
       {!addr ? (
         <div style={{ fontSize: '0.84rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {T("Connect a wallet or create a trading wallet first.")}
-          <button className="btn-primary" onClick={() => { onClose(); openTradingWallet() }}>{T("Open trading wallet")}</button>
-          <button className="btn-ghost" onClick={() => { onClose(); openConnectModal() }}>{T("Connect a wallet (Phantom, MetaMask…)")}</button>
+          {T("Log in first: your wallet is made for you.")}
+          <button className="btn-primary" onClick={() => { onClose(); openConnectModal() }}>{T("Log in")}</button>
+          <button className="btn-ghost" onClick={() => { onClose(); openTradingWallet() }}>{T("Open trading wallet")}</button>
         </div>
       ) : (
         <>
