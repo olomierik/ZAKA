@@ -91,7 +91,7 @@ CI. `bunx tsc --noEmit` fails on `scripts/compass-deploy.ts` (missing `@circlefi
 | Sweeper with dry run, alerts, `sweep_runs` | Fees already land in the fee wallet; Relay's balance claimed by hand | No sweeper (fees in-trade make most of it unnecessary) |
 | Global and per-chain kill switch | Per-router `pause()`, `AUTOTRADE_PAUSED`, `VITE_HL_TRADING` | No single switch for site trades |
 | Withdraw: cooldown/allowlist, limits, notifications | Passcode unless to a wallet that funded it (`lib/funding.ts`) | No new-address delay, limits or notifications |
-| Copy trading (P3) | Follows, feed, leaderboard, theses; no copy engine | **Built in Phase 7** (§14): engine-held copy wallets mirror verified leaders’ router trades on Arc |
+| Copy trading (P3) | Follows, feed, leaderboard, theses; no copy engine | **Built in Phase 7** (§14), then switched off (custodial). **Since 2026-10-17: from the user's own trading wallet, in the browser** (`lib/copyTrade.ts`, AGENTS.md "Copy trading from the user's own wallet") |
 | Retail UI: single field, no Pro toggle or order book | Binance/motion-style terminal with Trenches, books, futures | Kept by owner instruction (2026-10-15: "maintain my UI and just improve it"); the one-field flow can live inside it |
 
 What already matches: React/Tailwind PWA with a manifest; Node/TS API with Postgres and Redis (the engine); WebSocket
@@ -341,8 +341,9 @@ boards and points still read Supabase (points leave out flagged wallets).
 ## 14. Phase 7 status (2026-10-16)
 
 **Engine-held copy wallets are switched off** (owner, the same day: "I don't want ARCDEX to hold users' copy trade
-wallets"): the engine is given no vault, so none can be made. A non-custodial design is to replace them; what follows
-describes the engine as built.
+wallets"): the engine is given no vault, so none can be made. **Replaced on 2026-10-17** by copy trading from the
+user's own trading wallet, in the browser, while ARCDEX is open (AGENTS.md "Copy trading from the user's own wallet"):
+the same rules (size, slippage, safety, stop), nothing held by ARCDEX. What follows describes the engine as built.
 
 Custody (owner's choice, 2026-10-16: "proceed with your recommendations"): **engine-held copy wallets**. Each follower
 gets a copy wallet made on the engine, its key encrypted under `BOT_WALLET_SECRET` like a live bot's; ARCDEX is the

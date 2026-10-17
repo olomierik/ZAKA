@@ -35,6 +35,7 @@ export class WalletWatch {
     const d: WalletTradeWire = {
       c: chain, w: t.wallet, t: t.token, s: meta?.symbol || t.meta?.symbol || '', i: meta?.image ?? t.meta?.image ?? null,
       side: t.side === 'buy' ? 'B' : 'S', u: round2(t.usd), n: t.tokens, ts: t.ts, m: Math.round(t.mcapUsd ?? meta?.mcap ?? 0),
+      ...(t.pool ? { p: t.pool } : {}),
     }
     w.trades.push(d)
     if (w.trades.length > WATCH.keep) w.trades.splice(0, w.trades.length - WATCH.keep)

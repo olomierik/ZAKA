@@ -139,7 +139,7 @@ export class TrenchService implements EngineObserver {
     const meta = this.o.arcMeta?.(t.token) ?? null
     const st = this.books.arc.trade({
       token: t.token, wallet: t.wallet, side: t.side === 'BUY' ? 'buy' : 'sell', usd: t.usdValue, tokens: t.tokenAmount, ts: t.timestamp,
-      priceUsd: t.priceUsd, liquidityUsd: t.liquidity, meta: meta ? { symbol: meta.symbol, name: meta.name, image: meta.image } : null,
+      priceUsd: t.priceUsd, liquidityUsd: t.liquidity, pool: t.pool, meta: meta ? { symbol: meta.symbol, name: meta.name, image: meta.image } : null,
     }, meta?.launchedAt ?? 0)
     if (st) this.send({ t: 'TSMART', c: 'arc', d: st })
   }

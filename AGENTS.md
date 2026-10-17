@@ -2929,6 +2929,58 @@ Owner: "adjust GMGN's UI and functionalities in our app". Follow any wallet on A
   - Track from the smart-money lane, with a notice two seconds later on another page;
   - a 390px phone with no sideways scroll.
 
+## Menus: Admin in admins' browsers, Feed and Clans back (2026-10-17)
+
+Owner: "I can't see admin features, copy trade and all that the previous build did".
+- **Admin:** a 🛡 Admin link in the account menu and the drawer, shown only in a browser where an admin wallet has signed in to `/admin` before (`isKnownAdmin` in `lib/adminSession.ts`: up to 5 addresses in `arcdex:admin-wallets`), or is signed in now. It's a convenience, not a gate: `/admin` still needs the admin's signature, and visitors never see the link.
+- **Feed and Clans** are back in the account menu, the drawer, the phone's More sheet and the status bar, beside the wallet tracker.
+
+## Copy trading from the user's own wallet (2026-10-17)
+
+Owner: "copy trade" is missing; asked how it should work, the owner chose **from the user's own wallet**, non-custodial. It replaces the engine-held copy wallets of Phase 7 (switched off on 2026-10-16: "I don't want ARCDEX to hold users' copy trade wallets"); `pages/CopyPage.tsx` is gone, and `/copy` opens the new page. Nothing here promises a profit.
+
+- **How it works:** while ARCDEX is open in a tab, the built-in trading wallet (it signs locally, with no pop-ups) copies the Arc trades of the wallets it follows, under the follower's rules. The money never leaves the follower's own wallet, and ARCDEX holds nothing. With every ARCDEX tab closed, nothing is copied.
+  - **The feed:** the wallet tracker's live channel (`lib/walletTracker.ts` `onWalletTrades`). Each trade now carries its pool (`WalletTradeWire.p`, from `FeedTrade.pool` in `engine/src/trench/book.ts`), so a copy trades in the same pool as the leader.
+  - **The runner (`components/CopyRunner.tsx`):** mounted in `App.tsx` while copying is on. Trades are copied one at a time. One tab copies at a time (a lease in `arcdex:copy:lease`, renewed every 2s), so two open tabs never copy a trade twice. A notice shows each filled or failed copy; skips go to the log only.
+  - **Only for the trading wallet:** an external wallet would ask its owner to confirm every copy.
+- **A buy (`lib/copyTrade.ts` `copyBuy`):**
+  - **Size (`planBuy`):** a fixed amount, or the leader's own size up to the rule's most ($1–$500). Never past the day's budget (default $50, at most $5,000, counted from 00:00 UTC), or what the wallet can spend after a $0.30 gas reserve. Under $1, skipped.
+  - **Fresh:** a leader's trade over a minute old when it reaches the browser isn't copied.
+  - **Rating:** as the Trenches rate the coin (`ratingOf`): the engine's scan where it has one (`/v1/safety`, waited on up to ~6s), else the coin's market data (`tokenRisk` from this browser's market list, else the engine's live numbers). Danger never; "Safe coins only" skips Risky; a coin with neither isn't copied.
+  - **Route:** the leader's pool. Through ArcDexSwapRouter for v4 and v3 pools against USDC or ARGUS, exactly as the swap widget calls it (`lib/routerCalls.ts`, now shared). Through Uniswap's Universal Router for a native-USDC v4 pool, with ARCDEX's fee and the referrer's share as `submitNative` pays them (`sharesFor`; no approval: the USDC goes in as value). Coins on a launchpad's curve aren't copied yet.
+  - **Before signing:** the trade switch (`assertTradingOn('arc')`). The exact swap is simulated (router routes as though the exact approval had landed, `lib/fastBuy.ts`). Its price, ARCDEX's fee aside, must be no worse than the leader's by more than the rule's slippage (`priceAllows`, 0.5–15%, 3% by default). The minimum received is set from the simulation. `stillOn` (the flag, the master switch, the rule) is asked again before each transaction.
+  - **Sending:** an approval of exactly the amount and the swap, back to back, as the fast buy does.
+  - **A dry pool:** a pool with no liquidity at its price is a skip, not a failure (`dryPool`: the V4Quoter's `NotEnoughLiquidity` inside `UnexpectedRevertBytes`). On 2026-10-17, 11 of the 22 most active Arc coins were such pools: their only position had just been withdrawn.
+- **A sale (`copySell`):** when a leader sells, the same share of the coins copied from that leader is sold (`sellAmount`: the share of its holding it sold, read from the chain; all of them once it has 1% or less left). Coins that came from elsewhere are never sold. Router sales approve exactly the amount; native-pool sales go through Permit2 (exact amounts, 30 minutes). "Copy sells" can be turned off per leader.
+- **Kept in this browser:** the settings (`arcdex:copy:v1`, `lib/copySettings.ts`, small so the app's shell can read it), the coins copied per leader (`arcdex:copy-lots:v1:<wallet>`) and the log of the last 200 copies, skips and failures, with why (`arcdex:copy-log:v1:<wallet>`). Reasons are kept as English keys with their numbers apart (`whyVars`), so the log reads in the viewer's language.
+- **The page (`pages/CopyTradePage.tsx`, `/copy`, `/copy/<leader>`):**
+  - Start or stop all copying, with the daily budget and what it has spent today.
+  - The risks, to read and tick once before the first start: losses are copied too, copies come later at another price, the wallet signs by itself, only Arc pools for now, no advice.
+  - Leaders: add an Arc wallet (it's followed in the wallet tracker too), up to 20, each with its size, slippage, coin safety, copy sells and pause. Suggestions come from followed wallets and Arc's smart wallets.
+  - The coins copied, and the activity log with explorer links.
+  - Linked from trader profiles (Copy), the drawer and the phone's More sheet.
+- **The flag `walletCopy`** (on; `/admin` → Flags turns it off for everyone). The old `copyTrading` flag stays for the engine's switched-off copy wallets.
+- **Tests:**
+  - `bun scripts/test-copy-trade.ts` (in CI, offline, 40 checks): sizing and the budget, the safety and fee-aware price checks, proportional sales, the dry-pool revert (recorded from mainnet), the rules' bounds, storage.
+  - `VITE_ARCDEX_WS_URL=wss://arcdex-engine-production.up.railway.app/ws bun scripts/check-copy-trade.ts` (live, nothing sent): recent real buys from the engine, each routed, rated and simulated as a $1 copy from an address holding USDC. On 2026-10-17:
+    - 19 coins routed and rated, 12 simulated;
+    - router copies came within 0–1.2% of the leader's price, fee aside;
+    - MAGA was copied through the Universal Router at 1.1%;
+    - FAZE, AF, SOLD and STULTUS, the deepest native-USDC pools, simulated through Universal Router 2.1.2.
+  - `engine/test/walletWatch.test.ts`: the pool on each pushed trade.
+- **Checked in the production build** against the live engine, with a throwaway, unfunded trading wallet and the six busiest Arc wallets as leaders:
+  - their real trades reached the copier 0.3–0.9 s after they happened;
+  - buys were skipped ("not enough USDC"), and sales of coins never copied were skipped too; nothing was sent;
+  - an invalid address was refused, and Arc's smart wallets were suggested;
+  - typed amounts were saved within bounds when the field was left;
+  - the reasons read in French;
+  - a reload left the wallet locked: "Copying is paused until your trading wallet is unlocked", with Stop still there;
+  - Stop worked, the phone's More sheet links the page, and a 390px phone had no sideways scroll.
+  - **Found and fixed on the way:**
+    - Coins the engine has no launch record for arrive without a ticker; it's now read from the coin's contract.
+    - Number fields clamped on every keystroke (typing 0.5 jumped to the floor).
+- **Not checked:** a real funded copy (the owner's first).
+
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
 **Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**

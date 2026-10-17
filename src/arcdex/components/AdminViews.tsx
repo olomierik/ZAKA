@@ -315,7 +315,7 @@ export function AdminFlags({ sign, who, session }: { sign: Sign; who: `0x${strin
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const sameWallet = !!who && who.toLowerCase() === session.toLowerCase()
   const live: Record<SiteFlag, boolean> = {
-    withdrawLimits: useFlag('withdrawLimits'), buyRisk: useFlag('buyRisk'), walletsCard: useFlag('walletsCard'), jupiter: useFlag('jupiter'), privy: useFlag('privy'), pushAlerts: useFlag('pushAlerts'), comments: useFlag('comments'), copyTrading: useFlag('copyTrading'),
+    withdrawLimits: useFlag('withdrawLimits'), buyRisk: useFlag('buyRisk'), walletsCard: useFlag('walletsCard'), jupiter: useFlag('jupiter'), privy: useFlag('privy'), pushAlerts: useFlag('pushAlerts'), comments: useFlag('comments'), copyTrading: useFlag('copyTrading'), walletCopy: useFlag('walletCopy'),
   }
 
   async function change(f: SiteFlag, on: boolean) {

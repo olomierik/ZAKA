@@ -18,7 +18,8 @@ const RoutesPage      = lazy(() => import('./pages/RoutesPage'))
 const TrackerPage     = lazy(() => import('./pages/TrackerPage'))
 const WalletAlertWatcher = lazy(() => import('./components/WalletAlertWatcher'))
 // Copy trading (the build pack's Phase 7): engine-held copy wallets mirror verified leaders on Arc.
-const CopyPage        = lazy(() => import('./pages/CopyPage'))
+const CopyTradePage   = lazy(() => import('./pages/CopyTradePage'))
+const CopyRunner      = lazy(() => import('./components/CopyRunner'))
 const StarknetPage    = lazy(() => import('./pages/StarknetPage'))
 const ArcdexPage       = lazy(() => import('./pages/ArcdexPage'))
 const AutotradeSoon   = lazy(() => import('./pages/AutotradeSoon'))
@@ -77,6 +78,7 @@ import { engineApiUrl } from './api/marketStream'
 import { startTraffic } from './lib/traffic'
 import { loadRuntimeFlags, useFlag } from './lib/flags'
 import { useTracked } from './lib/walletTracker'
+import { useCopySettings } from './lib/copySettings'
 
 // Remember ?ref= or /r/<name> before anything renders (first-touch attribution).
 captureReferral()
@@ -142,7 +144,9 @@ export default function App() {
   // Once an alert exists in this session the watcher stays, so a notice can outlive the last waiting alert.
   const alerts = useAlerts()
   const [watchAlerts, setWatchAlerts] = useState(false)
-  const copyOn = useFlag('copyTrading')
+  // Copy trading from the user's own trading wallet (lib/copyTrade.ts): the walletCopy flag, /admin → Flags.
+  const copyOn = useFlag('walletCopy')
+  const copying = useCopySettings().on && copyOn
   // Followed wallets with alerts on: their trades show a notice on any page (components/WalletAlertWatcher.tsx).
   const tracking = useTracked().some(w => w.alerts)
   const me = useTrader().address
@@ -236,7 +240,7 @@ export default function App() {
           {page.name === 'hl-trader'   && <HlTraderPage key={page.address} address={page.address} navigate={navigate} />}
           {page.name === 'routes'      && <RoutesPage navigate={navigate} />}
           {page.name === 'tracker'     && <TrackerPage key={page.address ?? ''} navigate={navigate} focus={page.address} />}
-          {page.name === 'copy'        && <CopyPage key={page.leader ?? ''} navigate={navigate} leader={page.leader} />}
+          {page.name === 'copy'        && <CopyTradePage key={page.leader ?? ''} navigate={navigate} leader={page.leader} />}
           {page.name === 'starknet'    && <StarknetPage navigate={navigate} />}
           {page.name === 'coin'       && <ArcdexPage navigate={navigate} />}
           {page.name === 'swap'        && <Swap navigate={navigate} />}
@@ -278,6 +282,7 @@ export default function App() {
       <WalletPromptHost />
       {/* A toast (and, when allowed, a system notification) for every profit the signed-in owner's bots take. */}
       <ProfitAlerts navigate={navigate} />
+      {copying && <PageErrorBoundary resetKey="copy" fallback={null}><Suspense fallback={null}><CopyRunner navigate={navigate} /></Suspense></PageErrorBoundary>}
       {tracking && <PageErrorBoundary resetKey="wallets" fallback={null}><Suspense fallback={null}><WalletAlertWatcher navigate={navigate} /></Suspense></PageErrorBoundary>}
       {watchAlerts && <PageErrorBoundary resetKey="alerts" fallback={null}><Suspense fallback={null}><PriceAlertWatcher navigate={navigate} /></Suspense></PageErrorBoundary>}
       {pushOn && <PageErrorBoundary resetKey="push" fallback={null}><Suspense fallback={null}><PushSync /></Suspense></PageErrorBoundary>}

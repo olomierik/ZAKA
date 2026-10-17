@@ -163,6 +163,8 @@ export interface WalletTradeWire {
   n: number
   ts: number
   m: number
+  /** The pool it went through (Arc's live trades): a copy trades the same pool. */
+  p?: string
 }
 
 /** A wallet's record on one chain, from the trades the engine has seen (engine/src/quant/wallets.ts). */

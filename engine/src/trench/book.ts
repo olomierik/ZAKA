@@ -27,6 +27,8 @@ export interface FeedTrade {
   /** 0–100 along its curve, when the trade went through one. */
   progress?: number | null
   graduated?: boolean
+  /** The pool or curve it went through, when the feed knows it (Arc): the wallet tracker passes it on for copying. */
+  pool?: string | null
   /** Name, symbol and picture, when the feed knows them (Arc's launches): used if the book doesn't. */
   meta?: { symbol: string; name: string; image: string | null } | null
 }

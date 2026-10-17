@@ -34,6 +34,10 @@ export const FLAGS = {
   /** Copy trading (pages/CopyPage.tsx): engine-held copy wallets that mirror verified leaders' trades on Arc. Off until an
    * admin turns it on from /admin → Flags; the engine copies nothing while it's off, whatever the page shows. */
   copyTrading: false,
+  /** Copy trading from the user's own trading wallet while ARCDEX is open (lib/copyTrade.ts, pages/CopyTradePage.tsx):
+   * non-custodial, Arc first (owner, 2026-10-17). On; /admin can turn it off without a deploy, and a running copy stops
+   * at its next trade. */
+  walletCopy: true,
 } as const satisfies Record<SiteFlag, boolean>
 export type FlagName = SiteFlag
 export type RuntimeFlags = Partial<Record<FlagName, boolean>>

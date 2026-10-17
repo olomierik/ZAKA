@@ -30,8 +30,8 @@ interface Props { page: Page; navigate: (p: Page) => void; onOpenLists: () => vo
 export default function MobileTabBar({ page, navigate }: Props) {
   const chain = useChain()
   const [more, setMore] = useState(false)
-  // Copy trading shows once it's switched on (the copyTrading flag, /admin → Flags).
-  const copyOn = useFlag('copyTrading')
+  // Copy trading from the user's own trading wallet (the walletCopy flag, /admin → Flags).
+  const copyOn = useFlag('walletCopy')
   const items = copyOn ? [{ icon: '⧉', label: N_('Copy trading'), to: { name: 'copy' } as Page }, ...MORE] : MORE
   const tabs: { key: string; icon: string; label: string; to: Page; on: boolean }[] = [
     { key: 'trenches', icon: '◈', label: T('Trenches'), to: trenchesPage(chain), on: TRENCHES.has(page.name) },

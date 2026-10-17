@@ -57,7 +57,10 @@ describe('WalletWatch', () => {
     expect(pushed.map(p => [p.topic, p.d.c, p.d.side])).toEqual([[walletTopic(EVM)!, 'arc', 'B'], [walletTopic(EVM)!, 'bnb', 'S']] as string[][])
     expect(pushed[0].d.s).toBe('AAA')
     expect(pushed[0].d.m).toBe(20_000)
-    expect(w.view(EVM)!.map(t => t.c)).toEqual(['bnb', 'arc'])
+    expect(pushed[0].d.p).toBeUndefined()
+    w.record('arc', { ...trade(EVM, 'buy', 3_000), pool: '0xpool' }, null)
+    expect(pushed[2].d.p).toBe('0xpool')
+    expect(w.view(EVM)!.map(t => t.c)).toEqual(['arc', 'bnb', 'arc'])
   })
   test('a look at a wallet’s page starts keeping its trades', () => {
     const { w } = harness()

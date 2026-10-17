@@ -900,6 +900,7 @@ export const SITE_FLAGS = {
   pushAlerts: { protective: false, label: 'Alerts by push, with ARCDEX closed' },
   comments: { protective: false, label: 'Comments on theses and coins' },
   copyTrading: { protective: false, label: 'Copy trading (engine-held copy wallets on Arc)' },
+  walletCopy: { protective: false, label: 'Copy trading from the user’s own trading wallet (in the browser)' },
 } as const
 export type SiteFlag = keyof typeof SITE_FLAGS
 export const isSiteFlag = (f: unknown): f is SiteFlag => typeof f === 'string' && Object.prototype.hasOwnProperty.call(SITE_FLAGS, f)

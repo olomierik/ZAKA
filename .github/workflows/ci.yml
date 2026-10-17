@@ -63,6 +63,8 @@ jobs:
         run: bun scripts/test-fast-buy.ts
       - name: Wallet tracker (addresses, following, routes)
         run: bun scripts/test-wallet-tracker.ts
+      - name: Copy trading from the user's own wallet (sizing, checks, storage)
+        run: bun scripts/test-copy-trade.ts
 
   engine:
     name: Engine (typecheck, tests)
