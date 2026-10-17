@@ -371,6 +371,13 @@ export function startServer({ cfg, api, health }: ServerDeps) {
           : { status: 404, body: { error: 'not found' } }
         return json(req, r.status, r.body, 'no-store')
       }
+      // Everyone's stats page (/analytics on the site): the totals, no wallets or transactions (analytics.ts publicStats).
+      if (url.pathname === '/v1/stats' && req.method === 'GET') {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        const an = api.analytics
+        if (!an) return json(req, 503, { error: 'stats aren’t running here' })
+        return json(req, 200, await an.publicStats(Number(url.searchParams.get('days')) || 30), 'public, max-age=30')
+      }
       // The owner's analytics (analytics.ts): a wallet signing in, a trade the site made. Sent as text/plain (no
       // preflight), from the site's own pages only.
       if (url.pathname === '/v1/analytics/signin' || url.pathname === '/v1/analytics/trade') {

@@ -92,7 +92,6 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
           {item('⇅', t('Transfers'), () => go({ name: 'transfers' }))}
           {item('◌', t('Blur balances'), () => setPrefs(p => ({ blur: !p.blur })), <Toggle on={prefs.blur} />)}
           {item('✦', t('Rewards'), () => go({ name: 'rewards' }))}
-          {isAdmin && item('📈', t('Analytics'), () => go({ name: 'admin', tab: 'analytics' }))}
           {isAdmin && item('🛡', t('Admin'), () => go({ name: 'admin' }))}
           {item('✉', t('Contact support'), () => { setOpen(false); setSupport(true) })}
           <div style={{ borderTop: '1px solid var(--adx-card-border)', margin: '6px 0' }} />

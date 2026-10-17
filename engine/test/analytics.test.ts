@@ -129,5 +129,19 @@ describe('the analytics service', () => {
     expect(r.daily).toHaveLength(31)
     expect(r.daily.at(-1)).toMatchObject({ trades: 1, volumeUsd: 25, feesUsd: 0.5, traders: 1 })
     expect(r.topTraders[0]).toMatchObject({ address: B, volumeUsd: 100 })
+
+    // Everyone's page: the same totals, and no wallet or transaction anywhere in it.
+    const p = await an.publicStats(30, NOW)
+    expect(p.users.total).toBe(2)
+    expect(p.trades.volume.total).toBe(125)
+    expect(p.fees.total).toBe(1.75)
+    expect(p.visitors).toEqual({ online: 3, today: 40, total: 900 })
+    expect(p.latest[0]).toEqual({ chain: 'arc', venue: 'arc-router', side: 'buy', usd: 25, coin: expect.any(String), at: expect.any(Number) })
+    const text = JSON.stringify(p).toLowerCase()
+    for (const secret of [A, B, SOLW, tx(1), tx(9), sig(5)]) expect(text).not.toContain(secret.toLowerCase())
+    expect('topTraders' in p || 'checks' in p || 'funnel' in p).toBe(false)
+    // Worked out at most every 30 seconds.
+    expect(await an.publicStats(30, NOW + 10_000)).toBe(p)
+    expect(await an.publicStats(30, NOW + 31_000)).not.toBe(p)
   })
 })

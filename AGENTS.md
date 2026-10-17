@@ -3192,6 +3192,17 @@ The same setting as Jito's (Settings → Trading → "🛡 Anti-MEV (Solana and 
 - **Tests:** `bun scripts/test-bsc-private.ts` (in CI, fetch stubbed): the order, the same bytes on 429, 5xx, lost connections and non-JSON answers, refusals not retried, "already known", "nonce too low" not taken as sent, every RPC out never falling back to the public node, a wrong hash refused; a viem wallet client over the transport sending only the raw transaction privately (and through the public node with the setting off); the form's three states. `--live` runs the checks above against both RPCs.
 - Every new string is in all six dictionaries (5; the setting's two strings replaced).
 
+## Analytics for everyone (2026-10-17)
+
+Owner: "what is hindering me to see the analytics page as a normal user; put it there for everyone to see the number of users, wallets, volume traded, fees collected and others".
+
+- **Why it was hidden:** the only analytics view was the admin panel's tab, behind an admin wallet's (or admin email's) sign-in.
+- **Now `/analytics` (also `/stats`) is everyone's page (`pages/StatsPage.tsx`), "Analytics" in the top bar and the phone's More sheet (`PRIMARY` in `lib/navItems.ts`):** users (wallets used on the site, and how they sign in), traders, volume, trades and fees collected (today, 7 days, all), online now and visitors today, the day-by-day charts, volume by chain, fees by source, and the latest trades. Read again every 30 seconds.
+- **The engine (`GET /v1/stats?days=1|7|30|90`, `publicStats` in `engine/src/analytics.ts`):** the admin report's totals and series with no wallet address, transaction hash, check counts, funnel or top traders. Worked out at most every 30 seconds per window, cached publicly for 30.
+- **The view is shared:** `components/AdminAnalytics.tsx` with `pub` reads `/v1/stats`; without it, the admin's full `/v1/admin/analytics`. The admin panel keeps its Analytics tab at `/admin`; the account menu's admin-only Analytics link is gone (the top bar has it for everyone).
+- **Checked:** `engine/test/analytics.test.ts` (the public view has the same totals and none of the wallets or transactions), both typechecks, and in the built-in browser the top-bar link, the page at 1440px and 375px (no sideways scroll), with the engine's answer stood in for until it deploys.
+- **Every new string is in all six dictionaries** (6).
+
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
 **Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**

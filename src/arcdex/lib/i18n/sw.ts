@@ -4082,5 +4082,11 @@ const d: Record<string, string> = {
   "Jito didn’t take the transaction ({why}). Nothing was sent; try again, or turn anti-MEV off in Settings to send it normally.": "Jito haikupokea muamala ({why}). Hakuna kilichotumwa; jaribu tena, au zima kinga ya MEV kwenye Mipangilio uutume kawaida.",
   "Jito didn’t land the trade in time, so nothing was spent. Try again, or raise the Jito tip in Settings.": "Jito haikuiwasilisha biashara kwa wakati, kwa hivyo hakuna kilichotumika. Jaribu tena, au ongeza bakshishi ya Jito kwenye Mipangilio.",
   "{wallet} isn’t an admin wallet. Sign in with Privy under an admin email and sign with its wallet, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} si pochi ya msimamizi. Ingia kwa Privy kwa barua pepe ya msimamizi na usaini kwa pochi yake, au ongeza pochi kwenye ADMIN_EVM_ADDRESSES kwenye Railway (arcdex-engine).",
+  "The stats aren’t available on this build.": "Takwimu hazipatikani kwenye toleo hili.",
+  "The stats didn’t load (the engine answered {s}).": "Takwimu hazikupakia (injini ilijibu {s}).",
+  "Live, from the chain": "Moja kwa moja, kutoka kwenye mnyororo",
+  "Users (wallets)": "Watumiaji (pochi)",
+  "ARCDEX in numbers": "ARCDEX kwa takwimu",
+  "How many people use ARCDEX, what they trade and the fees it collects, read again every 30 seconds. A trade counts once its transaction is found on its chain; fees are read from the fee ledger on-chain.": "Watu wangapi wanatumia ARCDEX, wanachofanyia biashara na ada inazokusanya, husomwa upya kila sekunde 30. Biashara huhesabiwa muamala wake ukipatikana kwenye mnyororo wake; ada husomwa kutoka kwenye daftari la ada on-chain.",
 }
 export default d

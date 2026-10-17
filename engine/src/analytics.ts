@@ -158,6 +158,17 @@ export class Analytics {
 
   constructor(private o: AnalyticsOptions) {}
 
+  private pub: { at: number; days: number; body: Promise<PublicStats> } | null = null
+  /** The public stats, worked out at most every 30 seconds for each window (everyone's page asks). */
+  publicStats(days = 30, now = Date.now()): Promise<PublicStats> {
+    days = [1, 7, 30, 90].includes(days) ? days : 30
+    if (this.pub && this.pub.days === days && now - this.pub.at < 30_000) return this.pub.body
+    const body = this.report(days, now).then(publicStats)
+    body.catch(() => { if (this.pub?.body === body) this.pub = null })
+    this.pub = { at: now, days, body }
+    return body
+  }
+
   private take(map: Map<string, { hour: number; n: number }>, ip: string, max: number, now: number): boolean {
     const hour = Math.floor(now / 3_600_000)
     const seen = map.get(ip)
@@ -294,6 +305,34 @@ export class Analytics {
       topTraders,
       latest: [...site].sort((a, b) => b.at - a.at).slice(0, 50).map(({ chain, venue, side, address, usd, feeUsd, coin, tx, at, status }) => ({ chain, venue, side, address, usd, feeUsd, coin, tx, at, status })),
     }
+  }
+}
+
+/** What everyone may see (owner, 2026-10-17: "put it there for everyone to see the number of users, wallets, volume
+ * traded, fees collected"): the totals and the day-by-day series. No wallet address, no transaction hash. */
+export interface PublicStats {
+  at: number
+  days: number
+  visitors: { online: number; today: number; total: number } | null
+  users: { total: number; new24h: number; active24h: number; active7d: number; byKind: Record<string, number> }
+  traders: AnalyticsReport['traders']
+  trades: AnalyticsReport['trades']
+  fees: { total: number; d1: number; d7: number; d30: number; bySource: Record<string, number> }
+  daily: DayRow[]
+  latest: { chain: string; venue: string; side: string; usd: number; coin: string | null; at: number }[]
+}
+
+export function publicStats(r: AnalyticsReport): PublicStats {
+  const v = r.visitors as (TrafficCounts & Record<string, unknown>) | null
+  return {
+    at: r.at, days: r.days,
+    visitors: v ? { online: Number(v.online ?? 0), today: Number(v.today ?? 0), total: Number(v.total ?? 0) } : null,
+    users: r.users,
+    traders: r.traders,
+    trades: r.trades,
+    fees: { total: r.fees.total, d1: r.fees.d1, d7: r.fees.d7, d30: r.fees.d30, bySource: r.fees.bySource },
+    daily: r.daily,
+    latest: r.latest.filter(t => t.status === 'ok').slice(0, 20).map(t => ({ chain: t.chain, venue: t.venue, side: t.side, usd: t.usd, coin: t.coin ?? null, at: t.at })),
   }
 }
 
