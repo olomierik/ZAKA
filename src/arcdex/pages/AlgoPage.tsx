@@ -224,6 +224,9 @@ export default function AlgoPage({ navigate }: { navigate: (p: Page) => void }) 
 
   const openTrades = trades.filter(t => t.status === 'open' || t.status === 'pending')
   const closed = trades.filter(t => t.status === 'closed' || t.status === 'failed')
+  // Open positions first, then the closed ones, newest first.
+  const listed = [...trades.filter(t => t.status === 'open' || t.status === 'pending'), ...closed]
+  const ex = status?.explore
   const st = status?.stats
   const risk = status?.risk
 
@@ -245,6 +248,16 @@ export default function AlgoPage({ navigate }: { navigate: (p: Page) => void }) 
 
       {error && !status && <div className="algo-banner bad">{T('The agent is not reachable right now.')} <span className="algo-muted">{error}</span></div>}
       {status?.waiting && <div className="algo-banner">{status.waiting}</div>}
+      {ex?.on && (
+        <div className="algo-banner algo-explore">
+          <b>{T('Exploring on paper')}</b>{' '}
+          {T('Until its confidence is calibrated and proven, Algo trades every sound setup small on paper, risking {r}% of the book a trade. Only trades that pass every gate would run on testnet.', { r: ex.riskPct })}
+          <span className="algo-lanes">
+            <span>{T('Gated')}: {ex.gated.trades} · <b style={{ color: pnlColor(ex.gated.pnlUsd) }}>{usd(ex.gated.pnlUsd)}</b></span>
+            <span>{T('Exploring')}: {ex.explore.trades} · <b style={{ color: pnlColor(ex.explore.pnlUsd) }}>{usd(ex.explore.pnlUsd)}</b>{ex.explore.winRate !== null && ` · ${T('{p}% won', { p: (ex.explore.winRate * 100).toFixed(0) })}`}</span>
+          </span>
+        </div>
+      )}
       {status?.risk.killSwitch.tripped && <div className="algo-banner bad">{T('Kill switch tripped')}: {status.risk.killSwitch.reason}</div>}
 
       {status && st && risk && (
@@ -292,7 +305,7 @@ export default function AlgoPage({ navigate }: { navigate: (p: Page) => void }) 
                       <td style={{ color: DIR[d.decision.direction]?.[1] }}>{T(DIR[d.decision.direction]?.[0] ?? d.decision.direction)}</td>
                       <td><Quality q={d.decision.setup_quality} /></td>
                       <td>{d.decision.direction === 'neutral' ? '—' : `${(d.decision.confidence * 100).toFixed(1)}%`}</td>
-                      <td title={d.gate.checks.filter(c => !c.ok).map(c => c.detail).join(' · ')}>{d.gate.passed ? T(ACTION[d.action]) : d.decision.direction === 'neutral' ? T('No trade') : T('Held back: {why}', { why: T(CHECK[d.gate.checks.find(c => !c.ok)?.id ?? ''] ?? '') })}</td>
+                      <td title={d.gate.checks.filter(c => !c.ok).map(c => c.detail).join(' · ')}>{d.action === 'open' && d.plan?.lane === 'explore' ? T('Opened a trade (exploring)') : d.gate.passed ? T(ACTION[d.action]) : d.decision.direction === 'neutral' ? T('No trade') : T('Held back: {why}', { why: T(CHECK[d.gate.checks.find(c => !c.ok)?.id ?? ''] ?? '') })}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -300,8 +313,8 @@ export default function AlgoPage({ navigate }: { navigate: (p: Page) => void }) 
             </div>
           </Card>
 
-          <Card title={T('Trades')} right={<span className="algo-muted">{closed.length}</span>}>
-            {closed.length === 0 ? <div className="algo-muted algo-empty">{T('No trades yet. It trades only when a setup clears every gate.')}</div> : <TradeTable trades={closed.slice(0, 50)} />}
+          <Card title={T('Trades')} right={<span className="algo-muted">{listed.length}</span>}>
+            {listed.length === 0 ? <div className="algo-muted algo-empty">{ex?.on ? T('No trades yet. It opens one when a setup is sound.') : T('No trades yet. It trades only when a setup clears every gate.')}</div> : <TradeTable trades={listed.slice(0, 50)} />}
           </Card>
 
           <div className="algo-grid">
@@ -366,7 +379,7 @@ function TradeTable({ trades }: { trades: AlgoTrade[] }) {
             <tr key={t.id}>
               <td><AgoText ts={t.openedAt} /></td>
               <td>{t.market}</td>
-              <td style={{ color: DIR[t.side][1] }}>{T(DIR[t.side][0])} {t.leverage}×</td>
+              <td style={{ color: DIR[t.side][1] }}>{T(DIR[t.side][0])} {t.leverage}×{t.lane === 'explore' && <span className="algo-lane" title={T('Paper exploration: a sound setup the calibration hasn’t proven yet, traded small')}>{T('Exploring')}</span>}</td>
               <td>{price(t.entry)}{t.txOpen && <a className="algo-tx" href={txUrl(t.txOpen)} target="_blank" rel="noreferrer">↗</a>}</td>
               <td>{t.status === 'pending' ? T('Filling…') : price(t.exit)}{t.txClose && <a className="algo-tx" href={txUrl(t.txClose)} target="_blank" rel="noreferrer">↗</a>}</td>
               <td>{usd(t.sizeUsd, 0)}</td>

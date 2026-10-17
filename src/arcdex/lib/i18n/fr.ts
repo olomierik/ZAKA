@@ -4135,5 +4135,12 @@ const d: Record<string, string> = {
   "too many new accounts from here, try again later": "trop de nouveaux comptes depuis ici, réessayez plus tard",
   "Practice isn’t available on this build.": "L’entraînement n’est pas disponible sur cette version.",
   "Start practising first.": "Commencez d’abord l’entraînement.",
+  "Exploring on paper": "Exploration sur papier",
+  "Until its confidence is calibrated and proven, Algo trades every sound setup small on paper, risking {r}% of the book a trade. Only trades that pass every gate would run on testnet.": "Tant que sa confiance n’est pas calibrée et prouvée, Algo trade chaque configuration solide en petit sur papier, en risquant {r} % du portefeuille par trade. Seuls les trades qui passent tous les filtres tourneraient sur le testnet.",
+  "Gated": "Filtré",
+  "Exploring": "Exploration",
+  "Opened a trade (exploring)": "Trade ouvert (exploration)",
+  "No trades yet. It opens one when a setup is sound.": "Aucun trade pour l’instant. Il en ouvre un quand une configuration est solide.",
+  "Paper exploration: a sound setup the calibration hasn’t proven yet, traded small": "Exploration sur papier : une configuration solide que la calibration n’a pas encore prouvée, tradée en petit",
 }
 export default d

@@ -76,8 +76,14 @@ describe('the agent, live in paper mode', () => {
     for (const t of trades) {
       const row = agent.core.decisions.find(d => d.id === t.decisionId)
       if (row) {
-        expect(row.gate.passed).toBe(true)
-        expect(row.decision.confidence).toBeGreaterThan(0.8)
+        // Gated trades pass every gate; paper explorations every structural one, sized at 0.5% risk.
+        if (t.lane === 'explore') {
+          expect(row.gate.checks.find(c => c.id === 'explore')?.ok).toBe(true)
+          expect(row.plan?.fraction).toBe(0.005)
+        } else {
+          expect(row.gate.passed).toBe(true)
+          expect(row.decision.confidence).toBeGreaterThan(0.8)
+        }
         expect(row.decision.setup_quality).toBeGreaterThanOrEqual(2)
         expect(row.decision.risk_state).toBe('safe')
       }

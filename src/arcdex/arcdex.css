@@ -3185,3 +3185,9 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
   .pr-bar > div b { font-size: 0.92rem; }
   .pr-bar-name { margin-left: 0; flex-basis: 100%; }
 }
+
+/* ARCDEX Algo's paper exploration (2026-10-18): the banner with each lane's record, and the tag on its trades. */
+.algo-explore { background: rgba(240,185,11,0.08); border-color: rgba(240,185,11,0.4); }
+.algo-explore b { font-weight: 700; }
+.algo-lanes { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 6px; font-size: 0.76rem; }
+.algo-lane { margin-left: 6px; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--amber); background: rgba(240,185,11,0.14); border-radius: 4px; padding: 1px 5px; vertical-align: middle; }
