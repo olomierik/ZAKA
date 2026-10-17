@@ -102,6 +102,13 @@ export function plan(o: {
   return actions
 }
 
+/** A keeper transaction's gas limit, with headroom over the estimate. Block times are whole
+ * seconds, and the estimate and the transaction can fall in different ones: a market whose
+ * borrow fee was already brought up to date in the estimate's second (`_accrue` writes nothing)
+ * is brought up to date again in the next (two more storage writes, 8,309 gas). Sent with exactly
+ * the estimate, such a close ran out of gas on-chain. Only the gas used is paid. */
+export const keeperGas = (estimate: bigint) => (estimate * 13n) / 10n + 20_000n
+
 function emptySnap(nowMs: number): Snapshot {
   return { ts: nowMs, fetchedAt: nowMs, feeds: {} }
 }
@@ -228,10 +235,10 @@ export class PerpsKeeper {
     const functionName = a.type === 'execute' ? 'executeRequest' : a.type === 'liquidate' ? 'liquidate' : 'executeTpSl'
     const args = [a.id, pricesArg(a.snap, a.feeds)] as const
     try {
-      const { request } = await this.o.client.simulateContract({
-        address: this.o.perps, abi: PERPS_ABI, functionName, args, account: this.o.wallet.account,
-      })
-      const hash = await this.o.wallet.writeContract(request)
+      const call = { address: this.o.perps, abi: PERPS_ABI, functionName, args, account: this.o.wallet.account } as const
+      const { request } = await this.o.client.simulateContract(call)
+      const gas = keeperGas(await this.o.client.estimateContractGas(call))
+      const hash = await this.o.wallet.writeContract({ ...request, gas })
       const receipt = await this.o.client.waitForTransactionReceipt({ hash, timeout: 30_000, pollingInterval: 500 })
       if (receipt.status !== 'success') throw new Error(`reverted on-chain (${hash})`)
       this.executed++

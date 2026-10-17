@@ -2004,6 +2004,9 @@ Owner: "yes do it all" to the plan: a USDC pool as every trader's counterparty, 
     - Liquidates with the contract's own math (`positionAt` in `shared.ts`, which the site uses too).
     - Executes take-profits and stop-losses.
     - Backs off 20 s after a failure.
+    - **Gas headroom (2026-10-17, `keeperGas`):** each transaction is sent with 30% + 20,000 gas over the estimate. Only the gas used is paid.
+      - Before, it went out with exactly the estimate. A close or liquidation estimated in the second its market's borrow fee was last brought up to date (`_accrue` writes nothing) ran out of gas when mined a second later (two more storage writes, 8,309 gas).
+      - On Arc testnet that cost a failed transaction and a 20 s backoff.
   - **Trades (`events.ts`):** the contract's events.
   - **Routes:** `GET /v1/perps/status|prices|candles|state|trades`.
 - **Deployment, by the engine itself (`deploy.ts`):**
@@ -2033,7 +2036,12 @@ Owner: "yes do it all" to the plan: a USDC pool as every trader's counterparty, 
 - **Checked:**
   - `forge test --match-contract SensePerpsTest`.
   - `bun test engine/test/perps.test.ts`.
-  - `bun test engine/test/perpsE2e.test.ts` (anvil).
+  - `bun test engine/test/perpsE2e.test.ts` (anvil; skipped in CI, which has no anvil).
+    - **Flaky until 2026-10-17** (6/6, 2/6 and 5/6 on a Windows machine), for three reasons:
+      - **Requests in the second of the last price.** Block times are whole seconds, and the contract takes a price signed at or after the request's second. A request made in the same second as the test's last price was rightly filled at that price, not at the move published next (a close paid 98.38 USDC where ~148 was expected). Each request now waits until anvil's pending block is stamped after the last price (`pastLastPrice`).
+      - **The keeper's gas** (above). A test now pins anvil's clock so the estimate falls in the accrual second and the liquidation lands in the next one. With the headroom removed it fails every run.
+      - **A cached block number.** viem caches `getBlockNumber` for half a second on Arc's chain, so the events test's two quick `poll()`s could stop a block short of the last trade. It now polls until that block is read. In the engine this only delays an event by one poll: the cursor never skips a block.
+    - Then 15 runs in a row passed.
   - In a browser, against a local chain standing in for Arc testnet, with the real keeper and real RedStone prices (`engine/scripts/perps-standin.ts` explains the setup): the engine deployed and seeded by itself; then faucet, a market long filled in ~15 s, a take-profit, a short closed by hand, a pool deposit, and a limit order cancelled. Also a 375px phone with no sideways scroll.
 - **Before mainnet:** the audit (`contracts/AUDIT-SensePerps.md`), RedStone's terms for production use, and real USDC (deploy without `SenseTestUSDC`).
 

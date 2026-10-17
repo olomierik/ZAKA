@@ -56,6 +56,18 @@ describe.skipIf(!ANVIL)('futures on a local chain', () => {
     expect(snap?.ts).toBe(lastTs)
   }
 
+  /** Waits until a block mined now is stamped after the last price published. Block times are
+   * whole seconds (anvil's, as Arc's), and the contract takes a price signed at or after the
+   * request's second: a request made in the second of the last price would rightly be filled
+   * with that price, not with the move the test publishes next. */
+  async function pastLastPrice() {
+    const until = Date.now() + 5_000
+    while (Number((await client.getBlock({ blockTag: 'pending' })).timestamp) * 1000 <= lastTs) {
+      if (Date.now() > until) throw new Error(`the chain's clock didn't pass the last price (${lastTs})`)
+      await Bun.sleep(20)
+    }
+  }
+
   const read = <T>(functionName: string, args: unknown[] = []) =>
     client.readContract({ address: dep.perps as Address, abi: PERPS_ABI, functionName: functionName as never, args: args as never }) as Promise<T>
   const usdcOf = (a: Address) => client.readContract({ address: dep.usdc as Address, abi: TEST_USDC_ABI, functionName: 'balanceOf', args: [a] })
@@ -63,6 +75,11 @@ describe.skipIf(!ANVIL)('futures on a local chain', () => {
     const hash = await w.writeContract({ address, abi, functionName, args } as never)
     const r = await client.waitForTransactionReceipt({ hash })
     expect(r.status).toBe('success')
+  }
+  /** A trader's request, made after every price published so far. */
+  const request = async (functionName: 'requestOpen' | 'requestClose', args: unknown[]) => {
+    await pastLastPrice()
+    await send(traderWallet, dep.perps as Address, PERPS_ABI, functionName, args)
   }
 
   beforeAll(async () => {
@@ -92,7 +109,7 @@ describe.skipIf(!ANVIL)('futures on a local chain', () => {
   test('a trader opens a 10x long; the keeper fills it at the first price signed after the request', async () => {
     await send(traderWallet, dep.usdc as Address, TEST_USDC_ABI, 'faucet', [])
     await send(traderWallet, dep.usdc as Address, TEST_USDC_ABI, 'approve', [dep.perps, 10n ** 12n])
-    await send(traderWallet, dep.perps as Address, PERPS_ABI, 'requestOpen', [0, true, 100_000_000n, 1_000_000_000n, parseUnits('200000', 8), 0n, 0n, 0n])
+    await request('requestOpen', [0, true, 100_000_000n, 1_000_000_000n, parseUnits('200000', 8), 0n, 0n, 0n])
     await keeper.tick()
     expect((await read<bigint[]>('positionIdsOf', [trader.address])).length).toBe(0) // no price after it yet
     await publish({ BTC: 100_000, ETH: 4_000, SOL: 150 })
@@ -108,7 +125,7 @@ describe.skipIf(!ANVIL)('futures on a local chain', () => {
   test('closing at +5% pays the trader', async () => {
     const before = await usdcOf(trader.address)
     const [id] = await read<bigint[]>('positionIdsOf', [trader.address])
-    await send(traderWallet, dep.perps as Address, PERPS_ABI, 'requestClose', [id, 0n])
+    await request('requestClose', [id, 0n])
     await publish({ BTC: 105_000, ETH: 4_000, SOL: 150 })
     await keeper.tick()
     expect((await read<bigint[]>('positionIdsOf', [trader.address])).length).toBe(0)
@@ -118,7 +135,7 @@ describe.skipIf(!ANVIL)('futures on a local chain', () => {
   }, 60_000)
 
   test('a short goes under its maintenance margin and the keeper liquidates it', async () => {
-    await send(traderWallet, dep.perps as Address, PERPS_ABI, 'requestOpen', [1, false, 100_000_000n, 1_000_000_000n, 1n, 0n, 0n, 0n])
+    await request('requestOpen', [1, false, 100_000_000n, 1_000_000_000n, 1n, 0n, 0n, 0n])
     await publish({ BTC: 105_000, ETH: 4_000, SOL: 150 })
     await keeper.tick()
     expect((await read<bigint[]>('positionIdsOf', [trader.address])).length).toBe(1)
@@ -131,7 +148,7 @@ describe.skipIf(!ANVIL)('futures on a local chain', () => {
   }, 60_000)
 
   test('take-profit closes on the keeper\'s next price', async () => {
-    await send(traderWallet, dep.perps as Address, PERPS_ABI, 'requestOpen', [2, true, 100_000_000n, 500_000_000n, parseUnits('1000', 8), 0n, parseUnits('160', 8), 0n])
+    await request('requestOpen', [2, true, 100_000_000n, 500_000_000n, parseUnits('1000', 8), 0n, parseUnits('160', 8), 0n])
     await publish({ BTC: 105_000, ETH: 4_400, SOL: 150 })
     await keeper.tick()
     expect((await read<bigint[]>('positionIdsOf', [trader.address])).length).toBe(1)
@@ -143,8 +160,15 @@ describe.skipIf(!ANVIL)('futures on a local chain', () => {
   test('the events tell the trader\'s story', async () => {
     const ev = new PerpsEvents(client, dep.perps as Address, dep.block)
     ev.setMarkets(['BTC', 'ETH', 'SOL'])
-    await ev.poll()
-    await ev.poll() // a read that failed under load picks up where it stopped
+    // poll() reads up to the head viem last saw, which viem caches (half a second on Arc's
+    // chain): poll until the last trade's block is read. A read that failed under load picks up
+    // where it stopped.
+    const lastBlock = Number(await client.getBlockNumber({ cacheTime: 0 }))
+    const until = Date.now() + 10_000
+    while ((ev.list(null, 1)[0]?.block ?? -1) < lastBlock && Date.now() < until) {
+      await ev.poll()
+      await Bun.sleep(100)
+    }
     const mine = ev.list(trader.address, 20).map(t => [t.kind, t.market, t.isLong])
     expect(mine).toEqual([
       ['takeProfit', 'SOL', true], ['opened', 'SOL', true],
@@ -153,5 +177,35 @@ describe.skipIf(!ANVIL)('futures on a local chain', () => {
     ])
     expect(ev.list(null, 3).length).toBe(3)
     expect(keeper.executed).toBeGreaterThanOrEqual(7)
+  }, 60_000)
+
+  test('a keeper transaction mined in a later second than its gas estimate still goes through', async () => {
+    // Gas is estimated in the second the market's borrow fee was last brought up to date (nothing
+    // to write), and the liquidation lands in the next second, where bringing it up to date
+    // writes two slots more (8,309 gas on this build). anvil's clock is pinned for both.
+    let estimatedAt = 0n
+    const nextBlockAt = (ts: bigint) => client.request({ method: 'evm_setNextBlockTimestamp' as never, params: [Number(ts)] as never })
+    const late = new PerpsKeeper({
+      client: {
+        ...client,
+        estimateContractGas: (async (args: Parameters<PublicClient['estimateContractGas']>[0]) => {
+          estimatedAt = (await client.getBlock()).timestamp
+          await nextBlockAt(estimatedAt)
+          const gas = await client.estimateContractGas(args)
+          await nextBlockAt(estimatedAt + 1n)
+          return gas
+        }) as PublicClient['estimateContractGas'],
+      },
+      wallet: keeperWallet, perps: dep.perps as Address, feed,
+    })
+    await request('requestOpen', [0, true, 100_000_000n, 1_000_000_000n, parseUnits('200000', 8), 0n, 0n, 0n])
+    await publish({ BTC: 105_000, ETH: 4_400, SOL: 161 })
+    await keeper.tick()
+    expect((await read<bigint[]>('positionIdsOf', [trader.address])).length).toBe(1)
+    await publish({ BTC: 94_500, ETH: 4_400, SOL: 161 }) // -10% against a 10x long
+    await late.tick()
+    expect(late.lastError).toBeNull()
+    expect((await read<bigint[]>('openPositionIds')).length).toBe(0)
+    expect((await client.getBlock()).timestamp).toBe(estimatedAt + 1n)
   }, 60_000)
 })
