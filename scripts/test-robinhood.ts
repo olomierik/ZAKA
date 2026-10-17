@@ -327,4 +327,24 @@ if (process.argv.includes('--live')) {
   ok(qgl.appFee === 0n, `a $0.50 gas quote passes (≈${(Number(qgl.expectedOut) / 1e18).toFixed(6)} ETH)`)
 }
 
+console.log('a Pons bonding curve’s trades (the curve is the market until the coin graduates)')
+{
+  const { decodeRhSwap, PONS_BUY, PONS_SELL } = await import('../src/arcdex/api/rhSwaps')
+  const pad = (a: string) => '0x' + a.slice(2).padStart(64, '0')
+  const w = (n: bigint) => n.toString(16).padStart(64, '0')
+  // Recorded on mainnet (engine/test/hoodLaunches.test.ts): KEL's curve, its first buy and a sale.
+  const KEL = '0xa4c59ce3cdaf83b4cb964202741e0f86920bb958', CURVE = '0xaf4bc84657c11bb88eda515c074abf749b5ec67c'
+  const ROUTER = '0xe33e9e479df8802cb0866d5d05258bec4cf62948', CREATOR = '0x5877c52a469cf93e474a404d1541d17e38bae23c'
+  const raw = (topics: string[], data: string, i = 0) => ({ address: CURVE, topics, data, blockNumber: '0x567d000', transactionHash: '0x' + '11'.repeat(32), logIndex: '0x' + i.toString(16) })
+  const meta = { pool: CURVE, coin: KEL, quote: '0x0000000000000000000000000000000000000000', coinDecimals: 18, quoteDecimals: 18 }
+  const buy = decodeRhSwap(raw([PONS_BUY, pad(ROUTER), pad(CREATOR)], '0x' + w(21000000000000000n) + w(11979745584784488082005681n) + w(210000000000000n) + w(420000000000000n)), meta, () => 1)
+  ok(buy?.kind === 'buy' && Math.abs(buy.quoteAmount - 0.021) < 1e-12 && Math.abs(buy.tokenAmount - 11979745.584784488) < 1e-3, 'a buy: 0.021 ETH for 11.98M KEL')
+  ok(buy?.maker === CREATOR && Math.abs(buy.price - 0.021 / 11979745.584784488) < 1e-18, '…by its trader, at ETH over coins')
+  const sell = decodeRhSwap(raw([PONS_SELL, pad(ROUTER), pad(CREATOR)], '0x' + w(2577177136888741239807n) + w(4313619463108n) + w(44470303743n) + w(88940607486n), 1), meta, () => 1)
+  ok(sell?.kind === 'sell' && Math.abs(sell.tokenAmount - 2577.1771368887412) < 1e-6 && Math.abs(sell.quoteAmount - 4.313619463108e-6) < 1e-15, 'a sale: 2,577 KEL for 0.0000043 ETH')
+  ok(decodeRhSwap({ ...raw([PONS_BUY, pad(ROUTER), pad(CREATOR)], '0x' + w(1n) + w(1n)), address: '0x' + '22'.repeat(20) }, meta, () => 1) === null, 'another contract’s event isn’t this curve’s')
+  const src = readFileSync(new URL('../src/arcdex/api/rhSwaps.ts', import.meta.url), 'utf8')
+  ok(src.includes('topics: [[V3_SWAP, V2_SWAP, PONS_BUY, PONS_SELL]]'), 'the reader asks for the curve’s events')
+}
+
 console.log('\nall Robinhood Chain checks passed')

@@ -234,13 +234,25 @@ export function solChartSource(pool: string, mint: string, fromChain = false): C
 
 let solPrice: { at: number; usd: number } | null = null
 let solPricing: Promise<number> | null = null
-/** SOL in dollars (GeckoTerminal's wSOL price, kept a minute). */
+/** SOL's mid on Hyperliquid (its API answers any browser): the fallback when GeckoTerminal is throttled. Without it a
+ * coin quoted in SOL had no dollar prices on its trades, so its chart stayed empty (2026-10-17). */
+async function hlSolUsd(): Promise<number> {
+  const r = await fetch('https://api.hyperliquid.xyz/info', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: 'allMids' }), signal: AbortSignal.timeout(5_000),
+  })
+  const v = Number(((await r.json()) as Record<string, string>).SOL)
+  return v > 1 && v < 100_000 ? v : 0
+}
+
+/** SOL in dollars (GeckoTerminal's wSOL price, else Hyperliquid's; kept a minute). */
 export function solUsd(): Promise<number> {
   if (solPrice && Date.now() - solPrice.at < 60_000) return Promise.resolve(solPrice.usd)
   if (solPricing) return solPricing
   solPricing = gtDirect<{ data?: { attributes?: { token_prices?: Record<string, string | null> } } }>(`/simple/networks/${NET}/token_price/So11111111111111111111111111111111111111112`, {}, FIRST)
-    .then(d => { const v = Number(Object.values(d.data?.attributes?.token_prices ?? {})[0]); if (v > 0) solPrice = { at: Date.now(), usd: v }; return solPrice?.usd ?? 0 })
-    .catch(() => solPrice?.usd ?? 0)
+    .then(d => Number(Object.values(d.data?.attributes?.token_prices ?? {})[0]))
+    .catch(() => 0)
+    .then(v => (v > 0 ? v : hlSolUsd().catch(() => 0)))
+    .then(v => { if (v > 0) solPrice = { at: Date.now(), usd: v }; return solPrice?.usd ?? 0 })
     .finally(() => { solPricing = null })
   return solPricing
 }

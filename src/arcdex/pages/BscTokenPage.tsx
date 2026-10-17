@@ -23,6 +23,8 @@ import BscTrade, { BSC_NOTE } from '../components/BscTrade'
 import { getBscCoin, getBscTrades, bscChartSource, bscCoinFour, bscSeed, bnbUsd, withFour, BNB_NATIVE, FOUR, WBNB, type BscCoin, type BscCoinDetail, type FourInfo } from '../api/bscMarket'
 import { bscFeed, bscMaker, bscPoolKind, resolveBscMakers, type BscPoolMeta } from '../api/bscSwaps'
 import { useChainTrades } from '../lib/useChainTrades'
+import { trenchLaunch } from '../api/trenchFeed'
+import type { TrenchCoinWire } from '../../../api/_trenchProtocol'
 import { BSC_QUOTE_SYMBOLS } from '../../../api/_bscCore'
 import { bscAddress, bscToken, bscTx } from '../lib/bsc'
 import { bscSafety } from '../lib/safety'
@@ -54,6 +56,19 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 
 interface Props { address: string; pool?: string; navigate: (p: Page) => void; buy?: BuyIntent }
 
+/** A coin from the engine's launch record, before GeckoTerminal lists it (its curve is read from four.meme as ever). */
+function fromLaunch(l: TrenchCoinWire): BscCoinDetail {
+  const row: BscCoin = {
+    address: l.a.toLowerCase(), symbol: l.s || '?', name: l.n || l.s || '', image: l.i, decimals: 18, stock: false,
+    pool: (l.pool ?? '').toLowerCase(), dex: l.g !== null && !l.gr ? 'four-meme' : '', quote: l.q === 'BNB' ? BNB_NATIVE : '', quoteSymbol: l.q, priceUsd: l.p,
+    change5m: 0, change1h: 0, change24h: l.o > 0 && l.p > 0 ? (l.p / l.o - 1) * 100 : 0,
+    volume24h: l.v, liquidity: l.l, marketCap: l.m, buys24h: l.b, sells24h: l.x, traders24h: l.w,
+    createdAt: l.c, feePct: null, launchpad: l.lp || null,
+    ...(l.g !== null ? { curveProgress: l.g, graduated: l.gr } : {}),
+  }
+  return { ...row, supply: l.p > 0 && l.m > 0 ? l.m / l.p : null, pools: row.pool ? [row] : [] }
+}
+
 function seedCoin(token: string, pool?: string): BscCoinDetail | null {
   const r = bscSeed(token, pool)
   return r ? { ...r, supply: null, pools: [r] } : null
@@ -74,7 +89,10 @@ export default function BscTokenPage({ address, pool: poolParam, navigate, buy }
   useEffect(() => {
     let live = true
     setCoin(prev => (prev && prev.address === address ? prev : seedCoin(address, poolParam))); setLoaded(false)
-    const load = () => getBscCoin(address, poolParam).then(c => { if (live && c) setCoin(c) }).catch(() => {}).finally(() => { if (live) setLoaded(true) })
+    const load = () => getBscCoin(address, poolParam).catch(() => null)
+      // GeckoTerminal doesn't list a coin minutes old: the engine's launch record (the Trenches row it came from) names it.
+      .then(async c => { if (!live) return; if (c) setCoin(c); else { const l = await trenchLaunch('bnb', address); if (live && l) setCoin(prev => prev ?? fromLaunch(l)) } })
+      .catch(() => {}).finally(() => { if (live) setLoaded(true) })
     void load()
     const id = setInterval(() => { if (!document.hidden) void load() }, 60_000)
     return () => { live = false; clearInterval(id) }
@@ -152,7 +170,7 @@ export default function BscTokenPage({ address, pool: poolParam, navigate, buy }
   }), [rows, me])
 
   const chart = source ? (
-    <PriceChart poolAddress={null} source={source} ticks={ticks} live={chainOn || rows.some(r => r.live)} trades={chartTrades} supply={coin?.supply ?? null}
+    <PriceChart poolAddress={null} source={source} ticks={ticks} launchedAt={coin?.createdAt || undefined} live={chainOn || rows.some(r => r.live)} trades={chartTrades} supply={coin?.supply ?? null}
       symbol={symbol} height={mobile ? 300 : 420} liveTitle={chainOn ? T('Every swap appears the moment its block lands') : T('Trades on BNB Chain, from GeckoTerminal')} />
   ) : <div className="spot-empty" style={{ height: mobile ? 300 : 420, display: 'grid', placeItems: 'center' }}>{loaded ? T('No market for this coin on GeckoTerminal yet.') : T('Loading…')}</div>
 

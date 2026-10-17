@@ -38,6 +38,16 @@ async function snapshot(chain: TrenchChain): Promise<TrenchSnapshot | null> {
   return r?.ok ? ((await r.json()) as TrenchSnapshot) : null
 }
 
+const snaps = new Map<TrenchChain, { at: number; v: Promise<TrenchSnapshot | null> }>()
+/** A coin the engine saw launch (its Trenches row), for a coin page GeckoTerminal doesn't list yet: its name, ticker,
+ * launchpad, curve and market cap. The chain's snapshot is asked at most every 15s. */
+export function trenchLaunch(chain: TrenchChain, address: string): Promise<TrenchCoinWire | null> {
+  let s = snaps.get(chain)
+  if (!s || Date.now() - s.at > 15_000) { s = { at: Date.now(), v: snapshot(chain).catch(() => null) }; snaps.set(chain, s) }
+  const k = keyOf(chain, address)
+  return s.v.then(x => x?.launches.find(l => keyOf(chain, l.a) === k) ?? null)
+}
+
 export function useTrenchFeed(chain: TrenchChain): TrenchFeed {
   const [state, setState] = useState<TrenchFeed>(EMPTY)
   const ref = useRef<TrenchFeed>(EMPTY)

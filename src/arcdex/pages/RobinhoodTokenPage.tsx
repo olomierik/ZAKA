@@ -25,8 +25,8 @@ import { ChainIcon } from '../components/Chains'
 import { RhLogo, StockTag } from '../components/Robinhood'
 import RobinhoodTrade, { RH_NOTE } from '../components/RobinhoodTrade'
 import { getRhCoin, getRhTrades, rhChartSource, rhSeed, type RhCoinDetail } from '../api/robinhoodMarket'
-import { loadRhSwaps, resolveRhMakers, rhDecimals, rhMaker, rhPoolTokens, rhQuoteUsd, watchRhSwaps, type RhPoolMeta, type RhSwap } from '../api/rhSwaps'
-import { isStockName, isStockToken, rhAddress, rhTokenInfo, rhTx, stockCompany } from '../lib/robinhood'
+import { loadRhSwaps, resolveRhMakers, rhDecimals, rhIsPonsCurve, rhMaker, rhPoolTokens, rhQuoteUsd, watchRhSwaps, type RhPoolMeta, type RhSwap } from '../api/rhSwaps'
+import { NATIVE, isStockName, isStockToken, rhAddress, rhTokenInfo, rhTx, stockCompany } from '../lib/robinhood'
 import type { Tick } from '../lib/candles'
 import { useIsMobile } from '../lib/useMobile'
 import { useTrader } from '../lib/identity'
@@ -136,9 +136,11 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate,
     if (!shown || poolRow) return
     let live = true
     const me = address.toLowerCase()
-    void rhPoolTokens(shown).then(t => {
+    void rhPoolTokens(shown).then(async t => {
       // Only a pool of this coin's.
       if (live && t && t.includes(me)) setChainQuote({ pool: shown, quote: t[0] === me ? t[1] : t[0] })
+      // A Pons bonding curve (a launch opened from the Trenches before GeckoTerminal lists it) trades against ETH.
+      else if (live && !t && shown.length === 42 && await rhIsPonsCurve(shown) && live) setChainQuote({ pool: shown, quote: NATIVE })
     })
     return () => { live = false }
   }, [shown, address, poolRow])
@@ -217,7 +219,7 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate,
     const gtMaker = new Map(gtRows.filter(r => r.maker).map(r => [r.txHash.toLowerCase(), r.maker!.toLowerCase()]))
     const chain: RhRow[] = (swaps ?? []).map(s => ({
       id: s.id, txHash: s.txHash, kind: s.kind, tokenAmount: s.tokenAmount, timestamp: s.time, live: !!s.live,
-      maker: rhMaker(s.txHash) ?? gtMaker.get(s.txHash) ?? null,
+      maker: s.maker ?? rhMaker(s.txHash) ?? gtMaker.get(s.txHash) ?? null,
       usd: qUsd ? s.quoteAmount * qUsd : 0,
       priceUsd: qUsd ? s.price * qUsd : 0,
     }))
@@ -263,7 +265,7 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate,
   useEffect(() => { document.title = `${priceUsd ? fmtPrice(priceUsd) + ' | ' : ''}${symbol} | ARCDEX` }, [priceUsd, symbol])
 
   const chart = source ? (
-    <PriceChart poolAddress={null} source={source} ticks={ticks} live={chainOn || rows.some(r => r.live)} trades={chartTrades} supply={coin?.supply ?? null}
+    <PriceChart poolAddress={null} source={source} ticks={ticks} launchedAt={coin?.createdAt || undefined} live={chainOn || rows.some(r => r.live)} trades={chartTrades} supply={coin?.supply ?? null}
       symbol={symbol} height={mobile ? 300 : 420} liveTitle={chainOn ? T('Every swap appears the moment its block lands') : T('Trades on Robinhood Chain, from GeckoTerminal')} />
   ) : <div className="spot-empty" style={{ height: mobile ? 300 : 420, display: 'grid', placeItems: 'center' }}>{loaded ? T('No market for this coin on GeckoTerminal yet.') : T('Loading…')}</div>
 

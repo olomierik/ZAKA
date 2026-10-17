@@ -20,6 +20,11 @@ import { NATIVE, RH_RPC, USDG, WETH, rhTokenInfo } from '../lib/robinhood'
 export const RH_POOL_MANAGER = '0x8366a39cc670b4001a1121b8f6a443a643e40951'
 /** Uniswap v2-style Swap(sender, amount0In, amount1In, amount0Out, amount1Out, to). */
 export const V2_SWAP = '0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822'
+/** A Pons bonding curve's buy and sale (engine/src/trench/hoodLaunches.ts, traced on mainnet): topics[2] the trader;
+ * a buy's data is (ETH in, coins out, fees…), a sale's (coins in, ETH out, …), both 18 decimals. Before a Pons coin
+ * graduates, its curve is its market, and the coin page read none of its trades (2026-10-17): no chart, no trades. */
+export const PONS_BUY = '0xec36bf571f136799e8dc0b0b8bea4b04d8bd3d43de838aab0d5fc21d4cbfc455'
+export const PONS_SELL = '0x8113d738abdcb6b38357e9d53a54a7157861a09031b453651f0fe7fe151f59df'
 /** Uniswap v3's WETH/USDG pool (token0 WETH): ETH's price in dollars, from its own state. */
 const WETH_USDG_V3 = '0x52e65b17fb6e5ba00ed806f37afcd2daa50271ca'
 
@@ -54,6 +59,8 @@ export interface RhSwap {
   quoteAmount: number
   /** The coin's price in the quote, after the swap. */
   price: number
+  /** Who traded, when the event says (a Pons curve's). */
+  maker?: string
   /** Arrived after the page opened. */
   live?: boolean
 }
@@ -70,7 +77,7 @@ const hidden = () => typeof document !== 'undefined' && document.hidden
 function filterOf(m: RhPoolMeta): { address: string; topics: (string | string[])[] } {
   return isV4(m.pool)
     ? { address: RH_POOL_MANAGER, topics: [V4_SWAP, m.pool] }
-    : { address: m.pool, topics: [[V3_SWAP, V2_SWAP]] }
+    : { address: m.pool, topics: [[V3_SWAP, V2_SWAP, PONS_BUY, PONS_SELL]] }
 }
 
 /** One swap log, or null when it isn't one of this pool's. */
@@ -92,6 +99,16 @@ export function decodeRhSwap(l: RawLog, m: RhPoolMeta, timeOf: (block: number) =
     const quoteAmount = Number(buy ? quoteIn : quoteOut) / 10 ** m.quoteDecimals
     if (!(tokenAmount > 0)) return null
     return { ...base, kind: buy ? 'buy' : 'sell', tokenAmount, quoteAmount, price: quoteAmount / tokenAmount }
+  }
+  const t0 = l.topics[0]?.toLowerCase()
+  if (!v4 && (t0 === PONS_BUY || t0 === PONS_SELL)) {
+    // The curve trades the coin against ETH; both sides have 18 decimals.
+    if (!l.data || l.data.length < 2 + 64 * 2) return null
+    const buy = t0 === PONS_BUY
+    const eth = Number(BigInt('0x' + word(l.data, buy ? 0 : 1))) / 1e18
+    const tokenAmount = Number(BigInt('0x' + word(l.data, buy ? 1 : 0))) / 10 ** m.coinDecimals
+    if (!(tokenAmount > 0) || !(eth > 0)) return null
+    return { ...base, kind: buy ? 'buy' : 'sell', tokenAmount, quoteAmount: eth, price: eth / tokenAmount, ...(l.topics[2] ? { maker: topicAddress(l.topics[2]) } : {}) }
   }
   if (!v4 && l.topics[0] !== V3_SWAP) return null
   const d = decodeSwapLog(l, { v4, baseIs0: coinIs0, baseDecimals: m.coinDecimals, quoteDecimals: m.quoteDecimals })
@@ -237,6 +254,20 @@ async function v4Tokens(id: string): Promise<[string, string] | null> {
   return null
 }
 
+const curves = new Map<string, Promise<boolean>>()
+/** Whether an address is a Pons bonding curve (it answers realQuoteReserve(), as api/rhmarket.ts reads Pons curves):
+ * a coin opened from the Trenches before GeckoTerminal lists it links to its curve, which has no token0()/token1(). */
+export function rhIsPonsCurve(addr: string): Promise<boolean> {
+  const a = addr.toLowerCase()
+  let v = curves.get(a)
+  if (!v) {
+    v = rpc<string>('eth_call', [{ to: a, data: '0x4f1f58fd' }, 'latest']).then(r => typeof r === 'string' && r.length === 66).catch(() => false)
+    v.then(x => { if (!x) curves.delete(a) })
+    curves.set(a, v)
+  }
+  return v
+}
+
 // ── makers ───────────────────────────────────────────────────────────────
 
 const makers = new Map<string, string>()
@@ -277,15 +308,19 @@ export function rhEthUsd(): Promise<number | null> {
   return v
 }
 
+/** How GeckoTerminal names native ETH on a Pons curve's pool (2026-10-17): the coin page couldn't price or size it,
+ * so it never read the curve's trades and its chart stayed on two 15-minute bars. */
+const ETH_SENTINEL = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+
 /** Dollars per unit of `quote`: USDG 1, WETH and ETH at ETH's price, else null (the page then prices it off the coin's market price). */
 export async function rhQuoteUsd(quote: string): Promise<number | null> {
   const q = quote.toLowerCase()
   if (q === USDG) return 1
-  if (q === WETH || q === NATIVE) return rhEthUsd()
+  if (q === WETH || q === NATIVE || q === ETH_SENTINEL) return rhEthUsd()
   return null
 }
 
-const KNOWN_DECIMALS: Record<string, number> = { [USDG]: 6, [WETH]: 18, [NATIVE]: 18 }
+const KNOWN_DECIMALS: Record<string, number> = { [USDG]: 6, [WETH]: 18, [NATIVE]: 18, [ETH_SENTINEL]: 18 }
 /** A quote token's decimals (read once from the chain when it isn't USDG, WETH or ETH). */
 export async function rhDecimals(token: string): Promise<number | null> {
   const t = token.toLowerCase()

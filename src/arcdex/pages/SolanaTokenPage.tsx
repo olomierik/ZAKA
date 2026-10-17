@@ -19,6 +19,8 @@ import SolanaTrade, { SolanaWalletBar, SOL_NOTE } from '../components/SolanaTrad
 import { getSolCoin, getSolTrades, solChartSource, solCoinChain, solSeed, solUsd, type MintFlags, type SolCoin } from '../api/solanaMarket'
 import { solFeed, SOL_QUOTES, type SolPoolMeta } from '../api/solSwaps'
 import { useChainTrades } from '../lib/useChainTrades'
+import { trenchLaunch } from '../api/trenchFeed'
+import type { TrenchCoinWire } from '../../../api/_trenchProtocol'
 import { WSOL } from '../../../api/_solCore'
 import type { SolCoinDetail } from '../api/solanaMarket'
 import { solAccount, solToken, solTx } from '../lib/solana'
@@ -51,6 +53,19 @@ const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`
 
 interface Props { address: string; pool?: string; navigate: (p: Page) => void; buy?: BuyIntent }
 
+/** A coin from the engine's launch record, before GeckoTerminal lists it. */
+function fromLaunch(l: TrenchCoinWire): SolCoinDetail {
+  const row: SolCoin = {
+    address: l.a, symbol: l.s || '?', name: l.n || l.s || '', image: l.i, decimals: null, stock: false,
+    pool: l.pool ?? '', dex: '', quote: l.q === 'SOL' ? WSOL : '', quoteSymbol: l.q, priceUsd: l.p,
+    change5m: 0, change1h: 0, change24h: l.o > 0 && l.p > 0 ? (l.p / l.o - 1) * 100 : 0,
+    volume24h: l.v, liquidity: l.l, marketCap: l.m, buys24h: l.b, sells24h: l.x, traders24h: l.w,
+    createdAt: l.c, feePct: null, launchpad: l.lp || null,
+    ...(l.g !== null ? { curveProgress: l.g, graduated: l.gr } : {}),
+  }
+  return { ...row, supply: l.p > 0 && l.m > 0 ? l.m / l.p : null, pools: row.pool ? [row] : [] }
+}
+
 function seedCoin(mint: string, pool?: string): SolCoinDetail | null {
   const r = solSeed(mint, pool)
   return r ? { ...r, supply: null, pools: [r] } : null
@@ -70,7 +85,10 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate, bu
   useEffect(() => {
     let live = true
     setCoin(prev => (prev && prev.address === address ? prev : seedCoin(address, poolParam))); setLoaded(false)
-    const load = () => getSolCoin(address, poolParam).then(c => { if (live && c) setCoin(c) }).catch(() => {}).finally(() => { if (live) setLoaded(true) })
+    const load = () => getSolCoin(address, poolParam).catch(() => null)
+      // GeckoTerminal doesn't list a coin minutes old: the engine's launch record (the Trenches row it came from) names it.
+      .then(async c => { if (!live) return; if (c) setCoin(c); else { const l = await trenchLaunch('sol', address); if (live && l) setCoin(prev => prev ?? fromLaunch(l)) } })
+      .catch(() => {}).finally(() => { if (live) setLoaded(true) })
     void load()
     const id = setInterval(() => { if (!document.hidden) void load() }, 60_000)
     return () => { live = false; clearInterval(id) }
@@ -95,7 +113,9 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate, bu
   const poolRow = coin ? coin.pools.find(p => p.pool === pool) : undefined
 
   // The pool's trades from the chain (pools quoted in SOL or USDC), GeckoTerminal's for older ones.
-  const quoteMint = poolRow?.quote ?? ''
+  // A coin opened from the Trenches before GeckoTerminal lists it: its launchpad pool is quoted in SOL (pump.fun,
+  // LaunchLab, Meteora…). A wrong guess reads no trades (the reader matches the pool's own balances), never wrong ones.
+  const quoteMint = poolRow?.quote ?? (pool && !coin?.pools.length ? WSOL : '')
   const meta = useMemo<SolPoolMeta | null>(() => (pool && SOL_QUOTES.has(quoteMint) ? { pool, mint: address, quoteMint } : null), [pool, address, quoteMint])
   const feed = useMemo(() => (meta ? solFeed(meta) : null), [meta])
   const isSol = quoteMint === WSOL
@@ -148,7 +168,7 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate, bu
   }), [rows, sol.trading, sol.external?.address])
 
   const chart = source ? (
-    <PriceChart poolAddress={null} source={source} ticks={ticks} live={chainOn || rows.some(r => r.live)} trades={chartTrades} supply={coin?.supply ?? null}
+    <PriceChart poolAddress={null} source={source} ticks={ticks} launchedAt={coin?.createdAt || undefined} live={chainOn || rows.some(r => r.live)} trades={chartTrades} supply={coin?.supply ?? null}
       symbol={symbol} height={mobile ? 300 : 420} liveTitle={chainOn ? T('Every trade appears seconds after it lands on Solana') : T('Trades on Solana, from GeckoTerminal')} />
   ) : <div className="spot-empty" style={{ height: mobile ? 300 : 420, display: 'grid', placeItems: 'center' }}>{loaded ? T('No market for this coin on GeckoTerminal yet.') : T('Loading…')}</div>
 

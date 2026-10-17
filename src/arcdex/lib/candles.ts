@@ -6,7 +6,11 @@
 // a tick. That keeps the series continuous — no gaps between candles — and
 // lets a 1-second chart move on every block.
 
-export interface Candle { time: number; open: number; high: number; low: number; close: number; volume: number }
+export interface Candle {
+  time: number; open: number; high: number; low: number; close: number; volume: number
+  /** A bar no one traded in, added to keep time even on the axis (lib/chartFrame.ts fillGaps). */
+  fill?: true
+}
 
 /** A swap as the chart sees it: when, the pool price after it (USD), and its size (USD). */
 export interface Tick { time: number; priceUsd: number; usd: number }

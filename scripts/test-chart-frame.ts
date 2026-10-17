@@ -2,7 +2,7 @@
 // and the flat bars between trades that keep time even on the axis.
 // Run: bun scripts/test-chart-frame.ts
 
-const { pickOpenRes, fillGaps, FILL_MAX_BARS, FILL_CHUNK, OPEN_MIN_TRADES } = await import('../src/arcdex/lib/chartFrame')
+const { pickOpenRes, fillGaps, cleanCandles, FILL_MAX_BARS, FILL_CHUNK, OPEN_MIN_YOUNG } = await import('../src/arcdex/lib/chartFrame')
 const ok = (c: unknown, m: string) => { if (!c) throw new Error('FAIL: ' + m); console.log('  ✓', m) }
 const now = Date.UTC(2026, 9, 16, 12, 0, 0)
 const every = (n: number, gapMs: number) => Array.from({ length: n }, (_, i) => now - i * gapMs)
@@ -14,7 +14,14 @@ ok(pickOpenRes(every(200, 60_000), now) === '1m', 'a trade a minute opens on 1m'
 ok(pickOpenRes(every(60, 10 * 60_000), now) === '5m', 'a trade every 10 minutes opens on 5m (a trade every two bars)')
 ok(pickOpenRes(every(60, 2 * 3_600_000), now) === '1h', 'a trade every 2 hours opens on 1h')
 ok(pickOpenRes(every(5, 86_400_000), now) === '4h', 'a few trades over days opens on the coarsest choice')
-ok(pickOpenRes(every(OPEN_MIN_TRADES - 1, 1_000), now) !== '15s', `under ${OPEN_MIN_TRADES} trades never opens on 15s`)
+ok(pickOpenRes(every(12, 10_000), now) === '15s', 'a coin two minutes old with 12 trades opens on 15s (it opened on 4H: one huge candle)')
+ok(pickOpenRes(every(20, 150_000), now) === '1m', '20 trades over the 50 minutes read open on 1m, not 4H')
+ok(pickOpenRes(every(OPEN_MIN_YOUNG - 1, 1_000), now) === '4h', `under ${OPEN_MIN_YOUNG} trades is too few to say: the coarsest`)
+ok(pickOpenRes([...every(10, 1_000), now - 5 * 3_600_000], now) !== '15s', 'an older coin with a few trades now doesn\'t open on 15s')
+ok(pickOpenRes([now - 60_000], now, undefined, now - 2 * 60_000) === '15s', 'a coin launched 2 minutes ago with one trade opens on 15s')
+ok(pickOpenRes([now - 60_000], now, undefined, now - 20 * 3_600_000) === '15m', '…20 hours ago: the finest timeframe its whole life fits (15m)')
+ok(pickOpenRes(every(200, 5_000), now, undefined, now - 20 * 3_600_000) === '15s', 'a busy coin still opens on 15s whatever its age')
+ok(pickOpenRes([now - 60_000], now) === '4h', 'one trade and no launch time: the coarsest, as before')
 ok(pickOpenRes(every(200, 5_000), now, ['1m', '5m']) === '1m', 'only offered timeframes are picked')
 ok(pickOpenRes([...every(50, 1_000), now - 30 * 86_400_000], now) === '15s', 'old trades don\'t hold a busy coin back')
 
@@ -37,4 +44,23 @@ ok(a[0].time === b[0].time && b.length === a.length + 1, 'a new bar only adds on
 ok(fillGaps([], 15, 100).length === 0, 'no candles: nothing to draw')
 const sorted = fillGaps([c(0, 1), c(45, 2), c(300, 3)], 15, 400)
 ok(sorted.every((x, i) => i === 0 || x.time - sorted[i - 1].time === 15), 'evenly spaced throughout')
+ok(filled[1].fill === true && !filled[0].fill && !filled[4].fill, 'bars no one traded in are marked, so candles can leave them empty')
+
+console.log('bad prints')
+const line = (closes: number[]) => closes.map((v, i) => c(i * 60, v))
+const closes = (cs: { close: number }[]) => cs.map(x => x.close).join()
+ok(closes(cleanCandles(line([1, 1.1, 0.9, 50, 1, 1.05]))) === '1,1.1,0.9,0.9,1,1.05', 'one bar 50x off both neighbours is drawn at the bar before it')
+ok(closes(cleanCandles(line([1, 1.1, 0.00001, 1, 1.05]))) === '1,1.1,1.1,1,1.05', 'a near-zero print too')
+ok(closes(cleanCandles(line([0.000001, 1, 1.1, 1.2]))) === '1,1,1.1,1.2', 'a first bar at the pool\'s opening tick takes the next bar\'s price')
+ok(closes(cleanCandles(line([1, 1.1, 10, 11, 12]))) === '1,1.1,10,11,12', 'a real pump moves the bars after it too: kept')
+ok(closes(cleanCandles(line([1, 1.1, 0.05, 0.04, 0.05]))) === '1,1.1,0.05,0.04,0.05', 'a real rug: kept')
+ok(closes(cleanCandles(line([1, 1.1, 1.2, 40]))) === '1,1.1,1.2,40', 'the last bar is never touched')
+const lead = cleanCandles(line([1e-9, 2e-9, 1, 1, 1.1, 1, 1.2, 1, 1.1, 1, 1, 1.05]))
+ok(lead.length === 10 && lead[0].close === 1, 'leading bars far under the series (a pool before trading) are dropped')
+ok(cleanCandles(line([2500, 5000, 20000, 40000, 45000, 45000, 46000, 44000, 45000, 45000])).length === 10, 'a coin that grew 18x from launch keeps its first bars')
+const wick = cleanCandles([{ time: 0, open: 1, high: 30, low: 0.001, close: 1.1, volume: 1 }])[0]
+ok(Math.abs(wick.high - 3.3) < 1e-12 && Math.abs(wick.low - 1 / 3) < 1e-12, 'a wick past 3x the body is cut there')
+const after = cleanCandles([c(0, 1), { time: 60, open: 1, high: 50, low: 1, close: 50, volume: 1 }, { time: 120, open: 50, high: 50, low: 1, close: 1.05, volume: 1 }, c(180, 1)])
+ok(after[1].close === 1 && after[2].open === 1 && after[2].high <= 1.05 * 3, 'the bar after a bad print opens at the repaired price')
+
 console.log('\nall chart-frame checks passed')
