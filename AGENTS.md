@@ -3085,6 +3085,54 @@ Owner: "compare GMGN and fomo, implement the best; our latency is slow, Robinhoo
 - **Checked:** the engine suite (870 pass), every site test script, both typechecks. In Chrome on local dev: the landing page at `/`, its Log in links, `/trenches?login=1` cleaning the address and opening sign-in (the wallet list locally, where Privy's id isn't set), the top bar, More and the status line. Not checked: Privy's real window, a real sign-in, and the Analytics tab with real data (it needs an admin's signature).
 - **Every new string is in all six dictionaries** (37).
 
+## DexScreener first, launch badges, Trending now, Across-style forms, fomo's landing (2026-10-17)
+
+Owner: "the analytics page is not showing; redesign the landing page simple, like fomo's; is GeckoTerminal a must, it lags everything; every launchpad coin should show its launchpad icon, dev sold, bundlers, snipers, web and X; Swap and Bridge like Across's form, with chain icons; replace the smart-wallet column with what's trending on fomo".
+
+- **Analytics:** the tab works. It shows only after an admin wallet signs in at `/admin`, and the engine refuses any wallet not in `ADMIN_EVM_ADDRESSES` (Railway). The refusal now names the wallet and says where to add it. The Admin link stays hidden from visitors (it appears in a browser where an admin has signed in).
+- **Coin data from DexScreener (`lib/dexData.ts`, `lib/useDexData.ts`):** DexScreener's tokens endpoint answers any origin, 30 coins a call, 300 calls a minute per visitor (the page allows itself 200), in ~0.2s; GeckoTerminal's free API gives one address about 30 a minute. DexScreener ids: `arc`, `robinhood`, `solana`, `bsc`.
+  - **Trenches:** the coins the lanes show are read every 10s. Each row takes DexScreener's market cap, liquidity, volume, trades and changes (except on Arc, where the engine reads every swap, and launches under 10 minutes old), and always its logo, website, X, Telegram and last hour (`withDs`). So the 1h window works on every chain now.
+  - **Coin pages (Solana, BNB Chain, Robinhood Chain):** the header opens from DexScreener (`dsOne`, `dsAsRow`, venue ids mapped to the lists' launchpads), and GeckoTerminal's full answer replaces it. A coin neither lists yet takes the engine's launch record (`trenchLaunch`), also when GeckoTerminal errors.
+  - **Charts don't wait on GeckoTerminal:** they draw from the trades already loaded (the chain's, else every GeckoTerminal trade), and GeckoTerminal's candles only fill in before the first of them.
+  - **Not covered by DexScreener:** candles (no public OHLCV API) and coins it hasn't indexed (a Pons curve, a launch seconds old). Those keep GeckoTerminal, the engine and the chain.
+- **Launch badges (`engine/src/trench/book.ts` `EARLY`, `TrenchCoinWire.bn/sn/dv`):** for coins the engine saw launch, it counts:
+  - bundlers: wallets other than the creator buying within a second of the launch;
+  - snipers: within 15 seconds;
+  - dev sold: the share of the creator's own buy it has sold; null when the creator isn't known.
+  - The rows show them as DS / DH, a layers icon and a crosshair, with tooltips in words. Coins seen only through the lists carry none.
+  - **Launchpad icons (`lib/launchpadIcon.ts`):** each launchpad's site favicon through Google's favicon service, on the coin's picture; the coloured letter stays until it loads, or when the site isn't known.
+  - A hidden lazy image is never fetched, so the icons (and chain logos) load invisibly, then show.
+- **Trending now (`components/TrenchTrendLane.tsx`), replacing Smart money:**
+  - **What it shows:** the engine's busiest listed coins on all four chains (`/api/trending`), ranked by buys in the last hour from DexScreener, every 15s. All chains or the one on screen. Buy opens the coin's page (its chain may differ, so its own form asks the amount).
+  - **Why not fomo's own list:** fomo's Trending is Mobula's pulse feed (`POST mobula-api.fomo.family/api/2/pulse`, model `trending`, sorted by fees paid, Arc and Robinhood Chain included). It needs a fomo user's sign-in, and Mobula's own API refuses it on the free plan.
+  - **Smart wallets:** the engine still measures them for the wallet tracker; the lane and the top bar's count are gone.
+- **Solana trades from their own events (`api/solSwaps.ts` `swapsFromEvents`, `parseSolSwaps`):** pump.fun's TradeEvent and PumpSwap's Buy/SellEvent, as the engine decodes them; one trade per event.
+  - **Why:** balance changes netted a transaction's swaps together. On ALLOX, volume bots buy and sell in one transaction, and their "trades" read at 6× and 0.03× the market. The line zigzagged and the header's price jumped.
+  - **A PumpSwap pool's base can be SOL** (ALLOX's is): the coin side is told from the event's reserves against the pool's vaults in the same transaction.
+  - **Without events:** a pool that holds its own token accounts and didn't move wasn't traded (an arbitrage bot naming it). The signer's side is kept only for venues whose vaults sit under an authority.
+  - **On every chain (`lib/candles.ts` `cleanTicks`):** a trade more than 1.6× off the median of the trades just before it and of those just after it is left off the chart and the header's live price; a real move agrees with the side it moved to.
+- **Swap and Bridge, as Across lays them out (`arcdex.css`, the last block; `components/Chains.tsx`):**
+  - One centred column with a big title.
+  - From and To cards, each with a large amount and a token pill (`TokenChainLabel`: the token's icon with its chain's logo, "on {chain}") that opens the network picker.
+  - A round flip button between them, the details card, and one wide button. The side panels sit under the form.
+  - Chain logos come from DefiLlama's icon CDN (`chainLogoUrl`), Arc and Robinhood Chain included, with the coloured mark as fallback.
+- **Landing (`landing/Landing.tsx`, `landing/landing.css`, rebuilt):** fomo's shape, always dark.
+  - **Hero:** a night sky and a planet's edge drawn in CSS, the giant "arcdex" wordmark, "where memecoins meet futures.", Start trading / Explore markets, the wallet-app link and $ARCDEX's contract.
+  - **Then:** a live terminal of what's trending (where fomo shows a screenshot), six cards (live launches, trending, safety, futures and predictions, email log-in, every chain), the closing call with the visitor count, and a small footer.
+  - Still no chain named in words (chain logos only).
+  - The old landing parts (`CoinLive`, `CoinProgram`, `LiveBots`, `ProfitToasts`) are gone; the burn page keeps $ARCDEX's ledger.
+  - The first paint is dark (`index.html`).
+- **Checked:**
+  - **Tests:** `bun scripts/test-dex-data.ts` (in CI: coins from pairs, batching, cache, budget, refusals, rows, the Trending rank, icons); `test-solana.ts` (real ALLOX transactions, `fixtures/sol-allox.json` from `scripts/capture-sol-events.ts`); `test-chart-frame.ts` (far-off trades); `engine/test/trench.test.ts` (bundlers, snipers, dev sold).
+  - **In the built-in browser (local dev against the live engine):**
+    - the landing at 1280px and 375px;
+    - Solana's Trenches: 110 rows, every launchpad icon loaded, links from DexScreener, Trending ranked by buys;
+    - Swap and Bridge, with the network picker's logos;
+    - ALLOX's chart in a tight band at its real $10.4M;
+    - no sideways scroll at 375px.
+  - **Not checked live:** the engine's new counts (they show once it deploys).
+- **Every new string is in all six dictionaries** (51).
+
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
 **Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**

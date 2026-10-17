@@ -26,6 +26,7 @@ import { RhLogo, StockTag } from '../components/Robinhood'
 import RobinhoodTrade, { RH_NOTE } from '../components/RobinhoodTrade'
 import { getRhCoin, getRhTrades, rhChartSource, rhSeed, type RhCoinDetail } from '../api/robinhoodMarket'
 import { loadRhSwaps, resolveRhMakers, rhDecimals, rhIsPonsCurve, rhMaker, rhPoolTokens, rhQuoteUsd, watchRhSwaps, type RhPoolMeta, type RhSwap } from '../api/rhSwaps'
+import { dsAsRow, dsOne, type DsCoin } from '../lib/dexData'
 import { NATIVE, isStockName, isStockToken, rhAddress, rhTokenInfo, rhTx, stockCompany } from '../lib/robinhood'
 import type { Tick } from '../lib/candles'
 import { useIsMobile } from '../lib/useMobile'
@@ -60,6 +61,12 @@ interface Props { address: string; pool?: string; navigate: (p: Page) => void; b
 type RhRow = TradeRow & { id: string; priceUsd: number }
 
 /** The market list's row for the coin, as a page to open on while GeckoTerminal's own answer comes. */
+/** A coin from DexScreener alone, before GeckoTerminal answers. */
+function fromDs(d: DsCoin): RhCoinDetail {
+  const row = dsAsRow(d, 'hood')
+  return { ...row, supply: d.priceUsd > 0 && d.marketCap > 0 ? d.marketCap / d.priceUsd : null, pools: [row] } as RhCoinDetail
+}
+
 function seedCoin(address: string, pool?: string): RhCoinDetail | null {
   const r = rhSeed(address, pool)
   return r ? { ...r, supply: null, pools: [r] } : null
@@ -91,6 +98,8 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate,
     let live = true
     // Another pool of the same coin keeps what's known; another coin starts from its cached row.
     setCoin(prev => (prev && prev.address === address.toLowerCase() ? prev : seedCoin(address, poolParam))); setLoaded(false)
+    // DexScreener answers in ~0.2 s (lib/dexData.ts): the header shows at once, GeckoTerminal's full answer replaces it.
+    void dsOne('hood', address).then(d => { if (live && d) setCoin(prev => prev ?? fromDs(d)) }).catch(() => {})
     const load = () => getRhCoin(address, poolParam).then(c => { if (live && c) setCoin(c) }).catch(() => {}).finally(() => { if (live) setLoaded(true) })
     void load()
     const id = setInterval(() => { if (!document.hidden) void load() }, 60_000)
@@ -118,7 +127,7 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate,
   const impostor = stockName && stockOnChain === false
   // Launchpad coins and Robinhood's stock tokens only (owner, 2026-10-04): anything else can't be bought here,
   // and says why; selling is never blocked.
-  const unlisted = !!coin && !coin.launchpad && !(stock && !impostor)
+  const unlisted = !!coin && loaded && !coin.launchpad && !(stock && !impostor)
   const buyBlocked = unlisted ? T('Not a launchpad coin: ARCDEX only lists and sells coins launched on a launchpad (and Robinhood’s stock tokens), because coins from unknown contracts can be malicious. You can still sell any you hold.') : undefined
   const name = stock ? stockCompany(fullName) : fullName
   const decimals = coin?.decimals ?? onchain?.decimals ?? null
@@ -241,9 +250,10 @@ export default function RobinhoodTokenPage({ address, pool: poolParam, navigate,
   }, [rows])
 
   const source = useMemo(() => (pool ? rhChartSource(pool, address, chainOn) : undefined), [pool, address, chainOn])
-  // The chart's live end: every swap the chain read (as Arc's coins), else GeckoTerminal's new ones.
+  // The chart's live end: every swap the chain read (as Arc's coins), else every trade GeckoTerminal listed (the chart
+  // draws from them at once instead of waiting on GeckoTerminal's candles).
   const ticks: Tick[] = useMemo(() => rows
-    .filter(r => r.priceUsd > 0 && (chainOn ? !r.id.includes(':gt:') : r.live))
+    .filter(r => r.priceUsd > 0 && (chainOn ? !r.id.includes(':gt:') : true))
     .map(r => ({ time: r.timestamp, priceUsd: r.priceUsd, usd: r.usd })), [rows, chainOn])
   const chartTrades: ChartTrade[] = useMemo(() => rows.flatMap(r => {
     if (!r.priceUsd) return []

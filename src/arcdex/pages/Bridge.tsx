@@ -9,7 +9,7 @@ import { PasscodeField, WithdrawLimits, useWithdrawGuard } from '../components/W
 import { addBridgeDeposit } from '../lib/funding'
 import { t as T } from '../lib/i18n'
 import { promptWallet, txErrorText } from '../lib/tx'
-import { ChainIcon, ChainPicker, ChainStrip, UsdcIcon } from '../components/Chains'
+import { ChainIcon, ChainPicker } from '../components/Chains'
 import { COIN_PAGE } from '../components/NavBar'
 import type { Page } from '../App'
 import { hideWalletPrompt } from '../lib/walletPrompt'
@@ -189,7 +189,6 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
       <div className="xs-head">
         <h1>{T("Bridge")}</h1>
         <p>{T('Native USDC between Arc and {n} networks, with Circle’s CCTP: no wrapped tokens, no third-party bridge, usually under a minute.', { n: BRIDGE_CHAINS.length })}</p>
-        <ChainStrip size={24} onPick={pickOther} />
       </div>
 
       <div className="xs-grid">
@@ -206,7 +205,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
                 <div className="xs-box">
                   <div className="xs-box-h">
                     <span>{T('From')}</span>
-                    <ChainPicker value={from} options={otherOptions} onChange={pickOther} />
+                    <ChainPicker value={from} options={otherOptions} onChange={pickOther} token="SOL / USDC" />
                   </div>
                   <div className="xs-box-f">{T('SOL or USDC from your Solana wallet (Phantom, Solflare, Backpack), through Relay: USDC on Arc in seconds.')}</div>
                 </div>
@@ -217,7 +216,7 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
                 <div className="xs-box">
                   <div className="xs-box-h">
                     <span>{T('To')}</span>
-                    <ChainPicker value={to} options={otherOptions} onChange={pickOther} />
+                    <ChainPicker value={to} options={otherOptions} onChange={pickOther} token="SOL / USDC" />
                   </div>
                   <div className="xs-seg">
                     <button onClick={() => setSolRoute('cctp')}>{T('USDC · Circle CCTP')}</button>
@@ -228,13 +227,10 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
               </>
             ) : (<>
             <div className="xs-box">
-              <div className="xs-box-h">
-                <span>{T('From')}</span>
-                <ChainPicker value={from} options={otherOptions} onChange={pickOther} fixed={dir === 'out'} />
-              </div>
+              <div className="xs-box-h"><span>{T('From')}</span></div>
               <div className="xs-amount">
                 <input type="text" inputMode="decimal" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} aria-label={T("Amount (USDC)")} />
-                <span className="xs-token"><UsdcIcon size={22} />USDC</span>
+                <ChainPicker value={from} options={otherOptions} onChange={pickOther} fixed={dir === 'out'} token="USDC" />
               </div>
               <div className="xs-box-f">{sender ? <>{fromTrading ? T('From trading wallet') : T('From connected wallet')} · <span className="xs-mono">{sender.slice(0, 6)}…{sender.slice(-4)}</span></> : T('Connect a wallet to see your balance')}</div>
             </div>
@@ -242,13 +238,10 @@ export default function Bridge({ initialDir = 'out', navigate }: { initialDir?: 
             <button className="xs-flip" onClick={flip} aria-label={T("Swap direction")}>⇅</button>
 
             <div className="xs-box">
-              <div className="xs-box-h">
-                <span>{T('To')}</span>
-                <ChainPicker value={to} options={otherOptions} onChange={pickOther} fixed={dir === 'in'} />
-              </div>
+              <div className="xs-box-h"><span>{T('To')}</span></div>
               <div className="xs-amount xs-amount-out">
                 <b>{quote ? `≈ ${quote.receiveUsdc.toFixed(2)}` : n > 0 && quoting ? '…' : '0.00'}</b>
-                <span className="xs-token"><UsdcIcon size={22} />USDC</span>
+                <ChainPicker value={to} options={otherOptions} onChange={pickOther} fixed={dir === 'in'} token="USDC" />
               </div>
               <div className="xs-box-f">{T('You receive')} · {T('about a minute')}</div>
             </div>

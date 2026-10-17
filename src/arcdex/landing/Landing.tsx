@@ -1,43 +1,50 @@
-import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { LANGS, setLang, t, useLang, type Lang } from '../lib/i18n'
 import TrafficCard from './TrafficCard'
-import CoinProgram from './CoinProgram'
-import { BurnChart, BurnList, BurnMeter, CoinLiveCard, big, useCoinProgram } from './CoinLive'
-import { PHASES, phaseStatus } from './roadmap'
-import { ENGINE_API, COIN, COIN_IMAGE, COIN_PATH, fmtPct, fmtSmallUsd } from '../lib/coin'
-import { isLaunchpadCoin } from '../../../api/_launchpads'
+import { ENGINE_API, COIN, COIN_IMAGE, COIN_PATH, fmtPct } from '../lib/coin'
 import type { TrendRow, TrendingAnswer } from '../../../api/trending'
-import './landing.css'
+import { onTraffic, startTraffic, type TrafficCounts } from '../lib/traffic'
 import { useLogo } from '../lib/logo'
+import './landing.css'
 
-// arcsense.site/ — ARCDEX's home page (owner, 2026-10-04: ARCDEX, the multichain decentralized exchange
-// for spot and futures, with $ARCDEX as its coin; "make it appealing so it attracts users and holders").
-// Market first (2026-10-05, owner: "we have no users; compare us with DexScreener"): a visitor from a screener
-// expects the market, and the hero opened on a $5K coin. The hero is the name, what ARCDEX does that a screener
-// doesn't, $ARCDEX's contract and the live market: the busiest coins across every chain and their totals
-// (/api/trending). Then gainers, new listings and futures, why trade here, $ARCDEX's live card and burn, where the
-// fees go, the app, the roadmap and questions. The page names no chain (owner: "just the word ARCDEX"); coins carry
-// a small chain mark. A separate small bundle (no wallet libraries); every "trade" link goes into the app.
+// arcsense.site/ — ARCDEX's home page, rebuilt as simply as fomo's (2026-10-17, owner: "redesign the landing page to
+// be simple; remake it by changing everything, like the fomo landing page"). fomo's page is a giant wordmark and one
+// line over a dark sky with two buttons, a product shot, six short feature cards and a closing call. This one is the
+// same shape: the wordmark, one line and Start trading; a live terminal (the coins people are buying now, from the
+// engine's /api/trending) where fomo shows a screenshot; six cards; a closing call; a small footer. The page still
+// names no chain in words (owner, 2026-10-04: "just the word ARCDEX"): chains show as logos. $ARCDEX's contract stays
+// in the hero. A separate small bundle (no wallet libraries); every "trade" link goes into the app.
 
 export function mountLanding(root: HTMLElement) {
-  document.title = 'ARCDEX · Multichain DEX for spot & futures · $ARCDEX'
+  document.title = 'ARCDEX · where memecoins meet futures'
   createRoot(root).render(<StrictMode><Landing /></StrictMode>)
 }
 
 const ENGINE = ENGINE_API
+const LOGIN = '/trenches?login=1'
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
+const usdShort = (n: number) => (n >= 1e9 ? `$${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(0)}`)
 
-interface Row { key: string; href: string; symbol: string; name: string; image: string | null; price: number | null; change: number | null; tag?: string }
+/** Each chain's logo (DefiLlama's icon CDN, as the app's Swap and Bridge show them). */
+const CHAIN_LOGO: Record<TrendRow['chain'], string> = {
+  arc: 'https://icons.llamao.fi/icons/chains/rsz_arc.jpg', robinhood: 'https://icons.llamao.fi/icons/chains/rsz_robinhood.jpg',
+  solana: 'https://icons.llamao.fi/icons/chains/rsz_solana.jpg', bsc: 'https://icons.llamao.fi/icons/chains/rsz_bsc.jpg',
+}
+const coinHref = (r: TrendRow) => {
+  const pool = r.pool ? `?pool=${encodeURIComponent(r.pool)}` : ''
+  return r.chain === 'arc' ? `/token/${r.address}${pool}` : r.chain === 'solana' ? `/solana/token/${r.address}${pool}`
+    : r.chain === 'bsc' ? `/bnb/token/${r.address}${pool}` : `/robinhood/token/${r.address}${pool}`
+}
 
-/** The busiest listed coins on every chain, and each chain's totals (engine /api/trending, every 20s). */
-function useTrending(): TrendingAnswer | null {
-  const [v, setV] = useState<TrendingAnswer | null>(null)
+/** The busiest listed coins on every chain (engine /api/trending, every 20s). */
+function useTrending(): TrendRow[] | null {
+  const [v, setV] = useState<TrendRow[] | null>(null)
   useEffect(() => {
     if (!ENGINE) return
     let alive = true
     const load = () => void fetch(`${ENGINE}/api/trending`, { signal: AbortSignal.timeout(8_000) })
-      .then(r => (r.ok ? r.json() : null)).then((j: TrendingAnswer | null) => { if (alive && j?.rows) setV(j) }).catch(() => {})
+      .then(r => (r.ok ? r.json() : null)).then((j: TrendingAnswer | null) => { if (alive && j?.rows) setV(j.rows) }).catch(() => {})
     load()
     const id = setInterval(() => { if (!document.hidden) load() }, 20_000)
     return () => { alive = false; clearInterval(id) }
@@ -45,406 +52,164 @@ function useTrending(): TrendingAnswer | null {
   return v
 }
 
-const CHAIN_MARK: Record<TrendRow['chain'], [string, string, string]> = {
-  arc: ['A', '#2a6df4', 'Arc'], robinhood: ['R', '#00c805', 'Robinhood Chain'], solana: ['S', '#9945ff', 'Solana'], bsc: ['B', '#f0b90b', 'BNB Chain'],
-}
-const coinHref = (r: TrendRow) => {
-  const pool = r.pool ? `?pool=${encodeURIComponent(r.pool)}` : ''
-  return r.chain === 'arc' ? `/token/${r.address}${pool}` : r.chain === 'solana' ? `/solana/token/${r.address}${pool}`
-    : r.chain === 'bsc' ? `/bnb/token/${r.address}${pool}` : `/robinhood/token/${r.address}${pool}`
-}
-const usdShort = (n: number) => (n >= 1e9 ? `$${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(0)}`)
-const countShort = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : String(n))
-
-function ChainMark({ chain }: { chain: TrendRow['chain'] }) {
-  const [l, c, name] = CHAIN_MARK[chain]
-  return <span className="ld-chain" style={{ background: c }} title={name} aria-label={name}>{l}</span>
+function useTraffic(): TrafficCounts | null {
+  const [c, setC] = useState<TrafficCounts | null>(null)
+  useEffect(() => { if (!ENGINE) return; startTraffic(ENGINE); return onTraffic(setC) }, [])
+  return c
 }
 
-/** The hero's live market: the busiest coins across every chain. */
-function TrendingCard({ data }: { data: TrendingAnswer | null }) {
-  const rows = data?.rows.slice(0, 8)
+function Logo({ src, symbol, size = 34 }: { src: string | null; symbol: string; size?: number }) {
+  const { url, onError } = useLogo(src, size)
+  return url
+    ? <img className="lp-logo" src={url} alt="" width={size} height={size} loading="lazy" onError={onError} />
+    : <span className="lp-logo lp-logo-blank" style={{ width: size, height: size }}>{symbol.replace(/^\$/, '').slice(0, 2).toUpperCase()}</span>
+}
+
+function Copy({ text }: { text: string }) {
+  const [done, setDone] = useState(false)
   return (
-    <div className="ld-card ld-trend">
-      <div className="ld-trend-h">
-        <b><span className="ld-live-dot" />{t('Trending now')}</b>
-        <a href="/trenches">{t('All markets')} ›</a>
+    <button className="lp-copy" onClick={() => { void navigator.clipboard?.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500) }}>
+      {done ? t('Copied') : t('Copy')}
+    </button>
+  )
+}
+
+/** fomo shows a screenshot of its app here; this is the app's own feed: what people are buying right now. */
+function LiveTerminal({ rows }: { rows: TrendRow[] | null }) {
+  const list = rows?.slice(0, 7)
+  return (
+    <div className="lp-term" aria-label={t('Trending now')}>
+      <div className="lp-term-bar">
+        <span className="lp-term-dots"><i /><i /><i /></span>
+        <b><span className="lp-dot" />{t('Trending now')}</b>
+        <a href="/trenches">{t('Open the terminal')} →</a>
       </div>
-      <div className="ld-trend-cols"><span>{t('Coin')}</span><span>{t('Price')}</span><span>24h</span><span className="ld-hide-xs">{t('Volume')}</span></div>
-      {!rows && <div className="ld-mkts-empty">{t('Loading markets…')}</div>}
-      {rows?.map(r => (
-        <a key={`${r.chain}:${r.address}`} className="ld-trend-row" href={coinHref(r)}>
-          <span className="ld-trend-coin">
-            <span className="ld-trend-logo"><Logo src={r.image} symbol={r.symbol} /><ChainMark chain={r.chain} /></span>
-            <span className="ld-mkts-name"><b>{r.symbol}</b><small>{r.launchpad ?? r.name}</small></span>
+      <div className="lp-term-cols"><span>{t('Coin')}</span><span>{t('Market cap')}</span><span>24h</span><span className="lp-hide-xs">{t('Volume')}</span></div>
+      {!list && <div className="lp-term-empty">{t('Loading markets…')}</div>}
+      {list?.map((r, i) => (
+        <a key={`${r.chain}:${r.address}`} className="lp-term-row" href={coinHref(r)} style={{ animationDelay: `${i * 60}ms` }}>
+          <span className="lp-term-coin">
+            <span className="lp-term-pic"><Logo src={r.image} symbol={r.symbol} /><img className="lp-term-chain" src={CHAIN_LOGO[r.chain]} alt="" width={14} height={14} /></span>
+            <span><b>{r.symbol}</b><small>{r.launchpad ?? r.name}</small></span>
           </span>
-          <span className="ld-mkts-price">{price(r.priceUsd)}</span>
-          <span className={`ld-mkts-chg ${r.change24h >= 0 ? 'ld-up' : 'ld-down'}`}>{fmtPct(r.change24h)}</span>
-          <span className="ld-trend-vol ld-hide-xs">{usdShort(r.volume24h)}</span>
+          <span>{usdShort(r.marketCapUsd)}</span>
+          <span className={r.change24h >= 0 ? 'lp-up' : 'lp-down'}>{fmtPct(r.change24h)}</span>
+          <span className="lp-hide-xs">{usdShort(r.volume24h)}</span>
         </a>
       ))}
     </div>
   )
 }
 
-/** Live rows for the markets card: launchpad coins trading now, the newest launches, and the futures pairs. */
-function useMarkets() {
-  const [popular, setPopular] = useState<Row[] | null>(null)
-  const [fresh, setFresh] = useState<Row[] | null>(null)
-  const [perps, setPerps] = useState<Row[] | null>(null)
-  useEffect(() => {
-    if (!ENGINE) return
-    const get = (path: string) => fetch(`${ENGINE}${path}`, { signal: AbortSignal.timeout(8_000) }).then(r => (r.ok ? r.json() : null)).catch(() => null)
-    type Meta = { token: string; name: string; symbol: string; image?: string | null; pool?: string | null; priceUsd?: number | null; marketCapUsd?: number | null; launchpad?: string | null }
-    // Listed coins only: $15K or more of market cap (lib/safety.ts LISTING; owner, 2026-10-04).
-    const MIN_MC = 15_000
-    const load = () => {
-      void get('/v1/tokens/active?limit=60').then((j: { tokens?: { token: string; stats: { priceUsd: number | null; marketCapUsd: number | null; chg: { h24: number | null } }; meta: Meta | null }[] } | null) => {
-        if (!j?.tokens) return
-        // Launchpad coins only (owner, 2026-10-04).
-        setPopular(j.tokens.filter(a => a.meta && isLaunchpadCoin(a.meta.launchpad) && a.token !== COIN.toLowerCase() && a.stats.priceUsd && (a.stats.marketCapUsd ?? 0) >= MIN_MC).slice(0, 5).map(a => ({
-          key: a.token, href: `/token/${a.token}${a.meta?.pool ? `?pool=${a.meta.pool}` : ''}`, symbol: a.meta!.symbol, name: a.meta!.name,
-          image: a.meta!.image ?? null, price: a.stats.priceUsd, change: a.stats.chg.h24,
-        })))
-      })
-      void get('/v1/tokens/new?limit=300').then((j: { launches?: Meta[] } | null) => {
-        if (!j?.launches) return
-        setFresh(j.launches.filter(l => isLaunchpadCoin(l.launchpad) && (l.marketCapUsd ?? 0) >= MIN_MC).slice(0, 6).map(l => ({
-          key: l.token, href: `/token/${l.token}${l.pool ? `?pool=${l.pool}` : ''}`, symbol: l.symbol, name: l.name, image: l.image ?? null, price: l.priceUsd ?? null, change: null, tag: l.launchpad ?? t('New'),
-        })))
-      })
-    }
-    // Futures trade on Hyperliquid (2026-10-11): BTC, ETH and SOL, then the busiest stocks, commodities and indices.
-    const hl = (dex: string) => fetch('https://api.hyperliquid.xyz/info', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dex ? { type: 'metaAndAssetCtxs', dex } : { type: 'metaAndAssetCtxs' }),
-      signal: AbortSignal.timeout(8_000),
-    }).then(r => (r.ok ? r.json() : null)).catch(() => null) as Promise<[{ universe: { name: string; maxLeverage: number; isDelisted?: boolean }[] }, { markPx: string; prevDayPx: string; dayNtlVlm: string }[]] | null>
-    const loadPerps = () => void Promise.all([hl(''), hl('xyz')]).then(([core, xyz]) => {
-      const rows = (r: typeof core) => (r ? r[0].universe.map((u, i) => ({ u, c: r[1][i] })).filter(x => x.c && !x.u.isDelisted) : [])
-      const row = ({ u, c }: ReturnType<typeof rows>[number]): Row => {
-        const sym = u.name.includes(':') ? u.name.split(':')[1] : u.name
-        const px = Number(c.markPx), prev = Number(c.prevDayPx)
-        return { key: u.name, href: u.name === 'BTC' ? '/futures' : `/futures/${u.name}`, symbol: `${sym}-USD`, name: t('Perpetual'), image: null, price: px, change: prev > 0 ? (px / prev - 1) * 100 : null, tag: t('Up to {n}× leverage', { n: u.maxLeverage }) }
-      }
-      const crypto = rows(core).filter(x => ['BTC', 'ETH', 'SOL'].includes(x.u.name))
-      const tradfi = rows(xyz).sort((a, b) => Number(b.c.dayNtlVlm) - Number(a.c.dayNtlVlm)).slice(0, 3)
-      const list = [...crypto, ...tradfi].map(row)
-      if (list.length) setPerps(list)
-    })
-    loadPerps()
-    const perpsId = setInterval(() => { if (!document.hidden) loadPerps() }, 30_000)
-    load()
-    const id = setInterval(() => { if (!document.hidden) load() }, 20_000)
-    return () => { clearInterval(id); clearInterval(perpsId) }
-  }, [])
-  return { popular, fresh, perps }
-}
-
-function Copy({ text }: { text: string }) {
-  const [done, setDone] = useState(false)
-  return (
-    <button className="ld-copy" onClick={() => { void navigator.clipboard?.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500) }}>
-      {done ? t('Copied ✓') : t('Copy')}
-    </button>
-  )
-}
-
-function Logo({ src, symbol }: { src: string | null; symbol: string }) {
-  const { url, onError } = useLogo(src, 28)
-  if (!url) return <span className="ld-mk-logo">{symbol.slice(0, 1)}</span>
-  return <img className="ld-mk-logo" src={url} alt="" onError={onError} />
-}
-
-/** A laurel branch (Binance's award badges): leaves along an arc; `flip` for the right-hand one. */
-function Laurel({ flip }: { flip?: boolean }) {
-  const leaves = [0, 1, 2, 3, 4, 5]
-  return (
-    <svg className="ld-laurel-svg" viewBox="0 0 24 48" width="20" height="40" aria-hidden="true" style={flip ? { transform: 'scaleX(-1)' } : undefined}>
-      <path d="M18 46 C 6 38, 4 20, 12 3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      {leaves.map(i => {
-        const y = 42 - i * 7.2
-        const x = 14 - Math.sin((i / 5) * Math.PI) * 6.5 - i * 0.2
-        return <ellipse key={i} cx={x - 3.2} cy={y - 1} rx="4.2" ry="1.9" fill="currentColor" transform={`rotate(${-40 + i * 6} ${x - 3.2} ${y - 1})`} />
-      })}
-    </svg>
-  )
-}
-
-/** Log in: the app at the Trenches, which opens Privy's sign-in at once (App.tsx). */
-const LOGIN = '/trenches?login=1'
-
-const price = (p: number | null) => (p == null ? '—' : p >= 1000 ? `$${p.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : fmtSmallUsd(p))
-
-export default function Landing() {
+function Landing() {
   const lang = useLang()
-  const [menu, setMenu] = useState(false)
-  const [tab, setTab] = useState<'gainers' | 'new' | 'futures'>('gainers')
-  const navRef = useRef<HTMLElement>(null)
-  const markets = useMarkets()
-  const trend = useTrending()
-  const program = useCoinProgram(ENGINE)
-  const totals = trend?.totals ?? null
-  const coinsLive = totals ? totals.reduce((s, x) => s + x.coins, 0) : null
-  const volLive = totals ? totals.reduce((s, x) => s + x.volume24h, 0) : null
-  const txLive = totals ? totals.reduce((s, x) => s + x.txns24h, 0) : null
-  // Gainers: coins up the most in 24h with real trading behind it ($5K+ of volume).
-  const gainers: Row[] | null = trend ? [...trend.rows].filter(r => r.volume24h >= 5_000 && r.change24h > 0).sort((a, b) => b.change24h - a.change24h).slice(0, 6)
-    .map(r => ({ key: `${r.chain}:${r.address}`, href: coinHref(r), symbol: r.symbol, name: r.name, image: r.image, price: r.priceUsd, change: r.change24h, tag: r.launchpad ?? undefined })) : null
-
-  // The links fold into the ☰ menu wherever they don't fit on one line.
-  useLayoutEffect(() => {
-    const nav = navRef.current
-    if (!nav) return
-    const fit = () => {
-      nav.classList.remove('ld-nav-fold')
-      nav.classList.toggle('ld-nav-fold', nav.scrollWidth > nav.clientWidth + 1)
-    }
-    fit()
-    void document.fonts.ready.then(fit)
-    window.addEventListener('resize', fit)
-    return () => window.removeEventListener('resize', fit)
-  }, [lang])
-
-  const rows = tab === 'gainers' ? gainers : tab === 'new' ? markets.fresh : markets.perps
-
-  const PLATFORM: [string, string, string, string][] = [
-    ['📈', t('Markets'), t('Every listed coin, live, with a safety rating.'), '/trenches'],
-    ['◆', t('Spot'), t('Buy and sell in one tap, no pop-ups.'), '/spot'],
-    ['📊', t('Futures'), t('Crypto, stocks, gold and indices, up to 40× leverage.'), '/futures'],
-    ['🎯', t('Predictions'), t('Trade on what happens next, from $10.'), '/predict'],
-    ['⇄', t('Swap'), t('Any listed coin for USDC, in one step.'), '/swap'],
-    ['🌉', t('Bridge'), t('Move USDC in and out in about a minute.'), '/bridge'],
-    ['▤', t('Portfolio'), t('Every coin you hold, valued live.'), '/portfolio'],
+  const rows = useTrending()
+  const traffic = useTraffic()
+  const features: [string, string, string, string][] = [
+    ['trenches', t('LIVE LAUNCHES'), t('every launch, as it happens'), t('New coins, almost bonded and migrated, streaming in seconds after they land.')],
+    ['trending', t('TRENDING NOW'), t('see what people are buying'), t('The coins with the most buyers in the last hour, across every chain.')],
+    ['safety', t('SAFETY FIRST'), t('spot the rug before it pulls'), t('Dev sold, bundlers, snipers and a safety rating on every coin, in plain words.')],
+    ['futures', t('BEYOND MEMECOINS'), t('futures & predictions'), t('Long or short crypto, stocks and commodities, and trade on what happens next.')],
+    ['login', t('EASY ONBOARDING'), t('log in with your email'), t('Your wallet is made for you in seconds: no app, no seed phrase.')],
+    ['chains', t('ZERO COMPLEXITY'), t('every chain, one wallet'), t('Pay with USDC, SOL or ETH from wherever your money already is.')],
   ]
-
-  const FAQ: [string, string][] = [
-    [t('What is ARCDEX?'), t('A multichain decentralized exchange: spot trading, one-tap swaps, a USDC bridge, perpetual futures on crypto, stocks and commodities, and prediction markets.')],
-    [t('What is $ARCDEX?'), t('ARCDEX’s platform coin. 30% of ARCDEX’s fees buy back $ARCDEX and burn it, and 70% go to liquidity pools. Every buyback and burn is on-chain and shown live on this page.')],
-    [t('How do I buy $ARCDEX?'), t('Log in with your email, add USDC, then buy $ARCDEX on its trading page. Always check the contract address: {ca}.', { ca: short(COIN) })],
-    [t('Which coins can I trade?'), t('Launchpad coins and established coins with $15K or more of market cap, and stock tokens. Every coin carries a safety rating; coins rated Danger, coins from unknown contracts and coins that have rugged aren’t in the lists.')],
-    [t('Where do futures and predictions trade?'), t('On Hyperliquid, the largest on-chain futures exchange. Your orders are signed in your browser and go straight to it, and ARCDEX never holds your money. Not available to US persons or in sanctioned regions.')],
-    [t('Is my money at risk?'), t('Yes. Meme coins are very volatile, and futures with leverage can lose money quickly. Trade only what you can afford to lose. Nothing here is financial advice.')],
-  ]
-
-  const phaseNow = PHASES.find(p => phaseStatus(p.n) === 'now') ?? PHASES.find(p => phaseStatus(p.n) === 'next') ?? PHASES[PHASES.length - 1]
 
   return (
-    <div className="ld ld-x" lang={lang}>
-      {/* ── nav ─────────────────────────────────────────── */}
-      <header className="ld-nav" ref={navRef}>
-        <a href="/" className="ld-brand"><img src="/arcdex-mark.png" alt="" width={30} height={30} /><span className="ld-word">arc<span>dex</span></span></a>
-        <nav className={`ld-links${menu ? ' open' : ''}`} onClick={() => setMenu(false)}>
-          <a href="/trenches">{t('Markets')}</a>
+    <div className="lp">
+      <div className="lp-sky" aria-hidden><span className="lp-planet" /></div>
+
+      <header className="lp-nav">
+        <a className="lp-brand" href="/" aria-label="ARCDEX"><img src="/arcdex-mark-48.png" alt="" width={26} height={26} /><span>arcdex</span></a>
+        <nav className="lp-links">
+          <a href="/trenches">{t('Trenches')}</a>
           <a href="/futures">{t('Futures')}</a>
-          <a href="/predict">{t('Predict')} <small className="ld-tag">{t('New')}</small></a>
-          <a href="/swap">{t('Swap')}</a>
-          <a href="/bridge">{t('Bridge')}</a>
-          <a href="#burn" className="ld-link-arcdex">🔥 $ARCDEX</a>
-          <div className="ld-menu-lang" onClick={e => e.stopPropagation()}>
-            <select className="ld-lang" value={lang} onChange={e => void setLang(e.target.value as Lang)} aria-label={t('Language')}>
-              {LANGS.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
-            </select>
-          </div>
+          <a href="/predict">{t('Predict')}</a>
         </nav>
-        <div className="ld-nav-right">
-          <select className="ld-lang ld-lang-top" value={lang} onChange={e => void setLang(e.target.value as Lang)} aria-label={t('Language')}>
-            {LANGS.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
+        <div className="lp-nav-right">
+          <select className="lp-lang" value={lang} onChange={e => void setLang(e.target.value as Lang)} aria-label={t('Language')}>
+            {LANGS.map(l => <option key={l.code} value={l.code}>{l.code.toUpperCase()}</option>)}
           </select>
-          <a className="ld-btn ld-btn-ghost ld-btn-sm ld-hide-sm" href={COIN_PATH}>{t('Buy $ARCDEX')}</a>
-          {/* Log in (owner, 2026-10-17): the app opens with Privy's sign-in, which makes the wallets (lib/returning.ts). */}
-          <a className="ld-btn ld-btn-primary ld-btn-sm" href={LOGIN} data-testid="landing-login">{t('Log in')}</a>
-          <button className="ld-burger" onClick={() => setMenu(o => !o)} aria-label={t('Menu')}>☰</button>
+          <a className="lp-btn lp-btn-light lp-btn-sm" href={LOGIN} data-testid="landing-login">{t('Log in')}</a>
         </div>
       </header>
 
-      {/* ── hero: the exchange and its coin, live ───────── */}
-      <section className="ld-hero">
-        <div className="ld-hero-text">
-          <div className="ld-pill"><span className="ld-live-dot" />{t('Multichain DEX · spot & futures')}</div>
-          <h1 className="ld-h1-name"><span className="ld-hero-blue">ARCDEX</span></h1>
-          <p className="ld-lead">{t('Find any coin, see whether it’s safe, and buy it in one tap: live markets on four chains, a safety rating on every coin, futures and predictions. Log in with your email or Google: your wallet is made for you.')}</p>
-          <div className="ld-hero-start">
-            <a className="ld-btn ld-btn-primary" href={LOGIN}>{t('Log in and start trading')} →</a>
-            <a className="ld-btn ld-btn-ghost" href="/trenches">{t('Explore markets')}</a>
-          </div>
-          <a className="ld-wallet-link" href="/trenches?connect=wallet">{t('Use MetaMask, Phantom or another wallet app instead')}</a>
-          <div className="ld-laurels">
-            <div className="ld-laurel"><Laurel /><div><b>{coinsLive == null ? '…' : coinsLive.toLocaleString()}</b><span>{t('Coins live now')}</span></div><Laurel flip /></div>
-            <div className="ld-laurel"><Laurel /><div><b>{volLive == null ? '…' : usdShort(volLive)}</b><span>{t('24h volume in our markets')}</span></div><Laurel flip /></div>
-            <div className="ld-laurel ld-hide-xs"><Laurel /><div><b>{txLive == null ? '…' : countShort(txLive)}</b><span>{t('Trades in 24h')}</span></div><Laurel flip /></div>
-          </div>
-          <div className="ld-buybox">
-            {/* $ARCDEX's contract (owner, 2026-10-05: the Robinhood CA removed, only the Arc CA shown). */}
-            <div className="ld-cas">
-              {([[t('Arc CA'), COIN]] as const).map(([label, ca]) => (
-                <div key={ca} className="ld-ca">
-                  <img src={COIN_IMAGE} alt="" width={22} height={22} />
-                  <span className="ld-ca-tag">{label}</span>
-                  <code title={ca}><span className="ld-ca-full">{ca}</span><span className="ld-ca-short">{short(ca)}</span></code>
-                  <Copy text={ca} />
-                </div>
-              ))}
-            </div>
-            <a className="ld-btn ld-btn-primary ld-buy" href={COIN_PATH}>{t('Buy $ARCDEX')}</a>
-          </div>
+      <section className="lp-hero">
+        <h1 className="lp-word">arcdex</h1>
+        <p className="lp-tag">{t('where memecoins meet futures.')}</p>
+        <p className="lp-sub">{t('New launches, trending coins, futures and predictions. Trade any of them in seconds.')}</p>
+        <div className="lp-ctas">
+          <a className="lp-btn lp-btn-primary" href={LOGIN}>{t('Start trading')}</a>
+          <a className="lp-btn lp-btn-dark" href="/trenches">{t('Explore markets')}</a>
         </div>
-
-        <div className="ld-hero-side">
-          <TrendingCard data={trend} />
+        <a className="lp-alt" href="/trenches?connect=wallet">{t('Use MetaMask, Phantom or another wallet app instead')}</a>
+        <div className="lp-ca">
+          <img src={COIN_IMAGE} alt="" width={20} height={20} />
+          <span className="lp-ca-tag">$ARCDEX</span>
+          <code title={COIN}><span className="lp-ca-full">{COIN}</span><span className="lp-ca-short">{short(COIN)}</span></code>
+          <Copy text={COIN} />
+          <a href={COIN_PATH}>{t('Buy')}</a>
         </div>
       </section>
 
-      {/* ── why trade here: what a screener doesn't do ───── */}
-      <section className="ld-section" id="why">
-        <h2>{t('More than a screener')}</h2>
-        <p className="ld-sub">{t('A screener shows you the chart, then sends you somewhere else to buy. ARCDEX does both, and checks the coin first.')}</p>
-        <div className="ld-why">
-          {([
-            ['⚡', t('Buy in one tap'), t('Log in with your email or Google and your wallet is made for you: no app to install, no seed phrase to write down.')],
-            ['🛡', t('A safety rating on every coin'), t('A sell test, the contract, the creator and the buyers, checked for every coin, with the reasons in words.')],
-            ['◎', t('Pay from any wallet'), t('Pay with SOL or USDC from Phantom, Solflare or Backpack, or USDC from your EVM wallet.')],
-            ['🧹', t('Rugs filtered out'), t('Only launchpad coins and established coins with $15K or more of market cap. Coins that rugged drop out.')],
-          ] as const).map(([icon, title, body]) => (
-            <div key={title} className="ld-card ld-why-card"><span className="ld-icon">{icon}</span><h3>{title}</h3><p>{body}</p></div>
+      <section className="lp-section lp-center">
+        <span className="lp-kicker">{t('LIVE NOW')}</span>
+        <h2>{t('trade what’s moving.')}<br />{t('before everyone else.')}</h2>
+        <p className="lp-lead">{t('Every coin as it launches, bonds and migrates, and what people are buying right now.')}</p>
+        <LiveTerminal rows={rows} />
+      </section>
+
+      <section className="lp-section">
+        <h2 className="lp-h-left">{t('never miss a move')}</h2>
+        <p className="lp-lead lp-h-left">{t('everything a trader needs, in one place')}</p>
+        <div className="lp-cards">
+          {features.map(([k, kicker, title, body]) => (
+            <div key={k} className={`lp-card lp-card-${k}`}>
+              <span className="lp-kicker">{kicker}</span>
+              <h3>{title}</h3>
+              <p>{body}</p>
+              <FeatureArt k={k} rows={rows} />
+            </div>
           ))}
         </div>
       </section>
 
-      {/* ── live markets ────────────────────────────────── */}
-      <section className="ld-section" id="markets">
-        <div className="ld-split-head">
-          <div><h2>{t('Live markets')}</h2></div>
-          <a className="ld-btn ld-btn-ghost" href="/trenches">{t('Explore markets')} →</a>
-        </div>
-        <div className="ld-mkts-solo">
-          <div className="ld-card ld-mkts">
-            <div className="ld-mkts-tabs">
-              {([['gainers', t('Top gainers')], ['new', t('New listing')], ['futures', t('Futures')]] as const).map(([k, l]) => (
-                <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>{l}</button>
-              ))}
-              <a className="ld-mkts-all" href={tab === 'futures' ? '/futures' : '/trenches'}>{t('View all')} ›</a>
-            </div>
-            {!rows && <div className="ld-mkts-empty">{t('Loading markets…')}</div>}
-            {rows?.length === 0 && <div className="ld-mkts-empty">{tab === 'gainers' ? t('No coin is up today yet.') : t('No new coin has reached $15K of market cap yet.')}</div>}
-            {rows?.map(r => (
-              <a key={r.key} className={`ld-mkts-row${r.key === 'coin' ? ' arcdex' : ''}`} href={r.href}>
-                <Logo src={r.image} symbol={r.symbol} />
-                <span className="ld-mkts-name"><b>{r.symbol}</b><small>{r.name}</small>{r.tag && <em>{r.tag}</em>}</span>
-                <span className="ld-mkts-price">{price(r.price)}</span>
-                <span className={`ld-mkts-chg ${r.change == null ? '' : r.change >= 0 ? 'ld-up' : 'ld-down'}`}>{r.change == null ? '—' : fmtPct(r.change)}</span>
-              </a>
-            ))}
-          </div>
+      <section className="lp-section lp-center lp-final">
+        <h2>{t('a trading terminal')}<br />{t('for everyone')}</h2>
+        {traffic && traffic.total > 0 && <p className="lp-lead">{t('{n} traders have visited ARCDEX', { n: traffic.total.toLocaleString('en-US') })}</p>}
+        <div className="lp-ctas">
+          <a className="lp-btn lp-btn-primary" href={LOGIN}>{t('Start trading')}</a>
+          <a className="lp-btn lp-btn-dark" href="/trenches">{t('Explore markets')}</a>
         </div>
       </section>
 
-      {/* ── the $ARCDEX burn, live ──────────────────────── */}
-      <section className="ld-section" id="burn">
-        <div className="ld-split-head">
-          <div>
-            <h2>{t('The $ARCDEX burn, live')}</h2>
-          </div>
-          <a className="ld-btn ld-btn-primary" href={COIN_PATH}>{t('Buy $ARCDEX')} →</a>
-        </div>
-        <div className="ld-burngrid">
-          <CoinLiveCard engine={ENGINE} program={program} />
-          <div className="ld-card ld-burncard">
-            <BurnMeter program={program} />
-            <div className="ld-burncard-h">{t('Burned per day')}</div>
-            <BurnChart program={program} />
-            <div className="ld-burnstats">
-              <div><span>{t('Burns')}</span><b>{program ? program.burned.count.toLocaleString() : '…'}</b></div>
-              <div><span>{t('Bought back from fees')}</span><b>{program ? `$${program.totals.buybackUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '…'}</b></div>
-              <div><span>{t('Burned by the fee wallet')}</span><b>{program ? big(program.totals.coinBurned) : '…'}</b></div>
-            </div>
-            {program && program.burns.length > 0 && <div className="ld-burncard-h">{t('Latest burns')}</div>}
-            <BurnList program={program} limit={5} />
-          </div>
-        </div>
-      </section>
-
-      {/* ── futures ─────────────────────────────────────── */}
-      <section className="ld-section" id="futures">
-        <div className="ld-split-head">
-          <div>
-            <h2>{t('Perpetual futures')}</h2>
-            <p className="ld-sub">{t('Long or short crypto, stocks, gold, oil and indices with up to 40× leverage, on Hyperliquid’s order books. Orders are signed in your browser; ARCDEX never holds your money.')}</p>
-          </div>
-          <a className="ld-btn ld-btn-primary" href="/futures">{t('Trade futures')} →</a>
-        </div>
-        <div className="ld-perps">
-          {(markets.perps ?? ['BTC', 'ETH', 'SOL'].map(s => ({ key: s, href: '/futures', symbol: `${s}-USD`, price: null, change: null } as Row))).map(p => (
-            <a key={p.key} className="ld-card ld-perp" href={p.href}>
-              <span className="ld-perp-sym">{p.symbol} <small>{t('Perp')}</small></span>
-              <b>{price(p.price)}</b>
-              <span className="ld-muted">{t('Long or short')}{p.tag ? ` · ${p.tag}` : ''}</span>
-            </a>
-          ))}
-        </div>
-      </section>
-
-      {/* ── where the fees go: 30% $ARCDEX buyback & burn, 70% liquidity ── */}
-      <CoinProgram engine={ENGINE} />
-
-      {/* ── the app ─────────────────────────────────────── */}
-      <section className="ld-section" id="platform">
-        <h2>{t('Everything to trade, in one place')}</h2>
-        <div className="ld-platform">
-          {PLATFORM.map(([icon, title, body, href]) => (
-            <a key={title} href={href} className="ld-card ld-tile"><span className="ld-icon">{icon}</span><div><h3>{title}</h3><p>{body}</p></div></a>
-          ))}
-        </div>
-      </section>
-
-      {/* ── roadmap, in one line ────────────────────────── */}
-      <section className="ld-section" id="roadmap">
-        <div className="ld-card ld-road">
-          <span className="ld-muted">{t('Roadmap')}</span>
-          <div className="ld-road-steps">
-            {PHASES.map(p => {
-              const st = phaseStatus(p.n)
-              return <span key={p.n} className={`ld-road-step ${st}`} title={t(p.title)}>{st === 'done' ? '✓' : p.n}</span>
-            })}
-          </div>
-          <span className="ld-road-now">{t('Now')}: <b>{t(phaseNow.title)}</b></span>
-        </div>
-      </section>
-
-      {/* ── FAQ ─────────────────────────────────────────── */}
-      <section className="ld-section" id="faq">
-        <h2>{t('Questions')}</h2>
-        <div className="ld-faq">
-          {FAQ.map(([q, a]) => <details key={q} className="ld-card"><summary>{q}</summary><p>{a}</p></details>)}
-        </div>
-      </section>
-
-      <section className="ld-final">
-        <img src="/arcdex-mark.png" alt="" width={56} height={56} />
-        <h2>{t('Trade every chain. Hold $ARCDEX.')}</h2>
-        <p>{t('Log in with your email: your wallet is ready in seconds.')}</p>
-        <div className="ld-cta ld-center">
-          <a className="ld-btn ld-btn-primary" href={LOGIN}>{t('Log in and start trading')} →</a>
-          <a className="ld-btn ld-btn-ghost" href={COIN_PATH}>{t('Buy $ARCDEX')}</a>
-        </div>
-      </section>
-
-      <footer className="ld-footer">
-        <div className="ld-foot-top">
-          <a href="/" className="ld-brand"><img src="/arcdex-mark.png" alt="" width={24} height={24} /><span className="ld-word">arc<span>dex</span></span></a>
-          <nav>
-            <a href="/trenches">{t('Markets')}</a>
-            <a href="/spot">{t('Spot')}</a>
-            <a href="/futures">{t('Futures')}</a>
-            <a href="/predict">{t('Predict')}</a>
-            <a href="/swap">{t('Swap')}</a>
-            <a href="/bridge">{t('Bridge')}</a>
-            <a href="/burn">{t('$ARCDEX burn')}</a>
-          </nav>
-        </div>
+      <footer className="lp-footer">
+        <a className="lp-brand" href="/"><img src="/arcdex-mark-48.png" alt="" width={20} height={20} /><span>arcdex</span></a>
+        <nav>
+          <a href="/trenches">{t('Trenches')}</a>
+          <a href="/futures">{t('Futures')}</a>
+          <a href="/predict">{t('Predict')}</a>
+          <a href="/burn">$ARCDEX</a>
+          <a href="/routes">{t('Supported routes')}</a>
+        </nav>
         <TrafficCard engine={ENGINE} />
-        <p className="ld-disclaimer">{t('Trading crypto is risky, and leveraged futures more so. Nothing here is financial advice.')}</p>
-        <p className="ld-muted">© 2026 ARCDEX · {t('Multichain Decentralized Exchange')}</p>
+        <small>{t('Trading is risky: coins can lose all their value. Nothing here is advice.')}</small>
       </footer>
     </div>
   )
+}
+
+/** Each card's small picture, drawn from the page's own data (no stock art). */
+function FeatureArt({ k, rows }: { k: string; rows: TrendRow[] | null }) {
+  if (k === 'chains') return <div className="lp-art lp-art-chains">{Object.values(CHAIN_LOGO).map(u => <img key={u} src={u} alt="" width={40} height={40} />)}</div>
+  if (k === 'trending' || k === 'trenches') {
+    const r = (rows ?? []).slice(k === 'trending' ? 0 : 3, k === 'trending' ? 3 : 6)
+    return (
+      <div className="lp-art lp-art-rows">
+        {r.map(x => <span key={x.address}><Logo src={x.image} symbol={x.symbol} size={22} /><b>{x.symbol}</b><em className={x.change24h >= 0 ? 'lp-up' : 'lp-down'}>{fmtPct(x.change24h)}</em></span>)}
+      </div>
+    )
+  }
+  if (k === 'safety') return <div className="lp-art lp-art-chips"><span className="ok">{t('Safe')}</span><span>{t('DS 0%')}</span><span>{t('Bundlers 0')}</span><span className="warn">{t('Snipers 4')}</span></div>
+  if (k === 'futures') return <div className="lp-art lp-art-chips"><span className="ok">{t('Long')} BTC</span><span className="bad">{t('Short')} ETH</span><span>{t('Yes')} 62¢</span></div>
+  return <div className="lp-art lp-art-login"><span>✉ {t('Continue with email')}</span><span>G {t('Continue with Google')}</span></div>
 }

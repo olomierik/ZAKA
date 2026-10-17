@@ -4,7 +4,7 @@ import { addMainSeries, chartTheme, DEFAULT_CHART_STYLE, lineColors, onChartStyl
 import { getTheme, useTheme } from '../lib/theme'
 import { useIsMobile } from '../lib/useMobile'
 import { getPoolOhlcv } from '../api/gecko'
-import { candlesFromTicks, mergeCandles, type Candle, type Tick } from '../lib/candles'
+import { candlesFromTicks, cleanTicks, mergeCandles, type Candle, type Tick } from '../lib/candles'
 import { engineEnabled, getEngineCandles, marketStream, useEngineStatus } from '../api/marketStream'
 import type { WireCandle } from '../../../api/_marketProtocol'
 import { INDICATORS, bollinger, ema, rsi, sma, vwap, type IndicatorId } from '../lib/indicators'
@@ -246,7 +246,8 @@ export default function PriceChart({ poolAddress, source, liveTitle, ticks, live
     const id = setInterval(at, Math.min(step, 15) * 1000)
     return () => clearInterval(id)
   }, [step])
-  const recent = useMemo(() => candlesFromTicks(ticks ?? [], step), [ticks, step])
+  // Trades priced far from the ones around them (bots' multi-pool transactions) are left off (lib/candles.ts).
+  const recent = useMemo(() => candlesFromTicks(cleanTicks(ticks ?? []), step), [ticks, step])
   const candles = useMemo(() => {
     let raw: Candle[]
     if (engineMode && engineHistory) raw = overlay(history, liveCandles)

@@ -20,6 +20,7 @@ import { getSolCoin, getSolTrades, solChartSource, solCoinChain, solSeed, solUsd
 import { solFeed, SOL_QUOTES, type SolPoolMeta } from '../api/solSwaps'
 import { useChainTrades } from '../lib/useChainTrades'
 import { trenchLaunch } from '../api/trenchFeed'
+import { dsAsRow, dsOne, type DsCoin } from '../lib/dexData'
 import type { TrenchCoinWire } from '../../../api/_trenchProtocol'
 import { WSOL } from '../../../api/_solCore'
 import type { SolCoinDetail } from '../api/solanaMarket'
@@ -66,6 +67,12 @@ function fromLaunch(l: TrenchCoinWire): SolCoinDetail {
   return { ...row, supply: l.p > 0 && l.m > 0 ? l.m / l.p : null, pools: row.pool ? [row] : [] }
 }
 
+/** A coin from DexScreener alone, before GeckoTerminal answers. */
+function fromDs(d: DsCoin): SolCoinDetail {
+  const row = dsAsRow(d, 'sol')
+  return { ...row, supply: d.priceUsd > 0 && d.marketCap > 0 ? d.marketCap / d.priceUsd : null, pools: [row] }
+}
+
 function seedCoin(mint: string, pool?: string): SolCoinDetail | null {
   const r = solSeed(mint, pool)
   return r ? { ...r, supply: null, pools: [r] } : null
@@ -85,6 +92,8 @@ export default function SolanaTokenPage({ address, pool: poolParam, navigate, bu
   useEffect(() => {
     let live = true
     setCoin(prev => (prev && prev.address === address ? prev : seedCoin(address, poolParam))); setLoaded(false)
+    // DexScreener answers in ~0.2 s (lib/dexData.ts): the header shows at once, GeckoTerminal's full answer replaces it.
+    void dsOne('sol', address).then(d => { if (live && d) setCoin(prev => prev ?? fromDs(d)) }).catch(() => {})
     const load = () => getSolCoin(address, poolParam).catch(() => null)
       // GeckoTerminal doesn't list a coin minutes old: the engine's launch record (the Trenches row it came from) names it.
       .then(async c => { if (!live) return; if (c) setCoin(c); else { const l = await trenchLaunch('sol', address); if (live && l) setCoin(prev => prev ?? fromLaunch(l)) } })

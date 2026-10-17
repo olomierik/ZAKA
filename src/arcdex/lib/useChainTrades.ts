@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { TradeRow } from '../components/TokenSocialTabs'
-import type { Tick } from './candles'
+import { cleanTicks, type Tick } from './candles'
 
 /** One swap read from the chain. */
 export interface ChainSwap {
@@ -149,12 +149,16 @@ export function useChainTrades(o: Options): { rows: ChainRow[]; ticks: Tick[]; c
     if (need.length && resolveRef.current) resolveRef.current(need, () => setMakersFound(n => n + 1))
   }, [rows])
 
-  // The chart's live end: every swap the chain read, else GeckoTerminal's new ones.
+  // The chart's live end: every swap the chain read, else every trade GeckoTerminal listed. The chart draws from these
+  // at once and puts GeckoTerminal's candles only before the first of them (lib/candles.ts mergeCandles), so it no
+  // longer waits on GeckoTerminal's candle call, which can sit for seconds behind its rate limit (2026-10-17).
   const ticks: Tick[] = useMemo(() => rows
-    .filter(r => r.priceUsd > 0 && (chainOn ? r.fromChain : r.live))
+    .filter(r => r.priceUsd > 0 && (chainOn ? r.fromChain : true))
     .map(r => ({ time: r.timestamp, priceUsd: r.priceUsd, usd: r.usd })), [rows, chainOn])
 
-  const chainPrice = chainOn && rows[0]?.fromChain ? rows[0].priceUsd : 0
+  // The price: the newest trade that agrees with the ones around it (lib/candles.ts cleanTicks), not a bot's odd print.
+  const clean = useMemo(() => cleanTicks(ticks), [ticks])
+  const chainPrice = chainOn && rows[0]?.fromChain ? (clean[clean.length - 1]?.priceUsd ?? rows[0].priceUsd) : 0
   const tradesLoaded = gtLoaded || chainState === 'live' || chainState === 'off'
   return { rows, ticks, chainOn, tradesLoaded, chainPrice }
 }

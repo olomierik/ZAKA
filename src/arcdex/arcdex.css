@@ -3072,3 +3072,60 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .an-st { font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; background: var(--bg-3); }
 .an-st.ok { color: var(--green); } .an-st.failed, .an-st.mismatch { color: var(--red); }
 @media (max-width: 600px) { .an-row { font-size: 0.72rem; gap: 6px; } .an-kpi b { font-size: 1.05rem; } }
+
+/* ── Swap and Bridge, as Across lays them out (2026-10-17, owner: "redesign the Swap and Bridge forms to look
+   professional, just like Across's swap and bridge form, chain icons and symbols shown"): one centred column, a big
+   title, From and To cards with a large amount and a token pill (the token's icon with its chain's logo), a round
+   flip button between them, the details and one wide button. The side panels move under the form. ── */
+.xs-page { max-width: 560px; padding: 36px 16px 56px; }
+.xs-head { align-items: center; text-align: center; margin-bottom: 22px; gap: 6px; }
+.xs-head h1 { font-size: 2.3rem; font-weight: 600; letter-spacing: -0.03em; }
+.xs-head p { font-size: 0.9rem; max-width: 440px; }
+.xs-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.xs-main { max-width: none; }
+.xs-card { background: transparent; padding: 0; gap: 6px; box-shadow: none; }
+.xs-tabs { background: var(--bg-2); border: 1px solid var(--adx-border); border-radius: 14px; margin-bottom: 8px; }
+.xs-tabs button { padding: 10px; border-radius: 10px; font-weight: 600; }
+.xs-tabs button.active { background: var(--text); color: var(--bg-2); }
+.xs-box { background: var(--bg-2); border: 1px solid var(--adx-border); border-radius: 20px; padding: 16px 18px 18px; gap: 10px; }
+.xs-box-h { font-size: 0.82rem; font-weight: 500; color: var(--text-2, var(--text-muted)); }
+.xs-amount { gap: 12px; min-height: 52px; }
+.xs-amount input { font-size: 2.4rem; font-weight: 500; letter-spacing: -0.03em; }
+.xs-amount input::placeholder { color: var(--text-muted); opacity: 0.55; }
+.xs-amount-out b { font-size: 2.4rem; font-weight: 500; letter-spacing: -0.03em; }
+.xs-box-f { font-size: 0.76rem; }
+.xs-flip, .xs-arrow { width: 40px; height: 40px; margin: -24px 0; border-radius: 50%; border: 4px solid var(--adx-bg, var(--bg)); background: var(--bg-2); color: var(--text); box-shadow: 0 0 0 1px var(--adx-border); font-size: 1rem; }
+.xs-flip:hover { background: var(--hover, var(--bg-3)); color: var(--text); }
+/* The token pill: icon with the chain's logo on it, the token and its chain. */
+.xs-pill { flex-shrink: 0; display: inline-flex; align-items: center; gap: 10px; padding: 7px 12px 7px 8px; border-radius: 14px; border: 1px solid var(--adx-border); background: var(--chip, var(--bg-3)); color: var(--text); font: inherit; cursor: pointer; }
+.xs-pill:hover:not(:disabled) { border-color: var(--border-hi); }
+.xs-pill:disabled { cursor: default; opacity: 1; }
+.xs-pill em { font-style: normal; color: var(--text-muted); font-size: 0.8rem; margin-left: 2px; }
+.xs-tok-ic { position: relative; display: inline-flex; flex-shrink: 0; }
+.xs-tok-ic .chain-icon, .xs-tok-ic img { width: 30px; height: 30px; }
+.xs-tok-chain { position: absolute; right: -4px; bottom: -3px; border-radius: 50%; box-shadow: 0 0 0 2px var(--chip, var(--bg-3)); display: inline-flex; }
+.xs-tok-chain .chain-icon { width: 15px !important; height: 15px !important; }
+.xs-tok-tx { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; text-align: left; }
+.xs-tok-tx b { font-size: 0.98rem; font-weight: 600; white-space: nowrap; }
+.xs-tok-tx small { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
+.chain-icon.has-img { overflow: hidden; }
+.chain-icon img { display: block; border-radius: 50%; object-fit: cover; }
+.xs-quote { background: var(--bg-2); border: 1px solid var(--adx-border); border-radius: 20px; padding: 14px 18px; }
+.xs-go, .xs-card .btn-primary.xs-go { height: 54px; border-radius: 14px; font-size: 1rem; font-weight: 600; width: 100%; margin-top: 4px; }
+.xs-seg button { border-radius: 12px; }
+.xs-field input { border-radius: 12px; }
+.xs-widget { border-radius: 20px; background: var(--bg-2); }
+.xs-picked { background: var(--bg-2); border: 1px solid var(--adx-border); border-radius: 20px; padding: 12px 14px; }
+.xs-side { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.xs-panel { border-radius: 20px; }
+.chain-pop { border-radius: 16px; }
+@media (max-width: 600px) {
+  .xs-page { padding: 20px 12px 40px; }
+  .xs-head h1 { font-size: 1.8rem; }
+  .xs-amount input, .xs-amount-out b { font-size: 1.9rem; }
+  .xs-tok-tx small { display: none; }
+}
+.xs-pay-note { flex: 1; min-width: 0; color: var(--text-muted); font-size: 0.86rem; line-height: 1.35; }
+.xs-amount .chain-pop input { font-size: 0.86rem; font-weight: 400; letter-spacing: 0; flex: none; width: 100%; }
+.xs-amount .chain-pop { right: 0; left: auto; }
+.xs-amount-out .xs-pill b, .xs-amount .xs-pill b { flex: none; font-size: 0.98rem; font-weight: 600; letter-spacing: 0; overflow: visible; }

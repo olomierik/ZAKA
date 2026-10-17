@@ -10,7 +10,8 @@ import { useLogo } from '../lib/logo'
 import { toggleWatch, usePrefs } from '../lib/prefs'
 import { t as T } from '../lib/i18n'
 import { SAFETY_LABEL } from '../lib/safety'
-import { IcBolt, IcCopy, IcPulse, IcRocket, IcSearch, IcShield, IcStar, IcUser, IcUsers, IcX } from './TrIcons'
+import { IcBolt, IcCopy, IcCrosshair, IcDev, IcGlobe, IcLayers, IcPulse, IcRocket, IcSearch, IcShield, IcStar, IcTelegram, IcUser, IcUsers, IcX } from './TrIcons'
+import { launchpadIcon } from '../lib/launchpadIcon'
 
 const short = (a: string) => (a.startsWith('0x') ? `${a.slice(0, 4)}…${a.slice(-3)}` : `${a.slice(0, 4)}…${a.slice(-4)}`)
 const pct = (n: number) => `${n > 0 ? '+' : ''}${Math.abs(n) >= 100 ? n.toFixed(0) : n.toFixed(1)}%`
@@ -61,8 +62,8 @@ function Row({ c, s, flash, fresh, now, onOpen, onBuy }: Props) {
   }
   const done = c.stage === 'graduated' || c.stage === 'established'
   const ring = !s.ring ? 0 : done ? 1 : c.onCurve && c.progress !== null ? Math.max(0.02, Math.min(1, c.progress / 100)) : 0
-  // GMGN's window: the last hour's numbers where the chain has them (Arc), else the day's.
-  const want1h = s.window === '1h' && c.chain === 'arc'
+  // GMGN's window: the last hour's numbers (Arc's from the engine, the others' from DexScreener).
+  const want1h = s.window === '1h'
   const hr = want1h && c.hour ? c.hour : null
   // 1h asked for but not known for this coin: dashes, not the day's numbers under the 1h label.
   const unknown1h = want1h && !hr
@@ -84,7 +85,7 @@ function Row({ c, s, flash, fresh, now, onOpen, onBuy }: Props) {
       <div className="tr-lft">
         <span className={`tr-tile${done ? ' done' : ''}${s.imageShape === 'circle' ? ' round' : ''}`} style={{ ['--lp' as string]: c.launchpadColor ?? '#8b918d', ['--p' as string]: ring }}>
           <span className="tr-pic"><TokenPic src={c.image} symbol={c.symbol} size={56} /></span>
-          {c.launchpad && <span className="tr-lpb" style={{ background: c.launchpadColor ?? '#8b918d' }} title={c.launchpad}>{c.launchpad.replace(/[^A-Za-z0-9]/g, '').slice(0, 1).toUpperCase()}</span>}
+          {c.launchpad && <LaunchpadBadge name={c.launchpad} color={c.launchpadColor} />}
         </span>
         <button className="tr-ca" onClick={copy} title={T('Copy the contract address')}>{copied ? T('Copied') : short(c.address)}</button>
       </div>
@@ -108,11 +109,13 @@ function Row({ c, s, flash, fresh, now, onOpen, onBuy }: Props) {
         </div>
         <div className="tr-l3">
           <span className={`tr-age${fresh1h ? ' young' : ''}`}>{ageOf(c.createdAt, now)}</span>
+          {c.website && <a className="tr-st" href={c.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} title={T('Website')}><IcGlobe /></a>}
           {c.twitter && (
-            <a className="tr-xh" href={c.twitter.startsWith('http') ? c.twitter : `https://x.com/${c.twitter.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
+            <a className="tr-xh" href={c.twitter.startsWith('http') ? c.twitter : `https://x.com/${c.twitter.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} title="X">
               <IcX /><span>{c.twitter.replace(/^https?:\/\/(www\.)?(x|twitter)\.com\//, '@').replace(/\/.*$/, '').slice(0, 18)}</span>
             </a>
           )}
+          {c.telegram && <a className="tr-st" href={c.telegram} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} title="Telegram"><IcTelegram /></a>}
           <a className="tr-st" href={xUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} title={T('Search the contract on X')}><IcSearch /></a>
           {c.hot ? <span className="tr-hot" title={T('{n} trades in the last 15 minutes', { n: c.hot })}>🔥 {c.hot}</span> : null}
         </div>
@@ -135,6 +138,7 @@ function Row({ c, s, flash, fresh, now, onOpen, onBuy }: Props) {
         {lvl && <span className={`tr-rp s-${lvl}`} title={c.safety.reasons.join(' · ') || T(SAFETY_LABEL[lvl])}><IcShield />{T(SAFETY_LABEL[lvl])}</span>}
         {c.change1h !== null && <span className={`tr-rp ${c.change1h >= 0 ? 'up' : 'down'}`} title={T('1h change')}><IcPulse />{pct(c.change1h)}</span>}
         <span className={`tr-rp ${c.change24h >= 0 ? 'up' : 'down'}`} title={T('24h change')}>24h {pct(c.change24h)}</span>
+        {c.early && <EarlyChips e={c.early} />}
         {c.launcher && c.launcher.coins > 0 && (
           <span className={`tr-rp${c.launcher.dumps > 0 ? ' down' : ''}`} title={T('Its launcher’s last {n} coins: {d} dumped early', { n: c.launcher.coins, d: c.launcher.dumps })}><IcRocket />{c.launcher.dumps}/{c.launcher.coins}</span>
         )}
@@ -152,6 +156,34 @@ function Row({ c, s, flash, fresh, now, onOpen, onBuy }: Props) {
         </button>
       </div>
     </article>
+  )
+}
+
+/** The launchpad's own icon on the coin's picture (its coloured letter until the icon loads, or when it has none). */
+function LaunchpadBadge({ name, color }: { name: string; color?: string }) {
+  const icon = launchpadIcon(name)
+  const [ok, setOk] = useState(false)
+  return (
+    <span className={`tr-lpb${ok ? ' img' : ''}`} style={{ background: ok ? '#fff' : color ?? '#8b918d' }} title={name}>
+      {!ok && name.replace(/[^A-Za-z0-9]/g, '').slice(0, 1).toUpperCase()}
+      {/* Loaded invisibly: a lazy image that's display:none is never fetched. */}
+      {icon && <img src={icon} alt="" decoding="async" onLoad={() => setOk(true)} onError={() => setOk(false)} style={ok ? undefined : { position: 'absolute', opacity: 0, width: 1, height: 1 }} />}
+    </span>
+  )
+}
+
+/** GMGN's and fomo's first-moments chips: the creator's sales of its own buy, bundlers and snipers. */
+function EarlyChips({ e }: { e: NonNullable<TrenchCoin['early']> }) {
+  const dv = e.devSold
+  return (
+    <>
+      <span className={`tr-rp${dv === null ? '' : dv >= 50 ? ' down' : dv > 0 ? ' warn' : ' up'}`}
+        title={dv === null ? T('Dev sold: not known') : dv === 0 ? T('The dev hasn’t sold any of its buy') : T('The dev sold {p}% of its buy', { p: dv })}>
+        <IcDev />{dv === null ? T('DS ?') : dv === 0 ? T('DH') : `DS ${dv}%`}
+      </span>
+      <span className={`tr-rp${e.bundlers >= 3 ? ' down' : ''}`} title={T('{n} wallets bought in the launch’s own second (bundlers)', { n: e.bundlers })}><IcLayers />{e.bundlers}</span>
+      <span className={`tr-rp${e.snipers >= 10 ? ' warn' : ''}`} title={T('{n} wallets bought in its first 15 seconds (snipers)', { n: e.snipers })}><IcCrosshair />{e.snipers}</span>
+    </>
   )
 }
 

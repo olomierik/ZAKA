@@ -688,3 +688,17 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
   .ct-fields input[type=number] { width: 80px; }
 }
 @media (prefers-reduced-motion: reduce) { .ct-switch i, .ct-switch i::after { transition: none; } }
+
+/* The launchpad's own icon on a coin's picture, and the first-moments chips (2026-10-17). */
+.tr-lpb.img { padding: 1px; overflow: hidden; }
+.tr-lpb img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+.tr-rp.warn { color: var(--amber); }
+
+/* Trending now: the fourth lane (2026-10-17). */
+.tr-tn { display: grid; grid-template-columns: 18px 42px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.tr-tn:hover { background: var(--hover); }
+.tr-tn-rank { font-size: 11px; font-weight: 700; color: var(--text-muted); text-align: right; font-variant-numeric: tabular-nums; }
+.tr-tn .tr-sm-pic { position: relative; }
+.tr-tn-chain { position: absolute; right: -4px; bottom: -4px; width: 17px; height: 17px; border-radius: 50%; background: var(--bg-2); display: grid; place-items: center; }
+.tr-tn-lp { width: 13px; height: 13px; border-radius: 50%; margin-left: 5px; vertical-align: -2px; }
+.tr-tn-bar { display: block; width: 100%; max-width: 140px; margin-top: 4px; }

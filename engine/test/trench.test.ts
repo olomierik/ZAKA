@@ -291,6 +291,43 @@ describe('ticks', () => {
   })
 })
 
+describe('a launch’s first moments: bundlers, snipers, dev sold', () => {
+  const at = 1_800_000_000_000
+  const launch = (book: TrenchBook, creator: string | null) => book.launch({ token: 'T', symbol: 'T', name: 'T', image: null, launchpad: 'pump.fun', quote: 'SOL', pool: null, createdAt: at, creator, priceUsd: 0, mcapUsd: 0, liquidityUsd: 0, progress: 0 })
+  const buy = (wallet: string, ms: number, tokens = 100) => ({ token: 'T', wallet, side: 'buy' as const, usd: 1, tokens, ts: at + ms })
+  test('counted from the launch time, the creator left out', () => {
+    const book = new TrenchBook('sol')
+    launch(book, 'Dev1')
+    book.trade(buy('Dev1', 0, 1_000))
+    book.trade(buy('b1', 400)); book.trade(buy('b2', 1_000)); book.trade(buy('b2', 900))
+    book.trade(buy('s1', 4_000)); book.trade(buy('s2', 15_000))
+    book.trade(buy('late', 15_001))
+    book.trade({ token: 'T', wallet: 's1', side: 'sell', usd: 1, tokens: 50, ts: at + 2_000 })
+    const w = book.recentLaunches()[0]
+    expect(w.bn).toBe(2)
+    expect(w.sn).toBe(4)
+    expect(w.dv).toBe(0)
+    book.trade({ token: 'T', wallet: 'dev1', side: 'sell', usd: 1, tokens: 400, ts: at + 60_000 })
+    expect(book.recentLaunches()[0].dv).toBe(40)
+    book.trade({ token: 'T', wallet: 'Dev1', side: 'sell', usd: 1, tokens: 900, ts: at + 61_000 })
+    expect(book.recentLaunches()[0].dv).toBe(100)
+  })
+  test('no creator known: dev sold is unknown, never 0', () => {
+    const book = new TrenchBook('bnb')
+    launch(book, null)
+    book.trade(buy('b1', 100))
+    const w = book.recentLaunches()[0]
+    expect(w.dv).toBeNull()
+    expect(w.bn).toBe(1)
+  })
+  test('a coin only seen through the list carries none of it', () => {
+    const book = new TrenchBook('sol', undefined, t => t === 'L')
+    book.trade({ token: 'L', wallet: 'a', side: 'buy', usd: 1, tokens: 1, ts: at })
+    expect(book.metaOf('L')).not.toBeNull()
+    expect(book.recentLaunches()).toEqual([])
+  })
+})
+
 describe('the service', () => {
   test('Arc’s trades teach Arc’s book, and a smart wallet’s trade goes out on trench_arc with the coin’s name', () => {
     const sent: { topics: string[]; msg: unknown }[] = []

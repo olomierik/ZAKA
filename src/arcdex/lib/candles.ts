@@ -56,3 +56,32 @@ export function mergeCandles(history: Candle[], recent: Candle[]): Candle[] {
   }
   return out
 }
+
+/** A trade more than this many times off the median of the trades around it is left off the chart. */
+export const TICK_OFF_X = 1.6
+/** Trades on each side that make up the median. */
+const TICK_WINDOW = 6
+
+/** Ticks without the ones priced far from the trades around them (2026-10-17). On a busy Solana coin, arbitrage bots
+ * trade several pools in one transaction; read from the signer's side, their net amounts priced one trade at 2× the
+ * market and the next at 0.2×, so the line zigzagged and the header's price jumped. A trade is kept when it agrees with
+ * the trades just before it or with those just after it (each side's median): a real move agrees with the side it
+ * moved to, a bot's odd print with neither. Fewer than 5 ticks: unchanged. */
+export function cleanTicks(ticks: Tick[]): Tick[] {
+  const sorted = ticks.filter(t => t.priceUsd > 0 && Number.isFinite(t.priceUsd)).sort((a, b) => a.time - b.time)
+  if (sorted.length < 5) return sorted
+  const logs = sorted.map(t => Math.log(t.priceUsd))
+  const lim = Math.log(TICK_OFF_X)
+  const median = (xs: number[]) => {
+    const a = [...xs].sort((x, y) => x - y)
+    return a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2
+  }
+  return sorted.filter((_, i) => {
+    let before = logs.slice(Math.max(0, i - TICK_WINDOW), i)
+    let after = logs.slice(i + 1, i + 1 + TICK_WINDOW)
+    // At either end only one side exists: judge by its three nearest trades, so a move right at the start or end stays.
+    if (!before.length) after = after.slice(0, 3)
+    if (!after.length) before = before.slice(-3)
+    return (before.length > 0 && Math.abs(logs[i] - median(before)) <= lim) || (after.length > 0 && Math.abs(logs[i] - median(after)) <= lim)
+  })
+}

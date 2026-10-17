@@ -24,6 +24,7 @@ import { getBscCoin, getBscTrades, bscChartSource, bscCoinFour, bscSeed, bnbUsd,
 import { bscFeed, bscMaker, bscPoolKind, resolveBscMakers, type BscPoolMeta } from '../api/bscSwaps'
 import { useChainTrades } from '../lib/useChainTrades'
 import { trenchLaunch } from '../api/trenchFeed'
+import { dsAsRow, dsOne, type DsCoin } from '../lib/dexData'
 import type { TrenchCoinWire } from '../../../api/_trenchProtocol'
 import { BSC_QUOTE_SYMBOLS } from '../../../api/_bscCore'
 import { bscAddress, bscToken, bscTx } from '../lib/bsc'
@@ -69,6 +70,12 @@ function fromLaunch(l: TrenchCoinWire): BscCoinDetail {
   return { ...row, supply: l.p > 0 && l.m > 0 ? l.m / l.p : null, pools: row.pool ? [row] : [] }
 }
 
+/** A coin from DexScreener alone, before GeckoTerminal answers. */
+function fromDs(d: DsCoin): BscCoinDetail {
+  const row = dsAsRow(d, 'bnb')
+  return { ...row, supply: d.priceUsd > 0 && d.marketCap > 0 ? d.marketCap / d.priceUsd : null, pools: [row] }
+}
+
 function seedCoin(token: string, pool?: string): BscCoinDetail | null {
   const r = bscSeed(token, pool)
   return r ? { ...r, supply: null, pools: [r] } : null
@@ -89,6 +96,8 @@ export default function BscTokenPage({ address, pool: poolParam, navigate, buy }
   useEffect(() => {
     let live = true
     setCoin(prev => (prev && prev.address === address ? prev : seedCoin(address, poolParam))); setLoaded(false)
+    // DexScreener answers in ~0.2 s (lib/dexData.ts): the header shows at once, GeckoTerminal's full answer replaces it.
+    void dsOne('bnb', address).then(d => { if (live && d) setCoin(prev => prev ?? fromDs(d)) }).catch(() => {})
     const load = () => getBscCoin(address, poolParam).catch(() => null)
       // GeckoTerminal doesn't list a coin minutes old: the engine's launch record (the Trenches row it came from) names it.
       .then(async c => { if (!live) return; if (c) setCoin(c); else { const l = await trenchLaunch('bnb', address); if (live && l) setCoin(prev => prev ?? fromLaunch(l)) } })

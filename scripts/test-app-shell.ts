@@ -52,7 +52,7 @@ const shell = html.match(/<div id="root">([\s\S]*?)<\/div><\/div>\n/)?.[1] ?? ''
 check(/class="bt" aria-hidden="true"/.test(shell), 'it’s hidden from screen readers (the app replaces it)')
 const lanes = src('src/arcdex/components/TrenchLane.tsx')
 for (const l of ['New', 'Almost bonded', 'Migrated']) check(lanes.includes(`N_('${l}')`) && shell.includes(`>${l}<`), `the lane “${l}” is the app’s own`)
-check(src('src/arcdex/pages/Trenches.tsx').includes("T('Smart')") && src('src/arcdex/components/TrenchSmartLane.tsx').includes("T('Smart money')"), 'Smart and Smart money are the app’s own')
+check(src('src/arcdex/pages/Trenches.tsx').includes("T('Trending')") && src('src/arcdex/components/TrenchTrendLane.tsx').includes("T('Trending now')") && shell.includes('>Trending<') && shell.includes('>Trending now<'), 'Trending and Trending now are the app’s own')
 const nav = src('src/arcdex/components/NavBar.tsx')
 // The top bar's links after Trenches come from the one page list (lib/navItems.ts PRIMARY).
 const navItems = src('src/arcdex/lib/navItems.ts')

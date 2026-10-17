@@ -52,6 +52,12 @@ export interface TrenchCoinWire {
   /** 0–100 along its curve; null off a curve. */
   g: number | null
   gr: boolean
+  /** For coins the engine saw launch (engine/src/trench/book.ts EARLY): wallets that bought within a second of the
+   * launch (bundlers) and within 15 seconds (snipers), and the share of its own buy the creator has sold (0–100; null
+   * when the creator or its buy isn't known). Absent from older engines and for coins seen only through the list. */
+  bn?: number
+  sn?: number
+  dv?: number | null
 }
 
 /** [token, buys, sells, buyUsd, sellUsd, priceUsd, mcapUsd, progress (-1: none), the second's biggest trade in USD (+buy, -sell)] */
