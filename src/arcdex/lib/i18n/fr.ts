@@ -4082,5 +4082,13 @@ const d: Record<string, string> = {
   "Jito didn’t take the transaction ({why}). Nothing was sent; try again, or turn anti-MEV off in Settings to send it normally.": "Jito n’a pas pris la transaction ({why}). Rien n’a été envoyé ; réessayez, ou désactivez l’anti-MEV dans les Paramètres pour l’envoyer normalement.",
   "Jito didn’t land the trade in time, so nothing was spent. Try again, or raise the Jito tip in Settings.": "Jito n’a pas exécuté le trade à temps, donc rien n’a été dépensé. Réessayez, ou augmentez le pourboire Jito dans les Paramètres.",
   "{wallet} isn’t an admin wallet. Sign in with Privy under an admin email and sign with its wallet, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} n’est pas un portefeuille admin. Connectez-vous avec Privy sous un e-mail admin et signez avec son portefeuille, ou ajoutez le portefeuille à ADMIN_EVM_ADDRESSES sur Railway (arcdex-engine).",
+  "Top gainers 24h": "Plus fortes hausses 24h",
+  "Default order": "Ordre par défaut",
+  "Bonding progress": "Progression de la courbe",
+  "Show {n} more": "Afficher {n} de plus",
+  "Nothing trending right now.": "Rien en tendance pour le moment.",
+  "The market engine isn’t connected.": "Le moteur de marché n’est pas connecté.",
+  "Analytics aren’t running yet. Try again in a minute.": "Les statistiques ne tournent pas encore. Réessayez dans une minute.",
+  "ARCDEX’s users, traders, volume and fees, live. Every trade is checked on its own chain before it counts.": "Les utilisateurs, traders, volumes et frais d’ARCDEX, en direct. Chaque trade est vérifié sur sa propre chaîne avant d’être compté.",
 }
 export default d

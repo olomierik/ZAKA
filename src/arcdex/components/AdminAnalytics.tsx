@@ -3,6 +3,7 @@
 // GET /v1/admin/analytics (engine/src/analytics.ts) with the admin session, again every minute.
 import { useCallback, useEffect, useState } from 'react'
 import { adminFetch } from '../lib/adminSession'
+import { engineApiUrl } from '../api/marketStream'
 import { t as T, N_ } from '../lib/i18n'
 
 interface DayRow { day: string; signIns: number; newUsers: number; traders: number; trades: number; volumeUsd: number; feesUsd: number }
@@ -53,11 +54,24 @@ function Kpi({ label, value, sub, tone }: { label: string; value: string; sub: s
   return <div className={`an-kpi${tone ? ` ${tone}` : ''}`}><span>{label}</span><b>{value}</b><small>{sub}</small></div>
 }
 
-export default function AdminAnalytics() {
+/** The public report (GET /v1/analytics, wallets shortened), which anyone may read. */
+export async function publicAnalytics(days: number, f: typeof fetch = fetch, base = engineApiUrl): Promise<AnalyticsReport> {
+  if (!base) throw new Error(T('The market engine isn’t connected.'))
+  const r = await f(`${base}/v1/analytics?days=${days}`)
+  if (!r.ok) throw new Error(r.status === 503 ? T('Analytics aren’t running yet. Try again in a minute.') : `HTTP ${r.status}`)
+  return r.json() as Promise<AnalyticsReport>
+}
+
+/** `publicView`: the public /analytics page (no sign-in, wallets shortened); otherwise /admin's tab, with the session. */
+export default function AdminAnalytics({ publicView = false }: { publicView?: boolean } = {}) {
   const [days, setDays] = useState(30)
   const [data, setData] = useState<AnalyticsReport | null>(null)
   const [err, setErr] = useState('')
-  const load = useCallback(() => { setErr(''); adminFetch<AnalyticsReport>(`/v1/admin/analytics?days=${days}`).then(setData, e => setErr(errText(e))) }, [days])
+  const load = useCallback(() => {
+    setErr('')
+    const get = publicView ? publicAnalytics(days) : adminFetch<AnalyticsReport>(`/v1/admin/analytics?days=${days}`)
+    get.then(setData, e => setErr(errText(e)))
+  }, [days, publicView])
   useEffect(() => {
     load()
     const id = setInterval(() => { if (document.visibilityState === 'visible') load() }, 60_000)

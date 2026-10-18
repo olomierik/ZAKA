@@ -210,6 +210,19 @@ export class Analytics {
     return done
   }
 
+  private pub = new Map<number, { at: number; r: Promise<AnalyticsReport> }>()
+  /** The public page's report (publicReport), worked out at most every 30 seconds per period, so visitors can't make
+   * the engine recompute it on every request. */
+  publicReport(days = ANALYTICS.days, now = Date.now()): Promise<AnalyticsReport> {
+    days = [7, 30, 90].includes(days) ? days : ANALYTICS.days
+    const hit = this.pub.get(days)
+    if (hit && now - hit.at < 30_000) return hit.r
+    const r = this.report(days, now).then(publicReport)
+    r.catch(() => this.pub.delete(days))
+    this.pub.set(days, { at: now, r })
+    return r
+  }
+
   /** Everything the owner's analytics page shows. */
   async report(days = ANALYTICS.days, now = Date.now()): Promise<AnalyticsReport> {
     days = Math.max(1, Math.min(365, Math.floor(days)))
@@ -294,6 +307,19 @@ export class Analytics {
       topTraders,
       latest: [...site].sort((a, b) => b.at - a.at).slice(0, 50).map(({ chain, venue, side, address, usd, feeUsd, coin, tx, at, status }) => ({ chain, venue, side, address, usd, feeUsd, coin, tx, at, status })),
     }
+  }
+}
+
+/** A wallet as the public page shows it: shortened (0x1234…abcd), never in full. */
+export const shortWallet = (a: string) => (a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a)
+
+/** The public analytics page (owner, 2026-10-17: "analytics page should be public"): the same report, with every
+ * wallet shortened. Nothing in it is private beyond that: sign-in counts, on-chain trades and the fee ledger. */
+export function publicReport(r: AnalyticsReport): AnalyticsReport {
+  return {
+    ...r,
+    topTraders: r.topTraders.map(t => ({ ...t, address: shortWallet(t.address) })),
+    latest: r.latest.map(t => ({ ...t, address: shortWallet(t.address) })),
   }
 }
 

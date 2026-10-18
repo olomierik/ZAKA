@@ -32,6 +32,7 @@ export const MORE_ITEMS: NavItem[] = [
   { icon: '◆', label: N_('Starknet'), to: { name: 'starknet' } },
   { icon: '🔥', label: N_('$ARCDEX burn'), to: { name: 'coin' } },
   { icon: '🧭', label: N_('Supported routes'), to: { name: 'routes' } },
+  { icon: '📈', label: N_('Analytics'), to: { name: 'analytics' } },
 ]
 
 /** The More list as this visitor sees it: Copy trading first while its flag is on. Admin is in the account menu. */

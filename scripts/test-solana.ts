@@ -50,10 +50,13 @@ ok(parsed[0].address === MEME && parsed[0].symbol === 'MEME' && parsed[0].launch
 const merged = core.mergeSolCoins(parsed)
 const meme = merged.find(r => r.address === MEME)!
 ok(merged.length === 2 && meme.volume24h === 100_000 && meme.launchpad === 'pump.fun', 'one row per coin, volume summed over its pools, the launchpad from any of them')
-ok(core.listedSol(merged).map(r => r.address).join() === MEME, 'launchpad coins only: a coin with only plain-DEX pools isn’t listed')
+ok(core.listedSol(merged).map(r => r.address).join() === MEME, 'launchpad coins, and not a young plain-DEX coin')
+const est = { ...merged.find(r => r.address !== MEME)!, liquidity: 80_000, marketCap: 2_000_000, buys24h: 300, sells24h: 200, createdAt: Date.now() - 30 * 86_400_000 }
+ok(core.listedSol([est]).length === 1 && core.listedSol([{ ...est, liquidity: 5_000 }]).length === 0, 'a plain-DEX coin proven by its own trading (established: $25K liquidity, $100K cap, 3 days, 25 trades) is listed too, as DexScreener lists it')
 ok(core.isWashSol({ ...meme, liquidity: 50, volume24h: 2_000_000 }) && !core.isWashSol(meme), 'wash: millions through a pool with no liquidity')
 const paths = core.solListPaths()
-ok(Object.keys(core.SOL_LAUNCHPADS).every(d => paths.some(p => p.includes(`/dexes/${d}/pools`))) && paths.length === Object.keys(core.SOL_LAUNCHPADS).length + 3, `a round reads every launchpad venue (${paths.length} calls)`)
+ok(Object.keys(core.SOL_LAUNCHPADS).every(d => paths.some(p => p.includes(`/dexes/${d}/pools`))) && paths.length === Object.keys(core.SOL_LAUNCHPADS).length + 7, `a round reads every launchpad venue (${paths.length} calls)`)
+ok(paths.some(p => p.startsWith('/networks/solana/pools?') && p.includes('page=3')) && paths.some(p => p.startsWith('/networks/solana/trending_pools')), 'and Solana’s busiest and trending pools on every DEX, where graduated and established coins trade')
 
 console.log('launch curves (real accounts)')
 const pump = core.decodePumpCurve(bytes('pumpGraduated'))

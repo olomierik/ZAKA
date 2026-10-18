@@ -4082,5 +4082,13 @@ const d: Record<string, string> = {
   "Jito didn’t take the transaction ({why}). Nothing was sent; try again, or turn anti-MEV off in Settings to send it normally.": "Jito haikupokea muamala ({why}). Hakuna kilichotumwa; jaribu tena, au zima kinga ya MEV kwenye Mipangilio uutume kawaida.",
   "Jito didn’t land the trade in time, so nothing was spent. Try again, or raise the Jito tip in Settings.": "Jito haikuiwasilisha biashara kwa wakati, kwa hivyo hakuna kilichotumika. Jaribu tena, au ongeza bakshishi ya Jito kwenye Mipangilio.",
   "{wallet} isn’t an admin wallet. Sign in with Privy under an admin email and sign with its wallet, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} si pochi ya msimamizi. Ingia kwa Privy kwa barua pepe ya msimamizi na usaini kwa pochi yake, au ongeza pochi kwenye ADMIN_EVM_ADDRESSES kwenye Railway (arcdex-engine).",
+  "Top gainers 24h": "Zilizopanda zaidi saa 24",
+  "Default order": "Mpangilio wa kawaida",
+  "Bonding progress": "Maendeleo ya mkunjo",
+  "Show {n} more": "Onyesha {n} zaidi",
+  "Nothing trending right now.": "Hakuna kinachovuma sasa hivi.",
+  "The market engine isn’t connected.": "Injini ya soko haijaunganishwa.",
+  "Analytics aren’t running yet. Try again in a minute.": "Takwimu bado hazijaanza. Jaribu tena baada ya dakika moja.",
+  "ARCDEX’s users, traders, volume and fees, live. Every trade is checked on its own chain before it counts.": "Watumiaji, wafanyabiashara, kiasi na ada za ARCDEX, moja kwa moja. Kila biashara huthibitishwa kwenye mnyororo wake kabla ya kuhesabiwa.",
 }
 export default d

@@ -35,6 +35,7 @@ const TransfersPage   = lazy(() => import('./pages/TransfersPage'))
 const AlertsPage      = lazy(() => import('./pages/AlertsPage'))
 const DeployCurveRouter = lazy(() => import('./pages/DeployCurveRouter'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
+const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'))
 const SignalsPage     = lazy(() => import('./pages/SignalsPage'))
 // Robinhood Chain: its coins and stock tokens, bought with USDC on Arc (through Across).
 const RobinhoodTokenPage = lazy(() => import('./pages/RobinhoodTokenPage'))
@@ -116,6 +117,7 @@ export type Page =
   | { name: 'predict' }
   | { name: 'hl-trader'; address: string }
   | { name: 'routes' }
+  | { name: 'analytics' }
   | { name: 'tracker'; address?: string }
   | { name: 'copy'; leader?: string }
   | { name: 'starknet' }
@@ -261,6 +263,7 @@ export default function App() {
           {page.name === 'transfers'   && <TransfersPage navigate={navigate} />}
           {page.name === 'deploy-curve-router' && <DeployCurveRouter />}
           {page.name === 'admin' && <AdminPage key={page.tab ?? 'admin'} initialTab={page.tab} />}
+          {page.name === 'analytics' && <AnalyticsPage />}
           {/* ARCDEX Algo, the futures agent (2026-10-10); owners of the old bots still reach them to manage and withdraw (/autotrade/manage). */}
           {page.name === 'signals'     && (page.view === 'manage' ? <SignalsPage navigate={navigate} manage /> : <AlgoPage navigate={navigate} />)}
           {page.name === 'robinhood'   && <Trenches chain="hood" navigate={navigate} />}

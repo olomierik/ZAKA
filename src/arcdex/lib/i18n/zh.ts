@@ -4082,5 +4082,13 @@ const d: Record<string, string> = {
   "Jito didn’t take the transaction ({why}). Nothing was sent; try again, or turn anti-MEV off in Settings to send it normally.": "Jito 没有接收这笔交易（{why}）。什么都没发出；请重试，或在设置中关闭防 MEV 以正常发送。",
   "Jito didn’t land the trade in time, so nothing was spent. Try again, or raise the Jito tip in Settings.": "Jito 没有及时让交易上链，所以没有任何花费。请重试，或在设置中提高 Jito 小费。",
   "{wallet} isn’t an admin wallet. Sign in with Privy under an admin email and sign with its wallet, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} 不是管理员钱包。请用管理员邮箱通过 Privy 登录并用其钱包签名，或在 Railway（arcdex-engine）上把该钱包加入 ADMIN_EVM_ADDRESSES。",
+  "Top gainers 24h": "24小时涨幅榜",
+  "Default order": "默认排序",
+  "Bonding progress": "联合曲线进度",
+  "Show {n} more": "再显示 {n} 个",
+  "Nothing trending right now.": "目前没有热门币。",
+  "The market engine isn’t connected.": "市场引擎未连接。",
+  "Analytics aren’t running yet. Try again in a minute.": "统计尚未运行，请一分钟后再试。",
+  "ARCDEX’s users, traders, volume and fees, live. Every trade is checked on its own chain before it counts.": "ARCDEX 的用户、交易者、成交额和手续费，实时更新。每笔交易都先在其所在链上核实再计入。",
 }
 export default d

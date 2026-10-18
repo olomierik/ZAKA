@@ -51,6 +51,9 @@ const grad = merged.find(r => r.address === GRAD)!
 ok(merged.length === 3 && grad.volume24h === 100_000, 'one row per coin, volume summed over its pools')
 ok(core.listedBsc(merged).map(r => r.address).sort().join() === [CURVE, GRAD].sort().join(), 'four.meme coins only: a coin with only plain-DEX pools isn’t listed')
 ok(core.listedBsc(merged, a => (a === GRAD ? false : undefined)).map(r => r.address).join() === CURVE, 'a 4444 coin four.meme’s contract says it didn’t launch is dropped')
+const plainEst = { ...merged.find(r => r.address === PLAIN)!, liquidity: 90_000, marketCap: 3_000_000, buys24h: 400, sells24h: 300, createdAt: Date.now() - 20 * 86_400_000 }
+ok(core.listedBsc([plainEst], () => false).length === 1 && core.listedBsc([{ ...plainEst, marketCap: 40_000 }]).length === 0, 'a plain-DEX coin proven by its own trading (established) is listed too, whatever four.meme says (owner, 2026-10-17)')
+ok(core.bscListPaths().some(p => p.startsWith('/networks/bsc/pools?')) && core.bscListPaths().some(p => p.startsWith('/networks/bsc/trending_pools')), 'a round reads BNB Chain’s busiest and trending pools on every DEX')
 const paths = core.bscListPaths()
 ok(paths.some(p => p.includes('/dexes/four-meme/pools')) && paths.some(p => p.includes('/dexes/pancakeswap_v2/pools')) && paths.some(p => p.includes('new_pools')), `a round reads four.meme, PancakeSwap and new pools (${paths.length} calls)`)
 ok(core.isWashBsc({ ...grad, liquidity: 50, volume24h: 2_000_000 }) && !core.isWashBsc(grad), 'wash: millions through a pool with no liquidity')

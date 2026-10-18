@@ -1,7 +1,7 @@
 // The owner's analytics (src/analytics.ts): what the site may send, how each trade is checked on its chain, and what
 // the report counts.
 import { describe, expect, test } from 'bun:test'
-import { ANALYTICS, Analytics, MemoryAnalyticsStore, parseTrade, verifyTrade, walletOf, type ChainCall, type SiteTradeRow } from '../src/analytics'
+import { ANALYTICS, Analytics, MemoryAnalyticsStore, parseTrade, publicReport, verifyTrade, walletOf, type ChainCall, type SiteTradeRow } from '../src/analytics'
 import type { FeeRow } from '../src/fees/ledger'
 
 const A = '0x' + 'ab'.repeat(20)
@@ -57,6 +57,28 @@ describe('checking a trade on its chain', () => {
     expect(await verifyTrade(s, tx('someoneElse1111111111111111111111111111111'))).toBe('mismatch')
     expect(await verifyTrade(s, tx(SOLW, { InstructionError: [0, 'x'] }))).toBe('failed')
     expect(await verifyTrade(s, async () => null)).toBeNull()
+  })
+})
+
+describe('the public page', () => {
+  test('the same report, every wallet shortened', () => {
+    const full = { topTraders: [{ address: A, trades: 1, volumeUsd: 5, feesUsd: 0.1 }], latest: [{ chain: 'arc', venue: 'x', side: 'buy', address: SOLW, usd: 5, feeUsd: 0.1, coin: 'c', tx: tx(1), at: NOW, status: 'ok' }], users: { total: 7 } } as unknown as Parameters<typeof publicReport>[0]
+    const p = publicReport(full)
+    expect(p.topTraders[0].address).toBe(`${A.slice(0, 6)}…${A.slice(-4)}`)
+    expect(p.latest[0].address).toBe(`${SOLW.slice(0, 6)}…${SOLW.slice(-4)}`)
+    expect(JSON.stringify(p)).not.toContain(A)
+    expect((p as unknown as { users: { total: number } }).users.total).toBe(7)
+  })
+  test('worked out at most every 30 seconds per period, whatever visitors ask for', async () => {
+    const an = new Analytics({ store: new MemoryAnalyticsStore(), call: async () => null })
+    let n = 0
+    const real = an.report.bind(an)
+    an.report = (d?: number, now?: number) => { n++; return real(d, now) }
+    await an.publicReport(30, NOW); await an.publicReport(30, NOW + 10_000); await an.publicReport(999, NOW + 10_000)
+    expect(n).toBe(1)
+    await an.publicReport(7, NOW + 10_000)
+    await an.publicReport(30, NOW + 31_000)
+    expect(n).toBe(3)
   })
 })
 
