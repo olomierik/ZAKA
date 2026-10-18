@@ -59,6 +59,7 @@ import type { HistoryStore } from '../store/history'
 import type { HotStore } from '../store/hot'
 import type { Traffic } from '../traffic'
 import type { Votes } from '../votes'
+import type { PredictPractice } from '../practice/predict'
 import type { Analytics } from '../analytics'
 import { quantApi, type QuantApiDeps } from '../quant/api'
 import { algoApi } from '../algo/api'
@@ -97,6 +98,8 @@ export class DataApi {
   traffic: Traffic | null = null
   /** Community sentiment on each coin (votes.ts). */
   votes: Votes | null = null
+  /** Practice predictions: virtual USDC on Hyperliquid's prediction markets (practice/predict.ts). */
+  practice: PredictPractice | null = null
   /** The owner's analytics (analytics.ts): sign-ins and trades the site sends. */
   analytics: Analytics | null = null
   /** Alerts by web push (alerts/service.ts). */
@@ -303,7 +306,7 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         const ok = server.upgrade(req, { data: { id: nextId++, ip, subs: new Set(), allowance: cfg.maxMsgsPerSec, last: Date.now() } })
         return ok ? undefined : new Response('websocket upgrade expected', { status: 400 })
       }
-      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors(req), 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Content-Type, X-Paper-Key, Authorization', 'Access-Control-Max-Age': '600' } })
+      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors(req), 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Content-Type, X-Paper-Key, X-Practice-Key, Authorization', 'Access-Control-Max-Age': '600' } })
       // The admin panel (admin/api.ts): its own sign-in; every other /v1/admin route needs that session.
       if (api.admin && (url.pathname.startsWith('/v1/admin/') || url.pathname === '/v1/flags')) {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
@@ -371,12 +374,12 @@ export function startServer({ cfg, api, health }: ServerDeps) {
           : { status: 404, body: { error: 'not found' } }
         return json(req, r.status, r.body, 'no-store')
       }
-      // The public analytics page (analytics.ts publicReport): every number, wallets shortened. Anyone may read it.
-      if (url.pathname === '/v1/analytics' && req.method === 'GET') {
+      // Everyone's stats page (/analytics on the site): the totals, no wallets or transactions (analytics.ts publicStats).
+      if (url.pathname === '/v1/stats' && req.method === 'GET') {
         if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
         const an = api.analytics
-        if (!an) return json(req, 503, { error: 'analytics aren’t running here' })
-        return json(req, 200, await an.publicReport(Number(url.searchParams.get('days') ?? 30)), 'public, max-age=30')
+        if (!an) return json(req, 503, { error: 'stats aren’t running here' })
+        return json(req, 200, await an.publicStats(Number(url.searchParams.get('days')) || 30), 'public, max-age=30')
       }
       // The owner's analytics (analytics.ts): a wallet signing in, a trade the site made. Sent as text/plain (no
       // preflight), from the site's own pages only.
@@ -417,6 +420,44 @@ export function startServer({ cfg, api, health }: ServerDeps) {
           return json(req, 200, r, 'no-store')
         }
         return json(req, 405, { error: 'method not allowed' })
+      }
+      // Practice predictions (practice/predict.ts): virtual USDC on Hyperliquid's prediction markets, filled at the mid
+      // the engine reads. The board is public; an account is reached with its key (X-Practice-Key), and new accounts
+      // and orders come from the site's own pages only.
+      if (url.pathname.startsWith('/v1/practice/predict/')) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        const pr = api.practice
+        if (!pr) return json(req, 503, { error: 'practice isn’t running here' })
+        const sub = url.pathname.slice('/v1/practice/predict/'.length)
+        if (req.method === 'GET' && sub === 'board') return json(req, 200, pr.board(url.searchParams.get('period')), 'public, max-age=5')
+        const key = req.headers.get('x-practice-key')
+        if (req.method === 'GET' && sub === 'account') {
+          const v = await pr.account(key)
+          return v ? json(req, 200, v) : json(req, 404, { error: 'no such practice account' })
+        }
+        if (req.method !== 'POST') return json(req, 405, { error: 'method not allowed' })
+        const origin = req.headers.get('origin')
+        if (!origin || !cfg.allowedOrigins.includes(origin)) return json(req, 403, { error: 'practice orders come from the site' })
+        if (Number(req.headers.get('content-length') ?? 0) > 2048) return json(req, 413, { error: 'too large' })
+        const body = await req.text().then(t => (t ? JSON.parse(t) : {}) as Record<string, unknown>, () => null).catch(() => null)
+        if (!body) return json(req, 400, { error: 'bad request' })
+        let r: unknown
+        if (sub === 'accounts') r = pr.create(body.name, ip)
+        else if (sub === 'account') {
+          switch (body.action) {
+            case 'buy': r = await pr.buy(key, body.outcome, body.side, body.usd); break
+            case 'sell': r = await pr.sell(key, body.outcome, body.side, body.fraction); break
+            case 'reset': r = pr.reset(key, body.start); break
+            case 'rename': r = pr.rename(key, body.name); break
+            default: return json(req, 400, { error: 'unknown action' })
+          }
+        } else return json(req, 404, { error: 'not found' })
+        if (r && typeof r === 'object' && 'error' in r) {
+          const e = String((r as { error: string }).error)
+          return json(req, e.startsWith('too many') ? 429 : e.startsWith('no such') ? 404 : 400, r)
+        }
+        metrics.inc(sub === 'accounts' ? 'practice_accounts' : `practice_${String(body.action)}`)
+        return json(req, 200, r)
       }
       // The site's read functions (site/siteApi.ts): /api/argus, /api/gecko, /api/holders, /api/launchpad, …
       if (url.pathname.startsWith('/api/')) {

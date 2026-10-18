@@ -1,7 +1,7 @@
 // The owner's analytics (src/analytics.ts): what the site may send, how each trade is checked on its chain, and what
 // the report counts.
 import { describe, expect, test } from 'bun:test'
-import { ANALYTICS, Analytics, MemoryAnalyticsStore, parseTrade, publicReport, verifyTrade, walletOf, type ChainCall, type SiteTradeRow } from '../src/analytics'
+import { ANALYTICS, Analytics, MemoryAnalyticsStore, parseTrade, verifyTrade, walletOf, type ChainCall, type SiteTradeRow } from '../src/analytics'
 import type { FeeRow } from '../src/fees/ledger'
 
 const A = '0x' + 'ab'.repeat(20)
@@ -57,28 +57,6 @@ describe('checking a trade on its chain', () => {
     expect(await verifyTrade(s, tx('someoneElse1111111111111111111111111111111'))).toBe('mismatch')
     expect(await verifyTrade(s, tx(SOLW, { InstructionError: [0, 'x'] }))).toBe('failed')
     expect(await verifyTrade(s, async () => null)).toBeNull()
-  })
-})
-
-describe('the public page', () => {
-  test('the same report, every wallet shortened', () => {
-    const full = { topTraders: [{ address: A, trades: 1, volumeUsd: 5, feesUsd: 0.1 }], latest: [{ chain: 'arc', venue: 'x', side: 'buy', address: SOLW, usd: 5, feeUsd: 0.1, coin: 'c', tx: tx(1), at: NOW, status: 'ok' }], users: { total: 7 } } as unknown as Parameters<typeof publicReport>[0]
-    const p = publicReport(full)
-    expect(p.topTraders[0].address).toBe(`${A.slice(0, 6)}…${A.slice(-4)}`)
-    expect(p.latest[0].address).toBe(`${SOLW.slice(0, 6)}…${SOLW.slice(-4)}`)
-    expect(JSON.stringify(p)).not.toContain(A)
-    expect((p as unknown as { users: { total: number } }).users.total).toBe(7)
-  })
-  test('worked out at most every 30 seconds per period, whatever visitors ask for', async () => {
-    const an = new Analytics({ store: new MemoryAnalyticsStore(), call: async () => null })
-    let n = 0
-    const real = an.report.bind(an)
-    an.report = (d?: number, now?: number) => { n++; return real(d, now) }
-    await an.publicReport(30, NOW); await an.publicReport(30, NOW + 10_000); await an.publicReport(999, NOW + 10_000)
-    expect(n).toBe(1)
-    await an.publicReport(7, NOW + 10_000)
-    await an.publicReport(30, NOW + 31_000)
-    expect(n).toBe(3)
   })
 })
 
@@ -151,5 +129,19 @@ describe('the analytics service', () => {
     expect(r.daily).toHaveLength(31)
     expect(r.daily.at(-1)).toMatchObject({ trades: 1, volumeUsd: 25, feesUsd: 0.5, traders: 1 })
     expect(r.topTraders[0]).toMatchObject({ address: B, volumeUsd: 100 })
+
+    // Everyone's page: the same totals, and no wallet or transaction anywhere in it.
+    const p = await an.publicStats(30, NOW)
+    expect(p.users.total).toBe(2)
+    expect(p.trades.volume.total).toBe(125)
+    expect(p.fees.total).toBe(1.75)
+    expect(p.visitors).toEqual({ online: 3, today: 40, total: 900 })
+    expect(p.latest[0]).toEqual({ chain: 'arc', venue: 'arc-router', side: 'buy', usd: 25, coin: expect.any(String), at: expect.any(Number) })
+    const text = JSON.stringify(p).toLowerCase()
+    for (const secret of [A, B, SOLW, tx(1), tx(9), sig(5)]) expect(text).not.toContain(secret.toLowerCase())
+    expect('topTraders' in p || 'checks' in p || 'funnel' in p).toBe(false)
+    // Worked out at most every 30 seconds.
+    expect(await an.publicStats(30, NOW + 10_000)).toBe(p)
+    expect(await an.publicStats(30, NOW + 31_000)).not.toBe(p)
   })
 })

@@ -158,6 +158,17 @@ export class Analytics {
 
   constructor(private o: AnalyticsOptions) {}
 
+  private pub: { at: number; days: number; body: Promise<PublicStats> } | null = null
+  /** The public stats, worked out at most every 30 seconds for each window (everyone's page asks). */
+  publicStats(days = 30, now = Date.now()): Promise<PublicStats> {
+    days = [1, 7, 30, 90].includes(days) ? days : 30
+    if (this.pub && this.pub.days === days && now - this.pub.at < 30_000) return this.pub.body
+    const body = this.report(days, now).then(publicStats)
+    body.catch(() => { if (this.pub?.body === body) this.pub = null })
+    this.pub = { at: now, days, body }
+    return body
+  }
+
   private take(map: Map<string, { hour: number; n: number }>, ip: string, max: number, now: number): boolean {
     const hour = Math.floor(now / 3_600_000)
     const seen = map.get(ip)
@@ -208,19 +219,6 @@ export class Analytics {
       }
     } finally { this.checking = false }
     return done
-  }
-
-  private pub = new Map<number, { at: number; r: Promise<AnalyticsReport> }>()
-  /** The public page's report (publicReport), worked out at most every 30 seconds per period, so visitors can't make
-   * the engine recompute it on every request. */
-  publicReport(days = ANALYTICS.days, now = Date.now()): Promise<AnalyticsReport> {
-    days = [7, 30, 90].includes(days) ? days : ANALYTICS.days
-    const hit = this.pub.get(days)
-    if (hit && now - hit.at < 30_000) return hit.r
-    const r = this.report(days, now).then(publicReport)
-    r.catch(() => this.pub.delete(days))
-    this.pub.set(days, { at: now, r })
-    return r
   }
 
   /** Everything the owner's analytics page shows. */
@@ -310,16 +308,31 @@ export class Analytics {
   }
 }
 
-/** A wallet as the public page shows it: shortened (0x1234…abcd), never in full. */
-export const shortWallet = (a: string) => (a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a)
+/** What everyone may see (owner, 2026-10-17: "put it there for everyone to see the number of users, wallets, volume
+ * traded, fees collected"): the totals and the day-by-day series. No wallet address, no transaction hash. */
+export interface PublicStats {
+  at: number
+  days: number
+  visitors: { online: number; today: number; total: number } | null
+  users: { total: number; new24h: number; active24h: number; active7d: number; byKind: Record<string, number> }
+  traders: AnalyticsReport['traders']
+  trades: AnalyticsReport['trades']
+  fees: { total: number; d1: number; d7: number; d30: number; bySource: Record<string, number> }
+  daily: DayRow[]
+  latest: { chain: string; venue: string; side: string; usd: number; coin: string | null; at: number }[]
+}
 
-/** The public analytics page (owner, 2026-10-17: "analytics page should be public"): the same report, with every
- * wallet shortened. Nothing in it is private beyond that: sign-in counts, on-chain trades and the fee ledger. */
-export function publicReport(r: AnalyticsReport): AnalyticsReport {
+export function publicStats(r: AnalyticsReport): PublicStats {
+  const v = r.visitors as (TrafficCounts & Record<string, unknown>) | null
   return {
-    ...r,
-    topTraders: r.topTraders.map(t => ({ ...t, address: shortWallet(t.address) })),
-    latest: r.latest.map(t => ({ ...t, address: shortWallet(t.address) })),
+    at: r.at, days: r.days,
+    visitors: v ? { online: Number(v.online ?? 0), today: Number(v.today ?? 0), total: Number(v.total ?? 0) } : null,
+    users: r.users,
+    traders: r.traders,
+    trades: r.trades,
+    fees: { total: r.fees.total, d1: r.fees.d1, d7: r.fees.d7, d30: r.fees.d30, bySource: r.fees.bySource },
+    daily: r.daily,
+    latest: r.latest.filter(t => t.status === 'ok').slice(0, 20).map(t => ({ chain: t.chain, venue: t.venue, side: t.side, usd: t.usd, coin: t.coin ?? null, at: t.at })),
   }
 }
 

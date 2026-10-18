@@ -2,7 +2,7 @@
 // same arithmetic as the futures contract (perps/shared.ts): fees on size at open and close and a
 // borrow fee by the hour; P&L on size, as a share of the collateral.
 
-import type { AlgoMarket, AlgoMode, AlgoStats, AlgoTrade } from '../../../api/_algoProtocol'
+import type { AlgoLane, AlgoMarket, AlgoMode, AlgoStats, AlgoTrade } from '../../../api/_algoProtocol'
 import type { Costs } from './config'
 
 const DAY = 86_400_000
@@ -63,8 +63,9 @@ export class Book {
     this.realizedUsd += p.net
   }
 
-  stats(): AlgoStats {
-    const cl = this.closed().sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0))
+  /** The record of closed trades, of one lane when asked (a trade with no lane is gated). */
+  stats(lane?: AlgoLane): AlgoStats {
+    const cl = this.closed().filter(t => !lane || (t.lane ?? 'gated') === lane).sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0))
     const wins = cl.filter(t => (t.pnlUsd ?? 0) > 0)
     const losses = cl.filter(t => (t.pnlUsd ?? 0) <= 0)
     const gw = wins.reduce((s, t) => s + (t.pnlUsd ?? 0), 0)

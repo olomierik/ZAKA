@@ -2732,6 +2732,36 @@ Owner: "Algo trade in this app is what will make this app have more users; let's
   - Real markets aren't measured yet: Arc and RedStone were out of the sandbox's reach. Expect few trades.
 - **Tests:** `bun test engine/test/algoCore.test.ts engine/test/algoAgent.test.ts`, 34 tests; each of 8 planted bugs failed one.
 - **Checked in a browser** against a stand-in engine running the real agent on synthetic markets: 1280px and 375px, no errors, no sideways scroll.
+- **Paper exploration (2026-10-18, owner: "find a way to make Algo also work; let Algo take positions on paper"):**
+  - **Why it never traded:** the gates need a calibrated confidence above 0.80 and a positive expected edge.
+    - Calibration needs 300 labeled decisions; production had 178 after about a week (one label per market and family every 15 minutes, each needing its 4-hour horizon).
+    - The engine's own replay had already shown the 0.80 bar is rarely reached.
+  - **What changed:** a second lane, paper only (`explore` in `algo/config.ts`, `planExplore` in `algo/policy.ts`).
+    - **When it opens:** a setup that passes every structural check but not the statistical ones (calibration, confidence, edge). The structural checks are a direction, no crisis or high volatility, clean flow, setup quality 2+, a safe risk state, and a target at least 2× the costs.
+    - **Size:** it risks 0.5% of the book (`riskPct`), at most 3×.
+    - **Spacing:** one market waits 30 minutes after its last exploration closed (`cooldownMin`).
+    - **Unchanged risk rules:** the risk layer's limits (one position per market, 3 open, the daily loss, the 15% drawdown kill switch) apply as before.
+    - **Exits:** an exploration isn't closed for its low (uncalibrated) confidence; a flipped direction, high volatility or a crisis still close it.
+  - **Never on testnet:** a testnet book trades only the gated lane. The replay, and so the nightly review's tuning, measures the gated lane only.
+  - **Recorded apart:** trades carry `lane` (`gated` or `explore`; older rows count as gated). `GET /v1/algo/status` has `explore` (on, risk, each lane's record), and `waiting` no longer says "no trades until then" while it explores.
+  - **The page (`pages/AlgoPage.tsx`):**
+    - an "Exploring on paper" banner with each lane's record;
+    - an Exploring tag on its trades;
+    - "Opened a trade (exploring)" in the decisions;
+    - open positions listed with the closed ones.
+  - **The switch:** `ALGO_EXPLORE=off` on Railway turns it off.
+  - **Measured on the last 19 hours of production's own prices (2026-10-18):**
+    - 8 paper trades on ETH and SOL. BTC's 0.30% target didn't clear 2× its 0.17% costs.
+    - 1 of 6 closed won: −$169 on $10,000 (−1.7%), each loss near its $50 cap, $48 in fees.
+    - Not an edge: exploration gives the book positions and records while the calibration builds; it says nothing about profit.
+  - **Tests:** `engine/test/algoCore.test.ts` covers:
+    - the lane's sizing, and every structural refusal;
+    - an uncalibrated paper book opening explorations that aren't closed for low confidence, with the cooldown;
+    - none on testnet or with it off;
+    - the replay staying gated.
+
+    `algoAgent.test.ts` checks each lane by its own rules. The engine suite: 894 pass.
+  - Every new string is in all six dictionaries (7).
 
 ## The signal engine — `engine/src/quant` (2026-10-02)
 
@@ -3192,7 +3222,7 @@ The same setting as Jito's (Settings → Trading → "🛡 Anti-MEV (Solana and 
 - **Tests:** `bun scripts/test-bsc-private.ts` (in CI, fetch stubbed): the order, the same bytes on 429, 5xx, lost connections and non-JSON answers, refusals not retried, "already known", "nonce too low" not taken as sent, every RPC out never falling back to the public node, a wrong hash refused; a viem wallet client over the transport sending only the raw transaction privately (and through the public node with the setting off); the form's three states. `--live` runs the checks above against both RPCs.
 - Every new string is in all six dictionaries (5; the setting's two strings replaced).
 
-## Every coin on every chain, Trending first, public analytics (2026-10-17)
+## Every coin on every chain, Trending first (2026-10-17)
 
 Owner: "the trending panel always on the left before New; let Trending show coins for all chains; most coins don't show up on all chains, like the most successful ones: if there is a limit, remove it; show all coins just like DexScreener, based on user selection; find out why users don't trade; analytics page should be public".
 
@@ -3203,16 +3233,57 @@ Owner: "the trending panel always on the left before New; let Trending show coin
 - **No cap on a lane (`components/TrenchLane.tsx`, `PAGE_ROWS`):** a lane draws 60 rows, and the next 60 when its end scrolls into view ("Show N more" too). It used to stop at 60 (`MAX_ROWS`).
 - **A sort on every lane (`LaneSort`, `sortLane`, `TrenchSettings.laneSort` per chain and lane):** the lane's own order (New newest, Almost bonded by progress), newest, 24h volume, market cap, trending (24h volume and trades, `api/trending.ts`'s score) or top gainers. **Migrated opens by volume** (it was youngest first), so the most traded coins lead.
 - **Trending (`components/TrenchTrendLane.tsx`):** the first lane, on the left (desktop columns, the phone's first and default tab, and the boot frame in `index.html`). Always every chain: the All chains / one chain switch is gone. Up to 240 coins (`rankTrending`'s limit was 30), 60 a chain read from DexScreener.
-- **Public analytics (`/analytics`, `pages/AnalyticsPage.tsx`):** the admin report (users, traders, volume, fees, the funnel, by chain, top traders, latest trades) for anyone, from the engine's public `GET /v1/analytics?days=7|30|90` (`Analytics.publicReport`: every wallet shortened, worked out at most every 30 seconds per period).
-  - In the More menu for everyone. `/admin`'s Analytics tab still shows full addresses with the admin sign-in.
-  - Before, `/analytics` opened the admin panel, which shows nothing until an admin wallet signs in. That's why the owner couldn't see it.
+- **Analytics** was asked for in the same message; it shipped first in "Analytics for everyone" (below), so this change adds none of its own.
 - **Why people don't trade:** `docs/WHY-NO-TRADERS-2026-10-17.md`. Read live: 685 visitors since 2026-10-01 (52 that day), 13 wallets ever traded through the Arc routers, under $0.01 of router fees, and the Arc routers still at 2%. The causes, most likely: no audience yet, coins people came for missing (fixed here), the 2% Arc fee, funding friction (no card on-ramp, no WalletConnect QR), and trust.
 - **Tests:**
   - `scripts/test-trenches.ts`: sorting, the default orders, no cap.
   - `test-solana.ts`, `test-bsc.ts`, `test-robinhood.ts`: established coins listed, young plain-DEX coins not, the new paths.
   - `test-dex-parity.ts`: up to 240 trending coins.
-  - `engine/test/analytics.test.ts`: the public report's shortened wallets and its 30-second cache.
-- Every new string is in all six dictionaries (8).
+- Every new string is in all six dictionaries (5).
+
+## Analytics for everyone (2026-10-17)
+
+Owner: "what is hindering me to see the analytics page as a normal user; put it there for everyone to see the number of users, wallets, volume traded, fees collected and others".
+
+- **Why it was hidden:** the only analytics view was the admin panel's tab, behind an admin wallet's (or admin email's) sign-in.
+- **Now `/analytics` (also `/stats`) is everyone's page (`pages/StatsPage.tsx`), "Analytics" in the top bar and the phone's More sheet (`PRIMARY` in `lib/navItems.ts`):** users (wallets used on the site, and how they sign in), traders, volume, trades and fees collected (today, 7 days, all), online now and visitors today, the day-by-day charts, volume by chain, fees by source, and the latest trades. Read again every 30 seconds.
+- **The engine (`GET /v1/stats?days=1|7|30|90`, `publicStats` in `engine/src/analytics.ts`):** the admin report's totals and series with no wallet address, transaction hash, check counts, funnel or top traders. Worked out at most every 30 seconds per window, cached publicly for 30.
+- **The view is shared:** `components/AdminAnalytics.tsx` with `pub` reads `/v1/stats`; without it, the admin's full `/v1/admin/analytics`. The admin panel keeps its Analytics tab at `/admin`; the account menu's admin-only Analytics link is gone (the top bar has it for everyone).
+- **Checked:** `engine/test/analytics.test.ts` (the public view has the same totals and none of the wallets or transactions), both typechecks, and in the built-in browser the top-bar link, the page at 1440px and 375px (no sideways scroll), with the engine's answer stood in for until it deploys.
+- **Every new string is in all six dictionaries** (6).
+
+## Practice predictions, papertrade.xyz's way (2026-10-17)
+
+Owner: "take a look at papertrade.xyz and make the same thing for us on prediction markets". papertrade.xyz was toured in Chrome (read-only, its site, docs and exchange).
+- **What papertrade is:** a real-money exchange on Hyperliquid, not paper trading. Each trade is a synthetic bet against a pool at Hyperliquid's mid: no order book, no slippage, no funding, up to 1000×. The pool starts at $0 and fills from traders' losses. A win the pool can't pay waits in a first-in, first-out queue (the "Martingaler" design), and losers get its PAPER token, which earns the fees. Asked which version, the owner chose **practice first, real later**.
+- **Practice now (`/predict`, a Practice | Live switch, Practice by default while live trading is off; `arcdex:predict-mode`):** every Hyperliquid prediction market, with $10,000 of virtual USDC. No wallet is needed.
+  - **Trading:** one tap buys a side at its mid, with no slippage and no fee (papertrade's rules, and the ones a real pool would use). The amount is $1 at the least, with $10–$500, ½ and Max chips. A sale is 25%, 50% or all, at the mid. "Pays if right" is shown.
+  - **Settlement:** a position is held until sold or settled. Hyperliquid's own `settledOutcome` (found 2026-10-17; it answers null while a market is live) gives `settleFraction`: each contract of the first side gets it, of the second side 1 − it.
+  - **The page:** an account bar (balance, cash, in positions, P&L, win rate, the name shown on the leaderboard, Reset to $1K / $10K / $100K), and papertrade's ticker of everyone's latest fills. Then Positions, History, and a Leaderboard (24H / 7D / all time): top traders by realized P&L with 3+ closed trades, and the best trades, the top three rows tinted gold, silver and bronze.
+  - **Marked PRACTICE** on the switch, the bar, the panel, the trade form and the page's footnote.
+- **On the engine, so the leaderboard can't be written from a browser (`engine/src/practice/predict.ts`, shared rules in `api/_practiceProtocol.ts`):**
+  - **Accounts:** reached with a random key kept in the browser (`arcdex:practice-key`); only its SHA-256 is stored (`arcdex_practice_accounts`).
+  - **Fills:** every fill is at the mid the engine reads from Hyperliquid (`allMids`, at most 1.5s old), the complement of the other side when one side has no book. Buys need:
+    - the market in the latest `outcomeMeta`, and not past its end (the same fields the page reads, checked against all 345 recorded markets);
+    - a mid between 1¢ and 99¢.
+  - **Limits (`PRACTICE`):** 50 open positions, 120 orders a minute per account, 5 new accounts an hour per IP, the last 300 closed trades kept.
+  - **Settlement:** every 30 seconds, held outcomes that left `outcomeMeta` or passed their end are asked about, each at most once a minute.
+  - **Routes:**
+    - `POST /v1/practice/predict/accounts` (the key, once);
+    - `GET|POST /v1/practice/predict/account` (`X-Practice-Key`; buy, sell, reset, rename);
+    - `GET /v1/practice/predict/board?period=` (public; names only).
+    - Writes come from the site's own origins only. `PRACTICE=off` on Railway stops it.
+- **Real later (not built):** papertrade's design for predictions needs a pool contract on Arc that buys and sells sides at Hyperliquid's mid. Hyperliquid's prices would reach Arc only through the engine's signature, which makes the engine a point of trust. It needs the payout queue, a token minted from losses, testnet first, an independent audit and legal advice before any real money.
+- **Checked:**
+  - `engine/test/predictPractice.test.ts` (10): fills at the mid, the complement, every limit, sales, settlement both ways and once, a split result, the leaderboard (windows, 3 trades, no keys), names, resets, a restart, the routes (origin, key, CORS).
+  - `bun scripts/test-predict-practice.ts` (in CI): the engine's end time equals the page's for all 345 recorded markets, names, prices.
+  - The practice book against Hyperliquid's live API: $25 of a ZEC market bought and sold at its 50.3¢ mid.
+  - In the built-in browser, against `engine/scripts/practice-standin.ts` (the engine's own practice code in memory with live Hyperliquid data; other routes passed to production):
+    - start, a $100 Yes buy ("Bought 145 Yes at 69¢") and its sale at 66¢ (−$4.08);
+    - History and the ticker;
+    - 375px with no sideways scroll, with the account kept after a reload.
+  - The engine suite: 889 pass.
+- **Every new string is in all six dictionaries** (47, the engine's error messages included).
 
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 

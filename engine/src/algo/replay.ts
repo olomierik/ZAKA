@@ -49,7 +49,8 @@ export async function replayAsync(i: ReplayInput): Promise<ReplayResult> {
 }
 
 function* steps(i: ReplayInput): Generator<void, ReplayResult, void> {
-  const core = new AlgoCore(i.cfg, i.reflex ?? new RuleReflex(), 'paper', i.startUsd ?? i.cfg.startUsd)
+  // The replay measures the gated lane only: the nightly review tunes what may trade on testnet.
+  const core = new AlgoCore({ ...i.cfg, explore: { ...i.cfg.explore, on: false } }, i.reflex ?? new RuleReflex(), 'paper', i.startUsd ?? i.cfg.startUsd)
   if (i.priorLabels?.length) core.labeler.resolved.push(...i.priorLabels.filter(l => l.resolvedAt <= i.from))
   core.refit(i.from)
   const barsOf = (m: AlgoMarket | string) => i.bars[m as AlgoMarket] ?? []

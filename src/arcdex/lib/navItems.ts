@@ -19,6 +19,8 @@ export const PRIMARY: NavItem[] = [
   { icon: '📊', label: N_('Futures'), to: { name: 'perps' } },
   { icon: '🎯', label: N_('Predict'), to: { name: 'predict' } },
   { icon: '▤', label: N_('Portfolio'), to: { name: 'portfolio' } },
+  // ARCDEX in numbers, for everyone (owner, 2026-10-17).
+  { icon: '📈', label: N_('Analytics'), to: { name: 'stats' } },
   { icon: '⇄', label: N_('Swap'), to: { name: 'swap' }, fold: 'wide' },
   { icon: '◎', label: N_('Bridge'), to: { name: 'bridge' }, fold: 'wide' },
 ]
@@ -32,7 +34,6 @@ export const MORE_ITEMS: NavItem[] = [
   { icon: '◆', label: N_('Starknet'), to: { name: 'starknet' } },
   { icon: '🔥', label: N_('$ARCDEX burn'), to: { name: 'coin' } },
   { icon: '🧭', label: N_('Supported routes'), to: { name: 'routes' } },
-  { icon: '📈', label: N_('Analytics'), to: { name: 'analytics' } },
 ]
 
 /** The More list as this visitor sees it: Copy trading first while its flag is on. Admin is in the account menu. */

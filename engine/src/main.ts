@@ -15,6 +15,7 @@
 
 import { Traffic } from './traffic'
 import { Votes } from './votes'
+import { PredictPractice } from './practice/predict'
 import { DOLLAR_PLAN } from './bot/dollarPlan'
 import { every, keepAliveOnUnhandled, startWithRetry } from './lifecycle'
 import { randomBytes } from 'node:crypto'
@@ -267,6 +268,21 @@ async function main() {
   if (dataApi) dataApi.traffic = new Traffic(botStore)
   // Community sentiment on each coin (votes.ts), kept beside it.
   if (dataApi) dataApi.votes = new Votes(botStore)
+  // Practice predictions (practice/predict.ts): papertrade.xyz's one-tap trading on Hyperliquid's prediction markets,
+  // with virtual USDC, filled at the mids read here and settled by Hyperliquid's own settledOutcome.
+  if (dataApi && !/^(0|off|false|no)$/i.test(process.env.PRACTICE?.trim() ?? '')) {
+    const practice = new PredictPractice({
+      store: botStore,
+      info: async body => {
+        const r = await fetch('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(6_000) })
+        if (!r.ok) throw new Error(`hyperliquid ${String(body.type)} ${r.status}`)
+        return r.json()
+      },
+    })
+    await practice.load().catch(e => log.error('practice predictions: load failed', { error: errMsg(e) }))
+    dataApi.practice = practice
+    every(30_000, 'practice settlement', () => { void practice.settleTick().catch(e => log.warn('practice: settlement failed', { error: errMsg(e) })) })
+  }
   // Price and activity alerts by web push (alerts/service.ts): Arc coins on every trade, Hyperliquid every 2 seconds;
   // followed wallets from the wallet tracker (the Trenches' service, below).
   let pushAlerts: PushAlerts | null = null

@@ -15,8 +15,8 @@ The owner asked: "find out why users don't use our platform for trading". These 
 | Arc swap router fee | 2% (`feeBps` 200 on both routers, read on-chain) | `0xD075…924e`, `0xF8e8…6441` |
 
 So the problem has two parts. **Few people arrive** (about 40–50 a day). **Almost none of them trade**: a dozen wallets
-in two weeks. The trades sent from the site on Solana, BNB Chain and Robinhood Chain are in the admin analytics. Once
-this change deploys they're public at `/analytics` too, so the funnel (visitors → signed in → traded) can be read
+in two weeks. The trades sent from the site on Solana, BNB Chain and Robinhood Chain are in the analytics, public at
+`/analytics` ("Analytics for everyone" in AGENTS.md), so the funnel (visitors → signed in → traded) can be read
 there daily.
 
 ## Why, most likely
@@ -35,7 +35,7 @@ there daily.
    trade. Card deposits aren't live (no `CIRCLE_ONRAMP_API_KEY`), and phone wallets can't connect by QR (no
    `VITE_WC_PROJECT_ID`). Every extra step loses most of the people who reach it.
 5. **Trust.** The site is new, under two names (ARCDEX at arcsense.site), with no audit badge and no visible track
-   record. The public analytics page now gives some proof.
+   record. The public analytics page (`/analytics`) now gives some proof.
 
 ## What to do, in order
 
@@ -56,4 +56,3 @@ there daily.
 - **No row cap:** each lane draws 60 rows and loads the next 60 as it scrolls.
 - **A sort on every lane:** default, newest, 24h volume, market cap, trending, top gainers. Migrated opens by volume.
 - **Trending** is the first lane, on the left, and always shows every chain (up to 240 coins).
-- **`/analytics` is public**, in the More menu, with wallets shortened.
