@@ -1,10 +1,12 @@
 // A stand-in engine for checking card deposits locally: the engine's own /api/onramp (api/onramp.ts) with Circle's
 // API stubbed (it answers a made-up session token, so the widget at onramp.arc.io loads and says the session is bad),
+// its /api/moonpay (api/moonpay.ts) signed with made-up test keys (MoonPay's sandbox refuses them, as it should),
 // and a /api/session that signs anyone in. Every other route is passed on to the production engine (as arcsense.site).
 // No Circle key is needed, and nothing reaches Circle.
 //
 //   bun engine/scripts/onramp-standin.ts      (port 8792; the site with VITE_ARCDEX_WS_URL=ws://localhost:8792/ws)
 
+import { createMoonpay } from '../../api/moonpay'
 import { createOnramp } from '../../api/onramp'
 
 const PORT = Number(process.env.PORT ?? 8792)
@@ -21,6 +23,12 @@ const onramp = createOnramp({
     return Response.json({ data: { sessionToken: 'standin-token', sessionId: 'standin', expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() } })
   }) as typeof globalThis.fetch,
   // The stand-in's own session tokens: "standin:<address>".
+  verify: async t => (t?.startsWith('standin:') ? { address: t.slice(8).toLowerCase(), iat: 1 } : null),
+  revoked: async () => false,
+})
+
+const moonpay = createMoonpay({
+  publishableKey: 'pk_test_standin', secretKey: 'sk_test_standin', redirectUrl: 'https://arcsense.site/portfolio',
   verify: async t => (t?.startsWith('standin:') ? { address: t.slice(8).toLowerCase(), iat: 1 } : null),
   revoked: async () => false,
 })
@@ -46,6 +54,10 @@ Bun.serve({
     }
     if (url.pathname === '/api/onramp') {
       const r = await onramp(req)
+      return new Response(r.body, { status: r.status, headers: cors(req, new Headers(r.headers)) })
+    }
+    if (url.pathname === '/api/moonpay') {
+      const r = await moonpay(req)
       return new Response(r.body, { status: r.status, headers: cors(req, new Headers(r.headers)) })
     }
     if (url.pathname === '/standin/sessions') return Response.json(sessions, { headers: cors(req, new Headers()) })

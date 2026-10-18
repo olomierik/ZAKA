@@ -419,6 +419,18 @@ export function startCardDeposit(trader: Trader): Promise<{ session: unknown; wi
   return authedPost(trader, '/api/onramp', {})
 }
 
+/** MoonPay's card checkout (api/moonpay.ts): offered beside Circle's widget, where Circle's partner can't take cards. */
+export async function moonpayStatus(): Promise<{ enabled: boolean; sandbox: boolean }> {
+  const r = await siteFetch('/api/moonpay').catch(() => null)
+  if (!r?.ok) return { enabled: false, sandbox: false }
+  return r.json() as Promise<{ enabled: boolean; sandbox: boolean }>
+}
+
+/** MoonPay's checkout URL, signed by the engine for `trader`'s wallet: USDC lands there on Arc. */
+export function startMoonpay(trader: Trader): Promise<{ url: string; sandbox: boolean }> {
+  return authedPost(trader, '/api/moonpay', {})
+}
+
 // ── points (seasonal) ─────────────────────────────────────────────────
 
 export interface PointsRow { trader: string; trade_pts: number; referral_pts: number; day_pts: number; social_pts: number; active_days: number; total: number; rank: number }

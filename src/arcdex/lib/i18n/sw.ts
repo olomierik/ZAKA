@@ -4152,5 +4152,14 @@ const d: Record<string, string> = {
   "{wallet} is the wallet Privy made, and Privy sent no identity token to prove whose it is. Turn on identity tokens in Privy’s dashboard, or sign with your admin wallet itself: pick it under “Use a browser wallet”.": "{wallet} ni pochi iliyotengenezwa na Privy, na Privy haikutuma tokeni ya utambulisho kuthibitisha ni ya nani. Washa tokeni za utambulisho kwenye dashibodi ya Privy, au saini kwa pochi yako ya admin yenyewe: ichague chini ya “Tumia pochi ya kivinjari”.",
   "{wallet} isn’t an admin wallet. Sign with your admin wallet itself (“Use a browser wallet”), sign in with Privy under an admin email or with your admin wallet linked, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} si pochi ya admin. Saini kwa pochi yako ya admin yenyewe (“Tumia pochi ya kivinjari”), ingia kwa Privy kwa barua pepe ya admin au pochi yako ya admin ikiwa imeunganishwa, au ongeza pochi kwenye ADMIN_EVM_ADDRESSES kwenye Railway (arcdex-engine).",
   "Sign with the router’s owner ({owner}) to change it: connect it under “Use a browser wallet” above.": "Saini kwa mmiliki wa ruta ({owner}) ili kuibadilisha: iunganishe chini ya “Tumia pochi ya kivinjari” hapo juu.",
+  "MoonPay opened in a new window. Your USDC arrives in this wallet on Arc once the payment clears, usually within minutes.": "MoonPay imefunguka kwenye dirisha jipya. USDC zako zitafika kwenye pochi hii kwenye Arc malipo yakikamilika, kwa kawaida ndani ya dakika chache.",
+  "Your browser blocked the new window. Open MoonPay here:": "Kivinjari chako kimezuia dirisha jipya. Fungua MoonPay hapa:",
+  "Try Visa or Mastercard through MoonPay above.": "Jaribu Visa au Mastercard kupitia MoonPay hapo juu.",
+  "Visa or Mastercard": "Visa au Mastercard",
+  "Pay in your own currency through MoonPay. USDC goes straight to your {wallet} on Arc. MoonPay checks your identity the first time.": "Lipa kwa sarafu yako kupitia MoonPay. USDC zinaenda moja kwa moja kwenye {wallet} yako kwenye Arc. MoonPay huthibitisha utambulisho wako mara ya kwanza.",
+  "Buy USDC with a card": "Nunua USDC kwa kadi",
+  "Open MoonPay": "Fungua MoonPay",
+  "Card processing and identity checks are handled by MoonPay, not ARCDEX.": "Uchakataji wa kadi na uthibitishaji wa utambulisho hufanywa na MoonPay, si ARCDEX.",
+  "Or Circle’s checkout: debit card, Apple Pay, Google Pay": "Au malipo ya Circle: kadi ya debit, Apple Pay, Google Pay",
 }
 export default d
