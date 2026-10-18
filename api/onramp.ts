@@ -10,57 +10,81 @@
 // wallet on Arc. A session can only ever deliver to the caller's own
 // address — the body can't name another destination.
 //
-// Owner setup (Vercel → project `app` → env):
-//   CIRCLE_ONRAMP_API_KEY   Circle Console API key (server secret)
+// Served by the market engine (engine/src/site/siteApi.ts, 2026-10-18): the site on Netlify serves only its files.
+//
+// Owner setup (Railway → arcdex-engine → Variables):
+//   CIRCLE_ONRAMP_API_KEY   Circle Console API key (server secret; CIRCLE_API_KEY also works)
 //   ONRAMP_SANDBOX=1        optional: use Circle's sandbox (test money)
+//   ONRAMP_REFERRER_DOMAIN  optional: the host the page is served from (default arcsense.site)
 // Debit card / Apple Pay / Google Pay also need KYB completed in the
-// Circle Console with arcdex.online registered as the web URL.
+// Circle Console with arcsense.site registered as the web URL.
 
 import { createOnrampServerKit, KitError } from '@circle-fin/onramp-kit/server'
-import { bearer, verifySession } from './_session.js'
-import { json, sessionRevoked } from './_supabaseAdmin.js'
+import { bearer, verifySession } from './_session'
+import { json, sessionRevoked } from './_supabaseAdmin'
 
 declare const process: { env: Record<string, string | undefined> }
 
 export const config = { runtime: 'nodejs' }
 
-const API_KEY = process.env.CIRCLE_ONRAMP_API_KEY ?? process.env.CIRCLE_API_KEY
-const SANDBOX = process.env.ONRAMP_SANDBOX === '1'
-const WIDGET_BASE_URL = SANDBOX ? 'https://onramp-sandbox.arc.io' : 'https://onramp.arc.io'
-// Fixed server-side (never from the request): the widget's frame-ancestors
-// allowlist is built from it.
-const REFERRER_DOMAIN = process.env.ONRAMP_REFERRER_DOMAIN ?? 'arcdex.online'
-
-const kit = API_KEY
-  ? createOnrampServerKit({
-      apiKey: API_KEY,
-      referrerDomain: REFERRER_DOMAIN,
-      widgetBaseUrl: WIDGET_BASE_URL,
-      ...(SANDBOX ? { baseUrl: 'https://api-test.circle.com' } : {}),
-    })
-  : null
+export interface OnrampOptions {
+  apiKey: string | null
+  sandbox?: boolean
+  /** The exact host the page is served from: the widget's frame-ancestors allowlist is built from it. */
+  referrerDomain?: string
+  /** Tests: a stand-in for Circle's API, and for the site's wallet sessions. */
+  fetch?: typeof globalThis.fetch
+  verify?: (token: string | null) => Promise<{ address: string; iat: number } | null>
+  revoked?: (address: string, iat: number) => Promise<boolean>
+}
 
 const STATUS: Record<string, number> = { INPUT: 400, RATE_LIMIT: 429, NETWORK: 504, SERVICE: 502, RPC: 502 }
 
-export async function GET(): Promise<Response> {
-  return json(200, { enabled: Boolean(kit), sandbox: SANDBOX }, 'public, s-maxage=60')
-}
+export function createOnramp(o: OnrampOptions): (req: Request) => Promise<Response> {
+  const sandbox = !!o.sandbox
+  const widgetBaseUrl = sandbox ? 'https://onramp-sandbox.arc.io' : 'https://onramp.arc.io'
+  const verify = o.verify ?? verifySession
+  const revoked = o.revoked ?? sessionRevoked
+  const kit = o.apiKey
+    ? createOnrampServerKit({
+        apiKey: o.apiKey,
+        // Fixed server-side (never from the request). www.arcsense.site and arcdex.online both redirect to
+        // arcsense.site, so that's the host the widget is framed by.
+        referrerDomain: o.referrerDomain || 'arcsense.site',
+        widgetBaseUrl,
+        ...(sandbox ? { baseUrl: 'https://api-test.circle.com' } : {}),
+        ...(o.fetch ? { fetch: o.fetch } : {}),
+      })
+    : null
 
-export async function POST(req: Request): Promise<Response> {
-  if (!kit) return json(503, { error: 'Card deposits are not switched on yet' })
-  const session = await verifySession(bearer(req))
-  if (!session) return json(401, { error: 'Sign in with your wallet first' })
-  if (await sessionRevoked(session.address, session.iat)) return json(401, { error: 'You signed out of all devices — sign in again' })
+  return async function handler(req: Request): Promise<Response> {
+    if (req.method === 'GET' || req.method === 'HEAD') return json(200, { enabled: Boolean(kit), sandbox }, 'public, s-maxage=60')
+    if (req.method !== 'POST') return json(405, { error: 'method not allowed' })
+    if (!kit) return json(503, { error: 'Card deposits are not switched on yet' })
+    const session = await verify(bearer(req))
+    if (!session) return json(401, { error: 'Sign in with your wallet first' })
+    if (await revoked(session.address, session.iat)) return json(401, { error: 'You signed out of all devices — sign in again' })
 
-  try {
-    const s = await kit.createSession({
-      appUserId: session.address,
-      destinationAddress: session.address,
-      assets: { pairs: [{ token: 'USDC', chain: 'arc' }] },
-    })
-    return json(200, { session: s, widgetBaseUrl: WIDGET_BASE_URL })
-  } catch (e) {
-    if (e instanceof KitError) return json(STATUS[e.type] ?? 500, { error: e.message })
-    return json(500, { error: 'Could not start a card deposit — try again' })
+    try {
+      const s = await kit.createSession({
+        appUserId: session.address,
+        destinationAddress: session.address,
+        assets: { pairs: [{ token: 'USDC', chain: 'arc' }] },
+      })
+      return json(200, { session: s, widgetBaseUrl })
+    } catch (e) {
+      if (e instanceof KitError) return json(STATUS[e.type] ?? 500, { error: e.message })
+      return json(500, { error: 'Could not start a card deposit — try again' })
+    }
   }
 }
+
+const handler = createOnramp({
+  apiKey: (process.env.CIRCLE_ONRAMP_API_KEY || process.env.CIRCLE_API_KEY || '').trim() || null,
+  sandbox: process.env.ONRAMP_SANDBOX === '1',
+  referrerDomain: process.env.ONRAMP_REFERRER_DOMAIN?.trim(),
+})
+
+export default handler
+export const GET = handler
+export const POST = handler
