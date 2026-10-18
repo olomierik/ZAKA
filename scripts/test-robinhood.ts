@@ -133,7 +133,9 @@ const onPad = (dex: string) => poolToCoin({ ...(pools.data as any[]).find(p => p
 ok(onPad('bankr-robinhood').launchpad === 'Bankr' && onPad('pons-v2-dex').launchpad === 'Pons' && onPad('clanker-robinhood').launchpad === 'Clanker', 'a pool on a launchpad’s venue names its launchpad (Bankr, Pons’s DEX, Clanker)')
 ok(onPad('uniswap-v4-robinhood').launchpad === null && onPad('up-v3').launchpad === null && !('up-v3' in RH_LAUNCHPADS), 'a plain DEX pool names none (Uniswap, Up V3)')
 const mowRow = merged.find(r => r.symbol === 'MOW')!
-ok(!mowRow.launchpad && !mowRow.stock && !isListedRh(mowRow), 'a coin whose pools are all on plain DEXes isn’t listed (MOW, in the recorded pools)')
+ok(!mowRow.launchpad && !mowRow.stock && !isListedRh({ ...mowRow, createdAt: Date.now() - 3_600_000 }), 'a young coin whose pools are all on plain DEXes isn’t listed (MOW, an hour old)')
+const mowEst = { ...mowRow, liquidity: 60_000, marketCap: 500_000, buys24h: 40, sells24h: 30, createdAt: Date.now() - 10 * 86_400_000 }
+ok(isListedRh(mowEst) && !isListedRh({ ...mowEst, buys24h: 5, sells24h: 5 }), 'a plain-DEX coin proven by its own trading (established) is listed, as DexScreener lists it (owner, 2026-10-17)')
 const mixed = mergeCoins([onPad('uniswap-v4-robinhood'), { ...onPad('bankr-robinhood'), pool: '0xbankr', traders24h: 1, volume24h: 10 }])[0]
 ok(mixed.launchpad === 'Bankr' && isListedRh(mixed) && mixed.pool !== '0xbankr', 'one launchpad pool lists the coin, whichever pool is its busiest')
 ok(isListedRh(nvda) && nvda.stock && !nvda.launchpad, 'a stock token is listed (until the chain says it’s an impostor)')
@@ -273,7 +275,7 @@ console.log('the engine’s list (api/rhmarket.ts): every launchpad, a little at
   }) as typeof fetch
 
   const paths = rhListPaths()
-  ok(paths.length === dexes.length + 5 && dexes.every(d => paths.some(p => p.includes(`/dexes/${d}/pools`))), `a round is ${paths.length} calls, one for each of the ${dexes.length} launchpad venues`)
+  ok(paths.length === dexes.length + 6 && paths.some(p => p.includes("/trending_pools")) && dexes.every(d => paths.some(p => p.includes(`/dexes/${d}/pools`))), `a round is ${paths.length} calls, one for each of the ${dexes.length} launchpad venues`)
   let s = await advanceRh(null, RH_CALLS_PER_STEP)
   ok(s.cursor === 2 && calls.length === 2 && s.rounds === 0, 'each step reads the next two calls')
   for (let i = 0; i < 20 && s.rounds === 0; i++) s = await advanceRh(s, RH_CALLS_PER_STEP)

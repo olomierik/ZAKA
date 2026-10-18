@@ -57,6 +57,16 @@ ok(keys(tr.laneCoins(coins, 'near')) === keys([near95, near80, bond30b, bond30, 
 ok(keys(tr.laneCoins(coins, 'migrated')) === keys([gradYoung, gradOld, est]), 'Migrated: off the curve or established, youngest first')
 ok(tr.LANES.flatMap(l => tr.laneCoins(coins, l)).length === coins.length, 'every coin lands in exactly one lane')
 
+console.log('sorting a lane (owner, 2026-10-17: “show all coins just like DexScreener, based on user selection”)')
+const big = coin({ stage: 'established', createdAt: NOW - 90 * 86_400_000, volume24h: 9e6, marketCap: 5e8, buys24h: 9000, sells24h: 8000, change24h: -3 })
+const small = coin({ stage: 'graduated', createdAt: NOW - 3_600_000, volume24h: 2e4, marketCap: 9e4, buys24h: 40, sells24h: 10, change24h: 80 })
+const mig = tr.laneCoins([small, big], 'migrated')
+ok(tr.defaultSort('migrated') === 'volume' && tr.defaultSort('new') === 'default' && tr.defaultSort('near') === 'default', 'Migrated opens by volume, so the most traded coins lead; New and Almost bonded keep their own order')
+ok(tr.sortLane(mig, 'volume')[0] === big && tr.sortLane(mig, 'mcap')[0] === big && tr.sortLane(mig, 'trending')[0] === big, 'by volume, market cap or trending, a 90-day-old coin with $9M a day leads a young one')
+ok(tr.sortLane(mig, 'new')[0] === small && tr.sortLane(mig, 'gainers')[0] === small && tr.sortLane(mig, 'default') === mig, 'newest and top gainers put the young one first; the default keeps the lane’s own order')
+ok(tr.PAGE_ROWS > 0 && !('MAX_ROWS' in tr), 'no cap on a lane: it draws PAGE_ROWS at a time and loads the next as it scrolls')
+ok(tr.LANE_SORTS.join() === 'default,new,volume,mcap,trending,gainers', 'six orders to pick from')
+
 console.log('the lane filters')
 const F = tr.EMPTY_FILTER
 const pepe = coin({ symbol: 'PEPE', name: 'Pepe the Frog', marketCap: 50_000, liquidity: 8_000, buys24h: 30, sells24h: 20, createdAt: NOW - 90 * MIN, progress: 60, launchpad: 'Mercuri' })

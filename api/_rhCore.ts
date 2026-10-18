@@ -3,6 +3,8 @@
 // launchpads, trap pools and wash pools. No browser or chain libraries here, so the engine's image can
 // import it.
 
+import { isEstablishedRow } from './_launchpads'
+
 export const RH_NET = 'robinhood'
 export const RH_RPC_URL = 'https://rpc.mainnet.chain.robinhood.com'
 /** Paxos's Global Dollar, Robinhood Chain's dollar (6 decimals). */
@@ -238,9 +240,11 @@ export const INCLUDE = { include: 'base_token,quote_token,dex' }
 
 /** Whether a coin is listed: from a launchpad, or one of Robinhood's stock tokens. `stockOk` is the
  * chain's answer for a stock-named coin (undefined until asked: it counts until the chain says no). */
-export function isListed(c: RhCoin, stockOk: (address: string) => boolean | undefined): boolean {
+export function isListed(c: RhCoin, stockOk: (address: string) => boolean | undefined, now = Date.now()): boolean {
   if (c.launchpad) return true
-  return c.stock && stockOk(c.address) !== false
+  if (c.stock) return stockOk(c.address) !== false
+  // A coin proven by its own trading on any DEX (owner, 2026-10-17: "show all coins just like DexScreener").
+  return isEstablishedRow(c, now)
 }
 
 /** The coins to show: listed ones, impostor stock names marked as not stocks. */
@@ -262,6 +266,6 @@ export function rhListPaths(): string[] {
   return [
     busiest('1'), stocks('1'),
     ...dexes.map(d => `/networks/${RH_NET}/dexes/${d}/pools?${q({ sort: 'h24_volume_usd_desc' })}`),
-    busiest('2'), `/networks/${RH_NET}/new_pools?${q({})}`, stocks('2'),
+    busiest('2'), `/networks/${RH_NET}/new_pools?${q({})}`, stocks('2'), `/networks/${RH_NET}/trending_pools?${q({})}`,
   ]
 }

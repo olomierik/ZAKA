@@ -5,6 +5,7 @@
 //
 // Owner, 2026-10-04: "bring Solana to the platform", every launchpad, launchpad coins only.
 
+import { isEstablishedRow } from './_launchpads'
 import { isWashPool, markPools, num, isImage, unescape, poolFeePct, type GtPool, type GtPools, type GtToken, type RhCoin } from './_rhCore'
 
 export const SOL_NET = 'solana'
@@ -165,8 +166,8 @@ export function isWashSol(c: SolCoin, now = Date.now()): boolean {
   return isWashPool(c, now) || (c.liquidity < 100 && c.volume24h > 50_000)
 }
 
-/** Launchpad coins only. */
-export const listedSol = (rows: SolCoin[]): SolCoin[] => rows.filter(c => c.launchpad)
+/** Launchpad coins, and coins proven by their own trading on any DEX (`isEstablishedRow`). */
+export const listedSol = (rows: SolCoin[], now = Date.now()): SolCoin[] => rows.filter(c => c.launchpad || isEstablishedRow(c, now))
 
 export const SOL_INCLUDE = { include: 'base_token,quote_token,dex' }
 
@@ -175,10 +176,13 @@ export const SOL_INCLUDE = { include: 'base_token,quote_token,dex' }
 export function solListPaths(): string[] {
   const q = (params: Record<string, string>) => new URLSearchParams({ ...SOL_INCLUDE, ...params }).toString()
   const dex = (d: string, page = '1') => `/networks/${SOL_NET}/dexes/${d}/pools?${q({ sort: 'h24_volume_usd_desc', page })}`
+  const top = (page: string) => `/networks/${SOL_NET}/pools?${q({ sort: 'h24_volume_usd_desc', page })}`
   return [
     dex('pump-fun'), dex('pumpswap'),
     ...Object.keys(SOL_LAUNCHPADS).filter(d => d !== 'pump-fun' && d !== 'pumpswap').map(d => dex(d)),
     dex('pump-fun', '2'), dex('pumpswap', '2'), `/networks/${SOL_NET}/new_pools?${q({})}`,
+    // Solana's busiest and trending pools on every DEX, where graduated coins and established ones trade.
+    top('1'), `/networks/${SOL_NET}/trending_pools?${q({})}`, top('2'), top('3'),
   ]
 }
 

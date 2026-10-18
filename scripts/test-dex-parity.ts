@@ -62,6 +62,8 @@ const sol = (s: string, v: number) => r('solana', s, v, 100)
 const mixed = rankTrending([sol('S1', 9e6), sol('S2', 8e6), sol('S3', 7e6), sol('S4', 6e6), sol('S5', 5e6), r('arc', 'A1', 5_000, 50), { ...sol('S1', 1e3), address: 'copy', marketCapUsd: 5 }])
 ok(mixed.slice(0, 4).map(x => x.symbol).join() === 'S1,S2,S3,A1' && mixed.length === 6, 'at most 3 of the top from one chain, so every chain shows; one coin per ticker')
 ok(mixed[0].address === 'S1', '… the bigger coin of a ticker, not its copycat')
+const many = rankTrending(Array.from({ length: 300 }, (_, i) => r(i % 2 ? 'solana' : 'bsc', `T${i}`, 1e6 - i, 100)))
+ok(many.length === 240, 'up to 240 coins (it was 30): the most successful coins on every chain aren’t cut off')
 const totals = totalsOf([r('arc', 'A', 1_000, 10), r('arc', 'D', 2_000, 20), r('solana', 'B', 900_000, 5_000)])
 ok(totals.find(t => t.chain === 'arc')?.coins === 2 && totals.find(t => t.chain === 'arc')?.volume24h === 3_000, 'each chain\'s totals')
 

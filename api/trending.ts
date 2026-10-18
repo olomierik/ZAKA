@@ -67,8 +67,9 @@ const listedOther = (r: TrendRow) => r.marketCapUsd >= MIN_MC && !STABLE.test(r.
 
 /** The busiest first: 24h volume, with recent trading lifting a coin (DexScreener's trending works on activity too).
  * One coin per ticker (the bigger: a copycat of a trending coin shouldn't sit beside it), and at most `perChain` of the
- * first `head` from one chain, so the top of the list shows every chain. */
-export function rankTrending(rows: TrendRow[], limit = 30, head = 8, perChain = 3): TrendRow[] {
+ * first `head` from one chain, so the top of the list shows every chain. Up to 60 a chain (owner, 2026-10-17: remove
+ * the limit that kept the most successful coins out). */
+export function rankTrending(rows: TrendRow[], limit = 240, head = 12, perChain = 3): TrendRow[] {
   const score = (r: TrendRow) => Math.log10(1 + r.volume24h) * 2 + Math.log10(1 + r.txns24h)
   const bySymbol = new Map<string, TrendRow>()
   for (const r of rows) {

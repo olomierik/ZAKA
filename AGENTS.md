@@ -3222,6 +3222,25 @@ The same setting as Jito's (Settings → Trading → "🛡 Anti-MEV (Solana and 
 - **Tests:** `bun scripts/test-bsc-private.ts` (in CI, fetch stubbed): the order, the same bytes on 429, 5xx, lost connections and non-JSON answers, refusals not retried, "already known", "nonce too low" not taken as sent, every RPC out never falling back to the public node, a wrong hash refused; a viem wallet client over the transport sending only the raw transaction privately (and through the public node with the setting off); the form's three states. `--live` runs the checks above against both RPCs.
 - Every new string is in all six dictionaries (5; the setting's two strings replaced).
 
+## Every coin on every chain, Trending first (2026-10-17)
+
+Owner: "the trending panel always on the left before New; let Trending show coins for all chains; most coins don't show up on all chains, like the most successful ones: if there is a limit, remove it; show all coins just like DexScreener, based on user selection; find out why users don't trade; analytics page should be public".
+
+- **Established coins on every chain (`api/_launchpads.ts` `isEstablishedRow`):** Solana (`listedSol`), BNB Chain (`listedBsc`, and the engine's `bscmarket.ts` keeps their pools) and Robinhood Chain (`isListed`) list a coin proven by its own trading on any DEX, beside launchpad coins: Arc's `ESTABLISHED` rule ($25K liquidity, $100K market cap, 3+ days old, 25+ trades a day; never a stablecoin).
+  - This relaxes the launchpad-only rule of 2026-10-04 for proven coins on every chain, as 2026-10-05 did for Arc. The safety ratings and the listing standard still apply.
+  - The rounds read each chain's busiest and trending pools on every DEX: Solana `/pools` pages 1–3 and `/trending_pools`; BNB Chain `/pools` pages 1–2 and `/trending_pools`; Robinhood Chain `/trending_pools`. That's about 3 more minutes per full round on the engine's budget.
+  - Only four.meme's own coins are asked about on four.meme's contract.
+- **No cap on a lane (`components/TrenchLane.tsx`, `PAGE_ROWS`):** a lane draws 60 rows, and the next 60 when its end scrolls into view ("Show N more" too). It used to stop at 60 (`MAX_ROWS`).
+- **A sort on every lane (`LaneSort`, `sortLane`, `TrenchSettings.laneSort` per chain and lane):** the lane's own order (New newest, Almost bonded by progress), newest, 24h volume, market cap, trending (24h volume and trades, `api/trending.ts`'s score) or top gainers. **Migrated opens by volume** (it was youngest first), so the most traded coins lead.
+- **Trending (`components/TrenchTrendLane.tsx`):** the first lane, on the left (desktop columns, the phone's first and default tab, and the boot frame in `index.html`). Always every chain: the All chains / one chain switch is gone. Up to 240 coins (`rankTrending`'s limit was 30), 60 a chain read from DexScreener.
+- **Analytics** was asked for in the same message; it shipped first in "Analytics for everyone" (below), so this change adds none of its own.
+- **Why people don't trade:** `docs/WHY-NO-TRADERS-2026-10-17.md`. Read live: 685 visitors since 2026-10-01 (52 that day), 13 wallets ever traded through the Arc routers, under $0.01 of router fees, and the Arc routers still at 2%. The causes, most likely: no audience yet, coins people came for missing (fixed here), the 2% Arc fee, funding friction (no card on-ramp, no WalletConnect QR), and trust.
+- **Tests:**
+  - `scripts/test-trenches.ts`: sorting, the default orders, no cap.
+  - `test-solana.ts`, `test-bsc.ts`, `test-robinhood.ts`: established coins listed, young plain-DEX coins not, the new paths.
+  - `test-dex-parity.ts`: up to 240 trending coins.
+- Every new string is in all six dictionaries (5).
+
 ## Analytics for everyone (2026-10-17)
 
 Owner: "what is hindering me to see the analytics page as a normal user; put it there for everyone to see the number of users, wallets, volume traded, fees collected and others".

@@ -246,7 +246,7 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
   const info = CHAINS[chain]
   const [customize, setCustomize] = useState(false)
   const [filterLane, setFilterLane] = useState<LaneId | null>(null)
-  const [mLane, setMLane] = useState<MLane>('new')
+  const [mLane, setMLane] = useState<MLane>('smart')
   const [buyFor, setBuyFor] = useState<{ page: Page; symbol: string; anchor: HTMLElement } | null>(null)
 
   const watch = usePrefs().watchlist
@@ -275,7 +275,7 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
   const native = info.nativeHl ? mids[info.nativeHl] : null
   const coll = (l: MLane) => isCollapsed(s, chain, l)
   // Minimized lanes take a slim strip; the Trending lane is a little narrower than the coin lanes.
-  const columns = [...LANES.map(l => (coll(l) ? '44px' : 'minmax(0, 1fr)')), coll('smart') ? '44px' : 'minmax(240px, 0.72fr)'].join(' ')
+  const columns = [coll('smart') ? '44px' : 'minmax(240px, 0.72fr)', ...LANES.map(l => (coll(l) ? '44px' : 'minmax(0, 1fr)'))].join(' ')
   const perMin = data.perMin ?? (feed.on ? feed.perMin : undefined)
 
   return (
@@ -319,27 +319,28 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
 
       {mobile && (
         <div className="tr-mtabs" role="tablist">
+          <button role="tab" aria-selected={mLane === 'smart'} className={mLane === 'smart' ? 'on' : ''} onClick={() => setMLane('smart')}>
+            {T('Trending')}
+          </button>
           {LANES.map(l => (
             <button key={l} role="tab" aria-selected={mLane === l} className={mLane === l ? 'on' : ''} onClick={() => setMLane(l)}>
               {T(LANE_TITLE[l])} <span>{lanes[l].length}</span>
             </button>
           ))}
-          <button role="tab" aria-selected={mLane === 'smart'} className={mLane === 'smart' ? 'on' : ''} onClick={() => setMLane('smart')}>
-            {T('Trending')}
-          </button>
         </div>
       )}
 
       <div className="tr-lanes" style={mobile ? undefined : { ['--tr-cols' as string]: columns }}>
+        {/* Trending leads, on the left, before New (owner, 2026-10-17). */}
+        {(!mobile || mLane === 'smart') && (
+          <TrenchTrendLane chain={chain} collapsed={!mobile && coll('smart')} onCollapse={() => toggleCollapsed(chain, 'smart')}
+            onOpen={navigate} onBuy={navigate} />
+        )}
         {(mobile ? (mLane === 'smart' ? [] : [mLane]) : LANES).map(l => (
           <TrenchLane key={l} chain={chain} lane={l} coins={lanes[l]} s={s} flash={data.flash} loading={data.loading} now={now}
             collapsed={!mobile && coll(l)} onCollapse={() => toggleCollapsed(chain, l)}
             onOpen={open} onBuy={askBuy} onFilter={setFilterLane} />
         ))}
-        {(!mobile || mLane === 'smart') && (
-          <TrenchTrendLane chain={chain} collapsed={!mobile && coll('smart')} onCollapse={() => toggleCollapsed(chain, 'smart')}
-            onOpen={navigate} onBuy={navigate} />
-        )}
       </div>
 
       {buyFor && (

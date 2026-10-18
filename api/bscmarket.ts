@@ -9,6 +9,7 @@
 
 import { gtFetch } from './_geckoterminal'
 import { kvGet, kvSet } from './_supabaseAdmin'
+import { isEstablishedRow } from './_launchpads'
 import { bscListPaths, listedBsc, mergeBscCoins, parseBscPools, readFour, BSC_RPC_SERVER, type BscCoin, type FourInfo } from './_bscCore'
 import type { GtPools } from './_rhCore'
 
@@ -70,14 +71,15 @@ export async function advanceBsc(prev: BscSnapshot | null, calls: number, deadli
   for (let i = 0; i < calls && Date.now() < deadline; i++) {
     const d = await gt(paths[cursor])
     if (d === 'later') break
-    // Only four.meme's coins are kept (PancakeSwap's lists carry every coin).
-    if (d !== 'skip') for (const row of parseBscPools(d)) if (row.launchpad) byPool.set(row.pool, { ...row, seenAt: Date.now() })
+    // four.meme's coins are kept, and coins proven by their own trading (PancakeSwap's lists carry every coin).
+    if (d !== 'skip') for (const row of parseBscPools(d)) if (row.launchpad || isEstablishedRow(row)) byPool.set(row.pool, { ...row, seenAt: Date.now() })
     cursor = (cursor + 1) % paths.length
     if (cursor === 0) rounds++
   }
   const pools = [...byPool.values()]
   const coins = listedBsc(mergeBscCoins(pools.map(({ seenAt: _s, ...row }) => row)))
-  const four = await readChain(coins, prev?.four ?? {})
+  // Only four.meme's own coins are asked about (an established coin from elsewhere has nothing to read there).
+  const four = await readChain(coins.filter(c => c.launchpad), prev?.four ?? {})
   const keep = new Set(coins.map(c => c.address))
   return { updatedAt: Date.now(), pools, cursor, rounds, four: Object.fromEntries(Object.entries(four).filter(([k]) => keep.has(k))) }
 }
