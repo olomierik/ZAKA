@@ -774,6 +774,23 @@ html body {
 .welcome-ready { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--green) 12%, transparent); border: 1px solid color-mix(in srgb, var(--green) 40%, transparent); font-size: 0.8rem; }
 .welcome-ready b { color: var(--green); font-size: 0.88rem; }
 .welcome-ready span { color: var(--text-muted); }
+
+/* Deposit → Crypto: one network at a time (components/ChainDeposit.tsx, 2026-10-18). */
+.cdep { display: flex; flex-direction: column; align-items: center; gap: 9px; padding-top: 2px; width: 100%; min-width: 0; }
+.cdep-nets { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; width: 100%; }
+.cdep-nets button { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--adx-card-border, var(--adx-border)); background: var(--bg-2); color: var(--text-2, var(--text)); font: inherit; font-size: 0.76rem; font-weight: 600; cursor: pointer; }
+.cdep-nets button.on { border-color: var(--green); color: var(--text); background: color-mix(in srgb, var(--green) 12%, transparent); }
+.cdep-assets { font-size: 0.9rem; text-align: center; }
+.cdep-assets b { color: var(--text); }
+.cdep-or { font-weight: 400; color: var(--text-muted); }
+.cdep-use { font-size: 0.74rem; color: var(--text-muted); text-align: center; line-height: 1.45; max-width: 340px; }
+.cdep-qr { width: 170px; height: 170px; border-radius: 10px; }
+.cdep-addr { font-family: var(--mono); font-size: 0.76rem; word-break: break-all; text-align: center; }
+.cdep-same { font-size: 0.7rem; color: var(--text-muted); text-align: center; }
+.cdep-warn { font-size: 0.72rem; color: #d97706; text-align: center; line-height: 1.5; }
+[data-adx=dark] .cdep-warn { color: #fcd34d; }
+.cdep-contracts { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; font-size: 0.68rem; color: var(--text-muted); }
+.cdep-contracts code { font-family: var(--mono); color: var(--text-2, var(--text)); }
 .field { width: 100%; padding: 9px 11px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--adx-card-border); color: var(--text); font-size: 0.86rem; }
 .btn-primary { padding: 11px; border-radius: 10px; border: none; background: var(--adx-accent); color: var(--on-accent); font-weight: 700; cursor: pointer; }
 .btn-ghost { padding: 9px 12px; border-radius: 8px; border: 1px solid var(--adx-card-border); background: var(--bg-2); color: var(--text); font-weight: 600; cursor: pointer; }

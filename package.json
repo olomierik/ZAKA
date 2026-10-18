@@ -28,6 +28,7 @@
     "@circle-fin/smart-contract-platform": "^10.8.0",
     "@circle-fin/user-controlled-wallets": "^10.8.0",
     "@circle-fin/w3s-pw-web-sdk": "^1.1.11",
+    "@moonpay/moonpay-js": "0.7.6",
     "@noble/curves": "1.4.2",
     "@openzeppelin/contracts": "5.1.0",
     "@privy-io/react-auth": "3.49.1",

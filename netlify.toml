@@ -89,7 +89,8 @@
 #                onload="this.media='all'" ('unsafe-hashes' allows that exact handler and nothing else).
 #                Edit either and its hash changes: `bun scripts/check-csp.ts` fails until this line is updated.
 #                Also Cloudflare Turnstile (challenges.cloudflare.com), the bot check Privy's sign-in shows when the
-#                Privy app has it on (2026-10-16, privy/PrivyRoot.tsx).
+#                Privy app has it on (2026-10-16, privy/PrivyRoot.tsx). And MoonPay's web SDK
+#                (static.moonpay.com), loaded only when someone buys USDC with a card (2026-10-18, CardDeposit.tsx).
 #   connect-src  any https/wss host: the app talks to many chains' RPCs (and ones the user picks in RPC settings),
 #                Relay, Across, Hyperliquid, Supabase and the engine. Narrowing it is a later step.
 #   frame-src    https: wallet and on-ramp frames (WalletConnect, Coinbase, Circle), Privy's auth.privy.io (its wallets and
@@ -98,7 +99,7 @@
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'sha256-372lrFz/GILdClwef+aj224hca2rs/+aT5IP5j/YnzI=' 'unsafe-hashes' 'sha256-MhtPZXr7+LpJUY5qtMutB+qWfQtMaPccfe7QXtCcEYc=' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'sha256-/x7mTaIbxP1qpCmCznmB0+A1bI4XC1YTQ0tI1YCtvKw=' 'unsafe-hashes' 'sha256-MhtPZXr7+LpJUY5qtMutB+qWfQtMaPccfe7QXtCcEYc=' https://challenges.cloudflare.com https://static.moonpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
     X-Content-Type-Options = "nosniff"
     X-Frame-Options = "DENY"

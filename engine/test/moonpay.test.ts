@@ -1,7 +1,7 @@
 // Card deposits through MoonPay (api/moonpay.ts, 2026-10-18): the checkout URL signed for the signed-in wallet only.
 import { describe, expect, test } from 'bun:test'
 import { createHmac } from 'node:crypto'
-import { createMoonpay, moonpaySignature, moonpayUrl, MOONPAY_CURRENCY } from '../../api/moonpay'
+import { createMoonpay, moonpaySignature, moonpayUrl, sdkUrlProblem, MOONPAY_CURRENCY } from '../../api/moonpay'
 import { createSiteApi } from '../src/site/siteApi'
 
 const ME = '0x1111111111111111111111111111111111111111'
@@ -35,7 +35,7 @@ describe('MoonPay checkout', () => {
   test('test keys open MoonPay\'s sandbox', async () => {
     expect(new URL(await moonpayUrl({ publishableKey: 'pk_test_1', secretKey: 'sk_test_1', wallet: ME })).origin).toBe('https://buy-sandbox.moonpay.com')
     const h = createMoonpay({ publishableKey: 'pk_test_1', secretKey: 'sk_test_1', verify: signedIn, revoked: async () => false })
-    expect(await (await h(new Request('http://e/api/moonpay'))).json()).toEqual({ enabled: true, sandbox: true })
+    expect(await (await h(new Request('http://e/api/moonpay'))).json()).toEqual({ enabled: true, sandbox: true, apiKey: 'pk_test_1', currency: 'usdc_arc' })
   })
 
   test('off without both keys, or with keys from different modes', async () => {
@@ -66,5 +66,42 @@ describe('MoonPay checkout', () => {
     expect(r.status).toBe(200)
     expect(r.headers.get('X-Arcdex-Served-By')).toBe('engine')
     expect(await r.json()).toHaveProperty('enabled')
+  })
+
+  test("MoonPay's SDK: a checkout built in the page is signed only for this account, USDC on Arc and the signed-in wallet", async () => {
+    const h = createMoonpay({ publishableKey: PK, secretKey: SK, verify: signedIn, revoked: async () => false })
+    // A URL as the SDK builds it: its own environment parameters ride along and are signed with the rest.
+    const good = `https://buy.moonpay.com?apiKey=${PK}&currencyCode=usdc_arc&walletAddress=${ME}&baseCurrencyCode=usd&mpSdk=%7B%22version%22%3A%221%22%7D`
+    const r = await h(post('good', { url: good }))
+    expect(r.status).toBe(200)
+    const { signature } = await r.json() as { signature: string }
+    expect(signature).toBe(reference(good, SK))
+    const bad: [string, unknown][] = [
+      ['another wallet', good.replace(ME, '0x2222222222222222222222222222222222222222')],
+      ['another wallet', good.replace(`&walletAddress=${ME}`, '')],
+      ['another wallet', `${good}&walletAddress=0x2222222222222222222222222222222222222222`],
+      ['unexpected walletAddresses', `${good}&walletAddresses=%7B%7D`],
+      ['unexpected signature', `${good}&signature=abc`],
+      ['another MoonPay account', good.replace(PK, 'pk_live_other')],
+      ['not USDC on Arc', good.replace('usdc_arc', 'eth')],
+      ["not MoonPay's checkout", good.replace('buy.moonpay.com', 'buy-sandbox.moonpay.com')],
+      ["not MoonPay's checkout", good.replace('https://buy.moonpay.com', 'https://evil.example')],
+      ["not MoonPay's checkout", good.replace('https:', 'http:')],
+      ['not a URL', 'nope'],
+      ['no checkout URL', 42],
+    ]
+    for (const [why, url] of bad) {
+      expect(sdkUrlProblem(url, { publishableKey: PK, wallet: ME })).toContain(why)
+      const res = await h(post('good', { url }))
+      expect(res.status).toBe(400)
+      expect(await res.json()).not.toHaveProperty('signature')
+    }
+    // The wallet's case doesn't matter; a session is still needed.
+    expect(sdkUrlProblem(good.replace(ME, ME.toUpperCase().replace('0X', '0x')), { publishableKey: PK, wallet: ME })).toBeNull()
+    expect((await h(post(null, { url: good }))).status).toBe(401)
+    // Sandbox keys sign sandbox checkouts only.
+    const t = createMoonpay({ publishableKey: 'pk_test_1', secretKey: 'sk_test_1', verify: signedIn, revoked: async () => false })
+    expect((await t(post('good', { url: good.replace(PK, 'pk_test_1') }))).status).toBe(400)
+    expect((await t(post('good', { url: good.replace(PK, 'pk_test_1').replace('buy.moonpay.com', 'buy-sandbox.moonpay.com') }))).status).toBe(200)
   })
 })

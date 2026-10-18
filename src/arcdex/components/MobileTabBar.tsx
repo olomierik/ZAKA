@@ -12,15 +12,17 @@ import { t as T } from '../lib/i18n'
 import { PRIMARY, allPages, useMoreItems } from '../lib/navItems'
 
 const TRENCHES = new Set<Page['name']>(['terminal', 'launchpad', 'robinhood', 'solana', 'bsc'])
+/** The pages the tabs themselves open: not repeated in the More sheet. */
+export const TAB_PAGES = new Set<Page['name']>(['perps', 'predict', 'portfolio'])
 
 interface Props { page: Page; navigate: (p: Page) => void; onOpenLists: () => void }
 
 export default function MobileTabBar({ page, navigate }: Props) {
   const chain = useChain()
   const [more, setMore] = useState(false)
-  // The pages beyond the tabs: the top bar's that have no tab here (Swap, Bridge), then the desktop More menu's
-  // (lib/navItems.ts), each once.
-  const items = allPages(useMoreItems(), PRIMARY.filter(i => i.fold))
+  // The pages beyond the tabs: the top bar's that have no tab here (Analytics, Swap, Bridge), then the desktop More
+  // menu's (lib/navItems.ts), each once. (Picking only the folding links left Analytics off phones, 2026-10-18.)
+  const items = allPages(useMoreItems(), PRIMARY.filter(i => !TAB_PAGES.has(i.to.name)))
   const tabs: { key: string; icon: string; label: string; to: Page; on: boolean }[] = [
     { key: 'trenches', icon: '◈', label: T('Trenches'), to: trenchesPage(chain), on: TRENCHES.has(page.name) },
     { key: 'futures', icon: '📊', label: T('Futures'), to: { name: 'perps' }, on: page.name === 'perps' || page.name === 'futures' },

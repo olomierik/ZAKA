@@ -1,9 +1,7 @@
-// Who sees the landing page at arcsense.site/ (owner, 2026-10-17: "from clicking our URL he has to be taken to a landing
-// page; when he clicks Log in, Privy; then the wallet is created, then he trades"):
-//   • a visitor who has never signed in here sees the landing page;
-//   • a trader who has (any wallet: Privy, a wallet app, the trading wallet) goes straight to the Trenches.
-// One key, set by the app whenever a wallet is in use and cleared on Sign out, read by main.tsx and, for the page shell,
-// by index.html's inline script (keep the key's name in step there).
+// Who sees the landing page at arcsense.site/: everyone, every time (owner, 2026-10-18: "always, everywhere", phones
+// too). From 2026-10-17 to 2026-10-18 a trader who had signed in here went straight to the Trenches instead.
+// The key below still records that a wallet was used here (set by the app, cleared on Sign out); nothing routes on it
+// now. index.html's inline script draws the landing page's dark shell for / and /about the same way.
 //
 // This file is imported by main.tsx before anything else loads: no imports.
 
@@ -20,7 +18,6 @@ export function markReturning(on: boolean): void {
 /** Which first screen a path gets: the landing page, or the app. */
 export function firstScreen(path: string, returning: boolean): 'landing' | 'app' {
   const p = path.replace(/\/+$/, '') || '/'
-  if (p === '/about') return 'landing'
-  if (p === '/') return returning ? 'app' : 'landing'
-  return 'app'
+  void returning
+  return p === '/' || p === '/about' ? 'landing' : 'app'
 }
