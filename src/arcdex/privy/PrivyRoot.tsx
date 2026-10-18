@@ -39,7 +39,11 @@ export default function PrivyRoot({ appId }: { appId: string }) {
     },
     walletConnectCloudProjectId: WC_PROJECT_ID,
     // Every account gets both wallets, even one that also linked a wallet app.
-    embeddedWallets: { ethereum: { createOnLogin: 'all-users' }, solana: { createOnLogin: 'all-users' }, showWalletUIs: true },
+    // No confirmation window for the wallets Privy makes (owner, 2026-10-18: "traders want to enter and sell quickly;
+    // so long as the wallet was created by the platform, let those approvals be automatic"): their approvals, trades
+    // and sign-in messages are signed at once, as the trading wallet's are. Sends to other addresses still pass the
+    // withdraw guard's step-up (privy/stepUp.ts), and exporting a key still opens Privy's own window.
+    embeddedWallets: { ethereum: { createOnLogin: 'all-users' }, solana: { createOnLogin: 'all-users' }, showWalletUIs: false },
     // Arc first: the wallet starts there. The rest are the chains ARCDEX trades and bridges on.
     defaultChain: arc,
     supportedChains: [...wagmiConfig.chains],

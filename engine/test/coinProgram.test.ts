@@ -158,7 +158,8 @@ describe('scanning the chain', () => {
     // The fee ledger is fed from the same scan (engine/src/fees).
     const ledger = new FeeLedger(new MemoryFeeLedgerStore())
     const fees = new FeeLedgerService({ ledger, settings: { getSetting: async k => settings.get(k) ?? null, setSetting: async (k, v) => { settings.set(k, v) } }, wallet: FEE_WALLET, sources: [ROUTER], scanArc: async () => [], ownTxs: async () => new Set(), arcScannedTo: () => 0, relayBalances: async () => [] })
-    const p = new CoinProgram({ rpc, settings: { getSetting: async k => settings.get(k) ?? null, setSetting: async (k, v) => { settings.set(k, v) } }, priceOf: tok => (tok === COIN ? 0.0000025 : null), feeSources: [ROUTER], since: '2026-10-03T00:00:00Z', burnLogs: rpcBurnLogs(rpc), onFeeLogs: (logs, timeOf, own) => fees.onArcLogs(logs, timeOf, own) })
+    // Relay's balance is stubbed: the real fee wallet's accrues real fees (2026-10-18), which made this test read them.
+    const p = new CoinProgram({ rpc, settings: { getSetting: async k => settings.get(k) ?? null, setSetting: async (k, v) => { settings.set(k, v) } }, priceOf: tok => (tok === COIN ? 0.0000025 : null), feeSources: [ROUTER], since: '2026-10-03T00:00:00Z', burnLogs: rpcBurnLogs(rpc), relayBalances: async () => [], onFeeLogs: (logs, timeOf, own) => fees.onArcLogs(logs, timeOf, own) })
     await p.tick()
     expect(p.state.startBlock).toBe(B)
     expect(p.state.scannedTo).toBe(head)
@@ -177,7 +178,7 @@ describe('scanning the chain', () => {
     expect(rows.map(r => [r.tx, r.amount, r.status])).toEqual([[feeTx, '4', 'received']])
     expect(rows[0].at).toBe(1_790_985_605_000)
     // Saved, and picked up by a fresh ledger.
-    const q = new CoinProgram({ rpc, settings: { getSetting: async k => settings.get(k) ?? null, setSetting: async (k, v) => { settings.set(k, v) } }, priceOf: () => null, since: '2026-10-03T00:00:00Z', burnLogs: rpcBurnLogs(rpc) })
+    const q = new CoinProgram({ rpc, settings: { getSetting: async k => settings.get(k) ?? null, setSetting: async (k, v) => { settings.set(k, v) } }, priceOf: () => null, since: '2026-10-03T00:00:00Z', burnLogs: rpcBurnLogs(rpc), relayBalances: async () => [] })
     await q.start()
     q.stop()
     expect(q.state.scannedTo).toBe(head)

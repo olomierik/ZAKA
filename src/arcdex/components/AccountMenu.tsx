@@ -65,6 +65,13 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
   if (!trader.address) return <ConnectButton label={t('Log in')} />
 
   const go = (p: Page) => { setOpen(false); navigate(p) }
+  const signOut = solOwner
+    ? { icon: '⏻', label: t('Sign out'), run: () => { setOpen(false); markReturning(false); lock() } }
+    : viaPrivy
+    ? { icon: '⏻', label: t('Sign out'), run: () => { setOpen(false); markReturning(false); void privySignOut() } }
+    : trader.kind === 'trading-wallet'
+    ? { icon: '🔒', label: t('Lock trading wallet'), run: () => { setOpen(false); lock() } }
+    : { icon: '⏻', label: t('Disconnect wallet'), run: () => { setOpen(false); markReturning(false); disconnect() } }
   const item = (icon: string, label: string, onClick: () => void, right?: React.ReactNode) => (
     <button className="menu-item" onClick={onClick}><span style={{ width: 18 }}>{icon}</span>{label}{right && <span style={{ marginLeft: 'auto' }}>{right}</span>}</button>
   )
@@ -80,9 +87,11 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
       </button>
 
       {open && (
-        <div className="menu-pop" style={{ top: 40, right: 0 }}>
-          <div style={{ padding: '6px 10px 8px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-            {profile?.username ? `@${profile.username}` : shortAddr(trader.address)} · {solOwner ? `◎ ${t('Solana account')}` : viaPrivy ? `✉ ${privy.label ?? t('email sign-in')}` : trader.kind === 'trading-wallet' ? `⚡ ${t('trading wallet')}` : t('wallet')}
+        <div className="menu-pop acct-menu" style={{ top: 40, right: 0 }}>
+          <div className="acct-head">
+            <span>{profile?.username ? `@${profile.username}` : shortAddr(trader.address)} · {solOwner ? `◎ ${t('Solana account')}` : viaPrivy ? `✉ ${privy.label ?? t('email sign-in')}` : trader.kind === 'trading-wallet' ? `⚡ ${t('trading wallet')}` : t('wallet')}</span>
+            {/* Phones (2026-10-18): the sheet's last row sat under the tab bar, so Sign out sits up here too. */}
+            <button className="acct-signout" onClick={signOut.run}>{signOut.icon} {signOut.label}</button>
           </div>
           {item('☺', t('Your profile'), () => go({ name: 'trader', address: trader.address! }))}
           {item('👤', t('Manage account'), () => { setOpen(false); setSettings('account') })}
@@ -94,14 +103,10 @@ export default function AccountMenu({ navigate }: { navigate: (p: Page) => void 
           {item('✦', t('Rewards'), () => go({ name: 'rewards' }))}
           {isAdmin && item('🛡', t('Admin'), () => go({ name: 'admin' }))}
           {item('✉', t('Contact support'), () => { setOpen(false); setSupport(true) })}
-          <div style={{ borderTop: '1px solid var(--adx-card-border)', margin: '6px 0' }} />
-          {solOwner
-            ? item('⏻', t('Sign out'), () => { setOpen(false); markReturning(false); lock() })
-            : viaPrivy
-            ? item('⏻', t('Sign out'), () => { setOpen(false); markReturning(false); void privySignOut() })
-            : trader.kind === 'trading-wallet'
-            ? item('🔒', t('Lock trading wallet'), () => { setOpen(false); lock() })
-            : item('⏻', t('Disconnect wallet'), () => { setOpen(false); markReturning(false); disconnect() })}
+          <div className="acct-foot">
+            <div style={{ borderTop: '1px solid var(--adx-card-border)', margin: '6px 0' }} />
+            {item(signOut.icon, signOut.label, signOut.run)}
+          </div>
         </div>
       )}
 

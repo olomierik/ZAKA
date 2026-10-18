@@ -162,6 +162,8 @@ check(/const guarded = fromTrading \|\| guard\.privy/.test(src('src/arcdex/pages
 const csp = src('netlify.toml').match(/Content-Security-Policy = "([^"]+)"/)?.[1] ?? ''
 check(/script-src [^;]*https:\/\/challenges\.cloudflare\.com/.test(csp) && /frame-src 'self' https:/.test(csp), 'the CSP lets in Privy’s frames (https:) and its bot check (Turnstile)')
 const root = src('src/arcdex/privy/PrivyRoot.tsx')
+check(/showWalletUIs: false/.test(root) && !/showWalletUIs: true/.test(root), 'Privy’s own wallets sign trades, approvals and sign-in messages without a confirmation window (2026-10-18)')
+check(/platform = connector\?\.id === 'privy'/.test(src('src/arcdex/components/WalletPrompt.tsx')) && /embedded \|\| platform \|\|/.test(src('src/arcdex/components/WalletPrompt.tsx')), 'no “another network” bar for Privy’s wallet: every Arc send switches it first, silently')
 check(/walletConnectCloudProjectId: WC_PROJECT_ID/.test(root) && /'wallet_connect'/.test(root) && /export const WC_PROJECT_ID/.test(src('src/arcdex/wagmi.ts')), 'Privy’s wallet list opens phone wallets through WalletConnect, with the same project id as wagmi')
 check(/"@privy-io\/react-auth": "\d+\.\d+\.\d+"/.test(src('package.json')), 'the SDK is pinned to an exact version')
 // Netlify's secret scan fails a deploy on values that look like secrets: the publishable keys inside Privy's SDK are
