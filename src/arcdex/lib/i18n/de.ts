@@ -3333,7 +3333,6 @@ const d: Record<string, string> = {
   "{name}’s fee is now {pct}.": "Die Gebühr von {name} beträgt jetzt {pct}.",
   "Spot fee: {pct} everywhere (owner’s decision, 2026-10-15). Fees off Arc are set by the site; the Arc routers’ fee is on-chain and only their owner can change it.": "Spot-Gebühr: überall {pct} (Entscheidung des Eigentümers, 2026-10-15). Gebühren außerhalb von Arc legt die Website fest; die der Arc-Router ist on-chain, und nur ihr Eigentümer kann sie ändern.",
   "Fee {pct} · referrers {share} of it": "Gebühr {pct} · {share} davon an Werber",
-  "Sign with the router’s owner ({owner}) to change it.": "Mit dem Eigentümer des Routers ({owner}) signieren, um sie zu ändern.",
   "Set to {pct}": "Auf {pct} setzen",
   "not the site’s fee wallet: its owner changes it with setFeeWallet": "nicht die Gebühren-Wallet der Website: Ihr Eigentümer ändert sie mit setFeeWallet",
   "Solana, BNB Chain, Robinhood Chain": "Solana, BNB Chain, Robinhood Chain",
@@ -4081,7 +4080,6 @@ const d: Record<string, string> = {
   "Snipers {n}": "Sniper {n}",
   "Jito didn’t take the transaction ({why}). Nothing was sent; try again, or turn anti-MEV off in Settings to send it normally.": "Jito hat die Transaktion nicht angenommen ({why}). Nichts wurde gesendet; versuch es erneut oder schalte Anti-MEV in den Einstellungen aus, um sie normal zu senden.",
   "Jito didn’t land the trade in time, so nothing was spent. Try again, or raise the Jito tip in Settings.": "Jito hat den Trade nicht rechtzeitig durchgebracht, also wurde nichts ausgegeben. Versuch es erneut oder erhöhe das Jito-Trinkgeld in den Einstellungen.",
-  "{wallet} isn’t an admin wallet. Sign in with Privy under an admin email and sign with its wallet, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} ist keine Admin-Wallet. Melde dich mit Privy unter einer Admin-E-Mail an und signiere mit deren Wallet, oder füge die Wallet zu ADMIN_EVM_ADDRESSES auf Railway (arcdex-engine) hinzu.",
   "Top gainers 24h": "Größte Gewinner 24h",
   "Default order": "Standardreihenfolge",
   "Bonding progress": "Kurvenfortschritt",
@@ -4147,5 +4145,12 @@ const d: Record<string, string> = {
   "Opened a trade (exploring)": "Trade eröffnet (Erkundung)",
   "No trades yet. It opens one when a setup is sound.": "Noch keine Trades. Es eröffnet einen, wenn ein Setup solide ist.",
   "Paper exploration: a sound setup the calibration hasn’t proven yet, traded small": "Erkundung auf Papier: ein solides Setup, das die Kalibrierung noch nicht bewiesen hat, klein gehandelt",
+  "Privy wallet": "Privy-Wallet",
+  "Use a browser wallet": "Eine Browser-Wallet nutzen",
+  "Signing now with {wallet}.": "Es signiert jetzt {wallet}.",
+  "Your admin wallet, or a router’s owner, signs as itself.": "Deine Admin-Wallet oder der Eigentümer eines Routers signiert selbst.",
+  "{wallet} is the wallet Privy made, and Privy sent no identity token to prove whose it is. Turn on identity tokens in Privy’s dashboard, or sign with your admin wallet itself: pick it under “Use a browser wallet”.": "{wallet} ist die Wallet, die Privy angelegt hat, und Privy hat kein Identitätstoken geschickt, das zeigt, wem sie gehört. Schalte Identitätstokens in Privys Dashboard ein oder signiere mit deiner Admin-Wallet selbst: wähle sie unter „Eine Browser-Wallet nutzen“.",
+  "{wallet} isn’t an admin wallet. Sign with your admin wallet itself (“Use a browser wallet”), sign in with Privy under an admin email or with your admin wallet linked, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} ist keine Admin-Wallet. Signiere mit deiner Admin-Wallet selbst („Eine Browser-Wallet nutzen“), melde dich bei Privy mit einer Admin-E-Mail oder mit verknüpfter Admin-Wallet an, oder füge die Wallet auf Railway zu ADMIN_EVM_ADDRESSES hinzu (arcdex-engine).",
+  "Sign with the router’s owner ({owner}) to change it: connect it under “Use a browser wallet” above.": "Signiere mit dem Eigentümer des Routers ({owner}), um sie zu ändern: verbinde ihn oben unter „Eine Browser-Wallet nutzen“.",
 }
 export default d

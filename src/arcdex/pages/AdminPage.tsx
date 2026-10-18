@@ -12,7 +12,9 @@
 // Fee ledger: the engine's append-only record of every fee it read on-chain, and its nightly reconciliation against
 // the chain (engine/src/fees, GET /v1/fees/summary). Read-only.
 import { useCallback, useEffect, useState } from 'react'
-import { useAccount, useSignMessage } from 'wagmi'
+import { useAccount, useConnect, useConnectors, useSignMessage } from 'wagmi'
+import { arc } from '../wagmi'
+import { browserWallets } from '../lib/browserWallets'
 import { TRADE_VENUES, TRADE_VENUE_LABEL, type TradeScope } from '../../../api/_marketProtocol'
 import { getEmbeddedWalletClient } from '../lib/embeddedWallet'
 import { t as T, N_ } from '../lib/i18n'
@@ -45,7 +47,8 @@ export default function AdminPage({ initialTab }: { initialTab?: Tab } = {}) {
   const { address } = useAccount()
   const { signMessageAsync } = useSignMessage()
   const privy = usePrivyState()
-  // Someone signed in with Privy signs with its wallet (the connected one): that's how an admin email signs in.
+  // Someone signed in with Privy signs with its wallet (the connected one): that's how an admin email, or an account
+  // linked to an admin wallet, signs in. An admin wallet in MetaMask can also sign as itself (BrowserWallets below).
   const privyWallet = privy.authenticated && !!address && privy.evm?.toLowerCase() === address.toLowerCase()
   const [signer, setSigner] = useState<'embedded' | 'connected'>(embedded && !privyWallet ? 'embedded' : 'connected')
   const [tab, setTab] = useState<Tab>(initialTab ?? 'analytics')
@@ -57,7 +60,7 @@ export default function AdminPage({ initialTab }: { initialTab?: Tab } = {}) {
     <div className="content-page rt-page" style={{ '--page-w': '960px' } as React.CSSProperties}>
       <h1 className="page-h" style={{ marginBottom: 4 }}>{T('Admin')}</h1>
       <p className="rt-sub">{T('Sign in with an admin wallet to see who’s online, fees, trades and the audit log, and to change flags or run the fee sweeper. Every change asks for your wallet’s signature again and is kept in the audit log. The kill switch and the routers’ fee work without signing in.')}</p>
-      <AdminSignInBar embedded={embedded} address={address ?? null} signer={signer} setSigner={setSigner} who={who} sign={sign} />
+      <AdminSignInBar embedded={embedded} address={address ?? null} signer={signer} setSigner={setSigner} who={who} sign={sign} privyEvm={privy.authenticated ? privy.evm : null} />
       <div className="at-tabs" role="tablist" style={{ marginBottom: 12 }}>
         {TABS.map(x => (
           <button key={x.k} role="tab" aria-selected={tab === x.k} className={`at-tab${tab === x.k ? ' on' : ''}`} onClick={() => setTab(x.k)}>{T(x.label)}</button>
@@ -83,7 +86,7 @@ export default function AdminPage({ initialTab }: { initialTab?: Tab } = {}) {
 }
 
 /** Who signs, and the admin session. */
-function AdminSignInBar({ embedded, address, signer, setSigner, who, sign }: { embedded: `0x${string}` | null; address: `0x${string}` | null; signer: 'embedded' | 'connected'; setSigner: (s: 'embedded' | 'connected') => void; who: `0x${string}` | null; sign: (m: string) => Promise<`0x${string}`> }) {
+function AdminSignInBar({ embedded, address, signer, setSigner, who, sign, privyEvm }: { embedded: `0x${string}` | null; address: `0x${string}` | null; signer: 'embedded' | 'connected'; setSigner: (s: 'embedded' | 'connected') => void; who: `0x${string}` | null; sign: (m: string) => Promise<`0x${string}`>; privyEvm: string | null }) {
   const session = useAdminSession()
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
@@ -92,11 +95,18 @@ function AdminSignInBar({ embedded, address, signer, setSigner, who, sign }: { e
   async function signIn() {
     if (!who) return
     setBusy(true); setMsg('')
-    // Signing with the Privy wallet: its identity token goes too, so an admin email signs in (engine: admin/privyIdentity.ts).
-    try { await adminSignIn(who, sign, await privyIdentityFor(who)) } catch (e) {
+    // Signing with the Privy wallet: its identity token goes too, so an admin email, or an admin wallet linked to the
+    // account, signs in (engine: admin/privyIdentity.ts).
+    const isPrivy = !!privyEvm && privyEvm.toLowerCase() === who.toLowerCase()
+    const idToken = isPrivy ? await privyIdentityFor(who) : null
+    try { await adminSignIn(who, sign, idToken) } catch (e) {
       const why = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message).split('\n')[0] : String(e)
       // The engine's admins are ADMIN_EVM_ADDRESSES and ADMIN_EMAILS on Railway: say which wallet tried, and how else.
-      setMsg(/not an admin/.test(why) ? T('{wallet} isn’t an admin wallet. Sign in with Privy under an admin email and sign with its wallet, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).', { wallet: who }) : why)
+      setMsg(isPrivy && !idToken
+        ? T('{wallet} is the wallet Privy made, and Privy sent no identity token to prove whose it is. Turn on identity tokens in Privy’s dashboard, or sign with your admin wallet itself: pick it under “Use a browser wallet”.', { wallet: short(who) })
+        : /not an admin|no admin wallet linked|not an admin email/.test(why)
+          ? T('{wallet} isn’t an admin wallet. Sign with your admin wallet itself (“Use a browser wallet”), sign in with Privy under an admin email or with your admin wallet linked, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).', { wallet: short(who) })
+          : why)
     } finally { setBusy(false) }
   }
   const mins = session ? Math.max(0, Math.round((session.expiresAt - Date.now()) / 60_000)) : 0
@@ -117,7 +127,7 @@ function AdminSignInBar({ embedded, address, signer, setSigner, who, sign }: { e
             {T('Sign with')}
             <select value={signer} onChange={e => setSigner(e.target.value as 'embedded' | 'connected')} style={{ padding: '4px 8px', borderRadius: 8, background: 'var(--bg-3)', color: 'inherit', border: '1px solid var(--adx-card-border)' }}>
               <option value="embedded" disabled={!embedded}>{T('Trading wallet')}{embedded ? ` (${short(embedded)})` : ''}</option>
-              <option value="connected" disabled={!address}>{T('Connected wallet')}{address ? ` (${short(address)})` : ''}</option>
+              <option value="connected" disabled={!address}>{address && privyEvm?.toLowerCase() === address.toLowerCase() ? T('Privy wallet') : T('Connected wallet')}{address ? ` (${short(address)})` : ''}</option>
             </select>
             <button className="btn-primary" disabled={!who || busy || !engineApiUrl} onClick={() => void signIn()} style={{ padding: '6px 14px' }}>
               {busy ? T('Check your wallet…') : T('Sign in as admin')}
@@ -126,8 +136,46 @@ function AdminSignInBar({ embedded, address, signer, setSigner, who, sign }: { e
           </>
         )}
       </div>
+      <BrowserWallets address={address} onPicked={() => { setSigner('connected'); setMsg('') }} />
       {msg && <div role="status" style={{ color: 'var(--red)', fontSize: '0.82rem' }}>{msg}</div>}
     </section>
+  )
+}
+
+/** Connects a browser wallet (MetaMask, Rabby…) directly, so an admin wallet or a router's owner signs as itself rather
+ * than through the wallet Privy made (lib/browserWallets.ts). */
+function BrowserWallets({ address, onPicked }: { address: `0x${string}` | null; onPicked: () => void }) {
+  const connectors = useConnectors()
+  const { connectAsync } = useConnect()
+  const [busy, setBusy] = useState<string | null>(null)
+  const [err, setErr] = useState('')
+  const hasInjected = typeof window !== 'undefined' && !!(window as unknown as { ethereum?: unknown }).ethereum
+  const list = browserWallets(connectors, hasInjected)
+  if (!list.length) return null
+  async function pick(c: (typeof list)[number]) {
+    setBusy(c.uid); setErr('')
+    try {
+      const r = await connectAsync({ connector: c, chainId: arc.id })
+      if (r.accounts[0]) onPicked()
+    } catch (e) {
+      const m = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e)
+      // Already connected: it's the wallet in use now.
+      if (/already connected/i.test(m)) onPicked()
+      else setErr(m.split('\n')[0].slice(0, 160))
+    } finally { setBusy(null) }
+  }
+  return (
+    <div className="fx-fine" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+      <span>{T('Use a browser wallet')}</span>
+      {list.map(c => (
+        <button key={c.uid} className="btn-ghost" disabled={!!busy} onClick={() => void pick(c)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px' }}>
+          {c.icon && <img src={c.icon} alt="" width={14} height={14} />}
+          {busy === c.uid ? T('Check your wallet…') : c.id === 'injected' ? T('Browser wallet') : c.name}
+        </button>
+      ))}
+      <span style={{ color: 'var(--text-muted)' }}>{address ? T('Signing now with {wallet}.', { wallet: short(address) }) : T('Your admin wallet, or a router’s owner, signs as itself.')}</span>
+      {err && <span role="status" style={{ color: 'var(--red)' }}>{err}</span>}
+    </div>
   )
 }
 
@@ -260,7 +308,7 @@ function AdminFees({ embedded, address, signer }: { embedded: `0x${string}` | nu
                 <small>{T('Fee {pct} · referrers {share} of it', { pct: pct(r.feeBps), share: pct(r.referralShareBps) })}</small>
               </div>
               {!atTarget(r) && (
-                <button className="btn-ghost" disabled={!!busy || !isOwner} title={isOwner ? undefined : T('Sign with the router’s owner ({owner}) to change it.', { owner: short(r.owner) })}
+                <button className="btn-ghost" disabled={!!busy || !isOwner} title={isOwner ? undefined : T('Sign with the router’s owner ({owner}) to change it: connect it under “Use a browser wallet” above.', { owner: short(r.owner) })}
                   onClick={() => void lower(r)}>
                   {busy === r.address ? T('Check your wallet…') : T('Set to {pct}', { pct: pct(TARGET_FEE_BPS) })}
                 </button>

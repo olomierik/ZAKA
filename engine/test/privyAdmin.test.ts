@@ -125,3 +125,58 @@ describe('admin by email (Privy identity token)', () => {
     expect(emailHash(' X@Y.Z ')).toBe(emailHash('x@y.z'))
   })
 })
+
+// Admin wallets through Privy (2026-10-18): Privy makes a wallet for every account, so an admin who signs in with Privy
+// (by email or with MetaMask) signs with that Privy wallet, not the admin wallet. The account's linked admin wallet
+// makes it an admin.
+describe('admin wallet linked to a Privy account', () => {
+  const adminWallet = privateKeyToAccount('0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a' as Hex)
+  const viaMetaMask = (privy: string, external: string) => JSON.stringify([
+    { type: 'wallet', address: external, chain_type: 'ethereum', wallet_client_type: 'metamask' },
+    { type: 'wallet', address: privy, chain_type: 'ethereum', wallet_client_type: 'privy' },
+  ])
+  async function setupWallets(admins: string[]) {
+    const k = await keys()
+    const check = new PrivyIdentityCheck({ appId: APP, emails: [], emailHashes: [], fetcher: async () => new Response(JSON.stringify({ keys: [k.jwk] })) })
+    const store = new MemoryBotStore()
+    const auth = new AdminAuth({ admins, origins: [SITE], ttlMinutes: 30, signedBy: (address, message, signature) => verifyMessage({ address, message, signature }), audit: store, byEmail: check })
+    return { k, check, auth, store }
+  }
+
+  test('the Privy wallet of an account linked to an admin wallet signs in, acts as an admin, and is audited', async () => {
+    const { k, auth, store } = await setupWallets([adminWallet.address.toLowerCase()])
+    const r = await signIn(auth, privyWallet, await token(k.pair, { linked_accounts: viaMetaMask(privyWallet.address, adminWallet.address) }))
+    if (!('token' in r)) throw new Error(r.error)
+    expect(auth.session(`Bearer ${r.token}`, T0 + 60_000)?.linked).toBe(adminWallet.address.toLowerCase())
+    expect(auth.emailAdminWallets(T0 + 60_000)).toEqual([privyWallet.address.toLowerCase()])
+    const audit = (await store.audit(10)).find(a => a.action === 'admin.login')
+    expect(audit?.detail).toMatchObject({ by: 'linked-wallet', linked: adminWallet.address.toLowerCase() })
+  })
+
+  test('the admin wallet itself still signs in with no token at all', async () => {
+    const { auth } = await setupWallets([adminWallet.address.toLowerCase()])
+    expect('token' in await signIn(auth, adminWallet)).toBe(true)
+  })
+
+  test('refused: no admin wallet linked, a wallet outside the account, no token, a forged token', async () => {
+    const { k, auth } = await setupWallets([adminWallet.address.toLowerCase()])
+    const plain = await signIn(auth, privyWallet, await token(k.pair, { linked_accounts: viaMetaMask(privyWallet.address, otherWallet.address) }))
+    expect(plain).toMatchObject({ status: 403, error: expect.stringContaining('no admin wallet linked') })
+    const outside = await signIn(auth, otherWallet, await token(k.pair, { linked_accounts: viaMetaMask(privyWallet.address, adminWallet.address) }))
+    expect(outside).toMatchObject({ status: 403, error: 'sign with a wallet of the same Privy account' })
+    expect(await signIn(auth, privyWallet)).toMatchObject({ status: 403, error: 'this wallet is not an admin' })
+    const other = await keys()
+    const forged = await signIn(auth, privyWallet, await token(other.pair, { linked_accounts: viaMetaMask(privyWallet.address, adminWallet.address) }))
+    expect(forged).toMatchObject({ status: 403 })
+  })
+
+  test('the session ends once the linked wallet is no longer an admin', async () => {
+    const admins = [adminWallet.address.toLowerCase()]
+    const { k, auth } = await setupWallets(admins)
+    const r = await signIn(auth, privyWallet, await token(k.pair, { linked_accounts: viaMetaMask(privyWallet.address, adminWallet.address) }))
+    if (!('token' in r)) throw new Error(r.error)
+    admins.length = 0
+    expect(auth.session(`Bearer ${r.token}`, T0 + 60_000)).toBeNull()
+    expect(auth.emailAdminWallets(T0 + 60_000)).toEqual([])
+  })
+})
