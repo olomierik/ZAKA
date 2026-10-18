@@ -30,21 +30,31 @@ export function specName(spec: PracticeSpec): { title: string; sides: [string, s
 
 // ── the switch and the account bar ───────────────────────────────────────
 
-export type PredictMode = 'live' | 'practice'
+/** Practice (virtual USDC on the engine), the testnet pool (test USDC on Arc testnet, components/PredictPool.tsx), or
+ *  live (Hyperliquid itself). */
+export type PredictMode = 'live' | 'practice' | 'pool'
 const MODE_KEY = 'arcdex:predict-mode'
 
-export function readPredictMode(liveOn: boolean): PredictMode {
-  try { const v = localStorage.getItem(MODE_KEY); if (v === 'live' || v === 'practice') return v } catch { /* storage blocked */ }
+export function readPredictMode(liveOn: boolean, poolOn = false): PredictMode {
+  try {
+    const v = localStorage.getItem(MODE_KEY)
+    if (v === 'live' || v === 'practice' || (v === 'pool' && poolOn)) return v
+  } catch { /* storage blocked */ }
   return liveOn ? 'live' : 'practice'
 }
 export function savePredictMode(m: PredictMode) { try { localStorage.setItem(MODE_KEY, m) } catch { /* storage blocked */ } }
 
-export function PredictModeSwitch({ mode, liveOn, onChange }: { mode: PredictMode; liveOn: boolean; onChange: (m: PredictMode) => void }) {
+export function PredictModeSwitch({ mode, liveOn, poolOn = false, onChange }: { mode: PredictMode; liveOn: boolean; poolOn?: boolean; onChange: (m: PredictMode) => void }) {
   return (
     <div className="pp-mode pr-mode" role="tablist" aria-label={T('Trading mode')}>
       <button role="tab" aria-selected={mode === 'practice'} className={mode === 'practice' ? 'active paper' : ''} onClick={() => onChange('practice')} title={T('Practise with virtual USDC')}>
         {T('Practice')}
       </button>
+      {poolOn && (
+        <button role="tab" aria-selected={mode === 'pool'} className={mode === 'pool' ? 'active pool' : ''} onClick={() => onChange('pool')} title={T('Trade against the pool with test USDC on Arc testnet')}>
+          {T('Testnet pool')}
+        </button>
+      )}
       <button role="tab" aria-selected={mode === 'live'} className={mode === 'live' ? 'active' : ''} onClick={() => onChange('live')}>
         {T('Live')}{!liveOn && <em>{T('Soon')}</em>}
       </button>

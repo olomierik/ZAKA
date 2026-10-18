@@ -3224,7 +3224,7 @@ Owner: "take a look at papertrade.xyz and make the same thing for us on predicti
     - `GET|POST /v1/practice/predict/account` (`X-Practice-Key`; buy, sell, reset, rename);
     - `GET /v1/practice/predict/board?period=` (public; names only).
     - Writes come from the site's own origins only. `PRACTICE=off` on Railway stops it.
-- **Real later (not built):** papertrade's design for predictions needs a pool contract on Arc that buys and sells sides at Hyperliquid's mid. Hyperliquid's prices would reach Arc only through the engine's signature, which makes the engine a point of trust. It needs the payout queue, a token minted from losses, testnet first, an independent audit and legal advice before any real money.
+- **Real later:** built on Arc testnet with test USDC ("The testnet prediction pool", below); no mainnet before an independent audit and legal advice.
 - **Checked:**
   - `engine/test/predictPractice.test.ts` (10): fills at the mid, the complement, every limit, sales, settlement both ways and once, a split result, the leaderboard (windows, 3 trades, no keys), names, resets, a restart, the routes (origin, key, CORS).
   - `bun scripts/test-predict-practice.ts` (in CI): the engine's end time equals the page's for all 345 recorded markets, names, prices.
@@ -3235,6 +3235,51 @@ Owner: "take a look at papertrade.xyz and make the same thing for us on predicti
     - 375px with no sideways scroll, with the account kept after a reload.
   - The engine suite: 889 pass.
 - **Every new string is in all six dictionaries** (47, the engine's error messages included).
+
+## The testnet prediction pool, papertrade.xyz's way (2026-10-18)
+
+The "real later" half of the owner's choice for predictions ("practice first, real later"): papertrade's pool for Hyperliquid's prediction markets, on **Arc testnet only, with test USDC**. No mainnet and no real money until an independent audit and legal advice. Audit scope, trust and open questions: **`contracts/AUDIT-ArcdexPredictPool.md`**.
+
+- **The contract (`contracts/ArcdexPredictPool.sol`; `ArcdexPredictPool` 21.5 KB, `ArcdexPredictToken` tPOOL 2.4 KB):**
+  - **Trades.** A trader deposits test USDC into a pool balance, then buys or sells a side of an outcome at Hyperliquid's mid, against the pool, with no slippage. Each contract of side 0 pays `settleFraction`, of side 1 pays 1 − it.
+  - **Two steps, as SensePerps:** `requestBuy` / `requestSell`, then `execute` with a price the engine signed strictly after the request's second, at most 20 s old, within 60 s. After 60 s the trader can cancel for a refund.
+    - Refused fills refund, never revert: no price (the engine signs 0), the trader's limit, buys outside 1–99¢, the open-interest cap (10,000 contracts a side by default), a paused, halted or settling market.
+  - **The Martingaler pool:**
+    - It starts at $0 and fills only from losses; nobody deposits into it.
+    - The trader's own money always comes back at once; only a profit waits.
+    - A profit the pool's free cash can't pay waits in a FIFO queue. While anything is queued, new losses are earmarked for it (`sideBucket`) and harvested in order.
+    - Fees: 2% of a win and 2% of the pool's gain on a loss, only while nothing is queued; half to stakers, half to the fee wallet.
+  - **tPOOL** is minted from losses: 100 per $1 while the pool's tracked P&L is under $2M, then decaying as papertrade's curve. It can't be transferred (only staked) until the owner turns transfers on, one way. Staked tPOOL earns the stakers' fees, plus the pool's gain past $5M.
+  - **Settlement:** the engine signs Hyperliquid's `settledOutcome`, and anyone submits it. It pays after `settleDelay` (10 minutes), during which the owner (`0x414B…c3dA`) can cancel a wrong one; a cancelled settlement can't be replayed. Payouts (`redeem`, `redeemMany`) can be called by anyone.
+  - **The engine's key is trusted** for every price and settlement (EIP-712, domain "ARCDEX Predict" v1). Changing the signer waits 2 days.
+- **The engine (`engine/src/predictpool`, `PREDICT_POOL=off` stops it):**
+  - **Keeper wallet:** `predict-pool-keeper`, made on the engine, its key encrypted under `BOT_WALLET_SECRET`. It signs prices and settlements and sends the keeper's transactions. Its gas comes from the futures keeper (0.5 testnet USDC whenever it's under 0.15).
+  - **Deployment:** the engine deploys the pool by itself on the futures' test USDC (setting `predict-pool-testnet`), owner `0x414B…c3dA`, fee wallet `0x2742…86Bb`, and checks its code and signer. `PREDICT_POOL_AUTODEPLOY=off` and `PREDICT_POOL_ADDRESS` (+ `PREDICT_POOL_BLOCK`) as for futures. Testnet only: any other chain is refused.
+  - **The keeper (`keeper.ts`, every second):**
+    - reads the pool's events;
+    - prices each request with the mid the practice book reads (`PredictPractice.tradeableMid`: listed, not past its end), at the latest block's time (the clock the contract checks), or "no price";
+    - proposes settlements (`settlementOf`) and pays out holders after the delay;
+    - withdraws the fee wallet's fees, harvests the queue, pushes the excess.
+    - It reads the block number uncached: viem keeps it for half a block, and a quick second poll missed new requests.
+  - **Routes:** `GET /v1/predict/pool/status|state|fills?account=`.
+- **The site (`/predict`, a third mode, "Testnet pool", between Practice and Live; `components/PredictPool.tsx`, `lib/predictPool.ts`):**
+  - **The account bar:** pool balance and wallet, in positions, waiting in the queue, tPOOL (held and staked), rewards. Also Get 1,000 test USDC (the futures' faucet), Deposit (an exact approval, then the deposit), Withdraw, Stake / Unstake / Claim, the pool's cash, queue and P&L, and a gas note with Circle's faucet.
+  - **The trade panel:** one tap to request at the mid shown, 3% worst price, then the keeper's fill or refund in words.
+  - **Tabs:** Positions (Collect after settlement), Requests (Cancel after the timeout), History, and The pool (cash, earmark, queue, P&L, mint rate, the next in the queue, the rules).
+  - A ticker of everyone's fills. Everything is marked TESTNET (blue where practice is amber).
+  - Trades are signed by the trading wallet with no pop-up, or a connected wallet put on Arc testnet (`sendTestnet`, now for any contract's ABI).
+- **Checked:**
+  - `forge test --match-contract ArcdexPredictPoolTest`: 41 tests (fuzz: the books balance after every step). 19 of 20 planted bugs failed at least one; the 20th is an equivalent guard (audit file, item 4).
+  - `bun test engine/test/predictPool.test.ts` (7); `engine/test/predictPoolE2e.test.ts` (5, anvil): deploy, a fill at the mid, a queued win paid by a later loss, a refund, a settlement paid after its delay. 3 runs in a row passed.
+  - In the browser pane, against `engine/scripts/predict-pool-standin.ts`: anvil as Arc testnet with 1-second blocks, live Hyperliquid mids, and the engine's own service, which made its keeper, got gas, deployed the pool and ran the keeper. A throwaway trading wallet then:
+    - took the faucet, deposited $500;
+    - bought $100 Yes (260 at 38.5¢) and $50 No ("Bought 83.86 No at 60¢");
+    - sold the No for +$0.10, which waited in the queue (Queue 1, $0.10, pool P&L −$0.10);
+    - saw History, The pool, the ticker, and a 375px phone with no sideways scroll.
+  - A layout bug found on the way: `.pr-bar > div` stacked the bar's pop-ups (practice's Reset and name too); fixed.
+- **Build:** after changing the contract, `forge build && node scripts/gen-predict-pool-build.mjs` (`--check` to verify) writes `engine/src/predictpool/abi.ts` and `build.ts`. Built with Foundry 1.8.3 (solc 0.8.28, as pinned).
+- **Every new string is in all six dictionaries** (71).
+- **Owner steps (testnet):** none to start. Once merged, Railway deploys the engine, and it deploys the pool once futures' test USDC exists. Watch proposed settlements: `GET /v1/predict/pool/state` and the explorer; cancel a wrong one with `cancelSettlement(outcome)` from `0x414B…c3dA` within 10 minutes.
 
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
