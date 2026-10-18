@@ -3330,6 +3330,20 @@ The "real later" half of the owner's choice for predictions ("practice first, re
 - **Every new string is in all six dictionaries** (71).
 - **Owner steps (testnet):** none to start. Once merged, Railway deploys the engine, and it deploys the pool once futures' test USDC exists. Watch proposed settlements: `GET /v1/predict/pool/state` and the explorer; cancel a wrong one with `cancelSettlement(outcome)` from `0x414B…c3dA` within 10 minutes.
 
+## Quick trading for platform wallets, sign out on phones (2026-10-18)
+
+Owner: "I can't sign out of my wallet on the phone, the sign out button is hidden, the card is too big; I want a quick buy and sell that doesn't require many approvals or sign-in messages; so long as the wallet was created by the platform, let those approvals be automatic"; and the "Your wallet is on another network" bar.
+
+- **No confirmation windows for Privy's own wallets (`privy/PrivyRoot.tsx`, `embeddedWallets.showWalletUIs: false`):** the EVM and Solana wallets Privy makes for an email or social sign-in sign approvals, trades and sign-in messages at once, as the trading wallet does. Wallet apps (MetaMask, Phantom…) still confirm every request in their own window.
+  - **Still guarded:** sends to an address that isn't the account's own pass the withdraw guard's step-up (two-step verification, or a recent sign-in; `privy/stepUp.ts`), and exporting a key keeps Privy's own window.
+  - **What it means:** anything running in the page can now sign with that wallet without a prompt, the same trust the trading wallet has always had. The CSP keeps foreign scripts out.
+- **No "another network" bar for Privy's wallet (`components/WalletPrompt.tsx` `NetworkGuard`):** every Arc send puts the wallet on Arc first (`sendArc` → `ensureArc`), and Privy's wallet switches without asking. It isn't switched back by the bar itself, because a payment from Base or a sale on BNB Chain moves it on purpose, mid-trade.
+- **The account sheet on phones (`components/AccountMenu.tsx`, `.acct-menu` in `arcdex.css`):** its last row (Sign out, Lock trading wallet or Disconnect) sat under the tab bar. The sheet is compact (70% of the screen, 9px rows), clears the tab bar, and has the sign-out button at its top beside the account's name. Desktop keeps it at the bottom.
+- **Not changed:** an approval and its trade are still two transactions for Privy's wallet, sent one after the other (the trading wallet's back-to-back fast buy, `lib/fastBuy.ts`, needs its own nonce count).
+- **Fixed on the way:** `engine/test/coinProgram.test.ts` read Relay's live fee balance for the real fee wallet, which started accruing real fees and broke the test (PR #46's CI). It's stubbed now.
+- **Tests:** `scripts/test-privy.tsx` (no confirmation window, no network bar for Privy's wallet). **Checked** in the browser at 375px with a throwaway trading wallet: the sheet opens with Lock trading wallet at the top and every row above the tab bar.
+- **Not checked:** a real Privy sign-in and trade (Privy's servers are out of the sandbox's reach).
+
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
 **Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**
