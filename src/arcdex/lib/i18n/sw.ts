@@ -4183,5 +4183,10 @@ const d: Record<string, string> = {
   "Unlock your trading wallet, log in, or connect Phantom to get your Solana address.": "Fungua pochi yako ya biashara, ingia, au unganisha Phantom ili kupata anwani yako ya Solana.",
   "{asset} on Robinhood Chain": "{asset} kwenye Robinhood Chain",
   "{symbol} contract": "Mkataba wa {symbol}",
+  "Gas coins and dollars on other chains": "Sarafu za gesi na dola kwenye mitandao mingine",
+  "On other chains": "Kwenye mitandao mingine",
+  "Reading other chains…": "Inasoma mitandao mingine…",
+  "The same address on Arc, Robinhood Chain, BNB Chain, Base, Arbitrum and Ethereum": "Anwani ileile kwenye Arc, Robinhood Chain, BNB Chain, Base, Arbitrum na Ethereum",
+  "{v} in coins": "{v} kwenye sarafu",
 }
 export default d

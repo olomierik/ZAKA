@@ -522,6 +522,26 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
   .tr-sq { width: 26px; height: 26px; }
   @media (max-width: 1360px) { .tr-row { grid-template-columns: 46px minmax(0, 1fr) 108px; padding: 8px; } .tr-tile { width: 42px; height: 42px; } }
 }
+/* Large metrics (the default, owner 2026-10-18): the numbers a trader reads first — volume, market cap, liquidity,
+   trades — clearly larger than with Small, on every screen. */
+.tr-row:not(.small) .tr-kv b { font-size: 16px; font-weight: 700; }
+.tr-row:not(.small) .tr-f b { font-size: 13px; }
+.tr-row:not(.small) .tr-kv i, .tr-row:not(.small) .tr-f i { font-size: 11.5px; }
+.tr-row:not(.small) .tr-tk { font-size: 15px; }
+/* Each label stays with its number; with Large, market cap sits under volume, so the bigger numbers never run over the
+   coin's name. */
+.tr-kv { column-gap: 8px; }
+.tr-kvp { display: inline-flex; align-items: baseline; gap: 4px; }
+.tr-kvp b { margin-right: 0 !important; }
+.tr-row:not(.small) .tr-kv { flex-direction: column; align-items: flex-end; row-gap: 1px; }
+.tr-row:not(.small) .tr-rgt { gap: 2px; }
+@media (min-width: 768px) {
+  .tr-row:not(.small) { grid-template-columns: 50px minmax(0, 1fr) 118px; grid-template-rows: minmax(46px, auto) auto auto; }
+}
+@media (max-width: 767px) {
+  .tr-row:not(.small) .tr-kv b { font-size: 15px; }
+  .tr-row:not(.small) .tr-f b { font-size: 12.5px; }
+}
 
 /* Every trade blinks its row (a coloured edge, then the fade) and floats its dollars up. */
 @keyframes tr-fb0 { from { background: var(--green-bg); box-shadow: inset 3px 0 0 var(--green); } }

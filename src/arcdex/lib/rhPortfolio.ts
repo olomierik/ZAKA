@@ -30,11 +30,13 @@ const ERC20 = parseAbi([
   'function name() view returns (string)',
 ])
 const MAX_CHECKED = 250
+/** Robinhood Chain's dollar tokens (both named USDG): the wallets card counts them (lib/chainBalances.ts), not as coins. */
+const DOLLARS = new Set(['0x5fc5360d0400a0fd4f2af552add042d716f1d168', '0x5fc5dc8e93bb982f633101f78d8f679b5ba6d168'])
 
 export async function loadRhHoldings(owner: string): Promise<{ coins: RhHolding[]; eth: number }> {
   const market = cachedRhMarket()
   const byAddr = new Map(market.map(c => [c.address, c]))
-  const list = [...new Set([...rememberedRh(owner), ...market.map(c => c.address)])].slice(0, MAX_CHECKED)
+  const list = [...new Set([...rememberedRh(owner), ...market.map(c => c.address)])].filter(a => !DOLLARS.has(a.toLowerCase())).slice(0, MAX_CHECKED)
   const me = owner as Address
   const [eth, balances] = await Promise.all([
     rhClient.getBalance({ address: me }).catch(() => 0n),

@@ -4183,5 +4183,10 @@ const d: Record<string, string> = {
   "Unlock your trading wallet, log in, or connect Phantom to get your Solana address.": "Déverrouillez votre wallet de trading, connectez-vous ou connectez Phantom pour obtenir votre adresse Solana.",
   "{asset} on Robinhood Chain": "{asset} sur Robinhood Chain",
   "{symbol} contract": "Contrat {symbol}",
+  "Gas coins and dollars on other chains": "Gas et dollars sur les autres chaînes",
+  "On other chains": "Sur les autres chaînes",
+  "Reading other chains…": "Lecture des autres chaînes…",
+  "The same address on Arc, Robinhood Chain, BNB Chain, Base, Arbitrum and Ethereum": "La même adresse sur Arc, Robinhood Chain, BNB Chain, Base, Arbitrum et Ethereum",
+  "{v} in coins": "{v} en coins",
 }
 export default d
