@@ -548,7 +548,7 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
   - **Card deposits:** Circle's Onramp Kit (`@circle-fin/onramp-kit`). Supports debit card, Apple Pay, Google Pay, and bank transfer in some regions; USDC is delivered straight to the user's wallet on Arc.
     - `api/onramp.ts` (Node runtime): `GET` returns `{enabled, sandbox}`; `POST` mints a 30-minute widget session for the signed-in wallet only.
     - UI: `components/CardDeposit.tsx`, the "Card" option in the Deposit modal.
-    - **Owner setup:** set `CIRCLE_ONRAMP_API_KEY` from the Circle Console in Vercel. Optionally set `ONRAMP_SANDBOX=1`. Card, Apple Pay and Google Pay also need KYB in the Circle Console with arcdex.online as the web URL. Until the key is set, the tab says card deposits are "being switched on".
+    - **Owner setup:** since 2026-10-18 the route runs on the engine; see "Card deposits served by the engine" below (`CIRCLE_ONRAMP_API_KEY` on Railway, KYB with arcsense.site as the web URL). Until the key is set, the tab says card deposits are "being switched on".
   - **2FA:** an optional passkey on the trading wallet (`lib/embeddedWallet.ts`, WebAuthn PRF). With it on, the AES key is HKDF(PBKDF2(passcode) ‖ PRF output), stored as a v2 blob.
     - Unlock and export ask for the passkey; turn it on or off in the Trading wallet panel.
     - Tests: `bun scripts/test-wallet-2fa.ts`.
@@ -1785,7 +1785,7 @@ Owner: "we have no users; compare us with DexScreener on platform quality and ho
   - **The 2% fee** is about twice what trading terminals charge (around 1%); Uniswap direct is only the pool's fee. Since 2026-10-15 the plan is 0.5% (D2): `setFeeBps(50)` on both Arc routers, by their owners ("Fees: 0.5% on spot").
   - **The name:** the domain is arcsense.site and the brand ARCDEX. arcdex.online now points at Netlify, so making it the primary domain (Netlify → Domain management) would match.
   - **Phone wallets:** no WalletConnect project id (cloud.reown.com), so phone wallets can't connect by QR code.
-  - **Card deposits** aren't live (Circle key).
+  - **Card deposits** need only the owner's Circle key on Railway since 2026-10-18 ("Card deposits served by the engine").
   - **Distribution:** listing in Arc's ecosystem directories, DefiLlama and on X/Telegram, where DexScreener's traffic comes from.
 - **Arc's established coins from the engine's own trades (2026-10-06, `engine/src/market/established.ts`):**
   - **Why:** GeckoTerminal answered nearly every call from the engine's IP with 429, so the Arc list's builds were cut short and its top coins came and went. In one build 17 of 19 calls failed.
@@ -2056,7 +2056,7 @@ Owner: "the coins on the spot market seem not active, holder numbers aren't corr
 ## ARCSENSE on Netlify (2026-10-03)
 
 The owner's new site, www.arcsense.site, is hosted on Netlify and serves only the app's files (`netlify.toml`): no function runs there.
-- **Data and writes come from the engine:** besides the read functions above, `/api/session`, `/api/social`, `/api/upload` and `/api/index-trades` run on the engine too (`siteApi.ts` `WRITES`: the request passes through with its headers and body, never cached). They need on Railway what they needed on Vercel: `ARCDEX_SESSION_SECRET` (sign-in), and Supabase's secret key for social writes and uploads. Without them they answer 503 and the site shows its empty states. Card deposits (`/api/onramp`) aren't served there yet: the Deposit modal says they're being switched on.
+- **Data and writes come from the engine:** besides the read functions above, `/api/session`, `/api/social`, `/api/upload` and `/api/index-trades` run on the engine too (`siteApi.ts` `WRITES`: the request passes through with its headers and body, never cached). They need on Railway what they needed on Vercel: `ARCDEX_SESSION_SECRET` (sign-in), and Supabase's secret key for social writes and uploads. Without them they answer 503 and the site shows its empty states. Card deposits (`/api/onramp`) run there too since 2026-10-18 ("Card deposits served by the engine").
 - **The engine allows ARCSENSE's domains in code** (`ARCSENSE_ORIGINS` in `engine/src/config.ts`: arcsense.site, www.arcsense.site, arcsense-app.netlify.app), whatever `WS_ALLOWED_ORIGINS` lists on Railway.
 - **Build settings** live in `netlify.toml` (Bun, `dist`, the public `VITE_*` values). `VITE_WC_PROJECT_ID` (WalletConnect) is still missing, from cloud.reown.com; without it, phone wallets by QR code aren't offered. `/api/*` is a plain 404 on Netlify, so the site's fallback fails fast.
 - **arcdex.online → www.arcsense.site (owner, 2026-10-04; until then "no redirect"):** `netlify.toml` sends `arcdex.online/*` and `www.arcdex.online/*` (http and https) to the same path on arcsense.site with a 301 (the primary domain: www.arcsense.site itself redirects there, so this saves a hop).
@@ -3310,6 +3310,32 @@ Owner: "it gets hard for our admin wallets to be recognized by the engine, becau
   - In the built-in browser on the dev server, with a stand-in EIP-6963 wallet announced in the page: no picker without a wallet; the wallet listed once announced; one click connected it and made it the signer ("Signing now with 0xf39F…2266").
   - Not checked: a real Privy account with a linked MetaMask, or a real identity token.
 - Every new string is in all six dictionaries (7; two old ones replaced).
+
+## Card deposits served by the engine (2026-10-18)
+
+Owner: "I already have a Circle API key, let's enable card deposits for users' wallets". Deposit → "Card, Apple Pay, Google Pay" (`components/CardDeposit.tsx`, Circle's Onramp widget) was built on 2026-09-26 for Vercel. Its route, `/api/onramp`, never moved to the engine when the site left Vercel, so the tab always said "being switched on".
+
+- **The route (`api/onramp.ts`, `createOnramp`):** now one of the engine's write functions (`siteApi.ts` `WRITES`: passed through as it came, never cached). `@circle-fin/onramp-kit` 1.0.1 is an engine dependency, and the Dockerfile copies the file.
+  - `GET /api/onramp` → `{ enabled, sandbox }`.
+  - `POST` with the site's wallet session → a 30-minute widget session from Circle (`POST /v1/stablecoinKits/sessions`), for the signed-in wallet only. The request body can't name another wallet or referrer.
+  - The widget is scoped to USDC on Arc (`pairs=USDC:arc`) and delivers to that wallet (`destinationWallet`).
+  - Refused: no session or a forged one (401), signed out of all devices (401), Circle's refusals passed on (429, 502…).
+- **The referrer domain is `arcsense.site`** (was `arcdex.online`): the exact host the widget is framed by, since www.arcsense.site and arcdex.online both redirect there. `ONRAMP_REFERRER_DOMAIN` overrides it.
+- **CSP:** nothing to change. `frame-src https:` and `connect-src https:` already allow `onramp.arc.io` and `api.circle.com`.
+- **Owner steps:**
+  1. Railway → arcdex-engine → Variables: `CIRCLE_ONRAMP_API_KEY` = the key exactly as Circle issued it (`<ENV>_API_KEY:<id>:<secret>`). For test money first, also `ONRAMP_SANDBOX=1` with a sandbox key. Railway redeploys by itself.
+  2. Circle Console: complete KYB, with `arcsense.site` as the web URL. Cards, Apple Pay and Google Pay need it.
+  3. Check that `GET https://arcdex-engine-production.up.railway.app/api/onramp` answers `"enabled":true`, then try a small purchase from Deposit → Card.
+- **Checked:**
+  - `engine/test/onramp.test.ts` (5) runs against a stand-in for Circle's API:
+    - switched off without a key;
+    - Circle asked with the key as a bearer token, the signed-in wallet as `walletAddress` and `appUserId`, and `referrerDomain` arcsense.site, whatever the body says;
+    - the widget URL on onramp.arc.io with that wallet and USDC on Arc; Circle's extra fields not forwarded;
+    - the sandbox's API and widget;
+    - every refusal, and the engine serving it as a write.
+  - **In the built-in browser,** with a throwaway trading wallet against `engine/scripts/onramp-standin.ts` (the engine's route, Circle stubbed): the Card tab offered Buy USDC, pressing it minted a session for that wallet, and the widget mounted at 620px from `https://onramp.arc.io/?…&destinationWallet=<wallet>&pairs=USDC%3Aarc`. The stubbed token was refused by the widget, which showed the page's "could not load" message.
+  - **Not checked:** a real session from Circle (it needs the owner's key), or a real purchase.
+- **Watch for:** the session doesn't send `destinationChain`, whose default inside Circle's API is Ethereum, according to the kit. The widget is limited to USDC on Arc and reads the wallet from its URL. If it offers Ethereum on the first real try, the session needs `destinationChain` set to Circle's identifier for Arc.
 
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
