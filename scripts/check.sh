@@ -24,6 +24,7 @@ echo "== chart framing";   bun scripts/test-chart-frame.ts
 echo "== dexscreener";      bun scripts/test-dex-data.ts
 echo "== jito";             bun scripts/test-jito.ts
 echo "== bsc private rpc";  bun scripts/test-bsc-private.ts
+echo "== browser wallets";  bun scripts/test-browser-wallets.ts
 echo "== pay from chains"; bun scripts/test-xevm.ts
 echo "== fast buys";      bun scripts/test-fast-buy.ts
 echo "== wallet tracker"; bun scripts/test-wallet-tracker.ts

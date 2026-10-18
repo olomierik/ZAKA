@@ -3333,7 +3333,6 @@ const d: Record<string, string> = {
   "{name}’s fee is now {pct}.": "{name} 的费率现为 {pct}。",
   "Spot fee: {pct} everywhere (owner’s decision, 2026-10-15). Fees off Arc are set by the site; the Arc routers’ fee is on-chain and only their owner can change it.": "现货费率：所有地方均为 {pct}（所有者决定，2026-10-15）。Arc 以外的费率由网站设定；Arc 路由器的费率在链上，只有其所有者能更改。",
   "Fee {pct} · referrers {share} of it": "费率 {pct} · 其中 {share} 给推荐人",
-  "Sign with the router’s owner ({owner}) to change it.": "请用路由器所有者（{owner}）签名来更改。",
   "Set to {pct}": "设为 {pct}",
   "not the site’s fee wallet: its owner changes it with setFeeWallet": "不是网站的手续费钱包：由其所有者通过 setFeeWallet 更改",
   "Solana, BNB Chain, Robinhood Chain": "Solana、BNB Chain、Robinhood Chain",
@@ -4081,7 +4080,6 @@ const d: Record<string, string> = {
   "Snipers {n}": "狙击者 {n}",
   "Jito didn’t take the transaction ({why}). Nothing was sent; try again, or turn anti-MEV off in Settings to send it normally.": "Jito 没有接收这笔交易（{why}）。什么都没发出；请重试，或在设置中关闭防 MEV 以正常发送。",
   "Jito didn’t land the trade in time, so nothing was spent. Try again, or raise the Jito tip in Settings.": "Jito 没有及时让交易上链，所以没有任何花费。请重试，或在设置中提高 Jito 小费。",
-  "{wallet} isn’t an admin wallet. Sign in with Privy under an admin email and sign with its wallet, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} 不是管理员钱包。请用管理员邮箱通过 Privy 登录并用其钱包签名，或在 Railway（arcdex-engine）上把该钱包加入 ADMIN_EVM_ADDRESSES。",
   "Top gainers 24h": "24小时涨幅榜",
   "Default order": "默认排序",
   "Bonding progress": "联合曲线进度",
@@ -4147,5 +4145,12 @@ const d: Record<string, string> = {
   "Opened a trade (exploring)": "已开仓（探索）",
   "No trades yet. It opens one when a setup is sound.": "还没有交易。出现稳健形态时会开仓。",
   "Paper exploration: a sound setup the calibration hasn’t proven yet, traded small": "模拟盘探索：校准尚未验证的稳健形态，以小仓位交易",
+  "Privy wallet": "Privy 钱包",
+  "Use a browser wallet": "使用浏览器钱包",
+  "Signing now with {wallet}.": "当前由 {wallet} 签名。",
+  "Your admin wallet, or a router’s owner, signs as itself.": "你的管理员钱包或路由合约的所有者亲自签名。",
+  "{wallet} is the wallet Privy made, and Privy sent no identity token to prove whose it is. Turn on identity tokens in Privy’s dashboard, or sign with your admin wallet itself: pick it under “Use a browser wallet”.": "{wallet} 是 Privy 为你创建的钱包，而 Privy 没有发送能证明其归属的身份令牌。请在 Privy 控制台开启身份令牌，或直接用你的管理员钱包签名：在“使用浏览器钱包”中选择它。",
+  "{wallet} isn’t an admin wallet. Sign with your admin wallet itself (“Use a browser wallet”), sign in with Privy under an admin email or with your admin wallet linked, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} 不是管理员钱包。请直接用你的管理员钱包签名（“使用浏览器钱包”），或用管理员邮箱、或已关联管理员钱包的 Privy 账户登录，或在 Railway（arcdex-engine）上把该钱包加入 ADMIN_EVM_ADDRESSES。",
+  "Sign with the router’s owner ({owner}) to change it: connect it under “Use a browser wallet” above.": "请用路由合约的所有者（{owner}）签名来修改：在上方“使用浏览器钱包”中连接它。",
 }
 export default d

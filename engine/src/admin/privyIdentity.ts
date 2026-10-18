@@ -8,6 +8,12 @@
 //     wallet that signed the sign-in message must be one of the account's own wallets.
 // So a token alone can't sign in (it needs the wallet's signature), and a wallet alone can't (it needs the email).
 //
+// Admin wallets through Privy (owner, 2026-10-18: "it gets hard for our admin wallets to be recognized: once you sign in
+// with Privy it creates a wallet for you, whether you signed in with email, MetaMask or another wallet"): a Privy account
+// that has an admin wallet linked (ADMIN_EVM_ADDRESSES, linked by signing with it in Privy) is an admin too, and any
+// wallet of that account, the one Privy made included, signs in for it. Privy proves the link: an external wallet is
+// linked to an account only after it signs Privy's own sign-in message.
+//
 // Admin emails: ADMIN_EMAILS on Railway (comma-separated), and the owner's, kept here only as a SHA-256 hash (the repo
 // is public). Identity tokens must be switched on in Privy's dashboard ("Return user data in an identity token").
 
@@ -46,7 +52,8 @@ export class PrivyIdentityCheck {
     this.hashes = new Set([...(o.emailHashes ?? OWNER_EMAIL_HASHES), ...o.emails.map(emailHash)])
   }
 
-  get configured() { return /^[a-z0-9]{16,40}$/.test(this.o.appId) && this.hashes.size > 0 }
+  /** Ready once the app id is real: an account counts by an admin email or a linked admin wallet. */
+  get configured() { return /^[a-z0-9]{16,40}$/.test(this.o.appId) }
   isAdminEmail(email: string) { return this.hashes.has(emailHash(email)) }
 
   private async jwks(now: number, force = false): Promise<Jwk[]> {
@@ -101,12 +108,21 @@ export class PrivyIdentityCheck {
 
   /** The admin email an identity token proves for `address`, or why not. */
   async adminEmailFor(token: string, address: string, now = Date.now()): Promise<{ email: string } | { error: string }> {
+    const r = await this.adminFor(token, address, () => false, now)
+    return 'wallet' in r ? { error: 'this Privy account’s email is not an admin email' } : r
+  }
+
+  /** What makes the Privy account behind `token` an admin, for `address` (one of its own wallets): an admin email, else
+   * an admin wallet linked to it (`isAdminWallet`), or why not. */
+  async adminFor(token: string, address: string, isAdminWallet: (a: string) => boolean, now = Date.now()): Promise<{ email: string } | { wallet: string } | { error: string }> {
     const id = await this.identity(token, now)
     if (!id) return { error: 'Privy sign-in could not be checked; sign in with Privy again' }
-    const email = id.emails.find(e => this.isAdminEmail(e))
-    if (!email) return { error: 'this Privy account’s email is not an admin email' }
     if (!id.wallets.includes(address.toLowerCase())) return { error: 'sign with a wallet of the same Privy account' }
-    return { email }
+    const email = id.emails.find(e => this.isAdminEmail(e))
+    if (email) return { email }
+    const wallet = id.wallets.find(w => isAdminWallet(w))
+    if (wallet) return { wallet }
+    return { error: id.emails.length ? 'this Privy account’s email is not an admin email, and no admin wallet is linked to it' : 'this Privy account has no admin wallet linked; link your admin wallet to it in Privy, or sign with that wallet itself' }
   }
 }
 

@@ -3333,7 +3333,6 @@ const d: Record<string, string> = {
   "{name}’s fee is now {pct}.": "A taxa de {name} agora é {pct}.",
   "Spot fee: {pct} everywhere (owner’s decision, 2026-10-15). Fees off Arc are set by the site; the Arc routers’ fee is on-chain and only their owner can change it.": "Taxa spot: {pct} em todo lugar (decisão do proprietário, 2026-10-15). As taxas fora da Arc são definidas pelo site; a dos roteadores da Arc fica on-chain e só o proprietário pode alterá-la.",
   "Fee {pct} · referrers {share} of it": "Taxa {pct} · {share} para quem indicou",
-  "Sign with the router’s owner ({owner}) to change it.": "Assine com o proprietário do roteador ({owner}) para alterá-la.",
   "Set to {pct}": "Definir em {pct}",
   "not the site’s fee wallet: its owner changes it with setFeeWallet": "não é a carteira de taxas do site: o proprietário a altera com setFeeWallet",
   "Solana, BNB Chain, Robinhood Chain": "Solana, BNB Chain, Robinhood Chain",
@@ -4081,7 +4080,6 @@ const d: Record<string, string> = {
   "Snipers {n}": "Snipers {n}",
   "Jito didn’t take the transaction ({why}). Nothing was sent; try again, or turn anti-MEV off in Settings to send it normally.": "A Jito não aceitou a transação ({why}). Nada foi enviado; tente de novo ou desligue o anti-MEV nas Configurações para enviá-la normalmente.",
   "Jito didn’t land the trade in time, so nothing was spent. Try again, or raise the Jito tip in Settings.": "A Jito não executou a negociação a tempo, então nada foi gasto. Tente de novo ou aumente a gorjeta Jito nas Configurações.",
-  "{wallet} isn’t an admin wallet. Sign in with Privy under an admin email and sign with its wallet, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} não é uma carteira de admin. Entre com a Privy usando um e-mail de admin e assine com a carteira dele, ou adicione a carteira a ADMIN_EVM_ADDRESSES no Railway (arcdex-engine).",
   "Top gainers 24h": "Maiores altas 24h",
   "Default order": "Ordem padrão",
   "Bonding progress": "Progresso da curva",
@@ -4147,5 +4145,12 @@ const d: Record<string, string> = {
   "Opened a trade (exploring)": "Negociação aberta (explorando)",
   "No trades yet. It opens one when a setup is sound.": "Ainda não há negociações. Ele abre uma quando uma configuração é sólida.",
   "Paper exploration: a sound setup the calibration hasn’t proven yet, traded small": "Exploração no papel: uma configuração sólida que a calibração ainda não comprovou, negociada em pequeno",
+  "Privy wallet": "Carteira Privy",
+  "Use a browser wallet": "Usar uma carteira do navegador",
+  "Signing now with {wallet}.": "Assinando agora com {wallet}.",
+  "Your admin wallet, or a router’s owner, signs as itself.": "Sua carteira admin, ou o dono de um roteador, assina por si mesma.",
+  "{wallet} is the wallet Privy made, and Privy sent no identity token to prove whose it is. Turn on identity tokens in Privy’s dashboard, or sign with your admin wallet itself: pick it under “Use a browser wallet”.": "{wallet} é a carteira que a Privy criou, e a Privy não enviou nenhum token de identidade que prove de quem ela é. Ative os tokens de identidade no painel da Privy, ou assine com sua carteira admin diretamente: escolha-a em “Usar uma carteira do navegador”.",
+  "{wallet} isn’t an admin wallet. Sign with your admin wallet itself (“Use a browser wallet”), sign in with Privy under an admin email or with your admin wallet linked, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} não é uma carteira admin. Assine com sua carteira admin diretamente (“Usar uma carteira do navegador”), entre na Privy com um e-mail admin ou com sua carteira admin vinculada, ou adicione a carteira a ADMIN_EVM_ADDRESSES no Railway (arcdex-engine).",
+  "Sign with the router’s owner ({owner}) to change it: connect it under “Use a browser wallet” above.": "Assine com o dono do roteador ({owner}) para alterá-lo: conecte-o em “Usar uma carteira do navegador” acima.",
 }
 export default d

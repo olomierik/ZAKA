@@ -3333,7 +3333,6 @@ const d: Record<string, string> = {
   "{name}’s fee is now {pct}.": "Ada ya {name} sasa ni {pct}.",
   "Spot fee: {pct} everywhere (owner’s decision, 2026-10-15). Fees off Arc are set by the site; the Arc routers’ fee is on-chain and only their owner can change it.": "Ada ya spot: {pct} kila mahali (uamuzi wa mmiliki, 2026-10-15). Ada nje ya Arc zinawekwa na tovuti; ada ya ruta za Arc iko on-chain na ni mmiliki wake tu anayeweza kuibadilisha.",
   "Fee {pct} · referrers {share} of it": "Ada {pct} · {share} yake kwa waliomleta",
-  "Sign with the router’s owner ({owner}) to change it.": "Saini kwa mmiliki wa ruta ({owner}) ili kuibadilisha.",
   "Set to {pct}": "Weka {pct}",
   "not the site’s fee wallet: its owner changes it with setFeeWallet": "si pochi ya ada ya tovuti: mmiliki wake huibadilisha kwa setFeeWallet",
   "Solana, BNB Chain, Robinhood Chain": "Solana, BNB Chain, Robinhood Chain",
@@ -4081,7 +4080,6 @@ const d: Record<string, string> = {
   "Snipers {n}": "Snipers {n}",
   "Jito didn’t take the transaction ({why}). Nothing was sent; try again, or turn anti-MEV off in Settings to send it normally.": "Jito haikupokea muamala ({why}). Hakuna kilichotumwa; jaribu tena, au zima kinga ya MEV kwenye Mipangilio uutume kawaida.",
   "Jito didn’t land the trade in time, so nothing was spent. Try again, or raise the Jito tip in Settings.": "Jito haikuiwasilisha biashara kwa wakati, kwa hivyo hakuna kilichotumika. Jaribu tena, au ongeza bakshishi ya Jito kwenye Mipangilio.",
-  "{wallet} isn’t an admin wallet. Sign in with Privy under an admin email and sign with its wallet, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} si pochi ya msimamizi. Ingia kwa Privy kwa barua pepe ya msimamizi na usaini kwa pochi yake, au ongeza pochi kwenye ADMIN_EVM_ADDRESSES kwenye Railway (arcdex-engine).",
   "Top gainers 24h": "Zilizopanda zaidi saa 24",
   "Default order": "Mpangilio wa kawaida",
   "Bonding progress": "Maendeleo ya mkunjo",
@@ -4147,5 +4145,12 @@ const d: Record<string, string> = {
   "Opened a trade (exploring)": "Biashara imefunguliwa (inachunguza)",
   "No trades yet. It opens one when a setup is sound.": "Bado hakuna biashara. Itafungua moja mpangilio ukiwa mzuri.",
   "Paper exploration: a sound setup the calibration hasn’t proven yet, traded small": "Uchunguzi wa mazoezi: mpangilio mzuri ambao upimaji bado haujauthibitisha, unafanyiwa biashara kwa kiasi kidogo",
+  "Privy wallet": "Pochi ya Privy",
+  "Use a browser wallet": "Tumia pochi ya kivinjari",
+  "Signing now with {wallet}.": "Unasaini sasa kwa {wallet}.",
+  "Your admin wallet, or a router’s owner, signs as itself.": "Pochi yako ya admin, au mmiliki wa ruta, husaini yenyewe.",
+  "{wallet} is the wallet Privy made, and Privy sent no identity token to prove whose it is. Turn on identity tokens in Privy’s dashboard, or sign with your admin wallet itself: pick it under “Use a browser wallet”.": "{wallet} ni pochi iliyotengenezwa na Privy, na Privy haikutuma tokeni ya utambulisho kuthibitisha ni ya nani. Washa tokeni za utambulisho kwenye dashibodi ya Privy, au saini kwa pochi yako ya admin yenyewe: ichague chini ya “Tumia pochi ya kivinjari”.",
+  "{wallet} isn’t an admin wallet. Sign with your admin wallet itself (“Use a browser wallet”), sign in with Privy under an admin email or with your admin wallet linked, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} si pochi ya admin. Saini kwa pochi yako ya admin yenyewe (“Tumia pochi ya kivinjari”), ingia kwa Privy kwa barua pepe ya admin au pochi yako ya admin ikiwa imeunganishwa, au ongeza pochi kwenye ADMIN_EVM_ADDRESSES kwenye Railway (arcdex-engine).",
+  "Sign with the router’s owner ({owner}) to change it: connect it under “Use a browser wallet” above.": "Saini kwa mmiliki wa ruta ({owner}) ili kuibadilisha: iunganishe chini ya “Tumia pochi ya kivinjari” hapo juu.",
 }
 export default d

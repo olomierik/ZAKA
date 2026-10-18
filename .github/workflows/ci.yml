@@ -63,6 +63,8 @@ jobs:
         run: bun scripts/test-jito.ts
       - name: Anti-MEV on BNB Chain (private RPC sends)
         run: bun scripts/test-bsc-private.ts
+      - name: Admin browser wallets
+        run: bun scripts/test-browser-wallets.ts
       - name: Paying from Ethereum, Base or Arbitrum (Relay quote checks)
         run: bun scripts/test-xevm.ts
       - name: Fast buys (approval and swap back to back)

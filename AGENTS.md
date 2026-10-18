@@ -3285,6 +3285,32 @@ Owner: "take a look at papertrade.xyz and make the same thing for us on predicti
   - The engine suite: 889 pass.
 - **Every new string is in all six dictionaries** (47, the engine's error messages included).
 
+## Admin wallets through Privy, and a browser wallet on /admin (2026-10-18)
+
+Owner: "it gets hard for our admin wallets to be recognized by the engine, because once you sign in with Privy it automatically creates a wallet for you, whether you signed in with email, MetaMask or another wallet".
+
+- **Why:** after any Privy sign-in, the app's connected wallet is the one Privy made (`createOnLogin: 'all-users'`, `PrivyRoot`), even when the person logged in with MetaMask. So `/admin` signed with that Privy wallet, which isn't in `ADMIN_EVM_ADDRESSES`. The engine took a Privy wallet only for an admin email, not for an admin wallet linked to the account. A router's fee change (`setFeeBps`) has to come from the owner wallet itself, which couldn't sign while the Privy wallet was connected.
+- **Engine (`admin/privyIdentity.ts` `adminFor`, `admin/auth.ts`):** a Privy account is an admin when its identity token lists an admin email, or an admin wallet (`ADMIN_EVM_ADDRESSES`, else the owner) among its linked wallets. Any wallet of that account signs in for it, the one Privy made included.
+  - **Proof:** Privy links an external wallet only after it signs Privy's own message, and the token is checked against Privy's keys as before.
+  - **The session:** it keeps the linked admin wallet (`AdminSession.linked`), ends once that wallet leaves the list, and its wallet signs admin actions like an email admin's (`emailAdminWallets`). Sign-ins are audited with `by: 'linked-wallet'`.
+  - `PrivyIdentityCheck.configured` no longer needs an admin email: a real app id is enough.
+- **`/admin` (`pages/AdminPage.tsx`, `lib/browserWallets.ts`):** "Use a browser wallet" lists the wallets the browser announces (EIP-6963: MetaMask, Rabby, Phantom…; never Privy's), or the generic browser wallet. A click connects it directly through wagmi and makes it the signer, for the admin sign-in and for Fees → "Set to 0.5%". So an admin wallet, or a router's owner, signs as itself whatever Privy connected.
+  - "Sign with" names the Privy wallet as such.
+  - **When the Privy wallet signs and Privy sends no identity token,** the page says so: turn on identity tokens in Privy's dashboard, or use a browser wallet.
+- **Owner steps:**
+  - To sign in with the Privy wallet: link the admin wallet to the Privy account (Privy's account settings), and turn on identity tokens in Privy's dashboard.
+  - Or skip Privy: on `/admin`, pick MetaMask under "Use a browser wallet". The router fee change always needs this, with the router's owner wallet.
+- **Checked:**
+  - `engine/test/privyAdmin.test.ts`, 4 new tests:
+    - the Privy wallet of an account linked to an admin wallet signs in, acts as an admin and is audited;
+    - the admin wallet still signs in alone;
+    - refused: no admin wallet linked, a wallet outside the account, no token, a forged token;
+    - the session ends when the wallet leaves the list.
+  - `bun scripts/test-browser-wallets.ts` (in CI).
+  - In the built-in browser on the dev server, with a stand-in EIP-6963 wallet announced in the page: no picker without a wallet; the wallet listed once announced; one click connected it and made it the signer ("Signing now with 0xf39F…2266").
+  - Not checked: a real Privy account with a linked MetaMask, or a real identity token.
+- Every new string is in all six dictionaries (7; two old ones replaced).
+
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
 **Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**
