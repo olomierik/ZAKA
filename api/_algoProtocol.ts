@@ -125,7 +125,11 @@ export interface AlgoPlan {
   collateralUsd: number
   leverage: number
   expectedValuePct: number
+  /** 'gated': every gate passed. 'explore': paper only, a sound setup the calibration hasn't proven yet, sized small. */
+  lane?: AlgoLane
 }
+
+export type AlgoLane = 'gated' | 'explore'
 
 export interface AlgoTrade {
   id: string
@@ -159,6 +163,8 @@ export interface AlgoTrade {
   txOpen: string | null
   txClose: string | null
   escalations: AlgoEscalation[]
+  /** Which lane opened it (rows from before 2026-10-17 have none: gated). */
+  lane?: AlgoLane
 }
 
 export interface AlgoEscalation {
@@ -285,6 +291,8 @@ export interface AlgoStatus {
   markets: Partial<Record<AlgoMarket, AlgoMarketView>>
   risk: AlgoRisk
   stats: AlgoStats
+  /** Paper exploration: on or off, its risk a trade, and each lane's record. */
+  explore?: { on: boolean; riskPct: number; why: string | null; gated: AlgoStats; explore: AlgoStats }
   calibration: AlgoCalibration
   replay: AlgoReplay | null
   wallet: { address: string | null; gasUsdc: number | null; usdc: number | null } | null

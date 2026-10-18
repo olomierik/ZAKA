@@ -4206,5 +4206,12 @@ const d: Record<string, string> = {
   "this side is at its open-interest cap": "ce côté a atteint son plafond d’intérêt ouvert",
   "the market is paused or settling": "le marché est en pause ou en règlement",
   "the contracts were paid out first": "les contrats ont d’abord été payés",
+  "Exploring on paper": "Exploration sur papier",
+  "Until its confidence is calibrated and proven, Algo trades every sound setup small on paper, risking {r}% of the book a trade. Only trades that pass every gate would run on testnet.": "Tant que sa confiance n’est pas calibrée et prouvée, Algo trade chaque configuration solide en petit sur papier, en risquant {r} % du portefeuille par trade. Seuls les trades qui passent tous les filtres tourneraient sur le testnet.",
+  "Gated": "Filtré",
+  "Exploring": "Exploration",
+  "Opened a trade (exploring)": "Trade ouvert (exploration)",
+  "No trades yet. It opens one when a setup is sound.": "Aucun trade pour l’instant. Il en ouvre un quand une configuration est solide.",
+  "Paper exploration: a sound setup the calibration hasn’t proven yet, traded small": "Exploration sur papier : une configuration solide que la calibration n’a pas encore prouvée, tradée en petit",
 }
 export default d

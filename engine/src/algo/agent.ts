@@ -92,6 +92,12 @@ export class AlgoAgent {
   constructor(private o: AlgoAgentOptions) {
     this.env = o.env ?? process.env
     this.core = new AlgoCore(cloneConfig(DEFAULT_CONFIG), new RuleReflex(), 'paper')
+    this.applyExploreEnv()
+  }
+
+  /** ALGO_EXPLORE=off keeps the paper book to the gated lane. */
+  private applyExploreEnv() {
+    if (/^(0|off|false|no)$/i.test(this.env.ALGO_EXPLORE?.trim() ?? '')) this.core.cfg.explore = { ...this.core.cfg.explore, on: false }
   }
 
   private now() { return (this.o.now ?? Date.now)() }
@@ -352,7 +358,8 @@ export class AlgoAgent {
     const p = JSON.parse(raw) as Persisted
     if (p.v !== 1) return
     this.mode = p.mode
-    this.core.cfg = { ...cloneConfig(DEFAULT_CONFIG), ...p.config, gates: { ...DEFAULT_CONFIG.gates, ...p.config.gates }, limits: { ...DEFAULT_CONFIG.limits, ...p.config.limits }, reflex: { ...DEFAULT_CONFIG.reflex, ...p.config.reflex }, geometry: { ...DEFAULT_CONFIG.geometry, ...p.config.geometry }, costs: { ...DEFAULT_CONFIG.costs, ...p.config.costs } }
+    this.core.cfg = { ...cloneConfig(DEFAULT_CONFIG), ...p.config, gates: { ...DEFAULT_CONFIG.gates, ...p.config.gates }, limits: { ...DEFAULT_CONFIG.limits, ...p.config.limits }, reflex: { ...DEFAULT_CONFIG.reflex, ...p.config.reflex }, geometry: { ...DEFAULT_CONFIG.geometry, ...p.config.geometry }, costs: { ...DEFAULT_CONFIG.costs, ...p.config.costs }, explore: { ...DEFAULT_CONFIG.explore, ...p.config.explore } }
+    this.applyExploreEnv()
     this.configVersion = p.configVersion
     for (const [m, b] of Object.entries(p.books)) if (b) this.books[m as AlgoMode] = Book.from(b)
     this.core.book = this.books[this.mode] ?? new Book(this.core.cfg.startUsd, this.mode)
@@ -397,7 +404,8 @@ export class AlgoAgent {
     const labels = core.calibrators.trend.n + core.calibrators.fade.n
     const ex = this.executor
     let waiting = this.waiting
-    if (!waiting && !core.calibrated('trend') && !core.calibrated('fade')) waiting = `calibrating: ${labels} of ${core.cfg.minLabels} labeled decisions so far (no trades until then)`
+    const exploring = this.mode === 'paper' && !!core.cfg.explore?.on
+    if (!waiting && !exploring && !core.calibrated('trend') && !core.calibrated('fade')) waiting = `calibrating: ${labels} of ${core.cfg.minLabels} labeled decisions so far (no trades until then)`
     if (!waiting && this.mode === 'testnet') waiting = ex ? ex.missing() : 'testnet not set up'
     return {
       enabled: true, at: now, mode: this.mode, running: this.running, waiting,
@@ -408,6 +416,11 @@ export class AlgoAgent {
       markets,
       risk: core.risk.view(core.book),
       stats: core.book.stats(),
+      explore: {
+        on: exploring, riskPct: core.cfg.explore?.riskPct ?? 0,
+        why: exploring ? null : this.mode !== 'paper' ? 'testnet trades only the gated lane' : 'switched off (ALGO_EXPLORE=off)',
+        gated: core.book.stats('gated'), explore: core.book.stats('explore'),
+      },
       calibration: cal,
       replay: this.replay,
       wallet: ex ? { address: ex.address, gasUsdc: ex.view ? Number(ex.view.gasWei) / 1e18 : null, usdc: ex.view ? Number(ex.view.usdc) / 1e6 : null } : null,

@@ -2732,6 +2732,36 @@ Owner: "Algo trade in this app is what will make this app have more users; let's
   - Real markets aren't measured yet: Arc and RedStone were out of the sandbox's reach. Expect few trades.
 - **Tests:** `bun test engine/test/algoCore.test.ts engine/test/algoAgent.test.ts`, 34 tests; each of 8 planted bugs failed one.
 - **Checked in a browser** against a stand-in engine running the real agent on synthetic markets: 1280px and 375px, no errors, no sideways scroll.
+- **Paper exploration (2026-10-18, owner: "find a way to make Algo also work; let Algo take positions on paper"):**
+  - **Why it never traded:** the gates need a calibrated confidence above 0.80 and a positive expected edge.
+    - Calibration needs 300 labeled decisions; production had 178 after about a week (one label per market and family every 15 minutes, each needing its 4-hour horizon).
+    - The engine's own replay had already shown the 0.80 bar is rarely reached.
+  - **What changed:** a second lane, paper only (`explore` in `algo/config.ts`, `planExplore` in `algo/policy.ts`).
+    - **When it opens:** a setup that passes every structural check but not the statistical ones (calibration, confidence, edge). The structural checks are a direction, no crisis or high volatility, clean flow, setup quality 2+, a safe risk state, and a target at least 2× the costs.
+    - **Size:** it risks 0.5% of the book (`riskPct`), at most 3×.
+    - **Spacing:** one market waits 30 minutes after its last exploration closed (`cooldownMin`).
+    - **Unchanged risk rules:** the risk layer's limits (one position per market, 3 open, the daily loss, the 15% drawdown kill switch) apply as before.
+    - **Exits:** an exploration isn't closed for its low (uncalibrated) confidence; a flipped direction, high volatility or a crisis still close it.
+  - **Never on testnet:** a testnet book trades only the gated lane. The replay, and so the nightly review's tuning, measures the gated lane only.
+  - **Recorded apart:** trades carry `lane` (`gated` or `explore`; older rows count as gated). `GET /v1/algo/status` has `explore` (on, risk, each lane's record), and `waiting` no longer says "no trades until then" while it explores.
+  - **The page (`pages/AlgoPage.tsx`):**
+    - an "Exploring on paper" banner with each lane's record;
+    - an Exploring tag on its trades;
+    - "Opened a trade (exploring)" in the decisions;
+    - open positions listed with the closed ones.
+  - **The switch:** `ALGO_EXPLORE=off` on Railway turns it off.
+  - **Measured on the last 19 hours of production's own prices (2026-10-18):**
+    - 8 paper trades on ETH and SOL. BTC's 0.30% target didn't clear 2× its 0.17% costs.
+    - 1 of 6 closed won: −$169 on $10,000 (−1.7%), each loss near its $50 cap, $48 in fees.
+    - Not an edge: exploration gives the book positions and records while the calibration builds; it says nothing about profit.
+  - **Tests:** `engine/test/algoCore.test.ts` covers:
+    - the lane's sizing, and every structural refusal;
+    - an uncalibrated paper book opening explorations that aren't closed for low confidence, with the cooldown;
+    - none on testnet or with it off;
+    - the replay staying gated.
+
+    `algoAgent.test.ts` checks each lane by its own rules. The engine suite: 894 pass.
+  - Every new string is in all six dictionaries (7).
 
 ## The signal engine — `engine/src/quant` (2026-10-02)
 

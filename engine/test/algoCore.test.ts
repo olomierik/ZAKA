@@ -3,13 +3,14 @@
 // sizing, the hard risk layer, the book's arithmetic, and the walk-forward replay: no trades on a
 // random walk (no false edge), trades and a profit on a market with real trends.
 import { describe, expect, test } from 'bun:test'
-import type { AlgoDecision, AlgoState, AlgoTrade } from '../../api/_algoProtocol'
+import type { AlgoDecision, AlgoMarket, AlgoState, AlgoTrade } from '../../api/_algoProtocol'
+import { ALGO_MARKETS } from '../../api/_algoProtocol'
 import { Book, pnlAt } from '../src/algo/book'
 import { brier, Calibrator, evaluate, isotonic } from '../src/algo/calibration'
 import { applyGatePatch, cloneConfig, DEFAULT_CONFIG, withTuned } from '../src/algo/config'
-import { thinLabels } from '../src/algo/core'
+import { AlgoCore, thinLabels } from '../src/algo/core'
 import { outcomeOf } from '../src/algo/labels'
-import { costPct, kellyOf, planTrade } from '../src/algo/policy'
+import { costPct, kellyOf, planExplore, planTrade } from '../src/algo/policy'
 import { RuleReflex } from '../src/algo/reflex'
 import { replay } from '../src/algo/replay'
 import { RiskLayer } from '../src/algo/risk'
@@ -318,5 +319,95 @@ describe('walk-forward replay', () => {
     const a = rows(to1), b = rows(START + 3 * 1440 * MIN)
     expect(a.length).toBeGreaterThan(3_000)
     expect(b).toEqual(a)
+  }, 60_000)
+})
+
+// Paper exploration (config.ts `explore`): a sound setup the calibration hasn't proven, traded small, on paper only.
+describe('paper exploration', () => {
+  const s = baseState({ sigmaH: 2 })
+  const uncalibrated = decision({ confidence: 0.14 })
+  const input = (over: Partial<Parameters<typeof planTrade>[0]> = {}) => ({ state: s, decision: uncalibrated, calibrated: false, equityUsd: 10_000, cfg: cfg(), ...over })
+
+  test('the gated lane says no for the statistics; exploration sizes it at 0.5% risk, labelled explore', () => {
+    const i = input()
+    const { gate, plan } = planTrade(i)
+    expect(plan).toBeNull()
+    expect(gate.checks.filter(c => !c.ok).map(c => c.id).sort()).toEqual(['calibrated', 'confidence', 'edge'])
+    const ex = planExplore(i, gate)!
+    expect(ex.lane).toBe('explore')
+    expect(ex.riskUsd).toBeCloseTo(50, 2)
+    expect(ex.fraction).toBe(0.005)
+    expect(ex.leverage).toBeLessThanOrEqual(3)
+    expect(ex.tp).toBeCloseTo(2500 * 1.02, 2)
+    expect(ex.sl).toBeCloseTo(2500 * 0.97, 2)
+  })
+
+  test('nothing to explore on an unsound setup, a passed gate, a thin target or with it switched off', () => {
+    const ex = (over: Partial<AlgoDecision> = {}, i: Partial<Parameters<typeof planTrade>[0]> = {}) => {
+      const p = input({ decision: decision({ confidence: 0.14, ...over }), ...i })
+      return planExplore(p, planTrade(p).gate)
+    }
+    expect(ex({ setup_quality: 1 })).toBeNull()
+    expect(ex({ toxic_flow: true })).toBeNull()
+    expect(ex({ regime: 'crisis' })).toBeNull()
+    expect(ex({ regime: 'high_vol' })).toBeNull()
+    expect(ex({ direction: 'neutral' })).toBeNull()
+    expect(ex({ risk_state: 'near_limit' })).toBeNull()
+    // The target must clear twice the costs (0.17%): a 0.4% horizon σ does, 0.3% doesn't.
+    expect(ex({}, { state: baseState({ sigmaH: 0.4 }) })).not.toBeNull()
+    expect(ex({}, { state: baseState({ sigmaH: 0.3 }) })).toBeNull()
+    const off = cfg(); off.explore.on = false
+    expect(ex({}, { cfg: off })).toBeNull()
+    // A setup the gated lane takes isn't explored.
+    const p = input({ decision: decision(), calibrated: true })
+    const g = planTrade(p)
+    expect(g.gate.passed).toBe(true)
+    expect(planExplore(p, g.gate)).toBeNull()
+  })
+
+  /** Walks an uncalibrated core over trending candles, as the live agent does: prices first, then the step. */
+  function walkCore(mode: 'paper' | 'testnet', explore = true) {
+    const bars = market(2, 0.3, 3)
+    const c = cfg(); c.explore.on = explore
+    const core = new AlgoCore(c, new RuleReflex(), mode)
+    const byClose = Object.fromEntries(ALGO_MARKETS.map(m => [m, new Map(bars[m].map(b => [b[0] + MIN, b]))])) as Record<AlgoMarket, Map<number, PerpsBar>>
+    const opens: { t: number; market: AlgoMarket; lane?: string }[] = []
+    for (let t = START + 120 * MIN; t <= START + 2 * 1440 * MIN - MIN; t += MIN) {
+      for (const m of ALGO_MARKETS) { const b = byClose[m].get(t); if (b) core.onPrice(m, b[4], t, b[2], b[3]) }
+      const r = core.step(t, { barsOf: m => bars[m as AlgoMarket] ?? [] })
+      for (const tr of r.opened) opens.push({ t, market: tr.market, lane: tr.lane })
+      // No brain: an escalation closes the position, as the agent does.
+      for (const e of r.escalate) { const b = byClose[e.trade.market].get(t); if (b && e.trade.status === 'open') core.closeTrade(e.trade, b[4], t, `escalated: ${e.trigger}`) }
+    }
+    return { core, opens }
+  }
+
+  test('an uncalibrated paper book explores: positions open, labelled, and none is closed for low confidence', () => {
+    const { core, opens } = walkCore('paper')
+    expect(core.calibrated('trend')).toBe(false)
+    expect(opens.length).toBeGreaterThan(3)
+    expect(opens.every(o => o.lane === 'explore')).toBe(true)
+    expect(core.book.trades.some(t => (t.reason ?? '').includes('confidence fell'))).toBe(false)
+    for (const t of core.book.trades) {
+      expect(t.sizeUsd * ((t.slPct + costPct(DEFAULT_CONFIG)) / 100)).toBeLessThanOrEqual(50 * 1.05 + 1e-6)
+      expect(t.leverage).toBeLessThanOrEqual(3)
+    }
+    // One market's next exploration waits 30 minutes after its last one closed.
+    for (const m of ALGO_MARKETS) {
+      const tr = core.book.trades.filter(t => t.market === m).sort((a, b) => a.openedAt - b.openedAt)
+      for (let i = 1; i < tr.length; i++) if (tr[i - 1].closedAt != null) expect(tr[i].openedAt - tr[i - 1].closedAt!).toBeGreaterThanOrEqual(30 * MIN)
+    }
+    expect(core.book.stats('explore').trades).toBe(core.book.stats().trades)
+    expect(core.book.stats('gated').trades).toBe(0)
+  }, 60_000)
+
+  test('never on testnet, and not with it switched off', () => {
+    expect(walkCore('testnet').opens).toHaveLength(0)
+    expect(walkCore('paper', false).opens).toHaveLength(0)
+  }, 60_000)
+
+  test('the replay measures the gated lane only', () => {
+    const r = replay({ bars: market(2, 0.3, 3), cfg: cfg(), from: START + 120 * MIN, to: START + 2 * 1440 * MIN - MIN })
+    expect(r.core.book.trades.every(t => (t.lane ?? 'gated') === 'gated')).toBe(true)
   }, 60_000)
 })

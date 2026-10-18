@@ -3204,3 +3204,9 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .pl-queue { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.76rem; color: var(--text-muted); }
 .pl-queue b { color: var(--text); flex-basis: 100%; }
 .pl-rules { margin: 0; padding-left: 18px; font-size: 0.78rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 4px; }
+
+/* ARCDEX Algo's paper exploration (2026-10-18): the banner with each lane's record, and the tag on its trades. */
+.algo-explore { background: rgba(240,185,11,0.08); border-color: rgba(240,185,11,0.4); }
+.algo-explore b { font-weight: 700; }
+.algo-lanes { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 6px; font-size: 0.76rem; }
+.algo-lane { margin-left: 6px; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--amber); background: rgba(240,185,11,0.14); border-radius: 4px; padding: 1px 5px; vertical-align: middle; }

@@ -4206,5 +4206,12 @@ const d: Record<string, string> = {
   "this side is at its open-interest cap": "这一方已达到持仓上限",
   "the market is paused or settling": "市场已暂停或正在结算",
   "the contracts were paid out first": "合约已先行派付",
+  "Exploring on paper": "模拟盘探索中",
+  "Until its confidence is calibrated and proven, Algo trades every sound setup small on paper, risking {r}% of the book a trade. Only trades that pass every gate would run on testnet.": "在其置信度完成校准并得到验证之前，Algo 会在模拟盘上以小仓位交易每个稳健的形态，每笔风险为账户的 {r}%。只有通过所有关卡的交易才会在测试网运行。",
+  "Gated": "通过关卡",
+  "Exploring": "探索",
+  "Opened a trade (exploring)": "已开仓（探索）",
+  "No trades yet. It opens one when a setup is sound.": "还没有交易。出现稳健形态时会开仓。",
+  "Paper exploration: a sound setup the calibration hasn’t proven yet, traded small": "模拟盘探索：校准尚未验证的稳健形态，以小仓位交易",
 }
 export default d

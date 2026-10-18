@@ -54,7 +54,15 @@ export interface AlgoConfig {
   escalateEveryMs: number
   maxEscalationsPerDay: number
   startUsd: number
+  /** Paper exploration (2026-10-17, the owner: "let Algo take positions on paper"): in paper mode, a setup that passes
+   * every structural check (a direction, no crisis or high volatility, clean flow, the quality bar, a safe risk
+   * state, a target `minTargetCosts`× the costs) but not the statistical ones (calibration, confidence, edge) opens a
+   * small trade risking `riskPct`% of the book, at most one per market every `cooldownMin` after the last one closed.
+   * Never on testnet: there only the gated lane trades. */
+  explore: { on: boolean; riskPct: number; minTargetCosts: number; cooldownMin: number }
 }
+
+export const DEFAULT_EXPLORE: AlgoConfig['explore'] = { on: true, riskPct: 0.5, minTargetCosts: 2, cooldownMin: 30 }
 
 export const DEFAULT_CONFIG: AlgoConfig = {
   // The prompt's gates: quality at least 2, confidence above 0.80, risk state safe, quarter Kelly.
@@ -73,6 +81,7 @@ export const DEFAULT_CONFIG: AlgoConfig = {
   escalateEveryMs: 30 * 60_000,
   maxEscalationsPerDay: 24,
   startUsd: 10_000,
+  explore: { ...DEFAULT_EXPLORE },
 }
 
 /** What the nightly review may change, and how far. */

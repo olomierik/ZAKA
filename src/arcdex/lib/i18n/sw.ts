@@ -4206,5 +4206,12 @@ const d: Record<string, string> = {
   "this side is at its open-interest cap": "upande huu umefikia kikomo chake cha riba wazi",
   "the market is paused or settling": "soko limesitishwa au linatatuliwa",
   "the contracts were paid out first": "mikataba ililipwa kwanza",
+  "Exploring on paper": "Inachunguza kwa mazoezi",
+  "Until its confidence is calibrated and proven, Algo trades every sound setup small on paper, risking {r}% of the book a trade. Only trades that pass every gate would run on testnet.": "Hadi uhakika wake utakapopimwa na kuthibitishwa, Algo hufanya biashara ya mazoezi kwa kiasi kidogo kwa kila mpangilio mzuri, ikihatarisha {r}% ya akaunti kwa kila biashara. Biashara zinazopita vigezo vyote tu ndizo zingeendeshwa kwenye testnet.",
+  "Gated": "Iliyopita vigezo",
+  "Exploring": "Inachunguza",
+  "Opened a trade (exploring)": "Biashara imefunguliwa (inachunguza)",
+  "No trades yet. It opens one when a setup is sound.": "Bado hakuna biashara. Itafungua moja mpangilio ukiwa mzuri.",
+  "Paper exploration: a sound setup the calibration hasn’t proven yet, traded small": "Uchunguzi wa mazoezi: mpangilio mzuri ambao upimaji bado haujauthibitisha, unafanyiwa biashara kwa kiasi kidogo",
 }
 export default d
