@@ -24,13 +24,19 @@ export function WalletPromptHost() {
 
 /** A slim bar when the connected wallet is on another network — every
  * ARCDEX transaction is on Arc. Hidden while the trading wallet is in use
- * (it's always on Arc) and on pages that switch networks on purpose. */
+ * (it's always on Arc) and on pages that switch networks on purpose. Hidden
+ * too for the wallet Privy made for an email sign-in (2026-10-18): every Arc
+ * send puts it on Arc first (sendArc → ensureArc), and it switches without
+ * asking anyone, so the bar only made the trader do it by hand. It isn't
+ * switched back here: a payment from Base or a sale on BNB Chain may have
+ * moved it on purpose, mid-trade. */
 export function NetworkGuard({ hidden }: { hidden?: boolean }) {
-  const { isConnected, chainId } = useAccount()
+  const { isConnected, chainId, connector } = useAccount()
   const embedded = useEmbeddedAddress()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  if (hidden || !isConnected || embedded || chainId === arc.id) return null
+  const platform = connector?.id === 'privy'
+  if (hidden || !isConnected || embedded || platform || chainId === arc.id) return null
   return (
     <div className="net-guard" role="alert">
       <span style={{ flex: 1, minWidth: 0 }}>⚠ {T('Your wallet is on another network. ARCDEX trades on Arc.')}{err ? ` ${err}` : ''}</span>
