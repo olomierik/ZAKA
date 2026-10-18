@@ -3337,6 +3337,36 @@ Owner: "I already have a Circle API key, let's enable card deposits for users' w
   - **Not checked:** a real session from Circle (it needs the owner's key), or a real purchase.
 - **Watch for:** the session doesn't send `destinationChain`, whose default inside Circle's API is Ethereum, according to the kit. The widget is limited to USDC on Arc and reads the wallet from its URL. If it offers Ethereum on the first real try, the session needs `destinationChain` set to Circle's identifier for Arc.
 
+## Visa and Mastercard through MoonPay (2026-10-18)
+
+Owner, trying Circle's card checkout from Tanzania: "Unavailable in Tanzania. No payment methods are currently supported. Aren't Visa and Mastercard international?", then "make Visa and Mastercard able to buy USDC".
+
+- **Why Circle's widget said no:** the card network isn't the limit. The company selling the crypto has to serve the buyer's country, and Circle's payment partner offers no payment method in Tanzania. Nothing in ARCDEX's code can change that.
+- **MoonPay serves Tanzania:** its public country list (`api.moonpay.com/v3/countries`, read 2026-10-18) has Tanzania with buying allowed (Kenya and Nigeria too; Uganda not). It sells USDC on Arc itself (`usdc_arc` in `/v3/currencies`), so no bridge is needed.
+- **The route (`api/moonpay.ts`, `createMoonpay`):** one of the engine's write functions, beside `/api/onramp`.
+  - `GET /api/moonpay` → `{ enabled, sandbox }`.
+  - `POST` with the site's wallet session → `{ url }`: MoonPay's checkout with `currencyCode=usdc_arc` and the signed-in wallet as `walletAddress`, then back to `/portfolio`.
+  - **Signed:** MoonPay requires a signature whenever the URL names a wallet: base64 HMAC-SHA256 of the query string under the secret key, appended last (`moonpaySignature`, matching MoonPay's own Node example). MoonPay refuses a URL whose wallet was changed, so a signed link can't be redirected to another wallet. The secret key never leaves the engine.
+  - **Keys:** off unless both keys are set and from the same mode. `pk_test_…` keys open MoonPay's sandbox (`buy-sandbox.moonpay.com`).
+- **The site (`components/CardDeposit.tsx`):** Deposit → "Card, Apple Pay, Google Pay" shows "Visa or Mastercard · Buy USDC with a card" first when MoonPay is on.
+  - It opens MoonPay in a new window, opened in the click so it isn't blocked, then pointed at the signed URL. If the browser blocks it anyway, the page gives an "Open MoonPay" link.
+  - Circle's embedded checkout stays under it ("Or Circle's checkout"). When Circle answers "no payment options", its message points to MoonPay.
+  - KYC and card details stay with MoonPay.
+- **Owner steps:**
+  1. Create a MoonPay business account (dashboard.moonpay.com). MoonPay reviews the business before live payments, with arcsense.site as the site.
+  2. Railway → arcdex-engine → Variables: `MOONPAY_PUBLISHABLE_KEY` (`pk_live_…`) and `MOONPAY_SECRET_KEY` (`sk_live_…`), from Developers → API keys. Test keys (`pk_test_…`, `sk_test_…`) work at once, in MoonPay's sandbox with test cards.
+  3. Optionally `MOONPAY_REDIRECT_URL` (default `https://arcsense.site/portfolio`).
+  4. Check that `GET https://arcdex-engine-production.up.railway.app/api/moonpay` answers `"enabled":true`.
+- **Checked:**
+  - `engine/test/moonpay.test.ts` (5):
+    - the signature equals Node's own HMAC of the query string, and a changed wallet breaks it;
+    - the URL carries USDC on Arc, the wallet and the redirect;
+    - sandbox for test keys; off without both keys or with mixed modes;
+    - the signed-in wallet only, whatever the body says; every refusal; the engine serving the route.
+  - **In the built-in browser,** with a throwaway trading wallet against `engine/scripts/onramp-standin.ts` (made-up test keys): the Card tab showed both checkouts. The pane blocks new windows, so the button gave the "Open MoonPay" link. It pointed at `buy-sandbox.moonpay.com` with `currencyCode=usdc_arc`, that wallet, the redirect and a signature.
+  - **Not checked:** MoonPay's real page (it needs the owner's keys), or a real card payment from Tanzania.
+- **Fees:** MoonPay's own fees are shown in its checkout. ARCDEX adds none.
+
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
 **Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**

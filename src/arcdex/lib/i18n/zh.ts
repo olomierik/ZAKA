@@ -4152,5 +4152,14 @@ const d: Record<string, string> = {
   "{wallet} is the wallet Privy made, and Privy sent no identity token to prove whose it is. Turn on identity tokens in Privy’s dashboard, or sign with your admin wallet itself: pick it under “Use a browser wallet”.": "{wallet} 是 Privy 为你创建的钱包，而 Privy 没有发送能证明其归属的身份令牌。请在 Privy 控制台开启身份令牌，或直接用你的管理员钱包签名：在“使用浏览器钱包”中选择它。",
   "{wallet} isn’t an admin wallet. Sign with your admin wallet itself (“Use a browser wallet”), sign in with Privy under an admin email or with your admin wallet linked, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} 不是管理员钱包。请直接用你的管理员钱包签名（“使用浏览器钱包”），或用管理员邮箱、或已关联管理员钱包的 Privy 账户登录，或在 Railway（arcdex-engine）上把该钱包加入 ADMIN_EVM_ADDRESSES。",
   "Sign with the router’s owner ({owner}) to change it: connect it under “Use a browser wallet” above.": "请用路由合约的所有者（{owner}）签名来修改：在上方“使用浏览器钱包”中连接它。",
+  "MoonPay opened in a new window. Your USDC arrives in this wallet on Arc once the payment clears, usually within minutes.": "MoonPay 已在新窗口打开。付款完成后，USDC 会到账你在 Arc 上的这个钱包，通常只需几分钟。",
+  "Your browser blocked the new window. Open MoonPay here:": "浏览器拦截了新窗口。请在这里打开 MoonPay：",
+  "Try Visa or Mastercard through MoonPay above.": "试试上方通过 MoonPay 使用 Visa 或 Mastercard。",
+  "Visa or Mastercard": "Visa 或 Mastercard",
+  "Pay in your own currency through MoonPay. USDC goes straight to your {wallet} on Arc. MoonPay checks your identity the first time.": "通过 MoonPay 用你的本国货币付款。USDC 直接到账你在 Arc 上的{wallet}。首次购买时 MoonPay 会验证你的身份。",
+  "Buy USDC with a card": "用银行卡购买 USDC",
+  "Open MoonPay": "打开 MoonPay",
+  "Card processing and identity checks are handled by MoonPay, not ARCDEX.": "银行卡处理和身份验证由 MoonPay 负责，而非 ARCDEX。",
+  "Or Circle’s checkout: debit card, Apple Pay, Google Pay": "或使用 Circle 的收银台：借记卡、Apple Pay、Google Pay",
 }
 export default d

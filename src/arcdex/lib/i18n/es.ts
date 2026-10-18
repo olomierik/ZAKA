@@ -4152,5 +4152,14 @@ const d: Record<string, string> = {
   "{wallet} is the wallet Privy made, and Privy sent no identity token to prove whose it is. Turn on identity tokens in Privy’s dashboard, or sign with your admin wallet itself: pick it under “Use a browser wallet”.": "{wallet} es la billetera que creó Privy, y Privy no envió ningún token de identidad que pruebe de quién es. Activa los tokens de identidad en el panel de Privy, o firma con tu billetera admin directamente: elígela en «Usar una billetera del navegador».",
   "{wallet} isn’t an admin wallet. Sign with your admin wallet itself (“Use a browser wallet”), sign in with Privy under an admin email or with your admin wallet linked, or add the wallet to ADMIN_EVM_ADDRESSES on Railway (arcdex-engine).": "{wallet} no es una billetera admin. Firma con tu billetera admin directamente («Usar una billetera del navegador»), inicia sesión en Privy con un correo admin o con tu billetera admin vinculada, o añade la billetera a ADMIN_EVM_ADDRESSES en Railway (arcdex-engine).",
   "Sign with the router’s owner ({owner}) to change it: connect it under “Use a browser wallet” above.": "Firma con el dueño del router ({owner}) para cambiarlo: conéctalo en «Usar una billetera del navegador» arriba.",
+  "MoonPay opened in a new window. Your USDC arrives in this wallet on Arc once the payment clears, usually within minutes.": "MoonPay se abrió en una ventana nueva. Tus USDC llegan a esta billetera en Arc cuando se confirma el pago, normalmente en minutos.",
+  "Your browser blocked the new window. Open MoonPay here:": "Tu navegador bloqueó la ventana nueva. Abre MoonPay aquí:",
+  "Try Visa or Mastercard through MoonPay above.": "Prueba con Visa o Mastercard a través de MoonPay, arriba.",
+  "Visa or Mastercard": "Visa o Mastercard",
+  "Pay in your own currency through MoonPay. USDC goes straight to your {wallet} on Arc. MoonPay checks your identity the first time.": "Paga en tu propia moneda a través de MoonPay. Los USDC van directo a tu {wallet} en Arc. MoonPay verifica tu identidad la primera vez.",
+  "Buy USDC with a card": "Comprar USDC con tarjeta",
+  "Open MoonPay": "Abrir MoonPay",
+  "Card processing and identity checks are handled by MoonPay, not ARCDEX.": "El procesamiento de tarjetas y las verificaciones de identidad los hace MoonPay, no ARCDEX.",
+  "Or Circle’s checkout: debit card, Apple Pay, Google Pay": "O el pago de Circle: tarjeta de débito, Apple Pay, Google Pay",
 }
 export default d
