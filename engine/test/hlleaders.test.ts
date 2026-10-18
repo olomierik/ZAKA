@@ -3,6 +3,11 @@
 // fails.
 import { beforeEach, describe, expect, test } from 'bun:test'
 import handler, { _reset, cleanName, summarize, type HlLeaders } from '../../api/hlleaders'
+import { setKvStore, type KvStore } from '../../api/_supabaseAdmin'
+
+/** An empty store of last good copies for each case: another test file's createSiteApi installs one for the whole
+ * run, and a board saved there by one case would answer the next (CI, 2026-10-18). */
+const freshKv = (): KvStore => { const m = new Map<string, { value: unknown; updatedAt: number }>(); return { get: async k => m.get(k) ?? null, set: async (k, value) => { m.set(k, { value, updatedAt: Date.now() }) } } }
 
 const perf = (pnl: number, roi = 0.1, vlm = 1e6) => ({ pnl: String(pnl), roi: String(roi), vlm: String(vlm) })
 const row = (i: number, value: number, pnls: [number, number, number, number], name: string | null = null) => ({
@@ -46,7 +51,7 @@ describe('what is kept', () => {
 })
 
 describe('the route', () => {
-  beforeEach(() => _reset())
+  beforeEach(() => { _reset(); setKvStore(freshKv()) })
   test('the first answer waits for the file; the next is served from memory without fetching', async () => {
     let fetched = 0
     const f = (async () => { fetched++; return file([row(1, 20_000, [10, 10, 10, 10], 'Alice')]) }) as unknown as typeof fetch
