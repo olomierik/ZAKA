@@ -32,6 +32,7 @@
 //   /v1/auth/*, /v1/me…, /v1/bots…               accounts, owners' bots, the marketplace (ws/botApi.ts)
 //   GET /v1/coin/program                        $ARCDEX buyback, burns and liquidity: fees in, bought, burned, added (coin/program.ts)
 //   GET /v1/perps/status|prices|candles|state   futures: deployment, keeper, signed prices, chart, contract state (perps/service.ts)
+//   GET /v1/predict/pool/status|state|fills     the prediction pool on Arc testnet (predictpool/service.ts)
 //   /v1/social/*                                verified PnL and boards, comments, reports, mutes (social/api.ts)
 //   /v1/quant/*                                 the signal engine: signals, radar, positions, wallets, validation, controls (quant/api.ts)
 //   /v1/algo/*                                  ARCDEX Algo, the futures agent: status, decisions, trades, reviews, controls (algo/api.ts)
@@ -66,6 +67,7 @@ import { algoApi } from '../algo/api'
 import type { AlgoAgent } from '../algo/agent'
 import type { SiteApi } from '../site/siteApi'
 import type { PerpsService } from '../perps/service'
+import type { PredictPoolService } from '../predictpool/service'
 import type { CoinProgram } from '../coin/program'
 import type { BondingBook } from '../market/bonding'
 import type { TradeSwitch } from '../site/tradeSwitch'
@@ -110,6 +112,8 @@ export class DataApi {
   site: SiteApi | null = null
   /** ARCSENSE futures: prices, chart, the testnet deployment and keeper (engine/src/perps). */
   perps: PerpsService | null = null
+  /** The prediction pool on Arc testnet: its deployment, keeper and fills (engine/src/predictpool). */
+  predictPool: PredictPoolService | null = null
   /** ARCDEX Algo, the futures agent (engine/src/algo), and who may control it. */
   algo: AlgoAgent | null = null
   algoControl: ControlVerifier | null = null
@@ -518,6 +522,12 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         if (!isTrenchChain(tm[1])) return json(req, 404, { error: 'unknown chain', chains: ['arc', 'hood', 'sol', 'bnb'] })
         if (!api.trench) return json(req, 503, { error: 'the trenches feed is not running in this process' })
         return json(req, 200, api.trench.snapshot(tm[1]), 'public, max-age=2')
+      }
+      // The prediction pool on Arc testnet (predictpool/service.ts): status, the pool, fills.
+      if (url.pathname.startsWith('/v1/predict/pool/')) {
+        if (req.method !== 'GET') return json(req, 405, { error: 'GET only' })
+        if (!api.predictPool) return json(req, 503, { error: 'the prediction pool isn’t running here' })
+        return api.predictPool.handle(url, (status, body, cache) => json(req, status, body, cache)) ?? json(req, 404, { error: 'not found' })
       }
       // Futures (perps/service.ts): status, prices, candles, the contract's state.
       if (url.pathname.startsWith('/v1/perps/')) {

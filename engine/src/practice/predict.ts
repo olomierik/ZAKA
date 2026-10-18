@@ -281,13 +281,7 @@ export class PredictPractice {
       const ends = practiceEndsAt(spec)
       const listed = this.meta.has(outcome) && this.metaAt > 0
       if (listed && (ends == null || ends > now)) continue
-      if (now - (this.settleAsked.get(outcome) ?? 0) < PRACTICE_TIMING.settleRecheckMs) continue
-      this.settleAsked.set(outcome, now)
-      try {
-        const r = await this.o.info({ type: 'settledOutcome', outcome }) as { settleFraction?: string | number } | null
-        const f = r == null ? NaN : Number(r.settleFraction)
-        if (Number.isFinite(f) && f >= 0 && f <= 1) this.settled.set(outcome, f)
-      } catch (e) { log.warn('practice: settledOutcome failed', { outcome, error: errMsg(e) }) }
+      await this.askSettlement(outcome, now)
     }
     let n = 0
     for (const a of this.accounts.values()) {
@@ -304,6 +298,48 @@ export class PredictPractice {
     }
     if (this.settled.size > 20_000) this.settled.clear()
     return n
+  }
+
+  /** Asks Hyperliquid whether an outcome has settled, at most once a minute (the answer is kept). */
+  private async askSettlement(outcome: number, now: number) {
+    if (this.settled.has(outcome) || now - (this.settleAsked.get(outcome) ?? 0) < PRACTICE_TIMING.settleRecheckMs) return
+    this.settleAsked.set(outcome, now)
+    try {
+      const r = await this.o.info({ type: 'settledOutcome', outcome }) as { settleFraction?: string | number } | null
+      const f = r == null ? NaN : Number(r.settleFraction)
+      if (Number.isFinite(f) && f >= 0 && f <= 1) this.settled.set(outcome, f)
+    } catch (e) { log.warn('practice: settledOutcome failed', { outcome, error: errMsg(e) }) }
+  }
+
+  // ── for the testnet pool (engine/src/predictpool) ──────────────────────
+
+  /** A listed outcome's spec, as the last outcomeMeta read had it. */
+  specOf(outcome: number): PracticeSpec | null {
+    return this.meta.get(outcome) ?? null
+  }
+
+  /** A side's mid, by the rules buys follow here: the outcome listed in an outcomeMeta under five minutes old, not past
+   *  its end. Null otherwise, or with no book on either side. */
+  async tradeableMid(outcome: number, side: PracticeSide, now = Date.now()): Promise<number | null> {
+    await this.refreshMeta(now).catch(e => log.warn('practice: outcomeMeta failed', { error: errMsg(e) }))
+    const spec = this.meta.get(outcome)
+    if (!spec || now - this.metaAt > 5 * 60_000 || this.settled.has(outcome)) return null
+    const ends = practiceEndsAt(spec)
+    if (ends != null && ends <= now) return null
+    return sideMid(await this.freshMids(now), outcome, side)
+  }
+
+  /** Hyperliquid's settleFraction for an outcome, once it has one. Asked only once the outcome has left outcomeMeta or
+   *  passed its end (`known`: a spec kept from when it was listed), at most once a minute. */
+  async settlementOf(outcome: number, known: PracticeSpec | null, now = Date.now()): Promise<number | null> {
+    const hit = this.settled.get(outcome)
+    if (hit !== undefined) return hit
+    await this.refreshMeta(now).catch(e => log.warn('practice: outcomeMeta failed', { error: errMsg(e) }))
+    const spec = this.meta.get(outcome) ?? known
+    const ends = spec ? practiceEndsAt(spec) : null
+    if (this.meta.has(outcome) && this.metaAt > 0 && (ends == null || ends > now)) return null
+    await this.askSettlement(outcome, now)
+    return this.settled.get(outcome) ?? null
   }
 
   // ── the leaderboard ────────────────────────────────────────────────────

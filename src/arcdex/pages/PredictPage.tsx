@@ -29,6 +29,10 @@ import {
   type PracticePick, type PredictMode,
 } from '../components/PredictPractice'
 import { practiceAvailable, startPractice, usePracticeAccount } from '../lib/predictPractice'
+import { POOL_NOTE, PoolBar, PoolNotReady, PoolPanel, PoolTicker, PoolTradePanel, withSaved, type PoolPick } from '../components/PredictPool'
+import { poolAvailable, usePoolAccount, usePoolStatus } from '../lib/predictPool'
+import { useTrader } from '../lib/identity'
+import type { Address } from 'viem'
 
 const CATS: { id: OutcomeCategory | 'all' | 'mine'; label: string }[] = [
   { id: 'all', label: 'All' }, { id: 'mine', label: 'My predictions' }, { id: 'crypto', label: 'Crypto' }, { id: 'stocks', label: 'Stocks' },
@@ -381,11 +385,19 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
   const [funding, setFunding] = useState<'deposit' | 'withdraw' | null>(null)
   const [enabling, setEnabling] = useState(false)
   // Practice (virtual USDC on the engine, lib/predictPractice.ts) or live (Hyperliquid itself), remembered here.
-  const [mode, setModeState] = useState<PredictMode>(() => (practiceAvailable ? readPredictMode(HL_TRADING) : 'live'))
-  const setMode = (m: PredictMode) => { setModeState(m); savePredictMode(m); setPick(null); setPPick(null) }
+  const [mode, setModeState] = useState<PredictMode>(() => (practiceAvailable ? readPredictMode(HL_TRADING, poolAvailable) : 'live'))
+  const setMode = (m: PredictMode) => { setModeState(m); savePredictMode(m); setPick(null); setPPick(null); setPoolPick(null) }
   const practice = usePracticeAccount()
   const [pPick, setPPick] = useState<PracticePick | null>(null)
   const isPractice = mode === 'practice'
+  // The testnet pool (components/PredictPool.tsx): test USDC on Arc testnet, filled by ARCDEX's keeper.
+  const isPool = mode === 'pool'
+  const isLive = mode === 'live'
+  const trader = useTrader()
+  const poolStatus = usePoolStatus()
+  const poolDep = isPool && poolStatus?.deployment?.pool ? poolStatus.deployment : null
+  const poolAcct = usePoolAccount(isPool ? (trader.address as Address | null) : null, poolDep)
+  const [poolPick, setPoolPick] = useState<PoolPick | null>(null)
 
   useEffect(() => { const base = document.title; document.title = `${T('Predictions')} | ARCDEX`; return () => { document.title = base } }, [])
 
@@ -397,7 +409,13 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
   const holdings = acct.state?.outcomes ?? []
   const outcomeOrders = (acct.state?.orders ?? []).filter(o => o.coin.startsWith('#'))
   const practicePos = practice.account?.positions
-  const held = useMemo(() => new Set(isPractice ? (practicePos ?? []).map(p => p.outcome) : holdings.map(h => h.outcome)), [isPractice, practicePos, holdings])
+  const poolPos = poolAcct.view?.positions
+  const held = useMemo(() => new Set(isPractice ? (practicePos ?? []).map(p => p.outcome) : isPool ? (poolPos ?? []).map(p => p.outcome) : holdings.map(h => h.outcome)), [isPractice, isPool, practicePos, poolPos, holdings])
+  const poolNameOf = useMemo(() => withSaved(o => {
+    const hit = byOutcome.get(o)
+    if (!hit) return null
+    return { title: hit.member.label !== hit.group.title ? `${hit.group.title} · ${hit.member.label}` : hit.group.title, sides: [hit.member.sides[0].name, hit.member.sides[1].name] }
+  }), [byOutcome])
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: groups?.length ?? 0, mine: 0 }
@@ -422,7 +440,9 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
 
   const openPick = (p: Pick) => {
     setDetail(null)
-    if (isPractice) setPPick({ outcome: p.member.outcome, title: p.member.label !== p.group.title ? `${p.group.title} · ${p.member.label}` : p.group.title, sides: [p.member.sides[0].name, p.member.sides[1].name], side: p.side, mode: p.mode })
+    const named = { outcome: p.member.outcome, title: p.member.label !== p.group.title ? `${p.group.title} · ${p.member.label}` : p.group.title, sides: [p.member.sides[0].name, p.member.sides[1].name] as [string, string], side: p.side, mode: p.mode }
+    if (isPractice) setPPick(named)
+    else if (isPool) setPoolPick(named)
     else setPick(p)
   }
   // Positions, history and the leaderboard: above the markets on desktop, under them on phones.
@@ -433,6 +453,16 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
       px={[sidePxOf(pPick.outcome, 0, mids), sidePxOf(pPick.outcome, 1, mids)]}
       onStart={() => { void startPractice().then(practice.set, () => practice.refresh()) }}
       onDone={v => practice.set(v)}
+    />
+  ) : null
+  const poolPanel = poolDep ? (
+    <PoolPanel dep={poolDep} view={poolAcct.view} nameOf={poolNameOf} px={(o, s) => sidePxOf(o, s, mids)} onSell={setPoolPick} onChange={poolAcct.refresh} />
+  ) : null
+  const plPanel = poolPick && poolDep ? (
+    <PoolTradePanel
+      pick={poolPick} setPick={setPoolPick} dep={poolDep} view={poolAcct.view}
+      px={[sidePxOf(poolPick.outcome, 0, mids), sidePxOf(poolPick.outcome, 1, mids)]}
+      onDone={poolAcct.refresh}
     />
   ) : null
   const panel = pick ? (
@@ -449,8 +479,8 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
           <h1 className="page-h">{T('Predictions')}</h1>
           <p className="pm-sub">{T('Trade on what happens next: crypto prices, stocks, sports and the economy. Each side pays $1 if it’s right, settled by Hyperliquid.')}</p>
         </div>
-        {practiceAvailable && <PredictModeSwitch mode={mode} liveOn={HL_TRADING} onChange={setMode} />}
-        {!isPractice && <div className="pm-acct">
+        {practiceAvailable && <PredictModeSwitch mode={mode} liveOn={HL_TRADING} poolOn={poolAvailable} onChange={setMode} />}
+        {isLive && <div className="pm-acct">
           {gate.access ? (
             <>
               <div><span>{T('Account value')}</span><b>{acct.state ? money(acct.state.accountValue) : '…'}</b></div>
@@ -474,7 +504,15 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
         </>
       )}
 
-      {!isPractice && gate.access && (holdings.length > 0 || outcomeOrders.length > 0 || cat === 'mine') && (
+      {isPool && (
+        <>
+          {poolDep ? <PoolBar dep={poolDep} view={poolAcct.view} onChange={poolAcct.refresh} /> : <PoolNotReady status={poolStatus} />}
+          <PoolTicker nameOf={poolNameOf} />
+          {!mobile && poolPanel}
+        </>
+      )}
+
+      {isLive && gate.access && (holdings.length > 0 || outcomeOrders.length > 0 || cat === 'mine') && (
         <div className="spot-panel pm-holdings">
           <div className="spot-panel-h"><span>{T('Your predictions')}</span></div>
           <Holdings holdings={holdings} orders={outcomeOrders} byOutcome={byOutcome} mids={mids} gate={gate} onSell={openPick} onDone={() => acct.refresh()} />
@@ -510,10 +548,11 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
       )}
 
       {isPractice && mobile && practicePanel}
+      {isPool && mobile && poolPanel}
 
       <div className="hl-foot fx-fine">
         {isPractice && <>{T(PRACTICE_NOTE)}{' '}</>}
-        {T('Markets, prices and settlement are Hyperliquid’s: orders are signed in your browser and go straight to it. ARCDEX never holds your money.')}{' '}
+        {isPool ? <>{T(POOL_NOTE)}{' '}</> : <>{T('Markets, prices and settlement are Hyperliquid’s: orders are signed in your browser and go straight to it. ARCDEX never holds your money.')}{' '}</>}
         {BUILDER.outcomeF > 0 && T('ARCDEX’s fee applies only when you sell, as a Hyperliquid builder fee you approve once.')}{' '}
         <button className="link-btn" onClick={() => navigate({ name: 'perps' })}>{T('Trade futures')}</button>
       </div>
@@ -536,6 +575,16 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
           <div className="modal-card hl-modal pm-trade-modal fxb" onClick={e => e.stopPropagation()}>
             <div className="hl-modal-h"><b>{T('Practice')}</b><button className="fxb-x" onClick={() => setPPick(null)} aria-label={T('Close')}>✕</button></div>
             {pPanel}
+          </div>
+        </div>
+      ))}
+      {poolPick && plPanel && (mobile ? (
+        <Sheet open onClose={() => setPoolPick(null)} title={T('Testnet pool')}><div className="fxb">{plPanel}</div></Sheet>
+      ) : (
+        <div className="modal-back" onClick={() => setPoolPick(null)}>
+          <div className="modal-card hl-modal pm-trade-modal fxb" onClick={e => e.stopPropagation()}>
+            <div className="hl-modal-h"><b>{T('Testnet pool')}</b><button className="fxb-x" onClick={() => setPoolPick(null)} aria-label={T('Close')}>✕</button></div>
+            {plPanel}
           </div>
         </div>
       ))}

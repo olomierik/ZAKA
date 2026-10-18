@@ -6,7 +6,7 @@
 // deploys them on Arc testnet and runs their keeper (engine/src/perps).
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createPublicClient, fallback, http, type Address, type Hex } from 'viem'
+import { createPublicClient, fallback, http, type Abi, type Address, type Hex } from 'viem'
 import { getAccount, switchChain, writeContract } from 'wagmi/actions'
 import { PERPS_ABI, TEST_USDC_ABI } from '../../../engine/src/perps/abi'
 import {
@@ -135,7 +135,8 @@ export function useAccountPerps(address: Address | null, dep: PerpsDeployment | 
 
 export interface TestnetCall {
   address: Address
-  abi: typeof PERPS_ABI | typeof TEST_USDC_ABI
+  /** Any contract on Arc testnet (the futures', the prediction pool's). */
+  abi: Abi
   functionName: string
   args?: readonly unknown[]
 }

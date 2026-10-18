@@ -3273,7 +3273,7 @@ Owner: "take a look at papertrade.xyz and make the same thing for us on predicti
     - `GET|POST /v1/practice/predict/account` (`X-Practice-Key`; buy, sell, reset, rename);
     - `GET /v1/practice/predict/board?period=` (public; names only).
     - Writes come from the site's own origins only. `PRACTICE=off` on Railway stops it.
-- **Real later (not built):** papertrade's design for predictions needs a pool contract on Arc that buys and sells sides at Hyperliquid's mid. Hyperliquid's prices would reach Arc only through the engine's signature, which makes the engine a point of trust. It needs the payout queue, a token minted from losses, testnet first, an independent audit and legal advice before any real money.
+- **Real later:** built on Arc testnet with test USDC ("The testnet prediction pool", below); no mainnet before an independent audit and legal advice.
 - **Checked:**
   - `engine/test/predictPractice.test.ts` (10): fills at the mid, the complement, every limit, sales, settlement both ways and once, a split result, the leaderboard (windows, 3 trades, no keys), names, resets, a restart, the routes (origin, key, CORS).
   - `bun scripts/test-predict-practice.ts` (in CI): the engine's end time equals the page's for all 345 recorded markets, names, prices.
@@ -3285,125 +3285,50 @@ Owner: "take a look at papertrade.xyz and make the same thing for us on predicti
   - The engine suite: 889 pass.
 - **Every new string is in all six dictionaries** (47, the engine's error messages included).
 
-## Admin wallets through Privy, and a browser wallet on /admin (2026-10-18)
+## The testnet prediction pool, papertrade.xyz's way (2026-10-18)
 
-Owner: "it gets hard for our admin wallets to be recognized by the engine, because once you sign in with Privy it automatically creates a wallet for you, whether you signed in with email, MetaMask or another wallet".
+The "real later" half of the owner's choice for predictions ("practice first, real later"): papertrade's pool for Hyperliquid's prediction markets, on **Arc testnet only, with test USDC**. No mainnet and no real money until an independent audit and legal advice. Audit scope, trust and open questions: **`contracts/AUDIT-ArcdexPredictPool.md`**.
 
-- **Why:** after any Privy sign-in, the app's connected wallet is the one Privy made (`createOnLogin: 'all-users'`, `PrivyRoot`), even when the person logged in with MetaMask. So `/admin` signed with that Privy wallet, which isn't in `ADMIN_EVM_ADDRESSES`. The engine took a Privy wallet only for an admin email, not for an admin wallet linked to the account. A router's fee change (`setFeeBps`) has to come from the owner wallet itself, which couldn't sign while the Privy wallet was connected.
-- **Engine (`admin/privyIdentity.ts` `adminFor`, `admin/auth.ts`):** a Privy account is an admin when its identity token lists an admin email, or an admin wallet (`ADMIN_EVM_ADDRESSES`, else the owner) among its linked wallets. Any wallet of that account signs in for it, the one Privy made included.
-  - **Proof:** Privy links an external wallet only after it signs Privy's own message, and the token is checked against Privy's keys as before.
-  - **The session:** it keeps the linked admin wallet (`AdminSession.linked`), ends once that wallet leaves the list, and its wallet signs admin actions like an email admin's (`emailAdminWallets`). Sign-ins are audited with `by: 'linked-wallet'`.
-  - `PrivyIdentityCheck.configured` no longer needs an admin email: a real app id is enough.
-- **`/admin` (`pages/AdminPage.tsx`, `lib/browserWallets.ts`):** "Use a browser wallet" lists the wallets the browser announces (EIP-6963: MetaMask, Rabby, Phantom…; never Privy's), or the generic browser wallet. A click connects it directly through wagmi and makes it the signer, for the admin sign-in and for Fees → "Set to 0.5%". So an admin wallet, or a router's owner, signs as itself whatever Privy connected.
-  - "Sign with" names the Privy wallet as such.
-  - **When the Privy wallet signs and Privy sends no identity token,** the page says so: turn on identity tokens in Privy's dashboard, or use a browser wallet.
-- **Owner steps:**
-  - To sign in with the Privy wallet: link the admin wallet to the Privy account (Privy's account settings), and turn on identity tokens in Privy's dashboard.
-  - Or skip Privy: on `/admin`, pick MetaMask under "Use a browser wallet". The router fee change always needs this, with the router's owner wallet.
+- **The contract (`contracts/ArcdexPredictPool.sol`; `ArcdexPredictPool` 21.5 KB, `ArcdexPredictToken` tPOOL 2.4 KB):**
+  - **Trades.** A trader deposits test USDC into a pool balance, then buys or sells a side of an outcome at Hyperliquid's mid, against the pool, with no slippage. Each contract of side 0 pays `settleFraction`, of side 1 pays 1 − it.
+  - **Two steps, as SensePerps:** `requestBuy` / `requestSell`, then `execute` with a price the engine signed strictly after the request's second, at most 20 s old, within 60 s. After 60 s the trader can cancel for a refund.
+    - Refused fills refund, never revert: no price (the engine signs 0), the trader's limit, buys outside 1–99¢, the open-interest cap (10,000 contracts a side by default), a paused, halted or settling market.
+  - **The Martingaler pool:**
+    - It starts at $0 and fills only from losses; nobody deposits into it.
+    - The trader's own money always comes back at once; only a profit waits.
+    - A profit the pool's free cash can't pay waits in a FIFO queue. While anything is queued, new losses are earmarked for it (`sideBucket`) and harvested in order.
+    - Fees: 2% of a win and 2% of the pool's gain on a loss, only while nothing is queued; half to stakers, half to the fee wallet.
+  - **tPOOL** is minted from losses: 100 per $1 while the pool's tracked P&L is under $2M, then decaying as papertrade's curve. It can't be transferred (only staked) until the owner turns transfers on, one way. Staked tPOOL earns the stakers' fees, plus the pool's gain past $5M.
+  - **Settlement:** the engine signs Hyperliquid's `settledOutcome`, and anyone submits it. It pays after `settleDelay` (10 minutes), during which the owner (`0x414B…c3dA`) can cancel a wrong one; a cancelled settlement can't be replayed. Payouts (`redeem`, `redeemMany`) can be called by anyone.
+  - **The engine's key is trusted** for every price and settlement (EIP-712, domain "ARCDEX Predict" v1). Changing the signer waits 2 days.
+- **The engine (`engine/src/predictpool`, `PREDICT_POOL=off` stops it):**
+  - **Keeper wallet:** `predict-pool-keeper`, made on the engine, its key encrypted under `BOT_WALLET_SECRET`. It signs prices and settlements and sends the keeper's transactions. Its gas comes from the futures keeper (0.5 testnet USDC whenever it's under 0.15).
+  - **Deployment:** the engine deploys the pool by itself on the futures' test USDC (setting `predict-pool-testnet`), owner `0x414B…c3dA`, fee wallet `0x2742…86Bb`, and checks its code and signer. `PREDICT_POOL_AUTODEPLOY=off` and `PREDICT_POOL_ADDRESS` (+ `PREDICT_POOL_BLOCK`) as for futures. Testnet only: any other chain is refused.
+  - **The keeper (`keeper.ts`, every second):**
+    - reads the pool's events;
+    - prices each request with the mid the practice book reads (`PredictPractice.tradeableMid`: listed, not past its end), at the latest block's time (the clock the contract checks), or "no price";
+    - proposes settlements (`settlementOf`) and pays out holders after the delay;
+    - withdraws the fee wallet's fees, harvests the queue, pushes the excess.
+    - It reads the block number uncached: viem keeps it for half a block, and a quick second poll missed new requests.
+  - **Routes:** `GET /v1/predict/pool/status|state|fills?account=`.
+- **The site (`/predict`, a third mode, "Testnet pool", between Practice and Live; `components/PredictPool.tsx`, `lib/predictPool.ts`):**
+  - **The account bar:** pool balance and wallet, in positions, waiting in the queue, tPOOL (held and staked), rewards. Also Get 1,000 test USDC (the futures' faucet), Deposit (an exact approval, then the deposit), Withdraw, Stake / Unstake / Claim, the pool's cash, queue and P&L, and a gas note with Circle's faucet.
+  - **The trade panel:** one tap to request at the mid shown, 3% worst price, then the keeper's fill or refund in words.
+  - **Tabs:** Positions (Collect after settlement), Requests (Cancel after the timeout), History, and The pool (cash, earmark, queue, P&L, mint rate, the next in the queue, the rules).
+  - A ticker of everyone's fills. Everything is marked TESTNET (blue where practice is amber).
+  - Trades are signed by the trading wallet with no pop-up, or a connected wallet put on Arc testnet (`sendTestnet`, now for any contract's ABI).
 - **Checked:**
-  - `engine/test/privyAdmin.test.ts`, 4 new tests:
-    - the Privy wallet of an account linked to an admin wallet signs in, acts as an admin and is audited;
-    - the admin wallet still signs in alone;
-    - refused: no admin wallet linked, a wallet outside the account, no token, a forged token;
-    - the session ends when the wallet leaves the list.
-  - `bun scripts/test-browser-wallets.ts` (in CI).
-  - In the built-in browser on the dev server, with a stand-in EIP-6963 wallet announced in the page: no picker without a wallet; the wallet listed once announced; one click connected it and made it the signer ("Signing now with 0xf39F…2266").
-  - Not checked: a real Privy account with a linked MetaMask, or a real identity token.
-- Every new string is in all six dictionaries (7; two old ones replaced).
-
-## Card deposits served by the engine (2026-10-18)
-
-Owner: "I already have a Circle API key, let's enable card deposits for users' wallets". Deposit → "Card, Apple Pay, Google Pay" (`components/CardDeposit.tsx`, Circle's Onramp widget) was built on 2026-09-26 for Vercel. Its route, `/api/onramp`, never moved to the engine when the site left Vercel, so the tab always said "being switched on".
-
-- **The route (`api/onramp.ts`, `createOnramp`):** now one of the engine's write functions (`siteApi.ts` `WRITES`: passed through as it came, never cached). `@circle-fin/onramp-kit` 1.0.1 is an engine dependency, and the Dockerfile copies the file.
-  - `GET /api/onramp` → `{ enabled, sandbox }`.
-  - `POST` with the site's wallet session → a 30-minute widget session from Circle (`POST /v1/stablecoinKits/sessions`), for the signed-in wallet only. The request body can't name another wallet or referrer.
-  - The widget is scoped to USDC on Arc (`pairs=USDC:arc`) and delivers to that wallet (`destinationWallet`).
-  - Refused: no session or a forged one (401), signed out of all devices (401), Circle's refusals passed on (429, 502…).
-- **The referrer domain is `arcsense.site`** (was `arcdex.online`): the exact host the widget is framed by, since www.arcsense.site and arcdex.online both redirect there. `ONRAMP_REFERRER_DOMAIN` overrides it.
-- **CSP:** nothing to change. `frame-src https:` and `connect-src https:` already allow `onramp.arc.io` and `api.circle.com`.
-- **Owner steps:**
-  1. Railway → arcdex-engine → Variables: `CIRCLE_ONRAMP_API_KEY` = the key exactly as Circle issued it (`<ENV>_API_KEY:<id>:<secret>`). For test money first, also `ONRAMP_SANDBOX=1` with a sandbox key. Railway redeploys by itself.
-  2. Circle Console: complete KYB, with `arcsense.site` as the web URL. Cards, Apple Pay and Google Pay need it.
-  3. Check that `GET https://arcdex-engine-production.up.railway.app/api/onramp` answers `"enabled":true`, then try a small purchase from Deposit → Card.
-- **Checked:**
-  - `engine/test/onramp.test.ts` (5) runs against a stand-in for Circle's API:
-    - switched off without a key;
-    - Circle asked with the key as a bearer token, the signed-in wallet as `walletAddress` and `appUserId`, and `referrerDomain` arcsense.site, whatever the body says;
-    - the widget URL on onramp.arc.io with that wallet and USDC on Arc; Circle's extra fields not forwarded;
-    - the sandbox's API and widget;
-    - every refusal, and the engine serving it as a write.
-  - **In the built-in browser,** with a throwaway trading wallet against `engine/scripts/onramp-standin.ts` (the engine's route, Circle stubbed): the Card tab offered Buy USDC, pressing it minted a session for that wallet, and the widget mounted at 620px from `https://onramp.arc.io/?…&destinationWallet=<wallet>&pairs=USDC%3Aarc`. The stubbed token was refused by the widget, which showed the page's "could not load" message.
-  - **Not checked:** a real session from Circle (it needs the owner's key), or a real purchase.
-- **Watch for:** the session doesn't send `destinationChain`, whose default inside Circle's API is Ethereum, according to the kit. The widget is limited to USDC on Arc and reads the wallet from its URL. If it offers Ethereum on the first real try, the session needs `destinationChain` set to Circle's identifier for Arc.
-
-## Visa and Mastercard through MoonPay (2026-10-18)
-
-Owner, trying Circle's card checkout from Tanzania: "Unavailable in Tanzania. No payment methods are currently supported. Aren't Visa and Mastercard international?", then "make Visa and Mastercard able to buy USDC".
-
-- **Why Circle's widget said no:** the card network isn't the limit. The company selling the crypto has to serve the buyer's country, and Circle's payment partner offers no payment method in Tanzania. Nothing in ARCDEX's code can change that.
-- **MoonPay serves Tanzania:** its public country list (`api.moonpay.com/v3/countries`, read 2026-10-18) has Tanzania with buying allowed (Kenya and Nigeria too; Uganda not). It sells USDC on Arc itself (`usdc_arc` in `/v3/currencies`), so no bridge is needed.
-- **The route (`api/moonpay.ts`, `createMoonpay`):** one of the engine's write functions, beside `/api/onramp`.
-  - `GET /api/moonpay` → `{ enabled, sandbox }`.
-  - `POST` with the site's wallet session → `{ url }`: MoonPay's checkout with `currencyCode=usdc_arc` and the signed-in wallet as `walletAddress`, then back to `/portfolio`.
-  - **Signed:** MoonPay requires a signature whenever the URL names a wallet: base64 HMAC-SHA256 of the query string under the secret key, appended last (`moonpaySignature`, matching MoonPay's own Node example). MoonPay refuses a URL whose wallet was changed, so a signed link can't be redirected to another wallet. The secret key never leaves the engine.
-  - **Keys:** off unless both keys are set and from the same mode. `pk_test_…` keys open MoonPay's sandbox (`buy-sandbox.moonpay.com`).
-- **The site (`components/CardDeposit.tsx`):** Deposit → "Card, Apple Pay, Google Pay" shows "Visa or Mastercard · Buy USDC with a card" first when MoonPay is on.
-  - It opens MoonPay in a new window, opened in the click so it isn't blocked, then pointed at the signed URL. If the browser blocks it anyway, the page gives an "Open MoonPay" link.
-  - Circle's embedded checkout stays under it ("Or Circle's checkout"). When Circle answers "no payment options", its message points to MoonPay.
-  - KYC and card details stay with MoonPay.
-- **Owner steps:**
-  1. Create a MoonPay business account (dashboard.moonpay.com). MoonPay reviews the business before live payments, with arcsense.site as the site.
-  2. Railway → arcdex-engine → Variables: `MOONPAY_PUBLISHABLE_KEY` (`pk_live_…`) and `MOONPAY_SECRET_KEY` (`sk_live_…`), from Developers → API keys. Test keys (`pk_test_…`, `sk_test_…`) work at once, in MoonPay's sandbox with test cards.
-  3. Optionally `MOONPAY_REDIRECT_URL` (default `https://arcsense.site/portfolio`).
-  4. Check that `GET https://arcdex-engine-production.up.railway.app/api/moonpay` answers `"enabled":true`.
-- **Checked:**
-  - `engine/test/moonpay.test.ts` (5):
-    - the signature equals Node's own HMAC of the query string, and a changed wallet breaks it;
-    - the URL carries USDC on Arc, the wallet and the redirect;
-    - sandbox for test keys; off without both keys or with mixed modes;
-    - the signed-in wallet only, whatever the body says; every refusal; the engine serving the route.
-  - **In the built-in browser,** with a throwaway trading wallet against `engine/scripts/onramp-standin.ts` (made-up test keys): the Card tab showed both checkouts. The pane blocks new windows, so the button gave the "Open MoonPay" link. It pointed at `buy-sandbox.moonpay.com` with `currencyCode=usdc_arc`, that wallet, the redirect and a signature.
-  - **Not checked:** MoonPay's real page (it needs the owner's keys), or a real card payment from Tanzania.
-- **Fees:** MoonPay's own fees are shown in its checkout. ARCDEX adds none.
-
-- **MoonPay's SDK (2026-10-18, `@moonpay/moonpay-js` 0.7.6):** the card checkout opens over the page instead of a new tab.
-  - `loadMoonPay()` loads MoonPay's script from `static.moonpay.com` (in the CSP's `script-src`), only when someone presses Buy USDC with a card.
-  - The SDK builds the checkout in the page; `POST /api/moonpay {url}` signs it only when it's MoonPay's own host for the mode (live or sandbox), our publishable key, `usdc_arc`, and the signed-in wallet as the only wallet named (`sdkUrlProblem`). Then `updateSignature` and `show()`.
-  - `GET /api/moonpay` also returns `apiKey` (the publishable key, which is public) and `currency`.
-  - Without the SDK (blocked script, no key), the engine's signed URL opens in a new tab, or a link where the browser blocks it.
-  - Tests: `engine/test/moonpay.test.ts` (a checkout built as the SDK builds it is signed with MoonPay's HMAC; 12 altered ones refused).
-
-## Phones, one-screen landing, deposits on every chain (2026-10-18)
-
-Owner: phone wallets didn't respond in Privy's list; chains in a dropdown on phones; overlapping text; Analytics missing on phones; the X account and "Protected by Privy" on a one-screen landing that everyone sees first; deposits of other chains' assets (USDG/ETH on Robinhood Chain, BNB, SOL, Solana USDC) refused by the deposit window; trade forms that pick what's held.
-
-- **Phone wallets in Privy (`privy/PrivyRoot.tsx`):** Privy's config now has `walletConnectCloudProjectId` and an explicit `walletList` (detected wallets, MetaMask, Phantom, Coinbase, OKX, Rainbow, Binance, Bitget, Solflare, Backpack, WalletConnect) with `walletChainType: 'ethereum-and-solana'`.
-  - The project id is `WC_PROJECT_ID` in `wagmi.ts`, shared with wagmi's WalletConnect connector: `VITE_WC_PROJECT_ID`, else the shared id.
-  - **Owner step:** create a project at cloud.reown.com, allow `arcsense.site`, `www.arcsense.site` and `arcdex.online`, and set `VITE_WC_PROJECT_ID` on Netlify. The shared id works until then, but Reown can rate-limit it.
-  - Not checked on a real phone (the sandbox has none).
-- **Phone layout:**
-  - **Chains in a dropdown:** the Trenches bar shows the current chain as a button with a menu under it (`ChainSelect` in `pages/Trenches.tsx`; fixed position, so the bar's scroll doesn't clip it). The chips stay on desktop.
-  - **Nothing cut off:** the coin strip's Buy reads "Buy" and the price drops its label under 440px; the lane tabs stay on one line ("Bonding" for Almost bonded); a row's tags and socials wrap.
-  - **Analytics on phones:** the More sheet listed only the top bar's folding links (Swap, Bridge), so Analytics never showed. It now lists every page without a tab (`TAB_PAGES` in `components/MobileTabBar.tsx`).
-- **Landing (`landing/Landing.tsx`, `landing.css`):** one screen, no scrolling (`100dvh`, short-screen rules): the wordmark, "where memecoins meet futures.", Start trading / Explore markets, the wallet-app link and $ARCDEX's contract. The top bar has ARCDEX's X account (`X_URL`, x.com/arcdex2026), the language and Log in; the foot reads "🔒 Protected by Privy". The live terminal, feature cards, closing call and footer are gone (and `TrafficCard.tsx`).
-  - **Always first (owner: "always, everywhere"):** `/` is the landing page for everyone, a returning trader's too (`firstScreen` in `lib/returning.ts`, index.html's boot script and its CSP hash). The `arcdex:returning` key is still written; nothing routes on it.
-- **Deposit → Crypto, every network (`components/ChainDeposit.tsx`):** pick the network, see what to send and the address with its QR code.
-  - Arc: USDC. Robinhood Chain: ETH or USDG. BNB Chain: BNB or USDT. Solana: SOL or USDC, to the Solana address (the trading wallet's, or the connected/Privy Solana wallet's). Ethereum, Base, Arbitrum: USDC or ETH, spent with "Pay from Ethereum, Base or Arbitrum".
-  - Each says what the assets pay for, warns to send only those assets on that network, and shows the token contracts. EVM networks note it's the same address on all of them.
-  - It opens on the network of the Trenches in view (a Solana account's on Solana).
-- **Trade forms pick what's held (until the trader picks):**
-  - **Robinhood Chain (`components/RobinhoodSwap.tsx`, `pickPay`):** "Pay with" USDC on Arc (Across, as before), ETH or USDG on Robinhood Chain. Buys pick USDC on Arc from $1, else USDG from $1, else ETH; sales default to USDC on Arc.
-    - ETH and USDG trade through Relay's same-chain swap on Robinhood Chain (`chain: 'robinhood'` in `lib/relayQuote.ts`): ETH to Relay's router with exactly the amount; USDG approved for exactly the amount to its approval proxy (both the same addresses as on BNB Chain). Only the coin against ETH or USDG passes the checks, and only as a swap. ARCDEX's 0.5% is Relay's app fee. The price guard values ETH from Robinhood Chain's WETH/USDG pool.
-    - Measured 2026-10-18: 0.001 ETH → 22.63 MOW (≈ $2.38). Relay found no route, or a mispriced one, for sales of MOW for ETH or USDG, which is why sales default to Across.
-    - **Two tokens are named USDG on Robinhood Chain:** Paxos's "Global Dollar" `0x5fc5360d…d168` (the app's, `USDG` in `api/_rhCore.ts`) and "USDG Robinhood" `0x5fc5dc8e…d168`. Only the first is accepted; the deposit window shows its contract.
-  - **BNB Chain (`pickBscPay`):** USDC on Arc from $1, else USDT from $1, else BNB.
-  - **Solana (`pickSolPay`):** a Solana wallet app pays with USDC when it holds $1 and little SOL, else SOL; the trading wallet with USDC on Arc from $1, else its Solana USDC, else SOL.
-  - When the picked route changes (balances arriving), the amount is cleared, so dollars never become BNB, SOL or ETH. A quick buy from the Trenches keeps its route.
-- **Tests:** `scripts/test-robinhood.ts` (real ETH and USDG swap quotes from `scripts/capture-relay-rh.ts` passing, 11 altered ones refused, `pickPay`), `test-app-shell.ts` (the landing page for everyone), `test-privy.tsx` (WalletConnect in Privy's list).
-- **Checked in the browser (local dev):** phones at 375px (the chain dropdown switching to Solana, the coin strip, lane tabs, wrapped tags, Analytics from More, the one-screen landing with no scroll), the landing at 1024px, and a Robinhood coin page quoting ETH.
-- **Not checked:** a real phone wallet through Privy, a real deposit, a real ETH or USDG trade on Robinhood Chain, and the deposit window's networks in a browser (it needs a signed-in wallet).
-- Every new string is in all six dictionaries (22).
+  - `forge test --match-contract ArcdexPredictPoolTest`: 41 tests (fuzz: the books balance after every step). 19 of 20 planted bugs failed at least one; the 20th is an equivalent guard (audit file, item 4).
+  - `bun test engine/test/predictPool.test.ts` (7); `engine/test/predictPoolE2e.test.ts` (5, anvil): deploy, a fill at the mid, a queued win paid by a later loss, a refund, a settlement paid after its delay. 3 runs in a row passed.
+  - In the browser pane, against `engine/scripts/predict-pool-standin.ts`: anvil as Arc testnet with 1-second blocks, live Hyperliquid mids, and the engine's own service, which made its keeper, got gas, deployed the pool and ran the keeper. A throwaway trading wallet then:
+    - took the faucet, deposited $500;
+    - bought $100 Yes (260 at 38.5¢) and $50 No ("Bought 83.86 No at 60¢");
+    - sold the No for +$0.10, which waited in the queue (Queue 1, $0.10, pool P&L −$0.10);
+    - saw History, The pool, the ticker, and a 375px phone with no sideways scroll.
+  - A layout bug found on the way: `.pr-bar > div` stacked the bar's pop-ups (practice's Reset and name too); fixed.
+- **Build:** after changing the contract, `forge build && node scripts/gen-predict-pool-build.mjs` (`--check` to verify) writes `engine/src/predictpool/abi.ts` and `build.ts`. Built with Foundry 1.8.3 (solc 0.8.28, as pinned).
+- **Every new string is in all six dictionaries** (71).
+- **Owner steps (testnet):** none to start. Once merged, Railway deploys the engine, and it deploys the pool once futures' test USDC exists. Watch proposed settlements: `GET /v1/predict/pool/state` and the explorer; cancel a wrong one with `cancelSettlement(outcome)` from `0x414B…c3dA` within 10 minutes.
 
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 

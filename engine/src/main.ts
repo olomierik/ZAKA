@@ -54,6 +54,7 @@ import { Users } from './bot/users'
 import { Tiers } from './bot/tiers'
 import { MemoryBotStore, PostgresBotStore } from './bot/store'
 import { PerpsService } from './perps/service'
+import { PredictPoolService } from './predictpool/service'
 import { CoinProgram, FEE_SOURCES, FEE_WALLET, fetchRelayBalances } from './coin/program'
 import { FeeLedger } from './fees/ledger'
 import { FeeLedgerService, webhookAlert } from './fees/service'
@@ -351,6 +352,15 @@ async function main() {
     dataApi.perps = perps
     perpsRef = perps
     void perps.start().catch(e => log.error('perps: did not start', { error: errMsg(e) }))
+    // The prediction pool on Arc testnet (predictpool/service.ts): papertrade.xyz's pool for Hyperliquid's
+    // prediction markets, with the futures' test USDC; prices and settlements from the practice book's Hyperliquid
+    // reads, signed by the pool keeper. PREDICT_POOL=off stops it.
+    if (dataApi.practice && !/^(0|off|false|no)$/i.test(process.env.PREDICT_POOL?.trim() ?? '')) {
+      const pool = new PredictPoolService({ settings: botStore, vault, perps, data: dataApi.practice })
+      dataApi.predictPool = pool
+      // After the futures' first step, which reads their deployment (and so the test USDC).
+      setTimeout(() => void pool.start().catch(e => log.error('predict pool: did not start', { error: errMsg(e) })), 5_000)
+    }
   }
   // $ARCDEX buyback, burns and liquidity (coin/program.ts): the fee wallet's activity, 30% / 70% of
   // fees, and every burn. The SENSE_* names still work (the program bought $SENSE until 2026-10-04).
