@@ -179,6 +179,8 @@ export interface TrenchSettings {
   collapsed: Record<string, boolean>
   /** Each lane's order, per chain and lane (laneKey); a lane not set uses defaultSort. */
   laneSort: Record<string, LaneSort>
+  /** The settings' version: older saved settings are brought up to date once on load (`load`). */
+  v?: number
 }
 
 const DEFAULTS: TrenchSettings = {
@@ -199,6 +201,7 @@ const DEFAULTS: TrenchSettings = {
   filters: {},
   collapsed: {},
   laneSort: {},
+  v: 2,
 }
 
 const KEY = 'arcdex:trenches:v1'
@@ -209,7 +212,10 @@ function load(): TrenchSettings {
     const raw = localStorage.getItem(KEY)
     if (!raw) return DEFAULTS
     const s = JSON.parse(raw) as Partial<TrenchSettings>
-    return { ...DEFAULTS, ...s, presets: { ...DEFAULTS.presets, ...(s.presets ?? {}) } }
+    // Version 2 (owner, 2026-10-18: "make metric size LARGE by default"): every browser starts on large metrics once,
+    // whatever it saved before; Customize still switches them to small.
+    const up = (s.v ?? 1) < 2 ? { metricsLarge: true, v: 2 } : {}
+    return { ...DEFAULTS, ...s, ...up, presets: { ...DEFAULTS.presets, ...(s.presets ?? {}) } }
   } catch { return DEFAULTS }
 }
 let state: TrenchSettings = load()

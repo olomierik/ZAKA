@@ -2926,6 +2926,13 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .wl-tile > div { flex: 1; min-width: 0; }
 .wl-tile.empty { opacity: 0.7; }
 .wl-tile-h { display: flex; justify-content: space-between; gap: 8px; font-size: 0.82rem; }
+/* The trading wallet's panel: its balances on every other chain (WalletsCard.tsx OtherChains, 2026-10-18). */
+.wl-other { display: flex; flex-direction: column; gap: 4px; margin: 0 0 10px; padding: 8px 10px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--adx-card-border, var(--adx-border)); }
+.wl-other-h { font-size: 0.66rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.wl-other-row { display: grid; grid-template-columns: 16px auto minmax(0, 1fr) auto; align-items: center; gap: 6px; font-size: 0.72rem; }
+.wl-other-row small { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wl-other-row b { font-size: 0.72rem; }
+.wl-other-empty { font-size: 0.66rem; color: var(--text-muted); margin-bottom: 8px; }
 .wl-tile small { display: block; font-size: 0.7rem; color: var(--text-muted); line-height: 1.35; overflow-wrap: anywhere; }
 .wl-notices { display: flex; flex-direction: column; gap: 4px; font-size: 0.72rem; color: var(--text-muted); border-top: 1px solid var(--adx-card-border); padding-top: 8px; }
 .wl-notices > b { color: var(--text); font-size: 0.78rem; }

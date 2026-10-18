@@ -115,7 +115,7 @@ function Row({ c, s, flash, fresh, now, onOpen, onBuy }: Props) {
 
       {flash && <span key={flash.n} className={`tr-pop ${flash.side}${(flash.usd ?? 0) >= 500 ? ' big' : ''}`} aria-hidden>{popText(flash)}</span>}
       <div className="tr-rgt">
-        <span className="tr-kv"><i title={T('Volume, {w}', { w: win })}>V</i><b>{unknown1h ? '—' : usd(vol)}</b><i>{showPct ? 'BC' : 'MC'}</i><b className={showPct ? 'mc' : mcClass(c.marketCap)}>{showPct ? `${c.progress!.toFixed(0)}%` : known(c.marketCap)}</b></span>
+        <span className="tr-kv"><span className="tr-kvp"><i title={T('Volume, {w}', { w: win })}>V</i><b>{unknown1h ? '—' : usd(vol)}</b></span><span className="tr-kvp"><i>{showPct ? 'BC' : 'MC'}</i><b className={showPct ? 'mc' : mcClass(c.marketCap)}>{showPct ? `${c.progress!.toFixed(0)}%` : known(c.marketCap)}</b></span></span>
         <span className="tr-f">
           <i>L</i><b>{known(c.liquidity)}</b>
           <i>TX</i><b>{unknown1h ? '—' : count(tx)}</b>

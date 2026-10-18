@@ -289,9 +289,11 @@ export function readTransport(chain: RpcChain): Transport {
 /** A JSON-RPC call to the chain's nodes in order (for code that doesn't use viem: Solana). */
 export async function rpcRequest<T>(chain: RpcChain, method: string, params: unknown[] = [], timeoutMs = 10_000, signal?: AbortSignal): Promise<T> {
   let last: unknown = null
-  for (const e of endpoints(chain)) {
-    if (!serves(e, chain, method)) continue
-    if (e.kind === 'arcdex' ? !fastUp() : skipped(e.url)) continue
+  const all = endpoints(chain).filter(e => serves(e, chain, method))
+  // Every node set aside (Solana has one free node): try them anyway rather than fail without asking (2026-10-18:
+  // one throttled answer made every Solana balance read fail for 30 seconds).
+  const up = all.filter(e => (e.kind === 'arcdex' ? fastUp() : !skipped(e.url)))
+  for (const e of up.length ? up : all.filter(e => e.kind !== 'arcdex')) {
     const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now()
     try {
       const r = await fetch(e.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: signal ?? AbortSignal.timeout(timeoutMs) })

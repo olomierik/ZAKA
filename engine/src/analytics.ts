@@ -92,6 +92,8 @@ const STRK_TX = /^0x[0-9a-fA-F]{1,64}$/
 const isOne = <T extends string>(v: unknown, set: readonly T[]): v is T => typeof v === 'string' && (set as readonly string[]).includes(v)
 const day = (t: number) => new Date(t - (t % 86_400_000)).toISOString().slice(0, 10)
 const round2 = (n: number) => Math.round(n * 100) / 100
+/** Fees keep fractions of a cent (2026-10-18: a $0.50 trade's fee is $0.0025, which rounded to $0.00 on the page). */
+const round6 = (n: number) => Math.round(n * 1e6) / 1e6
 
 /** A wallet address as stored: EVM lower-cased, Solana as written; null when it's neither. */
 export function walletOf(a: unknown): string | null {
@@ -148,6 +150,8 @@ export interface AnalyticsOptions {
   fees?: () => Promise<FeeRow[]>
   chainTrades?: () => ChainTrade[]
   traffic?: () => Promise<TrafficCounts | null>
+  /** The fee wallet: its own router trades pay their fee back to itself, so they aren't income. */
+  feeWallet?: string
 }
 
 export class Analytics {
@@ -237,7 +241,8 @@ export class Analytics {
     type T = { tx: string; at: number; address: string; usd: number; feeUsd: number; chain: string; venue: string }
     const counted: T[] = site.filter(t => t.status === 'ok').map(t => ({ tx: t.tx, at: t.at, address: t.address, usd: t.usd, feeUsd: t.feeUsd, chain: t.chain, venue: t.venue }))
     const seenTx = new Set(counted.map(t => t.tx))
-    for (const c of this.o.chainTrades?.() ?? []) {
+    const book = this.o.chainTrades?.() ?? []
+    for (const c of book) {
       if (seenTx.has(c.tx.toLowerCase())) continue
       seenTx.add(c.tx.toLowerCase())
       counted.push({ tx: c.tx.toLowerCase(), at: c.at, address: c.trader.toLowerCase(), usd: c.usd, feeUsd: c.feeUsd, chain: 'arc', venue: 'arc-router' })
@@ -256,11 +261,19 @@ export class Analytics {
     }
     for (const m of [byChain, byVenue]) for (const k in m) m[k].volumeUsd = round2(m[k].volumeUsd)
 
-    // Fees: what the ledger saw arrive (received or accrued), in dollars.
-    const income = feeRows.filter(r => (r.status === 'received' || r.status === 'accrued') && r.amountUsd != null)
-    const feeSum = (d: number | null) => round2(income.filter(r => d === null || within(r.at, d)).reduce((s, r) => s + (r.amountUsd ?? 0), 0))
+    // Fees: what the ledger saw arrive (received or accrued), in dollars. The ledger's Arc rows start where the $ARCDEX
+    // program's scan did (2026-10-04); router fees from before then come from the trade book's Swapped events (the
+    // fee each one paid, on-chain), up to the ledger's first Arc router row, the fee wallet's own trades left out.
+    type Income = { at: number; source: string; amountUsd: number }
+    const income: Income[] = feeRows.filter(r => (r.status === 'received' || r.status === 'accrued') && r.amountUsd != null)
+      .map(r => ({ at: r.at, source: r.source, amountUsd: r.amountUsd ?? 0 }))
+    const arcRows = income.filter(r => r.source === 'arc-router' || r.source === 'arc-curve')
+    const ledgerFrom = arcRows.length ? Math.min(...arcRows.map(r => r.at)) : Infinity
+    const fw = (this.o.feeWallet ?? '').toLowerCase()
+    for (const c of book) if (c.at < ledgerFrom && c.feeUsd > 0 && c.trader.toLowerCase() !== fw) income.push({ at: c.at, source: 'arc-router', amountUsd: c.feeUsd })
+    const feeSum = (d: number | null) => round6(income.filter(r => d === null || within(r.at, d)).reduce((s, r) => s + r.amountUsd, 0))
     const bySource: Record<string, number> = {}
-    for (const r of income) bySource[r.source] = round2((bySource[r.source] ?? 0) + (r.amountUsd ?? 0))
+    for (const r of income) bySource[r.source] = round6((bySource[r.source] ?? 0) + r.amountUsd)
 
     const byKind: Record<string, number> = {}
     for (const u of users) byKind[u.kind] = (byKind[u.kind] ?? 0) + 1
@@ -273,15 +286,15 @@ export class Analytics {
       const f = series.get(day(u.firstAt)); if (f) f.newUsers++
     }
     for (const t of counted) { const r = series.get(day(t.at)); if (r) { r.trades++; r.volumeUsd += t.usd; r.tradersSet.add(t.address) } }
-    for (const f of income) { const r = series.get(day(f.at)); if (r) r.feesUsd += f.amountUsd ?? 0 }
-    const daily = [...series.values()].map(({ tradersSet, ...r }) => ({ ...r, traders: tradersSet.size, volumeUsd: round2(r.volumeUsd), feesUsd: round2(r.feesUsd) }))
+    for (const f of income) { const r = series.get(day(f.at)); if (r) r.feesUsd += f.amountUsd }
+    const daily = [...series.values()].map(({ tradersSet, ...r }) => ({ ...r, traders: tradersSet.size, volumeUsd: round2(r.volumeUsd), feesUsd: round6(r.feesUsd) }))
 
     const tops = new Map<string, { address: string; trades: number; volumeUsd: number; feesUsd: number }>()
     for (const t of counted.filter(t => t.at >= since)) {
       const x = tops.get(t.address) ?? tops.set(t.address, { address: t.address, trades: 0, volumeUsd: 0, feesUsd: 0 }).get(t.address)!
       x.trades++; x.volumeUsd += t.usd; x.feesUsd += t.feeUsd
     }
-    const topTraders = [...tops.values()].sort((a, b) => b.volumeUsd - a.volumeUsd).slice(0, 20).map(x => ({ ...x, volumeUsd: round2(x.volumeUsd), feesUsd: round2(x.feesUsd) }))
+    const topTraders = [...tops.values()].sort((a, b) => b.volumeUsd - a.volumeUsd).slice(0, 20).map(x => ({ ...x, volumeUsd: round2(x.volumeUsd), feesUsd: round6(x.feesUsd) }))
 
     return {
       at: now, days, visitors,
@@ -298,7 +311,7 @@ export class Analytics {
         volume: { total: sumUsd(counted), d1: sumUsd(d1), d7: sumUsd(d7), d30: sumUsd(d30) },
         byChain, byVenue,
       },
-      fees: { total: feeSum(null), d1: feeSum(1), d7: feeSum(7), d30: feeSum(30), bySource, reportedByTrades: round2(counted.filter(t => t.at >= since).reduce((s, t) => s + t.feeUsd, 0)) },
+      fees: { total: feeSum(null), d1: feeSum(1), d7: feeSum(7), d30: feeSum(30), bySource, reportedByTrades: round6(counted.filter(t => t.at >= since).reduce((s, t) => s + t.feeUsd, 0)) },
       funnel: { visitorsToday: visitors?.today ?? null, signedIn24h: users.filter(u => within(u.lastAt, 1)).length, traded24h: traderSet(d1) },
       checks,
       daily,

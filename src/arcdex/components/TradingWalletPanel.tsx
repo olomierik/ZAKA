@@ -10,6 +10,7 @@ import {
 import { t as T } from '../lib/i18n'
 import { useTrader } from '../lib/identity'
 import { DepositModal, WithdrawModal } from './CashModals'
+import { OtherChains } from './WalletsCard'
 import type { Page } from '../App'
 import { onBalances } from '../lib/balances'
 
@@ -138,6 +139,7 @@ export default function TradingWalletPanel({ navigate }: { navigate?: (p: Page) 
             ${balance ? Number(balance).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}
             <span style={{ fontSize: '0.65rem', fontWeight: 500, color: 'var(--text-muted)', marginLeft: 4 }}>{T("USDC")}</span>
           </div>
+          <OtherChains evm={address} sol={sol.trading ?? null} />
           <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: 10 }}>{T("Deposit USDC on Arc mainnet to this address to trade with one click from the terminal.")}</div>
           {sol.trading && (
             // Its Solana address (2026-10-04, lib/solanaWallet.ts): Solana coins bought here land there.
@@ -266,6 +268,7 @@ function SolAccountCard({ owner, address, walletName, navigate, btnStyle }: { ow
         ${cash !== null ? cash.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}
         <span style={{ fontSize: '0.65rem', fontWeight: 500, color: 'var(--text-muted)', marginLeft: 4 }}>{T('USDC on Arc')}</span>
       </div>
+      <OtherChains evm={address} sol={owner} />
       <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.5 }}>{T('Opened by your Solana wallet’s signature: no passcode, and the same wallet opens it on any device. Pay with SOL or USDC on Solana on any coin page.')}</div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
         <button onClick={() => setCashModal('deposit')} style={btnStyle}>{T('Deposit')}</button>

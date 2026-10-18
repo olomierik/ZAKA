@@ -53,7 +53,8 @@ export default function Portfolio({ navigate }: Props) {
   const [bscValue, setBscValue] = useState(0)
   // And the Hyperliquid account: futures margin, positions and predictions (components/HlHoldings.tsx, 2026-10-11).
   const [hlValue, setHlValue] = useState(0)
-  // And Ethereum and Arbitrum, read by the wallets card (components/WalletsCard.tsx, 2026-10-15).
+  // And every other chain's own coin and dollar tokens (ETH, USDG, BNB, USDT, SOL, USDC…), read by the wallets card
+  // (components/WalletsCard.tsx; Ethereum and Arbitrum from 2026-10-15, every chain from 2026-10-18).
   const [extraValue, setExtraValue] = useState(0)
   const seq = useRef(0)
 
@@ -114,7 +115,7 @@ export default function Portfolio({ navigate }: Props) {
           {rhValue > 0 && <span>{T("Robinhood Chain")}: <b className="sensitive" style={{ color: 'var(--text)' }}>{money(rhValue)}</b></span>}
           {solValue > 0 && <span>Solana: <b className="sensitive" style={{ color: 'var(--text)' }}>{money(solValue)}</b></span>}
           {bscValue > 0 && <span>{T('BNB Chain')}: <b className="sensitive" style={{ color: 'var(--text)' }}>{money(bscValue)}</b></span>}
-          {extraValue > 0 && <span>{T('Ethereum and Arbitrum')}: <b className="sensitive" style={{ color: 'var(--text)' }}>{money(extraValue)}</b></span>}
+          {extraValue > 0 && <span>{T('Gas coins and dollars on other chains')}: <b className="sensitive" style={{ color: 'var(--text)' }}>{money(extraValue)}</b></span>}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           <button className="btn-primary" style={{ flex: 1, padding: '8px 12px' }} onClick={() => setModal('deposit')}>{T("Deposit")}</button>
