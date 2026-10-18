@@ -28,6 +28,8 @@
 //
 // The write functions too (2026-10-03, when the site moved to Netlify, which serves only its files):
 //   /api/session    sign in with a wallet (ARCDEX_SESSION_SECRET)
+//   /api/onramp     card deposits through Circle's Onramp widget (CIRCLE_ONRAMP_API_KEY)
+//   /api/moonpay    card deposits through MoonPay, signed for the wallet (MOONPAY_PUBLISHABLE_KEY, MOONPAY_SECRET_KEY)
 //   /api/social     profiles, follows, theses, likes, clans, transfer notes (Supabase's secret key)
 //   /api/upload     coin logos into Supabase Storage (Supabase's secret key)
 //   /api/index-trades  the router trade indexer, after a visitor's own trade (every router: v1, the swap router in
@@ -59,6 +61,8 @@ import coinmeta from '../../../api/coinmeta'
 import session from '../../../api/session'
 import social from '../../../api/social'
 import upload from '../../../api/upload'
+import onramp from '../../../api/onramp'
+import moonpay from '../../../api/moonpay'
 import { log, errMsg } from '../log'
 import { metrics } from '../metrics'
 
@@ -235,7 +239,7 @@ export class ResponseCache {
 export interface SiteApi { handle(req: Request, url: URL): Promise<Response>; names: string[] }
 
 /** Functions that write (or act): their requests pass through as they came, and their answers are never cached. */
-const WRITES = new Set(['session', 'social', 'upload', 'index-trades'])
+const WRITES = new Set(['session', 'social', 'upload', 'index-trades', 'onramp', 'moonpay'])
 
 export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number; handlers?: Record<string, Handler>; holders?: HolderStore; indexUrl?: string | null; indexEveryMs?: number; warm?: boolean; hotTokens?: () => { token: string; createdSec?: number }[]; holdersEveryMs?: number }): SiteApi {
   let sql: SQL | null = null
@@ -253,7 +257,7 @@ export function createSiteApi(o: { databaseUrl: string | null; gtPerMin?: number
   const handlers: Record<string, Handler> = o.handlers ?? {
     argus: (r, c) => argus(r, c), gecko: (r, c) => gecko(r, c), launchpad: (r, c) => launchpad(r, c),
     radar: r => radar(r), dex: r => dex(r), holders: holdersHandler(holders), rhmarket: (r, c) => rhmarket(r, c), solmarket: (r, c) => solmarket(r, c), bscmarket: (r, c) => bscmarket(r, c), chainsearch: r => chainsearch(r), trending: () => trendingHandler(), coinmeta: r => coinmeta(r), hlleaders: r => hlleaders(r),
-    session: r => session(r), social: r => social(r), upload: r => upload(r), 'index-trades': () => indexTrades(),
+    session: r => session(r), social: r => social(r), upload: r => upload(r), 'index-trades': () => indexTrades(), onramp: r => onramp(r), moonpay: r => moonpay(r),
   }
   const cache = new ResponseCache()
   const pending = new Set<Promise<unknown>>()

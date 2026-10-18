@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import QRCode from 'qrcode'
 import { formatUnits, isAddress, parseAbi, type Address } from 'viem'
 import { client } from '../api/launchpad'
 import { socialWrite } from '../api/social'
 import CardDeposit from './CardDeposit'
+import ChainDeposit, { type DepositNet } from './ChainDeposit'
+import { useChain } from '../lib/chains'
 import { shortAddr, type Trader } from '../lib/identity'
 import { USDC, useCash, useSendToken, useSendUsdc } from '../lib/usdc'
 import { txErrorText } from '../lib/tx'
@@ -49,10 +50,10 @@ export function DepositModal({ trader, navigate, onClose, initial, welcome }: { 
   // An account opened from a Solana wallet deposits from that wallet first.
   const [mode, setMode] = useState<'crypto' | 'solana' | 'bridge' | 'card'>(initial ?? (accountOwner() ? 'solana' : 'crypto'))
   const { refresh } = useCash(trader.address)
-  const [qr, setQr] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
   const addr = trader.address
-  useEffect(() => { if (addr) void QRCode.toDataURL(addr, { margin: 1, width: 220, color: { dark: '#0b1628', light: '#ffffff' } }).then(setQr).catch(() => {}) }, [addr])
+  // Crypto opens on the network of the Trenches in view (a Solana account's on Solana): its assets pay for its coins.
+  const chain = useChain()
+  const net: DepositNet = accountOwner() ? 'sol' : chain === 'hood' ? 'hood' : chain === 'bnb' ? 'bnb' : chain === 'sol' ? 'sol' : 'arc'
 
   const opt = (m: typeof mode, title: string, sub: string, icon: string) => (
     <button onClick={() => setMode(m)} style={{ display: 'flex', gap: 12, alignItems: 'center', textAlign: 'left', padding: 12, borderRadius: 10, cursor: 'pointer', color: 'var(--text)', background: mode === m ? 'rgba(59,130,246,0.12)' : 'var(--bg-2)', border: `1px solid ${mode === m ? 'var(--adx-accent)' : 'var(--adx-card-border)'}` }}>
@@ -77,19 +78,12 @@ export function DepositModal({ trader, navigate, onClose, initial, welcome }: { 
         </div>
       ) : (
         <>
-          {opt('crypto', T('Crypto'), T('Send USDC on Arc from any wallet or exchange'), '⎘')}
+          {opt('crypto', T('Crypto'), T('USDC, ETH, USDG, BNB, USDT or SOL, on the network you trade'), '⎘')}
           {opt('solana', T('From your Solana wallet'), T('SOL or USDC on Solana, here in seconds'), '◎')}
           {mode === 'solana' && solUsdc('deposit', refresh)}
           {opt('bridge', T('From another chain'), T('Move USDC to Arc with Circle CCTP (Ethereum, Base, …)'), '⇄')}
           {opt('card', T('Card, Apple Pay, Google Pay'), T('Buy USDC straight to Arc'), '💳')}
-          {mode === 'crypto' && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, paddingTop: 4 }}>
-              {qr && <img src={qr} alt={T("Deposit address QR code")} style={{ width: 180, height: 180, borderRadius: 10 }} />}
-              <div style={{ fontFamily: 'var(--mono)', fontSize: '0.78rem', wordBreak: 'break-all', textAlign: 'center' }}>{addr}</div>
-              <button className="btn-ghost" onClick={() => { void navigator.clipboard?.writeText(addr); setCopied(true) }}>{copied ? T("Copied ✓") : T("Copy address")}</button>
-              <div style={{ fontSize: '0.72rem', color: '#fcd34d', textAlign: 'center', lineHeight: 1.5 }}>{T("Send only")}{' '}<b>{T("USDC on the Arc network")}</b>{' '}{T("to this address")}{trader.kind === 'trading-wallet' ? T(" (your one-tap trading wallet)") : ''}{T(". Other tokens or networks can be lost.")}</div>
-            </div>
-          )}
+          {mode === 'crypto' && <ChainDeposit trader={trader} initial={net} />}
           {mode === 'bridge' && <button className="btn-primary" onClick={() => { onClose(); navigate({ name: 'bridge', dir: 'in' }) }}>{T("Open Bridge")}</button>}
           {mode === 'card' && <CardDeposit trader={trader} onSettled={refresh} />}
         </>

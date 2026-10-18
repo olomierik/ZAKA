@@ -60,6 +60,11 @@ function lazyWalletConnect(params: Parameters<typeof walletConnect>[0]) {
 // browser wallets (Rabby, OKX, Phantom…) announce themselves (EIP-6963) and
 // are added automatically. The WalletConnect and Coinbase SDKs load only
 // when someone picks them — see ConnectWallet.tsx and lib/reconnect.ts.
+/** WalletConnect (Reown) project id: wagmi's WalletConnect connector and Privy's wallet list both use it, so phone
+ * wallets open from either. VITE_WC_PROJECT_ID (Netlify) is the owner's own project, with arcsense.site allowed;
+ * without it, a shared id that allows any origin. */
+export const WC_PROJECT_ID = (import.meta.env.VITE_WC_PROJECT_ID as string | undefined)?.trim() || 'e5f3a751de0ba10999179b7f1e2d557b'
+
 export const wagmiConfig = createConfig({
   // Robinhood Chain: its coins are bought from Arc and sold there (lib/across.ts).
   // BNB Chain (2026-10-05): its coins are sold and swapped there through Relay (lib/relay.ts).
@@ -76,7 +81,7 @@ export const wagmiConfig = createConfig({
     injected({ target: 'metaMask' }),
     injected({ shimDisconnect: true }),
     lazyWalletConnect({
-      projectId: (import.meta.env.VITE_WC_PROJECT_ID as string | undefined) ?? 'e5f3a751de0ba10999179b7f1e2d557b',
+      projectId: WC_PROJECT_ID,
       showQrModal: true,
       // Above ARCDEX's own sheets (1100) and modals (1200): connecting from
       // the Buy sheet on a phone used to open the wallet list behind it.

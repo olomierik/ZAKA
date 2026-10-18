@@ -133,7 +133,9 @@ const onPad = (dex: string) => poolToCoin({ ...(pools.data as any[]).find(p => p
 ok(onPad('bankr-robinhood').launchpad === 'Bankr' && onPad('pons-v2-dex').launchpad === 'Pons' && onPad('clanker-robinhood').launchpad === 'Clanker', 'a pool on a launchpad’s venue names its launchpad (Bankr, Pons’s DEX, Clanker)')
 ok(onPad('uniswap-v4-robinhood').launchpad === null && onPad('up-v3').launchpad === null && !('up-v3' in RH_LAUNCHPADS), 'a plain DEX pool names none (Uniswap, Up V3)')
 const mowRow = merged.find(r => r.symbol === 'MOW')!
-ok(!mowRow.launchpad && !mowRow.stock && !isListedRh(mowRow), 'a coin whose pools are all on plain DEXes isn’t listed (MOW, in the recorded pools)')
+ok(!mowRow.launchpad && !mowRow.stock && !isListedRh({ ...mowRow, createdAt: Date.now() - 3_600_000 }), 'a young coin whose pools are all on plain DEXes isn’t listed (MOW, an hour old)')
+const mowEst = { ...mowRow, liquidity: 60_000, marketCap: 500_000, buys24h: 40, sells24h: 30, createdAt: Date.now() - 10 * 86_400_000 }
+ok(isListedRh(mowEst) && !isListedRh({ ...mowEst, buys24h: 5, sells24h: 5 }), 'a plain-DEX coin proven by its own trading (established) is listed, as DexScreener lists it (owner, 2026-10-17)')
 const mixed = mergeCoins([onPad('uniswap-v4-robinhood'), { ...onPad('bankr-robinhood'), pool: '0xbankr', traders24h: 1, volume24h: 10 }])[0]
 ok(mixed.launchpad === 'Bankr' && isListedRh(mixed) && mixed.pool !== '0xbankr', 'one launchpad pool lists the coin, whichever pool is its busiest')
 ok(isListedRh(nvda) && nvda.stock && !nvda.launchpad, 'a stock token is listed (until the chain says it’s an impostor)')
@@ -273,7 +275,7 @@ console.log('the engine’s list (api/rhmarket.ts): every launchpad, a little at
   }) as typeof fetch
 
   const paths = rhListPaths()
-  ok(paths.length === dexes.length + 5 && dexes.every(d => paths.some(p => p.includes(`/dexes/${d}/pools`))), `a round is ${paths.length} calls, one for each of the ${dexes.length} launchpad venues`)
+  ok(paths.length === dexes.length + 6 && paths.some(p => p.includes("/trending_pools")) && dexes.every(d => paths.some(p => p.includes(`/dexes/${d}/pools`))), `a round is ${paths.length} calls, one for each of the ${dexes.length} launchpad venues`)
   let s = await advanceRh(null, RH_CALLS_PER_STEP)
   ok(s.cursor === 2 && calls.length === 2 && s.rounds === 0, 'each step reads the next two calls')
   for (let i = 0; i < 20 && s.rounds === 0; i++) s = await advanceRh(s, RH_CALLS_PER_STEP)
@@ -345,6 +347,47 @@ console.log('a Pons bonding curve’s trades (the curve is the market until the 
   ok(decodeRhSwap({ ...raw([PONS_BUY, pad(ROUTER), pad(CREATOR)], '0x' + w(1n) + w(1n)), address: '0x' + '22'.repeat(20) }, meta, () => 1) === null, 'another contract’s event isn’t this curve’s')
   const src = readFileSync(new URL('../src/arcdex/api/rhSwaps.ts', import.meta.url), 'utf8')
   ok(src.includes('topics: [[V3_SWAP, V2_SWAP, PONS_BUY, PONS_SELL]]'), 'the reader asks for the curve’s events')
+}
+
+console.log('swaps on Robinhood Chain with ETH or USDG (Relay, 2026-10-18)')
+{
+  const rhRelay = JSON.parse(readFileSync(new URL('./fixtures/relay-rh.json', import.meta.url), 'utf8'))
+  const { checkRelayQuote, EVM_NATIVE, RH_USDG, RELAY_EVM, RH_ID } = await import('../src/arcdex/lib/relayQuote')
+  ok(RH_USDG === USDG, 'USDG is the token the market list already prices at $1 (Paxos’s Global Dollar)')
+  const coin = rhRelay.coin as string
+  const base = { chain: 'robinhood' as const, side: 'swap' as const, mint: coin, evm: FEE_WALLET, sol: '', feeBps: 50 }
+  const reqs = {
+    'rh-eth': { ...base, inToken: EVM_NATIVE, outToken: coin, amount: 10n ** 15n },
+    'rh-usdg': { ...base, inToken: RH_USDG, outToken: coin, amount: 2_000_000n },
+  }
+  const qe = checkRelayQuote(reqs['rh-eth'], rhRelay['rh-eth'])
+  ok(qe.signChain === RH_ID && qe.evmTx?.approve === null && qe.evmTx?.call.to === RELAY_EVM.router && qe.evmTx.call.value === 10n ** 15n,
+    'ETH → the coin: one call to Relay’s router on Robinhood Chain with exactly the ETH, no approval')
+  const qu = checkRelayQuote(reqs['rh-usdg'], rhRelay['rh-usdg'])
+  ok(qu.evmTx?.approve?.token === RH_USDG && qu.evmTx.approve.spender === RELAY_EVM.approvalProxy && qu.evmTx.approve.amount === 2_000_000n && qu.evmTx.call.value === 0n,
+    'USDG → the coin: USDG approved for exactly the amount to Relay’s approval proxy, no native value')
+  const clone = (x: unknown) => JSON.parse(JSON.stringify(x))
+  const step = (j: any, id: string) => j.steps.find((s: any) => s.id === id).items[0].data
+  const refused = (name: keyof typeof reqs, what: string, f: (j: any) => void, want: RegExp, req: any = reqs[name]) => {
+    const j = clone(rhRelay[name]); f(j)
+    let e: unknown = null
+    try { checkRelayQuote(req, j) } catch (x) { e = x }
+    ok(e instanceof Error && want.test(e.message), `refused (${name}): ${what}`)
+  }
+  refused('rh-eth', 'paid to another address', j => { j.details.recipient = '0x1111111111111111111111111111111111111111' }, /another address|pays another/)
+  refused('rh-eth', 'more ETH than asked', j => { step(j, 'swap').value = String(2n * 10n ** 15n) }, /another amount/)
+  refused('rh-eth', 'ETH to another contract', j => { step(j, 'swap').to = '0x1111111111111111111111111111111111111111' }, /doesn’t know/)
+  refused('rh-eth', 'another chain', j => { step(j, 'swap').chainId = 56 }, /another chain/)
+  refused('rh-eth', 'another coin delivered', j => { j.details.currencyOut.currency.address = '0x2222222222222222222222222222222222222222' }, /delivers another token/)
+  refused('rh-eth', 'no fee', j => { j.fees.app.amount = '0' }, /fee isn’t ARCDEX’s/)
+  refused('rh-usdg', 'an unlimited approval', j => { const d = step(j, 'approve'); d.data = d.data.slice(0, 74) + 'f'.repeat(64) }, /exactly the amount/)
+  refused('rh-usdg', 'approved to another spender', j => { const d = step(j, 'approve'); d.data = d.data.replace(RELAY_EVM.approvalProxy.slice(2), '1111111111111111111111111111111111111111') }, /doesn’t know/)
+  refused('rh-usdg', 'instructions that don’t name the trader', j => { const d = step(j, 'swap'); d.data = d.data.split(FEE_WALLET.slice(2).toLowerCase()).join('1'.repeat(40)) }, /don’t name you/)
+  refused('rh-usdg', 'the other “USDG” on Robinhood Chain asked for', () => {}, /only ETH or USDG/, { ...reqs['rh-usdg'], inToken: '0x5fc5dc8e93bb982f633101f78d8f679b5ba6d168' })
+  refused('rh-eth', 'a buy from Arc named as Robinhood Chain (that goes through Across)', () => {}, /only swaps on Robinhood Chain/, { ...reqs['rh-eth'], side: 'buy' })
+  const { pickPay } = await import('../src/arcdex/components/RobinhoodTrade')
+  ok(pickPay(5, 10, 0.01) === 'arc' && pickPay(0.2, 10, 0.01) === 'usdg' && pickPay(0, 0.5, 0.01) === 'eth' && pickPay(0, 0, 0) === 'arc' && pickPay(null, null, null) === 'arc',
+    'Pay with, picked for the trader: USDC on Arc from $1, else USDG from $1, else ETH; Arc when nothing is held or read')
 }
 
 console.log('\nall Robinhood Chain checks passed')

@@ -1,7 +1,7 @@
 // The wallets card's Ethereum and Arbitrum balances (src/arcdex/lib/chainBalances.ts): JSON-RPC requests, the next
 // node on failure, base units kept as bigint, the dollar value, and Arc USDC's two decimals. Offline (fetch stubbed).
 //   bun scripts/test-chain-balances.ts
-import { arcUsdcSame, balanceUsd, EXTRA_CHAINS, readChainBalance } from '../src/arcdex/lib/chainBalances'
+import { arcUsdcSame, balanceUsd, EXTRA_CHAINS, EXTRA_CHAIN_LIST, readChainBalance, stableUsd } from '../src/arcdex/lib/chainBalances'
 
 let fails = 0
 const check = (ok: boolean, msg: string) => { if (!ok) fails++; console.log(ok ? '  ✓' : '  ✗', msg) }
@@ -63,10 +63,30 @@ console.log('the next node on failure')
 }
 
 console.log('dollars')
-const b = { chain: 'Ethereum' as const, native: 2_000_000_000_000_000_000n, usdc: 10_500_000n }
+const usdcTok = (raw: bigint) => ({ ...EXTRA_CHAINS.Ethereum.tokens[0], raw })
+const b = { native: 2_000_000_000_000_000_000n, tokens: [usdcTok(10_500_000n)] }
 check(balanceUsd(b, 2500) === 10.5 + 5000, '2 ETH at $2,500 plus $10.50 of USDC')
 check(balanceUsd(b, null) === 10.5, 'ETH price unknown: only the USDC counts')
-check(balanceUsd({ chain: 'Arbitrum', native: 0n, usdc: 0n }, 2500) === 0, 'nothing held: $0')
+check(balanceUsd({ native: 0n, tokens: [usdcTok(0n)] }, 2500) === 0, 'nothing held: $0')
+
+console.log('every chain the card reads (2026-10-18): its coin and dollar tokens')
+check(EXTRA_CHAIN_LIST.join() === 'Robinhood,BNB,Base,Arbitrum,Ethereum', 'Robinhood Chain, BNB Chain, Base, Arbitrum and Ethereum')
+{
+  // Robinhood Chain: ETH, Paxos's USDG and the second token named USDG, each read and counted at $1.
+  const { f, calls } = stub(c => c.method === 'eth_getBalance' ? { result: '0x' + (10n ** 15n).toString(16) }
+    : { result: '0x' + ((c.params[0] as { to: string }).to === EXTRA_CHAINS.Robinhood.tokens[0].address ? 1_000_000n : 2_500_000n).toString(16) })
+  const r = await readChainBalance('Robinhood', ME, f)
+  check(r.tokens.length === 2 && r.tokens[0].raw === 1_000_000n && r.tokens[1].raw === 2_500_000n && r.native === 10n ** 15n, 'one USDG (6 decimals), 2.5 of the other USDG and 0.001 ETH')
+  check(calls.filter(c => c.method === 'eth_call').map(c => (c.params[0] as { to: string }).to).join() === EXTRA_CHAINS.Robinhood.tokens.map(t => t.address).join(), 'both USDG contracts asked')
+  check(stableUsd(r) === 3.5 && balanceUsd(r, 2000) === 5.5, 'the dollars: $3.50 of USDG, plus the ETH at its price')
+  check(EXTRA_CHAINS.Robinhood.tokens[0].address === '0x5fc5360d0400a0fd4f2af552add042d716f1d168', 'the first USDG is Paxos’s Global Dollar, the one the trade forms take')
+}
+{
+  // BNB Chain: BNB, USDT and USDC, both with 18 decimals.
+  const { f } = stub(c => c.method === 'eth_getBalance' ? { result: '0x' + (2n * 10n ** 16n).toString(16) } : { result: '0x' + (5n * 10n ** 18n).toString(16) })
+  const r = await readChainBalance('BNB', ME, f)
+  check(EXTRA_CHAINS.BNB.native === 'BNB' && stableUsd(r) === 10 && balanceUsd(r, 600) === 22, '5 USDT and 5 USDC (18 decimals) and 0.02 BNB at $600')
+}
 
 console.log('Arc USDC: 18 decimals native, 6 as the ERC-20, the same money')
 check(arcUsdcSame(12_345_678_000_000_000_000n, 12_345_678n), 'native 12.345678 (18 decimals) is the ERC-20’s 12.345678 (6 decimals)')

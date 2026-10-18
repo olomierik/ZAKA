@@ -6,6 +6,9 @@
 // added in one tap from Arc's USDC); the USDC lands on Arc. ARCDEX's fee
 // (0.5%, SPOT_FEE_BPS in lib/platform.ts) comes out of what the trade delivers.
 //
+// Or, with ETH or USDG already on Robinhood Chain, a swap there (components/RobinhoodSwap.tsx, Relay, 2026-10-18): the
+// form picks what the wallet holds ("Pay with"), until the trader picks.
+//
 // Robinhood's stock tokens can't be bought from some countries
 // (lib/robinhood.ts STOCK_RESTRICTED): the buy side checks the visitor's
 // country and asks for their word first. Selling is never blocked.
@@ -27,6 +30,8 @@ import { acrossErrorText, runAcross, type AcrossProgress } from '../lib/across'
 import { t as T } from '../lib/i18n'
 import { useBuyRisk } from '../lib/buyRisk'
 import TradeDetails, { HOT } from './TradeDetails'
+import RobinhoodSwap, { RH_PAY_LABEL, type RhPay } from './RobinhoodSwap'
+import { RH_USDG } from '../lib/relayQuote'
 
 interface Props {
   token: string
@@ -88,6 +93,11 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
   const [eth, setEth] = useState<number | null>(null)
   const [country, setCountry] = useState<string | null | undefined>(undefined)
   const [attested, setAttested] = useState(readAttest)
+  const [usdg, setUsdg] = useState<number | null>(null)
+  // What pays: USDC on Arc (Across), or ETH or USDG on Robinhood Chain (Relay). Until the trader picks, what the wallet
+  // holds: Arc's USDC first, then USDG, then ETH (pickPay).
+  // A quick buy from the Trenches names dollars: it pays with USDC on Arc.
+  const [picked, setPicked] = useState<'arc' | RhPay | null>(initialAmount && initialAmount > 0 ? 'arc' : null)
   const busy = step === 'working'
 
   // Balances on Robinhood Chain: the coin, and ETH for gas.
@@ -95,6 +105,7 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
     if (!me) { setHolding(null); setEth(null); return }
     void rhTokenBalance(token, me, decimals ?? undefined).then(setHolding).catch(() => {})
     void rhEthBalance(me).then(b => setEth(b.amount)).catch(() => {})
+    void rhTokenBalance(RH_USDG, me, 6).then(b => setUsdg(b.amount)).catch(() => {})
   }, [me, token, decimals])
   useEffect(() => {
     refreshRh()
@@ -104,6 +115,8 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
   }, [refreshRh])
 
   useEffect(() => { if (stock && mode === 'buy') void visitorCountry().then(setCountry) }, [stock, mode])
+  // Sales default to USDC on Arc (Across): Relay often finds no route, or a mispriced one, to sell there for ETH or USDG.
+  const route = picked ?? (mode === 'buy' ? pickPay(cash, usdg, eth) : 'arc')
 
   const dec = holding?.decimals ?? decimals ?? 18
   const amountNum = Number(amount) || 0
@@ -119,10 +132,10 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
     ? cash !== null && amountNum > 0 && amountNum + reserve > cash + 1e-9
     : holding !== null && amountIn > holding.raw)
 
-  const request = useCallback((): QuoteRequest | null => (amountIn > 0n
+  const request = useCallback((): QuoteRequest | null => (amountIn > 0n && route === 'arc'
     // Without a wallet the quote is only shown: it's asked as the fee wallet, never sent.
     ? { side: mode, token, amount: amountIn, trader: me ?? FEE_WALLET, feeBps }
-    : null), [amountIn, mode, token, me, feeBps])
+    : null), [amountIn, mode, token, me, feeBps, route])
 
   // A fresh quote after typing stops, and every 20s while it's on screen (Across's quotes last ~30s).
   const seq = useRef(0)
@@ -143,7 +156,7 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
     const again = setInterval(() => { if (!document.hidden) ask() }, 20_000)
     return () => { clearTimeout(first); clearInterval(again) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [amountIn, mode, token, me, feeBps, busy])
+  }, [amountIn, mode, token, me, feeBps, busy, route])
 
   // What the trade delivers, valued at the coin's market price (its busiest
   // real pool): price impact, and everything it costs. A route through an
@@ -241,18 +254,53 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
     : quoting && !quote ? T('Getting a quote…')
     : T(mode === 'buy' ? 'Buy {symbol}' : 'Sell {symbol}', { symbol })
 
+  const modes = !side && (
+    <div className="rh-modes">
+      {(['buy', 'sell'] as const).map(m => (
+        <button key={m} className={mode === m ? `on ${m}` : ''} onClick={() => { if (!busy) { setMode(m); setAmount(''); setStep('idle'); setMsg(''); setLinks([]) } }}>
+          {m === 'buy' ? T('Buy') : T('Sell')} {symbol}
+        </button>
+      ))}
+    </div>
+  )
+  const routes = (
+    <div className="sol-routes" role="group" aria-label={mode === 'buy' ? T('Pay with') : T('Receive')}>
+      <span>{mode === 'buy' ? T('Pay with') : T('Receive')}</span>
+      {(['arc', 'eth', 'usdg'] as const).map(r => (
+        <button key={r} className={route === r ? 'on' : ''} disabled={busy} onClick={() => { setPicked(r); setAmount(''); setStep('idle'); setMsg('') }}>
+          {r === 'arc' ? T('USDC on Arc') : RH_PAY_LABEL[r]}
+        </button>
+      ))}
+    </div>
+  )
+  const stockGate = (
+    <>
+      {gate === 'blocked' && <div className="rh-msg error">{T('Stock tokens can’t be bought from your country ({c}). You can still sell any you hold.', { c: country ?? '' })}</div>}
+      {gate === 'unknown' && <div className="rh-msg error">{T('Your location couldn’t be checked, so stock tokens can’t be bought from here right now.')}</div>}
+      {gate === 'attest' && (
+        <label className="rh-tick">
+          <input type="checkbox" checked={attested} onChange={e => { setAttested(e.target.checked); writeAttest(e.target.checked) }} />
+          {T('I am not a US person, and I don’t live in the US, Canada, the UK, Switzerland, the UAE or a sanctioned country.')}
+        </label>
+      )}
+    </>
+  )
+  if (route !== 'arc') return (
+    <div className={`swap-box${side ? ` swap-side-${side}` : ''}`}>
+      {modes}
+      {routes}
+      {stockGate}
+      <RobinhoodSwap trader={trader} token={token} symbol={symbol} decimals={decimals} priceUsd={priceUsd} mode={mode} pay={route}
+        buyRisk={buyRisk} buyBlocked={buyBlocked} gateOk={gate === 'ok'} onTraded={onTraded} />
+      {noBuy && <div className="rh-msg error">{buyBlocked}</div>}
+      {!me && <button className="rh-btn" onClick={openConnectModal}>{T('Connect Wallet')}</button>}
+    </div>
+  )
+
   return (
     <div className={`swap-box${side ? ` swap-side-${side}` : ''}`}>
-      {!side && (
-        <div className="rh-modes">
-          {(['buy', 'sell'] as const).map(m => (
-            <button key={m} className={mode === m ? `on ${m}` : ''} onClick={() => { if (!busy) { setMode(m); setAmount(''); setStep('idle'); setMsg(''); setLinks([]) } }}>
-              {m === 'buy' ? T('Buy') : T('Sell')} {symbol}
-            </button>
-          ))}
-        </div>
-      )}
-
+      {modes}
+      {routes}
       <div>
         <div className="rh-field-head">
           <span>{mode === 'buy' ? T('You pay (USDC on Arc)') : T('You sell ({symbol})', { symbol })}</span>
@@ -323,14 +371,7 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
       )}
 
       {noBuy && <div className="rh-msg error">{buyBlocked}</div>}
-      {gate === 'blocked' && <div className="rh-msg error">{T('Stock tokens can’t be bought from your country ({c}). You can still sell any you hold.', { c: country ?? '' })}</div>}
-      {gate === 'unknown' && <div className="rh-msg error">{T('Your location couldn’t be checked, so stock tokens can’t be bought from here right now.')}</div>}
-      {gate === 'attest' && (
-        <label className="rh-tick">
-          <input type="checkbox" checked={attested} onChange={e => { setAttested(e.target.checked); writeAttest(e.target.checked) }} />
-          {T('I am not a US person, and I don’t live in the US, Canada, the UK, Switzerland, the UAE or a sanctioned country.')}
-        </label>
-      )}
+      {stockGate}
 
       {msg && (
         <div className={`rh-msg ${step === 'error' ? 'error' : step === 'done' ? 'done' : 'busy'}`}>
@@ -352,6 +393,15 @@ export default function RobinhoodTrade({ token, symbol, decimals, priceUsd, stoc
 
     </div>
   )
+}
+
+/** What pays when the trader hasn't picked (2026-10-18): USDC on Arc when there's $1 of it, else USDG, else ETH, held on
+ * Robinhood Chain; USDC on Arc when nothing is (or balances aren't read yet). */
+export function pickPay(cash: number | null, usdg: number | null, eth: number | null): 'arc' | RhPay {
+  if (cash !== null && cash >= 1) return 'arc'
+  if (usdg !== null && usdg >= 1) return 'usdg'
+  if (eth !== null && eth >= 0.0005) return 'eth'
+  return 'arc'
 }
 
 /** The note under the trade forms. */

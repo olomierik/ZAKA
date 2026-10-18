@@ -108,6 +108,13 @@ export function isEstablishedCoin(o: { symbol: string; liquidityUsd: number; age
     && o.marketCapUsd >= ESTABLISHED.minMarketCapUsd && o.txns24h >= ESTABLISHED.minTxns24h
 }
 
+/** The same rule for a list row on any chain (Solana, BNB Chain, Robinhood Chain), from its pool's numbers: a coin
+ * proven by its own trading is listed whether or not a launchpad made it, as DexScreener lists every pair (owner,
+ * 2026-10-17: "show all coins just like DexScreener"). */
+export function isEstablishedRow(c: { symbol: string; liquidity: number; createdAt: number; marketCap: number; buys24h: number; sells24h: number }, now = Date.now()): boolean {
+  return isEstablishedCoin({ symbol: c.symbol, liquidityUsd: c.liquidity, ageMs: c.createdAt > 0 ? now - c.createdAt : 0, marketCapUsd: c.marketCap, txns24h: c.buys24h + c.sells24h })
+}
+
 /** A market row's badge: the launchpad's name, else GeckoTerminal's name for the dex. */
 export function launchpadLabel(dexId: string, dexName = ''): string {
   return launchpadOf(dexId, dexName)?.name ?? (dexName.replace(/\s*\(arc\)\s*$/i, '').trim() || dexId)

@@ -559,6 +559,7 @@ async function main() {
         fees: feeRefs ? () => botStore.allFees() : undefined,
         chainTrades: () => (socialBookRef?.all() ?? []).map((t): ChainTrade => ({ tx: t.tx, at: t.at, trader: t.trader, usd: Number(t.usdc) / 1e6, feeUsd: Number(t.fee) / 1e6, side: t.side, token: t.token })),
         traffic: dataApi.traffic ? () => dataApi.traffic!.counts() : undefined,
+        feeWallet: FEE_RECIPIENT,
       })
       dataApi.analytics = analytics
       every(ANALYTICS.checkEveryMs, 'analytics checks', () => { void analytics.checkPending().catch(e => log.warn('analytics: checks failed', { error: errMsg(e) })) })

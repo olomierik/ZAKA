@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import TrenchRow from './TrenchRow'
 import { IcBell, IcFilter, IcMax, IcMin, IcPause, IcSparkle, IcDrop, IcFlag } from './TrIcons'
-import { filterOf, filterOn, laneKey, MAX_ROWS, passesFilter, setTrench, type LaneId, type TrenchCoin, type TrenchSettings } from '../lib/trenches'
+import { defaultSort, filterOf, filterOn, laneKey, LANE_SORTS, PAGE_ROWS, passesFilter, setTrench, sortLane, type LaneId, type LaneSort, type TrenchCoin, type TrenchSettings } from '../lib/trenches'
 import type { TChain } from '../lib/chains'
 import type { RowFlash } from './TrenchRow'
 import { beep } from '../lib/beep'
@@ -13,6 +13,9 @@ import { t as T, N_ } from '../lib/i18n'
 
 export const LANE_TITLE: Record<LaneId, string> = { new: N_('New'), near: N_('Almost bonded'), migrated: N_('Migrated') }
 const LANE_ICON: Record<LaneId, typeof IcSparkle> = { new: IcSparkle, near: IcDrop, migrated: IcFlag }
+const SORT_LABEL: Record<LaneSort, string> = { default: N_('Default order'), new: N_('Newest'), volume: N_('Volume 24h'), mcap: N_('Market cap'), trending: N_('Trending'), gainers: N_('Top gainers 24h') }
+/** The lane's own order, named for what it is. */
+const defaultLabel = (lane: LaneId) => (lane === 'near' ? N_('Bonding progress') : lane === 'new' ? N_('Newest') : N_('Default order'))
 
 interface Props {
   chain: TChain
@@ -34,7 +37,20 @@ const flashKey = (c: TrenchCoin) => (c.chain === 'sol' ? c.address : c.address.t
 
 export default function TrenchLane({ chain, lane, coins, s, flash, loading, now, collapsed, onCollapse, onOpen, onBuy, onFilter }: Props) {
   const filter = filterOf(s, chain, lane)
-  const list = useMemo(() => coins.filter(c => passesFilter(c, filter, now)).slice(0, MAX_ROWS), [coins, filter, now])
+  const sort: LaneSort = s.laneSort?.[laneKey(chain, lane)] ?? defaultSort(lane)
+  const all = useMemo(() => sortLane(coins.filter(c => passesFilter(c, filter, now)), sort), [coins, filter, now, sort])
+  // Every coin is reachable: the lane draws PAGE_ROWS at a time, and the next ones once its end scrolls into view.
+  const [limit, setLimit] = useState(PAGE_ROWS)
+  useEffect(() => { setLimit(PAGE_ROWS) }, [sort, filter, chain])
+  const list = useMemo(() => all.slice(0, limit), [all, limit])
+  const more = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = more.current
+    if (!el || all.length <= limit || typeof IntersectionObserver === 'undefined') return
+    const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) setLimit(l => l + PAGE_ROWS) }, { rootMargin: '400px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [all.length, limit])
 
   // Hover holds the order and the members; each coin's numbers still update.
   const [held, setHeld] = useState<string[] | null>(null)
@@ -65,7 +81,7 @@ export default function TrenchLane({ chain, lane, coins, s, flash, loading, now,
     return (
       <section className="tr-lane tr-lane-min" onClick={onCollapse} title={T('Show {lane}', { lane: T(LANE_TITLE[lane]) })}>
         <button className="tr-sq" aria-label={T('Show {lane}', { lane: T(LANE_TITLE[lane]) })}><IcMax /></button>
-        <span className="tr-lane-vt"><Icon /> {T(LANE_TITLE[lane])} <i>{list.length}</i></span>
+        <span className="tr-lane-vt"><Icon /> {T(LANE_TITLE[lane])} <i>{all.length}</i></span>
       </section>
     )
   }
@@ -75,7 +91,11 @@ export default function TrenchLane({ chain, lane, coins, s, flash, loading, now,
       <header className="tr-lane-h">
         <span className="tr-lane-ic"><Icon /></span>
         <b>{T(LANE_TITLE[lane])}</b>
-        <span className="tr-count">{list.length}</span>
+        <span className="tr-count">{all.length}</span>
+        <select className="tr-sort" value={sort} aria-label={T('Sort')} title={T('Sort')}
+          onChange={e => { const v = e.target.value as LaneSort; setTrench(st => ({ laneSort: { ...(st.laneSort ?? {}), [laneKey(chain, lane)]: v } })) }}>
+          {LANE_SORTS.filter(o => !(o === 'new' && lane === 'new')).map(o => <option key={o} value={o}>{T(o === 'default' ? defaultLabel(lane) : SORT_LABEL[o])}</option>)}
+        </select>
         {lane === 'near' && <button className={`tr-pctmc${s.pctMc ? ' on' : ''}`} onClick={() => setTrench({ pctMc: !s.pctMc })} title={T('Show how far each coin is along its curve instead of its market cap')}>% MC</button>}
         {held && <span className="tr-paused"><IcPause /> {T('Paused')}</span>}
         <span className="tr-grow" />
@@ -92,6 +112,11 @@ export default function TrenchLane({ chain, lane, coins, s, flash, loading, now,
         {shown.map(c => (
           <TrenchRow key={c.key} c={c} s={s} now={now} flash={flash?.get(flashKey(c))} fresh={fresh.has(c.key)} onOpen={onOpen} onBuy={onBuy} />
         ))}
+        {all.length > limit && (
+          <div ref={more} className="tr-more">
+            <button onClick={() => setLimit(l => l + PAGE_ROWS)}>{T('Show {n} more', { n: Math.min(PAGE_ROWS, all.length - limit) })}</button>
+          </div>
+        )}
       </div>
     </section>
   )

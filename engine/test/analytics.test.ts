@@ -6,6 +6,7 @@ import type { FeeRow } from '../src/fees/ledger'
 
 const A = '0x' + 'ab'.repeat(20)
 const B = '0x' + 'cd'.repeat(20)
+const C = '0x' + 'ef'.repeat(20)
 const SOLW = 'So1aNaWa11etAddre55xxxxxxxxxxxxxxxxxxxxxxx'
 const tx = (n: number) => '0x' + n.toString(16).padStart(64, '0')
 const sig = (n: number) => '5'.repeat(80) + String(n).padStart(4, '1').replace(/0/g, '2')
@@ -92,6 +93,28 @@ describe('the analytics service', () => {
     expect(st(3)).toBe('unverified')
   })
 
+  test('fees: router trades from before the ledger count from the book, not the fee wallet’s own, fractions of a cent kept', async () => {
+    const { an } = make(async () => null, {
+      feeWallet: C.toUpperCase().replace('0X', '0x'),
+      chainTrades: () => [
+        { tx: tx(11), at: NOW - 20 * DAY, trader: B, usd: 1000, feeUsd: 10, side: 'buy', token: 'x' }, // before the ledger: counted
+        { tx: tx(12), at: NOW - 19 * DAY, trader: C, usd: 300, feeUsd: 3, side: 'buy', token: 'x' }, // the fee wallet's own: not income
+        { tx: tx(13), at: NOW - 1000, trader: B, usd: 0.5, feeUsd: 0.0025, side: 'buy', token: 'x' }, // the ledger has it: once
+      ],
+      fees: async () => [
+        { at: NOW - 10 * DAY, status: 'received', amountUsd: 0.000002, source: 'arc-router' },
+        { at: NOW - 1000, status: 'received', amountUsd: 0.0025, source: 'arc-curve' },
+      ] as FeeRow[],
+    })
+    const r = await an.report(30, NOW)
+    expect(r.fees.total).toBe(10.002502)
+    expect(r.fees.d1).toBe(0.0025)
+    expect(r.fees.bySource).toEqual({ 'arc-router': 10.000002, 'arc-curve': 0.0025 })
+    // With no Arc rows in the ledger yet, every router trade's fee comes from the book.
+    const { an: none } = make(async () => null, { chainTrades: () => [{ tx: tx(14), at: NOW - 1000, trader: B, usd: 1, feeUsd: 0.005, side: 'buy', token: 'x' }], fees: async () => [] })
+    expect((await none.report(30, NOW)).fees.total).toBe(0.005)
+  })
+
   test('the report counts checked trades, router trades read from the chain once, and the ledger’s fees', async () => {
     const { store, an } = make(async () => ({ status: '0x1', from: A }), {
       chainTrades: () => [
@@ -121,9 +144,10 @@ describe('the analytics service', () => {
     expect(r.trades.d1).toBe(1)
     expect(r.traders).toMatchObject({ total: 2, d1: 1, d7: 2 })
     expect(r.trades.byChain).toEqual({ arc: { trades: 2, volumeUsd: 125 } })
-    expect(r.fees.total).toBe(1.75)
+    // The router trade from before the ledger's first Arc row (tx9) adds its fee from the trade book.
+    expect(r.fees.total).toBe(3.75)
     expect(r.fees.d1).toBe(0.5)
-    expect(r.fees.bySource).toEqual({ 'arc-router': 0.5, relay: 1.25 })
+    expect(r.fees.bySource).toEqual({ 'arc-router': 2.5, relay: 1.25 })
     expect(r.funnel).toEqual({ visitorsToday: 40, signedIn24h: 1, traded24h: 1 })
     expect(r.checks.pending).toBe(1)
     expect(r.daily).toHaveLength(31)
@@ -134,7 +158,7 @@ describe('the analytics service', () => {
     const p = await an.publicStats(30, NOW)
     expect(p.users.total).toBe(2)
     expect(p.trades.volume.total).toBe(125)
-    expect(p.fees.total).toBe(1.75)
+    expect(p.fees.total).toBe(3.75)
     expect(p.visitors).toEqual({ online: 3, today: 40, total: 900 })
     expect(p.latest[0]).toEqual({ chain: 'arc', venue: 'arc-router', side: 'buy', usd: 25, coin: expect.any(String), at: expect.any(Number) })
     const text = JSON.stringify(p).toLowerCase()

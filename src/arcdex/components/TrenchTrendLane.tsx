@@ -20,8 +20,9 @@ import { IcFire, IcMax, IcMin } from './TrIcons'
 import { t as T } from '../lib/i18n'
 
 const TCHAIN: Record<TrendChain, TChain> = { arc: 'arc', robinhood: 'hood', solana: 'sol', bsc: 'bnb' }
-/** Coins read from each chain's list, and shown. */
-export const TREND = { perChain: 30, shown: 40, refreshMs: 15_000 }
+/** Every chain, always (owner, 2026-10-17: "let Trending show coins for all chains"), and every coin the list sends:
+ * up to `perChain` from each chain are read from DexScreener (30 a call). */
+export const TREND = { perChain: 60, refreshMs: 15_000 }
 
 export interface TrendCoin {
   chain: TChain
@@ -101,10 +102,9 @@ interface Props {
 
 const pct = (n: number) => `${n > 0 ? '+' : ''}${Math.abs(n) >= 100 ? n.toFixed(0) : n.toFixed(1)}%`
 
-function TrendLane({ chain, collapsed, onCollapse, onOpen, onBuy }: Props) {
+function TrendLane({ collapsed, onCollapse, onOpen, onBuy }: Props) {
   const all = useTrending()
-  const [scope, setScope] = useState<'all' | 'chain'>('all')
-  const list = useMemo(() => (all ?? []).filter(c => scope === 'all' || c.chain === chain).slice(0, TREND.shown), [all, scope, chain])
+  const list = all ?? []
 
   if (collapsed) {
     return (
@@ -121,15 +121,13 @@ function TrendLane({ chain, collapsed, onCollapse, onOpen, onBuy }: Props) {
         <span className="tr-lane-ic"><IcFire /></span>
         <b>{T('Trending now')}</b>
         <span className="tr-grow" />
-        <div className="tr-seg" role="tablist">
-          <button role="tab" aria-selected={scope === 'all'} className={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>{T('All chains')}</button>
-          <button role="tab" aria-selected={scope === 'chain'} className={scope === 'chain' ? 'on' : ''} onClick={() => setScope('chain')}>{CHAINS[chain].short}</button>
-        </div>
+        <span className="tr-count">{list.length}</span>
+        <span className="tr-tn-all">{T('All chains')}</span>
         <button className="tr-sq tr-minb" onClick={onCollapse} title={T('Minimize')}><IcMin /></button>
       </header>
       <div className="tr-list">
         {all === null && <div className="tr-empty">{T('Loading…')}</div>}
-        {all !== null && list.length === 0 && <div className="tr-empty">{T('Nothing trending on {chain} right now.', { chain: CHAINS[chain].name })}</div>}
+        {all !== null && list.length === 0 && <div className="tr-empty">{T('Nothing trending right now.')}</div>}
         {list.map((c, i) => {
           const tx = (c.buys1h ?? 0) + (c.sells1h ?? 0)
           const share = tx > 0 ? ((c.buys1h ?? 0) / tx) * 100 : 50

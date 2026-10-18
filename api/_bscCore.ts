@@ -11,6 +11,7 @@
 
 import { createPublicClient, http, parseAbi, type Address } from 'viem'
 import { bsc } from 'viem/chains'
+import { isEstablishedRow } from './_launchpads'
 import { idAddr, isImage, markPools, num, poolFeePct, unescape, isWashPool, type GtPool, type GtPools, type GtToken, type RhCoin } from './_rhCore'
 
 export const BSC_NET = 'bsc'
@@ -123,9 +124,10 @@ export function mergeBscCoins(rows: BscCoin[]): BscCoin[] {
   return out
 }
 
-/** Launchpad coins only: four.meme's, and once its contract has answered, only those it vouches for. */
-export const listedBsc = (rows: BscCoin[], vouched?: (a: string) => boolean | undefined): BscCoin[] =>
-  rows.filter(c => c.launchpad && (vouched?.(c.address) ?? true))
+/** four.meme's coins (once its contract has answered, only those it vouches for), and coins proven by their own trading
+ * on any DEX (`isEstablishedRow`). */
+export const listedBsc = (rows: BscCoin[], vouched?: (a: string) => boolean | undefined, now = Date.now()): BscCoin[] =>
+  rows.filter(c => (c.launchpad && (vouched?.(c.address) ?? true)) || isEstablishedRow(c, now))
 
 export const isWashBsc = (c: BscCoin, now = Date.now()) => isWashPool(c, now) || (c.liquidity < 100 && c.volume24h > 50_000)
 
@@ -140,6 +142,9 @@ export function bscListPaths(): string[] {
     dex('four-meme'), dex('pancakeswap_v2'), dex('pancakeswap-v3-bsc'), dex('four-meme', '2'), dex('pancakeswap-infinity-clmm'),
     dex('pancakeswap_v2', '2'), dex('four-meme', '3'), dex('pancakeswap-v3-bsc', '2'), dex('pancakeswap_v2', '3'),
     `/networks/${BSC_NET}/new_pools?${q({})}`,
+    // BNB Chain's busiest and trending pools on every DEX, where established coins trade.
+    `/networks/${BSC_NET}/pools?${q({ sort: 'h24_volume_usd_desc', page: '1' })}`, `/networks/${BSC_NET}/trending_pools?${q({})}`,
+    `/networks/${BSC_NET}/pools?${q({ sort: 'h24_volume_usd_desc', page: '2' })}`,
   ]
 }
 

@@ -548,7 +548,7 @@ ARCDEX aims to be the social trading app for Arc. fomo.family (Solana, Base, BNB
   - **Card deposits:** Circle's Onramp Kit (`@circle-fin/onramp-kit`). Supports debit card, Apple Pay, Google Pay, and bank transfer in some regions; USDC is delivered straight to the user's wallet on Arc.
     - `api/onramp.ts` (Node runtime): `GET` returns `{enabled, sandbox}`; `POST` mints a 30-minute widget session for the signed-in wallet only.
     - UI: `components/CardDeposit.tsx`, the "Card" option in the Deposit modal.
-    - **Owner setup:** set `CIRCLE_ONRAMP_API_KEY` from the Circle Console in Vercel. Optionally set `ONRAMP_SANDBOX=1`. Card, Apple Pay and Google Pay also need KYB in the Circle Console with arcdex.online as the web URL. Until the key is set, the tab says card deposits are "being switched on".
+    - **Owner setup:** since 2026-10-18 the route runs on the engine; see "Card deposits served by the engine" below (`CIRCLE_ONRAMP_API_KEY` on Railway, KYB with arcsense.site as the web URL). Until the key is set, the tab says card deposits are "being switched on".
   - **2FA:** an optional passkey on the trading wallet (`lib/embeddedWallet.ts`, WebAuthn PRF). With it on, the AES key is HKDF(PBKDF2(passcode) ‖ PRF output), stored as a v2 blob.
     - Unlock and export ask for the passkey; turn it on or off in the Trading wallet panel.
     - Tests: `bun scripts/test-wallet-2fa.ts`.
@@ -1785,7 +1785,7 @@ Owner: "we have no users; compare us with DexScreener on platform quality and ho
   - **The 2% fee** is about twice what trading terminals charge (around 1%); Uniswap direct is only the pool's fee. Since 2026-10-15 the plan is 0.5% (D2): `setFeeBps(50)` on both Arc routers, by their owners ("Fees: 0.5% on spot").
   - **The name:** the domain is arcsense.site and the brand ARCDEX. arcdex.online now points at Netlify, so making it the primary domain (Netlify → Domain management) would match.
   - **Phone wallets:** no WalletConnect project id (cloud.reown.com), so phone wallets can't connect by QR code.
-  - **Card deposits** aren't live (Circle key).
+  - **Card deposits** need only the owner's Circle key on Railway since 2026-10-18 ("Card deposits served by the engine").
   - **Distribution:** listing in Arc's ecosystem directories, DefiLlama and on X/Telegram, where DexScreener's traffic comes from.
 - **Arc's established coins from the engine's own trades (2026-10-06, `engine/src/market/established.ts`):**
   - **Why:** GeckoTerminal answered nearly every call from the engine's IP with 429, so the Arc list's builds were cut short and its top coins came and went. In one build 17 of 19 calls failed.
@@ -2056,7 +2056,7 @@ Owner: "the coins on the spot market seem not active, holder numbers aren't corr
 ## ARCSENSE on Netlify (2026-10-03)
 
 The owner's new site, www.arcsense.site, is hosted on Netlify and serves only the app's files (`netlify.toml`): no function runs there.
-- **Data and writes come from the engine:** besides the read functions above, `/api/session`, `/api/social`, `/api/upload` and `/api/index-trades` run on the engine too (`siteApi.ts` `WRITES`: the request passes through with its headers and body, never cached). They need on Railway what they needed on Vercel: `ARCDEX_SESSION_SECRET` (sign-in), and Supabase's secret key for social writes and uploads. Without them they answer 503 and the site shows its empty states. Card deposits (`/api/onramp`) aren't served there yet: the Deposit modal says they're being switched on.
+- **Data and writes come from the engine:** besides the read functions above, `/api/session`, `/api/social`, `/api/upload` and `/api/index-trades` run on the engine too (`siteApi.ts` `WRITES`: the request passes through with its headers and body, never cached). They need on Railway what they needed on Vercel: `ARCDEX_SESSION_SECRET` (sign-in), and Supabase's secret key for social writes and uploads. Without them they answer 503 and the site shows its empty states. Card deposits (`/api/onramp`) run there too since 2026-10-18 ("Card deposits served by the engine").
 - **The engine allows ARCSENSE's domains in code** (`ARCSENSE_ORIGINS` in `engine/src/config.ts`: arcsense.site, www.arcsense.site, arcsense-app.netlify.app), whatever `WS_ALLOWED_ORIGINS` lists on Railway.
 - **Build settings** live in `netlify.toml` (Bun, `dist`, the public `VITE_*` values). `VITE_WC_PROJECT_ID` (WalletConnect) is still missing, from cloud.reown.com; without it, phone wallets by QR code aren't offered. `/api/*` is a plain 404 on Netlify, so the site's fallback fails fast.
 - **arcdex.online → www.arcsense.site (owner, 2026-10-04; until then "no redirect"):** `netlify.toml` sends `arcdex.online/*` and `www.arcdex.online/*` (http and https) to the same path on arcsense.site with a 301 (the primary domain: www.arcsense.site itself redirects there, so this saves a hop).
@@ -3221,6 +3221,25 @@ The same setting as Jito's (Settings → Trading → "🛡 Anti-MEV (Solana and 
 - **Not checked:** a real funded trade through either RPC (the owner's first).
 - **Tests:** `bun scripts/test-bsc-private.ts` (in CI, fetch stubbed): the order, the same bytes on 429, 5xx, lost connections and non-JSON answers, refusals not retried, "already known", "nonce too low" not taken as sent, every RPC out never falling back to the public node, a wrong hash refused; a viem wallet client over the transport sending only the raw transaction privately (and through the public node with the setting off); the form's three states. `--live` runs the checks above against both RPCs.
 - Every new string is in all six dictionaries (5; the setting's two strings replaced).
+
+## Every coin on every chain, Trending first (2026-10-17)
+
+Owner: "the trending panel always on the left before New; let Trending show coins for all chains; most coins don't show up on all chains, like the most successful ones: if there is a limit, remove it; show all coins just like DexScreener, based on user selection; find out why users don't trade; analytics page should be public".
+
+- **Established coins on every chain (`api/_launchpads.ts` `isEstablishedRow`):** Solana (`listedSol`), BNB Chain (`listedBsc`, and the engine's `bscmarket.ts` keeps their pools) and Robinhood Chain (`isListed`) list a coin proven by its own trading on any DEX, beside launchpad coins: Arc's `ESTABLISHED` rule ($25K liquidity, $100K market cap, 3+ days old, 25+ trades a day; never a stablecoin).
+  - This relaxes the launchpad-only rule of 2026-10-04 for proven coins on every chain, as 2026-10-05 did for Arc. The safety ratings and the listing standard still apply.
+  - The rounds read each chain's busiest and trending pools on every DEX: Solana `/pools` pages 1–3 and `/trending_pools`; BNB Chain `/pools` pages 1–2 and `/trending_pools`; Robinhood Chain `/trending_pools`. That's about 3 more minutes per full round on the engine's budget.
+  - Only four.meme's own coins are asked about on four.meme's contract.
+- **No cap on a lane (`components/TrenchLane.tsx`, `PAGE_ROWS`):** a lane draws 60 rows, and the next 60 when its end scrolls into view ("Show N more" too). It used to stop at 60 (`MAX_ROWS`).
+- **A sort on every lane (`LaneSort`, `sortLane`, `TrenchSettings.laneSort` per chain and lane):** the lane's own order (New newest, Almost bonded by progress), newest, 24h volume, market cap, trending (24h volume and trades, `api/trending.ts`'s score) or top gainers. **Migrated opens by volume** (it was youngest first), so the most traded coins lead.
+- **Trending (`components/TrenchTrendLane.tsx`):** the first lane, on the left (desktop columns, the phone's first and default tab, and the boot frame in `index.html`). Always every chain: the All chains / one chain switch is gone. Up to 240 coins (`rankTrending`'s limit was 30), 60 a chain read from DexScreener.
+- **Analytics** was asked for in the same message; it shipped first in "Analytics for everyone" (below), so this change adds none of its own.
+- **Why people don't trade:** `docs/WHY-NO-TRADERS-2026-10-17.md`. Read live: 685 visitors since 2026-10-01 (52 that day), 13 wallets ever traded through the Arc routers, under $0.01 of router fees, and the Arc routers still at 2%. The causes, most likely: no audience yet, coins people came for missing (fixed here), the 2% Arc fee, funding friction (no card on-ramp, no WalletConnect QR), and trust.
+- **Tests:**
+  - `scripts/test-trenches.ts`: sorting, the default orders, no cap.
+  - `test-solana.ts`, `test-bsc.ts`, `test-robinhood.ts`: established coins listed, young plain-DEX coins not, the new paths.
+  - `test-dex-parity.ts`: up to 240 trending coins.
+- Every new string is in all six dictionaries (5).
 
 ## Analytics for everyone (2026-10-17)
 

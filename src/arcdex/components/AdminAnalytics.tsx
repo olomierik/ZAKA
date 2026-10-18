@@ -41,7 +41,9 @@ const CHAIN_LABEL: Record<string, string> = { arc: 'Arc', robinhood: 'Robinhood 
 const STATUS_LABEL: Record<string, string> = { ok: N_('counted'), pending: N_('checking'), failed: N_('failed'), mismatch: N_('not this wallet'), unverified: N_('not checkable') }
 const short = (a: string) => (a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a)
 const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`
-const big = (n: number) => (n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e4 ? `$${(n / 1e3).toFixed(1)}K` : usd(n))
+/** Fees: fractions of a cent shown as they are (a $0.50 trade pays $0.0025), not as $0.00. */
+const fee = (n: number) => (n > 0 && n < 0.01 ? `$${n.toLocaleString(undefined, { maximumSignificantDigits: 2 })}` : usd(n))
+const big = (n: number) => (n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e4 ? `$${(n / 1e3).toFixed(1)}K` : fee(n))
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).split('\n')[0].slice(0, 220)
 
 /** Bars for one series of the daily rows (oldest left), with its total for the period. */
@@ -55,7 +57,7 @@ function DayBars({ rows, pick, title, money }: { rows: DayRow[]; pick: (r: DayRo
       <svg viewBox={`0 0 ${Math.max(1, rows.length) * 10} 60`} preserveAspectRatio="none" role="img" aria-label={title}>
         {vals.map((v, i) => (
           <rect key={rows[i].day} x={i * 10 + 1} y={60 - (v / max) * 58} width={8} height={v > 0 ? Math.max(1.5, (v / max) * 58) : 0} rx={1.5}>
-            <title>{`${rows[i].day}: ${money ? usd(v) : v}`}</title>
+            <title>{`${rows[i].day}: ${money ? fee(v) : v}`}</title>
           </rect>
         ))}
       </svg>
@@ -101,7 +103,7 @@ export default function AdminAnalytics({ pub = false }: { pub?: boolean } = {}) 
             <Kpi label={T('Traders')} value={data.traders.total.toLocaleString()} sub={T('{d1} today · {d7} in 7 days', { d1: data.traders.d1, d7: data.traders.d7 })} />
             <Kpi label={T('Volume traded')} value={big(data.trades.volume.total)} sub={T('{d1} today · {d7} in 7 days', { d1: big(data.trades.volume.d1), d7: big(data.trades.volume.d7) })} />
             <Kpi label={T('Trades')} value={data.trades.total.toLocaleString()} sub={T('{d1} today · {d7} in 7 days', { d1: data.trades.d1, d7: data.trades.d7 })} />
-            <Kpi label={T('Fees collected')} value={usd(data.fees.total)} sub={T('{d1} today · {d30} in 30 days', { d1: usd(data.fees.d1), d30: usd(data.fees.d30) })} tone="up" />
+            <Kpi label={T('Fees collected')} value={fee(data.fees.total)} sub={T('{d1} today · {d30} in 30 days', { d1: fee(data.fees.d1), d30: fee(data.fees.d30) })} tone="up" />
             <Kpi label={T('Online now')} value={String(data.visitors?.online ?? '—')} sub={T('{n} visitors today', { n: data.visitors?.today ?? '—' })} />
           </div>
 
@@ -127,7 +129,7 @@ export default function AdminAnalytics({ pub = false }: { pub?: boolean } = {}) 
             <div>
               <strong className="an-h">{T('Fees by source')}</strong>
               {sources.length === 0 && <div className="fx-fine">{T('No fees in the ledger yet.')}</div>}
-              {sources.map(([s, v]) => <div key={s} className="an-row"><span>{s}</span><b>{usd(v)}</b></div>)}
+              {sources.map(([s, v]) => <div key={s} className="an-row"><span>{s}</span><b>{fee(v)}</b></div>)}
             </div>
             <div>
               <strong className="an-h">{T('How users sign in')}</strong>
@@ -141,7 +143,7 @@ export default function AdminAnalytics({ pub = false }: { pub?: boolean } = {}) 
             <>
               <strong className="an-h">{T('Top traders')}</strong>
               <div className="an-table">
-                {data.topTraders.map(t => <div key={t.address} className="an-row"><code>{short(t.address)}</code><span>{T('{n} trades', { n: t.trades })}</span><b>{big(t.volumeUsd)}</b><span>{usd(t.feesUsd)}</span></div>)}
+                {data.topTraders.map(t => <div key={t.address} className="an-row"><code>{short(t.address)}</code><span>{T('{n} trades', { n: t.trades })}</span><b>{big(t.volumeUsd)}</b><span>{fee(t.feesUsd)}</span></div>)}
               </div>
             </>
           )}

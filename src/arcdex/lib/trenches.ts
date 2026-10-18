@@ -67,7 +67,32 @@ export interface TrenchCoin {
 
 export type LaneId = 'new' | 'near' | 'migrated'
 export const LANES: LaneId[] = ['new', 'near', 'migrated']
-export const MAX_ROWS = 60
+/** Rows a lane draws at first; scrolling to its end draws the next ones, so every coin in a lane can be reached (owner,
+ * 2026-10-17: "if there is a limit to show those coins please remove it"). */
+export const PAGE_ROWS = 60
+
+/** How a lane is ordered, the trader's choice per lane (as DexScreener's sort): its own order (`default`: New newest,
+ * Almost bonded by progress), newest, 24h volume, market cap, trending (24h volume and trades), or the 24h move. */
+export type LaneSort = 'default' | 'new' | 'volume' | 'mcap' | 'trending' | 'gainers'
+export const LANE_SORTS: LaneSort[] = ['default', 'new', 'volume', 'mcap', 'trending', 'gainers']
+/** Migrated opens by volume, so the most traded coins lead; the other lanes open in their own order. */
+export const defaultSort = (lane: LaneId): LaneSort => (lane === 'migrated' ? 'volume' : 'default')
+
+/** Trending: 24h volume, with trading activity lifting a coin (the same score as api/trending.ts). */
+const trendScore = (c: TrenchCoin) => Math.log10(1 + c.volume24h) * 2 + Math.log10(1 + c.buys24h + c.sells24h)
+
+/** A lane's coins (in laneCoins' order) in the order the trader picked. */
+export function sortLane(coins: TrenchCoin[], sort: LaneSort): TrenchCoin[] {
+  if (sort === 'default') return coins
+  const by: Record<Exclude<LaneSort, 'default'>, (a: TrenchCoin, b: TrenchCoin) => number> = {
+    new: (a, b) => b.createdAt - a.createdAt,
+    volume: (a, b) => b.volume24h - a.volume24h,
+    mcap: (a, b) => b.marketCap - a.marketCap,
+    trending: (a, b) => trendScore(b) - trendScore(a),
+    gainers: (a, b) => b.change24h - a.change24h,
+  }
+  return [...coins].sort(by[sort])
+}
 
 /** What the listing rules need to know about a coin (lib/safety.ts works each one out). */
 export interface ListingFacts {
@@ -152,6 +177,10 @@ export interface TrenchSettings {
   filters: Record<string, LaneFilter>
   /** Lanes minimized to a slim strip, per chain and lane (the smart lane is `smart`). */
   collapsed: Record<string, boolean>
+  /** Each lane's order, per chain and lane (laneKey); a lane not set uses defaultSort. */
+  laneSort: Record<string, LaneSort>
+  /** The settings' version: older saved settings are brought up to date once on load (`load`). */
+  v?: number
 }
 
 const DEFAULTS: TrenchSettings = {
@@ -171,6 +200,8 @@ const DEFAULTS: TrenchSettings = {
   laneSound: {},
   filters: {},
   collapsed: {},
+  laneSort: {},
+  v: 2,
 }
 
 const KEY = 'arcdex:trenches:v1'
@@ -181,7 +212,10 @@ function load(): TrenchSettings {
     const raw = localStorage.getItem(KEY)
     if (!raw) return DEFAULTS
     const s = JSON.parse(raw) as Partial<TrenchSettings>
-    return { ...DEFAULTS, ...s, presets: { ...DEFAULTS.presets, ...(s.presets ?? {}) } }
+    // Version 2 (owner, 2026-10-18: "make metric size LARGE by default"): every browser starts on large metrics once,
+    // whatever it saved before; Customize still switches them to small.
+    const up = (s.v ?? 1) < 2 ? { metricsLarge: true, v: 2 } : {}
+    return { ...DEFAULTS, ...s, ...up, presets: { ...DEFAULTS.presets, ...(s.presets ?? {}) } }
   } catch { return DEFAULTS }
 }
 let state: TrenchSettings = load()

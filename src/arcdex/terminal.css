@@ -94,6 +94,14 @@ html[data-adx="dark"] .tm-nav .connect-btn { color: #06110b; }
 .tr-bar::-webkit-scrollbar { display: none; }
 .tr-bar-title { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--text); flex-shrink: 0; }
 .tr-chips-row { display: flex; gap: 4px; flex-shrink: 0; }
+.tr-csel { flex-shrink: 0; }
+.tr-csel-btn { height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--adx-border); background: var(--bg-2); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.tr-csel-btn i { font-style: normal; font-size: 10px; color: var(--text-muted); }
+.tr-csel-menu { position: fixed; z-index: 1150; min-width: 190px; padding: 4px; border-radius: 10px; border: 1px solid var(--adx-border); background: var(--bg-2); box-shadow: 0 10px 30px rgba(0,0,0,0.25); display: flex; flex-direction: column; }
+.tr-csel-menu button { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 10px; border: none; border-radius: 7px; background: none; color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; text-align: left; }
+.tr-csel-menu button span { flex: 1; }
+.tr-csel-menu button.on, .tr-csel-menu button:hover { background: var(--hover); }
+.tr-csel-menu button b { color: var(--green); }
 .tr-chain { height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--adx-border); background: var(--bg-2); color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .tr-chain:hover { background: var(--hover); }
 .tr-chain.on { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
@@ -138,6 +146,10 @@ html[data-adx="dark"] .tm-nav .connect-btn { color: #06110b; }
 .tr-lane-h b { font-size: 15px; font-weight: 600; white-space: nowrap; }
 .tr-lane-ic { color: var(--text-muted); display: inline-flex; }
 .tr-count { font-size: 11.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--chip); color: var(--text-2); white-space: nowrap; }
+.tr-sort { flex: 0 1 auto; min-width: 86px; max-width: 118px; font: inherit; font-size: 11.5px; font-weight: 600; padding: 1px 4px; border-radius: 4px; border: 1px solid var(--adx-border); background: var(--chip); color: var(--text-2); cursor: pointer; }
+.tr-tn-all { font-size: 11.5px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+.tr-more { display: flex; justify-content: center; padding: 10px 0 14px; }
+.tr-more button { font: inherit; font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--adx-border); background: var(--chip); color: var(--text-2); cursor: pointer; }
 .tr-pctmc { font: inherit; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--green-line); color: var(--green-2); background: none; cursor: pointer; white-space: nowrap; }
 .tr-pctmc.on { background: var(--green-bg); }
 .tr-paused { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--amber-line); color: var(--amber); background: var(--amber-bg); white-space: nowrap; }
@@ -321,7 +333,7 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
   .tm-nav { padding: 0 8px; gap: 5px; padding-top: env(safe-area-inset-top); height: calc(50px + env(safe-area-inset-top)); }
   .tm-nav .navbar-search-wrap.open { top: calc(50px + env(safe-area-inset-top)); }
   .tr-bar { padding: 0 8px; gap: 6px; }
-  .tr-bar-title, .tr-meta, .tr-switch, .tr-live small { display: none; }
+  .tr-bar-title, .tr-meta, .tr-switch, .tr-live small, .tr-chips-row { display: none; }
   .tr-mtabs { display: flex; flex-shrink: 0; background: var(--bg-2); border-bottom: 1px solid var(--adx-border); }
   .tr-mtabs button { flex: 1; height: 38px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
   .tr-mtabs button span { font-size: 11px; padding: 0 5px; border-radius: 4px; background: var(--chip); color: var(--text-2); margin-left: 3px; }
@@ -453,6 +465,26 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
    figure is on /burn. */
 @media (max-width: 440px) { .tr-cb-burn { display: none; } .tr-cb-coin { flex-shrink: 0; } }
 @media (max-width: 359px) { .tr-cb-kv { display: none; } }
+/* Phones (2026-10-18): "Buy $ARCDEX" was cut off at the edge. The price keeps its number (no label), the change sits
+   under the price width, and Buy reads "Buy". */
+@media (max-width: 440px) {
+  .tr-coinbar { gap: 8px; }
+  .tr-cb-lbl, .tr-cb-buy .lg { display: none; }
+  .tr-cb-kv { min-width: 0; overflow: hidden; }
+  .tr-cb-buy { padding: 0 10px; }
+}
+@media (min-width: 441px) { .tr-cb-buy .sm { display: none; } }
+/* Phones: the four lane tabs on one line ("Almost bonded" wrapped), the watchlist as its star. */
+@media (max-width: 767px) {
+  .tr-mtabs button { white-space: nowrap; font-size: 12.5px; padding: 0 4px; min-width: 0; }
+  .tr-mtabs button span { margin-left: 2px; padding: 0 4px; }
+  .tr-watch .lbl { display: none; }
+  /* A row's tags and socials wrap onto more lines instead of being cut at the column's edge ("Un…", "@PeachPeopl…"). */
+  .tr-l2 { flex-wrap: wrap; row-gap: 3px; height: auto; overflow: visible; white-space: normal; }
+  .tr-soc { flex-wrap: wrap; row-gap: 4px; min-width: 0; }
+  .tr-sc { flex-shrink: 1; min-width: 0; }
+  .tr-note { font-size: 11.5px; padding: 6px 10px; }
+}
 
 .tr-meta-smart { display: inline-flex; align-items: center; gap: 4px; color: var(--green-2); }
 
@@ -489,6 +521,26 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
   .tr-lane-h b { font-size: 14px; }
   .tr-sq { width: 26px; height: 26px; }
   @media (max-width: 1360px) { .tr-row { grid-template-columns: 46px minmax(0, 1fr) 108px; padding: 8px; } .tr-tile { width: 42px; height: 42px; } }
+}
+/* Large metrics (the default, owner 2026-10-18): the numbers a trader reads first — volume, market cap, liquidity,
+   trades — clearly larger than with Small, on every screen. */
+.tr-row:not(.small) .tr-kv b { font-size: 16px; font-weight: 700; }
+.tr-row:not(.small) .tr-f b { font-size: 13px; }
+.tr-row:not(.small) .tr-kv i, .tr-row:not(.small) .tr-f i { font-size: 11.5px; }
+.tr-row:not(.small) .tr-tk { font-size: 15px; }
+/* Each label stays with its number; with Large, market cap sits under volume, so the bigger numbers never run over the
+   coin's name. */
+.tr-kv { column-gap: 8px; }
+.tr-kvp { display: inline-flex; align-items: baseline; gap: 4px; }
+.tr-kvp b { margin-right: 0 !important; }
+.tr-row:not(.small) .tr-kv { flex-direction: column; align-items: flex-end; row-gap: 1px; }
+.tr-row:not(.small) .tr-rgt { gap: 2px; }
+@media (min-width: 768px) {
+  .tr-row:not(.small) { grid-template-columns: 50px minmax(0, 1fr) 118px; grid-template-rows: minmax(46px, auto) auto auto; }
+}
+@media (max-width: 767px) {
+  .tr-row:not(.small) .tr-kv b { font-size: 15px; }
+  .tr-row:not(.small) .tr-f b { font-size: 12.5px; }
 }
 
 /* Every trade blinks its row (a coloured edge, then the fade) and floats its dollars up. */
@@ -709,7 +761,7 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
 .tr-rp.warn { color: var(--amber); }
 
 /* Trending now: the fourth lane (2026-10-17). */
-.tr-tn { display: grid; grid-template-columns: 18px 42px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.tr-tn { display: grid; grid-template-columns: 18px 42px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--adx-border); cursor: pointer; }
 .tr-tn:hover { background: var(--hover); }
 .tr-tn-rank { font-size: 11px; font-weight: 700; color: var(--text-muted); text-align: right; font-variant-numeric: tabular-nums; }
 .tr-tn .tr-sm-pic { position: relative; }

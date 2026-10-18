@@ -246,7 +246,7 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
   const info = CHAINS[chain]
   const [customize, setCustomize] = useState(false)
   const [filterLane, setFilterLane] = useState<LaneId | null>(null)
-  const [mLane, setMLane] = useState<MLane>('new')
+  const [mLane, setMLane] = useState<MLane>('smart')
   const [buyFor, setBuyFor] = useState<{ page: Page; symbol: string; anchor: HTMLElement } | null>(null)
 
   const watch = usePrefs().watchlist
@@ -275,7 +275,7 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
   const native = info.nativeHl ? mids[info.nativeHl] : null
   const coll = (l: MLane) => isCollapsed(s, chain, l)
   // Minimized lanes take a slim strip; the Trending lane is a little narrower than the coin lanes.
-  const columns = [...LANES.map(l => (coll(l) ? '44px' : 'minmax(0, 1fr)')), coll('smart') ? '44px' : 'minmax(240px, 0.72fr)'].join(' ')
+  const columns = [coll('smart') ? '44px' : 'minmax(240px, 0.72fr)', ...LANES.map(l => (coll(l) ? '44px' : 'minmax(0, 1fr)'))].join(' ')
   const perMin = data.perMin ?? (feed.on ? feed.perMin : undefined)
 
   return (
@@ -283,6 +283,8 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
       <TrenchCoinBar navigate={navigate} />
       <div className="tr-bar">
         <span className="tr-bar-title"><IcSliders /> {T('Trenches')}</span>
+        {/* Phones: the chains in a dropdown (owner, 2026-10-18); the chips didn't fit beside the rest. */}
+        {mobile && <ChainSelect chain={chain} onPick={c => navigate(trenchesPage(c))} />}
         <div className="tr-chips-row">
           {CHAIN_LIST.map(c => (
             <button key={c} className={`tr-chain${c === chain ? ' on' : ''}`} onClick={() => navigate(trenchesPage(c))}>
@@ -298,7 +300,7 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
         <div className="tr-seg" role="group" aria-label={T('Window')} title={T('Volume, trades and the buy/sell bar over the last hour or day')}>
           {(['1h', '24h'] as const).map(w => <button key={w} className={s.window === w ? 'on' : ''} onClick={() => setTrench({ window: w })}>{w}</button>)}
         </div>
-        <button className={`tr-watch${s.watchOnly ? ' on' : ''}`} onClick={() => setTrench({ watchOnly: !s.watchOnly })} title={T('Only the coins on your watchlist')}><IcStar on={s.watchOnly} /> {T('Watchlist')}</button>
+        <button className={`tr-watch${s.watchOnly ? ' on' : ''}`} onClick={() => setTrench({ watchOnly: !s.watchOnly })} title={T('Only the coins on your watchlist')}><IcStar on={s.watchOnly} /> <span className="lbl">{T('Watchlist')}</span></button>
         <span className="tr-grow" />
         <span className={`tr-live${data.live ? ' on' : ''}`}><i />{data.live ? T('Live') : T('Connecting…')}{perMin ? <small> · {T('{n} trades/min', { n: perMin })}</small> : null}</span>
         {head && <span className="tr-meta">{chain === 'sol' ? T('Slot') : T('Block')} <b>{head.head.toLocaleString()}</b></span>}
@@ -319,27 +321,28 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
 
       {mobile && (
         <div className="tr-mtabs" role="tablist">
-          {LANES.map(l => (
-            <button key={l} role="tab" aria-selected={mLane === l} className={mLane === l ? 'on' : ''} onClick={() => setMLane(l)}>
-              {T(LANE_TITLE[l])} <span>{lanes[l].length}</span>
-            </button>
-          ))}
           <button role="tab" aria-selected={mLane === 'smart'} className={mLane === 'smart' ? 'on' : ''} onClick={() => setMLane('smart')}>
             {T('Trending')}
           </button>
+          {LANES.map(l => (
+            <button key={l} role="tab" aria-selected={mLane === l} className={mLane === l ? 'on' : ''} onClick={() => setMLane(l)}>
+              {T(l === 'near' && mobile ? 'Bonding' : LANE_TITLE[l])} <span>{lanes[l].length}</span>
+            </button>
+          ))}
         </div>
       )}
 
       <div className="tr-lanes" style={mobile ? undefined : { ['--tr-cols' as string]: columns }}>
+        {/* Trending leads, on the left, before New (owner, 2026-10-17). */}
+        {(!mobile || mLane === 'smart') && (
+          <TrenchTrendLane chain={chain} collapsed={!mobile && coll('smart')} onCollapse={() => toggleCollapsed(chain, 'smart')}
+            onOpen={navigate} onBuy={navigate} />
+        )}
         {(mobile ? (mLane === 'smart' ? [] : [mLane]) : LANES).map(l => (
           <TrenchLane key={l} chain={chain} lane={l} coins={lanes[l]} s={s} flash={data.flash} loading={data.loading} now={now}
             collapsed={!mobile && coll(l)} onCollapse={() => toggleCollapsed(chain, l)}
             onOpen={open} onBuy={askBuy} onFilter={setFilterLane} />
         ))}
-        {(!mobile || mLane === 'smart') && (
-          <TrenchTrendLane chain={chain} collapsed={!mobile && coll('smart')} onCollapse={() => toggleCollapsed(chain, 'smart')}
-            onOpen={navigate} onBuy={navigate} />
-        )}
       </div>
 
       {buyFor && (
@@ -349,6 +352,36 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
       )}
       {customize && <CustomizeModal onClose={() => setCustomize(false)} />}
       {filterLane && <FilterModal chain={chain} lane={filterLane} launchpads={launchpads} onClose={() => setFilterLane(null)} />}
+    </div>
+  )
+}
+
+/** The chain picker on phones: the current chain as a button, the others in a menu under it. */
+function ChainSelect({ chain, onPick }: { chain: TChain; onPick: (c: TChain) => void }) {
+  const [open, setOpen] = useState<{ top: number; left: number } | null>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(null)
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('resize', close)
+    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('resize', close) }
+  }, [open])
+  return (
+    <div className="tr-csel" onPointerDown={e => e.stopPropagation()}>
+      <button className="tr-csel-btn" aria-haspopup="listbox" aria-expanded={!!open}
+        onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setOpen(o => (o ? null : { top: r.bottom + 4, left: r.left })) }}>
+        <ChainLogo chain={chain} size={16} /><span>{CHAINS[chain].name}</span><i aria-hidden>▾</i>
+      </button>
+      {open && (
+        // Fixed, so the bar's sideways scroll doesn't clip it.
+        <div className="tr-csel-menu" role="listbox" aria-label={T('Chain')} style={{ top: open.top, left: open.left }}>
+          {CHAIN_LIST.map(c => (
+            <button key={c} role="option" aria-selected={c === chain} className={c === chain ? 'on' : ''} onClick={() => { setOpen(null); if (c !== chain) onPick(c) }}>
+              <ChainLogo chain={c} size={18} /><span>{CHAINS[c].name}</span>{c === chain && <b aria-hidden>✓</b>}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

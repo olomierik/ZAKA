@@ -32,17 +32,17 @@ check(boot('/', { blocked: true })['data-adx'] === 'light', 'storage blocked: li
 for (const p of ['/app', '/markets', '/trenches', '/arc', '/launchpad', '/robinhood', '/solana', '/bnb', '/bsc', '/solana/']) {
   check(boot(p)['data-boot'] === 'tr', `${p}: the Trenches frame`)
 }
-// / is the landing page for a first visit, the Trenches for a trader who signed in here before (lib/returning.ts).
+// / is always the landing page, a returning trader's too (owner, 2026-10-18; lib/returning.ts).
 check(boot('/')['data-boot'] === 'ld' && boot('/about')['data-boot'] === 'ld' && boot('/about', { returning: true })['data-boot'] === 'ld', '/ and /about: the landing page, no app frame')
-check(boot('/', { returning: true })['data-boot'] === 'tr', '/ for a returning trader: the Trenches frame')
+check(boot('/', { returning: true })['data-boot'] === 'ld', '/ for a returning trader: the landing page too')
 check(boot('/', { blocked: true })['data-boot'] === 'ld', 'storage blocked: the landing page')
 check(html.includes('html[data-boot=ld] .bt{display:none}'), 'the landing page hides the app frame')
-check(src('src/arcdex/lib/returning.ts').includes("RETURNING_KEY = 'arcdex:returning'") && script.includes('"arcdex:returning"'), 'the same key as lib/returning.ts')
+check(!script.includes('arcdex:returning'), 'the shell doesn’t route on having signed in before')
 for (const p of ['/portfolio', '/futures', '/token/0x4b93446882d29e094181b2fae14b126577a2676c', '/solana/token/So11111111111111111111111111111111111111112', '/robinhood/token/0x0000000000000000000000000000000000000001', '/bnb/token/0x0000000000000000000000000000000000000001', '/predict', '/admin']) {
   check(!('data-boot' in boot(p)), `${p}: the top bar only`)
 }
 check(boot('/robinhood')['data-boot-c'] === 'hood' && boot('/solana')['data-boot-c'] === 'sol' && boot('/bsc')['data-boot-c'] === 'bnb' && boot('/arc', { chain: 'sol' })['data-boot-c'] === 'arc', 'a chain’s own path marks its chain')
-check(boot('/', { chain: 'sol', returning: true })['data-boot-c'] === 'sol' && boot('/app', { chain: 'hood' })['data-boot-c'] === 'hood', '/ marks the chain picked last (lib/chains.ts)')
+check(boot('/trenches', { chain: 'sol' })['data-boot-c'] === 'sol' && boot('/app', { chain: 'hood' })['data-boot-c'] === 'hood', '/trenches marks the chain picked last (lib/chains.ts)')
 check(boot('/trenches', { chain: 'evil' })['data-boot-c'] === 'arc' && boot('/trenches')['data-boot-c'] === 'arc', '…else Arc')
 check('data-boot-en' in boot('/') && 'data-boot-en' in boot('/', { navLang: 'ja-JP' }), 'English labels for English readers, and for languages the app doesn’t have')
 check(!('data-boot-en' in boot('/', { lang: 'fr' })) && !('data-boot-en' in boot('/', { navLang: 'sw-TZ' })) && 'data-boot-en' in boot('/', { lang: 'en', navLang: 'de-DE' }), 'no English labels when the app will be in another language (stored, else the browser’s)')

@@ -18,7 +18,7 @@ COPY api/_arcLogs.ts api/_arcSwaps.ts api/_curves.ts api/_marketProtocol.ts api/
 # The site's read functions it serves instead of Vercel (engine/src/site/siteApi.ts, 2026-10-02).
 COPY api/_argusBonded.ts api/_argusCore.ts api/_curveIndex.ts api/_curvesRoute.ts api/_geckoterminal.ts api/_holdersCore.ts api/_launchpadCore.ts api/_launchpads.ts api/argus.ts api/dex.ts api/gecko.ts api/holders.ts api/index-trades.ts api/launchpad.ts api/radar.ts api/_rhCore.ts api/rhmarket.ts api/_solCore.ts api/solmarket.ts api/_bscCore.ts api/bscmarket.ts api/chainsearch.ts api/trending.ts api/coinmeta.ts api/hlleaders.ts ./api/
 # Its write functions too (2026-10-03, the site on Netlify serves only its files).
-COPY api/_session.ts api/session.ts api/social.ts api/upload.ts ./api/
+COPY api/_session.ts api/session.ts api/social.ts api/upload.ts api/onramp.ts api/moonpay.ts ./api/
 COPY engine/src ./engine/src
 
 ENV NODE_ENV=production PORT=8080
