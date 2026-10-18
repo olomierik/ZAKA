@@ -82,7 +82,9 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
   // The coin's safety rating, right above Buy (lib/buyRisk.tsx): a Danger coin waits for a tick.
   const buyRisk = useBuyRisk(mode === 'buy')
   const [picked, setPicked] = useState<Route | null>(initialRoute ?? null)
-  const route: Route = curve ? curveRoute : picked ?? 'arc'
+  const [autoRoute, setAutoRoute] = useState<Route>('arc')
+  // A graduated coin pays, until the trader picks, with what the wallet holds (2026-10-18, pickBscPay).
+  const route: Route = curve ? curveRoute : picked ?? autoRoute
   const [amount, setAmount] = useState(initialAmount && initialAmount > 0 && initialRoute && (curve ? curveRoute === initialRoute : true) ? String(initialAmount) : '')
   const [quote, setQuote] = useState<RelayQuote | null>(null)
   const [fq, setFq] = useState<FourQuote | null>(null)
@@ -119,6 +121,11 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
     const off = onBalances(refreshBsc)
     return () => { clearInterval(id); off() }
   }, [refreshBsc])
+
+  useEffect(() => { setAutoRoute(pickBscPay(cash, usdt?.amount ?? null, bnb)) }, [cash, usdt, bnb])
+  // A route picked for the trader changes what the amount means (dollars or BNB): it starts over.
+  const lastRoute = useRef(route)
+  useEffect(() => { if (lastRoute.current !== route) { lastRoute.current = route; if (!picked) setAmount('') } }, [route, picked])
 
   const dec = holding?.decimals ?? decimals ?? 18
   const amountNum = Number(amount) || 0
@@ -392,6 +399,15 @@ export default function BscTrade({ token, symbol, decimals, priceUsd, four, side
 
 /** The note under the trade forms. */
 export const BSC_NOTE = () => T('Graduated coins trade through Relay with USDC on Arc, BNB or USDT; coins still on four.meme’s curve trade on four.meme’s own contract. Every trade is checked and simulated before it’s sent, and approvals are for the exact amount.')
+
+/** What pays when the trader hasn't picked (2026-10-18): USDC on Arc while there's $1 of it, else USDT, else BNB, held
+ * on BNB Chain; USDC on Arc when nothing is (or balances aren't read yet). */
+export function pickBscPay(cash: number | null, usdt: number | null, bnb: number | null): Route {
+  if (cash !== null && cash >= 1) return 'arc'
+  if (usdt !== null && usdt >= 1) return 'usdt'
+  if (bnb !== null && bnb >= 0.002) return 'bnb'
+  return 'arc'
+}
 
 function Row({ label, value, color, sub }: { label: string; value: string; color?: string; sub?: string }) {
   return (

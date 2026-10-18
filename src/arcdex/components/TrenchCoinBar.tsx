@@ -22,13 +22,13 @@ export default function TrenchCoinBar({ navigate }: { navigate: (p: Page) => voi
       <button className="tr-cb-ca" onClick={copy} title={T('Copy the contract address')}>
         <i>CA</i><code>{COIN}</code><code className="sh">{COIN.slice(0, 6)}…{COIN.slice(-4)}</code><span>{copied ? T('Copied') : <IcCopy />}</span>
       </button>
-      <span className="tr-cb-kv">{T('Price')} <b>{fmtSmallUsd(q?.priceUsd)}</b>{q?.change24h != null && <em className={q.change24h >= 0 ? 'up' : 'down'}>{fmtPct(q.change24h)}</em>}</span>
+      <span className="tr-cb-kv"><span className="tr-cb-lbl">{T('Price')}</span> <b>{fmtSmallUsd(q?.priceUsd)}</b>{q?.change24h != null && <em className={q.change24h >= 0 ? 'up' : 'down'}>{fmtPct(q.change24h)}</em>}</span>
       <span className="tr-cb-kv hide-sm">MC <b>{fmtCompactUsd(q?.marketCapUsd)}</b></span>
       <span className="tr-cb-kv tr-cb-burn" title={T('$ARCDEX held by the dead address 0x…dEaD, read from Arc: gone for good.')}>
         <IcFire /> {T('Burned')} <b>{burned ? tokens(burned.total) : '…'}</b>{burned && <em>{T('{p}% of supply', { p: burned.pct.toFixed(2) })}</em>}
         {burned && <span className="tr-cb-meter" aria-hidden><i style={{ width: `${Math.min(100, (burned.total / COIN_SUPPLY) * 100)}%` }} /></span>}
       </span>
-      <button className="tr-cb-buy" onClick={open}>{T('Buy $ARCDEX')}</button>
+      <button className="tr-cb-buy" onClick={open}><span className="lg">{T('Buy $ARCDEX')}</span><span className="sm">{T('Buy')}</span></button>
     </div>
   )
 }

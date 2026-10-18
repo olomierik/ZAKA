@@ -84,10 +84,7 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
   const buyRisk = useBuyRisk(mode === 'buy')
   const signer = solSignerOf(sol, trader.kind)
   const solAddr = signer === 'trading' ? sol.trading : signer === 'external' ? sol.external?.address ?? null : null
-  // A Solana wallet app trades with its own SOL by default (2026-10-05: its users had no way to buy without an Arc
-  // wallet); the trading wallet with USDC on Arc.
   const [picked, setPicked] = useState<Route | null>(initialRoute ?? null)
-  const route: Route = picked ?? (signer === 'external' || !me ? 'sol' : 'arc')
   const [amount, setAmount] = useState(initialAmount && initialAmount > 0 && initialRoute ? String(initialAmount) : '')
   const [quote, setQuote] = useState<SolSwapQuote | null>(null)
   const [quoting, setQuoting] = useState(false)
@@ -103,6 +100,12 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
   const [usdcSol, setUsdcSol] = useState<SolHolding | null>(null)
   const [solBal, setSolBal] = useState<number | null>(null)
   const [solPrice, setSolPrice] = useState(0)
+  // Until the trader picks, what the wallet holds (2026-10-18, pickSolPay): a Solana wallet app trades with its own SOL
+  // or USDC (2026-10-05: its users had no way to buy without an Arc wallet), the trading wallet with USDC on Arc.
+  const route: Route = picked ?? pickSolPay(signer === 'external' || !me, cash, usdcSol?.amount ?? null, solBal)
+  // A route picked for the trader changes what the amount means (dollars or SOL): it starts over.
+  const lastRoute = useRef(route)
+  useEffect(() => { if (lastRoute.current !== route) { lastRoute.current = route; if (!picked) setAmount('') } }, [route, picked])
   const busy = step === 'working'
 
   // SOL's dollar price, asked again every 30s until GeckoTerminal answers.
@@ -443,6 +446,19 @@ export default function SolanaTrade({ mint, symbol, decimals, priceUsd, side, in
       {solAddr && !compact && <SolanaWalletBar solBal={solBal} />}
     </div>
   )
+}
+
+/** What pays when the trader hasn't picked (2026-10-18): a Solana wallet app pays with its USDC when it holds $1 of it
+ * and no SOL to speak of, else SOL; the trading wallet pays with USDC on Arc while it has $1 there, else with what its
+ * Solana address holds (USDC, then SOL). */
+export function pickSolPay(appWallet: boolean, cash: number | null, usdc: number | null, sol: number | null): Route {
+  const hasSol = sol !== null && sol >= 0.002
+  const hasUsdc = usdc !== null && usdc >= 1
+  if (appWallet) return hasUsdc && !hasSol ? 'usdc' : 'sol'
+  if (cash !== null && cash >= 1) return 'arc'
+  if (hasUsdc) return 'usdc'
+  if (hasSol) return 'sol'
+  return 'arc'
 }
 
 /** Which Solana wallet trades: the one picked, else the trading wallet's when the trading wallet trades, else the app's. */

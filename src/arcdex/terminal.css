@@ -94,6 +94,14 @@ html[data-adx="dark"] .tm-nav .connect-btn { color: #06110b; }
 .tr-bar::-webkit-scrollbar { display: none; }
 .tr-bar-title { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--text); flex-shrink: 0; }
 .tr-chips-row { display: flex; gap: 4px; flex-shrink: 0; }
+.tr-csel { flex-shrink: 0; }
+.tr-csel-btn { height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--adx-border); background: var(--bg-2); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.tr-csel-btn i { font-style: normal; font-size: 10px; color: var(--text-muted); }
+.tr-csel-menu { position: fixed; z-index: 1150; min-width: 190px; padding: 4px; border-radius: 10px; border: 1px solid var(--adx-border); background: var(--bg-2); box-shadow: 0 10px 30px rgba(0,0,0,0.25); display: flex; flex-direction: column; }
+.tr-csel-menu button { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 10px; border: none; border-radius: 7px; background: none; color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; text-align: left; }
+.tr-csel-menu button span { flex: 1; }
+.tr-csel-menu button.on, .tr-csel-menu button:hover { background: var(--hover); }
+.tr-csel-menu button b { color: var(--green); }
 .tr-chain { height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--adx-border); background: var(--bg-2); color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .tr-chain:hover { background: var(--hover); }
 .tr-chain.on { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
@@ -325,7 +333,7 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
   .tm-nav { padding: 0 8px; gap: 5px; padding-top: env(safe-area-inset-top); height: calc(50px + env(safe-area-inset-top)); }
   .tm-nav .navbar-search-wrap.open { top: calc(50px + env(safe-area-inset-top)); }
   .tr-bar { padding: 0 8px; gap: 6px; }
-  .tr-bar-title, .tr-meta, .tr-switch, .tr-live small { display: none; }
+  .tr-bar-title, .tr-meta, .tr-switch, .tr-live small, .tr-chips-row { display: none; }
   .tr-mtabs { display: flex; flex-shrink: 0; background: var(--bg-2); border-bottom: 1px solid var(--adx-border); }
   .tr-mtabs button { flex: 1; height: 38px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
   .tr-mtabs button span { font-size: 11px; padding: 0 5px; border-radius: 4px; background: var(--chip); color: var(--text-2); margin-left: 3px; }
@@ -457,6 +465,26 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
    figure is on /burn. */
 @media (max-width: 440px) { .tr-cb-burn { display: none; } .tr-cb-coin { flex-shrink: 0; } }
 @media (max-width: 359px) { .tr-cb-kv { display: none; } }
+/* Phones (2026-10-18): "Buy $ARCDEX" was cut off at the edge. The price keeps its number (no label), the change sits
+   under the price width, and Buy reads "Buy". */
+@media (max-width: 440px) {
+  .tr-coinbar { gap: 8px; }
+  .tr-cb-lbl, .tr-cb-buy .lg { display: none; }
+  .tr-cb-kv { min-width: 0; overflow: hidden; }
+  .tr-cb-buy { padding: 0 10px; }
+}
+@media (min-width: 441px) { .tr-cb-buy .sm { display: none; } }
+/* Phones: the four lane tabs on one line ("Almost bonded" wrapped), the watchlist as its star. */
+@media (max-width: 767px) {
+  .tr-mtabs button { white-space: nowrap; font-size: 12.5px; padding: 0 4px; min-width: 0; }
+  .tr-mtabs button span { margin-left: 2px; padding: 0 4px; }
+  .tr-watch .lbl { display: none; }
+  /* A row's tags and socials wrap onto more lines instead of being cut at the column's edge ("Un…", "@PeachPeopl…"). */
+  .tr-l2 { flex-wrap: wrap; row-gap: 3px; height: auto; overflow: visible; white-space: normal; }
+  .tr-soc { flex-wrap: wrap; row-gap: 4px; min-width: 0; }
+  .tr-sc { flex-shrink: 1; min-width: 0; }
+  .tr-note { font-size: 11.5px; padding: 6px 10px; }
+}
 
 .tr-meta-smart { display: inline-flex; align-items: center; gap: 4px; color: var(--green-2); }
 

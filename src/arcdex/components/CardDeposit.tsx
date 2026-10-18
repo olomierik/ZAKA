@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { moonpayStatus, onrampStatus, startCardDeposit, startMoonpay } from '../api/social'
+import { moonpayStatus, onrampStatus, signMoonpay, startCardDeposit, startMoonpay, type MoonpayStatus } from '../api/social'
 import type { Trader } from '../lib/identity'
 import { t as T, N_ } from '../lib/i18n'
 
 // Buy USDC on Arc with a card. Two checkouts, both delivering straight to this wallet on Arc:
-// - MoonPay (api/moonpay.ts, 2026-10-18): Visa or Mastercard, in its own window, in the countries MoonPay serves
-//   (Tanzania among them, where Circle's partner offers no payment method). The engine signs the URL for this wallet.
+// - MoonPay (api/moonpay.ts, 2026-10-18): Visa or Mastercard, in the countries MoonPay serves (Tanzania among them,
+//   where Circle's partner offers no payment method). Its SDK (@moonpay/moonpay-js) opens the checkout over the page;
+//   the engine signs it for this wallet. Where the SDK can't load, the engine's signed URL opens in a new window.
 // - Circle's Onramp widget, embedded (api/onramp.ts): debit card, Apple Pay, Google Pay, bank transfer in some regions.
 // KYC and payment happen with the provider; ARCDEX never sees card details.
 
@@ -24,36 +25,67 @@ export default function CardDeposit({ trader, onSettled }: { trader: Trader; onS
   const [stage, setStage] = useState<Stage>('checking')
   const [sandbox, setSandbox] = useState(false)
   const [circleOn, setCircleOn] = useState(false)
-  const [mp, setMp] = useState<{ enabled: boolean; sandbox: boolean } | null>(null)
+  const [mp, setMp] = useState<MoonpayStatus | null>(null)
   const [mpBusy, setMpBusy] = useState(false)
   const [mpMsg, setMpMsg] = useState<{ text: string; url?: string; err?: boolean } | null>(null)
   const [msg, setMsg] = useState('')
   const box = useRef<HTMLDivElement>(null)
   const widget = useRef<{ close: () => void } | null>(null)
+  const mpSdk = useRef<{ close: () => void } | null>(null)
 
   useEffect(() => {
     void Promise.all([onrampStatus(), moonpayStatus()]).then(([c, m]) => {
       setSandbox(c.sandbox); setCircleOn(c.enabled); setMp(m)
       setStage(c.enabled || m.enabled ? 'ready' : 'off')
     })
-    return () => { widget.current?.close(); widget.current = null }
+    return () => { widget.current?.close(); widget.current = null; mpSdk.current?.close(); mpSdk.current = null }
   }, [])
 
+  /** MoonPay's checkout over the page (its SDK), signed by the engine for this wallet. False when the SDK can't be
+   * used here (not loaded, no key), so the caller falls back to the signed URL. */
+  async function openMpOverlay(): Promise<boolean> {
+    if (!mp?.apiKey || !trader.address) return false
+    const { loadMoonPay } = await import('@moonpay/moonpay-js')
+    const init = await loadMoonPay().catch(() => undefined)
+    if (!init) return false
+    const sdk = init({
+      flow: 'buy',
+      environment: mp.sandbox ? 'sandbox' : 'production',
+      variant: 'overlay',
+      params: { apiKey: mp.apiKey, currencyCode: mp.currency ?? 'usdc_arc', walletAddress: trader.address, baseCurrencyCode: 'usd' },
+      handlers: {
+        onTransactionCompleted: async () => {
+          setMpMsg({ text: T('Payment received — your USDC is on its way to Arc.') })
+          onSettled()
+        },
+      },
+    })
+    if (!sdk) return false
+    const { signature } = await signMoonpay(trader, sdk.generateUrlForSigning())
+    sdk.updateSignature(signature)
+    mpSdk.current?.close()
+    mpSdk.current = sdk
+    sdk.show()
+    return true
+  }
+
   async function startMp() {
-    // Opened now, in the click, so the browser doesn't block it; pointed at MoonPay once the engine has signed the URL.
-    const w = window.open('', '_blank')
     setMpBusy(true); setMpMsg(null)
     try {
-      const { url } = await startMoonpay(trader)
-      if (w && !w.closed) {
-        w.opener = null
-        w.location.href = url
-        setMpMsg({ text: T('MoonPay opened in a new window. Your USDC arrives in this wallet on Arc once the payment clears, usually within minutes.'), url })
-      } else {
-        setMpMsg({ text: T('Your browser blocked the new window. Open MoonPay here:'), url })
+      if (await openMpOverlay().catch(() => false)) {
+        setMpMsg({ text: T('MoonPay is open. Your USDC arrives in this wallet on Arc once the payment clears, usually within minutes.') })
+        return
       }
+      // Without the SDK: the engine's signed URL, in a new tab. The tab can't be opened before the click's await, so
+      // where the browser blocks it a link is shown instead.
+      const { url } = await startMoonpay(trader)
+      // (Not 'noopener': with it window.open returns null, which reads as blocked.)
+      const w = window.open(url, '_blank')
+      if (w) w.opener = null
+      setMpMsg(w
+        ? { text: T('MoonPay opened in a new window. Your USDC arrives in this wallet on Arc once the payment clears, usually within minutes.'), url }
+        : { text: T('Your browser blocked the new window. Open MoonPay here:'), url })
     } catch (e) {
-      w?.close()
       setMpMsg({ text: e instanceof Error ? e.message : T('Could not start a card deposit'), err: true })
     } finally { setMpBusy(false) }
   }

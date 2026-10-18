@@ -96,7 +96,9 @@ const MEMO = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'
 const SYSTEM = '11111111111111111111111111111111'
 
 export type RelaySide = 'buy' | 'sell' | 'gas' | 'swap' | 'xin' | 'xout' | 'xevm' | 'xevmout'
-export type RelayChain = 'solana' | 'bsc'
+export type RelayChain = 'solana' | 'bsc' | 'robinhood'
+/** USDG (Paxos), Robinhood Chain's dollar: with ETH, what its coins are paid with there (2026-10-18). */
+export const RH_USDG = '0x5fc5360d0400a0fd4f2af552add042d716f1d168'
 
 export interface RelayRequest {
   side: RelaySide
@@ -165,16 +167,16 @@ const lc = (v: unknown) => String(v ?? '').toLowerCase()
 const big = (v: unknown) => { try { return BigInt(String(v ?? '0')) } catch { return 0n } }
 const word = (data: string, i: number) => data.slice(10 + 64 * i, 10 + 64 * (i + 1))
 const chainOf = (r: RelayRequest): RelayChain => r.chain ?? 'solana'
-const otherId = (c: RelayChain) => (c === 'bsc' ? BSC_ID : SOLANA_ID)
+const otherId = (c: RelayChain) => (c === 'bsc' ? BSC_ID : c === 'robinhood' ? RH_ID : SOLANA_ID)
 
 /** Where a request starts and ends, who signs and who's paid, and in what. */
 function shape(r: RelayRequest) {
   const c = chainOf(r)
   const other = otherId(c)
-  const me = c === 'bsc' ? r.evm : r.sol
+  const me = c === 'solana' ? r.sol : r.evm
   switch (r.side) {
     case 'buy': return { user: r.evm, recipient: me, origin: ARC_ID, dest: other, inCur: ARC_USDC, outCur: r.mint }
-    case 'gas': return { user: r.evm, recipient: me, origin: ARC_ID, dest: other, inCur: ARC_USDC, outCur: c === 'bsc' ? EVM_NATIVE : SOL_NATIVE }
+    case 'gas': return { user: r.evm, recipient: me, origin: ARC_ID, dest: other, inCur: ARC_USDC, outCur: c === 'solana' ? SOL_NATIVE : EVM_NATIVE }
     case 'sell': return { user: me, recipient: r.evm, origin: other, dest: ARC_ID, inCur: r.mint, outCur: ARC_USDC }
     case 'swap': return { user: me, recipient: me, origin: other, dest: other, inCur: r.inToken ?? '', outCur: r.outToken ?? '' }
     case 'xin': return { user: r.sol, recipient: r.evm, origin: SOLANA_ID, dest: r.evmChain ?? 0, inCur: r.inToken ?? '', outCur: r.mint }
@@ -235,6 +237,13 @@ export function checkRelayQuote(r: RelayRequest, j: ApiQuote): RelayQuote {
   const steps = j.steps ?? []
   if (!d || !cin?.currency || !cout?.currency || !steps.length) fail('Relay sent no trade')
   if (r.side === 'swap' && (!r.inToken || !r.outToken || r.inToken === r.outToken)) fail('a swap needs two currencies')
+  // Robinhood Chain (2026-10-18): only a swap there, between the coin and ETH or USDG (buys and sales from Arc go
+  // through Across, lib/acrossQuote.ts).
+  if (c === 'robinhood') {
+    if (r.side !== 'swap') fail('only swaps on Robinhood Chain')
+    const pair = [lc(r.inToken), lc(r.outToken)]
+    if (!pair.includes(lc(r.mint)) || !pair.some(x => x === EVM_NATIVE || x === RH_USDG)) fail('only ETH or USDG for the coin on Robinhood Chain')
+  }
   if ((r.side === 'xin' || r.side === 'xout') && !(XSOL_CHAINS as readonly number[]).includes(r.evmChain ?? 0)) fail('a chain ARCDEX doesn’t trade with Solana')
   if (r.side === 'xin' && r.inToken !== SOL_NATIVE && r.inToken !== SOL_USDC) fail('only SOL or USDC go in from Solana')
   if (r.side === 'xout' && r.outToken !== SOL_NATIVE && r.outToken !== SOL_USDC) fail('only SOL or USDC come out on Solana')

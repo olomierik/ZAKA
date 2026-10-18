@@ -161,6 +161,8 @@ check(/initPrivy\(recent \?\? null\)\s*\n\s*if \(!recent \|\| recent === 'privy'
 check(/const guarded = fromTrading \|\| guard\.privy/.test(src('src/arcdex/pages/Bridge.tsx')) && /if \(guarded\) \{\s*\n\s*try \{ await guard\.confirm\(\) \}/.test(src('src/arcdex/pages/Bridge.tsx')), 'the bridge holds a Privy send for its step-up')
 const csp = src('netlify.toml').match(/Content-Security-Policy = "([^"]+)"/)?.[1] ?? ''
 check(/script-src [^;]*https:\/\/challenges\.cloudflare\.com/.test(csp) && /frame-src 'self' https:/.test(csp), 'the CSP lets in Privy’s frames (https:) and its bot check (Turnstile)')
+const root = src('src/arcdex/privy/PrivyRoot.tsx')
+check(/walletConnectCloudProjectId: WC_PROJECT_ID/.test(root) && /'wallet_connect'/.test(root) && /export const WC_PROJECT_ID/.test(src('src/arcdex/wagmi.ts')), 'Privy’s wallet list opens phone wallets through WalletConnect, with the same project id as wagmi')
 check(/"@privy-io\/react-auth": "\d+\.\d+\.\d+"/.test(src('package.json')), 'the SDK is pinned to an exact version')
 // Netlify's secret scan fails a deploy on values that look like secrets: the publishable keys inside Privy's SDK are
 // listed as public in netlify.toml, and the app id's variable is left out of the scan.

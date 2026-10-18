@@ -3367,6 +3367,44 @@ Owner, trying Circle's card checkout from Tanzania: "Unavailable in Tanzania. No
   - **Not checked:** MoonPay's real page (it needs the owner's keys), or a real card payment from Tanzania.
 - **Fees:** MoonPay's own fees are shown in its checkout. ARCDEX adds none.
 
+- **MoonPay's SDK (2026-10-18, `@moonpay/moonpay-js` 0.7.6):** the card checkout opens over the page instead of a new tab.
+  - `loadMoonPay()` loads MoonPay's script from `static.moonpay.com` (in the CSP's `script-src`), only when someone presses Buy USDC with a card.
+  - The SDK builds the checkout in the page; `POST /api/moonpay {url}` signs it only when it's MoonPay's own host for the mode (live or sandbox), our publishable key, `usdc_arc`, and the signed-in wallet as the only wallet named (`sdkUrlProblem`). Then `updateSignature` and `show()`.
+  - `GET /api/moonpay` also returns `apiKey` (the publishable key, which is public) and `currency`.
+  - Without the SDK (blocked script, no key), the engine's signed URL opens in a new tab, or a link where the browser blocks it.
+  - Tests: `engine/test/moonpay.test.ts` (a checkout built as the SDK builds it is signed with MoonPay's HMAC; 12 altered ones refused).
+
+## Phones, one-screen landing, deposits on every chain (2026-10-18)
+
+Owner: phone wallets didn't respond in Privy's list; chains in a dropdown on phones; overlapping text; Analytics missing on phones; the X account and "Protected by Privy" on a one-screen landing that everyone sees first; deposits of other chains' assets (USDG/ETH on Robinhood Chain, BNB, SOL, Solana USDC) refused by the deposit window; trade forms that pick what's held.
+
+- **Phone wallets in Privy (`privy/PrivyRoot.tsx`):** Privy's config now has `walletConnectCloudProjectId` and an explicit `walletList` (detected wallets, MetaMask, Phantom, Coinbase, OKX, Rainbow, Binance, Bitget, Solflare, Backpack, WalletConnect) with `walletChainType: 'ethereum-and-solana'`.
+  - The project id is `WC_PROJECT_ID` in `wagmi.ts`, shared with wagmi's WalletConnect connector: `VITE_WC_PROJECT_ID`, else the shared id.
+  - **Owner step:** create a project at cloud.reown.com, allow `arcsense.site`, `www.arcsense.site` and `arcdex.online`, and set `VITE_WC_PROJECT_ID` on Netlify. The shared id works until then, but Reown can rate-limit it.
+  - Not checked on a real phone (the sandbox has none).
+- **Phone layout:**
+  - **Chains in a dropdown:** the Trenches bar shows the current chain as a button with a menu under it (`ChainSelect` in `pages/Trenches.tsx`; fixed position, so the bar's scroll doesn't clip it). The chips stay on desktop.
+  - **Nothing cut off:** the coin strip's Buy reads "Buy" and the price drops its label under 440px; the lane tabs stay on one line ("Bonding" for Almost bonded); a row's tags and socials wrap.
+  - **Analytics on phones:** the More sheet listed only the top bar's folding links (Swap, Bridge), so Analytics never showed. It now lists every page without a tab (`TAB_PAGES` in `components/MobileTabBar.tsx`).
+- **Landing (`landing/Landing.tsx`, `landing.css`):** one screen, no scrolling (`100dvh`, short-screen rules): the wordmark, "where memecoins meet futures.", Start trading / Explore markets, the wallet-app link and $ARCDEX's contract. The top bar has ARCDEX's X account (`X_URL`, x.com/arcdex2026), the language and Log in; the foot reads "🔒 Protected by Privy". The live terminal, feature cards, closing call and footer are gone (and `TrafficCard.tsx`).
+  - **Always first (owner: "always, everywhere"):** `/` is the landing page for everyone, a returning trader's too (`firstScreen` in `lib/returning.ts`, index.html's boot script and its CSP hash). The `arcdex:returning` key is still written; nothing routes on it.
+- **Deposit → Crypto, every network (`components/ChainDeposit.tsx`):** pick the network, see what to send and the address with its QR code.
+  - Arc: USDC. Robinhood Chain: ETH or USDG. BNB Chain: BNB or USDT. Solana: SOL or USDC, to the Solana address (the trading wallet's, or the connected/Privy Solana wallet's). Ethereum, Base, Arbitrum: USDC or ETH, spent with "Pay from Ethereum, Base or Arbitrum".
+  - Each says what the assets pay for, warns to send only those assets on that network, and shows the token contracts. EVM networks note it's the same address on all of them.
+  - It opens on the network of the Trenches in view (a Solana account's on Solana).
+- **Trade forms pick what's held (until the trader picks):**
+  - **Robinhood Chain (`components/RobinhoodSwap.tsx`, `pickPay`):** "Pay with" USDC on Arc (Across, as before), ETH or USDG on Robinhood Chain. Buys pick USDC on Arc from $1, else USDG from $1, else ETH; sales default to USDC on Arc.
+    - ETH and USDG trade through Relay's same-chain swap on Robinhood Chain (`chain: 'robinhood'` in `lib/relayQuote.ts`): ETH to Relay's router with exactly the amount; USDG approved for exactly the amount to its approval proxy (both the same addresses as on BNB Chain). Only the coin against ETH or USDG passes the checks, and only as a swap. ARCDEX's 0.5% is Relay's app fee. The price guard values ETH from Robinhood Chain's WETH/USDG pool.
+    - Measured 2026-10-18: 0.001 ETH → 22.63 MOW (≈ $2.38). Relay found no route, or a mispriced one, for sales of MOW for ETH or USDG, which is why sales default to Across.
+    - **Two tokens are named USDG on Robinhood Chain:** Paxos's "Global Dollar" `0x5fc5360d…d168` (the app's, `USDG` in `api/_rhCore.ts`) and "USDG Robinhood" `0x5fc5dc8e…d168`. Only the first is accepted; the deposit window shows its contract.
+  - **BNB Chain (`pickBscPay`):** USDC on Arc from $1, else USDT from $1, else BNB.
+  - **Solana (`pickSolPay`):** a Solana wallet app pays with USDC when it holds $1 and little SOL, else SOL; the trading wallet with USDC on Arc from $1, else its Solana USDC, else SOL.
+  - When the picked route changes (balances arriving), the amount is cleared, so dollars never become BNB, SOL or ETH. A quick buy from the Trenches keeps its route.
+- **Tests:** `scripts/test-robinhood.ts` (real ETH and USDG swap quotes from `scripts/capture-relay-rh.ts` passing, 11 altered ones refused, `pickPay`), `test-app-shell.ts` (the landing page for everyone), `test-privy.tsx` (WalletConnect in Privy's list).
+- **Checked in the browser (local dev):** phones at 375px (the chain dropdown switching to Solana, the coin strip, lane tabs, wrapped tags, Analytics from More, the one-screen landing with no scroll), the landing at 1024px, and a Robinhood coin page quoting ETH.
+- **Not checked:** a real phone wallet through Privy, a real deposit, a real ETH or USDG trade on Robinhood Chain, and the deposit window's networks in a browser (it needs a signed-in wallet).
+- Every new string is in all six dictionaries (22).
+
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
 **Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**

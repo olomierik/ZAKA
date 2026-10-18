@@ -1,0 +1,578 @@
+{
+ "coin": "0x0b7c6c138dc75622f4200d157b13fb93e6bd94fa",
+ "holder": "0x5f8facbb3d6310732cd3b8954035c5e5e24cbadd",
+ "sell": "226273133653883267190",
+ "at": "2026-10-18T10:13:51.443Z",
+ "rh-eth": {
+  "requestId": "0x1792318431cfee535a499f3f54ea67d00ef067781cacd6bc26b0507cb2644897",
+  "steps": [
+   {
+    "id": "swap",
+    "action": "Confirm transaction in your wallet",
+    "description": "Swapping ETH for MOW",
+    "kind": "transaction",
+    "items": [
+     {
+      "status": "incomplete",
+      "data": {
+       "from": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+       "to": "0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f",
+       "data": "0xcd6e13f700000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006c00000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000001e000000000000000000000000000000000000000000000000000000000000003c0000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c4a6bd8c96000000000000000000000000000000000000000000000000000005e96630e800000000000000000000000000f70da97812cb96acdf810712aa562db8dfa3dbef000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000217984462bc7050b62cb6dcac187760fe00d76ae45f3f994a535eefc1348132971010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000603206d6105217dd972e4ab30676a220ca3933460000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000387953e9598000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000012b3f0bde2558e4ec9aa0a6c2372131a0502aba6188269ab52cacb50000000000000000000387953e959800000000000000000136e07b67abc3fdbc07ec9aa0a6c2372131a0502aba6188269ab52cacb5b92fe925dc43a0ecde6c8b1a2709c170ec4fff4feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0b7c6c138dc75622f4200d157b13fb93e6bd94fa0bd7d308f8e1639fab988df18a8011f41eacad738366a39cc670b4001a1121b8f6a443a643e4095148a097df16c7844a33b1c3d11ab353457846e13f74046904fa0500500300000000000000000000000000000000000000000b7c6c138dc75622f4200d157b13fb93e6bd94fab3ca29cf721380cee8b8e4755f3865ebc68fe8ccf500f48b79000180000000003c02f7018801ff710306f9293a045e900301ff000000000000000000000000000000000000000000000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000001a49bb43718000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000014000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000b7c6c138dc75622f4200d157b13fb93e6bd94fa0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000274262a0321a0701b0a46a3576e07ae881c286bb0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000217984462bc7050b62cb6dcac187760fe00d76ae45f3f994a535eefc134813297100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000217984462bc7050b62cb6dcac187760fe00d76ae45f3f994a535eefc134813297100000000000000000000000000000000000000000000000000000000000000001792318431cfee535a499f3f54ea67d00ef067781cacd6bc26b0507cb2644897",
+       "value": "1000000000000000",
+       "chainId": 4663,
+       "gas": "823969",
+       "maxFeePerGas": "28352800",
+       "maxPriorityFeePerGas": "0"
+      },
+      "check": {
+       "endpoint": "/intents/status?requestId=0x1792318431cfee535a499f3f54ea67d00ef067781cacd6bc26b0507cb2644897",
+       "method": "GET"
+      }
+     }
+    ],
+    "requestId": "0x1792318431cfee535a499f3f54ea67d00ef067781cacd6bc26b0507cb2644897"
+   }
+  ],
+  "fees": {
+   "gas": {
+    "currency": {
+     "chainId": 4663,
+     "address": "0x0000000000000000000000000000000000000000",
+     "symbol": "ETH",
+     "name": "Ether",
+     "decimals": 18,
+     "metadata": {
+      "logoURI": "https://assets.relay.link/icons/1/light.png",
+      "verified": true
+     }
+    },
+    "amount": "23361828263200",
+    "amountFormatted": "0.0000233618282632",
+    "amountUsd": "0.056505",
+    "minimumAmount": "23361828263200"
+   },
+   "relayer": {
+    "currency": {
+     "chainId": 4663,
+     "address": "0x0000000000000000000000000000000000000000",
+     "symbol": "ETH",
+     "name": "Ether",
+     "decimals": 18,
+     "metadata": {
+      "logoURI": "https://assets.relay.link/icons/1/light.png",
+      "verified": true
+     }
+    },
+    "amount": "1499976829120",
+    "amountFormatted": "0.00000149997682912",
+    "amountUsd": "0.003628",
+    "minimumAmount": "1499976829120"
+   },
+   "relayerGas": {
+    "currency": {
+     "chainId": 4663,
+     "address": "0x0000000000000000000000000000000000000000",
+     "symbol": "ETH",
+     "name": "Ether",
+     "decimals": 18,
+     "metadata": {
+      "logoURI": "https://assets.relay.link/icons/1/light.png",
+      "verified": true
+     }
+    },
+    "amount": "0",
+    "amountFormatted": "0.0",
+    "amountUsd": "0",
+    "minimumAmount": "0"
+   },
+   "relayerService": {
+    "currency": {
+     "chainId": 4663,
+     "address": "0x0000000000000000000000000000000000000000",
+     "symbol": "ETH",
+     "name": "Ether",
+     "decimals": 18,
+     "metadata": {
+      "logoURI": "https://assets.relay.link/icons/1/light.png",
+      "verified": true
+     }
+    },
+    "amount": "1499976829120",
+    "amountFormatted": "0.00000149997682912",
+    "amountUsd": "0.003628",
+    "minimumAmount": "1499976829120"
+   },
+   "app": {
+    "currency": {
+     "chainId": 4663,
+     "address": "0x0000000000000000000000000000000000000000",
+     "symbol": "ETH",
+     "name": "Ether",
+     "decimals": 18,
+     "metadata": {
+      "logoURI": "https://assets.relay.link/icons/1/light.png",
+      "verified": true
+     }
+    },
+    "amount": "5000000000000",
+    "amountFormatted": "0.000005",
+    "amountUsd": "0.012094",
+    "minimumAmount": "5000000000000"
+   }
+  },
+  "details": {
+   "operation": "swap",
+   "sender": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+   "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+   "currencyIn": {
+    "currency": {
+     "chainId": 4663,
+     "address": "0x0000000000000000000000000000000000000000",
+     "symbol": "ETH",
+     "name": "Ether",
+     "decimals": 18,
+     "metadata": {
+      "logoURI": "https://assets.relay.link/icons/1/light.png",
+      "verified": true
+     }
+    },
+    "amount": "1000000000000000",
+    "amountFormatted": "0.001",
+    "amountUsd": "2.418704",
+    "minimumAmount": "1000000000000000"
+   },
+   "currencyOut": {
+    "currency": {
+     "chainId": 4663,
+     "address": "0x0b7c6c138dc75622f4200d157b13fb93e6bd94fa",
+     "symbol": "MOW",
+     "name": "MowCat",
+     "decimals": 18,
+     "metadata": {
+      "logoURI": "https://coin-images.coingecko.com/coins/images/102175295/large/logo.jpg?1786074528",
+      "verified": false
+     }
+    },
+    "amount": "22627313365388326719",
+    "amountFormatted": "22.627313365388326719",
+    "amountUsd": "0.000973",
+    "minimumAmount": "22401040231734443451"
+   },
+   "totalImpact": {
+    "usd": "-2.417731",
+    "percent": "-99.96"
+   },
+   "swapImpact": {
+    "usd": "-2.402009",
+    "percent": "-99.31"
+   },
+   "expandedPriceImpact": {
+    "swap": {
+     "usd": "0"
+    },
+    "execution": {
+     "usd": "0"
+    },
+    "relay": {
+     "usd": "-0.003628"
+    },
+    "app": {
+     "usd": "-0.012094"
+    },
+    "sponsored": {
+     "usd": "0"
+    }
+   },
+   "rate": "22775.353160934403",
+   "slippageTolerance": {
+    "total": "100",
+    "origin": {
+     "usd": "0.000010",
+     "value": "226273133653883268",
+     "percent": "1.00"
+    },
+    "destination": {
+     "usd": "0",
+     "value": "0",
+     "percent": "0"
+    }
+   },
+   "timeEstimate": 0,
+   "userBalance": "0",
+   "isFixedRate": false,
+   "route": {
+    "origin": {
+     "inputCurrency": {
+      "currency": {
+       "chainId": 4663,
+       "address": "0x0000000000000000000000000000000000000000",
+       "symbol": "ETH",
+       "name": "Ether",
+       "decimals": 18,
+       "metadata": {
+        "logoURI": "https://assets.relay.link/icons/1/light.png",
+        "verified": true
+       }
+      },
+      "amount": "1000000000000000",
+      "amountFormatted": "0.001",
+      "amountUsd": "2.418704",
+      "minimumAmount": "1000000000000000"
+     },
+     "outputCurrency": {
+      "currency": {
+       "chainId": 4663,
+       "address": "0x0b7c6c138dc75622f4200d157b13fb93e6bd94fa",
+       "symbol": "MOW",
+       "name": "MowCat",
+       "decimals": 18,
+       "metadata": {
+        "logoURI": "https://coin-images.coingecko.com/coins/images/102175295/large/logo.jpg?1786074528",
+        "verified": false
+       }
+      },
+      "amount": "22627313365388326719",
+      "amountFormatted": "22.627313365388326719",
+      "amountUsd": "0.000973",
+      "minimumAmount": "22401040231734443451"
+     },
+     "router": "nordstern"
+    },
+    "destination": {
+     "inputCurrency": {
+      "currency": {
+       "chainId": 4663,
+       "address": "0x0000000000000000000000000000000000000000",
+       "symbol": "ETH",
+       "name": "Ether",
+       "decimals": 18,
+       "metadata": {
+        "logoURI": "https://assets.relay.link/icons/1/light.png",
+        "verified": true
+       }
+      },
+      "amount": "1000000000000000",
+      "amountFormatted": "0.001",
+      "amountUsd": "2.418704",
+      "minimumAmount": "1000000000000000"
+     },
+     "outputCurrency": {
+      "currency": {
+       "chainId": 4663,
+       "address": "0x0b7c6c138dc75622f4200d157b13fb93e6bd94fa",
+       "symbol": "MOW",
+       "name": "MowCat",
+       "decimals": 18,
+       "metadata": {
+        "logoURI": "https://coin-images.coingecko.com/coins/images/102175295/large/logo.jpg?1786074528",
+        "verified": false
+       }
+      },
+      "amount": "22627313365388326719",
+      "amountFormatted": "22.627313365388326719",
+      "amountUsd": "0.000973",
+      "minimumAmount": "22401040231734443451"
+     },
+     "router": "nordstern"
+    }
+   }
+  }
+ },
+ "rh-usdg": {
+  "requestId": "0x179231843234f8f1d2f8e4292e485b329b3ee02af704c6252bd11faa32e448bb",
+  "steps": [
+   {
+    "id": "approve",
+    "action": "Confirm transaction in your wallet",
+    "description": "Sign an approval for USDG",
+    "kind": "transaction",
+    "items": [
+     {
+      "status": "incomplete",
+      "data": {
+       "from": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+       "to": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+       "data": "0x095ea7b3000000000000000000000000ccc88a9d1b4ed6b0eaba998850414b24f1c315be00000000000000000000000000000000000000000000000000000000001e8480",
+       "value": "0",
+       "chainId": 4663,
+       "gas": "76696",
+       "maxFeePerGas": "28014000",
+       "maxPriorityFeePerGas": "0"
+      }
+     }
+    ],
+    "requestId": "0x179231843234f8f1d2f8e4292e485b329b3ee02af704c6252bd11faa32e448bb"
+   },
+   {
+    "id": "swap",
+    "action": "Confirm transaction in your wallet",
+    "description": "Swapping USDG for MOW",
+    "kind": "transaction",
+    "items": [
+     {
+      "status": "incomplete",
+      "data": {
+       "from": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+       "to": "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be",
+       "data": "0xf9e4bab400000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000140000000000000000000000000274262a0321a0701b0a46a3576e07ae881c286bb000000000000000000000000274262a0321a0701b0a46a3576e07ae881c286bb00000000000000000000000000000000000000000000000000000000000009c000000000000000000000000000000000000000000000000000000000000000010000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d168000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000001e848000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000003e000000000000000000000000000000000000000000000000000000000000006000000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d1680000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000603206d6105217dd972e4ab30676a220ca39334600000000000000000000000000000000000000000000000000000000001e848000000000000000000000000000000000000000000000000000000000000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000001a49bb43718000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000014000000000000000000000000000000000000000000000000000000000000000010000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d1680000000000000000000000000000000000000000000000000000000000000001000000000000000000000000f70da97812cb96acdf810712aa562db8dfa3dbef000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000032c80000000000000000000000000000000000000000000000000000000000000021bb844e23aaf11db2526c407fa20ee3b923b584e2924e8f2d1f8f432348132971010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000603206d6105217dd972e4ab30676a220ca39334600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000001693f0bde254ae5ec9aa0a6c2372131a0502aba6188269ab52cacb5000000000000000000000000001e51b8000000000000000100e0b1d0bcb6b1c906ec9aa0a6c2372131a0502aba6188269ab52cacb5b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f5fc5360d0400a0fd4f2af552add042d716f1d1680b7c6c138dc75622f4200d157b13fb93e6bd94fa8366a39cc670b4001a1121b8f6a443a643e4095148a097df16c7844a33b1c3d11ab353457846e13ffa040052035fc5360d0400a0fd4f2af552add042d716f1d1688366a39cc670b4001a1121b8f6a443a643e409510000000000000000000000000000000000000000f5007100018a78020000005700000102f7028802fffa0400500300000000000000000000000000000000000000000b7c6c138dc75622f4200d157b13fb93e6bd94fab3ca29cf721380cee8b8e4755f3865ebc68fe8ccf500f48b79000180000000003c02f7018801ff710305f9290378f2900301ff0000000000000000000000000000000000000000000000000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000001a49bb43718000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000014000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000b7c6c138dc75622f4200d157b13fb93e6bd94fa0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000274262a0321a0701b0a46a3576e07ae881c286bb000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000021bb844e23aaf11db2526c407fa20ee3b923b584e2924e8f2d1f8f4323481329710000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000021bb844e23aaf11db2526c407fa20ee3b923b584e2924e8f2d1f8f4323481329710000000000000000000000000000000000000000000000000000000000000000179231843234f8f1d2f8e4292e485b329b3ee02af704c6252bd11faa32e448bb",
+       "value": "0",
+       "chainId": 4663,
+       "gas": "1048231",
+       "maxFeePerGas": "28014000",
+       "maxPriorityFeePerGas": "0"
+      },
+      "check": {
+       "endpoint": "/intents/status?requestId=0x179231843234f8f1d2f8e4292e485b329b3ee02af704c6252bd11faa32e448bb",
+       "method": "GET"
+      }
+     }
+    ],
+    "requestId": "0x179231843234f8f1d2f8e4292e485b329b3ee02af704c6252bd11faa32e448bb"
+   }
+  ],
+  "fees": {
+   "gas": {
+    "currency": {
+     "chainId": 4663,
+     "address": "0x0000000000000000000000000000000000000000",
+     "symbol": "ETH",
+     "name": "Ether",
+     "decimals": 18,
+     "metadata": {
+      "logoURI": "https://assets.relay.link/icons/1/light.png",
+      "verified": true
+     }
+    },
+    "amount": "29365143234000",
+    "amountFormatted": "0.000029365143234",
+    "amountUsd": "0.071026",
+    "minimumAmount": "29365143234000"
+   },
+   "relayer": {
+    "currency": {
+     "chainId": 4663,
+     "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+     "symbol": "USDG",
+     "name": "Global Dollar",
+     "decimals": 6,
+     "metadata": {
+      "logoURI": "https://assets.coingecko.com/coins/images/51281/standard/GDN_USDG_Token_200x200.png",
+      "verified": true
+     }
+    },
+    "amount": "2999",
+    "amountFormatted": "0.002999",
+    "amountUsd": "0.002999",
+    "minimumAmount": "2999"
+   },
+   "relayerGas": {
+    "currency": {
+     "chainId": 4663,
+     "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+     "symbol": "USDG",
+     "name": "Global Dollar",
+     "decimals": 6,
+     "metadata": {
+      "logoURI": "https://assets.coingecko.com/coins/images/51281/standard/GDN_USDG_Token_200x200.png",
+      "verified": true
+     }
+    },
+    "amount": "0",
+    "amountFormatted": "0.0",
+    "amountUsd": "0",
+    "minimumAmount": "0"
+   },
+   "relayerService": {
+    "currency": {
+     "chainId": 4663,
+     "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+     "symbol": "USDG",
+     "name": "Global Dollar",
+     "decimals": 6,
+     "metadata": {
+      "logoURI": "https://assets.coingecko.com/coins/images/51281/standard/GDN_USDG_Token_200x200.png",
+      "verified": true
+     }
+    },
+    "amount": "2999",
+    "amountFormatted": "0.002999",
+    "amountUsd": "0.002999",
+    "minimumAmount": "2999"
+   },
+   "app": {
+    "currency": {
+     "chainId": 4663,
+     "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+     "symbol": "USDG",
+     "name": "Global Dollar",
+     "decimals": 6,
+     "metadata": {
+      "logoURI": "https://assets.coingecko.com/coins/images/51281/standard/GDN_USDG_Token_200x200.png",
+      "verified": true
+     }
+    },
+    "amount": "10000",
+    "amountFormatted": "0.01",
+    "amountUsd": "0.009999",
+    "minimumAmount": "10000"
+   }
+  },
+  "details": {
+   "operation": "swap",
+   "sender": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+   "recipient": "0x274262a0321a0701b0a46a3576e07ae881c286bb",
+   "currencyIn": {
+    "currency": {
+     "chainId": 4663,
+     "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+     "symbol": "USDG",
+     "name": "Global Dollar",
+     "decimals": 6,
+     "metadata": {
+      "logoURI": "https://assets.coingecko.com/coins/images/51281/standard/GDN_USDG_Token_200x200.png",
+      "verified": true
+     }
+    },
+    "amount": "2000000",
+    "amountFormatted": "2.0",
+    "amountUsd": "1.999754",
+    "minimumAmount": "2000000"
+   },
+   "currencyOut": {
+    "currency": {
+     "chainId": 4663,
+     "address": "0x0b7c6c138dc75622f4200d157b13fb93e6bd94fa",
+     "symbol": "MOW",
+     "name": "MowCat",
+     "decimals": 18,
+     "metadata": {
+      "logoURI": "https://coin-images.coingecko.com/coins/images/102175295/large/logo.jpg?1786074528",
+      "verified": false
+     }
+    },
+    "amount": "18696959574313274902",
+    "amountFormatted": "18.696959574313274902",
+    "amountUsd": "0.000804",
+    "minimumAmount": "18509989978570142152"
+   },
+   "totalImpact": {
+    "usd": "-1.998950",
+    "percent": "-99.96"
+   },
+   "swapImpact": {
+    "usd": "-1.985952",
+    "percent": "-99.31"
+   },
+   "expandedPriceImpact": {
+    "swap": {
+     "usd": "0"
+    },
+    "execution": {
+     "usd": "0"
+    },
+    "relay": {
+     "usd": "-0.002999"
+    },
+    "app": {
+     "usd": "-0.009999"
+    },
+    "sponsored": {
+     "usd": "0"
+    }
+   },
+   "rate": "9.409642463167224",
+   "slippageTolerance": {
+    "total": "100",
+    "origin": {
+     "usd": "0.000008",
+     "value": "186969595743132750",
+     "percent": "1.00"
+    },
+    "destination": {
+     "usd": "0",
+     "value": "0",
+     "percent": "0"
+    }
+   },
+   "timeEstimate": 0,
+   "userBalance": "0",
+   "isFixedRate": false,
+   "route": {
+    "origin": {
+     "inputCurrency": {
+      "currency": {
+       "chainId": 4663,
+       "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+       "symbol": "USDG",
+       "name": "Global Dollar",
+       "decimals": 6,
+       "metadata": {
+        "logoURI": "https://assets.coingecko.com/coins/images/51281/standard/GDN_USDG_Token_200x200.png",
+        "verified": true
+       }
+      },
+      "amount": "2000000",
+      "amountFormatted": "2.0",
+      "amountUsd": "1.999754",
+      "minimumAmount": "2000000"
+     },
+     "outputCurrency": {
+      "currency": {
+       "chainId": 4663,
+       "address": "0x0b7c6c138dc75622f4200d157b13fb93e6bd94fa",
+       "symbol": "MOW",
+       "name": "MowCat",
+       "decimals": 18,
+       "metadata": {
+        "logoURI": "https://coin-images.coingecko.com/coins/images/102175295/large/logo.jpg?1786074528",
+        "verified": false
+       }
+      },
+      "amount": "18696959574313274902",
+      "amountFormatted": "18.696959574313274902",
+      "amountUsd": "0.000804",
+      "minimumAmount": "18509989978570142152"
+     },
+     "router": "nordstern"
+    },
+    "destination": {
+     "inputCurrency": {
+      "currency": {
+       "chainId": 4663,
+       "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+       "symbol": "USDG",
+       "name": "Global Dollar",
+       "decimals": 6,
+       "metadata": {
+        "logoURI": "https://assets.coingecko.com/coins/images/51281/standard/GDN_USDG_Token_200x200.png",
+        "verified": true
+       }
+      },
+      "amount": "2000000",
+      "amountFormatted": "2.0",
+      "amountUsd": "1.999754",
+      "minimumAmount": "2000000"
+     },
+     "outputCurrency": {
+      "currency": {
+       "chainId": 4663,
+       "address": "0x0b7c6c138dc75622f4200d157b13fb93e6bd94fa",
+       "symbol": "MOW",
+       "name": "MowCat",
+       "decimals": 18,
+       "metadata": {
+        "logoURI": "https://coin-images.coingecko.com/coins/images/102175295/large/logo.jpg?1786074528",
+        "verified": false
+       }
+      },
+      "amount": "18696959574313274902",
+      "amountFormatted": "18.696959574313274902",
+      "amountUsd": "0.000804",
+      "minimumAmount": "18509989978570142152"
+     },
+     "router": "nordstern"
+    }
+   }
+  }
+ }
+}

@@ -88,7 +88,7 @@ async function follow(q: RelayQuote, tx: string, onStep: (p: RelayProgress) => v
 /** The trade switch's venue for a Relay trade: the chain its coin is on. */
 const relayVenue = (req: RelayRequest) => (req.side === 'xevm' || req.side === 'xevmout'
   ? (req.evmChain === BSC_ID ? 'bnb' as const : req.evmChain === RH_ID ? 'robinhood' as const : 'arc' as const)
-  : req.chain === 'bsc' ? 'bnb' as const : 'solana' as const)
+  : req.chain === 'bsc' ? 'bnb' as const : req.chain === 'robinhood' ? 'robinhood' as const : 'solana' as const)
 
 /** A trade signed on an EVM chain: paid on Arc (a buy or gas top-up), on BNB Chain (a sale to Arc, or a swap there), or
  * from the trader's account on Arc, BNB Chain or Robinhood Chain to a Solana wallet (xout) or to Ethereum, Base or
@@ -125,6 +125,7 @@ export async function runRelayEvm(kind: TraderKind, req: RelayRequest, shown: Re
   if (req.side === 'buy' && req.chain === 'bsc') rememberBsc(req.evm, req.mint)
   if (req.side === 'buy' && (req.chain ?? 'solana') === 'solana') rememberSol(req.sol, req.mint)
   if (req.side === 'swap' && req.chain === 'bsc' && req.outToken) rememberBsc(req.evm, req.outToken)
+  if (req.side === 'swap' && req.chain === 'robinhood' && req.outToken === req.mint) rememberRh(req.evm, req.mint)
   // A coin paid for from Ethereum, Base or Arbitrum: Portfolio checks it first on its chain.
   if (req.side === 'xevm') {
     if (req.evmChain === BSC_ID) rememberBsc(req.evm, req.mint)

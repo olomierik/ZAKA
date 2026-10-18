@@ -16,7 +16,7 @@ import {
   useWallets as useSolanaWallets,
 } from '@privy-io/react-auth/solana'
 import { connect, disconnect, getAccount, getConnections } from 'wagmi/actions'
-import { arc, wagmiConfig } from '../wagmi'
+import { arc, wagmiConfig, WC_PROJECT_ID } from '../wagmi'
 import { useTheme } from '../lib/theme'
 import { t as T } from '../lib/i18n'
 import { setPrivySolana } from '../lib/solanaWallet'
@@ -32,7 +32,12 @@ export default function PrivyRoot({ appId }: { appId: string }) {
       logo: `${window.location.origin}/arcdex-mark.png`,
       landingHeader: T('Sign in to ARCDEX'),
       loginMessage: T('With your email or a social account. Your EVM and Solana wallets are made for you.'),
+      // Phone wallets (2026-10-18): on a phone there's no browser extension, so a wallet app is opened through
+      // WalletConnect. Without our project id Privy's list showed the wallets but tapping one did nothing.
+      walletChainType: 'ethereum-and-solana',
+      walletList: ['detected_ethereum_wallets', 'detected_solana_wallets', 'metamask', 'phantom', 'coinbase_wallet', 'okx_wallet', 'rainbow', 'binance', 'bitget_wallet', 'solflare', 'backpack', 'wallet_connect'],
     },
+    walletConnectCloudProjectId: WC_PROJECT_ID,
     // Every account gets both wallets, even one that also linked a wallet app.
     embeddedWallets: { ethereum: { createOnLogin: 'all-users' }, solana: { createOnLogin: 'all-users' }, showWalletUIs: true },
     // Arc first: the wallet starts there. The rest are the chains ARCDEX trades and bridges on.
