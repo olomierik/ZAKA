@@ -3344,6 +3344,16 @@ Owner: "I can't sign out of my wallet on the phone, the sign out button is hidde
 - **Tests:** `scripts/test-privy.tsx` (no confirmation window, no network bar for Privy's wallet). **Checked** in the browser at 375px with a throwaway trading wallet: the sheet opens with Lock trading wallet at the top and every row above the tab bar.
 - **Not checked:** a real Privy sign-in and trade (Privy's servers are out of the sandbox's reach).
 
+## BTC 5m and 15m predictions: research for an autotrader (2026-10-31)
+
+Owner: "make me a better auto trading engine for prediction markets specifically for BTC 15min and 5min on my predict page", built on what successful traders and bots do, with "a strategy that can guarantee scalping on Polymarket for 70% and above", and a recommendation on which approach to take. Research and measurements only; nothing that trades was built. Everything is in **`docs/PREDICT-BTC-AUTOTRADE-2026-10.md`**.
+- **Measured (offline, no market touched):**
+  - `bun scripts/research-btc-updown.ts <bitstamp 1-minute csv>`: 22 months of BTC minutes (github.com/ff137/bitstamp-btcusd-minute-data). Calling a window from its start is a coin flip (best rule 51.7%); the volatility-scaled fair value is calibrated inside the window.
+  - `scripts/research-polymarket-books.mjs`: every BTC 5m and 15m order book and trade on 2026-06-15 (the Marketlens free sample), replayed. It needs `hyparquet`, which isn't an app dependency (its header says how). Taking quotes the fair value beat by 12¢ was positive after Polymarket's fees at ≤1 s of latency and gone at 3 s; late favourites and naive market making weren't worth it.
+- **Recommendation:** fair value first, shown on `/predict`; a fee-aware "sniper" lane and a TWAP lock-in lane, paper-traded against the live book for two weeks before the owner's own small wallet goes live; market making later. No guaranteed win rate: the doc explains why.
+- **Polymarket facts that shape the build:** settlement on the Chainlink BTC/USD 60-second TWAP since 2026-08-07; taker fee 0.07·p·(1−p) per share, makers free with a 20% rebate; a 150 ms taker delay; servers in London; orders are geoblocked by the sender's IP, and **the US and the UK are close-only**, so live orders can't leave from Railway's US regions.
+- **Decisions waiting for the owner:** the approach, whose money (custody and legal), where the bot runs, and the live trial's budget (doc, section 10).
+
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
 **Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**
