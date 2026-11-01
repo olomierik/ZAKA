@@ -3417,6 +3417,7 @@ Owner: "make this autotrade feature on Polymarket LIVE and working; a very intel
     - Every new string is in all six dictionaries (53).
   - **Tests:** `engine/test/updownLearn.test.ts`: trust up and down, uninformative snapshots, the first day's seed, skipping and letting back in, old trades, shadow trades in the book, lessons. In `updown.test.ts`, a skipped kind traded end to end as a shadow trade. The engine suite: 955 pass.
   - **Checked** in the browser against the stand-in seeded with the first day's trades (`UPDOWN_SEED`), at 1280px and 375px (no sideways scroll).
+- **Kraken and Bitstamp feeds (2026-11-01).** Binance refuses US IPs, so on Railway (US West) the Chainlink estimate rested on Coinbase alone. `feeds.ts` now also streams Kraken's (`ws.kraken.com/v2`, ticker on every best bid/ask change) and Bitstamp's (`order_book_btcusd`) BTC/USD top of book, using the mid. Both serve the US, and both are among the exchanges Chainlink's BTC/USD feed aggregates; measured from Tanzania, about 1 and 6 updates a second. Each source's basis is learned as before. A book feed's last mid counts for 10 s (`SPOT.freshMsBook`): it sends nothing while the best prices hold still. Test: `updown.test.ts`.
 
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 

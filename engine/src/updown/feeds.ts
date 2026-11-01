@@ -1,7 +1,10 @@
 // The engine's Chainlink BTC/USD estimate, built from exchange prices (Polymarket's own Chainlink stream needs CLOB
 // credentials since it moved to PolyBolt).
 //
-// - Coinbase's BTC-USD ticker and Binance's BTCUSDT trades stream in; each second keeps each source's last price.
+// - Coinbase's BTC-USD ticker, Binance's BTCUSDT trades, and Kraken's and Bitstamp's BTC/USD top of book (their mid)
+//   stream in; each second keeps each source's last price. Binance refuses US IPs (Railway's US West, 2026-11-01), so
+//   on Railway the estimate rested on Coinbase alone until Kraken and Bitstamp were added: both serve the US, and both
+//   are among the exchanges Chainlink's BTC/USD feed aggregates.
 // - Each source's basis to Chainlink is learned from Polymarket itself: every new window's price to beat is the
 //   60-second Chainlink TWAP before its start, so the source's average over that same minute gives one observation.
 //   Windows open every 5 minutes, so a basis is learned within minutes of a restart. A source is used only once its
@@ -12,6 +15,8 @@ import { log, errMsg } from '../log'
 
 export const SPOT = {
   freshMs: 2_000,
+  /** Top-of-book feeds send nothing while the best bid and ask don't move, so their last mid stays good for longer. */
+  freshMsBook: 10_000,
   keepSec: 20 * 60,
   basisAlpha: 0.3,
   basisMinObs: 2,
@@ -20,6 +25,8 @@ export const SPOT = {
   sigmaCap: 12e-4,
   sigmaStart: 1e-4,
 }
+
+const BOOK_FEEDS = new Set(['kraken', 'bitstamp'])
 
 interface Source { name: string; last: number | null; lastAt: number; secs: Map<number, number>; basis: number | null; basisN: number; resid: number }
 
@@ -31,7 +38,7 @@ export class SpotModel {
   private lastSec: number | null = null
   private volN = 0
 
-  constructor(names: string[] = ['coinbase', 'binance']) {
+  constructor(names: string[] = ['coinbase', 'binance', 'kraken', 'bitstamp']) {
     for (const name of names) this.src.set(name, { name, last: null, lastAt: 0, secs: new Map(), basis: null, basisN: 0, resid: 0 })
   }
 
@@ -44,7 +51,7 @@ export class SpotModel {
   }
 
   private usable(nowMs: number) {
-    return [...this.src.values()].filter(s => s.last !== null && nowMs - s.lastAt <= SPOT.freshMs && s.basis !== null && s.basisN >= SPOT.basisMinObs)
+    return [...this.src.values()].filter(s => s.last !== null && nowMs - s.lastAt <= (BOOK_FEEDS.has(s.name) ? SPOT.freshMsBook : SPOT.freshMs) && s.basis !== null && s.basisN >= SPOT.basisMinObs)
   }
 
   /** The Chainlink estimate now, or null when no learned source is fresh. */
@@ -143,6 +150,16 @@ export class SpotFeeds {
     this.open('binance', 'wss://stream.binance.com:9443/ws/btcusdt@trade', null, d => {
       const m = JSON.parse(d) as { p?: string }
       if (m.p) this.model.onTick('binance', Number(m.p), Date.now())
+    })
+    this.open('kraken', 'wss://ws.kraken.com/v2', ws => ws.send(JSON.stringify({ method: 'subscribe', params: { channel: 'ticker', symbol: ['BTC/USD'], event_trigger: 'bbo' } })), d => {
+      const m = JSON.parse(d) as { channel?: string; data?: { bid?: number; ask?: number }[] }
+      const t = m.channel === 'ticker' ? m.data?.[0] : undefined
+      if (t?.bid && t.ask) this.model.onTick('kraken', (Number(t.bid) + Number(t.ask)) / 2, Date.now())
+    })
+    this.open('bitstamp', 'wss://ws.bitstamp.net', ws => ws.send(JSON.stringify({ event: 'bts:subscribe', data: { channel: 'order_book_btcusd' } })), d => {
+      const m = JSON.parse(d) as { event?: string; data?: { bids?: string[][]; asks?: string[][] } }
+      const b = m.event === 'data' ? m.data?.bids?.[0]?.[0] : undefined, a = m.event === 'data' ? m.data?.asks?.[0]?.[0] : undefined
+      if (b && a) this.model.onTick('bitstamp', (Number(b) + Number(a)) / 2, Date.now())
     })
   }
 
