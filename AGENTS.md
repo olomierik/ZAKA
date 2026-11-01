@@ -3388,6 +3388,35 @@ Owner: "make this autotrade feature on Polymarket LIVE and working; a very intel
   - **The paper book (`paper.ts` `sell`):** `sold`, `proceeds`, `exitFee`, `exitAt`, `exit` (`scalp`/`stop`) on each trade (absent on older rows). Sold out, it closes with its P&L and frees its share of the window's cap; whatever's left settles at the result. Fees and the day's loss stop include sales; `stats.exits` counts them.
   - **Site:** "Sold early (scalps / stops)", "scalp"/"stop" on each closed trade with why, "part sold" on open ones, and the exit rule in the footer. Every new string is in all six dictionaries (7).
   - **Tests:** `engine/test/updown.test.ts` (exits, the sale fill, partial and full sales, a 15m position scalped end to end in the service); the engine suite: 941 pass. Checked in the browser against the stand-in (`UPDOWN_SEED=<file>` starts it from a saved paper book) at 1280px and 375px.
+- **It learns from its record (2026-11-01, owner: "the bot doesn't seem to be making profits, and I don't like the way it is behaving; let it learn from its losses and record trade logs in order for it to self learn and improve").** `engine/src/updown/learn.ts`. Nothing here promises a profit: it makes the bot trade only where its own record says it can.
+  - **What the first day showed** (production's paper book, 45 trades 07:06–13:16 UTC, recorded as `engine/test/fixtures/updown-trades-2026-11-01.json`):
+    - 20 won, −$112.66 after $36.89 of fees.
+    - On the trades it took, the model expected 26.3 wins, the market's prices 19.2, and it won 20: the market was right, and the model was overconfident wherever it disagreed.
+    - On all 3,333 scored snapshots the market also forecast better (Brier 0.158 against 0.165).
+    - Edges under 12¢ lost 66% a trade (3 of 16 won); trades with 2–4 minutes left lost 52% (7 of 24).
+    - None of the trades had been sold early: the scalping exits (PR #51) weren't deployed yet.
+  - **Trust in the model (`Learner.weight`, `blend`):** the chance it trades on is the market's mid moved toward the raw model by a learned weight `w`, per window length and for mid-window against the last minute.
+    - `w` is the least-squares fit of the results on each resolved window's 10-second snapshots (`observe`), recent windows weighted more (`LEARN.decay`). Snapshots where the two agree within 2¢ are left out.
+    - It starts at 0.5, worth 600 snapshots (`LEARN.prior`, `priorN`). Each closed trade from before seeds it as 10 snapshots, once (`seed`).
+    - That chance sets edges, sizes and exits. Lane A's "the gap just opened" check and lane B's agreement check still use the raw model.
+    - Window cards show both, "Model" (raw) and "Trades on".
+    - On the first day's trades the weight fell to 38% on 5-minute windows mid-window, and rose to 57% on 15-minute ones.
+  - **Kinds of trade it skips (`PATTERNS`, `review`, every 30 s and after each resolved window):** 20 kinds: window length, lane, underdog or favourite, price band, edge band, the model 25¢+ from the price, time left, and three combinations. Direction (Up or Down) isn't one: that's the day's regime.
+    - **Skipped when** over the last 7 days a kind has 15+ trades, lost money, lost 15%+ of its stake a trade, at least two standard errors under zero, and 15 points worse than its other trades (5+ of them).
+    - **Shadow trades:** a skipped kind's orders are filled and settled on paper as shadow trades (`UpdownTrade.shadow`), at most 2 a window a side. They sit outside the balance, the caps, the loss stop and the record.
+    - **Let back in** once those trades stop losing (average over −5% a trade, or under one standard error from zero).
+    - On the first day's trades it skips edges under 12¢, 2–4 minutes left, and 5-minute windows with 2–4 minutes left.
+  - **The trade log:**
+    - Every trade keeps what it knew when it bought: `raw` (the model before the learned trust), `market` (the Up mid) and `awayBp` (BTC from the price to beat). It also keeps the side's highest and lowest bid while held (`hi`, `lo`).
+    - Once closed, its lesson in words (`lessonOf`): overconfidence, up before reversing, a last-minute move, a scalp, a stop, or a skipped trade that would have won or lost. Closed trades without one get it when the engine loads.
+    - The 5,000 newest stay in the `updown-paper` setting with the learner's state (`learn`).
+    - `GET /v1/updown/status` has `learn` (`UpdownLearnView`), `stats.shadow` and `stats.brier.used`. The readiness bar scores the chance it trades on, once it has 300 snapshots.
+  - **Site (`UpDownPanel.tsx`):**
+    - "What it has learned from its trades": the trust per window length and part, the kinds of trade with their record (skipped ones marked), and the learning journal.
+    - A Lesson column on every trade, shadow trades marked "skipped", and "Download the trade log (CSV)" (the newest 500, every field).
+    - Every new string is in all six dictionaries (53).
+  - **Tests:** `engine/test/updownLearn.test.ts`: trust up and down, uninformative snapshots, the first day's seed, skipping and letting back in, old trades, shadow trades in the book, lessons. In `updown.test.ts`, a skipped kind traded end to end as a shadow trade. The engine suite: 955 pass.
+  - **Checked** in the browser against the stand-in seeded with the first day's trades (`UPDOWN_SEED`), at 1280px and 375px (no sideways scroll).
 
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 

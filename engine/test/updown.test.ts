@@ -264,6 +264,8 @@ describe('the paper book', () => {
 // A whole window, end to end: the service finds it on Gamma, reads the price to beat, prices it from the exchange
 // feeds, takes a stale Up ask after the delay, and settles it at Polymarket's result.
 describe('the service', () => {
+  /** These tests are about the trading mechanics: the learner trusts the model fully (learn.test.ts covers learning). */
+  const trustModel = (svc: UpdownService) => { for (const k of ['5m:mid', '5m:end', '15m:mid', '15m:end']) svc.learn.s.calib[k] = { s1: 1e9, s2: 1e9, n: 1e12 } }
   class FakeWs {
     static all: FakeWs[] = []
     onopen: (() => void) | null = null; onmessage: ((e: { data: string }) => void) | null = null; onclose: (() => void) | null = null; onerror: (() => void) | null = null
@@ -274,7 +276,7 @@ describe('the service', () => {
     emit(o: unknown) { this.onmessage?.({ data: JSON.stringify(o) }) }
   }
 
-  test('finds, prices, trades on paper after the delay, and settles', async () => {
+  for (const skip of [false, true]) test(skip ? 'a kind it learned to skip: filled and settled as a shadow trade, outside the balance' : 'finds, prices, trades on paper after the delay, and settles', async () => {
     const start = 1_900_000_200 // a multiple of 300
     let now = (start - 120) * 1000
     const ev = structuredClone((fixture as { event: { markets: Record<string, unknown>[] } }).event)
@@ -294,6 +296,7 @@ describe('the service', () => {
     }
     const settings = new Map<string, string>()
     const svc = new UpdownService({ store: { getSetting: async k => settings.get(k) ?? null, setSetting: async (k, v) => { settings.set(k, v) } }, fetch: f as never, Ws: FakeWs as never, now: () => now })
+    trustModel(svc)
     // Feeds: Coinbase at the price to beat for the minute before the start (the basis), then 0.35% higher.
     const feed = (sec: number, px: number) => { svc.model.onTick('coinbase', px, sec * 1000); svc.model.tick(sec * 1000 + 999) }
     for (let s = start - 400; s < start; s++) feed(s, 77_000 + Math.sin(s) * 3)
@@ -304,7 +307,7 @@ describe('the service', () => {
     now = (start + 5) * 1000
     await svc.prices()
     // The book: Up still offered at 50¢ though BTC has moved up.
-    const book = FakeWs.all.find(w => w.url.includes('ws-subscriptions-clob'))!
+    const book = FakeWs.all.filter(x => x.url.includes('ws-subscriptions-clob')).at(-1)!
     book.emit([{ event_type: 'book', asset_id: 'UP', timestamp: String(now), bids: [{ price: '0.48', size: '100' }], asks: [{ price: '0.5', size: '200' }] },
                { event_type: 'book', asset_id: 'DOWN', timestamp: String(now), bids: [{ price: '0.48', size: '100' }], asks: [{ price: '0.52', size: '200' }] }])
     // BTC sits at the price to beat while the market agrees (about 50%): the engine aligns its estimate with it.
@@ -318,11 +321,30 @@ describe('the service', () => {
     const w = svc.status().windows.find(x => x.slug === updownSlug('5m', start))!
     expect(w.model!).toBeGreaterThan(0.8)
     expect(w.waiting).toBeNull()
+    if (skip) svc.learn.s.blocked.fav = { since: now, trades: 20, roi: -0.3, pnl: -150 }
     svc.decideAll()
     expect(svc.paper.s.trades.length).toBe(0) // not before the delay
     await new Promise(r => setTimeout(r, 300 + TAKER_DELAY_MS + 100))
     expect(svc.paper.s.trades.length).toBe(1)
     const tr = svc.paper.s.trades[0]
+    // What it knew when it bought: the raw model, the market's mid, how far BTC was above the price to beat.
+    expect(tr.raw!).toBeGreaterThan(0.8); expect(tr.market).toBe(0.49); expect(tr.awayBp!).toBeCloseTo(35, 0)
+    if (skip) {
+      expect(tr.shadow).toBe('fav')
+      expect(svc.paper.s.bankroll).toBe(1_000)
+      expect(svc.status().windows.find(x => x.slug === updownSlug('5m', start))!.waiting).toBe('learned to skip this kind of trade')
+      now = (start + 310) * 1000
+      completed = true
+      await svc.prices()
+      expect(svc.paper.s.trades[0].result).toBe('won')
+      expect(svc.paper.s.trades[0].lesson!.k).toContain('would have won')
+      expect(svc.paper.s.bankroll).toBe(1_000)
+      expect(svc.status().stats.shadow!.trades).toBe(1)
+      await svc.save()
+      expect(JSON.parse(settings.get('updown-paper')!).learn.blocked.fav).toBeDefined()
+      svc.stop()
+      return
+    }
     expect(tr.side).toBe('up'); expect(tr.lane).toBe('A'); expect(tr.price).toBe(0.5)
     expect(tr.cost).toBeCloseTo(RULES.orderUsd, 0)
     svc.decideAll()
@@ -354,6 +376,7 @@ describe('the service', () => {
       return Response.json({})
     }
     const svc = new UpdownService({ store: { getSetting: async () => null, setSetting: async () => {} }, fetch: f as never, Ws: FakeWs as never, now: () => now })
+    trustModel(svc)
     const feed = (sec: number, px: number) => { svc.model.onTick('coinbase', px, sec * 1000); svc.model.tick(sec * 1000 + 999) }
     for (let s = start - 400; s < start; s++) feed(s, 77_000 + Math.sin(s) * 3)
     svc.model.learnBasis(start - 300, 77_000)
@@ -405,6 +428,7 @@ describe('the service', () => {
       return Response.json({})
     }
     const svc = new UpdownService({ store: { getSetting: async () => null, setSetting: async () => {} }, fetch: f as never, Ws: FakeWs as never, now: () => now })
+    trustModel(svc)
     const feed = (sec: number, px: number) => { svc.model.onTick('coinbase', px, sec * 1000); svc.model.tick(sec * 1000 + 999) }
     for (let s = start - 400; s < start; s++) feed(s, 77_000 + Math.sin(s) * 3)
     svc.model.learnBasis(start - 300, 77_000)
