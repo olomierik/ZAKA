@@ -3241,3 +3241,51 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .algo-explore b { font-weight: 700; }
 .algo-lanes { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 6px; font-size: 0.76rem; }
 .algo-lane { margin-left: 6px; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--amber); background: rgba(240,185,11,0.14); border-radius: 4px; padding: 1px 5px; vertical-align: middle; }
+
+/* /predict → BTC 5m · 15m (components/UpDownPanel.tsx, 2026-11-01): Polymarket's BTC Up/Down windows and the engine's autotrader. */
+.pp-mode button.active.btc { background: rgba(10,143,79,0.14); color: var(--green, #0a8f4f); }
+.ud { display: flex; flex-direction: column; gap: 12px; }
+.ud-hero { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; padding: 14px 16px; }
+.ud-title { font-size: 1.05rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.ud-paper { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.04em; color: var(--amber); background: rgba(240,185,11,0.14); border-radius: 4px; padding: 1px 6px; }
+.ud-sub { margin: 6px 0 0; font-size: 0.84rem; color: var(--text-muted); line-height: 1.45; }
+.ud-ready { font-size: 0.8rem; display: flex; flex-direction: column; gap: 3px; background: var(--bg-3); border-radius: 8px; padding: 10px 12px; }
+.ud-ready b { margin-bottom: 2px; }
+.ud-ready small { color: var(--text-muted); margin-top: 4px; }
+.ud-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; padding: 12px 16px; }
+.ud-stats > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ud-stats span { font-size: 0.72rem; color: var(--text-muted); }
+.ud-stats b { font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+.ud-warn { background: rgba(246,70,93,0.1); color: var(--red); border-radius: 8px; padding: 8px 12px; font-size: 0.84rem; }
+.ud-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.ud-win { background: var(--adx-card-bg, var(--bg-2)); border: 1px solid var(--adx-card-border, var(--adx-border)); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.ud-win.live { border-color: var(--green, #0a8f4f); }
+.ud-win-h { display: flex; align-items: center; gap: 8px; }
+.ud-win-h b { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.ud-dur { font-size: 0.7rem; font-weight: 700; background: var(--bg-3); border-radius: 4px; padding: 1px 6px; }
+.ud-link { margin-left: auto; font-size: 0.74rem; color: var(--text-muted); }
+.ud-row { display: flex; justify-content: space-between; gap: 8px; font-size: 0.82rem; }
+.ud-row span { color: var(--text-muted); }
+.ud-row b { font-variant-numeric: tabular-nums; text-align: right; }
+.ud-row small { font-weight: 500; }
+.ud-bars { display: flex; flex-direction: column; gap: 4px; margin: 2px 0; }
+.ud-bars > div { display: grid; grid-template-columns: 52px minmax(0, 1fr) 40px; align-items: center; gap: 8px; font-size: 0.78rem; }
+.ud-bars span { color: var(--text-muted); }
+.ud-bars b { text-align: right; font-variant-numeric: tabular-nums; }
+.ud-bar { height: 6px; background: rgba(246,70,93,0.35); border-radius: 99px; overflow: hidden; }
+.ud-bar i { display: block; height: 100%; background: var(--green, #0a8f4f); }
+.ud-bar.mkt { background: var(--bg-4); }
+.ud-bar.mkt i { background: var(--text-muted); }
+.ud-state { font-size: 0.76rem; color: var(--text-muted); border-top: 1px solid var(--adx-border); padding-top: 6px; margin-top: 2px; }
+.ud-state.on { color: var(--green, #0a8f4f); }
+.ud-next { font-size: 0.78rem; color: var(--text-muted); }
+.ud-table-wrap { overflow-x: auto; }
+.ud-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.ud-table th, .ud-table td { text-align: left; padding: 7px 10px; border-top: 1px solid var(--adx-border); white-space: nowrap; }
+.ud-table th { color: var(--text-muted); font-weight: 600; font-size: 0.72rem; }
+@media (max-width: 767px) {
+  .ud-hero { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+  .ud-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 12px; }
+  /* Four modes don't fit one row on a phone: two by two. */
+  .pm-head .pr-mode { grid-auto-flow: row; grid-template-columns: 1fr 1fr; }
+}

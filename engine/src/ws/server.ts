@@ -61,6 +61,7 @@ import type { HotStore } from '../store/hot'
 import type { Traffic } from '../traffic'
 import type { Votes } from '../votes'
 import type { PredictPractice } from '../practice/predict'
+import type { UpdownService } from '../updown/service'
 import type { Analytics } from '../analytics'
 import { quantApi, type QuantApiDeps } from '../quant/api'
 import { algoApi } from '../algo/api'
@@ -102,6 +103,8 @@ export class DataApi {
   votes: Votes | null = null
   /** Practice predictions: virtual USDC on Hyperliquid's prediction markets (practice/predict.ts). */
   practice: PredictPractice | null = null
+  /** The BTC Up/Down autotrader on Polymarket's books, on paper (updown/service.ts). */
+  updown: UpdownService | null = null
   /** The owner's analytics (analytics.ts): sign-ins and trades the site sends. */
   analytics: Analytics | null = null
   /** Alerts by web push (alerts/service.ts). */
@@ -424,6 +427,18 @@ export function startServer({ cfg, api, health }: ServerDeps) {
           return json(req, 200, r, 'no-store')
         }
         return json(req, 405, { error: 'method not allowed' })
+      }
+      // The BTC Up/Down autotrader (updown/service.ts): every live 5m and 15m Polymarket window, the model against the
+      // market, and the paper book's trades and record. Public reads.
+      if (url.pathname.startsWith('/v1/updown/')) {
+        if (!rest.take(ip)) { metrics.inc('rest_rate_limited'); return json(req, 429, { error: 'rate limited' }) }
+        const ud = api.updown
+        if (!ud) return json(req, 503, { error: 'the Up/Down autotrader isn’t running here' })
+        if (req.method !== 'GET') return json(req, 405, { error: 'method not allowed' })
+        const sub = url.pathname.slice('/v1/updown/'.length)
+        if (sub === 'status') return json(req, 200, ud.status(), 'no-store')
+        if (sub === 'trades') return json(req, 200, ud.trades(Number(url.searchParams.get('limit')) || 100), 'no-store')
+        return json(req, 404, { error: 'not found' })
       }
       // Practice predictions (practice/predict.ts): virtual USDC on Hyperliquid's prediction markets, filled at the mid
       // the engine reads. The board is public; an account is reached with its key (X-Practice-Key), and new accounts

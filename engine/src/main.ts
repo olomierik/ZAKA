@@ -16,6 +16,7 @@
 import { Traffic } from './traffic'
 import { Votes } from './votes'
 import { PredictPractice } from './practice/predict'
+import { UpdownService } from './updown/service'
 import { DOLLAR_PLAN } from './bot/dollarPlan'
 import { every, keepAliveOnUnhandled, startWithRetry } from './lifecycle'
 import { randomBytes } from 'node:crypto'
@@ -283,6 +284,14 @@ async function main() {
     await practice.load().catch(e => log.error('practice predictions: load failed', { error: errMsg(e) }))
     dataApi.practice = practice
     every(30_000, 'practice settlement', () => { void practice.settleTick().catch(e => log.warn('practice: settlement failed', { error: errMsg(e) })) })
+  }
+  // The BTC Up/Down autotrader (updown/service.ts): Polymarket's 5- and 15-minute windows priced and traded on paper
+  // against their live books. Real money is never placed from here. UPDOWN=off stops it.
+  if (dataApi && !/^(0|off|false|no)$/i.test(process.env.UPDOWN?.trim() ?? '')) {
+    const updown = new UpdownService({ store: botStore })
+    await updown.load()
+    updown.start()
+    dataApi.updown = updown
   }
   // Price and activity alerts by web push (alerts/service.ts): Arc coins on every trade, Hyperliquid every 2 seconds;
   // followed wallets from the wallet tracker (the Trenches' service, below).

@@ -201,6 +201,9 @@ describe('practice predictions', () => {
 describe('practice routes', () => {
   test('create, buy, read, the board; orders only from the site; a wrong key is a 404', async () => {
     const hl = fakeHl()
+    // The routes run on the real clock, so keep the market they buy open a day past it.
+    const end = new Date(Date.now() + 86_400_000).toISOString()
+    hl.state.outcomes[0].description = `perp:BTC|threshold:82016|time:${end.slice(0, 10).replaceAll('-', '')}-${end.slice(11, 13)}00`
     const api = new DataApi(null, new MemoryHotStore(), new NullHistoryStore())
     api.practice = new PredictPractice({ store: new MemoryPracticeStore(), info: hl.info })
     const cfg = { role: 'all', port: 0, allowedOrigins: ['https://arcsense.site'], metricsToken: 'secret', maxConnsPerIp: 3, maxMsgsPerSec: 5, maxSubsPerConn: 4, restRatePerSec: 50 } as unknown as Config
