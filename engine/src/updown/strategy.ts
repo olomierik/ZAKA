@@ -21,9 +21,13 @@ export const RULES = {
   aFromSec: 20,
   bLastSec: 60,
   bStopSec: 3,
-  /** Asks under 5¢ or over 98¢ aren't taken (the model's tails are where it's least sure). */
+  /** Asks under 5¢ or over 98¢ aren't taken (the model's tails are where it's least sure), and lane A only takes
+   *  15–85¢: its first live trade (2026-11-01) bought Up at 6¢ on a 20% model and lost, and Polymarket's longshots
+   *  are the most overpriced side (the favourite-longshot bias). */
   minAsk: 0.05,
   maxAsk: 0.98,
+  minAskA: 0.15,
+  maxAskA: 0.85,
   orderUsd: 25,
   windowUsd: 100,
   dailyLossUsd: 150,
@@ -69,6 +73,7 @@ export function decide(i: DecideInput): Intent | { why: string } {
     lane = 'B'; margin = RULES.marginB
   } else {
     if (i.elapsed < RULES.aFromSec) return { why: 'window just opened' }
+    if (top.price < RULES.minAskA || top.price > RULES.maxAskA) return { why: 'mid-window, ask outside 15–85¢' }
     lane = 'A'; margin = top.price >= 0.4 && top.price <= 0.6 ? RULES.marginMid : RULES.marginA
   }
   const edge = i.p - cost(top.price)

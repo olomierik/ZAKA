@@ -133,6 +133,11 @@ describe('the strategy', () => {
     expect('lane' in decide({ ...base, side: 'up', p: 0.48, asks: [{ price: 0.35, size: 100 }] })).toBe(true)
   })
 
+  test('lane A leaves longshots and near-certainties alone', () => {
+    expect(decide({ ...base, side: 'up', p: 0.3, asks: [{ price: 0.06, size: 100 }] })).toEqual({ why: 'mid-window, ask outside 15–85¢' })
+    expect('why' in decide({ ...base, side: 'up', p: 0.99, asks: [{ price: 0.88, size: 100 }] })).toBe(true)
+  })
+
   test('no lane A in the first 20 s or the last minute; lane B only when nearly decided', () => {
     expect(decide({ ...base, elapsed: 5, side: 'up', p: 0.9, asks: [{ price: 0.5, size: 100 }] })).toEqual({ why: 'window just opened' })
     expect(decide({ ...base, secondsLeft: 40, side: 'up', p: 0.9, asks: [{ price: 0.5, size: 100 }] })).toEqual({ why: 'last minute, not decided' })
