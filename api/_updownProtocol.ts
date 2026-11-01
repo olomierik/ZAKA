@@ -122,6 +122,8 @@ export interface UpdownStatus {
     geoblock: { blocked: boolean; country: string } | null
     /** How far the market's prices put Chainlink from the engine's exchange-based estimate (bp), learned in calm moments. */
     marketShiftBp: number | null
+    /** Why the last window couldn't be listed (cleared once a live window is). */
+    lookupError: { at: number; slug: string; why: string } | null
   }
   delayMs: number
   stats: UpdownStats

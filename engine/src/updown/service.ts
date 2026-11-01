@@ -93,14 +93,26 @@ export class UpdownService {
       if (this.wins.has(slug) || this.now() - (this.listErr.get(slug) ?? 0) < 30_000) return
       try {
         const w = await fetchWindow(this.f, dur, start)
-        if ('error' in w) { this.listErr.set(slug, this.now()); log.debug('updown: window not traded', { slug, why: w.error }); return }
+        if ('error' in w) { this.listErr.set(slug, this.now()); this.lookupFailed(slug, w.error); return }
         this.wins.set(slug, { ...w, open: null, openAskedAt: 0, resultAskedAt: 0, resolved: false, view: null, viewAt: 0 })
-      } catch (e) { this.listErr.set(slug, this.now()); log.debug('updown: window lookup failed', { slug, error: errMsg(e) }) }
+        if (w.start <= nowSec) this.lookupError = null
+      } catch (e) { this.listErr.set(slug, this.now()); this.lookupFailed(slug, errMsg(e)) }
     }))
     // Windows over an hour past their end, resolved or never traded, are forgotten.
     const open = new Set(this.paper.openSlugs())
     for (const [slug, w] of this.wins) if (w.end < nowSec - 3_600 && (w.resolved || !open.has(slug))) this.wins.delete(slug)
     this.stream.watch([...this.wins.values()].filter(w => w.end > nowSec).flatMap(w => [w.upToken, w.downToken]))
+  }
+
+  /** The last reason a window couldn't be listed, served in the status and logged at most once a minute: on Railway
+   *  (US West, 2026-11-01) the engine found no windows at all, and debug logs didn't say why. A window listed later
+   *  (the next one isn't on Gamma until shortly before it starts) clears it. */
+  lookupError: { at: number; slug: string; why: string } | null = null
+  private lookupWarnAt = 0
+  private lookupFailed(slug: string, why: string) {
+    const now = this.now()
+    this.lookupError = { at: now, slug, why }
+    if (now - this.lookupWarnAt > 60_000) { this.lookupWarnAt = now; log.warn('updown: window not listed', { slug, why }) }
   }
 
   /** Prices to beat for started windows, results for ended ones (including positions saved before a restart). */
@@ -281,6 +293,7 @@ export class UpdownService {
         volPct: this.model.volSamples >= 60 ? Math.round(this.model.sigma() * Math.sqrt(365 * 86_400) * 1000) / 10 : null,
         geoblock: this.geo,
         marketShiftBp: this.shiftN ? Math.round(this.shift * 1e5) / 10 : null,
+        lookupError: this.lookupError,
       },
       delayMs: this.delayMs(),
       stats: this.paper.stats(now),
