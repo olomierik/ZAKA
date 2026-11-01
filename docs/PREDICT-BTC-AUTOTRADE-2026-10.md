@@ -288,6 +288,23 @@ Rules the engine keeps whatever the strategy says (server-side, deterministic, a
   that market.
 - No model, the Algo agent's brain included, can place an order: it can only restrict.
 
+## 8b. Exits: selling before the result (2026-11-01)
+
+Lane A's entries replayed on every BTC 5m and 15m book of 2026-06-15 (`scripts/research-polymarket-scalp.mjs`), each
+position closed by one exit rule; taker fee on sales too. Return on the stake:
+
+| Exit | 5m, 250 ms | 5m, 1 s | 15m, 250 ms | 15m, 1 s |
+|---|---|---|---|---|
+| Hold to the result | 25.7% | 22.2% | 11.8% | 18.5% |
+| Sell when the bid nets the model's value | 14.2% | 14.7% | 34.7% | 37.7% |
+| … only when it nets 5¢ more, plus a 15¢ stop | 24.2% | 22.7% | 34.9% | 41.1% |
+| … the model's value, plus a 15¢ stop | 15.4% | 15.9% | 35.1% | 37.8% |
+| Fixed target +3¢ at the bid | 8.4% | 9.0% | 20.2% | 24.4% |
+| Maker ask at cost + 3¢ | 8.9% | 7.6% | 17.5% | 19.1% |
+
+Built: 15m sells at the model's value, 5m only into a 5¢ overpayment, both with the 15¢ stop. On 15m the sale won about
+80% of trades with half the swing per trade, and was positive in both halves of the day (holding lost 21% in one).
+
 ## 9. What could be wrong
 
 - **One day of order books.** The replay's 15m results rest on about 70 markets (fills within a market share one

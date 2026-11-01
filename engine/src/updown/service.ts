@@ -3,7 +3,8 @@
 //
 // Four times a second, for each live window: the Chainlink estimate (feeds.ts), the TWAP fair value (fair.ts), each
 // side's best order (strategy.ts), and the paper book's caps (paper.ts). An order fills after the measured book lag plus
-// Polymarket's 150 ms taker delay, at the book as it is then. Windows are found on Gamma, their price to beat and
+// Polymarket's 150 ms taker delay, at the book as it is then. Open positions are checked on the same beat and sold at
+// the bid once the market pays their model value (a scalp) or the model says they're worth well under cost (a stop). Windows are found on Gamma, their price to beat and
 // result read from Polymarket. Real money isn't placed from here: the owner chose each user's own wallet, offered once
 // the paper record clears UPDOWN_READY (two weeks, 300 windows, both weeks positive, model at least as good as the
 // market). `UPDOWN=off` stops it.
@@ -15,8 +16,8 @@ import {
 import { fairUp, type FairInput } from './fair'
 import { SpotFeeds, SpotModel } from './feeds'
 import { BookStream, Books, fetchGeoblock, fetchPrice, fetchWindow, type Fetch, type UpWindow } from './markets'
-import { PaperBook, freshPaper, type PaperState } from './paper'
-import { RULES, decide, fillFak, sizeUsd, type Intent } from './strategy'
+import { PaperBook, freshPaper, heldShares, type PaperState } from './paper'
+import { RULES, decide, exitDecision, fillFak, sellFak, sizeUsd, type Intent } from './strategy'
 
 export interface SettingsStore { getSetting(key: string): Promise<string | null>; setSetting(key: string, value: string): Promise<void> }
 
@@ -36,6 +37,8 @@ export class UpdownService {
   paper: PaperBook
   private wins = new Map<string, Win>()
   private listErr = new Map<string, number>()
+  /** Positions with a sale on its way, so a second isn't sent before it lands. */
+  private selling = new Set<string>()
   private geo: { blocked: boolean; country: string } | null = null
   private timers: ReturnType<typeof setInterval>[] = []
   private now: () => number
@@ -210,6 +213,7 @@ export class UpdownService {
       const view = this.viewOf(w, now)
       w.view = view
       w.viewAt = now
+      if (view.model !== null && w.accepting && this.bookLive(w, now)) this.exits(w, view.model, view.secondsLeft)
       if (view.waiting || view.model === null) continue
       const elapsed = nowSec - w.start
       const intents: Intent[] = []
@@ -248,6 +252,30 @@ export class UpdownService {
     }
     this.paper.record(t)
     log.info('updown: paper fill', { slug: w.slug, lane: it.lane, side: it.side, shares: t.shares, price: t.price, edge: t.edge })
+  }
+
+  private bookLive(w: Win, now: number) { return this.stream.connected && now - this.books.lastMsgAt <= RULES.bookStaleMs && this.books.has(w.upToken) }
+
+  /** Open positions in a live window: sold at the bid when the exit rule says so, after the same delay as a buy. */
+  private exits(w: Win, model: number, secondsLeft: number) {
+    for (const t of this.paper.s.trades) {
+      if (t.slug !== w.slug || t.result !== 'open' || this.selling.has(t.id)) continue
+      const held = heldShares(t)
+      if (held < 0.01) continue
+      const token = t.side === 'up' ? w.upToken : w.downToken
+      const d = exitDecision({ dur: w.dur, p: t.side === 'up' ? model : 1 - model, costPerShare: t.cost / t.shares, bids: this.books.bidLevels(token), secondsLeft, feeRate: w.feeRate, feeExponent: w.feeExponent })
+      if (!('why' in d)) continue
+      this.selling.add(t.id)
+      const id = t.id
+      setTimeout(() => {
+        this.selling.delete(id)
+        const fill = sellFak(this.books.bidLevels(token), d.floor, held, w.feeRate, w.feeExponent)
+        // Polymarket's minimum order, unless it's the whole of what's left; otherwise it's tried again on the next beat.
+        if (fill.shares < 0.01 || (fill.shares < w.minSize && fill.shares < held - 0.01)) return
+        const done = this.paper.sell(id, fill, d.why, this.now())
+        if (done) log.info('updown: paper sale', { slug: w.slug, side: done.side, why: d.why, shares: Math.round(fill.shares * 100) / 100, price: Math.round(fill.avg * 1e4) / 1e4, pnl: done.pnl })
+      }, this.delayMs())
+    }
   }
 
   snapshots() {
@@ -298,7 +326,7 @@ export class UpdownService {
       delayMs: this.delayMs(),
       stats: this.paper.stats(now),
       readiness: this.paper.readiness(now),
-      rules: { orderUsd: RULES.orderUsd, windowUsd: RULES.windowUsd, dailyLossUsd: RULES.dailyLossUsd, marginA: RULES.marginA, marginMid: RULES.marginMid, marginB: RULES.marginB },
+      rules: { orderUsd: RULES.orderUsd, windowUsd: RULES.windowUsd, dailyLossUsd: RULES.dailyLossUsd, marginA: RULES.marginA, marginMid: RULES.marginMid, marginB: RULES.marginB, overpay: RULES.overpay, stop: RULES.stop },
     }
   }
 

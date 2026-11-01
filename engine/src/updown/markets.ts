@@ -136,6 +136,10 @@ export class Books {
   askLevels(token: string): Level[] {
     return [...(this.asks.get(token) ?? new Map()).entries()].filter(([, s]) => s > 0).map(([price, size]) => ({ price, size })).sort((a, b) => a.price - b.price)
   }
+  /** Bids, highest first. */
+  bidLevels(token: string): Level[] {
+    return [...(this.bids.get(token) ?? new Map()).entries()].filter(([, s]) => s > 0).map(([price, size]) => ({ price, size })).sort((a, b) => b.price - a.price)
+  }
   bestBid(token: string): number | null {
     let b: number | null = null
     for (const [p, s] of this.bids.get(token) ?? []) if (s > 0 && (b === null || p > b)) b = p

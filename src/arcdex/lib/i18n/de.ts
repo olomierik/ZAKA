@@ -4319,5 +4319,12 @@ const d: Record<string, string> = {
   "cooling down after an order": "Pause nach einer Order",
   "size under Polymarket’s minimum": "Größe unter dem Minimum von Polymarket",
   "starts soon": "bald",
+  "Sold early (scalps / stops)": "Vorzeitig verkauft (Scalps / Stops)",
+  "Sold at the bid once the market paid the model’s value": "Zum Bid verkauft, sobald der Markt den Wert des Modells zahlte",
+  "Cut once the model said it was worth well under its cost": "Abgestoßen, sobald das Modell sie weit unter ihren Kosten sah",
+  "part sold": "teilweise verkauft",
+  "scalp": "Scalp",
+  "stop": "Stop",
+  "Exits: a 15-minute position is sold at the bid once it pays the model’s value, a 5-minute one once it pays {p}¢ more; either is cut once the model says it’s worth {s}¢ under its cost.": "Ausstiege: eine 15-Minuten-Position wird zum Bid verkauft, sobald er den Wert des Modells zahlt, eine 5-Minuten-Position, sobald er {p}¢ mehr zahlt; beide werden abgestoßen, sobald das Modell sie {s}¢ unter ihren Kosten sieht.",
 }
 export default d

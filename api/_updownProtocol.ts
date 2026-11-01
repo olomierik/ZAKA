@@ -10,6 +10,9 @@ export type UpdownDur = '5m' | '15m'
 export type UpdownSide = 'up' | 'down'
 /** A: the model beats a stale ask mid-window. B: in the last minute the observed TWAP already all but decides it. */
 export type UpdownLane = 'A' | 'B'
+/** Why a position was sold before the result: the market paid at least the model's value (a scalp), or the model
+ *  said it was worth well under its cost (a stop). */
+export type UpdownExit = 'scalp' | 'stop'
 
 export const UPDOWN_DUR_SEC: Record<UpdownDur, number> = { '5m': 300, '15m': 900 }
 /** Polymarket's crypto-price endpoint names the windows this way. */
@@ -67,6 +70,12 @@ export interface UpdownTrade {
   secondsLeft: number
   result: 'open' | 'won' | 'lost'
   pnl: number | null
+  /** Shares sold before the result, what they paid after the fee, the fee, when, and why (absent on older trades). */
+  sold?: number
+  proceeds?: number
+  exitFee?: number
+  exitAt?: number | null
+  exit?: UpdownExit | null
 }
 
 export interface UpdownLaneStats { trades: number; won: number; staked: number; pnl: number; fees: number }
@@ -84,6 +93,8 @@ export interface UpdownStats {
   pnl: number
   /** Orders the engine wanted that found nothing left at its price after the delay. */
   missed: number
+  /** Positions closed by a sale before the result. */
+  exits: Record<UpdownExit, number>
   byLane: Record<UpdownLane, UpdownLaneStats>
   byDur: Record<UpdownDur, UpdownLaneStats>
   /** One row per UTC day, oldest first. */
@@ -128,5 +139,5 @@ export interface UpdownStatus {
   delayMs: number
   stats: UpdownStats
   readiness: UpdownReadiness
-  rules: { orderUsd: number; windowUsd: number; dailyLossUsd: number; marginA: number; marginMid: number; marginB: number }
+  rules: { orderUsd: number; windowUsd: number; dailyLossUsd: number; marginA: number; marginMid: number; marginB: number; overpay: Record<UpdownDur, number>; stop: number }
 }

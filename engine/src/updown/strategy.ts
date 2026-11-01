@@ -7,7 +7,7 @@
 // The engine never buys from a stale picture: no order without a fresh price, a live book, the price to beat, and the
 // exchange sources agreeing.
 
-import { takerFee, type UpdownLane, type UpdownSide } from '../../../api/_updownProtocol'
+import { takerFee, type UpdownDur, type UpdownExit, type UpdownLane, type UpdownSide } from '../../../api/_updownProtocol'
 import type { Level } from './markets'
 
 export const RULES = {
@@ -45,6 +45,17 @@ export const RULES = {
   /** The engine aligns its Chainlink estimate with the market in calm moments; it trades once it has this many. */
   alignMin: 30,
   bookStaleMs: 15_000,
+  /** Exits (2026-11-01, owner: "take positions and scalp profits"). A position is sold at the bid once the bid, after
+   *  the fee, pays the model's value plus `overpay` (the market has caught up, or overshot), and cut once the model
+   *  says the side is worth `stop` less than it cost. Replayed on every BTC 5m/15m book of 2026-06-15
+   *  (scripts/research-polymarket-scalp.mjs): on 15m windows this made 35–38% of the stake against 12–18% held to the
+   *  end, winning 80% of trades with half the swings; on 5m windows holding paid better, so 5m only sells into a 5¢
+   *  overpayment (24% against 22–26% held, with a third less swing). Fixed profit targets (+3¢, +5¢, +10¢) and resting
+   *  maker asks did worse than both. */
+  overpay: { '5m': 0.05, '15m': 0 } as Record<UpdownDur, number>,
+  stop: 0.15,
+  /** No exits in the last seconds: the sale might not land before the window closes. */
+  exitStopSec: 3,
 }
 
 export interface DecideInput {
@@ -101,4 +112,45 @@ export function fillFak(asks: Level[], worst: number, usd: number, feeRate: numb
     shares += take; spent += take * l.price; fee += take * takerFee(l.price, feeRate, feeExponent)
   }
   return { shares, spent, fee, avg: shares > 0 ? spent / shares : 0 }
+}
+
+export interface ExitInput {
+  dur: UpdownDur
+  /** The model's chance this side wins, now. */
+  p: number
+  /** What a share of the position cost, fees included. */
+  costPerShare: number
+  bids: Level[]
+  secondsLeft: number
+  feeRate: number
+  feeExponent: number
+}
+
+/** Whether to sell an open position now, and the lowest price worth selling at; or why not. */
+export function exitDecision(i: ExitInput): { why: UpdownExit; floor: number } | { hold: string } {
+  if (i.secondsLeft < RULES.exitStopSec) return { hold: 'closing' }
+  const top = i.bids[0]
+  if (!top) return { hold: 'no bids' }
+  const net = (p: number) => p - takerFee(p, i.feeRate, i.feeExponent)
+  const want = i.p + RULES.overpay[i.dur]
+  if (net(top.price) >= want) {
+    // The lowest level that still pays the model's value plus the overpayment.
+    let floor = top.price
+    for (const l of i.bids) { if (net(l.price) >= want) floor = l.price; else break }
+    return { why: 'scalp', floor }
+  }
+  if (i.p < i.costPerShare - RULES.stop) return { why: 'stop', floor: Math.max(0.01, top.price - 0.03) }
+  return { hold: 'holding' }
+}
+
+/** A fill-and-kill sale against the bids as they are when it lands: levels down to `floor`, up to `shares`, each
+ *  share paying its price less the taker fee. */
+export function sellFak(bids: Level[], floor: number, shares: number, feeRate: number, feeExponent = 1) {
+  let sold = 0, gross = 0, fee = 0
+  for (const l of bids) {
+    if (l.price < floor - 1e-9 || sold >= shares - 1e-9) break
+    const take = Math.min(l.size, shares - sold)
+    sold += take; gross += take * l.price; fee += take * takerFee(l.price, feeRate, feeExponent)
+  }
+  return { shares: sold, gross, fee, proceeds: gross - fee, avg: sold > 0 ? gross / sold : 0 }
 }
