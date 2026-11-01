@@ -2,9 +2,11 @@
 // Every live window with its price to beat, the engine's BTC estimate, the model's chance of Up against the market's,
 // the edge after fees and why it isn't trading; then the autotrader's paper record on Polymarket's live books, and
 // what it still needs before real money is offered (each user's own wallet, owner's decision 2026-11-01).
+// What it has learned from its record (engine/src/updown/learn.ts): how far it trusts its model against the market,
+// the kinds of trade it skips, its learning journal, and why each trade won or lost (the trade log, downloadable).
 
 import { useEffect, useState } from 'react'
-import type { UpdownStatus, UpdownTrade, UpdownWindowView } from '../../../api/_updownProtocol'
+import type { UpdownLearnView, UpdownLesson, UpdownStatus, UpdownTrade, UpdownWindowView } from '../../../api/_updownProtocol'
 import { engineApiUrl } from '../api/marketStream'
 import { t as T } from '../lib/i18n'
 
@@ -32,6 +34,8 @@ const usd = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(n).toFixed(2)}`
 const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}$${Math.abs(n).toFixed(2)}`
 const cls = (n: number) => (n > 0 ? 'fx-up' : n < 0 ? 'fx-down' : '')
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
+/** A lesson or journal line in the viewer's language (the kind of trade and the part of the window are words too). */
+const say = (l: UpdownLesson) => T(l.k, l.v && { ...l.v, ...(l.v.p ? { p: T(l.v.p) } : {}), ...(l.v.b ? { b: T(l.v.b) } : {}) })
 const btc = (n: number | null) => (n === null ? '—' : `$${n.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`)
 
 function WindowCard({ w }: { w: UpdownWindowView }) {
@@ -47,7 +51,8 @@ function WindowCard({ w }: { w: UpdownWindowView }) {
       <div className="ud-row"><span>{T('Price to beat')}</span><b>{btc(w.open)}</b></div>
       <div className="ud-row"><span>{T('BTC now (engine)')}</span><b className={ahead === null ? '' : cls(ahead)}>{btc(w.btc)}{ahead !== null && <small> {ahead >= 0 ? '+' : '−'}${Math.abs(ahead).toFixed(2)}</small>}</b></div>
       <div className="ud-bars">
-        <div><span>{T('Model')}</span><div className="ud-bar"><i style={{ width: `${(w.model ?? 0.5) * 100}%` }} /></div><b>{pct(w.model)}</b></div>
+        <div><span>{T('Model')}</span><div className="ud-bar"><i style={{ width: `${(w.raw ?? w.model ?? 0.5) * 100}%` }} /></div><b>{pct(w.raw ?? w.model)}</b></div>
+        {w.raw !== undefined && <div title={T('The market’s chance, moved toward the model as far as it has learned to trust it')}><span>{T('Trades on')}</span><div className="ud-bar"><i style={{ width: `${(w.model ?? 0.5) * 100}%` }} /></div><b>{pct(w.model)}</b></div>}
         <div><span>{T('Market')}</span><div className="ud-bar mkt"><i style={{ width: `${(w.market ?? 0.5) * 100}%` }} /></div><b>{pct(w.market)}</b></div>
       </div>
       <div className="ud-row"><span>{T('Up / Down ask')}</span><b><span className="fx-up">{cents(w.up.ask)}</span> / <span className="fx-down">{cents(w.down.ask)}</span></b></div>
@@ -55,6 +60,62 @@ function WindowCard({ w }: { w: UpdownWindowView }) {
       <div className={`ud-state ${w.waiting ? '' : 'on'}`}>{!started ? T('Starts soon') : w.waiting ? T(w.waiting) : `● ${T('Watching for an edge')}`}</div>
     </div>
   )
+}
+
+function Learned({ l }: { l: UpdownLearnView }) {
+  const trust = (dur: string, band: string) => l.trust.find(x => x.dur === dur && x.band === band)
+  return (
+    <div className="spot-panel ud-learn">
+      <div className="spot-panel-h"><span>{T('What it has learned from its trades')}</span></div>
+      <div className="ud-learn-body">
+        <div>
+          <h4>{T('How far it trusts its model')}</h4>
+          <p className="fx-fine">{T('0% trades on the market’s price, 100% on its own model. It moves with every resolved window: toward whichever was closer to the result.')}</p>
+          {(['5m', '15m'] as const).map(d => (['mid', 'end'] as const).map(b => { const x = trust(d, b); return x && (
+            <div key={d + b} className="ud-trust"><span>{d} · {T(b === 'end' ? 'last minute' : 'mid-window')}</span><div className="ud-bar mkt"><i style={{ width: `${x.weight * 100}%` }} /></div><b>{pct(x.weight)}</b><small>{x.samples ? T('{n} snapshots', { n: String(x.samples) }) : T('not measured yet')}</small></div>
+          ) }))}
+        </div>
+        <div>
+          <h4>{T('Kinds of trade, last {n} days', { n: String(l.rule.days) })}</h4>
+          <p className="fx-fine">{T('A kind with {n}+ trades that clearly loses {r}% of its stake a trade or more is skipped, and still measured on paper so it can come back.', { n: String(l.rule.minTrades), r: String(Math.round(-l.rule.maxRoi * 100)) })}</p>
+          {!l.kinds.length ? <div className="fx-empty">{T('No closed trades yet.')}</div> : (
+            <table className="ud-table ud-kinds"><tbody>
+              {l.kinds.slice(0, 8).map(k => (
+                <tr key={k.id} className={k.skipped ? 'skip' : ''}>
+                  <td>{T(k.label)}{k.skipped && <span className="ud-skip">{T('skipped')}</span>}</td>
+                  <td>{k.won}/{k.trades}</td>
+                  <td className={cls(k.pnl)}>{signed(k.pnl)}</td>
+                  <td className={cls(k.roi)}>{k.roi >= 0 ? '+' : '−'}{Math.abs(Math.round(k.roi * 100))}%</td>
+                </tr>
+              ))}
+            </tbody></table>
+          )}
+        </div>
+      </div>
+      {l.notes.length > 0 && (
+        <div className="ud-journal">
+          <h4>{T('Learning journal')}</h4>
+          {l.notes.slice(0, 8).map((n, i) => <div key={i}><time>{new Date(n.at).toLocaleString()}</time> {say(n)}</div>)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** The trade log as a CSV file, everything the engine kept about each trade. */
+function downloadLog(rows: UpdownTrade[]) {
+  const cols = ['filledAt', 'slug', 'dur', 'lane', 'side', 'price', 'shares', 'cost', 'fee', 'model', 'raw', 'market', 'edge', 'awayBp', 'secondsLeft', 'hi', 'lo', 'sold', 'proceeds', 'exit', 'result', 'pnl', 'shadow', 'lesson'] as const
+  const cell = (t: UpdownTrade, c: typeof cols[number]) => {
+    const v = c === 'filledAt' ? new Date(t.filledAt).toISOString() : c === 'lesson' ? (t.lesson ? say(t.lesson) : '') : t[c]
+    const x = v === undefined || v === null ? '' : String(v)
+    return /[",\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x
+  }
+  const csv = [cols.join(','), ...rows.map(t => cols.map(c => cell(t, c)).join(','))].join('\n')
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+  a.download = `arcdex-btc-updown-trades-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(a.href), 5_000)
 }
 
 function Stat({ k, v, c }: { k: string; v: string; c?: string }) { return <div><span>{k}</span><b className={c}>{v}</b></div> }
@@ -94,6 +155,7 @@ export default function UpDownPanel() {
         <Stat k={T('Staked')} v={usd(st.staked)} />
         <Stat k={T('Fees')} v={usd(st.fees)} />
         <Stat k={T('Missed (gone after the delay)')} v={String(st.missed)} />
+        {st.shadow && st.shadow.trades > 0 && <Stat k={T('Skipped by its lessons (measured)')} v={`${st.shadow.trades} · ${signed(st.shadow.pnl)}`} c={cls(-st.shadow.pnl)} />}
         <Stat k={T('Sold early (scalps / stops)')} v={`${st.exits?.scalp ?? 0} / ${st.exits?.stop ?? 0}`} />
         <Stat k={T('Model vs market (Brier, lower is better)')} v={st.brier.model === null ? '—' : `${st.brier.model.toFixed(3)} / ${st.brier.market!.toFixed(3)}`} c={st.brier.model !== null && st.brier.market !== null ? (st.brier.model <= st.brier.market ? 'fx-up' : 'fx-down') : ''} />
       </div>
@@ -105,15 +167,17 @@ export default function UpDownPanel() {
       </div>
       {next.length > 0 && <div className="ud-next">{T('Next')}: {next.map(w => `${w.dur} ${T('in')} ${clock(w.secondsLeft - (w.end - w.start))}`).join(' · ')}</div>}
 
+      {s.learn && <Learned l={s.learn} />}
+
       <div className="spot-panel">
-        <div className="spot-panel-h"><span>{T('The autotrader’s trades')}</span></div>
+        <div className="spot-panel-h"><span>{T('The autotrader’s trades')}</span>{trades?.length ? <button className="ud-csv" onClick={() => void fetch(`${engineApiUrl}/v1/updown/trades?limit=500`).then(r => r.json() as Promise<UpdownTrade[]>).then(downloadLog, () => downloadLog(trades))}>{T('Download the trade log (CSV)')}</button> : null}</div>
         {!trades?.length ? <div className="fx-empty">{T('No trades yet: it waits for an edge bigger than the fee and its margin, which can take a while.')}</div> : (
           <div className="ud-table-wrap">
             <table className="ud-table">
-              <thead><tr><th>{T('Time')}</th><th>{T('Market')}</th><th>{T('Lane')}</th><th>{T('Side')}</th><th>{T('Price')}</th><th>{T('Model')}</th><th>{T('Cost')}</th><th>{T('Result')}</th></tr></thead>
+              <thead><tr><th>{T('Time')}</th><th>{T('Market')}</th><th>{T('Lane')}</th><th>{T('Side')}</th><th>{T('Price')}</th><th>{T('Model')}</th><th>{T('Cost')}</th><th>{T('Result')}</th><th>{T('Lesson')}</th></tr></thead>
               <tbody>
                 {trades.map(t => (
-                  <tr key={t.id}>
+                  <tr key={t.id} className={t.shadow ? 'shadow' : ''} title={t.shadow ? T('Skipped by a lesson: measured on paper, outside the balance') : undefined}>
                     <td>{new Date(t.filledAt).toLocaleTimeString()}</td>
                     <td>{t.dur} · {clock(t.secondsLeft)} {T('left')}</td>
                     <td title={t.lane === 'A' ? T('Lane A: the model beat a stale price mid-window') : T('Lane B: the last minute’s average already decided it')}>{t.lane}</td>
@@ -124,7 +188,9 @@ export default function UpDownPanel() {
                     <td className={t.pnl === null ? '' : cls(t.pnl)} title={t.exit ? (t.exit === 'scalp' ? T('Sold at the bid once the market paid the model’s value') : T('Cut once the model said it was worth well under its cost')) : undefined}>
                       {t.result === 'open' ? (t.sold ? `${T('Open')} · ${T('part sold')}` : T('Open')) : signed(t.pnl ?? 0)}
                       {t.exit && t.result !== 'open' && <small> {t.exit === 'scalp' ? T('scalp') : T('stop')}</small>}
+                      {t.shadow && <span className="ud-skip">{T('skipped')}</span>}
                     </td>
+                    <td className="ud-lesson">{t.lesson ? say(t.lesson) : ''}</td>
                   </tr>
                 ))}
               </tbody>

@@ -38,8 +38,10 @@ export interface UpdownWindowView {
   open: number | null
   /** The engine's Chainlink estimate now (exchange prices plus a learned basis). */
   btc: number | null
-  /** The model's chance of Up (calibrated once enough windows have resolved). */
+  /** The chance of Up it trades on: the market's, moved toward its model as far as it has learned to trust the model. */
   model: number | null
+  /** Its model's own chance of Up, before that. */
+  raw?: number | null
   /** The market's chance of Up: the Up book's mid. */
   market: number | null
   up: UpdownBookTop
@@ -76,6 +78,37 @@ export interface UpdownTrade {
   exitFee?: number
   exitAt?: number | null
   exit?: UpdownExit | null
+  /** What it knew when it bought (absent on trades from before 2026-11-01's learning): the raw model before the
+   *  learned trust in it, the market's chance of Up (the Up book's mid), and how far BTC was from the price to beat (bp). */
+  raw?: number
+  market?: number | null
+  awayBp?: number | null
+  /** The side's best bid at its highest and lowest while held. */
+  hi?: number
+  lo?: number
+  /** Not traded: a kind of trade it learned to skip, filled and settled on paper outside the balance so it keeps
+   *  measuring whether the lesson still holds. The kind's id. */
+  shadow?: string
+  /** Why it won or lost, in words. */
+  lesson?: UpdownLesson
+}
+
+/** A sentence keyed by its English text, with its numbers apart (translated on the site). */
+export interface UpdownLesson { k: string; v?: Record<string, string> }
+
+/** A change the autotrader made to itself, and why. */
+export interface UpdownLearnNote extends UpdownLesson { at: number; kind: 'start' | 'trust' | 'skip' | 'lift' }
+
+/** What the autotrader has learned from its record (engine/src/updown/learn.ts). */
+export interface UpdownLearnView {
+  /** How far it moves from the market's chance toward its own model (0 = the market's, 1 = the model's), per window
+   *  length and part of the window, with how many resolved snapshots back it. */
+  trust: { dur: UpdownDur; band: 'mid' | 'end'; weight: number; samples: number }[]
+  /** Each kind of trade it watches, its record over the last days, and whether it skips it now. */
+  kinds: { id: string; label: string; trades: number; won: number; pnl: number; roi: number; skipped: boolean; since: number | null }[]
+  /** Its learning journal, newest first. */
+  notes: UpdownLearnNote[]
+  rule: { minTrades: number; maxRoi: number; days: number }
 }
 
 export interface UpdownLaneStats { trades: number; won: number; staked: number; pnl: number; fees: number }
@@ -103,7 +136,9 @@ export interface UpdownStats {
   windowsTraded: number
   windowsSeen: number
   /** Brier scores on the same snapshots: the model against the market's mid (lower is better). */
-  brier: { model: number | null; market: number | null; samples: number }
+  brier: { model: number | null; market: number | null; samples: number; used?: number | null; usedSamples?: number }
+  /** Kinds of trade it skipped by a lesson, filled and settled on paper outside the balance. */
+  shadow?: { trades: number; won: number; pnl: number }
   todayPnl: number
   stoppedToday: boolean
 }
@@ -139,5 +174,6 @@ export interface UpdownStatus {
   delayMs: number
   stats: UpdownStats
   readiness: UpdownReadiness
+  learn?: UpdownLearnView
   rules: { orderUsd: number; windowUsd: number; dailyLossUsd: number; marginA: number; marginMid: number; marginB: number; overpay: Record<UpdownDur, number>; stop: number }
 }

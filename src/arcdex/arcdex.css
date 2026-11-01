@@ -3269,7 +3269,7 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .ud-row b { font-variant-numeric: tabular-nums; text-align: right; }
 .ud-row small { font-weight: 500; }
 .ud-bars { display: flex; flex-direction: column; gap: 4px; margin: 2px 0; }
-.ud-bars > div { display: grid; grid-template-columns: 52px minmax(0, 1fr) 40px; align-items: center; gap: 8px; font-size: 0.78rem; }
+.ud-bars > div { display: grid; grid-template-columns: 64px minmax(0, 1fr) 40px; align-items: center; gap: 8px; font-size: 0.78rem; }
 .ud-bars span { color: var(--text-muted); }
 .ud-bars b { text-align: right; font-variant-numeric: tabular-nums; }
 .ud-bar { height: 6px; background: rgba(246,70,93,0.35); border-radius: 99px; overflow: hidden; }
@@ -3283,7 +3283,25 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .ud-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
 .ud-table th, .ud-table td { text-align: left; padding: 7px 10px; border-top: 1px solid var(--adx-border); white-space: nowrap; }
 .ud-table th { color: var(--text-muted); font-weight: 600; font-size: 0.72rem; }
+/* What it learned (2026-11-01, learn.ts): trust in the model, kinds of trade it skips, its journal, each trade's lesson. */
+.ud-learn-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 4px 16px 12px; }
+.ud-learn h4 { margin: 4px 0; font-size: 0.82rem; }
+.ud-learn .fx-fine { margin: 0 0 8px; }
+.ud-trust { display: grid; grid-template-columns: 130px minmax(0, 1fr) 40px; align-items: center; gap: 8px; font-size: 0.78rem; margin-bottom: 4px; }
+.ud-trust span { color: var(--text-muted); }
+.ud-trust b { text-align: right; font-variant-numeric: tabular-nums; }
+.ud-trust small { grid-column: 2 / 4; color: var(--text-muted); font-size: 0.68rem; margin-top: -3px; }
+.ud-trust .ud-bar.mkt i { background: var(--green, #0a8f4f); }
+.ud-kinds td { padding: 5px 8px; }
+.ud-kinds tr.skip td { background: rgba(246,70,93,0.06); }
+.ud-skip { margin-left: 6px; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--red); background: rgba(246,70,93,0.12); border-radius: 4px; padding: 1px 5px; }
+.ud-journal { border-top: 1px solid var(--adx-border); padding: 8px 16px 12px; font-size: 0.8rem; display: flex; flex-direction: column; gap: 5px; line-height: 1.4; }
+.ud-journal time { color: var(--text-muted); font-size: 0.72rem; margin-right: 4px; }
+.ud-table tr.shadow td { color: var(--text-muted); }
+.ud-table td.ud-lesson { white-space: normal; min-width: 260px; font-size: 0.76rem; color: var(--text-muted); }
+.ud-csv { margin-left: auto; font-size: 0.74rem; background: var(--bg-3); border: 1px solid var(--adx-border); color: var(--text); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
 @media (max-width: 767px) {
+  .ud-learn-body { grid-template-columns: minmax(0, 1fr); padding: 4px 12px 12px; }
   .ud-hero { grid-template-columns: minmax(0, 1fr); padding: 12px; }
   .ud-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 12px; }
   /* Four modes don't fit one row on a phone: two by two. */

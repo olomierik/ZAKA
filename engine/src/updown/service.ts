@@ -8,6 +8,10 @@
 // result read from Polymarket. Real money isn't placed from here: the owner chose each user's own wallet, offered once
 // the paper record clears UPDOWN_READY (two weeks, 300 windows, both weeks positive, model at least as good as the
 // market). `UPDOWN=off` stops it.
+//
+// It learns from its record (learn.ts): how far to trust its model against the market (the chance it trades on is the
+// market's, moved toward the model by that much), and which kinds of trade lose, which it then skips while measuring
+// them as shadow trades. Every trade keeps what it knew when it bought and, once closed, why it won or lost.
 
 import { log, errMsg } from '../log'
 import {
@@ -18,6 +22,7 @@ import { SpotFeeds, SpotModel } from './feeds'
 import { BookStream, Books, fetchGeoblock, fetchPrice, fetchWindow, type Fetch, type UpWindow } from './markets'
 import { PaperBook, freshPaper, heldShares, type PaperState } from './paper'
 import { RULES, decide, exitDecision, fillFak, sellFak, sizeUsd, type Intent } from './strategy'
+import { Learner, lessonOf, type LearnState } from './learn'
 
 export interface SettingsStore { getSetting(key: string): Promise<string | null>; setSetting(key: string, value: string): Promise<void> }
 
@@ -35,6 +40,7 @@ export class UpdownService {
   private stream: BookStream
   private feeds: SpotFeeds
   paper: PaperBook
+  learn: Learner
   private wins = new Map<string, Win>()
   private listErr = new Map<string, number>()
   /** Positions with a sale on its way, so a second isn't sent before it lands. */
@@ -49,19 +55,36 @@ export class UpdownService {
     this.f = o.fetch ?? ((u, i) => fetch(u, i))
     this.stream = new BookStream(this.books, o.Ws, this.now)
     this.feeds = new SpotFeeds(this.model, o.Ws)
+    this.learn = new Learner(undefined, this.now)
     this.paper = new PaperBook(freshPaper(this.now()))
+    this.wire()
+  }
+
+  /** The learner hears every resolved window, and re-reads the record after it. */
+  private wire() {
+    this.paper.onResolved = (slug, rows, up) => {
+      const m = /^btc-updown-(5m|15m)-/.exec(slug)
+      if (m) this.learn.observe(m[1] as UpdownDur, rows, up)
+      this.learn.review(this.paper.s.trades)
+    }
   }
 
   async load() {
     try {
       const raw = await this.o.store.getSetting(KEY)
       if (raw) {
-        const j = JSON.parse(raw) as { paper?: PaperState; basis?: Parameters<SpotModel['restore']>[0] }
+        const j = JSON.parse(raw) as { paper?: PaperState; basis?: Parameters<SpotModel['restore']>[0]; learn?: LearnState }
         if (j.paper?.trades) this.paper = new PaperBook(j.paper)
+        if (j.learn?.v === 1) this.learn = new Learner(j.learn, this.now)
         this.model.restore(j.basis)
       }
     } catch (e) { log.warn('updown: saved paper book not read', { error: errMsg(e) }) }
-    log.info('updown: loaded', { trades: this.paper.s.trades.length, bankroll: this.paper.s.bankroll })
+    this.wire()
+    // Trades closed before the log kept lessons get theirs now.
+    for (const t of this.paper.s.trades) if (t.result !== 'open' && !t.lesson) { t.lesson = lessonOf(t); this.paper.dirty = true }
+    this.learn.seed(this.paper.s.trades)
+    this.learn.review(this.paper.s.trades)
+    log.info('updown: loaded', { trades: this.paper.s.trades.length, bankroll: this.paper.s.bankroll, skipping: Object.keys(this.learn.s.blocked) })
   }
 
   start() {
@@ -73,7 +96,7 @@ export class UpdownService {
     t(5_000, () => this.discover())
     t(3_000, () => this.prices())
     t(10_000, () => this.snapshots())
-    t(30_000, () => this.save())
+    t(30_000, () => { this.learn.review(this.paper.s.trades); return this.save() })
     void fetchGeoblock(this.f).then(g => { this.geo = g })
     t(10 * 60_000, async () => { this.geo = await fetchGeoblock(this.f) })
   }
@@ -81,9 +104,10 @@ export class UpdownService {
   stop() { for (const x of this.timers) clearInterval(x); this.timers = []; this.feeds.stop(); this.stream.stop() }
 
   async save() {
-    if (!this.paper.dirty) return
+    if (!this.paper.dirty && !this.learn.dirty) return
     this.paper.dirty = false
-    await this.o.store.setSetting(KEY, JSON.stringify({ paper: this.paper.s, basis: this.model.toJSON() }))
+    this.learn.dirty = false
+    await this.o.store.setSetting(KEY, JSON.stringify({ paper: this.paper.s, basis: this.model.toJSON(), learn: this.learn.s }))
   }
 
   /** The current and next window of each length, listed once, retried 30 s after a miss. */
@@ -229,29 +253,45 @@ export class UpdownService {
       if (mkt === null) { view.waiting = 'Polymarket’s book isn’t live'; continue }
       const pm = this.pModel(w, now)
       const pLag = 'p' in pm ? pm.pLag : null
-      if (best.lane === 'A' ? pLag === null || Math.abs(pLag - mkt) > RULES.agreeLag : Math.abs(view.model - mkt) > RULES.agreeB) { view.waiting = 'model and market disagree'; continue }
+      const raw = view.raw ?? view.model
+      if (best.lane === 'A' ? pLag === null || Math.abs(pLag - mkt) > RULES.agreeLag : Math.abs(raw - mkt) > RULES.agreeB) { view.waiting = 'model and market disagree'; continue }
       const blocked = this.paper.blocked(w.slug, now)
       if (blocked) { view.waiting = blocked; continue }
       const usd = sizeUsd(best.p, best.ask, w.feeRate, this.paper.s.bankroll, this.paper.windowLeft(w.slug))
       if (usd < Math.max(1, w.minSize * best.ask)) { view.waiting = 'size under Polymarket’s minimum'; continue }
-      this.paper.sending(w.slug, now)
+      const ctx = { raw: best.side === 'up' ? raw : 1 - raw, market: mkt, awayBp: w.open !== null && view.btc !== null ? Math.round(Math.log(view.btc / w.open) * 1e5) / 10 : null }
       const token = best.side === 'up' ? w.upToken : w.downToken
       const delay = this.delayMs()
-      setTimeout(() => this.land(w, best, token, usd, now, view.secondsLeft), delay)
+      // A kind of trade it learned to skip: measured on paper as a shadow trade instead, at most twice a window a side.
+      const skip = this.learn.skipFor({ dur: w.dur, lane: best.lane, price: best.ask, model: best.p, edge: best.edge, secondsLeft: view.secondsLeft })
+      if (skip) {
+        view.waiting = 'learned to skip this kind of trade'
+        const k = `${w.slug}:${best.side}`
+        if (this.pendingShadow.has(k) || !this.paper.shadowRoom(w.slug, best.side)) continue
+        this.pendingShadow.add(k)
+        setTimeout(() => { this.pendingShadow.delete(k); this.land(w, best, token, usd, now, view.secondsLeft, ctx, skip) }, delay)
+        continue
+      }
+      this.paper.sending(w.slug, now)
+      setTimeout(() => this.land(w, best, token, usd, now, view.secondsLeft, ctx), delay)
     }
   }
 
-  private land(w: Win, it: Intent, token: string, usd: number, at: number, secondsLeft: number) {
+  private pendingShadow = new Set<string>()
+
+  private land(w: Win, it: Intent, token: string, usd: number, at: number, secondsLeft: number, ctx?: { raw: number; market: number; awayBp: number | null }, shadow?: string) {
     const fill = fillFak(this.books.askLevels(token), it.worst, usd, w.feeRate, w.feeExponent)
-    if (fill.shares < w.minSize || fill.spent < 1) { this.paper.miss(); return }
+    if (fill.shares < w.minSize || fill.spent < 1) { if (!shadow) this.paper.miss(); return }
     const t: Omit<UpdownTrade, 'id' | 'result' | 'pnl'> = {
       slug: w.slug, dur: w.dur, lane: it.lane, side: it.side, at, filledAt: this.now(),
       shares: Math.round(fill.shares * 100) / 100, price: Math.round(fill.avg * 1e4) / 1e4, fee: Math.round(fill.fee * 1e6) / 1e6,
       cost: Math.round((fill.spent + fill.fee) * 1e6) / 1e6, model: Math.round(it.p * 1e4) / 1e4, edge: Math.round(it.edge * 1e4) / 1e4,
       secondsLeft: Math.round(secondsLeft),
+      ...(ctx ? { raw: Math.round(ctx.raw * 1e4) / 1e4, market: ctx.market, awayBp: ctx.awayBp } : {}),
+      ...(shadow ? { shadow } : {}),
     }
     this.paper.record(t)
-    log.info('updown: paper fill', { slug: w.slug, lane: it.lane, side: it.side, shares: t.shares, price: t.price, edge: t.edge })
+    log.info(shadow ? 'updown: shadow fill (a kind it learned to skip)' : 'updown: paper fill', { slug: w.slug, lane: it.lane, side: it.side, shares: t.shares, price: t.price, edge: t.edge, ...(shadow ? { kind: shadow } : {}) })
   }
 
   private bookLive(w: Win, now: number) { return this.stream.connected && now - this.books.lastMsgAt <= RULES.bookStaleMs && this.books.has(w.upToken) }
@@ -263,6 +303,8 @@ export class UpdownService {
       const held = heldShares(t)
       if (held < 0.01) continue
       const token = t.side === 'up' ? w.upToken : w.downToken
+      const bid = this.books.bestBid(token)
+      if (bid !== null) this.paper.mark(t, bid)
       const d = exitDecision({ dur: w.dur, p: t.side === 'up' ? model : 1 - model, costPerShare: t.cost / t.shares, bids: this.books.bidLevels(token), secondsLeft, feeRate: w.feeRate, feeExponent: w.feeExponent })
       if (!('why' in d)) continue
       this.selling.add(t.id)
@@ -282,7 +324,7 @@ export class UpdownService {
     for (const w of this.wins.values()) {
       const v = w.view
       if (!v || v.model === null || v.market === null || v.secondsLeft <= 0) continue
-      this.paper.snapshot(w.slug, v.model, v.market)
+      this.paper.snapshot(w.slug, v.raw ?? v.model, v.market, v.model, v.secondsLeft)
     }
   }
 
@@ -293,7 +335,9 @@ export class UpdownService {
     const market = up.bid !== null && up.ask !== null ? (up.bid + up.ask) / 2 : null
     const est = this.model.estimate(now)
     const pm = this.pModel(w, now)
-    const model = 'p' in pm ? pm.p : null
+    const raw = 'p' in pm ? pm.p : null
+    // The chance it trades on: the market's, moved toward its model as far as it has learned to trust the model.
+    const model = raw === null ? null : this.learn.blend(raw, market, w.dur, w.end - nowSec)
     let edge: UpdownWindowView['edge'] = null
     if (model !== null) for (const [side, b, p] of [['up', up, model], ['down', down, 1 - model]] as const) {
       if (b.ask === null) continue
@@ -305,7 +349,7 @@ export class UpdownService {
     if (!waiting && !w.accepting) waiting = 'not accepting orders'
     return {
       slug: w.slug, dur: w.dur, start: w.start, end: w.end, secondsLeft: Math.max(0, Math.round((w.end - nowSec) * 10) / 10),
-      open: w.open, btc: est ? Math.round(est.price * 100) / 100 : null, model: model === null ? null : Math.round(model * 1e4) / 1e4,
+      open: w.open, btc: est ? Math.round(est.price * 100) / 100 : null, model: model === null ? null : Math.round(model * 1e4) / 1e4, raw: raw === null ? null : Math.round(raw * 1e4) / 1e4,
       market, up, down, edge, waiting, feeRate: w.feeRate, url: `https://polymarket.com/event/${w.slug}`,
     }
   }
@@ -326,6 +370,7 @@ export class UpdownService {
       delayMs: this.delayMs(),
       stats: this.paper.stats(now),
       readiness: this.paper.readiness(now),
+      learn: this.learn.view(this.paper.s.trades),
       rules: { orderUsd: RULES.orderUsd, windowUsd: RULES.windowUsd, dailyLossUsd: RULES.dailyLossUsd, marginA: RULES.marginA, marginMid: RULES.marginMid, marginB: RULES.marginB, overpay: RULES.overpay, stop: RULES.stop },
     }
   }
