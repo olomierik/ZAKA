@@ -64,6 +64,17 @@ describe('the Chainlink estimate', () => {
     expect(m.estimate(59_500)).not.toBeNull()
     expect(m.estimate(70_000)).toBeNull()
   })
+
+  test('a top-of-book feed (Kraken, Bitstamp) stays fresh while its best prices hold still', () => {
+    const m = new SpotModel()
+    for (let s = 0; s < 60; s++) { m.onTick('coinbase', 100, s * 1000); m.onTick('kraken', 100.02, s * 1000) }
+    m.learnBasis(60, 100); m.learnBasis(60, 100)
+    // Six seconds without a message: the trade ticker is stale, the book's mid still counts.
+    const e = m.estimate(65_000)!
+    expect(e.sources).toBe(1)
+    expect(e.price).toBeCloseTo(100, 6) // its learned basis takes Kraken's 2 bp off
+    expect(m.estimate(71_000)).toBeNull()
+  })
 })
 
 describe('Polymarket', () => {
