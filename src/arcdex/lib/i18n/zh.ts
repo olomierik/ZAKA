@@ -4319,5 +4319,12 @@ const d: Record<string, string> = {
   "cooling down after an order": "下单后冷却中",
   "size under Polymarket’s minimum": "低于 Polymarket 最小下单量",
   "starts soon": "即将开始",
+  "Sold early (scalps / stops)": "提前卖出（止盈 / 止损）",
+  "Sold at the bid once the market paid the model’s value": "市场出价达到模型价值时按买价卖出",
+  "Cut once the model said it was worth well under its cost": "模型判断其价值远低于成本时止损",
+  "part sold": "部分卖出",
+  "scalp": "止盈",
+  "stop": "止损",
+  "Exits: a 15-minute position is sold at the bid once it pays the model’s value, a 5-minute one once it pays {p}¢ more; either is cut once the model says it’s worth {s}¢ under its cost.": "退出规则：15 分钟仓位在买价扣费后达到模型价值时卖出，5 分钟仓位需高出 {p}¢；模型判断价值低于成本 {s}¢ 时两者都会止损。",
 }
 export default d

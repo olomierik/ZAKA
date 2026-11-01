@@ -2,17 +2,23 @@
 //
 // - Orders fill after the engine's measured book lag plus Polymarket's 150 ms taker delay, against the book as it is
 //   then (strategy.ts fillFak). An order that finds nothing left at its price is counted as missed.
-// - A position is held to resolution: Polymarket's own close against the price to beat (Up at or above it).
+// - A position is sold at the bid when the strategy's exit says so (strategy.ts exitDecision: a scalp once the market
+//   pays the model's value, a stop once the model says it's worth well under its cost), after the same delay, against
+//   the bids as they then are; whatever isn't sold is held to resolution: Polymarket's own close against the price to
+//   beat (Up at or above it).
 // - The day's loss stop, the per-window cap and the cooldown are enforced here, whatever the strategy wants.
 // - The model is scored against the market on the same snapshots (Brier), so the readiness bar can ask whether it's
 //   actually better than the price it trades against.
 
-import { UPDOWN_READY, type UpdownDur, type UpdownLane, type UpdownLaneStats, type UpdownReadiness, type UpdownSide, type UpdownStats, type UpdownTrade } from '../../../api/_updownProtocol'
+import { UPDOWN_READY, type UpdownDur, type UpdownExit, type UpdownLane, type UpdownLaneStats, type UpdownReadiness, type UpdownSide, type UpdownStats, type UpdownTrade } from '../../../api/_updownProtocol'
 import { RULES } from './strategy'
 
 const r6 = (n: number) => Math.round(n * 1e6) / 1e6
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10)
 const emptyLane = (): UpdownLaneStats => ({ trades: 0, won: 0, staked: 0, pnl: 0, fees: 0 })
+/** Shares of a position not yet sold. */
+export const heldShares = (t: UpdownTrade) => Math.max(0, t.shares - (t.sold ?? 0))
+const feesOf = (t: UpdownTrade) => t.fee + (t.exitFee ?? 0)
 
 interface Snap { p: number; market: number }
 
@@ -48,7 +54,7 @@ export class PaperBook {
   /** Open positions count as lost until settled, for the loss stop. */
   todayRisk(now: number) {
     const d = day(now)
-    return this.todayPnl(now) - this.s.trades.filter(t => t.result === 'open' && day(t.filledAt) === d).reduce((a, t) => a + t.cost, 0)
+    return this.todayPnl(now) - this.s.trades.filter(t => t.result === 'open' && day(t.filledAt) === d).reduce((a, t) => a + t.cost - (t.proceeds ?? 0), 0)
   }
   stopped(now: number) { return this.todayRisk(now) <= -RULES.dailyLossUsd }
 
@@ -74,6 +80,28 @@ export class PaperBook {
   }
   miss() { this.s.missed++; this.dirty = true }
 
+  /** A sale of part or all of a position before the result. Sold out, the trade closes with its P&L; the window's cap
+   *  gets back the share of the cost that was sold. */
+  sell(id: string, fill: { shares: number; proceeds: number; fee: number }, why: UpdownExit, now: number): UpdownTrade | null {
+    const t = this.s.trades.find(x => x.id === id)
+    if (!t || t.result !== 'open' || fill.shares <= 0) return null
+    const shares = Math.min(fill.shares, heldShares(t))
+    const k = shares / fill.shares
+    t.sold = r6((t.sold ?? 0) + shares)
+    t.proceeds = r6((t.proceeds ?? 0) + fill.proceeds * k)
+    t.exitFee = r6((t.exitFee ?? 0) + fill.fee * k)
+    t.exitAt = now
+    t.exit = why
+    this.s.bankroll = r6(this.s.bankroll + fill.proceeds * k)
+    this.spent.set(t.slug, Math.max(0, (this.spent.get(t.slug) ?? 0) - t.cost * (shares / t.shares)))
+    if (heldShares(t) < 0.01) {
+      t.pnl = r6((t.proceeds ?? 0) - t.cost)
+      t.result = t.pnl > 0 ? 'won' : 'lost'
+    }
+    this.dirty = true
+    return t
+  }
+
   snapshot(slug: string, p: number, market: number) {
     const a = this.snaps.get(slug) ?? []
     a.push({ p, market })
@@ -85,10 +113,9 @@ export class PaperBook {
     const out: UpdownTrade[] = []
     for (const t of this.s.trades) {
       if (t.slug !== slug || t.result !== 'open') continue
-      const won = (t.side === 'up') === up
-      const payout = won ? t.shares : 0
-      t.result = won ? 'won' : 'lost'
-      t.pnl = r6(payout - t.cost)
+      const payout = (t.side === 'up') === up ? heldShares(t) : 0
+      t.pnl = r6(payout + (t.proceeds ?? 0) - t.cost)
+      t.result = t.pnl > 0 ? 'won' : 'lost'
       this.s.bankroll = r6(this.s.bankroll + payout)
       out.push(t)
     }
@@ -114,10 +141,12 @@ export class PaperBook {
     const byDur: Record<UpdownDur, UpdownLaneStats> = { '5m': emptyLane(), '15m': emptyLane() }
     const days = new Map<string, { day: string; trades: number; pnl: number; staked: number }>()
     let won = 0, lost = 0, open = 0, staked = 0, fees = 0, pnl = 0
+    const exits: Record<UpdownExit, number> = { scalp: 0, stop: 0 }
     for (const t of s.trades) {
-      staked += t.cost; fees += t.fee
-      for (const g of [byLane[t.lane], byDur[t.dur]]) { g.trades++; g.staked += t.cost; g.fees += t.fee; if (t.result === 'won') g.won++; if (t.pnl !== null) g.pnl += t.pnl }
+      staked += t.cost; fees += feesOf(t)
+      for (const g of [byLane[t.lane], byDur[t.dur]]) { g.trades++; g.staked += t.cost; g.fees += feesOf(t); if (t.result === 'won') g.won++; if (t.pnl !== null) g.pnl += t.pnl }
       if (t.result === 'open') { open++; continue }
+      if (t.exit && heldShares(t) < 0.01) exits[t.exit]++
       if (t.result === 'won') won++; else lost++
       pnl += t.pnl ?? 0
       const d = day(t.filledAt)
@@ -128,7 +157,7 @@ export class PaperBook {
     const round = (g: UpdownLaneStats) => ({ ...g, staked: r6(g.staked), pnl: r6(g.pnl), fees: r6(g.fees) })
     return {
       since: s.since, bankroll: r6(s.bankroll), start: s.start, trades: s.trades.length, open, won, lost,
-      staked: r6(staked), fees: r6(fees), pnl: r6(pnl), missed: s.missed,
+      staked: r6(staked), fees: r6(fees), pnl: r6(pnl), missed: s.missed, exits,
       byLane: { A: round(byLane.A), B: round(byLane.B) }, byDur: { '5m': round(byDur['5m']), '15m': round(byDur['15m']) },
       days: [...days.values()].sort((a, b) => a.day.localeCompare(b.day)).map(d => ({ ...d, pnl: r6(d.pnl), staked: r6(d.staked) })),
       windowsTraded: new Set(s.trades.map(t => t.slug)).size, windowsSeen: s.seen,

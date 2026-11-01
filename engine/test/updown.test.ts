@@ -3,8 +3,8 @@ import fixture from './fixtures/polymarket-updown.json'
 import { fairUp, tcdf4, unitT4, kelly } from '../src/updown/fair'
 import { SpotModel } from '../src/updown/feeds'
 import { Books, parsePrice, parseWindow } from '../src/updown/markets'
-import { RULES, decide, fillFak, sizeUsd } from '../src/updown/strategy'
-import { PaperBook, freshPaper } from '../src/updown/paper'
+import { RULES, decide, exitDecision, fillFak, sellFak, sizeUsd } from '../src/updown/strategy'
+import { PaperBook, freshPaper, heldShares } from '../src/updown/paper'
 import { UpdownService, TAKER_DELAY_MS } from '../src/updown/service'
 import { takerFee, updownSlug } from '../../api/_updownProtocol'
 
@@ -155,6 +155,36 @@ describe('the strategy', () => {
     expect(fillFak([{ price: 0.5, size: 100 }], 0.45, 20, 0.07).shares).toBe(0)
   })
 
+  test('exit: a 15m position is sold once the bid, after the fee, pays the model’s value', () => {
+    const base = { dur: '15m' as const, costPerShare: 0.52, secondsLeft: 400, feeRate: 0.07, feeExponent: 1 }
+    // Model 70%: a 72¢ bid nets 72 − 1.4 = 70.6¢, enough; the 69¢ level isn't.
+    const d = exitDecision({ ...base, p: 0.7, bids: [{ price: 0.72, size: 10 }, { price: 0.71, size: 10 }, { price: 0.69, size: 50 }] })
+    expect(d).toEqual({ why: 'scalp', floor: 0.72 })
+    expect(exitDecision({ ...base, p: 0.7, bids: [{ price: 0.71, size: 10 }] })).toEqual({ hold: 'holding' })
+  })
+
+  test('exit: a 5m position waits for a 5¢ overpayment', () => {
+    const base = { dur: '5m' as const, costPerShare: 0.52, secondsLeft: 200, feeRate: 0.07, feeExponent: 1 }
+    expect(exitDecision({ ...base, p: 0.7, bids: [{ price: 0.72, size: 10 }] })).toEqual({ hold: 'holding' })
+    expect('why' in exitDecision({ ...base, p: 0.7, bids: [{ price: 0.77, size: 10 }] })).toBe(true)
+  })
+
+  test('exit: the stop, once the model says the side is worth 15¢ under its cost; nothing in the last seconds', () => {
+    const base = { dur: '5m' as const, costPerShare: 0.52, feeRate: 0.07, feeExponent: 1, bids: [{ price: 0.4, size: 10 }] }
+    expect(exitDecision({ ...base, p: 0.38, secondsLeft: 200 })).toEqual({ hold: 'holding' })
+    expect(exitDecision({ ...base, p: 0.36, secondsLeft: 200 })).toEqual({ why: 'stop', floor: 0.37 })
+    expect(exitDecision({ ...base, p: 0.1, secondsLeft: 2 })).toEqual({ hold: 'closing' })
+    expect(exitDecision({ ...base, p: 0.1, secondsLeft: 200, bids: [] })).toEqual({ hold: 'no bids' })
+  })
+
+  test('a sale takes the bids down to the floor, each share paying its price less the fee', () => {
+    const f = sellFak([{ price: 0.7, size: 10 }, { price: 0.69, size: 10 }, { price: 0.6, size: 100 }], 0.69, 15, 0.07)
+    expect(f.shares).toBe(15)
+    expect(f.gross).toBeCloseTo(10 * 0.7 + 5 * 0.69, 9)
+    expect(f.proceeds).toBeCloseTo(f.gross - 10 * takerFee(0.7, 0.07) - 5 * takerFee(0.69, 0.07), 9)
+    expect(sellFak([{ price: 0.6, size: 100 }], 0.69, 15, 0.07).shares).toBe(0)
+  })
+
   test('size: fractional Kelly, within the order and window caps', () => {
     expect(sizeUsd(0.75, 0.5, 0.07, 1_000, 100)).toBe(RULES.orderUsd)
     expect(sizeUsd(0.75, 0.5, 0.07, 1_000, 7)).toBe(7)
@@ -188,6 +218,29 @@ describe('the paper book', () => {
     expect(p.blocked('s1', now + RULES.cooldownMs + 1)).toContain('cap')
     p.record(t({ slug: 's2', cost: RULES.dailyLossUsd }))
     expect(p.blocked('s3', now + 1)).toContain('loss stop')
+  })
+
+  test('a sale before the result: part sold, the rest settles; sold out, it closes and frees the window’s cap', () => {
+    const now = Date.UTC(2026, 10, 1, 12)
+    const p = new PaperBook(freshPaper(now))
+    const a = p.record(t())
+    p.sell(a.id, { shares: 20, proceeds: 14, fee: 0.3 }, 'scalp', now + 1)
+    expect(heldShares(a)).toBe(30)
+    expect(a.result).toBe('open')
+    expect(p.s.bankroll).toBeCloseTo(1_000 - 20.84 + 14, 6)
+    p.settle('s1', false) // the rest loses
+    expect(a.pnl).toBeCloseTo(14 - 20.84, 6)
+    expect(a.result).toBe('lost')
+    const b = p.record(t({ slug: 's2', cost: RULES.windowUsd }))
+    expect(p.blocked('s2', now + RULES.cooldownMs + 1)).toContain('cap')
+    p.sell(b.id, { shares: 50, proceeds: 120, fee: 1 }, 'scalp', now + 2)
+    expect(b.result).toBe('won')
+    expect(b.pnl).toBeCloseTo(120 - RULES.windowUsd, 6)
+    expect(p.blocked('s2', now + RULES.cooldownMs + 1)).toBeNull()
+    expect(p.sell(b.id, { shares: 1, proceeds: 1, fee: 0 }, 'scalp', now + 3)).toBeNull() // already closed
+    const st = p.stats(now)
+    expect(st.exits).toEqual({ scalp: 1, stop: 0 })
+    expect(st.fees).toBeCloseTo(0.84 * 2 + 0.3 + 1, 6)
   })
 
   test('Brier: the model and the market scored on the same snapshots', () => {
@@ -274,7 +327,7 @@ describe('the service', () => {
     expect(tr.cost).toBeCloseTo(RULES.orderUsd, 0)
     svc.decideAll()
     expect(svc.paper.s.trades.length).toBe(1) // the cooldown
-    // The window ends; Polymarket resolves it Up.
+    expect(svc.paper.s.trades[0].sold ?? 0).toBe(0) // the bid (48¢) is far under the model's value: held
     now = (start + 310) * 1000
     completed = true
     await svc.prices()
@@ -283,6 +336,57 @@ describe('the service', () => {
     expect(done.pnl!).toBeGreaterThan(0)
     await svc.save()
     expect(JSON.parse(settings.get('updown-paper')!).paper.trades.length).toBe(1)
+    svc.stop()
+  })
+
+  test('a scalp: the 15m position is sold at the bid once the market pays its model value, before the result', async () => {
+    const start = 1_900_000_800 // a multiple of 900
+    let now = (start - 120) * 1000
+    const ev = structuredClone((fixture as { event: { markets: Record<string, unknown>[] } }).event)
+    const m = ev.markets[0]
+    m.slug = updownSlug('15m', start)
+    m.cryptoMarketConfig = { id: 'btc-15m-twap-60', asset: 'btc', duration: '15m', twapEnabled: true, twapLookbackSeconds: 60 }
+    m.clobTokenIds = JSON.stringify(['UP3', 'DOWN3'])
+    const f = async (url: string) => {
+      if (url.includes('gamma-api') && url.includes(`btc-updown-15m-${start}`)) return Response.json([ev])
+      if (url.includes('gamma-api')) return Response.json([])
+      if (url.includes('crypto-price') && url.includes('fifteen')) return Response.json(now < start * 1000 ? {} : { openPrice: 77_000, closePrice: null, completed: false })
+      return Response.json({})
+    }
+    const svc = new UpdownService({ store: { getSetting: async () => null, setSetting: async () => {} }, fetch: f as never, Ws: FakeWs as never, now: () => now })
+    const feed = (sec: number, px: number) => { svc.model.onTick('coinbase', px, sec * 1000); svc.model.tick(sec * 1000 + 999) }
+    for (let s = start - 400; s < start; s++) feed(s, 77_000 + Math.sin(s) * 3)
+    svc.model.learnBasis(start - 300, 77_000)
+    await svc.discover()
+    now = (start + 5) * 1000
+    await svc.prices()
+    const book = FakeWs.all.filter(w => w.url.includes('ws-subscriptions-clob')).at(-1)!
+    book.emit([{ event_type: 'book', asset_id: 'UP3', timestamp: String(now), bids: [{ price: '0.48', size: '100' }], asks: [{ price: '0.5', size: '200' }] },
+               { event_type: 'book', asset_id: 'DOWN3', timestamp: String(now), bids: [{ price: '0.48', size: '100' }], asks: [{ price: '0.52', size: '200' }] }])
+    for (let s = start; s < start + 114; s++) { feed(s, 77_000 + Math.sin(s) * 0.5); now = s * 1000 + 999; svc.alignTick() }
+    for (let s = start + 114; s < start + 120; s++) feed(s, 77_400)
+    now = (start + 120) * 1000
+    book.emit({ event_type: 'last_trade_price', asset_id: 'UP3', timestamp: String(now), price: '0.5' })
+    svc.decideAll()
+    await new Promise(r => setTimeout(r, 300 + TAKER_DELAY_MS + 100))
+    expect(svc.paper.s.trades.length).toBe(1)
+    const tr = svc.paper.s.trades[0]
+    const model = svc.status().windows.find(x => x.slug === updownSlug('15m', start))!.model!
+    expect(model).toBeLessThan(0.98)
+    // The market catches up: Up bid at 99¢.
+    now += 1_000
+    book.emit({ event_type: 'price_change', timestamp: String(now), price_changes: [{ asset_id: 'UP3', price: '0.99', size: '500', side: 'BUY' }] })
+    svc.decideAll()
+    expect(tr.sold ?? 0).toBe(0) // not before the delay
+    await new Promise(r => setTimeout(r, 300 + TAKER_DELAY_MS + 100))
+    expect(tr.exit).toBe('scalp')
+    expect(heldShares(tr)).toBeLessThan(0.01)
+    expect(tr.result).toBe('won')
+    expect(tr.pnl!).toBeCloseTo(tr.shares * (0.99 - takerFee(0.99, 0.07)) - tr.cost, 2)
+    expect(svc.status().stats.exits.scalp).toBe(1)
+    svc.decideAll()
+    await new Promise(r => setTimeout(r, 600))
+    expect(svc.paper.s.trades.length).toBe(1) // the cooldown still holds new entries back
     svc.stop()
   })
 

@@ -2,9 +2,12 @@
 // (src/updown, on paper against Polymarket's live markets) and serves /v1/updown/*; every other path goes to the
 // production engine. Nothing is signed or sent anywhere.
 // Run: bun engine/scripts/updown-standin.ts, then VITE_ARCDEX_API_URL=http://localhost:8099 in .env.development.local.
+// UPDOWN_SEED=<file> starts it from a saved paper book (the `updown-paper` setting's JSON), to see past trades.
+import { readFileSync } from 'node:fs'
 import { UpdownService } from '../src/updown/service'
 
 const settings = new Map<string, string>()
+if (process.env.UPDOWN_SEED) settings.set('updown-paper', readFileSync(process.env.UPDOWN_SEED, 'utf8'))
 const svc = new UpdownService({ store: { getSetting: async k => settings.get(k) ?? null, setSetting: async (k, v) => { settings.set(k, v) } } })
 await svc.load()
 svc.start()

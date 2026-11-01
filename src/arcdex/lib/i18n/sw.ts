@@ -4319,5 +4319,12 @@ const d: Record<string, string> = {
   "cooling down after an order": "inapumzika baada ya oda",
   "size under Polymarket’s minimum": "kiasi chini ya kima cha chini cha Polymarket",
   "starts soon": "hivi karibuni",
+  "Sold early (scalps / stops)": "Ziliuzwa mapema (scalp / stop)",
+  "Sold at the bid once the market paid the model’s value": "Iliuzwa kwa bid soko lilipolipa thamani ya modeli",
+  "Cut once the model said it was worth well under its cost": "Ilikatwa modeli iliposema thamani yake iko chini sana ya gharama",
+  "part sold": "imeuzwa sehemu",
+  "scalp": "scalp",
+  "stop": "stop",
+  "Exits: a 15-minute position is sold at the bid once it pays the model’s value, a 5-minute one once it pays {p}¢ more; either is cut once the model says it’s worth {s}¢ under its cost.": "Kutoka: nafasi ya dakika 15 inauzwa kwa bid inapolipa thamani ya modeli, ya dakika 5 inapolipa {p}¢ zaidi; yoyote hukatwa modeli inaposema thamani yake ni {s}¢ chini ya gharama.",
 }
 export default d

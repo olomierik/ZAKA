@@ -94,6 +94,7 @@ export default function UpDownPanel() {
         <Stat k={T('Staked')} v={usd(st.staked)} />
         <Stat k={T('Fees')} v={usd(st.fees)} />
         <Stat k={T('Missed (gone after the delay)')} v={String(st.missed)} />
+        <Stat k={T('Sold early (scalps / stops)')} v={`${st.exits?.scalp ?? 0} / ${st.exits?.stop ?? 0}`} />
         <Stat k={T('Model vs market (Brier, lower is better)')} v={st.brier.model === null ? '—' : `${st.brier.model.toFixed(3)} / ${st.brier.market!.toFixed(3)}`} c={st.brier.model !== null && st.brier.market !== null ? (st.brier.model <= st.brier.market ? 'fx-up' : 'fx-down') : ''} />
       </div>
       {st.stoppedToday && <div className="ud-warn">⏸ {T('Stopped for today: the day’s loss stop of ${n} was reached.', { n: String(s.rules.dailyLossUsd) })}</div>}
@@ -120,7 +121,10 @@ export default function UpDownPanel() {
                     <td>{cents(t.price)}</td>
                     <td>{pct(t.model)}</td>
                     <td>{usd(t.cost)}</td>
-                    <td className={t.pnl === null ? '' : cls(t.pnl)}>{t.result === 'open' ? T('Open') : signed(t.pnl ?? 0)}</td>
+                    <td className={t.pnl === null ? '' : cls(t.pnl)} title={t.exit ? (t.exit === 'scalp' ? T('Sold at the bid once the market paid the model’s value') : T('Cut once the model said it was worth well under its cost')) : undefined}>
+                      {t.result === 'open' ? (t.sold ? `${T('Open')} · ${T('part sold')}` : T('Open')) : signed(t.pnl ?? 0)}
+                      {t.exit && t.result !== 'open' && <small> {t.exit === 'scalp' ? T('scalp') : T('stop')}</small>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -132,6 +136,7 @@ export default function UpDownPanel() {
       <div className="hl-foot fx-fine">
         {T('No strategy can make every trade win: this one loses some by design and is judged on profit after fees over hundreds of windows.')}{' '}
         {T('Rules: at most ${o} an order and ${w} a window, a ${d} daily loss stop, and no order on a stale price or a quiet book.', { o: String(s.rules.orderUsd), w: String(s.rules.windowUsd), d: String(s.rules.dailyLossUsd) })}{' '}
+        {s.rules.overpay && T('Exits: a 15-minute position is sold at the bid once it pays the model’s value, a 5-minute one once it pays {p}¢ more; either is cut once the model says it’s worth {s}¢ under its cost.', { p: String(Math.round(s.rules.overpay['5m'] * 100)), s: String(Math.round(s.rules.stop * 100)) })}{' '}
         {T('Feeds')}: {s.feeds.sources.map(x => `${x.name} ${x.ageMs === null ? '—' : x.ageMs < 3_000 ? '✓' : '✕'}`).join(' · ')} · {T('book')} {s.feeds.bookConnected ? '✓' : '✕'}{s.feeds.bookLagMs !== null ? ` ${s.feeds.bookLagMs} ms` : ''} · {T('order delay')} {s.delayMs} ms{s.feeds.volPct !== null ? ` · ${T('volatility')} ${s.feeds.volPct}%` : ''}.
       </div>
     </div>
