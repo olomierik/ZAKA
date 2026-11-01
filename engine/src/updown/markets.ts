@@ -63,8 +63,9 @@ export function parseWindow(dur: UpdownDur, start: number, event: unknown): UpWi
 
 export async function fetchWindow(f: Fetch, dur: UpdownDur, start: number): Promise<UpWindow | { error: string }> {
   const r = await f(`${GAMMA}/events?slug=${updownSlug(dur, start)}`, { signal: AbortSignal.timeout(6_000) })
-  if (!r.ok) return { error: `gamma ${r.status}` }
-  const j = await r.json() as unknown[]
+  if (!r.ok) return { error: `gamma ${r.status}: ${(await r.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120)}` }
+  const j = await r.json().catch(() => null) as unknown[] | null
+  if (!Array.isArray(j)) return { error: 'gamma answered something that isn’t a list' }
   return parseWindow(dur, start, j?.[0])
 }
 
