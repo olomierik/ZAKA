@@ -32,6 +32,7 @@ import { practiceAvailable, startPractice, usePracticeAccount } from '../lib/pre
 import { POOL_NOTE, PoolBar, PoolNotReady, PoolPanel, PoolTicker, PoolTradePanel, withSaved, type PoolPick } from '../components/PredictPool'
 import { poolAvailable, usePoolAccount, usePoolStatus } from '../lib/predictPool'
 import { useTrader } from '../lib/identity'
+import UpDownPanel, { updownAvailable } from '../components/UpDownPanel'
 import type { Address } from 'viem'
 
 const CATS: { id: OutcomeCategory | 'all' | 'mine'; label: string }[] = [
@@ -385,7 +386,7 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
   const [funding, setFunding] = useState<'deposit' | 'withdraw' | null>(null)
   const [enabling, setEnabling] = useState(false)
   // Practice (virtual USDC on the engine, lib/predictPractice.ts) or live (Hyperliquid itself), remembered here.
-  const [mode, setModeState] = useState<PredictMode>(() => (practiceAvailable ? readPredictMode(HL_TRADING, poolAvailable) : 'live'))
+  const [mode, setModeState] = useState<PredictMode>(() => (practiceAvailable ? readPredictMode(HL_TRADING, poolAvailable, updownAvailable) : 'live'))
   const setMode = (m: PredictMode) => { setModeState(m); savePredictMode(m); setPick(null); setPPick(null); setPoolPick(null) }
   const practice = usePracticeAccount()
   const [pPick, setPPick] = useState<PracticePick | null>(null)
@@ -393,6 +394,8 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
   // The testnet pool (components/PredictPool.tsx): test USDC on Arc testnet, filled by ARCDEX's keeper.
   const isPool = mode === 'pool'
   const isLive = mode === 'live'
+  // Polymarket's BTC 5m and 15m windows with the engine's autotrader (components/UpDownPanel.tsx).
+  const isBtc = mode === 'btc'
   const trader = useTrader()
   const poolStatus = usePoolStatus()
   const poolDep = isPool && poolStatus?.deployment?.pool ? poolStatus.deployment : null
@@ -477,9 +480,9 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
       <div className="pm-head">
         <div>
           <h1 className="page-h">{T('Predictions')}</h1>
-          <p className="pm-sub">{T('Trade on what happens next: crypto prices, stocks, sports and the economy. Each side pays $1 if it’s right, settled by Hyperliquid.')}</p>
+          <p className="pm-sub">{isBtc ? T('Will Bitcoin be up or down at the end of the next 5 or 15 minutes? Polymarket’s markets, settled on Chainlink’s price.') : T('Trade on what happens next: crypto prices, stocks, sports and the economy. Each side pays $1 if it’s right, settled by Hyperliquid.')}</p>
         </div>
-        {practiceAvailable && <PredictModeSwitch mode={mode} liveOn={HL_TRADING} poolOn={poolAvailable} onChange={setMode} />}
+        {practiceAvailable && <PredictModeSwitch mode={mode} liveOn={HL_TRADING} poolOn={poolAvailable} btcOn={updownAvailable} onChange={setMode} />}
         {isLive && <div className="pm-acct">
           {gate.access ? (
             <>
@@ -519,6 +522,9 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
         </div>
       )}
 
+      {isBtc && <UpDownPanel />}
+
+      {!isBtc && <>
       <div className="pm-tools">
         <div className="pm-cats">
           {CATS.filter(c => c.id === 'all' || (counts[c.id] ?? 0) > 0).map(c => (
@@ -556,6 +562,8 @@ export default function PredictPage({ navigate }: { navigate: (p: Page) => void 
         {BUILDER.outcomeF > 0 && T('ARCDEX’s fee applies only when you sell, as a Hyperliquid builder fee you approve once.')}{' '}
         <button className="link-btn" onClick={() => navigate({ name: 'perps' })}>{T('Trade futures')}</button>
       </div>
+
+      </>}
 
       {detail && <MarketDetail g={detail} mids={mids} now={now} onPick={openPick} onClose={() => setDetail(null)} />}
       {pick && (mobile ? (
