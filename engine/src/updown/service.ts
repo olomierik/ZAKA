@@ -12,10 +12,15 @@
 // It learns from its record (learn.ts): how far to trust its model against the market (the chance it trades on is the
 // market's, moved toward the model by that much), and which kinds of trade lose, which it then skips while measuring
 // them as shadow trades. Every trade keeps what it knew when it bought and, once closed, why it won or lost.
+//
+// Live trading (2026-11-03): each buy it decides, and each scalp or stop of a side it bought, is pushed on the `updown`
+// channel (UpdownSignal) the moment it decides. Each user's browser trades them from the user's own wallet; the engine
+// places no real order. A second paper book (`sim`) measures what that gets: $100 on the small-account rules
+// (LIVE_RULES), filled as late as a browser's order lands.
 
 import { log, errMsg } from '../log'
 import {
-  UPDOWN_DUR_SEC, takerFee, windowStart, type UpdownDur, type UpdownSide, type UpdownStatus, type UpdownTrade, type UpdownWindowView,
+  LIVE_RULES, UPDOWN_DUR_SEC, liveOrderUsd, takerFee, windowStart, type UpdownDur, type UpdownExit, type UpdownSide, type UpdownSignal, type UpdownStatus, type UpdownTrade, type UpdownWindowView,
 } from '../../../api/_updownProtocol'
 import { fairUp, type FairInput } from './fair'
 import { SpotFeeds, SpotModel } from './feeds'
@@ -29,6 +34,12 @@ export interface SettingsStore { getSetting(key: string): Promise<string | null>
 export const TAKER_DELAY_MS = 150
 const DURS: UpdownDur[] = ['5m', '15m']
 const KEY = 'updown-paper'
+/** The live-speed book's limits: LIVE_RULES on its capital. */
+const SIM_LIMITS = { windowUsd: LIVE_RULES.simCapital * LIVE_RULES.windowShare, dailyLossUsd: LIVE_RULES.simCapital * LIVE_RULES.dailyLossShare, cooldownMs: RULES.cooldownMs }
+
+interface SimState { halted: string | null; pauseUntil: number }
+/** A side the engine told live traders to buy: watched for its exits until the window ends. */
+interface Mark { slug: string; side: UpdownSide; asset: string; cost: number; lastSell: number }
 
 interface Win extends UpWindow { open: number | null; openAskedAt: number; resultAskedAt: number; resolved: boolean; view: UpdownWindowView | null; viewAt: number }
 
@@ -41,6 +52,12 @@ export class UpdownService {
   private feeds: SpotFeeds
   paper: PaperBook
   learn: Learner
+  /** The live-speed paper book (see the top of the file). */
+  sim: PaperBook
+  simState: SimState = { halted: null, pauseUntil: 0 }
+  private marks = new Map<string, Mark>()
+  /** Each window's result for a day, for live traders' browsers (Polymarket's own endpoint doesn't serve browsers). */
+  private results = new Map<string, { up: boolean; open: number; close: number; at: number }>()
   private wins = new Map<string, Win>()
   private listErr = new Map<string, number>()
   /** Positions with a sale on its way, so a second isn't sent before it lands. */
@@ -50,13 +67,14 @@ export class UpdownService {
   private now: () => number
   private f: Fetch
 
-  constructor(private o: { store: SettingsStore; fetch?: Fetch; Ws?: WsCtor; now?: () => number }) {
+  constructor(private o: { store: SettingsStore; fetch?: Fetch; Ws?: WsCtor; now?: () => number; publish?: (s: UpdownSignal) => void }) {
     this.now = o.now ?? Date.now
     this.f = o.fetch ?? ((u, i) => fetch(u, i))
     this.stream = new BookStream(this.books, o.Ws, this.now)
     this.feeds = new SpotFeeds(this.model, o.Ws)
     this.learn = new Learner(undefined, this.now)
     this.paper = new PaperBook(freshPaper(this.now()))
+    this.sim = new PaperBook(freshPaper(this.now(), LIVE_RULES.simCapital), SIM_LIMITS)
     this.wire()
   }
 
@@ -73,8 +91,10 @@ export class UpdownService {
     try {
       const raw = await this.o.store.getSetting(KEY)
       if (raw) {
-        const j = JSON.parse(raw) as { paper?: PaperState; basis?: Parameters<SpotModel['restore']>[0]; learn?: LearnState }
+        const j = JSON.parse(raw) as { paper?: PaperState; basis?: Parameters<SpotModel['restore']>[0]; learn?: LearnState; sim?: PaperState; simState?: SimState }
         if (j.paper?.trades) this.paper = new PaperBook(j.paper)
+        if (j.sim?.trades) this.sim = new PaperBook(j.sim, SIM_LIMITS)
+        if (j.simState) this.simState = j.simState
         if (j.learn?.v === 1) this.learn = new Learner(j.learn, this.now)
         this.model.restore(j.basis)
       }
@@ -104,10 +124,11 @@ export class UpdownService {
   stop() { for (const x of this.timers) clearInterval(x); this.timers = []; this.feeds.stop(); this.stream.stop() }
 
   async save() {
-    if (!this.paper.dirty && !this.learn.dirty) return
+    if (!this.paper.dirty && !this.learn.dirty && !this.sim.dirty) return
     this.paper.dirty = false
     this.learn.dirty = false
-    await this.o.store.setSetting(KEY, JSON.stringify({ paper: this.paper.s, basis: this.model.toJSON(), learn: this.learn.s }))
+    this.sim.dirty = false
+    await this.o.store.setSetting(KEY, JSON.stringify({ paper: this.paper.s, basis: this.model.toJSON(), learn: this.learn.s, sim: this.sim.s, simState: this.simState }))
   }
 
   /** The current and next window of each length, listed once, retried 30 s after a miss. */
@@ -159,7 +180,12 @@ export class UpdownService {
         if (!p?.completed || p.close === null) return
         w.open ??= p.open
         w.resolved = true
+        this.results.set(w.slug, { up: p.close >= (p.open ?? w.open!), open: p.open ?? w.open!, close: p.close, at: now })
+        for (const [k, r] of this.results) if (now - r.at > 86_400_000) this.results.delete(k)
         const settled = this.paper.settle(w.slug, p.close >= (p.open ?? w.open!))
+        this.sim.settle(w.slug, p.close >= (p.open ?? w.open!))
+        this.simCheck(now)
+        for (const k of [...this.marks.keys()]) if (k.startsWith(`${w.slug}:`)) this.marks.delete(k)
         if (settled.length) log.info('updown: window settled', { slug: w.slug, up: p.close >= (p.open ?? 0), trades: settled.length, pnl: settled.reduce((a, t) => a + (t.pnl ?? 0), 0) })
         return
       }
@@ -237,7 +263,7 @@ export class UpdownService {
       const view = this.viewOf(w, now)
       w.view = view
       w.viewAt = now
-      if (view.model !== null && w.accepting && this.bookLive(w, now)) this.exits(w, view.model, view.secondsLeft)
+      if (view.model !== null && w.accepting && this.bookLive(w, now)) { this.exits(w, view.model, view.secondsLeft); this.signalExits(w, view.model, view.secondsLeft, now) }
       if (view.waiting || view.model === null) continue
       const elapsed = nowSec - w.start
       const intents: Intent[] = []
@@ -274,7 +300,81 @@ export class UpdownService {
       }
       this.paper.sending(w.slug, now)
       setTimeout(() => this.land(w, best, token, usd, now, view.secondsLeft, ctx), delay)
+      this.signalBuy(w, best, token, now, delay)
     }
+  }
+
+  /** A buy for live traders: pushed now, and taken by the live-speed book as late as a browser's order would land. */
+  private signalBuy(w: Win, it: Intent, token: string, now: number, delay: number) {
+    const sig: UpdownSignal = {
+      id: `${w.slug}:${it.side}:${now}`, kind: 'buy', slug: w.slug, dur: w.dur, conditionId: w.conditionId, side: it.side, asset: token,
+      at: now, end: w.end, price: it.worst, tick: w.tick, minSize: w.minSize, p: Math.round(it.p * 1e4) / 1e4, ask: it.ask, edge: Math.round(it.edge * 1e4) / 1e4, lane: it.lane,
+    }
+    try { this.o.publish?.(sig) } catch (e) { log.warn('updown: signal not published', { error: errMsg(e) }) }
+    const k = `${w.slug}:${it.side}`
+    if (!this.marks.has(k)) this.marks.set(k, { slug: w.slug, side: it.side, asset: token, cost: it.ask + takerFee(it.ask, w.feeRate, w.feeExponent), lastSell: 0 })
+    // The live-speed book, with the small-account rules a user's browser applies.
+    const why = this.simBlocked(w.slug, now)
+    if (why) return
+    const usd = Math.min(liveOrderUsd(this.sim.s.start, it.p, it.ask, w.feeRate), this.sim.windowLeft(w.slug), this.sim.s.bankroll)
+    if (usd < Math.max(LIVE_RULES.minOrderUsd, w.minSize * it.ask)) return
+    this.sim.sending(w.slug, now)
+    setTimeout(() => {
+      const fill = fillFak(this.books.askLevels(token), it.worst, usd, w.feeRate, w.feeExponent)
+      if (fill.shares < w.minSize || fill.spent < 1) { this.sim.miss(); return }
+      this.sim.record({
+        slug: w.slug, dur: w.dur, lane: it.lane, side: it.side, at: now, filledAt: this.now(),
+        shares: Math.round(fill.shares * 100) / 100, price: Math.round(fill.avg * 1e4) / 1e4, fee: Math.round(fill.fee * 1e6) / 1e6,
+        cost: Math.round((fill.spent + fill.fee) * 1e6) / 1e6, model: Math.round(it.p * 1e4) / 1e4, edge: Math.round(it.edge * 1e4) / 1e4,
+        secondsLeft: Math.round(w.end - now / 1000),
+      })
+    }, delay + LIVE_RULES.extraDelayMs)
+  }
+
+  /** Why the live-speed book takes no new order now, or null. */
+  private simBlocked(slug: string, now: number): string | null {
+    if (this.simState.halted) return this.simState.halted
+    if (now < this.simState.pauseUntil) return 'paused after a losing streak'
+    if (this.sim.openCount() >= LIVE_RULES.maxOpen) return 'positions open'
+    return this.sim.blocked(slug, now)
+  }
+
+  /** After each close: the live-speed book halts once it's down LIVE_RULES.drawdownStop, and pauses after a losing streak. */
+  private simCheck(now: number) {
+    const s = this.sim.s
+    const open = s.trades.filter(t => t.result === 'open' && !t.shadow).reduce((a, t) => a + t.cost - (t.proceeds ?? 0), 0)
+    if (!this.simState.halted && s.bankroll + open < s.start * (1 - LIVE_RULES.drawdownStop)) { this.simState.halted = 'down 30%: stopped'; this.sim.dirty = true }
+    const closed = s.trades.filter(t => t.result !== 'open' && !t.shadow).sort((a, b) => (b.exitAt ?? b.filledAt) - (a.exitAt ?? a.filledAt))
+    let streak = 0
+    for (const t of closed) { if (t.result === 'lost') streak++; else break }
+    if (streak >= LIVE_RULES.lossStreak && now >= this.simState.pauseUntil && streak % LIVE_RULES.lossStreak === 0) { this.simState.pauseUntil = now + LIVE_RULES.pauseMs; this.sim.dirty = true }
+  }
+
+  /** Every side it signalled a buy for: a sale is signalled when the exit rule says so (at most every 3 s), and the
+   *  live-speed book sells what it holds there, as late as a browser's sale would land. */
+  private signalExits(w: Win, model: number, secondsLeft: number, now: number) {
+    for (const m of this.marks.values()) {
+      if (m.slug !== w.slug || now - m.lastSell < 3_000) continue
+      const d = exitDecision({ dur: w.dur, p: m.side === 'up' ? model : 1 - model, costPerShare: m.cost, bids: this.books.bidLevels(m.asset), secondsLeft, feeRate: w.feeRate, feeExponent: w.feeExponent })
+      if (!('why' in d)) continue
+      m.lastSell = now
+      const sig: UpdownSignal = { id: `${w.slug}:${m.side}:sell:${now}`, kind: 'sell', slug: w.slug, dur: w.dur, conditionId: w.conditionId, side: m.side, asset: m.asset, at: now, end: w.end, price: d.floor, tick: w.tick, minSize: w.minSize, why: d.why }
+      try { this.o.publish?.(sig) } catch (e) { log.warn('updown: signal not published', { error: errMsg(e) }) }
+      this.simSell(w, m, d.floor, d.why)
+    }
+  }
+
+  private simSell(w: Win, m: Mark, floor: number, why: UpdownExit) {
+    setTimeout(() => {
+      for (const t of this.sim.s.trades) {
+        if (t.slug !== w.slug || t.side !== m.side || t.result !== 'open') continue
+        const held = heldShares(t)
+        const fill = sellFak(this.books.bidLevels(m.asset), floor, held, w.feeRate, w.feeExponent)
+        if (fill.shares < 0.01 || (fill.shares < w.minSize && fill.shares < held - 0.01)) continue
+        this.sim.sell(t.id, fill, why, this.now())
+      }
+      this.simCheck(this.now())
+    }, this.delayMs() + LIVE_RULES.extraDelayMs)
   }
 
   private pendingShadow = new Set<string>()
@@ -371,9 +471,13 @@ export class UpdownService {
       stats: this.paper.stats(now),
       readiness: this.paper.readiness(now),
       learn: this.learn.view(this.paper.s.trades),
+      liveSim: { ...this.sim.stats(now), capital: LIVE_RULES.simCapital, extraDelayMs: LIVE_RULES.extraDelayMs, halted: this.simState.halted ?? (now < this.simState.pauseUntil ? 'paused after a losing streak' : null) },
       rules: { orderUsd: RULES.orderUsd, windowUsd: RULES.windowUsd, dailyLossUsd: RULES.dailyLossUsd, marginA: RULES.marginA, marginMid: RULES.marginMid, marginB: RULES.marginB, overpay: RULES.overpay, stop: RULES.stop },
     }
   }
+
+  /** A window's result once Polymarket has it, else null. */
+  result(slug: string) { const r = this.results.get(slug); return r ? { slug, up: r.up, open: r.open, close: r.close } : null }
 
   trades(limit = 100): UpdownTrade[] { return this.paper.s.trades.slice(-Math.min(500, Math.max(1, limit))).reverse() }
 }

@@ -438,6 +438,10 @@ export function startServer({ cfg, api, health }: ServerDeps) {
         const sub = url.pathname.slice('/v1/updown/'.length)
         if (sub === 'status') return json(req, 200, ud.status(), 'no-store')
         if (sub === 'trades') return json(req, 200, ud.trades(Number(url.searchParams.get('limit')) || 100), 'no-store')
+        if (sub === 'result') {
+          const r = ud.result(url.searchParams.get('slug') ?? '')
+          return r ? json(req, 200, r, 'public, max-age=3600') : json(req, 404, { error: 'not resolved yet' }, 'no-store')
+        }
         return json(req, 404, { error: 'not found' })
       }
       // Practice predictions (practice/predict.ts): virtual USDC on Hyperliquid's prediction markets, filled at the mid

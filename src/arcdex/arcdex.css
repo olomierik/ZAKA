@@ -3300,8 +3300,34 @@ button, a, [role="button"], .tabbar, .top-navbar, .trade-bar { touch-action: man
 .ud-table tr.shadow td { color: var(--text-muted); }
 .ud-table td.ud-lesson { white-space: normal; min-width: 260px; font-size: 0.76rem; color: var(--text-muted); }
 .ud-csv { margin-left: auto; font-size: 0.74rem; background: var(--bg-3); border: 1px solid var(--adx-border); color: var(--text); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
+/* Live autotrade with real money (2026-11-03, components/UpdownLiveCard.tsx). */
+.ud-live.on { border-color: var(--green, #0a8f4f); }
+.ud-live-badge { margin-left: auto; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.04em; border-radius: 4px; padding: 1px 6px; background: var(--bg-3); color: var(--text-muted); }
+.ud-live-badge.on { background: rgba(10,143,79,0.14); color: var(--green, #0a8f4f); }
+.ud-live-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); gap: 16px; padding: 4px 16px 12px; }
+.ud-live-sim { background: var(--bg-3); border-radius: 8px; padding: 8px 12px; font-size: 0.8rem; display: flex; flex-direction: column; gap: 3px; margin: 8px 0; }
+.ud-live-sim small { color: var(--text-muted); }
+.ud-live-rules { margin: 6px 0 0; padding-left: 18px; font-size: 0.78rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 3px; }
+.ud-live-acct { display: flex; flex-direction: column; gap: 6px; font-size: 0.82rem; }
+.ud-checks { display: flex; flex-direction: column; gap: 3px; font-size: 0.78rem; border-top: 1px solid var(--adx-border); padding-top: 6px; }
+.ud-live-fund code { font-size: 0.72rem; word-break: break-all; }
+.ud-live-fund .fx-fine { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.ud-live-cap { display: flex; align-items: center; gap: 6px; }
+.ud-live-cap span { color: var(--text-muted); margin-right: 4px; }
+.ud-live-cap button { border: 1px solid var(--adx-border); background: var(--bg-3); color: var(--text); border-radius: 6px; padding: 3px 12px; cursor: pointer; font-weight: 600; }
+.ud-live-cap button.active { border-color: var(--green, #0a8f4f); color: var(--green, #0a8f4f); }
+.ud-accept { display: flex; gap: 8px; align-items: flex-start; font-size: 0.76rem; color: var(--text-muted); line-height: 1.4; }
+.ud-btn { border: 0; border-radius: 8px; padding: 9px 12px; font-weight: 700; cursor: pointer; background: var(--bg-3); color: var(--text); }
+.ud-btn.go { background: var(--green, #0a8f4f); color: var(--on-accent, #fff); }
+.ud-btn.stop { background: var(--red); color: #fff; }
+.ud-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.ud-link-btn { margin-left: 6px; background: none; border: 0; color: var(--accent-text, var(--green)); cursor: pointer; font-size: inherit; font-weight: 600; padding: 0; }
+.ud-link-btn:disabled { color: var(--text-muted); cursor: not-allowed; }
+.ud-live-step { display: flex; flex-direction: column; gap: 6px; }
+.ud-live-rec { border-top: 1px solid var(--adx-border); }
 @media (max-width: 767px) {
   .ud-learn-body { grid-template-columns: minmax(0, 1fr); padding: 4px 12px 12px; }
+  .ud-live-body { grid-template-columns: minmax(0, 1fr); padding: 4px 12px 12px; }
   .ud-hero { grid-template-columns: minmax(0, 1fr); padding: 12px; }
   .ud-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 12px; }
   /* Four modes don't fit one row on a phone: two by two. */

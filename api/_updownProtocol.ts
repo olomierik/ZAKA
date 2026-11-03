@@ -152,10 +152,76 @@ export interface UpdownReadiness {
   why: string[]
 }
 
+/** A decision the engine pushes on the `updown` channel the moment it makes it (2026-11-03): a buy it wants (never a
+ *  kind it learned to skip), or a sale of a side it signalled before (a scalp or a stop). The live autotrader in each
+ *  user's browser acts on these with the user's own wallet; the engine places no real order itself. */
+export interface UpdownSignal {
+  id: string
+  kind: 'buy' | 'sell'
+  slug: string
+  dur: UpdownDur
+  conditionId: string
+  side: UpdownSide
+  /** The outcome token (CLOB asset id) to trade. */
+  asset: string
+  /** When the engine decided (ms), and when the window ends (unix seconds). */
+  at: number
+  end: number
+  /** Buy: the most to pay a share. Sell: the least to take. */
+  price: number
+  tick: number
+  minSize: number
+  /** Buy only: the chance it trades on, the best ask, the edge after the fee, and the lane. */
+  p?: number
+  ask?: number
+  edge?: number
+  lane?: UpdownLane
+  /** Sell only: why. */
+  why?: UpdownExit
+}
+
+/** Live trading for a small account (2026-11-03, owner: "make it trade small capital like 50 and 100 and be smart not
+ *  to burn the account"). Shares of the capital the user starts with; the engine's live-speed paper book uses the
+ *  same numbers on $100. */
+export const LIVE_RULES = {
+  /** An order is at most this share of the capital, less when the edge is thin (a quarter of Kelly). */
+  orderShare: 0.06,
+  kellyShare: 0.25,
+  /** Polymarket's smallest useful order. */
+  minOrderUsd: 1,
+  /** At most this share of the capital in one window, and this many positions open at once. */
+  windowShare: 0.12,
+  maxOpen: 2,
+  /** No new order for the rest of the UTC day once the day has lost this share. */
+  dailyLossShare: 0.15,
+  /** Stops for good (until the user starts it again) once the account is this share under where it started. */
+  drawdownStop: 0.3,
+  /** A pause after this many losses in a row. */
+  lossStreak: 4,
+  pauseMs: 60 * 60_000,
+  /** A signal older than this when it reaches the browser isn't traded. */
+  maxSignalAgeMs: 2_000,
+  /** The engine's live-speed paper book: what a browser far from London adds to the engine's own delay. */
+  extraDelayMs: 900,
+  simCapital: 100,
+  /** The capital a user can start with. */
+  capitals: [50, 100] as const,
+}
+
+/** One live order's size for a small account: a quarter of Kelly on the all-in cost, within the order share. */
+export function liveOrderUsd(capital: number, p: number, ask: number, feeRate: number): number {
+  const c = ask + takerFee(ask, feeRate)
+  const f = c >= 1 ? 0 : Math.max(0, (p - c) / (1 - c))
+  const usd = Math.min(capital * LIVE_RULES.orderShare, capital * f * LIVE_RULES.kellyShare)
+  return usd >= LIVE_RULES.minOrderUsd ? Math.floor(usd * 100) / 100 : 0
+}
+
 export interface UpdownStatus {
   mode: 'paper' | 'off'
-  /** Real money: never from the engine; offered per user only once `readiness.ready`. */
+  /** Real money: never from the engine; each user's own browser trades their own wallet (UpdownSignal). */
   live: false
+  /** The engine's live-speed paper book: $100 on the small-account rules, filled as late as a browser's order lands. */
+  liveSim?: UpdownStats & { capital: number; extraDelayMs: number; halted: string | null }
   windows: UpdownWindowView[]
   feeds: {
     sources: { name: string; ageMs: number | null; basisBp: number | null }[]

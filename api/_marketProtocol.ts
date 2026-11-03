@@ -20,8 +20,9 @@
 // `new_tokens`; `market` carries TICKS (all tokens, once a second).
 
 import type { TrenchMessage, WalletMessage } from './_trenchProtocol'
+import type { UpdownSignal } from './_updownProtocol'
 
-export const CHANNELS = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles', 'new_tokens', 'market', 'signals', 'scan', 'trench_arc', 'trench_hood', 'trench_sol', 'trench_bnb', 'wallet'] as const
+export const CHANNELS = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles', 'new_tokens', 'market', 'signals', 'scan', 'trench_arc', 'trench_hood', 'trench_sol', 'trench_bnb', 'wallet', 'updown'] as const
 export type Channel = (typeof CHANNELS)[number]
 /** Channels that need a token address. */
 export const TOKEN_CHANNELS: readonly Channel[] = ['token', 'trades', 'price', 'volume', 'liquidity', 'candles']
@@ -73,7 +74,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | { error: strin
 /** The pub/sub topic a subscription maps to. */
 export function topicOf(m: { channel: Channel; token?: string; interval?: string; wallet?: string }): string {
   if (m.channel === 'wallet') return m.wallet!.startsWith('0x') ? `wallet:evm:${m.wallet}` : `wallet:sol:${m.wallet}`
-  if (m.channel === 'new_tokens' || m.channel === 'market' || m.channel === 'signals' || m.channel === 'scan' || m.channel.startsWith('trench_')) return m.channel
+  if (m.channel === 'new_tokens' || m.channel === 'market' || m.channel === 'signals' || m.channel === 'scan' || m.channel === 'updown' || m.channel.startsWith('trench_')) return m.channel
   if (m.channel === 'candles') return `candles:${m.token}:${m.interval}`
   return `${m.channel}:${m.token}`
 }
@@ -855,9 +856,9 @@ export function botControlMessage(c: BotControl, at: number): string {
  * on every venue at once, or one venue, turned off and on by an admin wallet's signed message. Off stops new trades
  * before they're signed; withdrawals, transfers, the bridge and open positions' management are not trades and go on.
  */
-export const TRADE_VENUES = ['arc', 'robinhood', 'solana', 'bnb', 'starknet', 'hyperliquid', 'ethereum', 'arbitrum'] as const
+export const TRADE_VENUES = ['arc', 'robinhood', 'solana', 'bnb', 'starknet', 'hyperliquid', 'ethereum', 'arbitrum', 'polymarket'] as const
 export type TradeVenue = (typeof TRADE_VENUES)[number]
-export const TRADE_VENUE_LABEL: Record<TradeVenue, string> = { arc: 'Arc', robinhood: 'Robinhood Chain', solana: 'Solana', bnb: 'BNB Chain', starknet: 'Starknet', hyperliquid: 'Hyperliquid', ethereum: 'Ethereum', arbitrum: 'Arbitrum' }
+export const TRADE_VENUE_LABEL: Record<TradeVenue, string> = { arc: 'Arc', robinhood: 'Robinhood Chain', solana: 'Solana', bnb: 'BNB Chain', starknet: 'Starknet', hyperliquid: 'Hyperliquid', ethereum: 'Ethereum', arbitrum: 'Arbitrum', polymarket: 'Polymarket' }
 export const isTradeVenue = (v: unknown): v is TradeVenue => typeof v === 'string' && (TRADE_VENUES as readonly string[]).includes(v)
 
 /** One switch: everything, or one venue. */
@@ -901,6 +902,7 @@ export const SITE_FLAGS = {
   comments: { protective: false, label: 'Comments on theses and coins' },
   copyTrading: { protective: false, label: 'Copy trading (engine-held copy wallets on Arc)' },
   walletCopy: { protective: false, label: 'Copy trading from the user’s own trading wallet (in the browser)' },
+  updownLive: { protective: false, label: 'Live BTC Up/Down autotrade on Polymarket, from the user’s own trading wallet' },
 } as const
 export type SiteFlag = keyof typeof SITE_FLAGS
 export const isSiteFlag = (f: unknown): f is SiteFlag => typeof f === 'string' && Object.prototype.hasOwnProperty.call(SITE_FLAGS, f)
@@ -970,6 +972,8 @@ export type ServerMessage =
   /** trench_<chain> channels: launches, trades once a second, smart wallets' trades (api/_trenchProtocol.ts) */
   | TrenchMessage
   | WalletMessage
+  /** updown channel: the BTC Up/Down autotrader's buy and sell decisions, for live traders (api/_updownProtocol.ts) */
+  | { t: 'UDSIG'; d: UpdownSignal }
   | { t: 'SUBSCRIBED' | 'UNSUBSCRIBED'; c: string }
   | { t: 'PONG'; ts: number }
   | { t: 'ERROR'; d: { code: string; msg?: string } }

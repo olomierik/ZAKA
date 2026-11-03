@@ -54,7 +54,7 @@ export class PaperBook {
   /** Called with a resolved window's snapshots, for the learner. */
   onResolved?: (slug: string, rows: SnapRow[], up: boolean) => void
 
-  constructor(public s: PaperState) {
+  constructor(public s: PaperState, private limits: { windowUsd: number; dailyLossUsd: number; cooldownMs: number } = RULES) {
     for (const t of s.trades) if (t.result === 'open' && real(t)) this.spent.set(t.slug, (this.spent.get(t.slug) ?? 0) + t.cost)
   }
 
@@ -67,16 +67,18 @@ export class PaperBook {
     const d = day(now)
     return this.todayPnl(now) - this.s.trades.filter(t => real(t) && t.result === 'open' && day(t.filledAt) === d).reduce((a, t) => a + t.cost - (t.proceeds ?? 0), 0)
   }
-  stopped(now: number) { return this.todayRisk(now) <= -RULES.dailyLossUsd }
+  stopped(now: number) { return this.todayRisk(now) <= -this.limits.dailyLossUsd }
 
   /** Why no new order may go into this window now, or null. */
   blocked(slug: string, now: number): string | null {
     if (this.stopped(now)) return 'the day’s loss stop'
-    if ((this.spent.get(slug) ?? 0) >= RULES.windowUsd - 1) return 'this window’s cap'
-    if (now - (this.lastOrder.get(slug) ?? 0) < RULES.cooldownMs) return 'cooling down after an order'
+    if ((this.spent.get(slug) ?? 0) >= this.limits.windowUsd - 1) return 'this window’s cap'
+    if (now - (this.lastOrder.get(slug) ?? 0) < this.limits.cooldownMs) return 'cooling down after an order'
     return null
   }
-  windowLeft(slug: string) { return Math.max(0, RULES.windowUsd - (this.spent.get(slug) ?? 0)) }
+  windowLeft(slug: string) { return Math.max(0, this.limits.windowUsd - (this.spent.get(slug) ?? 0)) }
+  /** Positions open now (shadow trades aside). */
+  openCount() { return this.s.trades.filter(t => t.result === 'open' && real(t)).length }
   /** Marks an order as sent, so a second can't follow before it lands. */
   sending(slug: string, now: number) { this.lastOrder.set(slug, now) }
 

@@ -288,7 +288,8 @@ async function main() {
   // The BTC Up/Down autotrader (updown/service.ts): Polymarket's 5- and 15-minute windows priced and traded on paper
   // against their live books. Real money is never placed from here. UPDOWN=off stops it.
   if (dataApi && !/^(0|off|false|no)$/i.test(process.env.UPDOWN?.trim() ?? '')) {
-    const updown = new UpdownService({ store: botStore })
+    // Its decisions go out on the `updown` channel for live traders' browsers (UpdownSignal).
+    const updown = new UpdownService({ store: botStore, publish: d => publisher.publish(['updown'], { t: 'UDSIG', d }) })
     await updown.load()
     updown.start()
     dataApi.updown = updown

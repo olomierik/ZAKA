@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react'
 import type { UpdownLearnView, UpdownLesson, UpdownStatus, UpdownTrade, UpdownWindowView } from '../../../api/_updownProtocol'
 import { engineApiUrl } from '../api/marketStream'
 import { t as T } from '../lib/i18n'
+import UpdownLiveCard from './UpdownLiveCard'
 
 export const updownAvailable = Boolean(engineApiUrl)
 
@@ -166,6 +167,8 @@ export default function UpDownPanel() {
         {!live.length && <div className="fx-empty">{T('Finding the live windows…')}</div>}
       </div>
       {next.length > 0 && <div className="ud-next">{T('Next')}: {next.map(w => `${w.dur} ${T('in')} ${clock(w.secondsLeft - (w.end - w.start))}`).join(' · ')}</div>}
+
+      <UpdownLiveCard status={s} />
 
       {s.learn && <Learned l={s.learn} />}
 

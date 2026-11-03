@@ -31,6 +31,7 @@
     "@moonpay/moonpay-js": "0.7.6",
     "@noble/curves": "1.4.2",
     "@openzeppelin/contracts": "5.1.0",
+    "@polymarket/client": "0.16.0",
     "@privy-io/react-auth": "3.49.1",
     "@solana-program/memo": "0.10.0",
     "@solana-program/system": "0.10.0",

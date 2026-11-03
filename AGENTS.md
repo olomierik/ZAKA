@@ -3418,6 +3418,36 @@ Owner: "make this autotrade feature on Polymarket LIVE and working; a very intel
   - **Tests:** `engine/test/updownLearn.test.ts`: trust up and down, uninformative snapshots, the first day's seed, skipping and letting back in, old trades, shadow trades in the book, lessons. In `updown.test.ts`, a skipped kind traded end to end as a shadow trade. The engine suite: 955 pass.
   - **Checked** in the browser against the stand-in seeded with the first day's trades (`UPDOWN_SEED`), at 1280px and 375px (no sideways scroll).
 - **Kraken and Bitstamp feeds (2026-11-01).** Binance refuses US IPs, so on Railway (US West) the Chainlink estimate rested on Coinbase alone. `feeds.ts` now also streams Kraken's (`ws.kraken.com/v2`, ticker on every best bid/ask change) and Bitstamp's (`order_book_btcusd`) BTC/USD top of book, using the mid. Both serve the US, and both are among the exchanges Chainlink's BTC/USD feed aggregates; measured from Tanzania, about 1 and 6 updates a second. Each source's basis is learned as before. A book feed's last mid counts for 10 s (`SPOT.freshMsBook`): it sends nothing while the best prices hold still. Test: `updown.test.ts`.
+- **Live autotrade with real money, for $50 and $100 accounts (2026-11-03, owner: "make it trade small capital like 50 and 100 and be smart not to burn the account and enable LIVE AUTOTRADE with real money; check the bot status up to now; if there is anything to improve, do it").** Nothing here promises a profit.
+  - **The record it was built on** (production's paper book, 2026-11-01 to 11-03):
+    - 85 trades, 43 won, +$488.58 after $78.58 of fees on $1,000.
+    - Since the learning update: 40 trades, +$632; still +$340 without its three best.
+    - Most of the profit came from cheap underdogs (15–30¢) that won, often several in one BTC move, so the trades aren't independent.
+    - The market still forecasts a little better than the model (Brier 0.194 against 0.195).
+    - 74 orders found nothing left after the 0.2 s delay.
+  - **Exits checked:** on the 28 positions sold early, selling lost $51.11 where holding to the result would have lost $233.60, so the scalps and stops stay.
+  - **How it works (owner's earlier choice: each user's own wallet; Polymarket refuses orders from the engine's US IP):**
+    - **The engine decides.** `UpdownService` publishes each buy it makes (never a kind it learned to skip) and each scalp or stop of a side it signalled on the new `updown` channel (`UpdownSignal`, message `UDSIG`, `api/_updownProtocol.ts`). It places no real order.
+    - **The user's browser trades** (`components/UpdownLiveRunner.tsx`, mounted while live is on): Polymarket's own SDK, `@polymarket/client` pinned to 0.16.0 (`lib/polyLive.ts`, loaded only when used). The unlocked trading wallet trades as a plain wallet (Polymarket's "EOA" account), holding pUSD on Polygon itself, and signs every order without a pop-up. The SDK makes its API credentials from one signature, kept in memory.
+    - **Orders:** fill-and-kill at the engine's price (a buy's `maxPrice`, a sale's `minPrice`); nothing rests on the book. Sales follow the engine's sell signals for that token. After a window ends, the result comes from the engine (`GET /v1/updown/result?slug=`, kept a day; Polymarket's own endpoint doesn't serve browsers) and winning shares are redeemed on-chain (in POL), retried until they go through.
+    - **One tab trades** (a lease renewed every 2 s). Nothing trades while every ARCDEX tab is closed.
+  - **What keeps a small account alive (`LIVE_RULES`, `lib/updownLive.ts` `liveBuy`, `liveCheck`):**
+    - an order is a quarter of Kelly, at most 6% of the capital ($3 on $50, $6 on $100), and at least Polymarket's 5-share minimum (so a $50 account skips asks over 60¢);
+    - at most 12% of the capital in one window and 2 positions open;
+    - no new order for the rest of the UTC day once the day lost 15% (open positions counted as lost);
+    - a one-hour pause after 4 losses in a row;
+    - stopped for good, until the user starts again, once the account is 30% under where it started;
+    - a signal over 2 s old when it arrives isn't traded;
+    - ARCDEX's trade switch has a `polymarket` venue (`/admin`): it stops new buys; sales and redemptions go on. The `updownLive` flag turns the whole thing off for everyone.
+  - **The engine's live-speed paper book (`UpdownService.sim`, `status.liveSim`):** $100 on exactly these rules, filled 900 ms later than the main paper book (`LIVE_RULES.extraDelayMs`), about what an order from a browser far from London adds. It's the honest preview of what a live account gets; the card shows it.
+  - **The card (`components/UpdownLiveCard.tsx`, /predict → BTC 5m · 15m):** the live-speed record, the rules, the wallet on Polygon (pUSD, POL, USDC.e), Polymarket's location check (its `/api/geoblock`, from the browser), funding (Polymarket's deposit addresses: USDC from Base, Arbitrum, Polygon, Ethereum or Solana arrives as pUSD; about 1 POL for gas), trading approvals (Set up, in POL), $50 or $100, the risks to accept, Start/Stop, and the live record and log. Reading the card makes no credentials (approvals are read through the SDK's public client).
+  - **Not done:** withdrawing pUSD from the card (`polyUnwrap` exists, not wired to a button: the wallet's key can be exported); session keys (Polymarket's scoped, trade-only keys, the safer design, need a builder API key Polymarket approves by email); a funded order (auto mode refused even an unfunded test order).
+  - **Owner steps:**
+    1. Run `bun scripts/check-polymarket-live.ts` from Tanzania. A throwaway, unfunded key signs in, reads balance and approvals, and places a $1 order Polymarket must refuse for want of funds. It should end `PASS`.
+    2. Fund a trading wallet with $50: USDC to the deposit address the card gives, and about 1 POL. Set up the approvals, then start.
+    3. Take legal advice on offering automated real-money trading on Polymarket to your users.
+  - **Tests:** `scripts/test-updown-live.ts` (every rule; in CI). `engine/test/updown.test.ts` (33): signals published and refused for skipped kinds, the live-speed book filling 900 ms later, sizes, the drawdown stop and the streak pause.
+  - **Checked in the browser** against the stand-in, with a throwaway local trading wallet: balances read from Polygon, "Polymarket accepts orders from your country (TZ)", approvals not set, Start disabled until funded; 375px with no sideways scroll.
 
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
