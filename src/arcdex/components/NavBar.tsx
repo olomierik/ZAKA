@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import AccountMenu from './AccountMenu'
 import SearchBox from './SearchBox'
 import ChainLogo from './ChainLogo'
+import ChainSheet from './ChainSheet'
+import { useIsMobile } from '../lib/useMobile'
 import type { Page } from '../App'
 import { LANGS, setLang, t as T, useLang, type Lang } from '../lib/i18n'
 import { COIN_LC, COIN_POOL } from '../lib/coin'
@@ -63,6 +65,9 @@ export default function NavBar({ page, navigate, onMenuClick, onBack, onBell, be
     ...PRIMARY.map(i => ({ label: T(i.label), page: i.to, active: active(i.to), hot: i.to.name === 'perps' || i.to.name === 'predict', fold: i.fold })),
   ]
   const pickChain = (c: TChain) => { setChain(c); setNetOpen(false); navigate(trenchesPage(c)) }
+  // Phones: the chains in a bottom sheet, from every page (components/ChainSheet.tsx).
+  const mobile = useIsMobile()
+  const [netSheet, setNetSheet] = useState(false)
 
   return (
     <header className="tm-nav">
@@ -114,11 +119,12 @@ export default function NavBar({ page, navigate, onMenuClick, onBack, onBell, be
       </button>
 
       <div className="tm-right">
-        <div className="tm-pop-wrap" ref={netRef}>
-          <button className="tm-btn tm-net" onClick={() => setNetOpen(o => !o)} aria-expanded={netOpen} title={T('Network')}>
+        {/* Phones on the Trenches pick the chain in the page's own bar; one button is enough. */}
+        {!(mobile && TRENCHES.has(page.name)) && <div className="tm-pop-wrap" ref={netRef}>
+          <button className="tm-btn tm-net" onClick={() => (mobile ? setNetSheet(true) : setNetOpen(o => !o))} aria-expanded={mobile ? netSheet : netOpen} aria-label={`${T('Network')}: ${CHAINS[chain].name}`} title={T('Network')}>
             <GlobeIcon /><ChainLogo chain={chain} size={16} /><span className="tm-net-name">{CHAINS[chain].name}</span><Chevron />
           </button>
-          {netOpen && (
+          {netOpen && !mobile && (
             <div className="tm-pop tm-pop-right tm-net-pop">
               <div className="tm-pop-h">{T('Chains')}</div>
               {CHAIN_LIST.map(c => (
@@ -128,7 +134,8 @@ export default function NavBar({ page, navigate, onMenuClick, onBack, onBell, be
               ))}
             </div>
           )}
-        </div>
+        </div>}
+        <ChainSheet open={netSheet} chain={chain} onClose={() => setNetSheet(false)} onPick={pickChain} />
         <button className="tm-round tm-sq tm-bell" onClick={onBell} title={T('Price alerts')} aria-label={T('Price alerts')}>
           <BellIcon />{bellCount > 0 && <span className="tm-bell-n">{bellCount}</span>}
         </button>
