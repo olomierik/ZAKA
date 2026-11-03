@@ -3449,6 +3449,24 @@ Owner: "make this autotrade feature on Polymarket LIVE and working; a very intel
   - **Tests:** `scripts/test-updown-live.ts` (every rule; in CI). `engine/test/updown.test.ts` (33): signals published and refused for skipped kinds, the live-speed book filling 900 ms later, sizes, the drawdown stop and the streak pause.
   - **Checked in the browser** against the stand-in, with a throwaway local trading wallet: balances read from Polygon, "Polymarket accepts orders from your country (TZ)", approvals not set, Start disabled until funded; 375px with no sideways scroll.
 
+## Phones: picking a chain (2026-11-03)
+
+Owner: "users can not change to other networks on mobile phones, it sticks to arc; make mobile experience much better".
+- **Why:**
+  - **Every page but the Trenches:** the top bar's network button was hidden on phones (`.tm-net` in the 767px block of `terminal.css`), so there was no way to change chain.
+  - **On the Trenches:** the bar's small menu closed on any window `resize`. Phones fire one whenever the address bar slides in or out, so a tap could close the menu before the pick landed.
+- **Now (`components/ChainSheet.tsx`):** phones pick the chain from a bottom sheet with a large row per chain (logo, name, gas coin, ✓ on the current one). It closes only on a tap outside, Back or Esc.
+  - The top bar's network button shows on phones again (the chain's logo) and opens the sheet on every page. The Trenches bar keeps its own labelled button, so the top bar leaves its button out there.
+  - A pick closes the sheet, waits for its history entry to go (`afterSheetClose`), then opens that chain's Trenches.
+  - Desktop keeps the dropdown.
+- **Tests:** `bun scripts/test-chain-sheet.tsx` (in CI).
+- **Checked in the browser at 375px:**
+  - Arc → Solana from the Trenches bar;
+  - Solana → Robinhood Chain from Portfolio's top bar;
+  - no sideways scroll on 15 main pages;
+  - the desktop dropdown still switching.
+- **Not checked:** a real phone's touch events (the browser pane sends mouse clicks).
+
 ## Hosting — Netlify and Railway (Vercel removed 2026-10-16)
 
 **Every commit to `main` deploys the site to Netlify (`arcsense-app`, www.arcsense.site; arcdex.online redirects there) and, when engine or `api/` files change, the engine to Railway (`arcdex-engine`).**

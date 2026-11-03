@@ -19,6 +19,7 @@ import { CustomizeModal, FilterModal } from '../components/TrenchModals'
 import ChainLogo from '../components/ChainLogo'
 import { IcSliders, IcStar } from '../components/TrIcons'
 import { trenchesPage } from '../components/NavBar'
+import ChainSheet from '../components/ChainSheet'
 import { CHAINS, CHAIN_LIST, setChain, type TChain } from '../lib/chains'
 import { useHead } from '../lib/rpcSettings'
 import { LANES, isCollapsed, laneCoins, setTrench, shownInLanes, toggleCollapsed, useTrench, SLIPS, type LaneId, type TrenchCoin, type TrenchSettings } from '../lib/trenches'
@@ -356,32 +357,15 @@ function TrenchView({ chain, data, feed, navigate, s }: { chain: TChain; data: C
   )
 }
 
-/** The chain picker on phones: the current chain as a button, the others in a menu under it. */
+/** The chain picker on phones: the current chain as a button, the chains in a bottom sheet (components/ChainSheet.tsx). */
 function ChainSelect({ chain, onPick }: { chain: TChain; onPick: (c: TChain) => void }) {
-  const [open, setOpen] = useState<{ top: number; left: number } | null>(null)
-  useEffect(() => {
-    if (!open) return
-    const close = () => setOpen(null)
-    window.addEventListener('pointerdown', close)
-    window.addEventListener('resize', close)
-    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('resize', close) }
-  }, [open])
+  const [open, setOpen] = useState(false)
   return (
-    <div className="tr-csel" onPointerDown={e => e.stopPropagation()}>
-      <button className="tr-csel-btn" aria-haspopup="listbox" aria-expanded={!!open}
-        onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setOpen(o => (o ? null : { top: r.bottom + 4, left: r.left })) }}>
+    <div className="tr-csel">
+      <button className="tr-csel-btn" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(true)}>
         <ChainLogo chain={chain} size={16} /><span>{CHAINS[chain].name}</span><i aria-hidden>▾</i>
       </button>
-      {open && (
-        // Fixed, so the bar's sideways scroll doesn't clip it.
-        <div className="tr-csel-menu" role="listbox" aria-label={T('Chain')} style={{ top: open.top, left: open.left }}>
-          {CHAIN_LIST.map(c => (
-            <button key={c} role="option" aria-selected={c === chain} className={c === chain ? 'on' : ''} onClick={() => { setOpen(null); if (c !== chain) onPick(c) }}>
-              <ChainLogo chain={c} size={18} /><span>{CHAINS[c].name}</span>{c === chain && <b aria-hidden>✓</b>}
-            </button>
-          ))}
-        </div>
-      )}
+      <ChainSheet open={open} chain={chain} onClose={() => setOpen(false)} onPick={onPick} />
     </div>
   )
 }

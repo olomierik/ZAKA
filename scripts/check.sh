@@ -19,6 +19,7 @@ echo "== app shell";        bun scripts/test-app-shell.ts
 echo "== social";           bun scripts/test-social.tsx
 echo "== wallet reconnect"; bun scripts/test-reconnect.tsx
 echo "== trade forms";      bun scripts/test-trade-details.tsx
+echo "== chain sheet";      bun scripts/test-chain-sheet.tsx
 echo "== engine tests";     bun test engine/test
 echo "== chart framing";   bun scripts/test-chart-frame.ts
 echo "== dexscreener";      bun scripts/test-dex-data.ts

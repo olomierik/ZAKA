@@ -97,11 +97,14 @@ html[data-adx="dark"] .tm-nav .connect-btn { color: #06110b; }
 .tr-csel { flex-shrink: 0; }
 .tr-csel-btn { height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--adx-border); background: var(--bg-2); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .tr-csel-btn i { font-style: normal; font-size: 10px; color: var(--text-muted); }
-.tr-csel-menu { position: fixed; z-index: 1150; min-width: 190px; padding: 4px; border-radius: 10px; border: 1px solid var(--adx-border); background: var(--bg-2); box-shadow: 0 10px 30px rgba(0,0,0,0.25); display: flex; flex-direction: column; }
-.tr-csel-menu button { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 10px; border: none; border-radius: 7px; background: none; color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; text-align: left; }
-.tr-csel-menu button span { flex: 1; }
-.tr-csel-menu button.on, .tr-csel-menu button:hover { background: var(--hover); }
-.tr-csel-menu button b { color: var(--green); }
+/* Phones: the chains in a bottom sheet (components/ChainSheet.tsx). */
+.chain-sheet { display: flex; flex-direction: column; gap: 4px; padding: 4px 12px 14px; }
+.chain-sheet button { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 0 14px; border: 1px solid var(--adx-border); border-radius: 12px; background: var(--bg-2); color: var(--text); font: inherit; font-size: 15.5px; font-weight: 600; cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent; }
+.chain-sheet button:active { background: var(--hover); }
+.chain-sheet button.on { border-color: var(--green); background: var(--hover); }
+.chain-sheet-name { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.chain-sheet-name small { font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.chain-sheet button b { color: var(--green); font-size: 17px; }
 .tr-chain { height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--adx-border); background: var(--bg-2); color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .tr-chain:hover { background: var(--hover); }
 .tr-chain.on { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
@@ -328,7 +331,10 @@ html[data-adx="dark"] .tr-ini { color: hsl(var(--h, 140) 32% 82%); background: r
   .is-detail .tm-back { display: block; }
   /* Phones have the tab bar and its More sheet: no second list of the same pages behind ☰. */
   .tm-burger, .is-detail .tm-burger { display: none; }
-  .tm-lang, .tm-net { display: none; }
+  .tm-lang { display: none; }
+  /* The network button stays (it opens the chain sheet); just the chain's logo, a little smaller. */
+  .tm-net { height: 34px; padding: 0 7px; gap: 4px; }
+  .tm-net > svg:first-child { display: none; }
   .tm-logo { font-size: 18px; padding: 0 4px 0 0; }
   .tm-nav { padding: 0 8px; gap: 5px; padding-top: env(safe-area-inset-top); height: calc(50px + env(safe-area-inset-top)); }
   .tm-nav .navbar-search-wrap.open { top: calc(50px + env(safe-area-inset-top)); }
