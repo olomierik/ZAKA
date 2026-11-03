@@ -20,6 +20,7 @@ const WalletAlertWatcher = lazy(() => import('./components/WalletAlertWatcher'))
 // Copy trading (the build pack's Phase 7): engine-held copy wallets mirror verified leaders on Arc.
 const CopyTradePage   = lazy(() => import('./pages/CopyTradePage'))
 const CopyRunner      = lazy(() => import('./components/CopyRunner'))
+const UpdownLiveRunner = lazy(() => import('./components/UpdownLiveRunner'))
 const StarknetPage    = lazy(() => import('./pages/StarknetPage'))
 const ArcdexPage       = lazy(() => import('./pages/ArcdexPage'))
 const AlgoPage        = lazy(() => import('./pages/AlgoPage'))
@@ -84,6 +85,7 @@ import { startTraffic } from './lib/traffic'
 import { loadRuntimeFlags, useFlag } from './lib/flags'
 import { useTracked } from './lib/walletTracker'
 import { useCopySettings } from './lib/copySettings'
+import { useLiveSettings } from './lib/updownLive'
 
 // Remember ?ref= or /r/<name> before anything renders (first-touch attribution).
 captureReferral()
@@ -141,6 +143,9 @@ export default function App() {
   // Copy trading from the user's own trading wallet (lib/copyTrade.ts): the walletCopy flag, /admin → Flags.
   const copyOn = useFlag('walletCopy')
   const copying = useCopySettings().on && copyOn
+  // Live BTC Up/Down autotrade on Polymarket (lib/updownLive.ts): the updownLive flag and the user's own switch.
+  const updownOn = useFlag('updownLive')
+  const updownLive = useLiveSettings().on && updownOn
   // Followed wallets with alerts on: their trades show a notice on any page (components/WalletAlertWatcher.tsx).
   const tracking = useTracked().some(w => w.alerts)
   const trader = useTrader()
@@ -292,6 +297,7 @@ export default function App() {
       {/* A toast (and, when allowed, a system notification) for every profit the signed-in owner's bots take. */}
       <ProfitAlerts navigate={navigate} />
       {copying && <PageErrorBoundary resetKey="copy" fallback={null}><Suspense fallback={null}><CopyRunner navigate={navigate} /></Suspense></PageErrorBoundary>}
+      {updownLive && <PageErrorBoundary resetKey="updown-live" fallback={null}><Suspense fallback={null}><UpdownLiveRunner /></Suspense></PageErrorBoundary>}
       {tracking && <PageErrorBoundary resetKey="wallets" fallback={null}><Suspense fallback={null}><WalletAlertWatcher navigate={navigate} /></Suspense></PageErrorBoundary>}
       {watchAlerts && <PageErrorBoundary resetKey="alerts" fallback={null}><Suspense fallback={null}><PriceAlertWatcher navigate={navigate} /></Suspense></PageErrorBoundary>}
       {pushOn && <PageErrorBoundary resetKey="push" fallback={null}><Suspense fallback={null}><PushSync /></Suspense></PageErrorBoundary>}

@@ -38,6 +38,9 @@ export const FLAGS = {
    * non-custodial, Arc first (owner, 2026-10-17). On; /admin can turn it off without a deploy, and a running copy stops
    * at its next trade. */
   walletCopy: true,
+  /** Live BTC Up/Down autotrade with real money on Polymarket, from the user's own trading wallet while ARCDEX is open
+   * (lib/updownLive.ts; owner, 2026-11-03). On; each user still opts in, and /admin can turn it off for everyone at once. */
+  updownLive: true,
 } as const satisfies Record<SiteFlag, boolean>
 export type FlagName = SiteFlag
 export type RuntimeFlags = Partial<Record<FlagName, boolean>>

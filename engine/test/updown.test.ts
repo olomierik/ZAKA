@@ -6,7 +6,7 @@ import { Books, parsePrice, parseWindow } from '../src/updown/markets'
 import { RULES, decide, exitDecision, fillFak, sellFak, sizeUsd } from '../src/updown/strategy'
 import { PaperBook, freshPaper, heldShares } from '../src/updown/paper'
 import { UpdownService, TAKER_DELAY_MS } from '../src/updown/service'
-import { takerFee, updownSlug } from '../../api/_updownProtocol'
+import { LIVE_RULES, liveOrderUsd, takerFee, updownSlug, type UpdownSignal } from '../../api/_updownProtocol'
 
 describe('fair value', () => {
   test('Student-t(4) CDF: symmetric, its density at 0, the tails', () => {
@@ -306,7 +306,8 @@ describe('the service', () => {
       return Response.json({ blocked: false, country: 'IE' })
     }
     const settings = new Map<string, string>()
-    const svc = new UpdownService({ store: { getSetting: async k => settings.get(k) ?? null, setSetting: async (k, v) => { settings.set(k, v) } }, fetch: f as never, Ws: FakeWs as never, now: () => now })
+    const sigs: UpdownSignal[] = []
+    const svc = new UpdownService({ store: { getSetting: async k => settings.get(k) ?? null, setSetting: async (k, v) => { settings.set(k, v) } }, fetch: f as never, Ws: FakeWs as never, now: () => now, publish: s => sigs.push(s) })
     trustModel(svc)
     // Feeds: Coinbase at the price to beat for the minute before the start (the basis), then 0.35% higher.
     const feed = (sec: number, px: number) => { svc.model.onTick('coinbase', px, sec * 1000); svc.model.tick(sec * 1000 + 999) }
@@ -335,8 +336,24 @@ describe('the service', () => {
     if (skip) svc.learn.s.blocked.fav = { since: now, trades: 20, roi: -0.3, pnl: -150 }
     svc.decideAll()
     expect(svc.paper.s.trades.length).toBe(0) // not before the delay
+    // The decision goes out to live traders at once; a kind it learned to skip never does.
+    if (skip) expect(sigs).toEqual([])
+    else {
+      expect(sigs.length).toBe(1)
+      expect(sigs[0]).toMatchObject({ kind: 'buy', side: 'up', asset: 'UP', price: 0.5, lane: 'A', slug: updownSlug('5m', start), minSize: 5 })
+      expect(sigs[0].at).toBe(now)
+    }
     await new Promise(r => setTimeout(r, 300 + TAKER_DELAY_MS + 100))
     expect(svc.paper.s.trades.length).toBe(1)
+    // The live-speed book fills only as late as a browser's order would land.
+    expect(svc.sim.s.trades.length).toBe(0)
+    if (!skip) {
+      await new Promise(r => setTimeout(r, LIVE_RULES.extraDelayMs + 100))
+      expect(svc.sim.s.trades.length).toBe(1)
+      const st = svc.sim.s.trades[0]
+      expect(st.cost).toBeLessThanOrEqual(LIVE_RULES.simCapital * LIVE_RULES.orderShare + 1e-6)
+      expect(svc.status().liveSim!.capital).toBe(100)
+    }
     const tr = svc.paper.s.trades[0]
     // What it knew when it bought: the raw model, the market's mid, how far BTC was above the price to beat.
     expect(tr.raw!).toBeGreaterThan(0.8); expect(tr.market).toBe(0.49); expect(tr.awayBp!).toBeCloseTo(35, 0)
@@ -459,5 +476,29 @@ describe('the service', () => {
     expect(svc.paper.s.trades.length).toBe(0)
     expect(svc.status().windows.find(x => x.slug === updownSlug('5m', start))!.waiting).toBe('model and market disagree')
     svc.stop()
+  })
+})
+
+describe('small live accounts', () => {
+  test('an order is a quarter of Kelly, at most 6% of the capital, and nothing under $1', () => {
+    expect(liveOrderUsd(100, 0.7, 0.5, 0.07)).toBe(6)
+    expect(liveOrderUsd(50, 0.7, 0.5, 0.07)).toBe(3)
+    const thin = liveOrderUsd(100, 0.55, 0.5, 0.07)
+    expect(thin).toBeGreaterThan(1); expect(thin).toBeLessThan(2)
+    expect(liveOrderUsd(100, 0.52, 0.5, 0.07)).toBe(0)
+    expect(liveOrderUsd(50, 0.3, 0.5, 0.07)).toBe(0)
+  })
+
+  test('the live-speed book stops once it is down 30%, and pauses after four losses in a row', () => {
+    const svc = new UpdownService({ store: { getSetting: async () => null, setSetting: async () => {} }, now: () => 1_000_000 })
+    const check = () => (svc as unknown as { simCheck(n: number): void }).simCheck(1_000_000)
+    const base = { dur: '5m' as const, lane: 'A' as const, side: 'up' as const, at: 0, filledAt: 0, shares: 10, price: 0.5, fee: 0.1, cost: 5.1, model: 0.7, edge: 0.15, secondsLeft: 200 }
+    for (let i = 0; i < 4; i++) { svc.sim.record({ ...base, slug: `s${i}`, filledAt: i }); svc.sim.settle(`s${i}`, false) }
+    check()
+    expect(svc.simState.halted).toBeNull()
+    expect(svc.status().liveSim!.halted).toBe('paused after a losing streak')
+    svc.sim.s.bankroll = 69
+    check()
+    expect(svc.simState.halted).toBe('down 30%: stopped')
   })
 })
